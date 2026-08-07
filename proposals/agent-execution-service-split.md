@@ -1,38 +1,45 @@
-# Proposal: split management, agent execution, and durable execution
+# Proposal: split `everruns`, `everruns-engine`, and `everruns-durable`
 
 Status: draft design note (pre-spec). Answers "can Everruns be split into a
-management service, a separate agent-execution service, and the existing
-durable-execution engine — and what is the contract between them?" On
-acceptance this becomes a spec in `knowledge/foundations/` plus a phased set of
-Linear issues under EVE.
+management service, a separate agent-execution engine, and the existing durable
+execution engine — and what is the contract between them?" On acceptance this
+becomes a spec in `knowledge/foundations/` plus a phased set of Linear issues
+under EVE.
 
-Validated against `origin/main` at `54fce13`.
+Validated against `origin/main` at `54fce13`. Target topology follows Mike's
+architecture sketch.
 
 ## Summary
 
 Everruns already runs as two processes (`everruns-server`, `everruns-worker`)
 with a hard "workers never touch the database" rule. That is a **deployment**
-split, not a **domain** split. The worker is not an agent-execution service; it
-is a remote procedure body for the control plane, reaching back over 117 gRPC
+split, not a **domain** split. The worker is not an execution engine; it is a
+remote procedure body for the control plane, reaching back over 117 gRPC
 methods for everything from harness lookup to SQLite page reads.
 
-The split this proposal describes is different, and orthogonal to the existing
-one:
+The target split is different, and orthogonal to the existing one:
 
-| Service | Owns | Talks to |
+| Service | Owns | Front door |
 |---|---|---|
-| **Management** | definitions: harnesses, engines, agents, capabilities, MCP servers, models/providers, apps, triggers, credentials, budgets, org policy | clients (REST/MCP/UI), execution |
-| **Agent Execution** | running sessions: turns, messages, events, session filesystem, session KV/SQL, session tasks, tool execution | management (spec + authority), durable |
-| **Durable Execution** | workflow instances, task queue, retries, timers, signals, circuit breakers | its own store |
+| **`everruns`** | builder + management: harnesses, agents, capabilities, MCP servers, models/providers, apps, triggers, credentials, budgets, org policy, engine registrations. The **Definitions** store. | Management APIs (+ UI) |
+| **`everruns-engine`** | running agents: turns, tool execution, session runtime state, the **Events** store. Accepts a distilled agent and executes it. | Engine APIs |
+| **`everruns-durable`** | workflow instances, task queue, retries, timers, signals, circuit breakers | used by the engine |
 
-The load-bearing idea is **distillation**: management resolves harness chain +
-agent + session + capability registry + MCP catalog + model + provider into one
-self-contained, versioned `AgentSpec`, and execution runs that spec without
-knowing what a harness is. Today that resolution happens *inside the worker*
-(`crates/core/src/runtime_context.rs:287`), which is why the worker needs the
-whole configuration surface over gRPC.
+Two load-bearing ideas:
 
-Everything else in this document follows from moving that one seam.
+1. **Distillation.** `everruns` resolves harness chain + agent + session +
+   capability registry + MCP catalog + model + provider into one self-contained
+   `AgentSpec`, and **submits it for execution**. The engine never learns what a
+   harness is. Today that resolution happens *inside the worker*
+   (`crates/core/src/runtime_context.rs:287`), which is exactly why the worker
+   needs the whole configuration surface over gRPC.
+
+2. **The engine is a product, not a subordinate.** It has its own public API and
+   its own event store. You can submit a distilled agent to it without
+   `everruns` in the picture at all. That is a stronger claim than "extract the
+   worker", and it is what makes the dependency arrow point one way only.
+
+Everything else follows from those two.
 
 ## Part 1 — What exists today
 
@@ -52,36 +59,20 @@ without the executor.
 
 ### Where the 117 RPCs actually belong
 
-Classifying every method in `worker.proto` by which of the three services would
-own it after the split:
+Classifying every method in `worker.proto` by post-split owner:
 
 | Bucket | Count | Examples | Post-split home |
 |---|---|---|---|
 | Configuration reads that distillation deletes | 7 | `GetAgent`, `GetHarness`, `GetResolvedModel`, `GetDefaultModel`, `GetMcpServerByPrefix`, `PlatformListCapabilities`, config half of `GetTurnContext` | gone — folded into `AgentSpec` |
-| Session runtime state | 63 | messages, events, compaction checkpoints, 8× session file, 8× session KV/secret, 7× session SQL, 9× session task, 6× leased resource, 4× session resource, 5× image artifact, 5× session schedule | Execution |
-| Durable engine | 18 | `ClaimDurableTasks`, `CompleteDurableTask`, `SendDurableWorkflowSignal`, `RegisterDurableWorker`, circuit breakers, `SubscribeTaskNotifications` | Durable |
-| Authority and secrets | 8 | `GetConnectionToken`, `GetDefaultProviderCredentials`, `CheckBudgetsForSession`, `CheckOutboundToolRateLimit`, `ExecuteMachinePayment`, `AuthorizeSessionCreation` | Management (narrow, deliberate) |
-| Management-as-a-tool (`platform` capability) | 21 | `ExecuteCommand`, `ListCommands`, `InvokePlatformCommandSurface`, `Platform*Harness/Agent/Session`, `InvokeAgentTrigger` | Management (already a clean command surface) |
+| Session runtime state | 63 | messages, events, compaction checkpoints, 8× session file, 8× session KV/secret, 7× session SQL, 9× session task, 6× leased resource, 4× session resource, 5× image artifact, 5× session schedule | `everruns-engine`, internal |
+| Durable engine | 18 | `ClaimDurableTasks`, `CompleteDurableTask`, `SendDurableWorkflowSignal`, `RegisterDurableWorker`, circuit breakers, `SubscribeTaskNotifications` | `everruns-durable` |
+| Authority and secrets | 8 | `GetConnectionToken`, `GetDefaultProviderCredentials`, `CheckBudgetsForSession`, `CheckOutboundToolRateLimit`, `ExecuteMachinePayment`, `AuthorizeSessionCreation` | contested — see Part 5 |
+| Management-as-a-tool (`platform` capability) | 21 | `ExecuteCommand`, `ListCommands`, `InvokePlatformCommandSurface`, `Platform*Harness/Agent/Session`, `InvokeAgentTrigger` | `everruns` public API, called as an ordinary client |
 
-Two thirds of the surface is session runtime state that the worker manipulates
-but the server stores. That is the real coupling — not configuration.
-
-### Where distillation happens today
-
-`assemble_turn_context()` (`crates/core/src/runtime_context.rs`) folds the
-harness inheritance chain, agent, and session into an `AgentConfigOverlay`
-(`crates/core/src/config_layer.rs`), resolves capability configs and their
-dependency order, composes the system prompt, merges MCP tool definitions,
-resolves the model, and produces a `RuntimeAgent`
-(`crates/core/src/runtime_agent.rs`). It runs on the worker, per turn, from raw
-entities shipped by `GetTurnContext`.
-
-`RuntimeAgent` is already very close to the "distilled agent" the request asks
-for: system prompt, model, tool definitions, max iterations, sampling params,
-tool-search and prompt-cache config, merged network access list. It is
-`Serialize + Deserialize`. It is not yet a wire contract, has no provenance,
-and is not sufficient on its own — it omits resolved MCP endpoints, capability
-runtime configs, initial files, locale, and credential handles.
+Two thirds is session runtime state that the worker manipulates but the server
+stores. That is the real coupling — not configuration. Under the target
+topology those 63 become *internal* to the engine and stop being a protocol at
+all, which is the single biggest simplification available here.
 
 ### The re-distillation constraint
 
@@ -89,79 +80,70 @@ Distillation is not a once-per-session act. Three in-flight paths re-resolve
 configuration mid-session, from inside tool execution:
 
 - `agent_handoff` folds host and guest overlays and fetches harness chains and
-  agents through `PlatformStore` (`crates/core/src/capabilities/agent_handoff.rs:478`)
+  agents through `PlatformStore`
+  (`crates/core/src/capabilities/agent_handoff.rs:478`)
 - `subagents` builds a fresh `RuntimeAgent` for the child
   (`crates/core/src/capabilities/subagents.rs`)
 - compaction installs a checkpoint that changes the effective message window
 
-So the contract cannot be "management hands execution a spec at session start."
-It must be "execution can ask management to resolve a spec, at any time, for any
-(harness, agent, session) triple it is authorized for." That is one RPC, not a
-configuration store.
+Under a submit-only contract the engine cannot resolve these itself — it has no
+harnesses, no agents, no registry. This is the central design tension of the
+split and Part 5 addresses it directly.
 
 ## Part 2 — Target architecture
 
 ```mermaid
-graph TB
-    subgraph Clients
-        UI[Web UI]
-        API[API clients / MCP]
-    end
+graph LR
+    UI[Management UI] --> MAPI{{Management APIs}}
+    MAPI --> EV[everruns]
+    EV <--> DEF[(Definitions)]
 
-    subgraph MGMT["Management Service"]
-        REST[REST + MCP + command surface]
-        DEF[(Definitions DB<br/>harnesses, engines, agents,<br/>capabilities, MCP servers,<br/>providers, apps, triggers,<br/>credentials, budgets)]
-        RESOLVE[Resolver<br/>overlay fold → AgentSpec]
-        AUTH[Authority<br/>credentials, budget, rate limit,<br/>payment, session creation]
-    end
+    EAPI{{Engine APIs}} --> ENG[everruns-engine]
+    EV -->|submit agent<br/>for execution| ENG
 
-    subgraph EXEC["Agent Execution Service"]
-        RUN[Turn loop: input / reason / act]
-        TOOLS[Tool + MCP execution]
-        STATE[(Runtime state<br/>messages, events, files,<br/>KV, SQL, tasks, resources)]
-    end
-
-    subgraph DUR["Durable Execution"]
-        Q[(Workflow instances,<br/>task queue, timers,<br/>signals, breakers)]
-    end
-
-    UI --> REST
-    API --> REST
-    REST --> DEF
-    RESOLVE --> DEF
-    REST -->|StartTurn / Cancel / Handoff| RUN
-    RUN -->|ResolveAgentSpec| RESOLVE
-    RUN -->|MintCredential / CheckBudget / Payment| AUTH
-    RUN --> STATE
-    RUN <--> Q
-    RUN -->|events| REST
+    ENG <--> EVT[(Events)]
+    ENG -->|uses| DUR[everruns-durable]
 ```
 
-Three contracts, each narrow:
+The properties that matter:
 
-1. **Management → Execution**: run control. `StartTurn`, `CancelTurn`,
-   `ResumeAfterToolResults`, `StartSession`, `EndSession`. Roughly the existing
-   `AgentRunner` trait, promoted to a wire protocol.
-2. **Execution → Management**: `ResolveAgentSpec` plus the authority calls, plus
-   the `platform` capability command surface (which is already generic —
-   `discover` / `query` / `execute`, see
-   `proposals/platform-capability.md`). Target: **under 15 methods**, down from
-   117.
-3. **Execution → Durable**: unchanged, the existing durable client.
+- **One arrow between the services, pointing right.** `everruns` submits to
+  `everruns-engine`. The engine does not call back into management for
+  configuration. If it needs to, the spec was incomplete.
+- **The engine has its own front door.** `Engine APIs` is a first-class public
+  surface, not an internal protocol. Submitting a distilled agent is a
+  supported operation for anyone, not a privilege of `everruns`. This is what
+  makes the engine independently deployable, independently sellable, and
+  testable without a control plane.
+- **Two stores, split by kind.** Definitions on the management side, Events on
+  the engine side. Not one database with a fence down the middle.
+- **Durable is under the engine, not beside it.** The engine uses it; nothing
+  else does. That matches the current durable crate's design (self-contained,
+  PostgreSQL-only) and removes the durable RPCs from any cross-service protocol.
 
-Event delivery back to SSE clients stays as it is — execution emits into
-`EventDelivery` (NATS in production), management's SSE endpoint subscribes.
-Neither side needs a synchronous call for this.
+### Naming
 
-## Part 3 — The distilled contract: `AgentSpec`
+`Engine` is the execution service. The management-side record that points at a
+deployed engine is an **engine registration** — endpoint, version, advertised
+capabilities, supported sandbox flavors, placement labels, limits. That record
+is what lets `everruns` pick a target and refuse to submit a spec requiring a
+capability the engine cannot execute. It is a pointer, not the thing.
 
-The one new artifact. Self-contained, deterministic, cacheable, auditable.
+Worth settling early: an engine registration overlaps conceptually with
+Harness, which today "represents a setup for agent execution"
+(`knowledge/foundations/concepts.md:48`). The line to hold is *harness =
+what configuration the agent runs with; engine = what runs it*. If that line
+does not survive review, the harness/engine boundary needs a naming pass before
+any of this ships.
+
+## Part 3 — The distilled agent: `AgentSpec`
+
+The one new artifact, and the entire contract of the submit call.
 
 ```
 AgentSpec {
   spec_id            // content hash of everything below; stable = cache key
   spec_version       // wire schema version
-  org_id
   issued_at, expires_at
 
   // resolved from harness chain + agent + session overlay
@@ -176,260 +158,270 @@ AgentSpec {
   locale
 
   // resolved external attachments
-  mcp_servers[]      // logical name, endpoint, transport, tool prefix, credential_handle
-  sandbox            // engine-class requirements: flavor, image, resource class
+  mcp_servers[]      // logical name, endpoint, transport, tool prefix, credential ref
+  sandbox            // flavor, image, resource class
 
-  // secrets are never inlined
-  credential_handles[]  // opaque, short-lived, scoped: {handle, scope, expires_at}
+  // see Part 5
+  credentials[]      // scoped, expiring material or handles
 
-  // provenance, for audit and reproducibility
-  provenance { harness_chain_ids[], agent_id, agent_version_id, session_id,
-               capability_registry_version, resolved_at }
+  // opaque to the engine; carried for audit and correlation
+  provenance { harness_chain_ids[], agent_id, agent_version_id,
+               capability_registry_version, org_id, resolved_at }
 }
 ```
 
 Design rules:
 
-- **No entity IDs in the execution path.** Execution may log `provenance` but
-  must never dereference it. If execution needs to look up a harness, the spec
-  is incomplete.
-- **Secrets are handles, not values.** `credential_handle` is redeemed against
-  management's authority API at the moment of use, scoped to
-  (session, server/provider, capability) and short-lived. This preserves
-  today's property that only the control plane holds encryption keys, and
-  improves on it: today `GetConnectionToken` returns bearer tokens that the
-  worker holds for the turn's duration.
-- **Content-addressed.** `spec_id` lets execution cache specs across turns of a
-  session and lets management return `304`-style "unchanged" responses. It also
-  makes eval reproducibility exact — a spec hash pins the whole configuration.
-- **Distillation is pure.** Given the same entities and registry version, the
-  same spec. The resolver becomes independently testable against golden specs,
-  which is a test-surface improvement even before the split ships.
+- **No entity IDs on the execution path.** `provenance` is a logging and
+  correlation payload. The engine must never dereference it — there is nothing
+  to dereference it against.
+- **Content-addressed.** `spec_id` lets the engine cache a spec across turns and
+  lets `everruns` re-submit "same spec, new input" cheaply. It also pins eval
+  reproducibility exactly: a spec hash fixes the entire configuration.
+- **Distillation is pure.** Same entities + same registry version → same spec.
+  The resolver becomes independently testable against golden specs, which is a
+  test-surface win before any topology changes.
 
-`AgentSpec` should live in a small crate (`crates/agent-spec`) depended on by
-core, management, and execution — not in `everruns-core`, which is where the
-current coupling lives. `RuntimeAgent` becomes a projection of `AgentSpec` for
-the loop's internals rather than a parallel type.
+`RuntimeAgent` (`crates/core/src/runtime_agent.rs`) is already ~70% of this and
+is already `Serialize + Deserialize`. It lacks provenance, resolved MCP
+endpoints, capability runtime configs, initial files, locale, and credentials.
+`AgentSpec` should live in a small shared crate (`crates/agent-spec`) that both
+services depend on — not in `everruns-core`, which is where the current
+coupling lives. `RuntimeAgent` becomes a projection of `AgentSpec` for the
+loop's internals rather than a parallel type.
 
-## Part 4 — Engines as a managed resource
+## Part 4 — Engine APIs
 
-"Engine" is not currently an entity in the model. Under this split it needs to
-be one, because management must decide *where* a session runs.
+Because the engine is directly addressable, its API is a product surface, not a
+worker protocol. Minimum viable shape:
 
-```
-Engine {
-  id, name, display_name, org_id (or null = shared pool)
-  endpoint             // execution service address
-  status               // registered, draining, unavailable
-  version              // execution build; capability floor
-  supported_capabilities[]   // which capability IDs this engine can execute
-  supported_sandboxes[]      // docker, daytona, e2b, deno, none
-  placement            // region, tenancy (shared | dedicated | byoc), labels
-  limits               // max concurrent sessions, resource class
-}
-```
+| Operation | Purpose |
+|---|---|
+| `POST /runs` | submit an `AgentSpec` + input; returns a run handle |
+| `GET /runs/{id}` | status |
+| `GET /runs/{id}/events` | stream (SSE); the engine's Events store is the source |
+| `POST /runs/{id}/messages` | steer an in-flight run |
+| `POST /runs/{id}/cancel` | cancel |
+| `POST /runs/{id}/tool-results` | return client-side tool results |
+| `GET /capabilities` | what this engine build can execute |
+| `GET /health` | liveness, version, capacity |
 
-Harness gains an `engine_id` (or an engine *selector* — labels, so placement
-stays declarative). Session resolution then reads: harness → engine → execution
-endpoint. Management refuses to start a session whose spec requires a
-capability or sandbox flavor the target engine does not advertise. That check is
-a straight set comparison against `AgentSpec.capabilities` and
-`AgentSpec.sandbox` — cheap, and impossible today because the worker pool is a
-single undifferentiated cross-org set.
+`everruns` becomes the first and most important client of this API, not a
+privileged peer. Its session model maps onto engine runs; its SSE endpoint
+proxies or subscribes to engine events.
 
-This is where the split pays for itself commercially: dedicated engine pools per
-org, BYOC execution inside a customer VPC, GPU or sandbox-specialized pools, and
-per-engine version pinning for risky capability rollouts. None of that is
-expressible while "the worker" is one global pool that claims any task from any
-org.
+This surface also answers "what does an engine registration validate against" —
+`GET /capabilities` is the advertisement, checked against
+`AgentSpec.capabilities` and `AgentSpec.sandbox` at submit time so a mismatch
+fails fast instead of as a mid-turn tool error.
 
-Engines also need registration and health: reuse the existing
-`RegisterDurableWorker` / `HeartbeatDurableWorker` mechanics rather than
-inventing a second liveness system — an engine is a labelled worker pool.
+## Part 5 — The three things the one-way arrow costs
 
-## Part 5 — The hard question: where does session runtime state live?
+A submit-only contract with no callback is the cleanest possible boundary. It
+is not free. Three current behaviors depend on the engine reaching back.
 
-63 of the 117 RPCs are session runtime state. How this is decided determines
-whether the split is real or cosmetic.
+### 5.1 Re-distillation (handoff, subagents)
 
-**Option A — state stays in management.** Execution remains stateless; the
-chatty gRPC surface survives, minus configuration. Cheapest (weeks, not
-quarters), keeps one database, keeps backup/restore and multi-tenant query
-paths unchanged. But execution is still not an independent service: it cannot
-run without management on the hot path of every file read and every message
-append, and BYOC/edge placement stays impossible because session content still
-flows to the management database.
+An agent in flight decides to hand off to another agent, or spawn a subagent.
+Today it walks harness chains through `PlatformStore`. With no callback it
+cannot.
 
-**Option B — execution owns runtime state in its own store.** Management holds
-definitions; execution holds messages, events, files, KV, SQL, tasks, resources,
-leases. This is the honest version of the split. Cost is real: cross-service
-reads for the UI (session transcript lives on the other side), a second
-migration set, cross-store consistency on session delete, and per-engine backup.
+Options:
 
-**Option C — split by lifetime, not by kind (recommended).** Execution owns
-*live* state during a session; management owns *durable record* state.
+- **(a) Bundle reachable specs.** `everruns` resolves the handoff/subagent
+  targets declared in the capability config and ships them inside the submitted
+  spec. Works because handoff targets are configured, not invented at runtime.
+  Fails for dynamic target selection.
+- **(b) Suspend and resubmit.** The engine emits a `spec_required` event and
+  parks the run; `everruns` resolves and submits the new spec against the same
+  run. Preserves the one-way arrow at the cost of a round trip through the
+  event stream and a new suspended run state.
+- **(c) Allow a narrow callback.** One `ResolveSpec` method, engine → management.
+  Simplest to build, and it puts the arrow back.
 
-- Execution-owned, execution-local: session filesystem, session KV/secrets,
-  session SQL databases, session resources and leases, in-flight session tasks,
-  compaction working set, ephemeral delta events.
-- Management-owned, written through: messages, durable events, session status
-  and title, usage rows, session tasks' terminal outcomes.
+**Recommendation: (a) for configured targets now, (b) as the general mechanism.**
+(a) covers the real cases today and requires no new run state. (b) is the honest
+general answer and generalizes to anything else the engine cannot resolve
+locally. (c) should be a deliberate, documented exception if it happens at all —
+once one callback exists, the 117-method surface grows back.
 
-Execution writes durable records through an append-oriented API
-(`AppendMessages`, `EmitEvents` — the streaming one already exists) rather than
-a read-write CRUD surface. Reads for the transcript stay on management, so the
-UI, search, exports, evals, and reporting are untouched.
+### 5.2 Credentials
 
-Option C keeps the surface small (an append path plus a resolve path), removes
-the per-tool-call round trips that dominate today (file and KV operations are
-the chattiest), and keeps a single authoritative transcript. It is also
-incrementally reachable: each state family moves independently, guarded by a
-per-family flag.
+Today `GetConnectionToken` and `GetDefaultProviderCredentials` return live
+secret material to the worker on demand, and only the control plane holds
+encryption keys. With no callback, credentials must travel *in* the spec.
 
-Recommendation: **Option C**, with Option B reachable later for BYOC engines by
-moving the durable record write path to an async outbox.
+That is a downgrade unless it is scoped hard: short-lived, narrowly scoped
+(session + server/provider + capability), and re-minted per submission rather
+than per session. A spec that carries a 5-minute token for exactly the MCP
+servers it lists is defensible; a spec carrying long-lived org credentials is
+not, and would be a real regression against TM-DURABLE-002.
 
-## Part 6 — Phasing
+For long-running sessions this forces either short-TTL specs with re-submission
+on expiry, or a dedicated secret-broker endpoint — which is a callback, but to a
+purpose-built narrow service rather than to management's data model. This is
+the open question most likely to need a decision before Phase 2.
 
-Each phase is independently shippable and independently valuable. No phase
-requires the next one to have landed.
+### 5.3 Authority: budgets, rate limits, payments
 
-**Phase 0 — extract the resolver (no topology change).**
-Move `assemble_turn_context`'s configuration half behind a `resolve_agent_spec`
-function producing `AgentSpec`. Both the in-process runtime and the worker call
-it. Add golden-spec tests. *Value on its own:* the resolution logic gets a name,
-a test surface, and a hash — which is immediately useful for eval
+`CheckBudgetsForSession`, `CheckOutboundToolRateLimit`, `ExecuteMachinePayment`,
+`AuthorizeSessionCreation` are all synchronous policy checks against
+management-owned state, mid-turn. They cannot be distilled — a budget is a live
+counter, not a configuration value.
+
+Realistic answer: these are the legitimate residue of the split. Either the
+engine enforces spec-embedded limits locally and reports usage asynchronously
+(good enough for budgets and rate limits, wrong for payments), or these become
+an explicit, separately-versioned authority API that the engine calls as a
+client. Payments in particular need a synchronous authority; pretending
+otherwise would be dishonest about the boundary.
+
+### 5.4 The `platform` capability is *not* a problem
+
+Agents that manage the platform call `everruns` through its ordinary public
+Management APIs, authenticated as themselves. That is the engine acting as a
+client of a public product surface — categorically different from an internal
+control dependency, and it does not violate the one-way arrow. It is already a
+generic `discover`/`query`/`execute` surface
+(`proposals/platform-capability.md`), so no internal structure leaks.
+
+## Part 6 — State ownership
+
+The sketch puts Events under the engine. That is the right call and it decides
+the rest: the engine owns everything with a session lifetime, `everruns` owns
+everything with a definition lifetime.
+
+| Engine-owned | Management-owned |
+|---|---|
+| events (durable + ephemeral), messages, compaction checkpoints | harnesses, agents, capabilities, MCP servers |
+| session filesystem, KV, secrets, session SQL | providers, models, credentials |
+| session tasks, session resources, leases, image artifacts | apps, triggers, plugins, skills |
+| run status and lifecycle | orgs, users, permissions, budgets, engine registrations |
+
+Consequences worth naming up front, because they are the expensive part:
+
+- **The transcript moves.** UI history, search, export, evals, and reporting all
+  read messages and events today from the management database. They become
+  engine reads (or a management-side read-through projection). This is the
+  largest single work item in the split and it is not optional under this
+  topology.
+- **Two migration sets.** `crates/server/migrations/` is one sequence with an
+  existing rebase hazard; `scripts/lib/check-migration-ordering.sh` needs to
+  learn about a second.
+- **Session delete crosses a boundary.** Needs an async reconciliation path, not
+  a transaction.
+- **Usage and billing.** Usage rows are generated engine-side and consumed
+  management-side. Async projection, not a synchronous write.
+
+A pragmatic intermediate: the engine owns the write path and streams durable
+events to a management-side read projection. Management keeps serving the UI
+and evals unchanged while the engine becomes authoritative. That keeps Phase 5
+below shippable in pieces instead of as one cutover.
+
+## Part 7 — Phasing
+
+Each phase is independently shippable and independently valuable.
+
+**Phase 0 — extract the resolver.** Move the configuration half of
+`assemble_turn_context` behind `resolve_agent_spec() -> AgentSpec`. Both the
+in-process runtime and the worker call it. Golden-spec tests. *Value alone:*
+resolution gets a name, a test surface, and a hash — immediately useful for eval
 reproducibility and for debugging "why did this agent get that prompt."
 
-**Phase 1 — `ResolveAgentSpec` over gRPC.**
-Management implements it; `GetTurnContext` returns `AgentSpec` instead of
-`Agent` + `Harness` + `McpToolDef[]` + `ResolvedModel`. Delete `GetAgent`,
-`GetHarness`, `GetResolvedModel`, `GetDefaultModel`, `GetMcpServerByPrefix`,
-`PlatformListCapabilities`. Route `agent_handoff` and `subagents` through
-`ResolveAgentSpec` instead of `PlatformStore` chain walks. *Value:* −7 RPCs,
-one fewer N+1 pattern per handoff, and the worker stops modelling harness
-inheritance.
+**Phase 1 — ship the spec over the existing wire.** `GetTurnContext` returns
+`AgentSpec` instead of `Agent` + `Harness` + `McpToolDef[]` + `ResolvedModel`.
+Delete the 7 configuration RPCs. Route `agent_handoff` and `subagents` through
+bundled sub-specs (5.1a). *Value:* −7 RPCs, no N+1 on handoff, worker stops
+modelling harness inheritance.
 
-**Phase 2 — credential handles.**
-Replace `GetConnectionToken` / `GetDefaultProviderCredentials` value returns
-with scoped, expiring handles redeemed at point of use. *Value:* independent
-security win (TM-DURABLE-002 blast radius), regardless of whether the split
-continues.
+**Phase 2 — credential scoping.** Short-lived, narrowly-scoped credentials
+minted per submission. *Value:* standalone security win regardless of whether
+the split continues.
 
-**Phase 3 — split the proto.**
-`worker.proto` becomes `management.proto` (resolve + authority + command
-surface), `execution.proto` (run control), `durable.proto` (unchanged
-semantics). Still one server binary, two services on the same port. *Value:*
-the boundary becomes reviewable — a new RPC on the wrong service is now visible
-in the diff.
+**Phase 3 — Engine APIs.** Add the public run API in front of the existing
+worker. Still one deployment; the API is real and testable. *Value:* first point
+at which the engine can be driven without the control plane — provable in a
+test.
 
-**Phase 4 — invert run control.**
-`AgentRunner` becomes an `ExecutionClient` trait with a gRPC implementation;
-`crates/server` drops its `everruns-worker` dependency. Introduce `Engine` as a
-managed entity, with registration, health, and capability advertisement.
-Management routes `StartTurn` to an engine endpoint. *Value:* first point at
-which a second, differently-configured execution pool can exist.
+**Phase 4 — invert control.** `AgentRunner` becomes an engine client;
+`crates/server` drops its `everruns-worker` dependency. Engine registrations
+become a managed entity with health and capability advertisement. *Value:* a
+second, differently-configured engine can exist.
 
-**Phase 5 — move execution-local state.**
-Per Option C, one family at a time behind flags: session filesystem first
-(chattiest, most self-contained), then KV/secrets, then session SQL, then
-resources/leases. Each move is a PR-sized change with a dual-write/dual-read
-window. *Value:* measurable latency reduction per family; the split becomes
-real.
+**Phase 5 — move the stores.** Events and session runtime state to the engine,
+one family at a time behind flags, with a management-side read projection so the
+UI never breaks. Filesystem first (chattiest, most self-contained), then
+KV/secrets, then session SQL, then resources/leases, then events/messages last.
 
-**Phase 6 — separate binaries and deployment.**
-`everruns-management`, `everruns-execution`. Separate images, separate scaling,
-separate integration force-linking (management stops linking sandbox
-integrations entirely, shrinking its attack surface and build).
+**Phase 6 — separate binaries.** `everruns`, `everruns-engine`. Separate images
+and scaling. Management stops force-linking sandbox integrations entirely,
+shrinking its build and its attack surface.
 
-## Part 7 — What this breaks, and what it costs
+## Part 8 — Constraints that shape the design
 
-**Embedded / in-process runtime.** `everruns-runtime` must keep working with no
-services at all (`knowledge/foundations/runtime.md`). Mitigation: `AgentSpec` is
-a plain serializable value with an in-process resolver; the embedded runtime
-calls the resolver directly. This is a constraint on the design, not a blocker —
-but it forbids putting anything service-shaped (handles that require a live
-management endpoint) on the *required* path. Credential handles must therefore
-be an interface with a local implementation, not a wire-only concept.
+**Embedded runtime.** `everruns-runtime` must keep working with no services at
+all (`knowledge/foundations/runtime.md`). `AgentSpec` is a plain serializable
+value with an in-process resolver, so this holds — but it forbids anything
+wire-only on the *required* path. Credentials in particular must be an
+interface with a local implementation, not a concept that presumes a live
+endpoint.
 
-**DEV_MODE.** In-memory, in-process, no gRPC. Same mitigation: all three
-"services" must remain composable into one process. This is already the pattern
-(`DirectWorkerAdapters` vs `GrpcWorkerAdapters`) and the adapter-parity
-principle keeps it honest.
+**DEV_MODE.** In-memory, in-process, no gRPC. All three services must remain
+composable into one process. Already the pattern (`DirectWorkerAdapters` vs
+`GrpcWorkerAdapters`); the adapter-parity principle keeps it honest.
 
-**The `platform` capability.** Agents that manage the platform call back into
-management by design. That stays, and it is fine: it is a generic
-`discover`/`query`/`execute` surface, not a leak of internal structure. It does
-mean execution always has *a* dependency on management — which is expected for a
-control-plane-shaped product.
-
-**Capability ↔ engine skew.** Once engines version independently, a harness can
-reference a capability its engine cannot execute. Requires the advertisement and
-admission check in Part 4, and a clear error at session start rather than a
+**Capability/engine skew.** Once engines version independently, a harness can
+reference a capability its engine cannot execute. `GET /capabilities` plus a
+submit-time admission check is the answer; without it this surfaces as a
 mid-turn tool failure.
 
-**Cross-org workers.** Today the pool is intentionally cross-org with
-org-scoping enforced at the HTTP layer. Engines make tenancy explicit, which is
-an improvement, but the migration must keep the shared pool working as the
-default engine or every existing deployment breaks.
+**Cross-org pooling.** The worker pool is intentionally cross-org today with
+org-scoping at the HTTP layer. Engine registrations make tenancy explicit —
+an improvement — but the shared pool must remain the default or every existing
+deployment breaks.
 
-**Migration ordering.** `crates/server/migrations/` is a single sequence and
-already carries a rebase hazard. Splitting stores means splitting the sequence;
-`scripts/lib/check-migration-ordering.sh` needs to learn about a second set.
+**Latency.** Phase 1 removes round trips. Phase 4 adds one hop at run start,
+negligible against LLM latency. Phase 5 removes the per-tool-call hops, which is
+where the real win is.
 
-**Latency.** Phase 1 reduces round trips. Phase 4 adds one hop to turn start
-(management → engine), which is negligible against LLM latency. Phase 5 removes
-the per-tool-call hops, which is where the real win is.
+## Part 9 — Open questions
 
-**Observability.** Correlation IDs already exist
-(`knowledge/operations/correlation-ids.md`); the spec's `spec_id` and
-`provenance` should join the trace context so a turn can be traced from REST
-call to engine to LLM.
+1. **Credential lifetime vs. session lifetime** (5.2). The one that most needs a
+   decision before Phase 2. Short-TTL specs with re-submission, or a narrow
+   secret broker?
+2. **Payments and budgets** (5.3). Is a synchronous authority API an accepted
+   exception to the one-way arrow, or do payments move behind a submit-time
+   allowance?
+3. **Does the run outlive the session?** `everruns` has sessions; the engine has
+   runs. One session : many runs, or one long-lived run? Affects whether spec
+   changes mid-session are picked up (today they are) or pinned — which
+   `agent_version_id` already gestures at.
+4. **Engine selection: explicit or declarative?** `harness.engine_id` is simple
+   and debuggable; label selectors survive engine churn. Leaning selector with a
+   `default` label so nothing changes for existing orgs.
+5. **Harness vs. engine naming** (Part 2). Needs settling before user-facing
+   docs exist for either.
+6. **Do evals get their own engine pool?** Evals spawn real sessions and are the
+   most natural first consumer of a dedicated pool.
 
-## Part 8 — Open questions
-
-1. **Engine selection: explicit or declarative?** `harness.engine_id` is simple
-   and debuggable; label selectors are flexible and survive engine churn.
-   Leaning selector, defaulting to a `default` label so nothing changes for
-   existing orgs.
-2. **Does `Engine` subsume `Harness`?** A harness already "represents a setup
-   for agent execution" (`knowledge/foundations/concepts.md:48`) and configures
-   the execution environment. The line to hold: harness is *what configuration
-   the agent runs with*; engine is *what machine runs it*. Worth a naming pass
-   before this ships, because the overlap will confuse users otherwise.
-3. **Spec TTL and invalidation.** If an agent's prompt changes mid-session, does
-   the running session pick it up on the next turn, or is the session pinned to
-   its spec? Today it picks up changes. Pinning is more reproducible and is what
-   `agent_version_id` already hints at. Needs a product decision.
-4. **Streaming events under split state.** If execution owns ephemeral deltas
-   and management owns durable events, SSE reconnect replay spans two owners.
-   The current ephemeral/durable classification mostly handles this, but the
-   boundary needs explicit testing.
-5. **Do evals need a fourth service?** Evals spawn real sessions. They may be
-   the first natural consumer of a dedicated engine pool rather than a service
-   of their own.
-
-## Part 9 — Non-goals
+## Part 10 — Non-goals
 
 - Not a rewrite. Every phase lands on `main` behind flags with the existing
   topology working.
-- Not language-agnostic execution. A third-party execution service speaking
-  `execution.proto` is a possible consequence, not a goal.
-- Not multi-region. Engine placement labels leave room for it; nothing here
-  implements it.
-- Not a change to the public REST API. Clients see the same `/v1` surface
-  throughout.
+- Not language-agnostic execution. A third-party engine speaking the Engine API
+  is a possible consequence, not a goal.
+- Not multi-region. Placement labels leave room; nothing here implements it.
+- Not a change to the public `/v1` REST surface for existing clients.
 
-## Appendix — What "distilled" removes from the wire
+## Appendix — What distillation removes from the wire
 
 Before (per turn, worker side): `GetTurnContext` returns `Agent`, `Harness`,
 `Session`, `Message[]`, `ResolvedModel`, `McpToolDef[]`; the worker then folds
 overlays, resolves capability dependency order, composes the prompt, merges MCP
-tools, and applies blueprint or progress-report modes — all of it re-derived
-every turn, all of it depending on entity semantics the worker should not know.
+tools, and applies blueprint or progress-report modes — re-derived every turn,
+all of it depending on entity semantics the worker should not know.
 
-After: `GetTurnContext` returns `AgentSpec` (or just `spec_id` when unchanged)
-plus `Message[]`. The worker deserializes and runs. The fold, the registry, the
-prompt composition, the model resolution, and the MCP catalog stay on the side
-that owns the database — which is the side that already owns them everywhere
-except at runtime.
+After: the engine receives an `AgentSpec` and an input, and runs. The fold, the
+registry, the prompt composition, the model resolution, and the MCP catalog stay
+on the side that owns the definitions — which is the side that already owns them
+everywhere except at runtime.
