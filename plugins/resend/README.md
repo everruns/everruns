@@ -4,7 +4,7 @@ Send emails through the official [Resend](https://resend.com) remote MCP
 server (`https://mcp.resend.com/mcp`) with OAuth.
 
 This plugin is the end-to-end proof for Everruns' inbound plugin support
-(`specs/plugins.md`): a cross-host plugin package whose MCP server requires
+(`knowledge/integrations/plugins.md`): a cross-host plugin package whose MCP server requires
 OAuth, installed into Everruns as the `plugin:resend` capability.
 
 ## What It Includes

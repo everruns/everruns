@@ -1,4 +1,4 @@
-//! End-to-end proof for the citation pipeline (see `specs/citations.md`).
+//! End-to-end proof for the citation pipeline (see `knowledge/runtime-resources/citations.md`).
 //!
 //! Drives the *real* capabilities — `citation_retrieval` (feed) and
 //! `citation_verification` (verifier) — through the public annotation seam,

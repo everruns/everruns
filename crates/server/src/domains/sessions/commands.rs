@@ -498,7 +498,7 @@ async fn ensure_session_exists(
         .ok_or_else(|| CommandError::not_found("Session"))
 }
 
-/// Fork a session into a new, independent session (specs/forking-sessions.md).
+/// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForkSession {
     /// Session to fork (prefixed public id).

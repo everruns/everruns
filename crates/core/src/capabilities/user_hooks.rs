@@ -1,5 +1,5 @@
 // User Hooks capability — user-config-authored hook entries + capability-bundle
-// muting. See `specs/user-hooks.md` for the design.
+// muting. See `knowledge/runtime-resources/user-hooks.md` for the design.
 //
 // This capability has no tools and no system prompt. Its single job is to
 // surface `UserHookSpec` entries from its config (the user's own hook list)
@@ -44,7 +44,7 @@ impl Capability for UserHooksCapability {
     fn description(&self) -> &str {
         "Run user-authored shell commands at well-defined points in the agent \
          execution lifecycle. Hooks can mutate inputs or block execution. See \
-         specs/user-hooks.md for the contract."
+         knowledge/runtime-resources/user-hooks.md for the contract."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -74,7 +74,7 @@ impl Capability for UserHooksCapability {
                 "hooks": {
                     "type": "array",
                     "title": "Hooks",
-                    "description": "User-authored hook entries (see specs/user-hooks.md#userhookspec).",
+                    "description": "User-authored hook entries (see knowledge/runtime-resources/user-hooks.md#userhookspec).",
                     "items": { "$ref": "#/$defs/UserHookSpec" }
                 },
                 "disabled_contributions": {
@@ -254,7 +254,7 @@ impl Capability for UserHooksCapability {
                     "properties": {
                         "hooks": {
                             "title": "Хуки",
-                            "description": "Хуки, створені користувачем (див. specs/user-hooks.md#userhookspec).",
+                            "description": "Хуки, створені користувачем (див. knowledge/runtime-resources/user-hooks.md#userhookspec).",
                             "items": {
                                 "properties": {
                                     "id": {

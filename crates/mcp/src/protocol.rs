@@ -1,4 +1,4 @@
-//! Multi-era MCP protocol support (specs/mcp-servers.md "Multi-era protocol
+//! Multi-era MCP protocol support (knowledge/integrations/mcp-servers.md "Multi-era protocol
 //! support").
 //!
 //! Everruns' MCP client speaks three eras with one code path:

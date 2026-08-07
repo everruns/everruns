@@ -26,7 +26,7 @@ interface AgentHealthCheckProps {
 
 /**
  * Behavioral health check: runs generated smoke tests against the agent's real
- * configuration and shows a score card. See specs/agent-checks.md (tier 3).
+ * configuration and shows a score card. See knowledge/evaluation/agent-checks.md (tier 3).
  */
 export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const trigger = useTriggerHealthCheck();

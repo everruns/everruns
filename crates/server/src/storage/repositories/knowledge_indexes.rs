@@ -1,5 +1,5 @@
 // PostgreSQL repository: Knowledge Index + Document CRUD.
-// See specs/knowledge-indexes.md.
+// See knowledge/runtime-resources/knowledge-indexes.md.
 
 use super::super::models::*;
 use super::{Database, build_search_sql};

@@ -409,7 +409,7 @@ pub struct Session {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_session_id: Option<SessionId>,
 
-    // -- Fork lineage fields (specs/forking-sessions.md) --
+    // -- Fork lineage fields (knowledge/runtime-resources/forking-sessions.md) --
     /// Session this one was forked from. NULL for sessions that were not forked.
     /// Distinct from `parent_session_id` (subagent nesting): forking is a
     /// user-initiated "branch from here" relationship.

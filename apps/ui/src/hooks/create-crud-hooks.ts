@@ -109,7 +109,7 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     });
     // Cross-org fallback: if the current org doesn't own this resource but
     // another org the caller belongs to does, switch and retry transparently.
-    // See specs/multitenancy.md (Cross-Org Resource Resolution).
+    // See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     const fallback = useResourceOrgFallback({
       resourceId: id,
       error: query.error,

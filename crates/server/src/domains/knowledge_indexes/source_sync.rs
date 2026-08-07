@@ -1,4 +1,4 @@
-//! Knowledge Index Syncout pipeline. See specs/knowledge-indexes.md.
+//! Knowledge Index Syncout pipeline. See knowledge/runtime-resources/knowledge-indexes.md.
 //!
 //! Mirrors the source-backed Memory sync worker
 //! (`crates/server/src/domains/memory/source_sync.rs`): a background poll task
@@ -210,7 +210,7 @@ impl KnowledgeIndexSyncService {
     }
 
     /// Replace a namespace's vectors with the freshly embedded records. A full
-    /// re-sync always reconciles the projection (specs/knowledge-indexes.md).
+    /// re-sync always reconciles the projection (knowledge/runtime-resources/knowledge-indexes.md).
     async fn write_vectors(&self, namespace: &str, records: Vec<VectorRecord>) -> Result<()> {
         self.vector_store.delete_namespace(namespace).await?;
         if !records.is_empty() {
@@ -258,7 +258,7 @@ impl KnowledgeIndexSyncService {
         docs: Vec<ExtractedDocument>,
     ) -> Result<PreparedSync> {
         // Resolve credentials for the embeddings service, bound to the model's
-        // provider connection (specs/providers.md resolve_service). Shared with
+        // provider connection (knowledge/foundations/providers.md resolve_service). Shared with
         // the retrieval slice via `embedding::build_embeddings_driver`.
         let embedder = super::embedding::build_embeddings_driver(
             &self.db,
@@ -665,7 +665,7 @@ fn relative_path_string(relative: &Path) -> Result<String> {
 }
 
 /// Text/markdown/code documents are indexed; everything else is skipped.
-/// PDF/Office extraction is deferred (specs/knowledge-indexes.md phase 6).
+/// PDF/Office extraction is deferred (knowledge/runtime-resources/knowledge-indexes.md phase 6).
 fn is_text_document(path: &Path) -> bool {
     const TEXT_EXTENSIONS: &[&str] = &[
         "md",

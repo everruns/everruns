@@ -40,7 +40,7 @@ use std::time::Duration;
 ///
 /// When running behind proxies with HTTP/1.1 backends (no h2c), increase the
 /// cycling interval to reduce reconnection frequency and avoid exhausting
-/// SDK retry budgets. See `specs/events.md` for protocol details.
+/// SDK retry budgets. See `knowledge/execution/events.md` for protocol details.
 #[derive(Debug, Clone, Copy)]
 pub struct SseStreamConfig {
     /// Minimum backoff when polling for new events (ms)

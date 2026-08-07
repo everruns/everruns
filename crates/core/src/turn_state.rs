@@ -1,6 +1,6 @@
 //! The turn state machine as a serializable value with pure transitions.
 //!
-//! Stage 1 of `specs/sans-io-turn-state.md`. The loop is currently implemented
+//! Stage 1 of `knowledge/foundations/sans-io-turn-state.md`. The loop is currently implemented
 //! twice: [`TurnStateMachine`](crate::turn::TurnStateMachine) is a mutable
 //! in-memory machine for the in-process host, and `RuntimeTurnState` +
 //! `plan_next_host_turn` (in `everruns-runtime`) is a serializable state plus a

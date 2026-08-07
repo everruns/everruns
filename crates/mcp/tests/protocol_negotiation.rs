@@ -1,4 +1,4 @@
-//! Multi-era protocol negotiation integration tests (specs/mcp-servers.md
+//! Multi-era protocol negotiation integration tests (knowledge/integrations/mcp-servers.md
 //! "Multi-era protocol support").
 //!
 //! A scripted [`EgressService`] stands in for three kinds of MCP server:

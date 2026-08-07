@@ -1,5 +1,5 @@
 // Plugin domain — marketplace CRUD + sync + install lifecycle.
-// See specs/plugins.md for the full specification.
+// See knowledge/integrations/plugins.md for the full specification.
 
 use everruns_core::{Permission, Policy, Rule};
 
@@ -18,7 +18,7 @@ pub const PLUGIN_VIEW: Policy = Policy {
 };
 
 /// Manage marketplaces and install/update/uninstall plugins.
-/// Admin-gated per specs/plugins.md § Security.
+/// Admin-gated per knowledge/integrations/plugins.md § Security.
 pub const PLUGIN_MANAGE: Policy = Policy {
     id: "plugin.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgPluginsManage)],

@@ -36,7 +36,7 @@ impl Database {
     }
 
     /// Look up the owning org for an agent identity by its public id. See
-    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let Ok(id) = public_id.parse::<AgentIdentityId>() else {
             return Ok(None);

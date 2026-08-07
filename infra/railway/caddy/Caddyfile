@@ -1,7 +1,7 @@
 # Railway ingress for the Everruns template.
 #
 # The public Caddy service is the only internet-facing service. It preserves
-# the production route contract from specs/production-deployment.md while
+# the production route contract from knowledge/operations/production-deployment.md while
 # forwarding to server and UI over Railway private networking.
 
 :{$PORT:8080} {

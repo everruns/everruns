@@ -1,6 +1,6 @@
 // Background sweep: time out sessions stuck in `waiting_for_tool_results`.
 // Decision: periodic sweep (every 30s) rather than per-session timers; survives restarts.
-// Decision: timeout is 5 minutes per specs/client-side-tools.md, configurable via env var.
+// Decision: timeout is 5 minutes per knowledge/execution/client-side-tools.md, configurable via env var.
 
 use crate::services::EventService;
 use crate::storage::StorageBackend;

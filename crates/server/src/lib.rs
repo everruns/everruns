@@ -66,7 +66,7 @@ pub mod direct_worker_adapters;
 pub mod execution_metadata;
 pub mod knowledge_store;
 
-// ATIF trajectory interchange (specs/atif-adoption.md)
+// ATIF trajectory interchange (knowledge/evaluation/atif-adoption.md)
 pub mod atif;
 pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod max_iterations;
@@ -139,7 +139,7 @@ pub mod app_builder;
 pub use app_builder::{ServerAppBuilder, ServerContext};
 
 // Org creation policy extension point (EVE-607) — wrappers gate org creation
-// before any DB write without forking the OSS handler. See `specs/embedding.md`.
+// before any DB write without forking the OSS handler. See `knowledge/foundations/embedding.md`.
 pub use api::organizations::{OrgCreateContext, OrgCreatePolicy, OrgCreateRejection};
 pub use org_init::{OrgInitContext, OrgInitializer, OrgInitializerError, run_org_initializers};
 

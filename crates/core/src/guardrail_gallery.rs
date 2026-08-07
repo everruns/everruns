@@ -2,7 +2,7 @@
 //
 // A curated catalogue of deterministic guardrail configs that an author can
 // adopt as a starting point instead of authoring checks from scratch. See
-// specs/guardrails.md ("guardrail gallery").
+// knowledge/execution/guardrails.md ("guardrail gallery").
 //
 // Design constraints:
 //  - Adoption is client-side config composition. A gallery item carries a

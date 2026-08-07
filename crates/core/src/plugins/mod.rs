@@ -6,7 +6,7 @@
 // then registered with `plugin:{name}` as its capability ID and executes
 // through the same declarative runtime path.
 //
-// See specs/plugins.md for the full specification.
+// See knowledge/integrations/plugins.md for the full specification.
 
 pub mod compiler;
 pub mod file_set;

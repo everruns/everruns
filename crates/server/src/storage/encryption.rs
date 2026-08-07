@@ -1,6 +1,6 @@
 // Envelope encryption with key rotation support for sensitive database fields.
 // Uses AES-256-GCM with per-value DEKs wrapped by versioned KEKs.
-// See specs/encryption.md for full specification.
+// See knowledge/security/encryption.md for full specification.
 
 use aes_gcm::{
     Aes256Gcm, Nonce,

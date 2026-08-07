@@ -74,7 +74,7 @@ pub async fn verify_session(
 ///   caller holding only `SESSION_MANAGE` could mutate an attached shared
 ///   workspace through the legacy session-fs alias, bypassing the workspace
 ///   authorization boundary.
-/// * Archived (non-`active`) workspaces are read-only per `specs/workspace.md`,
+/// * Archived (non-`active`) workspaces are read-only per `knowledge/runtime-resources/workspace.md`,
 ///   so writes are rejected for default and shared workspaces alike. A deleted
 ///   workspace is filtered at the storage layer and treated as gone (404);
 ///   an archived one still exists but is read-only (403).

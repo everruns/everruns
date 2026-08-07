@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SeaweedFS: local S3-compatible object storage for the optional blob backend
-# (specs/object-storage.md).
+# (knowledge/runtime-resources/object-storage.md).
 #
 # Runs the `weed` binary as a native process — no Docker — mirroring how
 # infra.sh runs PostgreSQL/Valkey/NATS. SeaweedFS speaks the S3 API, so the

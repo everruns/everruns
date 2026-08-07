@@ -225,7 +225,7 @@ export interface FindingLocation {
   end?: number;
 }
 
-/** Advisory finding from agent config checks (specs/agent-checks.md) */
+/** Advisory finding from agent config checks (knowledge/evaluation/agent-checks.md) */
 export interface AgentFinding {
   /** Stable rule identifier, e.g. "prompt.duplicate_paragraphs" */
   rule_id: string;
@@ -278,7 +278,7 @@ export interface HealthCheckSummary {
   total_output_tokens: number;
 }
 
-/** A behavioral health-check run (specs/agent-checks.md, tier-3) */
+/** A behavioral health-check run (knowledge/evaluation/agent-checks.md, tier-3) */
 export interface HealthCheckRun {
   id: string;
   agent_id?: string;
@@ -1993,7 +1993,7 @@ export interface EvalCaseResult {
   updated_at: string;
 }
 
-// Read-only share links (see specs/evals.md, specs/public-endpoints.md).
+// Read-only share links (see knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md).
 export interface EvalRunShareLink {
   token: string;
   token_prefix: string;
@@ -2524,7 +2524,7 @@ export interface ReasonThinkingCompletedData {
  *
  * Carries provider-supplied opaque reasoning artifacts plus curated summary
  * text. Plaintext hidden chain-of-thought is intentionally not persisted on
- * this event — see specs/events.md.
+ * this event — see knowledge/execution/events.md.
  */
 export interface ReasonItemData {
   turn_id: string;
@@ -2972,7 +2972,7 @@ export type ContentPart =
   | {
       type: "text";
       text: string;
-      /** Claim-level citations attached to spans of `text` (see specs/citations.md). */
+      /** Claim-level citations attached to spans of `text` (see knowledge/runtime-resources/citations.md). */
       annotations?: import("./schema-types").TextAnnotation[];
     }
   | {
@@ -3260,7 +3260,7 @@ export interface PaymentAttempt {
 
 // From legacy plugin-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Plugin Marketplace and Installed Plugin types
-// See specs/plugins.md for the data model and API sketch.
+// See knowledge/integrations/plugins.md for the data model and API sketch.
 // ============================================
 // Marketplace types
 // ============================================

@@ -54,7 +54,7 @@ pub fn tool_definitions(
         query_tool(protocol_version, org_id_description),
         execute_tool(protocol_version, org_id_description),
     ];
-    // Entity cards (specs/mcp-cards.md) require `text/html` embedded
+    // Entity cards (knowledge/ui/mcp-cards.md) require `text/html` embedded
     // resources and tool annotations introduced in MCP 2025-06-18 (and carried
     // forward in 2026-07-28). Older clients negotiate the fallback protocol and
     // don't see card tools.
@@ -474,7 +474,7 @@ fn agent_get_card_tool(
         protocol_version,
         "agent_get_card",
         "Get Agent Card",
-        "Render an MCP-Apps card for a single agent: a sandboxed text/html resource with name, status, description, tags, token usage, and session count. Returns an embedded resource at ui://everruns/agent/{agent_id}/card plus a short text summary. The HTML is host-rendered in a sandboxed iframe; future iterations will add interactive buttons (run, archive) routed back through tools/call. See specs/mcp-cards.md for the standard.",
+        "Render an MCP-Apps card for a single agent: a sandboxed text/html resource with name, status, description, tags, token usage, and session count. Returns an embedded resource at ui://everruns/agent/{agent_id}/card plus a short text summary. The HTML is host-rendered in a sandboxed iframe; future iterations will add interactive buttons (run, archive) routed back through tools/call. See knowledge/ui/mcp-cards.md for the standard.",
         object_schema(
             vec![
                 (

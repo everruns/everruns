@@ -214,7 +214,7 @@ pub enum SessionExportFormat {
     #[default]
     Jsonl,
     /// A single ATIF trajectory document folded from the session's event log
-    /// (`application/json`). See `specs/atif-adoption.md`.
+    /// (`application/json`). See `knowledge/evaluation/atif-adoption.md`.
     Atif,
 }
 

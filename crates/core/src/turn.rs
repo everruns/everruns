@@ -222,7 +222,7 @@ pub enum SealReason {
 
     /// The work budget was exhausted (`HardLimitStopRule` balance <= 0). The
     /// turn is stopped deliberately rather than left reclaimable. See
-    /// `specs/budgeting.md`.
+    /// `knowledge/security/budgeting.md`.
     Budget,
 }
 

@@ -4,7 +4,7 @@
 //! [`crate::capabilities::Capability::narrate`]. everruns does not centrally
 //! narrate tools by name — a capability (including host-registered plugins)
 //! narrates its own tools, and unowned/foreign tools fall back to the generic
-//! display-name phrasing here. See `specs/tool-narration.md`.
+//! display-name phrasing here. See `knowledge/execution/tool-narration.md`.
 //!
 //! This module provides:
 //! - the [`ToolNarrationPhase`] enum and the generic fallback renderer, and

@@ -9,7 +9,7 @@
 // Run it:
 //   cargo run -p everruns-runtime --example mount_fs_workspace
 //
-// See `specs/file-store.md` for the contract.
+// See `knowledge/runtime-resources/file-store.md` for the contract.
 
 use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
 use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};

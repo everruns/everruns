@@ -1,4 +1,4 @@
-// In-memory agent check rule storage. See specs/agent-checks.md.
+// In-memory agent check rule storage. See knowledge/evaluation/agent-checks.md.
 
 use anyhow::Result;
 use uuid::Uuid;

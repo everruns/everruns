@@ -1,7 +1,7 @@
 //! Lua Execution Capability (experimental)
 //!
 //! Provides a sandboxed Lua interpreter over the session virtual filesystem.
-//! See `specs/lua-execution.md` for motivation, sandbox model, threat model
+//! See `knowledge/execution/lua-execution.md` for motivation, sandbox model, threat model
 //! (TM-LUA-*), and the phased roadmap (the goal is to supersede `bashkit_shell`).
 //!
 //! Design (parallels `bashkit_shell`):

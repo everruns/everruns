@@ -1364,7 +1364,7 @@ pub async fn preview_agent(
 
 /// POST /v1/agents/analyze - Run advisory checks against an agent shape
 ///
-/// Runs built-in rules plus on-demand LLM analysis (specs/agent-checks.md)
+/// Runs built-in rules plus on-demand LLM analysis (knowledge/evaluation/agent-checks.md)
 /// and returns merged advisory findings. Requires the system utility LLM
 /// service to be configured.
 #[utoipa::path(

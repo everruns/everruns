@@ -5,7 +5,7 @@
 // 2. Updates denormalized totals on sessions and agents
 //
 // This replaces the database trigger that was previously used
-// (see specs/architecture.md for rationale on no-trigger policy).
+// (see knowledge/foundations/architecture.md for rationale on no-trigger policy).
 
 use async_trait::async_trait;
 use everruns_core::{Event, EventData, EventListener, LLM_GENERATION};

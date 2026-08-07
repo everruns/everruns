@@ -4,7 +4,7 @@
 // accepts plain text (or `{"message": "..."}`), `GET` returns a Markdown
 // handshake, and the response is the final assistant text. Streaming and
 // structured envelopes are deliberately omitted; clients negotiate everything
-// in natural language during the handshake (see `specs/fcp-channel.md`).
+// in natural language during the handshake (see `knowledge/integrations/fcp-channel.md`).
 //
 // Design Decision: FCP runs its own minimal auth stack — anonymous access
 // plus a single shared bearer token, validated by constant-time comparison

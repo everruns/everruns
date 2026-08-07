@@ -811,7 +811,7 @@ pub struct SessionRow {
     /// creation; `#[sqlx(default)]` because most SELECTs don't project it.
     #[sqlx(default)]
     pub root_session_id: Option<SessionId>,
-    // -- Fork lineage fields (specs/forking-sessions.md) --
+    // -- Fork lineage fields (knowledge/runtime-resources/forking-sessions.md) --
     #[sqlx(default)]
     pub forked_from_session_id: Option<SessionId>,
     #[sqlx(default)]
@@ -1333,7 +1333,7 @@ pub struct UpdateMemory {
 }
 
 // ============================================
-// Workspace models (see specs/workspace.md)
+// Workspace models (see knowledge/runtime-resources/workspace.md)
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
@@ -1356,7 +1356,7 @@ pub struct WorkspaceRow {
 pub struct CreateWorkspaceRow {
     /// Optional explicit UUID. When None, the DB DEFAULT (uuidv7) is used.
     /// Sessions creating their default workspace pass their own id here so
-    /// `workspace.id == session.id` (see specs/workspace.md, Decision 3).
+    /// `workspace.id == session.id` (see knowledge/runtime-resources/workspace.md, Decision 3).
     pub id: Option<Uuid>,
     pub public_id: String,
     pub name: String,
@@ -1414,7 +1414,7 @@ pub struct MemoryFileInfoRow {
 }
 
 // ============================================
-// Knowledge Base models (curated org knowledge — see specs/knowledge-bases.md)
+// Knowledge Base models (curated org knowledge — see knowledge/runtime-resources/knowledge-bases.md)
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
@@ -1466,7 +1466,7 @@ pub struct KnowledgeEntryRow {
     pub kind: String,
     pub tags: Vec<String>,
     /// Optional OKF `resource` URI identifying the underlying asset.
-    /// See specs/okf-adoption.md.
+    /// See knowledge/runtime-resources/okf-adoption.md.
     #[sqlx(default)]
     pub resource: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -1495,7 +1495,7 @@ pub struct UpdateKnowledgeEntry {
 
 // ============================================
 // Knowledge Index models (source-backed embedded collections —
-// see specs/knowledge-indexes.md)
+// see knowledge/runtime-resources/knowledge-indexes.md)
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
@@ -1578,7 +1578,7 @@ pub struct KnowledgeIndexChunkRow {
 }
 
 /// A chunk joined with its owning document's citation metadata, used to
-/// hydrate `search_index` results from Postgres. See specs/knowledge-indexes.md
+/// hydrate `search_index` results from Postgres. See knowledge/runtime-resources/knowledge-indexes.md
 /// ("Retrieval and citations").
 #[derive(Debug, Clone)]
 pub struct KnowledgeIndexChunkWithDocument {
@@ -2960,7 +2960,7 @@ pub struct UpdateEvalCaseResultRow {
 }
 
 // ============================================================================
-// Agent health check models (specs/agent-checks.md, tier-3)
+// Agent health check models (knowledge/evaluation/agent-checks.md, tier-3)
 // ============================================================================
 
 /// Agent health check run row from database.
@@ -3002,7 +3002,7 @@ pub struct UpdateAgentHealthCheckRunRow {
 }
 
 // ============================================================================
-// Eval run dataset models (async dataset export — specs/dataset-export.md)
+// Eval run dataset models (async dataset export — knowledge/evaluation/dataset-export.md)
 // ============================================================================
 
 /// Async dataset-export handle row from database.
@@ -3041,7 +3041,7 @@ pub struct UpdateEvalRunDatasetRow {
     pub error_message: Option<String>,
 }
 
-/// Org-configurable agent check rule (specs/agent-checks.md, phase 4).
+/// Org-configurable agent check rule (knowledge/evaluation/agent-checks.md, phase 4).
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentCheckRuleRow {
     pub id: Uuid,
@@ -3066,7 +3066,7 @@ pub struct UpsertAgentCheckRuleRow {
 }
 
 // ============================================================================
-// Observer models (online scoring — see specs/online-evals.md)
+// Observer models (online scoring — see knowledge/evaluation/online-evals.md)
 // ============================================================================
 
 /// Observer row from database

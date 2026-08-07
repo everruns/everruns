@@ -66,7 +66,7 @@ impl CapabilityService {
     }
 
     /// Replace the embedded `McpServerService` so outbound MCP traffic flows
-    /// through the platform's shared egress boundary (spec: `specs/egress.md`).
+    /// through the platform's shared egress boundary (spec: `knowledge/operations/egress.md`).
     pub fn with_mcp_egress_service(
         mut self,
         egress_service: Arc<dyn everruns_core::EgressService>,
