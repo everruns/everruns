@@ -4,6 +4,10 @@
 
 Verify that an external client can use Everruns' MCP Tier 2 `discover` and `execute` tools together: first search the catalog to find the right operations, then execute those operations to inspect harnesses, create an agent, and fetch it back.
 
+The same command surface backs the built-in `platform` capability. Contract
+parity is covered by automated tests; this manual case verifies the external
+MCP adapter independently.
+
 This test exercises the `/mcp` endpoint's catalog search path plus the bashkit-backed execution path where discovered operations become built-in shell commands. It also validates the positional-ID rewrite for `get_agent <id>`.
 
 ## Preconditions

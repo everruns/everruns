@@ -790,15 +790,15 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
-| TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform_management` capability can modify agents/sessions via tools; capability must be explicitly assigned; org-scoped | **OPEN** |
-| TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform_management` capability can create agents/sessions; capability must be explicitly assigned; no recursive depth limit | **OPEN** |
+| TM-AGENT-009 | Agent self-modification | Medium | Agents with `platform` or legacy `platform_management` can modify agents/sessions via tools; each capability must be explicitly assigned and is org-scoped | **OPEN** |
+| TM-AGENT-010 | Agent spawning agent chains | Medium | Agents with `platform` or legacy `platform_management` can create agents/sessions; each capability must be explicitly assigned; no recursive depth limit | **OPEN** |
 | TM-AGENT-011 | Sensitive data in system prompt | Medium | PII must not be placed in system prompts; no encryption at rest for prompts | **OPEN** |
 | TM-AGENT-012 | Tool result size amplification | Medium | 64 KiB hard limit on tool results via `OutputHardLimitHook` (EVE-225); always-on final hook in ActAtom | MITIGATED |
 | TM-AGENT-013 | Exfiltration via web_fetch | Medium | Agent with web_fetch capability can send session data to arbitrary URLs | **ACCEPTED** |
 | TM-AGENT-014 | Confused deputy — tool call with wrong session | Low | Tool context includes session_id; tools scoped to active session only | MITIGATED |
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
-| TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
+| TM-AGENT-017 | Agent-initiated entity management | High | `platform` exposes the full scriptable command catalog and legacy `platform_management` exposes a smaller handwritten subset. Both are high-risk and explicitly assigned. Each call uses the session owner's real caller and active permission resolver; the distributed adapter reloads the org-scoped session and never accepts a worker-supplied user identity. No fine-grained ownership RBAC exists within commands the caller is otherwise allowed to use. | **OPEN** |
 | TM-AGENT-018 | Outbound URL filtering on web_fetch | Medium | Per-layer `NetworkAccessList` (harness ∩ agent ∩ session, narrow-only merge) plus optional deployment-wide system allowlist, both enforced at the `EgressService` boundary; web_fetch routes through egress with per-redirect-hop re-validation | MITIGATED |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
@@ -869,12 +869,16 @@ When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the 
 - **Priority:** High
 
 **TM-AGENT-017 — Agent-Initiated Entity Management (OPEN):**
-Agents with the `platform_management` capability can create, update, and delete harnesses, agents, and sessions within their organization. They can also send messages to any session and read responses.
+Agents with the `platform` capability can invoke every command exposed to the
+scripted platform catalog; the legacy `platform_management` capability exposes
+a smaller handwritten set. Depending on caller permissions, this includes
+creating, updating, and deleting platform entities and interacting with
+sessions.
 
 - **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
-- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) Platform tool execution resolves the owning session's user into a real `Caller` and evaluates command policy with the active `PermissionResolver`, so member-owned Platform Chat sessions do not inherit internal/owner bypass. (4) Both in-process (`DirectPlatformStore`) and gRPC (`ExecuteCommand`) platform paths route mutating operations through the normal command/policy boundary instead of raw storage writes. (5) `WorkerAdapters::platform_store(org_id, session_id)` receives the session's actual org_id and session_id from activity context, preventing cross-org access via hardcoded defaults and preserving session-owner authorization.
+- **Current mitigations:** (1) Capability is high-risk and must be explicitly assigned by an authorized org member. (2) All operations are org-scoped — cross-org access is blocked by tenant isolation (TM-TENANT-001), and Platform tool schemas reject `organization_id`. (3) Platform execution resolves the owning session's user into a real `Caller` and evaluates every registered command through `Command::run` with the active `PermissionResolver`, so member-owned Platform Chat sessions do not inherit internal/owner bypass. (4) The in-process adapter uses its owner-bound command context. The dedicated gRPC command-surface RPC reloads the session from the requested org and resolves its persisted owner server-side; it never accepts a worker-supplied user identity. (5) Bashkit bounds commands, loops, input, AST depth, and timeout; read-only `query` omits mutating and open-world commands. (6) Internal command details are logged but redacted from tool errors.
 - **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `bashkit_shell`). Add recursion depth limits for agent-spawned session chains.
-- **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
+- **Code:** `// THREAT[TM-AGENT-017]` at the Platform capability registration, direct adapter, and worker RPC authorization boundary.
 - **Priority:** High
 
 **TM-AGENT-018 — Outbound URL Filtering on web_fetch (MITIGATED):**

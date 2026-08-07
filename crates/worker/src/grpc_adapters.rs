@@ -687,6 +687,38 @@ impl GrpcOrgAdapter {
         }
     }
 
+    async fn invoke_platform_command_surface(
+        &self,
+        operation: proto::PlatformCommandSurfaceOperation,
+        arguments: serde_json::Value,
+    ) -> Result<String> {
+        let session_id = self.platform_session_id.ok_or_else(|| {
+            AgentLoopError::store("Platform command surface requires a platform session context")
+        })?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .invoke_platform_command_surface(proto::InvokePlatformCommandSurfaceRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                org_id: self.org_id,
+                operation: operation as i32,
+                arguments_json: serde_json::to_vec(&arguments).map_err(|error| {
+                    AgentLoopError::store(format!("JSON serialization failed: {error}"))
+                })?,
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        match response
+            .result
+            .ok_or_else(|| grpc_missing_field("No platform command surface result"))?
+        {
+            proto::invoke_platform_command_surface_response::Result::Output(output) => Ok(output),
+            proto::invoke_platform_command_surface_response::Result::Error(error) => {
+                Err(AgentLoopError::tool(error))
+            }
+        }
+    }
+
     async fn execute_platform_command<T>(&self, name: &str, params: serde_json::Value) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
@@ -2961,6 +2993,30 @@ impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
 
 #[async_trait]
 impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
+    async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
+        self.invoke_platform_command_surface(
+            proto::PlatformCommandSurfaceOperation::Discover,
+            arguments,
+        )
+        .await
+    }
+
+    async fn platform_query(&self, arguments: serde_json::Value) -> Result<String> {
+        self.invoke_platform_command_surface(
+            proto::PlatformCommandSurfaceOperation::Query,
+            arguments,
+        )
+        .await
+    }
+
+    async fn platform_execute(&self, arguments: serde_json::Value) -> Result<String> {
+        self.invoke_platform_command_surface(
+            proto::PlatformCommandSurfaceOperation::Execute,
+            arguments,
+        )
+        .await
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================

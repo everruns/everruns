@@ -128,6 +128,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableWorkerResponse,
     InvokeAgentTriggerRequest,
     InvokeAgentTriggerResponse,
+    InvokePlatformCommandSurfaceRequest,
+    InvokePlatformCommandSurfaceResponse,
     InvokeScheduledAppChannelRequest,
     InvokeScheduledAppChannelResponse,
     ListCommandsRequest,
@@ -155,6 +157,7 @@ use everruns_internal_protocol::proto::{
     OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
     PlatformCapabilityInfo,
+    PlatformCommandSurfaceOperation,
     PlatformCopyHarnessRequest,
     PlatformCopyHarnessResponse,
     PlatformCreateAgentRequest,

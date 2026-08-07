@@ -776,6 +776,155 @@ async fn test_execute_command_uses_user_permissions() {
     assert!(error.message.contains("Access denied"));
 }
 
+#[tokio::test]
+async fn platform_command_surface_uses_session_owner_and_org() {
+    use crate::storage::models::{CreateSessionRow, CreateUserRow};
+
+    let service = test_worker_service().await;
+    let user = service
+        .db
+        .create_user(CreateUserRow {
+            email: "platform-surface-member@example.com".to_string(),
+            name: "Platform Surface Member".to_string(),
+            avatar_url: None,
+            external_id: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("test".to_string()),
+            auth_provider_id: None,
+        })
+        .await
+        .expect("create user");
+    service
+        .db
+        .ensure_membership(user.id, everruns_core::DEFAULT_ORG_ID, "member")
+        .await
+        .expect("ensure membership");
+    let session = service
+        .db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(2),
+            resolved_owner_user_id: Some(user.id),
+            title: Some("platform surface".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("create session");
+
+    let response = service
+        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            session_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+            org_id: session.org_id,
+            operation: PlatformCommandSurfaceOperation::Discover as i32,
+            arguments_json: serde_json::to_vec(&serde_json::json!({
+                "query": "models"
+            }))
+            .unwrap(),
+        }))
+        .await
+        .expect("discover succeeds")
+        .into_inner();
+    let proto::invoke_platform_command_surface_response::Result::Output(output) =
+        response.result.expect("discover result")
+    else {
+        panic!("expected discover output");
+    };
+    assert!(output.contains("list_models"));
+
+    for (query, expected) in [
+        ("create agent", ["create_agent", "default_model_id"]),
+        ("agent trigger", ["create_agent_trigger", "cron_expression"]),
+    ] {
+        let response = service
+            .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+                session_id: Some(proto::Uuid {
+                    value: session.id.uuid().to_string(),
+                }),
+                org_id: session.org_id,
+                operation: PlatformCommandSurfaceOperation::Discover as i32,
+                arguments_json: serde_json::to_vec(&serde_json::json!({ "query": query })).unwrap(),
+            }))
+            .await
+            .expect("command discovery succeeds")
+            .into_inner();
+        let proto::invoke_platform_command_surface_response::Result::Output(output) =
+            response.result.expect("discover result")
+        else {
+            panic!("expected discover output");
+        };
+        for needle in expected {
+            assert!(
+                output.contains(needle),
+                "{query} discovery omitted {needle}"
+            );
+        }
+    }
+
+    let denied = service
+        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            session_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+            org_id: session.org_id,
+            operation: PlatformCommandSurfaceOperation::Execute as i32,
+            arguments_json: serde_json::to_vec(&serde_json::json!({
+                "commands": "create_harness --name forbidden"
+            }))
+            .unwrap(),
+        }))
+        .await
+        .expect("authorization denial is a tool result")
+        .into_inner();
+    let proto::invoke_platform_command_surface_response::Result::Error(error) =
+        denied.result.expect("execute result")
+    else {
+        panic!("member mutation must be denied");
+    };
+    assert!(
+        error.contains("forbidden") || error.contains("Access denied"),
+        "unexpected authorization error: {error}"
+    );
+
+    let foreign = service
+        .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {
+            session_id: Some(proto::Uuid {
+                value: session.id.uuid().to_string(),
+            }),
+            org_id: session.org_id + 1,
+            operation: PlatformCommandSurfaceOperation::Discover as i32,
+            arguments_json: br#"{"query":"models"}"#.to_vec(),
+        }))
+        .await
+        .expect_err("cross-org session lookup must fail");
+    assert_eq!(foreign.code(), tonic::Code::NotFound);
+}
+
 /// Acquire env lock, tolerating poison from #[should_panic] tests.
 fn lock_env() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())

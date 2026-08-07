@@ -3567,6 +3567,100 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(ListCommandsResponse { commands }))
     }
 
+    async fn invoke_platform_command_surface(
+        &self,
+        request: Request<InvokePlatformCommandSurfaceRequest>,
+    ) -> Result<Response<InvokePlatformCommandSurfaceResponse>, Status> {
+        // THREAT[TM-AGENT-017]: The worker supplies only the bound session and
+        // org. Reload the session and resolve its persisted owner server-side;
+        // never accept a caller identity across this trust boundary.
+        let req = request.into_inner();
+        if req.arguments_json.len() > MAX_EXECUTE_COMMAND_PARAMS_BYTES {
+            return Err(Status::resource_exhausted(format!(
+                "Platform command arguments exceed {} byte limit",
+                MAX_EXECUTE_COMMAND_PARAMS_BYTES
+            )));
+        }
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let session = self
+            .session_service
+            .get(
+                &everruns_core::Caller::internal(req.org_id),
+                session_id,
+                None,
+            )
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, %session_id, org_id = req.org_id, "Failed to load Platform command session");
+                Status::internal("Failed to load Platform command session")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+            Status::permission_denied(
+                "Platform command execution requires a user-owned session with a resolved owner",
+            )
+        })?;
+        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, %session_id, org_id = req.org_id, %user_id, "Failed to resolve Platform command caller");
+                Status::permission_denied("Failed to resolve Platform command caller")
+            })?;
+        let operation = match PlatformCommandSurfaceOperation::try_from(req.operation) {
+            Ok(PlatformCommandSurfaceOperation::Discover) => {
+                crate::services::platform_command_surface::Operation::Discover
+            }
+            Ok(PlatformCommandSurfaceOperation::Query) => {
+                crate::services::platform_command_surface::Operation::Query
+            }
+            Ok(PlatformCommandSurfaceOperation::Execute) => {
+                crate::services::platform_command_surface::Operation::Execute
+            }
+            _ => {
+                return Err(Status::invalid_argument(
+                    "Invalid platform command operation",
+                ));
+            }
+        };
+        let arguments = if req.arguments_json.is_empty() {
+            serde_json::json!({})
+        } else {
+            serde_json::from_slice::<serde_json::Value>(&req.arguments_json).map_err(|error| {
+                Status::invalid_argument(format!("Invalid arguments_json: {error}"))
+            })?
+        };
+        if !arguments.is_object() {
+            return Err(Status::invalid_argument(
+                "Platform command arguments must be a JSON object",
+            ));
+        }
+
+        let api_base = self
+            .api_base_url
+            .clone()
+            .unwrap_or_else(|| "http://localhost:9300".to_string());
+        let ui_base = std::env::var("PUBLIC_APP_URL")
+            .or_else(|_| std::env::var("FRONTEND_URL"))
+            .unwrap_or_else(|_| api_base.clone());
+        let context = crate::api::mcp_endpoint::catalog::CatalogContext {
+            domain_ctx: self.domain_ctx_for_caller(caller),
+            link_builder: crate::api::common::UrlBuilder::new(&api_base, &ui_base),
+        };
+        let result =
+            crate::services::platform_command_surface::invoke(operation, &arguments, context).await;
+        let result = match result {
+            Ok(output) => {
+                Some(proto::invoke_platform_command_surface_response::Result::Output(output))
+            }
+            Err(error) => {
+                Some(proto::invoke_platform_command_surface_response::Result::Error(error))
+            }
+        };
+        Ok(Response::new(InvokePlatformCommandSurfaceResponse {
+            result,
+        }))
+    }
+
     async fn platform_list_harnesses(
         &self,
         request: Request<PlatformListHarnessesRequest>,

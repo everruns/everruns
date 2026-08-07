@@ -1092,11 +1092,50 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Icon**: "database"
 - **Category**: "Data"
 
-#### PlatformManagement
+#### Platform
+
+- **Status**: Available
+- **ID**: `platform`
+- **Purpose**: Expose the registered Everruns command catalog to an agent through
+  the same `discover`, `query`, and `execute` contract as the `/mcp` endpoint.
+- **Risk**: High. Assignment follows the admin-only capability gate; command
+  execution also applies the resolved session owner's normal command policy.
+- **Tools**:
+  - `discover` searches authoritative command metadata and schemas.
+  - `query` runs bounded Bashkit scripts with read-only commands only.
+  - `execute` runs bounded Bashkit scripts with the full scriptable catalog.
+- **Scope**: Tool schemas never accept `organization_id`. The in-process adapter
+  is bound to the session owner and org. The distributed adapter sends the
+  session and org to the server, which reloads the session, resolves its owner,
+  and constructs the authenticated command context. The worker cannot nominate
+  a user or elevate the caller.
+- **Command contract**: MCP and capability adapters share catalog search,
+  positional rewriting, script limits, output formatting, and safe error
+  classification in `crates/server/src/services/platform_command_surface.rs`.
+  Registered domain commands remain the source of truth and execute through
+  `Command::run`.
+- **Mounts**: `/docs` — Everruns public documentation (virtual, readonly). The
+  stored/normalized mount path is `/docs`; agents/tools access it as
+  `/workspace/docs`. Markdown files (`.md`, `.mdx`) from the repository `docs/`
+  directory are embedded at compile time.
+
+The built-in `platform-chat` harness uses `platform`. Its prompt tells the model
+to discover unknown operations, inspect with `query`, mutate only when requested
+with `execute`, and validate afterward. Recurring autonomous work is represented
+by an Agent plus an Agent Trigger; Platform Chat must not schedule its own
+session.
+
+The surface deliberately provides commands, not a persisted provisioning plan.
+Models compose the authoritative operations directly. Multi-command `execute`
+scripts are not transactional: callers must inspect state after a partial
+failure and avoid blindly repeating mutations.
+
+#### PlatformManagement (compatibility)
 
 - **Status**: Available
 - **ID**: `platform_management`
-- **Purpose**: Programmatic management of Everruns entities (harnesses, agents, sessions) via tool calls
+- **Purpose**: Legacy handwritten management tools retained for compatibility
+  with existing custom agents and harnesses. New built-ins use `platform`.
 - **System Prompt**: Describes available management tools, common workflows, and platform docs availability
 - **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
@@ -1130,7 +1169,10 @@ The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management
 
 ##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
 
-`platform_management` remains assigned to the built-in `platform-chat` harness. Authorization must be enforced when platform tools execute, using the session owner's caller context plus the active `PermissionResolver`. Do not "fix" permission bugs by stripping the capability from Platform Chat; that removes the feature instead of fixing the broken auth boundary.
+Both `platform` and compatibility `platform_management` tools must enforce
+authorization using the session owner's caller context plus the active
+`PermissionResolver`. Do not fix permission bugs by removing platform access
+from Platform Chat; repair the execution boundary instead.
 
 ### Experimental Capabilities
 

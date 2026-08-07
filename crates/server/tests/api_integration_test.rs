@@ -3398,7 +3398,7 @@ async fn test_chat_harness_exists_in_seed() {
 }
 
 #[tokio::test]
-async fn test_chat_harness_includes_platform_management() {
+async fn test_chat_harness_includes_platform_capability() {
     let server = TestServer::new().await;
 
     let harness: Harness = server
@@ -3422,8 +3422,8 @@ async fn test_chat_harness_includes_platform_management() {
 
     assert_eq!(
         cap_ids,
-        vec!["platform_management"],
-        "Platform Chat should keep platform management locally"
+        vec!["platform"],
+        "Platform Chat should keep the catalog-backed platform capability locally"
     );
 
     let preview: Value = server
@@ -3450,9 +3450,15 @@ async fn test_chat_harness_includes_platform_management() {
         tool_names.contains(&"web_fetch"),
         "Platform Chat preview should include inherited Generic tools"
     );
+    for expected in ["discover", "query", "execute"] {
+        assert!(
+            tool_names.contains(&expected),
+            "Platform Chat preview should include {expected}"
+        );
+    }
     assert!(
-        tool_names.contains(&"manage_harnesses"),
-        "Platform Chat preview should include platform management tools"
+        !tool_names.contains(&"manage_harnesses"),
+        "Platform Chat should use the catalog surface, not legacy management tools"
     );
 }
 

@@ -29,8 +29,10 @@ operation the unit of reuse and registration.
 - [`crates/server/src/api/dispatch.rs`](../../crates/server/src/api/dispatch.rs)
   owns the HTTP adapter chokepoint.
 - [`crates/server/src/api/mcp_endpoint/catalog.rs`](../../crates/server/src/api/mcp_endpoint/catalog.rs)
-  owns MCP discovery, scripted-tool schema adaptation, and dispatch error
-  formatting.
+  owns scripted-tool schema adaptation and safe dispatch error formatting.
+- [`crates/server/src/services/platform_command_surface.rs`](../../crates/server/src/services/platform_command_surface.rs)
+  owns transport-neutral catalog discovery and bounded `query`/`execute`
+  behavior shared by MCP and the built-in `platform` capability.
 - [`crates/internal-protocol/proto/`](../../crates/internal-protocol/proto) owns
   exact gRPC messages.
 - [`crates/server/tests/command_policy_enforcement_test.rs`](../../crates/server/tests/command_policy_enforcement_test.rs)
@@ -117,6 +119,11 @@ migrated.
 
 The source registry is authoritative for current commands. Do not maintain a
 parallel catalog.
+
+The `/mcp` endpoint and `platform` capability are adapters over the same command
+surface. MCP may accept an organization selector because it is a stateless
+external protocol. The capability must not: its organization and caller are
+re-established from the active session by the server.
 
 ## Errors
 

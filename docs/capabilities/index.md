@@ -94,7 +94,8 @@ Agent self-management and platform control.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Platform Management](/capabilities/platform-management/) | `platform_management` | 14 |
+| [Platform](/capabilities/platform/) | `platform` | 3 |
+| [Platform Management (legacy)](/capabilities/platform-management/) | `platform_management` | 14 |
 
 ### Optimization
 
