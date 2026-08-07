@@ -59,7 +59,7 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
     /// Experimental remote-control surface; requires deployment enablement and
-    /// per-org opt-in. See `specs/webmcp.md`.
+    /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
 }
 
