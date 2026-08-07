@@ -5,9 +5,9 @@ use super::types::{
 };
 use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, SOURCE_TYPES};
 use crate::domains::common::*;
-use everruns_core::Policy;
 use everruns_core::typed_id::KnowledgeIndexId;
 use everruns_core::vector_store::index_namespace;
+use everruns_core::{DriverId, Policy, ServiceKind};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -44,17 +44,49 @@ fn validate_source_type(source_type: Option<&str>) -> Result<String, CommandErro
     Ok(source_type.to_string())
 }
 
-/// Ensure the embedding model exists in this org. Cross-org / missing refs are
-/// rejected with the same bad-request message so existence is not leaked.
+/// Ensure the model is tagged for embeddings and its provider exposes an
+/// embeddings driver. Cross-org / missing refs use the same error so existence
+/// is not leaked.
 async fn require_embedding_model(
     ctx: &Ctx,
     model_id: everruns_core::ModelId,
 ) -> Result<everruns_core::ModelId, CommandError> {
-    ctx.db
+    let model = ctx
+        .db
         .get_model(ctx.org_id(), model_id.uuid())
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
+    if !model.capabilities.as_array().is_some_and(|capabilities| {
+        capabilities.iter().any(|capability| {
+            capability
+                .as_str()
+                .is_some_and(|capability| capability.eq_ignore_ascii_case("embeddings"))
+        })
+    }) {
+        return Err(CommandError::bad_request(
+            "Selected model is not an embedding model",
+        ));
+    }
+
+    let provider = ctx
+        .db
+        .get_provider(ctx.org_id(), model.provider_id.uuid())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::bad_request("Embedding provider not found"))?;
+    let provider_type: DriverId = provider
+        .provider_type
+        .parse()
+        .expect("DriverId::from_str is infallible");
+    if !everruns_worker::create_driver_registry().supports(&provider_type, ServiceKind::Embeddings)
+    {
+        return Err(CommandError::bad_request(format!(
+            "Embedding model provider '{}' does not support embeddings",
+            provider.provider_type
+        )));
+    }
+
     Ok(model_id)
 }
 
@@ -763,6 +795,60 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("missing model should fail");
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn create_rejects_chat_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateProviderRow {
+                    name: "openai provider".into(),
+                    provider_type: "openai".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("create provider");
+        let chat_model = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: "gpt-5.6".into(),
+                    display_name: "GPT-5.6".into(),
+                    capabilities: vec!["chat".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .expect("create model");
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let err = CreateKnowledgeIndex {
+            name: "Wrong Model".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id: chat_model.id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat model should fail");
+
         assert!(matches!(
             err,
             CommandError {

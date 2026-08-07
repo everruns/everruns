@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Select,
   SelectContent,
@@ -8,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModels } from "@/hooks/use-providers";
-import type { ModelWithProvider } from "@/lib/api/types";
+import { isEmbeddingModel } from "@/lib/model-capabilities";
 import { cn } from "@/lib/utils";
 
 interface EmbeddingModelPickerProps {
@@ -20,13 +21,6 @@ interface EmbeddingModelPickerProps {
   className?: string;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
-}
-
-// Only advertise models whose registry capabilities explicitly include
-// embeddings. Listing a generation-only fallback creates an index that cannot
-// sync and hides the configuration problem until runtime.
-export function isEmbeddingModel(model: ModelWithProvider): boolean {
-  return model.capabilities.some((cap) => cap.toLowerCase() === "embeddings");
 }
 
 export function EmbeddingModelPicker({
@@ -41,45 +35,55 @@ export function EmbeddingModelPicker({
 }: EmbeddingModelPickerProps) {
   const { data: models = [], isLoading } = useModels();
 
-  const enabled = models.filter((m) => m.enabled);
-  const candidates = enabled.filter(isEmbeddingModel);
-
-  const sorted = [...candidates].sort((a, b) => {
-    if (a.provider_name !== b.provider_name) {
-      return a.provider_name.localeCompare(b.provider_name);
-    }
-    return a.display_name.localeCompare(b.display_name);
-  });
+  const sorted = models
+    .filter((m) => m.enabled && isEmbeddingModel(m))
+    .sort((a, b) => {
+      if (a.provider_name !== b.provider_name) {
+        return a.provider_name.localeCompare(b.provider_name);
+      }
+      return a.display_name.localeCompare(b.display_name);
+    });
 
   const selectedModel = models.find((m) => m.id === value);
 
   return (
-    <Select value={value} onValueChange={onChange} disabled={disabled || isLoading}>
-      <SelectTrigger
-        id={id}
-        className={cn("w-full", className)}
-        aria-label="Embedding model"
-        aria-invalid={ariaInvalid}
-        aria-describedby={ariaDescribedBy}
-      >
-        <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
-          {selectedModel
-            ? `${selectedModel.display_name} (${selectedModel.provider_name})`
-            : undefined}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {sorted.length === 0 && (
-          <SelectItem value="__none__" disabled>
-            No embedding models available
-          </SelectItem>
-        )}
-        {sorted.map((model) => (
-          <SelectItem key={model.id} value={model.id}>
-            {model.display_name} ({model.provider_name})
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="space-y-2">
+      <Select value={value} onValueChange={onChange} disabled={disabled || isLoading}>
+        <SelectTrigger
+          id={id}
+          className={cn("w-full", className)}
+          aria-label="Embedding model"
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+        >
+          <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
+            {selectedModel
+              ? `${selectedModel.display_name} (${selectedModel.provider_name})`
+              : undefined}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {sorted.length === 0 && (
+            <SelectItem value="__none__" disabled>
+              No embedding models available
+            </SelectItem>
+          )}
+          {sorted.map((model) => (
+            <SelectItem key={model.id} value={model.id}>
+              {model.display_name} ({model.provider_name})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {!isLoading && sorted.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No embedding models are configured.{" "}
+          <Link href="/models" className="text-primary underline underline-offset-4">
+            Configure an embedding model
+          </Link>
+          .
+        </p>
+      )}
+    </div>
   );
 }
