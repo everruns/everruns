@@ -847,6 +847,7 @@ pub mod tests {
                 agent_id: Some(agent_id),
                 agent_version_id: self.agent.default_version_id,
                 principal_id: self.session.owner_principal_id,
+                display_name: None,
                 role: crate::session::SessionParticipantRole::Member,
                 joined_at: chrono::Utc::now(),
                 left_at: None,

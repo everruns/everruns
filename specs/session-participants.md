@@ -13,7 +13,8 @@ This spec captures the durable model and its invariants. Field-level shapes,
 enum variants, and SQL live in code — see `crates/core/src/session.rs`
 (`SessionParticipant`, `SessionParticipantKind`, `SessionParticipantRole`), the
 command layer in `crates/server/src/domains/sessions/commands.rs`, and migrations
-`095_session_participants.sql` / `098_session_participant_user_identity.sql`.
+`095_session_participants.sql` / `098_session_participant_user_identity.sql` /
+`112_session_participant_display_name.sql`.
 
 ## Model
 
@@ -26,6 +27,11 @@ Each participant row binds a principal to a session:
 - **principal_id** — the principal that joined. This is the provenance anchor:
   turns, resources, and audit attribute back to the participant's principal
   rather than to `system`.
+- **display name** — the human-readable identity captured with the participant.
+  Signed-in users use the authoritative user profile and existing participant
+  rows track profile renames. External-channel participants retain their
+  explicit actor name. Missing names fall back to the actor kind rather than
+  implying that all unnamed people share the same identity.
 - **joined_at / left_at** — the participation interval. `left_at = null` means
   the participant is still active; a set `left_at` marks a past membership that
   is retained for history.

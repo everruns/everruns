@@ -901,6 +901,7 @@ pub struct SessionParticipantRow {
     pub agent_id: Option<AgentId>,
     pub agent_version_id: Option<everruns_core::AgentVersionId>,
     pub principal_id: PrincipalId,
+    pub display_name: Option<String>,
     pub role: String,
     pub joined_at: DateTime<Utc>,
     pub left_at: Option<DateTime<Utc>>,
@@ -917,6 +918,7 @@ impl SessionParticipantRow {
             agent_id: self.agent_id,
             agent_version_id: self.agent_version_id,
             principal_id: self.principal_id,
+            display_name: self.display_name.clone(),
             role: SessionParticipantRole::from(self.role.as_str()),
             joined_at: self.joined_at,
             left_at: self.left_at,
@@ -932,6 +934,7 @@ pub struct CreateSessionParticipantRow {
     pub agent_id: Option<AgentId>,
     pub agent_version_id: Option<everruns_core::AgentVersionId>,
     pub principal_id: PrincipalId,
+    pub display_name: Option<String>,
     pub role: SessionParticipantRole,
     pub joined_at: Option<DateTime<Utc>>,
 }
