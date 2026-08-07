@@ -9,7 +9,7 @@ use crate::backends::{
 use crate::builders::SingleSessionBuilder;
 use crate::host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, execute_act_activity,
-    execute_input_activity, execute_reason_activity,
+    execute_input_activity, execute_reason_activity_with_prompt_messages,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use async_trait::async_trait;
@@ -40,7 +40,7 @@ use everruns_core::traits::{
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
-use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, OrgId, SessionId};
 use everruns_core::{
     AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext, plugin_capability_id, resolve_runtime_capabilities,
@@ -898,11 +898,15 @@ impl InProcessRuntime {
                     // (EVE-681, part A). Draining here also delivers wakes that
                     // arrived while the session was idle, on the next turn's
                     // first iteration (between-turn fallback).
-                    self.drain_and_inject_wakes(session_id).await?;
+                    let wake_message_ids = self.drain_and_inject_wakes(session_id).await?;
                     let base_context =
                         AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
                             .with_workspace_id(session.workspace_id);
-                    let reason_result = execute_reason_activity(
+                    let mut prompt_message_ids = wake_message_ids;
+                    if state_machine.current_iteration() == 0 {
+                        prompt_message_ids.insert(0, ctx.input_message_id);
+                    }
+                    let reason_result = execute_reason_activity_with_prompt_messages(
                         self,
                         org_id,
                         ReasonInput {
@@ -914,6 +918,7 @@ impl InProcessRuntime {
                             previous_response_id: previous_response_id.take(),
                             iteration: state_machine.current_iteration() as u32 + 1,
                         },
+                        prompt_message_ids,
                     )
                     .await?;
                     previous_response_id = reason_result.response_id.clone();
@@ -1031,7 +1036,8 @@ impl InProcessRuntime {
 
     /// Drain any queued task wakes for `session_id` and inject them into the
     /// conversation as user messages so the next reason reacts to them
-    /// (EVE-681, part A). Returns the number of wakes injected.
+    /// (EVE-681, part A). Returns the ids of the injected messages so prompt
+    /// hooks can inspect them before the next provider call.
     ///
     /// Called at the top of every reason iteration — before the LLM call — so a
     /// task completion that landed during the previous act (or while idle) is
@@ -1039,15 +1045,15 @@ impl InProcessRuntime {
     /// exactly-once claim point: a drained wake is removed and never delivered
     /// twice, so a wake is delivered mid-turn XOR on the next turn's first
     /// drain, never both.
-    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<usize> {
+    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<Vec<MessageId>> {
         let Some(queue) = &self.session_wake_queue else {
-            return Ok(0);
+            return Ok(vec![]);
         };
         let wakes = queue.drain(session_id);
         if wakes.is_empty() {
-            return Ok(0);
+            return Ok(vec![]);
         }
-        let count = wakes.len();
+        let mut message_ids = Vec::with_capacity(wakes.len());
         for wake in wakes {
             // Persist the wake as a user message (history reload picks it up)
             // and emit the input event on the raw bus so it appears in the turn
@@ -1057,6 +1063,7 @@ impl InProcessRuntime {
                 .message_store
                 .add_input_message(session_id, InputMessage::user(wake.text))
                 .await?;
+            message_ids.push(message.id);
             self.event_bus
                 .emit(EventRequest::new(
                     session_id,
@@ -1065,7 +1072,7 @@ impl InProcessRuntime {
                 ))
                 .await?;
         }
-        Ok(count)
+        Ok(message_ids)
     }
 
     /// Load the current message history for a session.
