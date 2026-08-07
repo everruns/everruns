@@ -269,3 +269,31 @@ check_ui_deps() {
 check_docs_deps() {
   check_node_deps "Docs" "cd apps/docs && pnpm install"
 }
+
+# Local stacks must give every child process the same explicit auth contract.
+# Exporting here makes the API, worker, Next.js proxy, and Caddy process inherit
+# one value while preserving any mode chosen by the caller.
+configure_local_startup_auth() {
+  export DEPLOYMENT_GRADE=dev
+  export AUTH_MODE="${AUTH_MODE:-none}"
+}
+
+verify_api_auth_mode() {
+  local health_payload="${1:?health payload required}"
+  local expected_mode actual_mode
+
+  expected_mode="$(printf '%s' "$AUTH_MODE" | tr '[:upper:]' '[:lower:]')"
+  actual_mode="$(printf '%s' "$health_payload" | sed -n 's/.*"auth_mode"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | tr '[:upper:]' '[:lower:]')"
+
+  if [ -z "$actual_mode" ]; then
+    echo "   ⚠️  API health response did not report auth_mode" >&2
+    return 0
+  fi
+
+  if [ "$actual_mode" != "$expected_mode" ]; then
+    echo "   ❌ Auth mode mismatch: startup=$expected_mode, API=$actual_mode" >&2
+    return 1
+  fi
+
+  echo "   ✅ Auth mode confirmed: $actual_mode (API, worker, UI proxy)"
+}

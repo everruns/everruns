@@ -72,6 +72,7 @@ export default defineConfig({
     : {
         command: "pnpm run dev",
         url: baseURL,
+        env: { ...process.env, AUTH_MODE: process.env.AUTH_MODE ?? "none" },
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
       },

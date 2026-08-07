@@ -14,9 +14,36 @@ const AUTH_CONFIG = {
   signup_email_confirm: true,
 };
 
+const NO_AUTH_CONFIG = {
+  mode: "none",
+  password_auth_enabled: false,
+  oauth_providers: [],
+  signup_enabled: false,
+  signup_email_confirm: false,
+};
+
 async function mockAuthConfig(page: Page, config: Record<string, unknown> = AUTH_CONFIG) {
   await page.route("**/v1/auth/config", (route) => route.fulfill({ json: config }));
 }
+
+test("no-auth login reaches the application instead of a blank redirect loop", async ({ page }) => {
+  await mockAuthConfig(page, NO_AUTH_CONFIG);
+  await page.route("**/v1/auth/me", (route) =>
+    route.fulfill({
+      json: {
+        id: "anonymous",
+        email: "anonymous@localhost",
+        display_name: "Anonymous",
+        email_verified: true,
+      },
+    }),
+  );
+
+  await page.goto("/login");
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+});
 
 test.describe("Unified auth door", () => {
   test.beforeEach(async ({ page }) => {

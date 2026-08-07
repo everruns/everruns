@@ -290,8 +290,7 @@ case "$cmd" in
 
     # Enable dev mode
     export DEV_MODE=true
-    export DEPLOYMENT_GRADE=dev
-    export AUTH_MODE=${AUTH_MODE:-none}
+    configure_local_startup_auth
     export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
     export HTTP_ADDR=${HTTP_ADDR:-${ADDR:-$HTTP_ADDR_DEFAULT}}
     export SERVER_GRPC_BIND_ADDR=${SERVER_GRPC_BIND_ADDR:-${WORKER_GRPC_ADDR:-$SERVER_GRPC_BIND_ADDR_DEFAULT}}
@@ -412,6 +411,9 @@ case "$cmd" in
     echo "🚀 Starting Everruns development environment..."
     echo ""
 
+    configure_local_startup_auth
+    echo "   🔐 Auth mode: $AUTH_MODE (shared by API, worker, UI proxy)"
+
     if [ "$NO_WATCH" = false ]; then
       require_command cargo-watch "Run: just init (or use --no-watch)"
     fi
@@ -426,6 +428,7 @@ case "$cmd" in
     clear_run_state_dir
 
     cleanup() {
+      local exit_code="${1:-0}"
       # Prevent multiple cleanup runs
       if [ "$CLEANUP_DONE" = true ]; then
         return
@@ -465,7 +468,7 @@ case "$cmd" in
       # Restore terminal state
       stty sane 2>/dev/null || true
       echo "✅ Services stopped"
-      exit 0
+      exit "$exit_code"
     }
 
     trap cleanup SIGINT SIGTERM
@@ -559,7 +562,6 @@ case "$cmd" in
     export AUTH_BASE_URL=${AUTH_BASE_URL:-${PROXY_URL_DEFAULT}/api}
     export FRONTEND_URL=${FRONTEND_URL:-$PROXY_URL_DEFAULT}
     export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
-    export DEPLOYMENT_GRADE=dev
     if [ -z "${WORKER_GRPC_AUTH_TOKEN:-}" ]; then
       _raw="$(head -c 32 /dev/urandom | base64 | tr -d '=+/\n\r\t')"
       WORKER_GRPC_AUTH_TOKEN="${_raw:0:32}"
@@ -580,13 +582,17 @@ case "$cmd" in
 
     # Wait for API
     echo "4️⃣  Waiting for API to be ready..."
+    API_HEALTH=""
     for i in {1..30}; do
-      if curl -s "http://localhost:${API_PORT}/health" > /dev/null 2>&1; then
+      if API_HEALTH="$(curl -fsS "http://localhost:${API_PORT}/health" 2>/dev/null)"; then
         echo "   ✅ API is ready"
         break
       fi
       sleep 2
     done
+    if [ -n "$API_HEALTH" ] && ! verify_api_auth_mode "$API_HEALTH"; then
+      cleanup 1
+    fi
 
     # Start Worker with restart-on-crash logic
     # Restarts every 5 seconds for up to 90 seconds if worker fails to connect
