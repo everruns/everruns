@@ -1,11 +1,26 @@
 packages: []
+overrides:
+  '@astrojs/mdx': 6.0.2
+  esbuild: 0.28.1
+  fast-uri: 3.1.5
+  form-data: 4.0.6
+  lodash: 4.17.23
+  postcss: 8.5.23
+  yaml: 2.8.4
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+patchedDependencies:
+  starlight-llms-txt@0.11.0: patches/starlight-llms-txt@0.11.0.patch
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security patches adopted before the maturity window (Dependabot GHSA fixes):
 # form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
-# fast-uri 3.1.4 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6; only
+# fast-uri 3.1.5 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6; only
 # patched release, still inside the 7-day window). Exact-pinned via overrides.
 minimumReleaseAgeExclude:
   - form-data
   - esbuild
   - fast-uri
+allowBuilds:
+  esbuild: true
