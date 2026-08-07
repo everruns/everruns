@@ -3,6 +3,7 @@
  * - Keep event-to-component routing in one place so the transcript stays easy to extend.
  * - Tool-only assistant events share the same grouping rules as explicit tool-call-requested events.
  * - Narrated act timelines suppress duplicate tool groups to avoid repeated progress chrome.
+ * - Error message completions are canonical; matching turn failures only carry lifecycle state.
  */
 "use client";
 
@@ -249,6 +250,16 @@ export const ChatMessageList = memo(function ChatMessageList({
       for (const toolCall of data.tool_calls ?? []) {
         ids.add(toolCall.id);
       }
+    }
+    return ids;
+  }, [chatEvents]);
+  const errorMessageTurnIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      const data = getEventData(event, "output.message.completed");
+      if (!getRuntimeErrorFromOutputMessage(data)) continue;
+      const turnId = getKnownTurnId(event);
+      if (turnId) ids.add(turnId);
     }
     return ids;
   }, [chatEvents]);
@@ -554,6 +565,7 @@ export const ChatMessageList = memo(function ChatMessageList({
 
           const turnFailedData = getEventData(event, "turn.failed");
           if (turnFailedData) {
+            if (errorMessageTurnIds.has(turnFailedData.turn_id)) return null;
             return (
               <ChatErrorAlert
                 key={event.id}

@@ -469,6 +469,49 @@ describe("ChatPanel placeholder", () => {
     expect(screen.queryByText("backend temporarily unavailable")).not.toBeInTheDocument();
   });
 
+  it("renders one alert when an error message and turn failure describe the same turn", () => {
+    const context = { turn_id: "turn-1", input_message_id: "message-1" };
+    mockSessionContext.chatEvents = [
+      {
+        id: "evt-error-message-1",
+        type: "output.message.completed",
+        session_id: "session-1",
+        ts: new Date().toISOString(),
+        context,
+        data: {
+          message: {
+            id: "message-2",
+            role: "agent",
+            content: [{ type: "text", text: "Provider quota exhausted" }],
+          },
+          error_code: "provider_quota_exhausted",
+        },
+      },
+      {
+        id: "evt-failed-1",
+        type: "turn.failed",
+        session_id: "session-1",
+        ts: new Date().toISOString(),
+        context,
+        data: {
+          turn_id: "turn-1",
+          error: "Provider quota exhausted",
+          error_code: "provider_quota_exhausted",
+        },
+      },
+    ];
+    mockSessionContext.getMessageText.mockReturnValue(
+      "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    );
+
+    render(<ChatPanel />);
+
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(
+      screen.getByText("The AI provider account is out of credits or quota.", { exact: false }),
+    ).toBeInTheDocument();
+  });
+
   it("hides raw failed turn diagnostics when no structured error code is available", () => {
     mockSessionContext.chatEvents = [
       {
