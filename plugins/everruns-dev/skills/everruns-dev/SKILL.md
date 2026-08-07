@@ -330,7 +330,7 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
 
 Everruns(Dev) exposes a small family of *entity cards* — sandboxed HTML
 resources hosts can render alongside text output. See
-[`specs/mcp-cards.md`](https://github.com/everruns/everruns/blob/main/specs/mcp-cards.md)
+[`knowledge/ui/mcp-cards.md`](https://github.com/everruns/everruns/blob/main/knowledge/ui/mcp-cards.md)
 for the standard.
 
 - Tool: `agent_get_card { "agent_id": "<agent-id-or-name>" }`.

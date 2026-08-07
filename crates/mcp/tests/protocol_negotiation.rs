@@ -1,9 +1,9 @@
-//! Multi-era protocol negotiation integration tests (specs/mcp-servers.md
+//! Multi-era protocol negotiation integration tests (knowledge/integrations/mcp-servers.md
 //! "Multi-era protocol support").
 //!
 //! A scripted [`EgressService`] stands in for three kinds of MCP server:
 //!
-//! - a *stateless* RC server that answers operations directly,
+//! - a *stateless* 2026-07-28 server that answers operations directly,
 //! - a *stateful* legacy/current server that rejects session-less requests and
 //!   requires the `initialize` handshake + `Mcp-Session-Id`,
 //!
@@ -32,7 +32,7 @@ struct Recorded {
     session_id: Option<String>,
 }
 
-/// Whether the scripted server behaves statelessly (RC) or demands a handshake.
+/// Whether the scripted server behaves statelessly (2026-07-28) or demands a handshake.
 #[derive(Clone, Copy, PartialEq)]
 enum ServerKind {
     StatelessRc,
@@ -43,21 +43,50 @@ enum ServerKind {
         version: &'static str,
         stable_failure: bool,
     },
+    /// Stateless server that answers the first `tools/call` with an
+    /// `input_required` result (MRTR) and the retry with a real result.
+    Mrtr {
+        /// Whether the `input_required` names concrete `inputRequests`. A
+        /// compliant server would not, since this client declares no
+        /// elicitation/sampling/roots capability.
+        with_input_requests: bool,
+    },
 }
 
 /// A scripted MCP server over the egress boundary.
 struct ScriptedEgress {
     kind: ServerKind,
     session_id: &'static str,
+    /// `(ttlMs, cacheScope)` to attach to `tools/list` results, mimicking a
+    /// 2026-07-28 server that sends caching hints. `None` mimics an older
+    /// server that sends none.
+    cache_hints: Option<(i64, &'static str)>,
     log: Arc<Mutex<Vec<Recorded>>>,
 }
 
 impl ScriptedEgress {
     fn new(kind: ServerKind) -> (Arc<Self>, Arc<Mutex<Vec<Recorded>>>) {
+        Self::build(kind, None)
+    }
+
+    /// A server that decorates `tools/list` with caching hints.
+    fn cacheable(
+        kind: ServerKind,
+        ttl_ms: i64,
+        scope: &'static str,
+    ) -> (Arc<Self>, Arc<Mutex<Vec<Recorded>>>) {
+        Self::build(kind, Some((ttl_ms, scope)))
+    }
+
+    fn build(
+        kind: ServerKind,
+        cache_hints: Option<(i64, &'static str)>,
+    ) -> (Arc<Self>, Arc<Mutex<Vec<Recorded>>>) {
         let log = Arc::new(Mutex::new(Vec::new()));
         let egress = Arc::new(Self {
             kind,
             session_id: "sess-xyz",
+            cache_hints,
             log: log.clone(),
         });
         (egress, log)
@@ -106,12 +135,18 @@ impl EgressService for ScriptedEgress {
             session_id,
         });
 
-        let tools = json!({
+        let mut tools = json!({
             "jsonrpc": "2.0", "id": 1,
             "result": { "tools": [
                 { "name": "search", "description": "Search", "inputSchema": { "type": "object" } }
             ]}
         });
+        if let Some((ttl_ms, scope)) = self.cache_hints {
+            let result = tools["result"].as_object_mut().unwrap();
+            result.insert("resultType".to_string(), json!("complete"));
+            result.insert("ttlMs".to_string(), json!(ttl_ms));
+            result.insert("cacheScope".to_string(), json!(scope));
+        }
         let call = json!({
             "jsonrpc": "2.0", "id": 1,
             "result": { "content": [{ "type": "text", "text": "ok" }], "isError": false }
@@ -121,6 +156,37 @@ impl EgressService for ScriptedEgress {
             ServerKind::StatelessRc => match method.as_str() {
                 "tools/list" => Ok(Self::ok(tools)),
                 "tools/call" => Ok(Self::ok(call)),
+                _ => Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))),
+            },
+            ServerKind::Mrtr {
+                with_input_requests,
+            } => match method.as_str() {
+                "tools/list" => Ok(Self::ok(tools)),
+                "tools/call" => {
+                    let prior_calls = self
+                        .log
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|r| r.method == "tools/call")
+                        .count();
+                    // The push above already counted this request.
+                    if prior_calls > 1 {
+                        return Ok(Self::ok(call));
+                    }
+                    let mut result = json!({
+                        "resultType": "input_required",
+                        "requestState": "opaque-state",
+                    });
+                    if with_input_requests {
+                        result["inputRequests"] = json!({
+                            "github_login": { "method": "elicitation/create" }
+                        });
+                    }
+                    Ok(Self::ok(
+                        json!({ "jsonrpc": "2.0", "id": 1, "result": result }),
+                    ))
+                }
                 _ => Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))),
             },
             kind => {
@@ -146,7 +212,7 @@ impl EgressService for ScriptedEgress {
                         }))
                         .unwrap(),
                     ),
-                    ServerKind::StatelessRc => unreachable!(),
+                    ServerKind::StatelessRc | ServerKind::Mrtr { .. } => unreachable!(),
                 };
                 match method.as_str() {
                     "initialize" => {
@@ -267,7 +333,7 @@ async fn auto_falls_back_when_authenticated_server_rejects_rc_protocol_version()
             "notifications/initialized",
             "tools/list"
         ],
-        "the rejected RC probe must cause exactly one stateful retry"
+        "the rejected 2026-07-28 probe must cause exactly one stateful retry"
     );
     assert!(
         log.iter()
@@ -294,9 +360,9 @@ async fn auto_reports_rc_probe_and_stable_fallback_failures() {
         .unwrap_err()
         .to_string();
 
-    assert!(error.contains("MCP RC probe failed"));
+    assert!(error.contains("MCP 2026-07-28 probe failed"));
     assert!(error.contains("Unsupported protocol version: 2026-07-28"));
-    assert!(error.contains("stable fallback failed: 400 - stable request rejected"));
+    assert!(error.contains("stateful fallback failed: 400 - stable request rejected"));
     let log = log.lock().unwrap();
     assert_eq!(
         log.iter()
@@ -375,7 +441,8 @@ async fn pinned_legacy_handshakes_first_without_a_stateless_probe() {
     let (egress, log) = ScriptedEgress::new(ServerKind::Stateful {
         version: "2025-03-26",
     });
-    let connection = McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::Legacy);
+    let connection =
+        McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::V2025March);
     client(egress).discover(&connection).await.unwrap();
 
     let log = log.lock().unwrap();
@@ -397,7 +464,8 @@ async fn pinned_stable_handshakes_first_without_a_stateless_probe() {
     let (egress, log) = ScriptedEgress::new(ServerKind::Stateful {
         version: "2025-06-18",
     });
-    let connection = McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::Stable);
+    let connection =
+        McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::V2025June);
     client(egress).discover(&connection).await.unwrap();
 
     let log = log.lock().unwrap();
@@ -414,13 +482,130 @@ async fn pinned_stable_handshakes_first_without_a_stateless_probe() {
 #[tokio::test]
 async fn pinned_rc_never_handshakes() {
     let (egress, log) = ScriptedEgress::new(ServerKind::StatelessRc);
-    let connection = McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::Rc);
+    let connection =
+        McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::V2026July);
     client(egress).discover(&connection).await.unwrap();
 
     let log = log.lock().unwrap();
     assert!(
         log.iter().all(|r| r.method != "initialize"),
-        "pinned RC must never run the handshake"
+        "a pinned 2026-07-28 mode must never run the handshake"
     );
     assert_eq!(log[0].protocol_header.as_deref(), Some("2026-07-28"));
+}
+
+// ---------------------------------------------------------------------------
+// Cacheable list results (2026-07-28 `ttlMs` / `cacheScope`)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn positive_ttl_serves_the_second_discover_from_cache() {
+    let (egress, log) = ScriptedEgress::cacheable(ServerKind::StatelessRc, 300_000, "public");
+    let client = client(egress);
+    let connection = McpConnection::http("docs", URL);
+
+    let first = client.discover(&connection).await.unwrap();
+    let second = client.discover(&connection).await.unwrap();
+    assert_eq!(first.len(), 1);
+    assert_eq!(second.len(), 1, "cached result must match the fetched one");
+
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "tools/list")
+            .count(),
+        1,
+        "a fresh cached list must not be re-fetched"
+    );
+}
+
+#[tokio::test]
+async fn absent_hints_are_never_cached() {
+    // 2025-era servers send no `ttlMs`; the spec says treat that as immediately
+    // stale rather than inventing a client-side TTL.
+    let (egress, log) = ScriptedEgress::new(ServerKind::StatelessRc);
+    let client = client(egress);
+    let connection = McpConnection::http("docs", URL);
+
+    client.discover(&connection).await.unwrap();
+    client.discover(&connection).await.unwrap();
+
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "tools/list")
+            .count(),
+        2,
+        "without hints every discover must re-fetch"
+    );
+}
+
+#[tokio::test]
+async fn zero_and_negative_ttl_are_treated_as_immediately_stale() {
+    for ttl_ms in [0, -1] {
+        let (egress, log) = ScriptedEgress::cacheable(ServerKind::StatelessRc, ttl_ms, "public");
+        let client = client(egress);
+        let connection = McpConnection::http("docs", URL);
+
+        client.discover(&connection).await.unwrap();
+        client.discover(&connection).await.unwrap();
+
+        let log = log.lock().unwrap();
+        assert_eq!(
+            log.iter()
+                .filter(|request| request.method == "tools/list")
+                .count(),
+            2,
+            "ttlMs {ttl_ms} must not produce a fresh cache entry"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Multi round-trip requests (MRTR)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn input_required_without_requests_is_retried_with_request_state() {
+    let (egress, log) = ScriptedEgress::new(ServerKind::Mrtr {
+        with_input_requests: false,
+    });
+    let result = client(egress)
+        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .await
+        .expect("MRTR retry should complete the call");
+    assert!(!result.is_error);
+
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "tools/call")
+            .count(),
+        2,
+        "input_required must trigger exactly one retry"
+    );
+}
+
+#[tokio::test]
+async fn input_required_naming_unsupported_inputs_fails_loudly() {
+    // The client declares no elicitation capability, so a server asking for one
+    // is out of contract. Returning an empty result would look like success.
+    let (egress, log) = ScriptedEgress::new(ServerKind::Mrtr {
+        with_input_requests: true,
+    });
+    let error = client(egress)
+        .call(&McpConnection::http("docs", URL), "search", json!({}))
+        .await
+        .expect_err("unsupported input requests must surface as an error");
+    let error = error.to_string();
+    assert!(error.contains("github_login"), "unexpected error: {error}");
+
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "tools/call")
+            .count(),
+        1,
+        "there is nothing to retry with, so no retry should be sent"
+    );
 }

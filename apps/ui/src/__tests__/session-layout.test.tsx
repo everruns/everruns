@@ -145,6 +145,7 @@ const mockSessionContext = {
   } as Record<string, unknown> | null,
   llmModel: { display_name: "GPT-4" } as Record<string, unknown> | null,
   sessionLoading: false,
+  llmModelLoading: false,
   effectiveStatus: "idle" as string | undefined,
   liveUsage: null as Record<string, unknown> | null,
   agentId: "agent-123",

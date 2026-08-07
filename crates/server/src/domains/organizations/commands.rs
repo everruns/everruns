@@ -88,7 +88,7 @@ inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 // caller's active session is not currently scoped to. The shared helper
 // `org_resolver::resolve_owning_org_for_user` enforces the membership gate
 // (THREAT[TM-TENANT-010]); we return NotFound for every failure mode to
-// preserve the org-enumeration guarantee. See specs/multitenancy.md
+// preserve the org-enumeration guarantee. See knowledge/security/multitenancy.md
 // (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResolveOrg {

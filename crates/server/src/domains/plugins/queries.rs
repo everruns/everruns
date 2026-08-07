@@ -103,7 +103,7 @@ pub fn row_to_installed_plugin(
         version: install.version.clone(),
         pinned_sha: install.pinned_sha.clone(),
         marketplace: marketplace.map(|m| m.name.clone()),
-        capability_ref: plugin_capability_id(&install.name),
+        capability_ref: plugin_capability_id(&install.public_id),
         status: install.status.clone(),
         warnings,
         update_available,

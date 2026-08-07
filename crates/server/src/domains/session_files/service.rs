@@ -1382,12 +1382,11 @@ pub async fn grep_session_files(
         .map(everruns_core::session_path::GrepPathPattern::new)
         .transpose()?;
 
-    // Get matching files from database. MAX_GREP_FILE_BYTES is passed so the
-    // storage backend never loads content from files that exceed the per-file cap.
-    // Path glob semantics are shared with the runtime backends and applied below;
-    // the repository receives no backend-specific regex filter.
+    // A present path filter tells storage to return metadata candidates without
+    // scanning content. The shared matcher below then narrows those candidates
+    // before content is fetched and charged to the total scan budget.
     let files = db
-        .grep_session_files(session_id, pattern, None, MAX_GREP_FILE_BYTES)
+        .grep_session_files(session_id, pattern, path_pattern, MAX_GREP_FILE_BYTES)
         .await?;
 
     let mut results = Vec::new();
@@ -1480,7 +1479,12 @@ pub(crate) async fn grep_session_files_with_options(
         .map(everruns_core::session_path::GrepPathPattern::new)
         .transpose()?;
     let rows = db
-        .grep_session_files(session_id, pattern, None, MAX_GREP_FILE_BYTES)
+        .grep_session_files(
+            session_id,
+            pattern,
+            options.path_pattern.as_deref(),
+            MAX_GREP_FILE_BYTES,
+        )
         .await?;
     let mut text_files = Vec::new();
     let mut total_scanned = 0usize;

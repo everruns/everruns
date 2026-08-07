@@ -32,7 +32,7 @@ function AcceptInviteInner() {
     if (isLoading) return;
 
     // Unauthenticated invite links preserve the target through login and
-    // resume here afterwards (see specs/authentication.md `return_to`).
+    // resume here afterwards (see knowledge/security/authentication.md `return_to`).
     if (!isAuthenticated) {
       const returnTo = `/invite/${encodeURIComponent(token)}`;
       router.replace(`/login?return_to=${encodeURIComponent(returnTo)}`);

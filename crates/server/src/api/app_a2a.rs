@@ -10,7 +10,7 @@
 // state), and `tasks/cancel` (terminate the in-flight task). Task identity
 // is the underlying SessionId; state is derived from session turn lifecycle
 // events. Other methods return JSON-RPC `-32601 Method not found`.
-// See `specs/a2a-channel.md`.
+// See `knowledge/integrations/a2a-channel.md`.
 
 use crate::domains::common::CommandErrorKind;
 use std::convert::Infallible;

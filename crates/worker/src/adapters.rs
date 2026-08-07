@@ -13,6 +13,7 @@ use everruns_core::{BoxedChatDriver, DriverId, DriverRegistry, ProviderConfig, R
 /// - OpenRouter (OpenAI-compatible Responses API)
 /// - Microsoft MAI (Azure AI Foundry, OpenAI-compatible Chat Completions)
 /// - Fireworks AI (open models, OpenAI-compatible Chat Completions)
+/// - Meta Model API (Muse Spark, OpenAI-compatible Responses API)
 /// - Anthropic Claude
 /// - Google Gemini
 /// - LlmSim (for testing)
@@ -22,6 +23,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     everruns_openrouter::register_driver(&mut registry);
     everruns_mai::register_driver(&mut registry);
     everruns_fireworks::register_driver(&mut registry);
+    everruns_meta::register_driver(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
@@ -41,7 +43,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     //     pre_tool_use block path.
     //   - `tasks` — starts a background bash run via `spawn_background` and
     //     lists it with `list_tasks`, exercising the session task registry
-    //     end-to-end (specs/session-tasks.md) without an LLM API key.
+    //     end-to-end (knowledge/runtime-resources/session-tasks.md) without an LLM API key.
     //   - `monitor` — schedules a recurring monitor via `spawn_background`
     //     with a `schedule`, exercising the `monitor` task kind and its
     //     fire-history thread.

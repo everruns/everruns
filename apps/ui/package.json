@@ -1,6 +1,6 @@
 {
   "name": "everruns-ui",
-  "version": "0.17.17",
+  "version": "0.17.23",
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "exports": {
@@ -79,12 +79,12 @@
   "pnpm": {
     "overrides": {
       "@babel/core": "7.29.6",
-      "brace-expansion@1": "1.1.16",
-      "brace-expansion@2": "2.1.2",
+      "brace-expansion@1": "1.1.18",
+      "brace-expansion@2": "2.1.4",
       "dompurify": "3.4.12",
-      "fast-uri": "3.1.4",
+      "fast-uri": "3.1.5",
       "js-yaml": "4.3.0",
-      "postcss": "8.5.18",
+      "postcss": "8.5.23",
       "prismjs": "1.30.0",
       "sharp": "0.35.3",
       "uuid": "11.1.1",

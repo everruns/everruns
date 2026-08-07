@@ -908,6 +908,7 @@ pub async fn invoke_agent_trigger(
         &agent,
         trigger_id,
         session_id,
+        execution_context.harness_id,
         execution_context.owner_principal_id,
         rendered_message,
     )
@@ -1159,12 +1160,17 @@ async fn find_or_create_trigger_session(
     Ok((session.id, true))
 }
 
+// Trigger dispatch threads the resolved execution context (org, agent, harness,
+// principal) plus the rendered message into one durable send; grouping these
+// into a struct would not improve clarity over the explicit parameter list.
+#[allow(clippy::too_many_arguments)]
 async fn dispatch_trigger_message(
     message_service: &MessageService,
     org_id: i64,
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_id: SessionId,
+    harness_id: everruns_core::HarnessId,
     owner_principal_id: everruns_core::PrincipalId,
     rendered_message: String,
 ) -> Result<(), CommandError> {
@@ -1192,7 +1198,7 @@ async fn dispatch_trigger_message(
             CreateMessageContext {
                 org_id,
                 user_id: None,
-                harness_id: agent.harness_id.uuid(),
+                harness_id: harness_id.uuid(),
                 agent_id: Some(agent.id.uuid()),
                 session_id: session_id.uuid(),
                 event_metadata: Some(execution_metadata::agent_trigger_message_metadata(

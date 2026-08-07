@@ -28,7 +28,7 @@ use eventsource_stream::{Event, EventStreamError, Eventsource};
 use futures::{Stream, StreamExt, stream};
 
 use crate::error::AgentLoopError;
-use crate::llm_retry::{LlmRetryConfig, RetryMetadata};
+use crate::llm_retry::{LlmRetryConfig, RetryMetadata, remaining_retry_time, reserve_retry_wait};
 
 /// SSE item type produced by `reqwest::Response::bytes_stream().eventsource()`.
 pub type SseItem = Result<Event, EventStreamError<reqwest::Error>>;
@@ -121,32 +121,79 @@ where
     C: FnMut(u32) -> Fut,
     Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
 {
-    let mut attempt: u32 = 0;
+    let mut retry_metadata = RetryMetadata::default();
+    let mut retry_started_at = None;
     loop {
-        let (response, metadata) = connect(attempt).await?;
+        let connected = if let Some(remaining) =
+            remaining_retry_time(retry_config, retry_started_at)
+        {
+            tokio::time::timeout(remaining, connect(retry_metadata.attempts))
+                .await
+                .map_err(|_| {
+                    AgentLoopError::llm_kind(
+                        crate::error::LlmErrorKind::Unavailable,
+                        format!(
+                            "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
+                            retry_metadata.attempts,
+                            retry_config.max_retry_elapsed.as_secs_f64()
+                        ),
+                    )
+                    .with_retry_metadata(&retry_metadata)
+                })?
+        } else {
+            connect(retry_metadata.attempts).await
+        };
+        let (response, metadata) = connected?;
+        if retry_started_at.is_none() && metadata.had_retries() {
+            retry_started_at = tokio::time::Instant::now()
+                .checked_sub(metadata.total_retry_elapsed)
+                .or_else(|| Some(tokio::time::Instant::now()));
+        }
+        retry_metadata.absorb(metadata);
         let events = Box::pin(response.bytes_stream().eventsource());
 
         // Peek the first item: an immediate transport failure at stream open
         // (the observed "error decoding response body") lands here. Bound this
         // setup wait so a silent 200 response cannot sit outside the Reason
         // atom's provider stall timeout for the longer HTTP read timeout.
-        let (first, rest) = tokio::time::timeout(first_item_timeout, events.into_future())
+        let item_timeout = remaining_retry_time(retry_config, retry_started_at)
+            .map_or(first_item_timeout, |remaining| {
+                remaining.min(first_item_timeout)
+            });
+        let (first, rest) = tokio::time::timeout(item_timeout, events.into_future())
             .await
             .map_err(|_| {
-                AgentLoopError::llm(format!(
+                let error = AgentLoopError::llm(format!(
                     "provider stream stall: no first event for {}s",
                     first_item_timeout.as_secs()
-                ))
+                ));
+                if retry_metadata.had_retries() {
+                    error.with_retry_metadata(&retry_metadata)
+                } else {
+                    error
+                }
             })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_stream_error(e));
-        if reconnectable && attempt < retry_config.max_retries {
-            attempt += 1;
-            let wait = retry_config.calculate_backoff(attempt - 1);
+        if reconnectable && retry_metadata.attempts < retry_config.max_retries {
+            let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
+            let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
+            else {
+                return Err(AgentLoopError::llm_kind(
+                    crate::error::LlmErrorKind::Unavailable,
+                    format!(
+                        "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
+                        retry_metadata.attempts,
+                        retry_config.max_retry_elapsed.as_secs_f64()
+                    ),
+                )
+                .with_retry_metadata(&retry_metadata));
+            };
+            retry_metadata.record_retry(wait, None);
             if let Some(Err(e)) = &first {
                 tracing::warn!(
                     driver = driver_name,
-                    attempt,
+                    attempt = retry_metadata.attempts,
                     max_retries = retry_config.max_retries,
                     wait_secs = wait.as_secs_f64(),
                     error = %e,
@@ -157,16 +204,27 @@ where
             continue;
         }
 
-        if attempt > 0 && !reconnectable {
+        if reconnectable {
+            return Err(AgentLoopError::llm_kind(
+                crate::error::LlmErrorKind::Unavailable,
+                format!(
+                    "{driver_name} stream transport failed after {} retries; the turn is safe to resume",
+                    retry_metadata.attempts
+                ),
+            )
+            .with_retry_metadata(&retry_metadata));
+        }
+
+        if retry_metadata.had_retries() {
             tracing::info!(
                 driver = driver_name,
-                reconnects = attempt,
+                retries = retry_metadata.attempts,
                 "streaming reconnect succeeded"
             );
         }
 
         // Replay the peeked first item (0 or 1) ahead of the remaining stream.
-        return Ok((Box::pin(stream::iter(first).chain(rest)), metadata));
+        return Ok((Box::pin(stream::iter(first).chain(rest)), retry_metadata));
     }
 }
 
@@ -205,27 +263,74 @@ where
     C: FnMut(u32) -> Fut,
     Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
 {
-    let mut attempt: u32 = 0;
+    let mut retry_metadata = RetryMetadata::default();
+    let mut retry_started_at = None;
     loop {
-        let (response, metadata) = connect(attempt).await?;
+        let connected = if let Some(remaining) =
+            remaining_retry_time(retry_config, retry_started_at)
+        {
+            tokio::time::timeout(remaining, connect(retry_metadata.attempts))
+                .await
+                .map_err(|_| {
+                    AgentLoopError::llm_kind(
+                        crate::error::LlmErrorKind::Unavailable,
+                        format!(
+                            "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
+                            retry_metadata.attempts,
+                            retry_config.max_retry_elapsed.as_secs_f64()
+                        ),
+                    )
+                    .with_retry_metadata(&retry_metadata)
+                })?
+        } else {
+            connect(retry_metadata.attempts).await
+        };
+        let (response, metadata) = connected?;
+        if retry_started_at.is_none() && metadata.had_retries() {
+            retry_started_at = tokio::time::Instant::now()
+                .checked_sub(metadata.total_retry_elapsed)
+                .or_else(|| Some(tokio::time::Instant::now()));
+        }
+        retry_metadata.absorb(metadata);
         let bytes = Box::pin(response.bytes_stream());
-        let (first, rest) = tokio::time::timeout(first_item_timeout, bytes.into_future())
+        let item_timeout = remaining_retry_time(retry_config, retry_started_at)
+            .map_or(first_item_timeout, |remaining| {
+                remaining.min(first_item_timeout)
+            });
+        let (first, rest) = tokio::time::timeout(item_timeout, bytes.into_future())
             .await
             .map_err(|_| {
-                AgentLoopError::llm(format!(
+                let error = AgentLoopError::llm(format!(
                     "provider stream stall: no first chunk for {}s",
                     first_item_timeout.as_secs()
-                ))
+                ));
+                if retry_metadata.had_retries() {
+                    error.with_retry_metadata(&retry_metadata)
+                } else {
+                    error
+                }
             })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_reqwest_error(e));
-        if reconnectable && attempt < retry_config.max_retries {
-            attempt += 1;
-            let wait = retry_config.calculate_backoff(attempt - 1);
+        if reconnectable && retry_metadata.attempts < retry_config.max_retries {
+            let proposed_wait = retry_config.calculate_backoff(retry_metadata.attempts);
+            let Some(wait) = reserve_retry_wait(retry_config, &mut retry_started_at, proposed_wait)
+            else {
+                return Err(AgentLoopError::llm_kind(
+                    crate::error::LlmErrorKind::Unavailable,
+                    format!(
+                        "{driver_name} stream reconnect budget exhausted after {} retries over {:.1}s",
+                        retry_metadata.attempts,
+                        retry_config.max_retry_elapsed.as_secs_f64()
+                    ),
+                )
+                .with_retry_metadata(&retry_metadata));
+            };
+            retry_metadata.record_retry(wait, None);
             if let Some(Err(e)) = &first {
                 tracing::warn!(
                     driver = driver_name,
-                    attempt,
+                    attempt = retry_metadata.attempts,
                     max_retries = retry_config.max_retries,
                     wait_secs = wait.as_secs_f64(),
                     error = %e,
@@ -236,15 +341,26 @@ where
             continue;
         }
 
-        if attempt > 0 && !reconnectable {
+        if reconnectable {
+            return Err(AgentLoopError::llm_kind(
+                crate::error::LlmErrorKind::Unavailable,
+                format!(
+                    "{driver_name} stream transport failed after {} retries; the turn is safe to resume",
+                    retry_metadata.attempts
+                ),
+            )
+            .with_retry_metadata(&retry_metadata));
+        }
+
+        if retry_metadata.had_retries() {
             tracing::info!(
                 driver = driver_name,
-                reconnects = attempt,
+                retries = retry_metadata.attempts,
                 "streaming reconnect succeeded"
             );
         }
 
-        return Ok((Box::pin(stream::iter(first).chain(rest)), metadata));
+        return Ok((Box::pin(stream::iter(first).chain(rest)), retry_metadata));
     }
 }
 
@@ -340,10 +456,14 @@ mod tests {
             max_backoff: Duration::from_millis(0),
             backoff_multiplier: 1.0,
             jitter_factor: 0.0,
+            ..Default::default()
         }
     }
 
-    async fn collect_via_reconnect(base: &str, config: &LlmRetryConfig) -> Vec<SseItem> {
+    async fn collect_via_reconnect(
+        base: &str,
+        config: &LlmRetryConfig,
+    ) -> Result<Vec<SseItem>, AgentLoopError> {
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let (stream, _meta) = connect_sse_with_reconnect(config, "test", |_attempt| {
             let client = client.clone();
@@ -357,9 +477,8 @@ mod tests {
                 Ok((resp, RetryMetadata::default()))
             }
         })
-        .await
-        .expect("connect should not terminally fail");
-        stream.collect().await
+        .await?;
+        Ok(stream.collect().await)
     }
 
     async fn connect_via_reconnect_with_timeout(
@@ -392,7 +511,9 @@ mod tests {
     async fn reconnects_on_truncated_first_then_succeeds() {
         let (base, count) =
             spawn_scripted_sse_server(vec![Behavior::TruncateBeforeEvent, Behavior::FullSse]).await;
-        let items = collect_via_reconnect(&base, &fast_config(2)).await;
+        let items = collect_via_reconnect(&base, &fast_config(2))
+            .await
+            .expect("reconnect succeeds");
 
         // Two connections: the truncated one and the successful reconnect.
         assert_eq!(
@@ -417,9 +538,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn header_and_body_retries_share_one_attempt_budget() {
+        let (base, count) =
+            spawn_scripted_sse_server(vec![Behavior::TruncateBeforeEvent, Behavior::FullSse]).await;
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let consumed = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let observed = consumed.clone();
+        let (stream, metadata) = connect_sse_with_reconnect(&fast_config(2), "test", move |used| {
+            observed.lock().unwrap().push(used);
+            let client = client.clone();
+            let base = base.clone();
+            async move {
+                let response = client
+                    .get(base)
+                    .send()
+                    .await
+                    .map_err(|error| AgentLoopError::llm(error.to_string()))?;
+                let mut metadata = RetryMetadata::default();
+                if used == 0 {
+                    metadata.record_retry(Duration::ZERO, None);
+                }
+                Ok((response, metadata))
+            }
+        })
+        .await
+        .expect("shared budget should recover");
+        let items: Vec<_> = stream.collect().await;
+
+        assert_eq!(count.load(Ordering::SeqCst), 2);
+        assert_eq!(*consumed.lock().unwrap(), vec![0, 2]);
+        assert_eq!(metadata.attempts, 2);
+        assert!(items.iter().all(Result::is_ok));
+    }
+
+    #[tokio::test]
     async fn exhausts_reconnects_and_surfaces_error() {
         let (base, count) = spawn_scripted_sse_server(vec![Behavior::TruncateBeforeEvent]).await;
-        let items = collect_via_reconnect(&base, &fast_config(2)).await;
+        let error = collect_via_reconnect(&base, &fast_config(2))
+            .await
+            .expect_err("reconnect budget should terminate");
 
         // 1 initial + 2 reconnects = 3 attempts, all truncated.
         assert_eq!(
@@ -427,16 +584,17 @@ mod tests {
             3,
             "should exhaust max_retries"
         );
-        assert!(
-            items.last().is_some_and(|i| i.is_err()),
-            "exhausted stream should surface the transport error, got {items:?}"
-        );
+        assert!(error.llm_retry_handled());
+        assert_eq!(error.llm_retry_attempts(), 2);
+        assert!(error.to_string().contains("safe to resume"));
     }
 
     #[tokio::test]
     async fn clean_stream_makes_single_connection() {
         let (base, count) = spawn_scripted_sse_server(vec![Behavior::FullSse]).await;
-        let items = collect_via_reconnect(&base, &fast_config(2)).await;
+        let items = collect_via_reconnect(&base, &fast_config(2))
+            .await
+            .expect("clean stream succeeds");
 
         assert_eq!(
             count.load(Ordering::SeqCst),
@@ -517,7 +675,9 @@ mod tests {
         // The first item is a good event (committed); the following truncation
         // must NOT trigger a reconnect (that would duplicate emitted output).
         let (base, count) = spawn_scripted_sse_server(vec![Behavior::EventThenTruncate]).await;
-        let items = collect_via_reconnect(&base, &fast_config(2)).await;
+        let items = collect_via_reconnect(&base, &fast_config(2))
+            .await
+            .expect("first event commits stream");
 
         assert_eq!(
             count.load(Ordering::SeqCst),

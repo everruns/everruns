@@ -592,7 +592,7 @@ pub fn proto_session_to_schema(
     let id_str = prefixed_id("session", session_uuid);
     // The proto Session does not carry a workspace id yet; reconstruct it from
     // the session id under the workspace.id == session.id equality invariant
-    // (see specs/workspace.md). Revisit when shared workspaces add it to proto.
+    // (see knowledge/runtime-resources/workspace.md). Revisit when shared workspaces add it to proto.
     let workspace_id_str = prefixed_id("wsp", session_uuid);
     let agent_id_str = value.agent_id.as_ref().map(|u| prefixed_id("agent", u));
     let agent_version_id_str = value

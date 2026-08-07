@@ -1,4 +1,4 @@
-//! Local-process MCP transport over stdio (specs/runtime-mcp.md D2).
+//! Local-process MCP transport over stdio (knowledge/integrations/runtime-mcp.md D2).
 //!
 //! Compiled only with the `stdio` feature, which the hosted server/worker
 //! builds never enable — this is the hard-off boundary. Each call spawns the

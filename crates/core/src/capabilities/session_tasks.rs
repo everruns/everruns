@@ -1,7 +1,7 @@
 // Session Tasks Capability
 //
 // Generic agent-facing tools over the session task registry
-// (specs/session-tasks.md): list_tasks / get_task / message_task /
+// (knowledge/runtime-resources/session-tasks.md): list_tasks / get_task / message_task /
 // cancel_task / wait_task. Spawning stays with each creation surface
 // (spawn_agent, spawn_background) — every spawn creates a task and returns its
 // task_id; these tools provide the uniform query/messaging/cancel/wait plane.

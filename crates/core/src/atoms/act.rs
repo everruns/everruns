@@ -49,8 +49,8 @@ use crate::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
 use crate::tool_narration::{
-    ToolNarrationContext, ToolNarrationPhase, render_group_headline_with_locale,
-    render_tool_narration_with_locale,
+    GroupHeadlineAction, ToolNarrationContext, ToolNarrationPhase,
+    render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
 };
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
@@ -476,7 +476,7 @@ where
 
     /// Add capability-contributed pre-tool-use hooks. Pre-hooks fire before
     /// each tool call and can mutate or block it; see
-    /// `act_hooks::PreToolUseHook` and `specs/user-hooks.md`.
+    /// `act_hooks::PreToolUseHook` and `knowledge/runtime-resources/user-hooks.md`.
     pub fn with_pre_tool_hooks(mut self, hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>) -> Self {
         self.pre_tool_hooks.extend(hooks);
         self
@@ -736,12 +736,13 @@ where
                 ));
             }
         }
-        if tool_calls.len() == 1 {
-            started_data.headline = started_data
-                .tool_calls
-                .first()
-                .and_then(|summary| summary.narration.clone());
-        }
+        started_data.headline = self.render_group_headline(
+            &context,
+            &tool_calls,
+            &tool_map,
+            ToolNarrationPhase::Started,
+            locale.as_deref(),
+        );
 
         // Emit act.started event (with display names from tool definitions)
         if let Err(e) = self
@@ -809,23 +810,13 @@ where
             act_span_id.clone(), // Same span_id as started
             Some(parent_span_id.clone()),
         );
-        let mut completed_headline = render_group_headline_with_locale(
+        let mut completed_headline = self.render_group_headline(
+            &context,
             &tool_calls,
-            &tool_definitions,
+            &tool_map,
             ToolNarrationPhase::Completed,
             locale.as_deref(),
         );
-        if tool_calls.len() == 1
-            && let Some(tool_call) = tool_calls.first()
-        {
-            completed_headline = Some(self.render_tool_narration(
-                &context,
-                tool_map.get(tool_call.name.as_str()).copied(),
-                tool_call,
-                ToolNarrationPhase::Completed,
-                locale.as_deref(),
-            ));
-        }
         if error_count > 0 {
             let suffix = crate::localization::format_error_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
@@ -921,6 +912,47 @@ where
             }
         }
         render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
+    }
+
+    fn render_group_headline(
+        &self,
+        atom_context: &AtomContext,
+        tool_calls: &[ToolCall],
+        tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_calls.is_empty() {
+            return None;
+        }
+        if let [tool_call] = tool_calls {
+            return Some(self.render_tool_narration(
+                atom_context,
+                tool_map.get(tool_call.name.as_str()).copied(),
+                tool_call,
+                phase,
+                locale,
+            ));
+        }
+
+        let actions = tool_calls
+            .iter()
+            .map(|tool_call| {
+                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
+                let narration =
+                    self.render_tool_narration(atom_context, tool_def, tool_call, phase, locale);
+                let repeated_narration = self.render_tool_narration(
+                    atom_context,
+                    tool_def,
+                    &tool_call_for_group_summary(tool_call),
+                    phase,
+                    locale,
+                );
+                GroupHeadlineAction::new(tool_call, narration, repeated_narration)
+            })
+            .collect::<Vec<_>>();
+
+        Some(summarize_group_actions(&actions, locale))
     }
 
     /// Mirror the file-store wrapping applied during tool execution so
@@ -1488,6 +1520,17 @@ where
         tool_context.event_context = Some(event_context.clone());
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
+        // Cooperative cancellation for this call. The guard fires when this
+        // future is dropped — which is what a cancelled turn looks like from
+        // here — and also on normal return, so the contract a tool sees is
+        // simply "this call is over". Work the tool leaves running (a child
+        // process, a detached watcher) can hold a clone and die with the call
+        // instead of outliving it; dropping the future alone cannot tell it
+        // anything, because a dropped future is never polled again.
+        let call_cancellation = tokio_util::sync::CancellationToken::new();
+        tool_context.cancellation = Some(call_cancellation.clone());
+        let _cancel_on_call_end = call_cancellation.drop_guard();
+
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
 
         // Run pre-tool-use hooks (capability-contributed). They can mutate
@@ -1819,6 +1862,60 @@ mod tests {
         async fn execute(&self, arguments: serde_json::Value) -> crate::ToolExecutionResult {
             crate::ToolExecutionResult::success(arguments)
         }
+    }
+
+    #[test]
+    fn grouped_headline_uses_tool_owned_narration_for_repeated_actions() {
+        use crate::capabilities::{Capability, CapabilityNarrationHook, FileSystemCapability};
+
+        let capability: Arc<dyn Capability> = Arc::new(FileSystemCapability);
+        let tool_definitions = capability
+            .tools()
+            .into_iter()
+            .map(|tool| tool.to_definition())
+            .collect::<Vec<_>>();
+        let tool_map = tool_definitions
+            .iter()
+            .map(|tool_def| (tool_def.name(), tool_def))
+            .collect::<std::collections::HashMap<_, _>>();
+        let atom = ActAtom::new(ToolRegistry::new(), NoopEventEmitter)
+            .with_tool_call_hooks(vec![Arc::new(CapabilityNarrationHook(capability))]);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let tool_calls = vec![
+            ToolCall {
+                id: "grep-1".to_string(),
+                name: "grep_files".to_string(),
+                arguments: json!({ "pattern": "full_name" }),
+            },
+            ToolCall {
+                id: "grep-2".to_string(),
+                name: "grep_files".to_string(),
+                arguments: json!({ "pattern": "login" }),
+            },
+        ];
+
+        assert_eq!(
+            atom.render_group_headline(
+                &context,
+                &tool_calls,
+                &tool_map,
+                ToolNarrationPhase::Started,
+                None,
+            )
+            .as_deref(),
+            Some("Searching files twice")
+        );
+        assert_eq!(
+            atom.render_group_headline(
+                &context,
+                &tool_calls,
+                &tool_map,
+                ToolNarrationPhase::Completed,
+                None,
+            )
+            .as_deref(),
+            Some("Searched files twice")
+        );
     }
 
     struct UtilityLlmContextProbeTool;
@@ -2348,6 +2445,142 @@ mod tests {
             "independent tool should run concurrently with the class group (global_max={})",
             obs.global_max
         );
+    }
+
+    /// A tool that leaves work running past its own future: it hands the
+    /// call's cancellation token to a detached task and returns immediately.
+    /// That task is the thing a dropped future cannot reach.
+    struct DetachedWorkTool {
+        cancelled_tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    }
+
+    impl DetachedWorkTool {
+        fn new(cancelled_tx: tokio::sync::oneshot::Sender<()>) -> Self {
+            Self {
+                cancelled_tx: Arc::new(std::sync::Mutex::new(Some(cancelled_tx))),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::tools::Tool for DetachedWorkTool {
+        fn name(&self) -> &str {
+            "detached_work"
+        }
+
+        fn description(&self) -> &str {
+            "spawns work that outlives the call unless cancelled"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+
+        fn requires_context(&self) -> bool {
+            true
+        }
+
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::tool_error("requires context")
+        }
+
+        async fn execute_with_context(
+            &self,
+            _arguments: serde_json::Value,
+            context: &crate::traits::ToolContext,
+        ) -> crate::ToolExecutionResult {
+            let token = context
+                .cancellation
+                .clone()
+                .expect("act must supply a cancellation token");
+            assert!(!token.is_cancelled(), "token is live during the call");
+            let tx = self.cancelled_tx.clone();
+            tokio::spawn(async move {
+                token.cancelled().await;
+                if let Ok(mut guard) = tx.lock()
+                    && let Some(tx) = guard.take()
+                {
+                    let _ = tx.send(());
+                }
+            });
+            crate::ToolExecutionResult::success(json!({ "spawned": true }))
+        }
+    }
+
+    /// Work a tool leaves running must learn that its call ended. Dropping the
+    /// act future cannot tell it — a dropped future is never polled again — so
+    /// the token on `ToolContext` is the only signal that reaches it.
+    #[tokio::test]
+    async fn test_act_atom_cancels_detached_tool_work_when_the_call_ends() {
+        let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+
+        let mut executor = ToolRegistry::new();
+        executor.register(DetachedWorkTool::new(cancelled_tx));
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "detached_work".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![recording_tool_def("detached_work", None, false)],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        atom.execute(input).await.expect("act should succeed");
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), cancelled_rx)
+            .await
+            .expect("detached work should be cancelled once the call ends")
+            .expect("cancellation signal should be sent");
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_cancels_detached_tool_work_when_the_turn_is_cancelled() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+
+        let mut executor = ToolRegistry::new();
+        executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "cancellation_probe".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![recording_tool_def("cancellation_probe", None, true)],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let act_task = tokio::spawn(async move { atom.execute(input).await });
+        started.notified().await;
+        act_task.abort();
+        assert!(act_task.await.unwrap_err().is_cancelled());
+
+        // The existing abort path still holds: the tool future itself is dropped.
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("tool future should be dropped when the turn is cancelled")
+            .expect("drop signal should be sent");
     }
 
     #[tokio::test]

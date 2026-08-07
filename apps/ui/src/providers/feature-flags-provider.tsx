@@ -23,6 +23,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   observers: false,
   public_chat: false,
   mcp_endpoint: false,
+  webmcp: false,
 };
 
 export interface FeatureFlagsContextValue {

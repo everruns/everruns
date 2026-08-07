@@ -892,3 +892,104 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
         "safety net must keep the same harness row identity (idempotent upsert)"
     );
 }
+
+// ============================================
+// Org cookie persistence across login/refresh
+// ============================================
+
+// Helper: ensure default-org membership for the user (the mini auth router
+// harness does not run the full register provisioning), then hit /v1/auth/me
+// (which sets the org cookie when missing) and return the minted org id.
+async fn fetch_org_cookie(router: &Router, db: &Arc<StorageBackend>, access_token: &str) -> String {
+    let (status, body, _cookies) = send(
+        router,
+        "GET",
+        "/v1/auth/me",
+        None,
+        Some(&format!("access_token={access_token}")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "/v1/auth/me failed: {body}");
+    let user_id = uuid::Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+    db.add_organization_member(everruns_core::DEFAULT_ORG_ID, user_id, "member")
+        .await
+        .expect("add_organization_member failed");
+
+    let (status, body, cookies) = send(
+        router,
+        "GET",
+        "/v1/auth/me",
+        None,
+        Some(&format!("access_token={access_token}")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "/v1/auth/me failed: {body}");
+    extract_cookie_value(&cookies, "everruns_org")
+        .unwrap_or_else(|| panic!("/v1/auth/me must set the org cookie, body: {body}"))
+}
+
+// The `everruns_org` cookie must not be re-minted to the user's first org on
+// every token mint: `generate_token_response` runs on login AND on each silent
+// refresh (~every access-token lifetime), so unconditional re-minting silently
+// reset the selected organization back to the first (alphabetical) org.
+#[tokio::test]
+async fn test_refresh_preserves_valid_org_cookie() {
+    let (router, db) = auth_router().await;
+    let (access_token, refresh_token, _cookies) =
+        register_user(&router, "orgkeep@example.com", "correct-horse-battery-9").await;
+    let org_id = fetch_org_cookie(&router, &db, &access_token).await;
+
+    let (status, _body, cookies) = send(
+        &router,
+        "POST",
+        "/v1/auth/refresh",
+        None,
+        Some(&format!(
+            "refresh_token={refresh_token}; everruns_org={org_id}"
+        )),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        extract_cookie_value(&cookies, "everruns_org").is_none(),
+        "refresh must not re-mint a still-valid org selection, got: {cookies:?}"
+    );
+}
+
+// An org cookie that no longer maps to one of the user's organizations must be
+// replaced with a valid one, and the replacement must be persistent (Max-Age)
+// so the selection survives a browser restart.
+#[tokio::test]
+async fn test_refresh_replaces_invalid_org_cookie_with_persistent_one() {
+    let (router, db) = auth_router().await;
+    let (access_token, refresh_token, _cookies) =
+        register_user(&router, "orgreset@example.com", "correct-horse-battery-9").await;
+    let valid_org = fetch_org_cookie(&router, &db, &access_token).await;
+
+    let (status, _body, cookies) = send(
+        &router,
+        "POST",
+        "/v1/auth/refresh",
+        None,
+        Some(&format!(
+            "refresh_token={refresh_token}; everruns_org=org_00000000000000000000000000009999"
+        )),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        extract_cookie_value(&cookies, "everruns_org").as_deref(),
+        Some(valid_org.as_str()),
+        "an org cookie outside the user's memberships must be replaced"
+    );
+    let org_header = cookies
+        .iter()
+        .find(|h| h.starts_with("everruns_org="))
+        .unwrap();
+    assert!(
+        org_header.contains("Max-Age="),
+        "org cookie must persist across browser restarts, got: {org_header}"
+    );
+}

@@ -754,7 +754,7 @@ pub struct StartupInfo {
     /// How many events were replayed from disk into the new session.
     /// Zero for fresh sessions; used by the startup banner.
     pub replayed_events: usize,
-    /// Names of scoped MCP servers configured from `.mcp.json` (specs/runtime-mcp.md D8).
+    /// Names of scoped MCP servers configured from `.mcp.json` (knowledge/integrations/runtime-mcp.md D8).
     pub mcp_server_names: Vec<String>,
 }
 

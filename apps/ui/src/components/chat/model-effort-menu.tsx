@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { cn } from "@/lib/utils";
+import { isChatModel } from "@/lib/model-capabilities";
 import type { Model, ReasoningEffortConfig, VerbosityConfig } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -89,7 +90,7 @@ export function ModelEffortMenu({
 }: ModelEffortMenuProps) {
   const { t } = useLocale();
 
-  const enabledModels = models.filter((model) => model.enabled);
+  const enabledModels = models.filter((model) => model.enabled && isChatModel(model));
   const recentIds = new Set(recentModels.map((model) => model.id));
 
   // Effective effort name for the trigger: the explicit override, or the model's default.
@@ -117,7 +118,7 @@ export function ModelEffortMenu({
         aria-label={t("model")}
       >
         <Zap className="size-3.5 text-muted-foreground" />
-        <span className="max-w-[140px] truncate font-medium">{modelTriggerLabel}</span>
+        <span className="font-medium">{modelTriggerLabel}</span>
         {supportsReasoning && <span className="text-muted-foreground">{effortSummary}</span>}
         <ChevronDown className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>

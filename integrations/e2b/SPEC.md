@@ -67,7 +67,7 @@ Executes a shell command in a sandbox using E2B's process service.
   - `cwd` (optional)
   - `timeout_ms` (optional)
 - **Returns**: `{ sandbox_id, cwd, stdout, stderr, exit_code, success, truncated, total_lines, error }`
-- **Human representation**: Follows the shared exec-tool contract in `specs/tool-execution.md`. Command text is primary; sandbox metadata is secondary.
+- **Human representation**: Follows the shared exec-tool contract in `knowledge/execution/tool-execution.md`. Command text is primary; sandbox metadata is secondary.
 
 ### e2b_read_file
 
@@ -146,6 +146,6 @@ Covers capability metadata, plugin registration, state serialization, and HTTP r
 E2B_API_KEY=<key> cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test
 ```
 
-Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. The live test reads `E2B_API_KEY` directly from the environment (bypassing the connection provider), so you set the env var when running tests locally. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `specs/integrations.md`).
+Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. The live test reads `E2B_API_KEY` directly from the environment (bypassing the connection provider), so you set the env var when running tests locally. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `knowledge/integrations/integrations.md`).
 
 CI keeps E2B live coverage off `pull_request`: `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/e2b/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand to catch shared regressions that path filters miss.

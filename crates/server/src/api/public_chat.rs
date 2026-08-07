@@ -5,7 +5,7 @@
 // but mounts its own routes, its own rate-limiter namespace, and its own
 // bot-mitigation gate (Cloudflare Turnstile). Session routing tags are scoped
 // with a `public_chat:` prefix so a thread ID can never collide with AG-UI or
-// another app/channel (TM-TENANT-009). See `specs/public-chat.md`.
+// another app/channel (TM-TENANT-009). See `knowledge/integrations/public-chat.md`.
 //
 // Design Decision: Anonymous visitors must pass a Turnstile challenge before a
 // session is created or any turn runs. Visitors authenticated via the channel's

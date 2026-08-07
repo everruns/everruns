@@ -5,7 +5,7 @@
 // follow a direct link to a resource owned by a different (but still member)
 // org. The API keeps returning 404 for cross-org access — only the UI calls
 // the gated /v1/resolve-org endpoint to recover. See
-// specs/multitenancy.md (Cross-Org Resource Resolution).
+// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
 //
 // Adding a new top entity: implement a storage method
 // `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>` and
@@ -82,7 +82,7 @@ pub async fn resolve_resource_org(db: &StorageBackend, id: &str) -> Result<Optio
 /// returns `None` for any failure mode (unknown id, unknown prefix, empty
 /// id, non-member, vanished org row) so callers cannot distinguish them —
 /// preserving the org-enumeration guarantee documented in
-/// specs/multitenancy.md (THREAT[TM-TENANT-010]).
+/// knowledge/security/multitenancy.md (THREAT[TM-TENANT-010]).
 ///
 /// Returns `(org_public_id, org_name)` on success, `None` otherwise.
 /// Used by both `GET /v1/resolve-org` and the `resolve_org` domain command.

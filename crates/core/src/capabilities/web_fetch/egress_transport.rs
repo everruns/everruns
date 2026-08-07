@@ -1,6 +1,6 @@
 //! Egress-backed HTTP transport for the `web_fetch` capability.
 //!
-//! Implements `specs/egress.md` migration step 3 via fetchkit's transport
+//! Implements `knowledge/operations/egress.md` migration step 3 via fetchkit's transport
 //! injection (fetchkit >= 0.4): [`EgressHttpTransport`] implements
 //! `fetchkit::HttpTransport` over the host `EgressService`, so fetchkit keeps
 //! its entire pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, ...),
@@ -8,7 +8,7 @@
 //! manual per-hop redirect validation, body caps, bot-auth signing, HTML
 //! conversion, and file saving — while every HTTP hop crosses the egress
 //! boundary, where the per-request `NetworkAccessList` and the deployment-wide
-//! system allowlist are enforced (`specs/system-allowlist.md`).
+//! system allowlist are enforced (`knowledge/operations/system-allowlist.md`).
 //!
 //! fetchkit issues one transport call per redirect hop, so egress policy
 //! applies to redirect targets too (TM-SSRF-010 stays in fetchkit; the egress
@@ -32,7 +32,7 @@ pub(crate) struct EgressHttpTransport {
     egress: Arc<dyn EgressService>,
     /// Merged harness/agent/session access list, enforced at the egress
     /// boundary for every hop — the final enforcement point per
-    /// `specs/egress.md`. `web_fetch` pre-checks the initial URL itself for
+    /// `knowledge/operations/egress.md`. `web_fetch` pre-checks the initial URL itself for
     /// clearer user-facing errors.
     network_access: Option<NetworkAccessList>,
 }
@@ -62,7 +62,7 @@ impl HttpTransport for EgressHttpTransport {
                 // fetchkit signs bot-auth headers before handing the hop to
                 // the transport (re-signed per hop); platform-default signing
                 // remains available for a future platform signer
-                // (specs/egress.md).
+                // (knowledge/operations/egress.md).
                 .signing(EgressSigning::PlatformDefault)
                 .network_access(self.network_access.clone())
                 .pinned_addrs(host, req.pinned_addrs);

@@ -55,6 +55,12 @@ pub struct LlmSimConfig {
     /// in `LlmCallConfig`, in call order. Tests use this to assert that a
     /// mid-turn effort change is observed by subsequent LLM steps.
     pub effort_capture: Option<Arc<std::sync::Mutex<Vec<Option<String>>>>>,
+    /// Optional capture sink for the provider-visible messages of each call.
+    /// When set, every `chat_completion_stream` call appends the exact
+    /// `LlmMessage` slice it received, in call order. Tests use this to assert
+    /// which messages actually reach the provider after context assembly and
+    /// message filtering (e.g. Infinity Context history trimming).
+    pub message_capture: Option<Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>>,
 }
 
 impl Default for LlmSimConfig {
@@ -67,6 +73,7 @@ impl Default for LlmSimConfig {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         }
     }
 }
@@ -171,6 +178,17 @@ impl LlmSimConfig {
         self
     }
 
+    /// Set a shared capture sink for the provider-visible messages of each call.
+    /// Every `chat_completion_stream` call appends the exact `LlmMessage` slice
+    /// it received, in call order.
+    pub fn with_message_capture(
+        mut self,
+        capture: Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>,
+    ) -> Self {
+        self.message_capture = Some(capture);
+        self
+    }
+
     /// Create a new config that returns an error (for testing error handling)
     pub fn error(message: impl Into<String>) -> Self {
         Self {
@@ -226,6 +244,8 @@ pub enum SimTurn {
     },
     /// Simulate an API/transport error on this turn.
     Error(SimError),
+    /// Return a stream that never produces an event.
+    StreamStall,
 }
 
 /// A single tool call inside a scripted turn.
@@ -241,25 +261,50 @@ pub struct SimToolCall {
 pub enum SimError {
     RateLimit,
     Timeout,
+    Transport,
+    Overloaded,
+    Authentication,
+    QuotaExhausted,
+    UnsupportedModel(String),
     InvalidResponse(String),
     Other(String),
 }
 
 impl SimError {
-    fn status_code(&self) -> u16 {
-        match self {
-            SimError::RateLimit => 429,
-            SimError::Timeout => 504,
-            SimError::InvalidResponse(_) => 400,
-            SimError::Other(_) => 500,
-        }
-    }
-
     fn message(&self) -> String {
         match self {
             SimError::RateLimit => "Rate limit exceeded. Please retry after some time.".to_string(),
             SimError::Timeout => "Request timed out".to_string(),
+            SimError::Transport => "Transport connection failed".to_string(),
+            SimError::Overloaded => "Provider overloaded".to_string(),
+            SimError::Authentication => "Invalid provider credentials".to_string(),
+            SimError::QuotaExhausted => "Provider quota exhausted".to_string(),
+            SimError::UnsupportedModel(model) => format!("Model not available: {model}"),
             SimError::InvalidResponse(message) | SimError::Other(message) => message.clone(),
+        }
+    }
+
+    fn agent_error(&self) -> AgentLoopError {
+        use crate::error::LlmErrorKind;
+
+        match self {
+            SimError::RateLimit => {
+                AgentLoopError::llm_kind(LlmErrorKind::RateLimited, self.message())
+            }
+            SimError::Timeout | SimError::Transport | SimError::Overloaded => {
+                AgentLoopError::llm_kind(LlmErrorKind::Unavailable, self.message())
+            }
+            SimError::Other(_) => AgentLoopError::llm_kind(LlmErrorKind::Other, self.message()),
+            SimError::Authentication => {
+                AgentLoopError::llm_kind(LlmErrorKind::Authentication, self.message())
+            }
+            SimError::QuotaExhausted => {
+                AgentLoopError::llm_kind(LlmErrorKind::QuotaExhausted, self.message())
+            }
+            SimError::UnsupportedModel(model) => AgentLoopError::model_not_available(model),
+            SimError::InvalidResponse(_) => {
+                AgentLoopError::llm_kind(LlmErrorKind::InvalidRequest, self.message())
+            }
         }
     }
 }
@@ -375,6 +420,7 @@ pub struct LlmSimDriver {
 struct GeneratedTurn {
     text: String,
     tool_calls: Option<Vec<ToolCall>>,
+    stream_stall: bool,
 }
 
 impl LlmSimDriver {
@@ -498,6 +544,7 @@ impl LlmSimDriver {
         Ok(GeneratedTurn {
             text: self.generate_response(messages),
             tool_calls: self.get_tool_calls(messages),
+            stream_stall: false,
         })
     }
 
@@ -529,20 +576,24 @@ impl LlmSimDriver {
             SimTurn::Assistant(text) => Ok(GeneratedTurn {
                 text,
                 tool_calls: None,
+                stream_stall: false,
             }),
             SimTurn::ToolCalls(calls) => Ok(GeneratedTurn {
                 text: String::new(),
                 tool_calls: materialize_scripted_tool_calls(turn_index, calls),
+                stream_stall: false,
             }),
             SimTurn::Mixed { text, tool_calls } => Ok(GeneratedTurn {
                 text,
                 tool_calls: materialize_scripted_tool_calls(turn_index, tool_calls),
+                stream_stall: false,
             }),
-            SimTurn::Error(error) => Err(AgentLoopError::llm(format!(
-                "LlmSim scripted error ({}): {}",
-                error.status_code(),
-                error.message()
-            ))),
+            SimTurn::Error(error) => Err(error.agent_error()),
+            SimTurn::StreamStall => Ok(GeneratedTurn {
+                text: String::new(),
+                tool_calls: None,
+                stream_stall: true,
+            }),
         }
     }
 
@@ -622,6 +673,14 @@ impl ChatDriver for LlmSimDriver {
             efforts.push(config.reasoning_effort.clone());
         }
 
+        // Record the provider-visible messages for tests. Captured before any
+        // error short-circuit so even error turns are observable.
+        if let Some(capture) = &self.config.message_capture
+            && let Ok(mut calls) = capture.lock()
+        {
+            calls.push(messages.clone());
+        }
+
         // Check for error configs first
         if let ResponseConfig::Error(error_msg) = &self.config.response {
             return Err(anyhow::anyhow!("LLM error: {}", error_msg).into());
@@ -643,6 +702,9 @@ impl ChatDriver for LlmSimDriver {
         }
 
         let generated_turn = self.generate_turn(&messages)?;
+        if generated_turn.stream_stall {
+            return Ok(Box::pin(futures::stream::pending()));
+        }
         let response_text = generated_turn.text;
         let tool_calls = generated_turn.tool_calls;
         let model_name = config.model.clone();
@@ -1373,6 +1435,7 @@ mod tests {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -1472,6 +1535,7 @@ mod tests {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);

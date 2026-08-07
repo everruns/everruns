@@ -9,7 +9,7 @@
 // resolves by tool prefix. The existing user-connections OAuth flow
 // (authorize/callback, token storage, providers listing) works against the
 // anchor unchanged; the compiled scoped server carries the anchor's provider
-// id. Spec: specs/plugins.md.
+// id. Spec: knowledge/integrations/plugins.md.
 //
 // Security: the provider id is always assigned here, server-side, from a row
 // this module created. Plugin content can only mark a server as OAuth — it

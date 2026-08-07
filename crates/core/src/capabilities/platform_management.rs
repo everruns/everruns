@@ -86,7 +86,7 @@ fn populate_tree(tree: &mut VirtualFileTree, dir: &Dir, prefix: &str) {
 
 /// Lazily-initialized shared tree (built once on first access).
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-fn docs_tree() -> Arc<VirtualFileTree> {
+pub(super) fn docs_tree() -> Arc<VirtualFileTree> {
     use std::sync::OnceLock;
     static TREE: OnceLock<Arc<VirtualFileTree>> = OnceLock::new();
     TREE.get_or_init(|| Arc::new(dir_to_tree(&DOCS_DIR, "/docs")))

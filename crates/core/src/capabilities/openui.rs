@@ -8,7 +8,7 @@
 //! parser and @openuidev/react-ui component library.
 //!
 //! Ref: https://github.com/thesysdev/openui
-//! Ref: specs/openui.md
+//! Ref: knowledge/ui/openui.md
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 

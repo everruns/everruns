@@ -2,7 +2,7 @@
 //
 // Declarative description of the credential fields an integration needs,
 // rendered by the Settings UI and validated before saving. Shared by two
-// front doors (see specs/providers.md "Credentials"):
+// front doors (see knowledge/foundations/providers.md "Credentials"):
 //
 // - Provider drivers (`DriverDescriptor::credential_schema`) — org-scoped
 //   vendor accounts that power agent execution.

@@ -17,6 +17,6 @@ count. In hosts that ignore embedded resources, surface the summary line.
 
 If the agent reference cannot be resolved, fall back to `query` with
 `list_agents` to find the right ID, then retry. See the `everruns`
-skill for details and `specs/mcp-cards.md` for the card standard.
+skill for details and `knowledge/ui/mcp-cards.md` for the card standard.
 
 Arguments: `$ARGUMENTS`

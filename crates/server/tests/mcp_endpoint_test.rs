@@ -397,7 +397,7 @@ async fn test_mcp_tools_list() {
     assert!(names.contains(&"discover"), "Missing discover");
     assert!(names.contains(&"query"), "Missing query");
     assert!(names.contains(&"execute"), "Missing execute");
-    // Card tools (specs/mcp-cards.md) only exposed under 2025-06-18.
+    // Card tools (knowledge/ui/mcp-cards.md) only exposed under 2025-06-18.
     assert!(names.contains(&"agent_get_card"), "Missing agent_get_card");
 
     // Verify each tool has inputSchema
@@ -506,7 +506,7 @@ async fn test_mcp_tools_list_fallback_omits_2025_06_fields() {
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
 
     // Card tools require 2025-06-18 features and must not be advertised
-    // under the fallback protocol. See specs/mcp-cards.md.
+    // under the fallback protocol. See knowledge/ui/mcp-cards.md.
     let card_names: Vec<&str> = tools
         .iter()
         .filter_map(|t| t["name"].as_str())
@@ -3385,6 +3385,31 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
+/// The consent page must carry its own CSP whose `form-action` allows the
+/// client's redirect origin. Chrome checks `form-action` against every hop of
+/// the form-submission redirect chain, so the global `form-action 'self'`
+/// policy silently blocks the 302 to the client callback (e.g. a native
+/// client's `http://localhost:<port>/callback`) — the click appears to do
+/// nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
+    let server = TestServer::in_memory().await;
+    let (client_id, _) = register_oauth_client(&server).await;
+
+    let page = server.get(&authorize_query_string(&client_id)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+
+    let csp = page
+        .headers()
+        .get("content-security-policy")
+        .and_then(|v| v.to_str().ok())
+        .expect("consent page must set its own content-security-policy");
+    assert!(
+        csp.contains("form-action 'self' http://localhost:9999"),
+        "form-action must allow the validated redirect origin, got: {csp}"
+    );
+}
+
 /// A forged/garbage consent token must be rejected — the anti-CSRF guarantee
 /// must survive moving from a cookie to a signed session-bound token.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3570,7 +3595,9 @@ async fn test_mcp_agent_run_no_task_handle_without_opt_in() {
     )
     .await;
 
-    assert!(resp["result"].get("resultType").is_none());
+    // 2026 marks every result's type, so the absence of a task shows up as
+    // `complete` rather than a missing field.
+    assert_eq!(resp["result"]["resultType"], "complete");
     assert!(resp["result"].get("taskId").is_none());
 }
 
@@ -3929,4 +3956,69 @@ async fn test_mcp_tasks_get_missing_task_id() {
     )
     .await;
     assert_eq!(resp["error"]["code"], -32602, "expected invalid params");
+}
+
+// ===========================================================================
+// 2026-07-28 cacheable results (`resultType` / `ttlMs` / `cacheScope`)
+// ===========================================================================
+
+/// `tools/list` is identical for every caller, so it is cacheable and public.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tools_list_carries_public_caching_hints_for_2026() {
+    let server = TestServer::new().await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/list",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert_eq!(resp["result"]["resultType"], "complete");
+    assert_eq!(resp["result"]["cacheScope"], "public");
+    let ttl = resp["result"]["ttlMs"]
+        .as_i64()
+        .expect("ttlMs must be an integer");
+    assert!(ttl >= 0, "ttlMs must be non-negative, got {ttl}");
+}
+
+/// `resources/read` returns org-scoped data, so it must never be marked public.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_resources_read_is_private_for_2026() {
+    let server = TestServer::new().await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "resources/read",
+        json!({ "uri": "everruns://agents" }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert_eq!(resp["result"]["resultType"], "complete");
+    assert_eq!(
+        resp["result"]["cacheScope"], "private",
+        "org-scoped payloads must not be shareable across authorization contexts"
+    );
+    assert!(resp["result"]["ttlMs"].as_i64().is_some());
+}
+
+/// 2025-era clients see the era they negotiated — no 2026 result metadata.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tools_list_omits_caching_hints_for_2025() {
+    let server = TestServer::new().await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/list",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await;
+
+    assert!(resp["result"]["tools"].is_array());
+    assert!(resp["result"].get("ttlMs").is_none());
+    assert!(resp["result"].get("cacheScope").is_none());
+    assert!(resp["result"].get("resultType").is_none());
 }

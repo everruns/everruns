@@ -2,7 +2,7 @@
 //
 // Exposes the session task registry — background work owned by a session
 // (subagents, external agent runs, background tools). See
-// specs/session-tasks.md.
+// knowledge/runtime-resources/session-tasks.md.
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
