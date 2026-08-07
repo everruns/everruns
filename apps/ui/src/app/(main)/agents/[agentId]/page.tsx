@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useCallback, useState } from "react";
+import { use, useMemo, useCallback, useRef, useState } from "react";
 import {
   useAgent,
   useSessions,
@@ -73,6 +73,9 @@ import {
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
+import { useWebMcp } from "@/providers/webmcp-context";
+import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {
@@ -99,6 +102,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const createSession = useCreateSession();
+  const webmcp = useWebMcp();
+  // THREAT[TM-WEB-017]: reject concurrent non-idempotent browser-agent mutations.
+  const webMcpSessionPendingRef = useRef(false);
   const exportAgent = useExportAgent();
   const copyAgent = useCopyAgent();
 
@@ -112,18 +118,74 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;
   const agentTags = normalizeTags(agent?.tags);
 
-  const handleNewSession = async () => {
-    try {
+  const createAgentSession = useCallback(
+    async (title?: string) => {
       // Agent-first: omit the harness so the server derives it from the agent's
       // own harness (falling back to the org default only when the agent has none).
       const session = await createSession.mutateAsync({
-        request: { agent_id: agentId },
+        request: { agent_id: agentId, ...(title ? { title } : {}) },
       });
       router.push(`/sessions/${session.id}`);
+      return session;
+    },
+    [agentId, createSession, router],
+  );
+
+  const handleNewSession = async () => {
+    try {
+      await createAgentSession();
     } catch (error) {
       console.error("Failed to create session:", error);
     }
   };
+
+  const startSessionTool = useMemo<WebMcpToolDefinition>(
+    () => ({
+      name: "everruns_start_session",
+      description: "Create and open a session for the agent displayed on this Everruns page.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Optional session title." },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+      execute: async (input) => {
+        webmcp.assertBinding(webmcp.bindingToken);
+        if (!agent || agent.id !== agentId || agent.status !== "active") {
+          throw new DOMException("The bound agent is no longer active", "AbortError");
+        }
+        if (webMcpSessionPendingRef.current || createSession.isPending) {
+          throw new Error("A session is already being created");
+        }
+        const rawTitle = input.title;
+        if (rawTitle !== undefined && typeof rawTitle !== "string") {
+          throw new TypeError("title must be a string");
+        }
+        const title = typeof rawTitle === "string" ? rawTitle.trim().slice(0, 200) : undefined;
+        await webmcp.requestApproval({
+          title: "Start an agent session?",
+          description: `Create a new session for ${getDisplayName(agent)}${title ? ` titled “${title}”` : ""}. This may lead to billable model usage when a message is sent.`,
+          confirmLabel: "Create session",
+        });
+        webmcp.assertBinding(webmcp.bindingToken);
+        webMcpSessionPendingRef.current = true;
+        try {
+          const session = await createAgentSession(title || undefined);
+          return { created: true, session_id: session.id, path: `/sessions/${session.id}` };
+        } finally {
+          webMcpSessionPendingRef.current = false;
+        }
+      },
+    }),
+    [agent, agentId, createAgentSession, createSession.isPending, webmcp],
+  );
+
+  useWebMcpTool(startSessionTool, {
+    enabled: agent?.status === "active",
+    scopeKey: agent?.id,
+  });
 
   const handleExport = useCallback(async () => {
     if (!agent) return;

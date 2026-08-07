@@ -32,9 +32,15 @@ export default async function RootLayout({
 }>) {
   const cookieStore = await cookies();
   const initialOrgId = cookieStore.get("everruns_org")?.value ?? null;
+  const webMcpOriginTrialToken = process.env.WEBMCP_ORIGIN_TRIAL_TOKEN?.trim();
 
   return (
     <html lang="en" className={caveat.variable}>
+      {webMcpOriginTrialToken ? (
+        <head>
+          <meta httpEquiv="origin-trial" content={webMcpOriginTrialToken} />
+        </head>
+      ) : null}
       <body className="font-sans antialiased bg-brand-dots">
         <LocaleProvider>
           <QueryProvider>
