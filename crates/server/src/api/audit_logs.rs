@@ -4,7 +4,7 @@
 // Audit logs are append-only — no mutation endpoints exposed.
 //
 // Business logic lives in `crate::domains::audit_logs`; this file only
-// binds HTTP params to the `ListAuditLogs` command. See specs/domains.md.
+// binds HTTP params to the `ListAuditLogs` command. See knowledge/foundations/domains.md.
 
 use crate::auth::middleware::{AuthState, ResolvedOrg};
 use crate::domains::audit_logs::{AuditLogEntry, ListAuditLogs};

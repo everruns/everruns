@@ -10,7 +10,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useAgent, useSession, useEvents, useModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } from "@/hooks";
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
@@ -61,6 +61,7 @@ export interface SessionContextValue {
   toolOutputMap: Map<string, ToolOutputStreams>;
   // Loading states
   sessionLoading: boolean;
+  llmModelLoading: boolean;
   eventsLoading: boolean;
   // Derived states (updated via SSE)
   effectiveStatus: SessionStatus | undefined;
@@ -222,8 +223,11 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     },
   });
 
-  // Fetch LLM model info if session has a model_id
-  const { data: llmModel } = useModel(session?.model_id ?? "");
+  // The server owns model precedence; the UI resolves only the returned model resource.
+  const { data: resolvedModel, isLoading: resolvedModelLoading } =
+    useSessionResolvedModel(sessionId);
+  const { data: llmModel, isLoading: modelLoading } = useModel(resolvedModel?.model_id ?? "");
+  const llmModelLoading = resolvedModelLoading || modelLoading;
 
   // Fetch events using paginated REST + SSE for real-time streaming
   const {
@@ -696,6 +700,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     toolProgressMap,
     toolOutputMap,
     sessionLoading,
+    llmModelLoading,
     eventsLoading,
     effectiveStatus,
     liveUsage,

@@ -5,11 +5,11 @@
 //! - File download (`save_to_file`) auto-enabled when `session_file_system` is a sibling
 //! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via server-wide env vars
 //! - Binary content accepted for file downloads, rejected for inline responses
-//! - See specs/fetchkit.md for design details
+//! - See knowledge/execution/fetchkit.md for design details
 //!
 //! Trust boundary (TM-AGENT-013, TM-AGENT-018, TM-API-008):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `web_fetch`
+//!   (`knowledge/execution/capabilities.md`, `knowledge/security/permissions.md`), assigning `web_fetch`
 //!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
 //!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
 //!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
@@ -422,7 +422,7 @@ pub struct WebFetchTool {
     /// boundary independently re-enforces it (final enforcement point, every
     /// hop); on the direct path this pre-flight is the only enforcement.
     /// `None` = no global enforcement. See `crate::system_allowlist` and
-    /// `specs/system-allowlist.md`.
+    /// `knowledge/operations/system-allowlist.md`.
     system_allowlist: Option<Arc<crate::system_allowlist::SystemAllowlist>>,
 }
 
@@ -657,7 +657,7 @@ impl Tool for WebFetchTool {
             ));
         }
 
-        // Egress-backed path (specs/egress.md migration step 3): when the host
+        // Egress-backed path (knowledge/operations/egress.md migration step 3): when the host
         // provides an egress service, inject it as fetchkit's HTTP transport.
         // fetchkit keeps the whole pipeline (specialized fetchers, DNS policy,
         // per-hop redirect validation, bot-auth signing, body caps); every
@@ -2403,7 +2403,7 @@ mod tests {
     }
 
     // ========================================================================
-    // Egress-backed path (specs/egress.md migration step 3)
+    // Egress-backed path (knowledge/operations/egress.md migration step 3)
     //
     // URLs use public IP literals so `validate_url_dns_pinned` passes without
     // DNS; the egress mock never performs real network I/O.

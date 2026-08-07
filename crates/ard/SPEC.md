@@ -124,7 +124,7 @@ Attachments are torn down with the session (KV + registry are session-scoped).
 ## Security Review
 
 Relevant threat categories: `TM-API`, `TM-TOOL`, `TM-AGENT`, `TM-DOS` (see
-`specs/threat-model.md`).
+`knowledge/security/threat-model.md`).
 
 - **Registry allowlist** — model chooses a configured `registry_id`; no
   model-supplied registry URLs.

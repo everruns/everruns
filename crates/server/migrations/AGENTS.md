@@ -1,6 +1,6 @@
 ## Migrations
 
-See [`specs/migrations.md`](../../../specs/migrations.md) for the full specification.
+See [`knowledge/operations/migrations.md`](../../../knowledge/operations/migrations.md) for the full specification.
 
 Key rules:
 

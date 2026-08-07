@@ -152,7 +152,7 @@
           "agents"
         ],
         "summary": "POST /v1/agents/analyze - Run advisory checks against an agent shape",
-        "description": "Runs built-in rules plus on-demand LLM analysis (specs/agent-checks.md)\nand returns merged advisory findings. Requires the system utility LLM\nservice to be configured.",
+        "description": "Runs built-in rules plus on-demand LLM analysis (knowledge/evaluation/agent-checks.md)\nand returns merged advisory findings. Requires the system utility LLM\nservice to be configured.",
         "operationId": "analyze_agent",
         "requestBody": {
           "content": {
@@ -6713,7 +6713,7 @@
         "tags": [
           "knowledge_bases"
         ],
-        "description": "Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See specs/okf-adoption.md.",
+        "description": "Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See knowledge/runtime-resources/okf-adoption.md.",
         "operationId": "export_okf",
         "parameters": [
           {
@@ -6751,7 +6751,7 @@
         "tags": [
           "knowledge_bases"
         ],
-        "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See specs/okf-adoption.md.",
+        "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See knowledge/runtime-resources/okf-adoption.md.",
         "operationId": "import_okf",
         "parameters": [
           {
@@ -11921,7 +11921,7 @@
           "sessions"
         ],
         "summary": "Export session messages as a JSONL file (default) or as an ATIF trajectory",
-        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `specs/atif-adoption.md`); image\ncontent parts are exported as ATIF multimodal ContentParts. When an image\ncannot be materialized (an inline image with neither a URL nor bytes) it is\nflattened to an `\"[image]\"` marker and the response carries an\n`X-Atif-Images-Omitted` header with that count (usually 0 and absent).\nDocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.\nThe response includes `Content-Disposition: attachment` for browser\ndownload.",
+        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `knowledge/evaluation/atif-adoption.md`); image\ncontent parts are exported as ATIF multimodal ContentParts. When an image\ncannot be materialized (an inline image with neither a URL nor bytes) it is\nflattened to an `\"[image]\"` marker and the response carries an\n`X-Atif-Images-Omitted` header with that count (usually 0 and absent).\nDocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.\nThe response includes `Content-Disposition: attachment` for browser\ndownload.",
         "operationId": "export_session_jsonl",
         "parameters": [
           {
@@ -12658,6 +12658,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/resolved-model": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model",
+        "operationId": "get_session_resolved_model",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved model for turns without a model override",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResolvedModelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/resources": {
       "get": {
         "tags": [
@@ -12831,7 +12872,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\\nid: <event_id>\\ndata: <json>\\n\\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. See `specs/api-streaming.md` for the SSE convention.",
+            "description": "Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\\nid: <event_id>\\ndata: <json>\\n\\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. See `knowledge/execution/api-streaming.md` for the SSE convention.",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -15758,7 +15799,7 @@
             "items": {
               "$ref": "#/components/schemas/Finding"
             },
-            "description": "Advisory findings, built-in and LLM-sourced (specs/agent-checks.md)"
+            "description": "Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md)"
           }
         }
       },
@@ -15807,7 +15848,7 @@
             "items": {
               "$ref": "#/components/schemas/Finding"
             },
-            "description": "Advisory findings from built-in checks (specs/agent-checks.md)"
+            "description": "Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md)"
           },
           "system_prompt": {
             "type": "string",
@@ -16104,7 +16145,7 @@
       },
       "AllowedAction": {
         "type": "object",
-        "description": "Agent-actionable link describing a follow-up the caller can take. Used in\ntwo contexts:\n\n* **Error recovery** — `ErrorResponse.allowed_actions` carries `rel`s like\n  `retry`, `retry-later`, `unarchive`, `get-existing` so the agent knows\n  the right next call after a 4xx/429.\n* **Entity hypermedia** — `WithUrls<T>.allowed_actions` carries state-aware\n  `rel`s like `cancel`, `events`, `self`, `update` on the entity itself\n  so the agent can follow links instead of reconstructing routes from\n  prose.\n\nThe shape is intentionally identical across both contexts; the closed\n`rel` vocabulary documented in `specs/api-conventions.md` distinguishes\nthem.",
+        "description": "Agent-actionable link describing a follow-up the caller can take. Used in\ntwo contexts:\n\n* **Error recovery** — `ErrorResponse.allowed_actions` carries `rel`s like\n  `retry`, `retry-later`, `unarchive`, `get-existing` so the agent knows\n  the right next call after a 4xx/429.\n* **Entity hypermedia** — `WithUrls<T>.allowed_actions` carries state-aware\n  `rel`s like `cancel`, `events`, `self`, `update` on the entity itself\n  so the agent can follow links instead of reconstructing routes from\n  prose.\n\nThe shape is intentionally identical across both contexts; the closed\n`rel` vocabulary documented in `knowledge/execution/api-conventions.md` distinguishes\nthem.",
         "required": [
           "rel"
         ],
@@ -16140,7 +16181,7 @@
           },
           "rel": {
             "type": "string",
-            "description": "Link relation describing the action. Closed vocabulary documented\nin `specs/api-conventions.md` — examples: `self`, `cancel`, `pause`,\n`resume`, `events`, `retry`, `retry-later`, `unarchive`,\n`get-existing`, `delete`, `update`."
+            "description": "Link relation describing the action. Closed vocabulary documented\nin `knowledge/execution/api-conventions.md` — examples: `self`, `cancel`, `pause`,\n`resume`, `events`, `retry`, `retry-later`, `unarchive`,\n`get-existing`, `delete`, `update`."
           },
           "schema_ref": {
             "type": [
@@ -21351,7 +21392,7 @@
       },
       "FindingSeverity": {
         "type": "string",
-        "description": "Advisory severity. There is deliberately no `error`: checks never gate\nsave/publish (specs/agent-checks.md, Non-Goals).",
+        "description": "Advisory severity. There is deliberately no `error`: checks never gate\nsave/publish (knowledge/evaluation/agent-checks.md, Non-Goals).",
         "enum": [
           "warning",
           "info",
@@ -21399,7 +21440,7 @@
       },
       "ForkSessionRequest": {
         "type": "object",
-        "description": "Request to fork a session (specs/forking-sessions.md). Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
+        "description": "Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
         "properties": {
           "agent_id": {
             "type": [
@@ -23353,6 +23394,7 @@
           "source_type",
           "source_config",
           "embedding_model_id",
+          "document_count",
           "status",
           "sync_status",
           "created_at",
@@ -23386,6 +23428,11 @@
               "null"
             ],
             "description": "Human-readable description. Safe to render in user-facing messages."
+          },
+          "document_count": {
+            "type": "integer",
+            "description": "Number of documents currently retained by this index.",
+            "minimum": 0
           },
           "embedding_model_id": {
             "type": "string",
@@ -23447,7 +23494,7 @@
       },
       "LatestHealthCheckRun": {
         "type": "object",
-        "description": "The most recent health-check run for an agent, paired with whether the\nagent's current resolved config differs from the config that run was\nexecuted against. Returned by the latest-run endpoint so the agent editor\ncan show prior results on mount without triggering a new run, and surface a\n\"config changed since last run\" hint. See specs/agent-checks.md and EVE-588.",
+        "description": "The most recent health-check run for an agent, paired with whether the\nagent's current resolved config differs from the config that run was\nexecuted against. Returned by the latest-run endpoint so the agent editor\ncan show prior results on mount without triggering a new run, and surface a\n\"config changed since last run\" hint. See knowledge/evaluation/agent-checks.md and EVE-588.",
         "required": [
           "config_changed"
         ],
@@ -24912,6 +24959,7 @@
                 "source_type",
                 "source_config",
                 "embedding_model_id",
+                "document_count",
                 "status",
                 "sync_status",
                 "created_at",
@@ -24945,6 +24993,11 @@
                     "null"
                   ],
                   "description": "Human-readable description. Safe to render in user-facing messages."
+                },
+                "document_count": {
+                  "type": "integer",
+                  "description": "Number of documents currently retained by this index.",
+                  "minimum": 0
                 },
                 "embedding_model_id": {
                   "type": "string",
@@ -27694,7 +27747,7 @@
       },
       "McpExecuteError": {
         "type": "object",
-        "description": "Typed structured-error envelope returned by Everruns' MCP `tools/call`\nexecute path. Serialized into the MCP `structuredContent` field on\nerror responses so the legacy `content[0].text` channel stays\nbackward-compatible; new SDKs prefer the typed envelope.\n\nSee `specs/mcp.md` for the error contract.",
+        "description": "Typed structured-error envelope returned by Everruns' MCP `tools/call`\nexecute path. Serialized into the MCP `structuredContent` field on\nerror responses so the legacy `content[0].text` channel stays\nbackward-compatible; new SDKs prefer the typed envelope.\n\nSee `knowledge/integrations/mcp.md` for the error contract.",
         "required": [
           "code",
           "message",
@@ -29268,7 +29321,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`Message.phase`. See `specs/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`Message.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },
@@ -29355,7 +29408,7 @@
               },
               {
                 "$ref": "#/components/schemas/ExecutionPhase",
-                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `Message.phase`. See `specs/events.md`."
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `Message.phase`. See `knowledge/execution/events.md`."
               }
             ]
           },
@@ -33505,6 +33558,13 @@
             "description": "Immutable agent version captured for an agent participant when known.",
             "example": "agentver_01933b5a00007000800000000000001"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name captured for this participant."
+          },
           "id": {
             "type": "string",
             "description": "Unique identifier for the participant row (format: part_{32-hex}).",
@@ -33573,6 +33633,18 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "SessionResolvedModelResponse": {
+        "type": "object",
+        "description": "The model the runtime will use when a turn has no per-message override.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -34823,7 +34895,7 @@
       },
       "TextAnnotation": {
         "type": "object",
-        "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time. See `specs/citations.md`.",
+        "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time. See `knowledge/runtime-resources/citations.md`.",
         "required": [
           "start",
           "end",
@@ -34885,7 +34957,7 @@
             "items": {
               "$ref": "#/components/schemas/TextAnnotation"
             },
-            "description": "Claim-level citations attached to spans of `text`.\n\nThe narrow render contract shared by all citation capabilities (see\n`specs/citations.md`). Empty for non-cited text, so the wire shape of\nexisting messages is unchanged."
+            "description": "Claim-level citations attached to spans of `text`.\n\nThe narrow render contract shared by all citation capabilities (see\n`knowledge/runtime-resources/citations.md`). Empty for non-cited text, so the wire shape of\nexisting messages is unchanged."
           },
           "text": {
             "type": "string"

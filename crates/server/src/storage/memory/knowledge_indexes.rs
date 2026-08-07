@@ -1,10 +1,11 @@
 // In-memory storage: Knowledge Index + Document CRUD.
-// See specs/knowledge-indexes.md.
+// See knowledge/runtime-resources/knowledge-indexes.md.
 
 use super::super::models::*;
 use super::{InMemoryDatabase, matches_search_tokens};
 use anyhow::{Result, bail};
 use chrono::{DateTime, Duration, Utc};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -41,7 +42,7 @@ impl InMemoryDatabase {
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             status: "active".to_string(),
-            sync_status: "idle".to_string(),
+            sync_status: "pending".to_string(),
             last_synced_at: None,
             last_sync_error: None,
             created_at: now,
@@ -151,6 +152,10 @@ impl InMemoryDatabase {
         if let Some(embedding_model_id) = input.embedding_model_id {
             idx.embedding_model_id = embedding_model_id;
         }
+        if input.enqueue_sync {
+            idx.sync_status = "pending".to_string();
+            idx.last_sync_error = None;
+        }
         if let Some(status) = input.status {
             idx.status = status.clone();
             // Match Postgres `COALESCE(archived_at, NOW())` semantics:
@@ -202,6 +207,20 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|doc| std::cmp::Reverse(doc.created_at));
         Ok(result)
+    }
+
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, usize>> {
+        let wanted: std::collections::HashSet<_> = index_ids.iter().copied().collect();
+        let mut counts = HashMap::new();
+        for document in self.knowledge_index_documents.read().values() {
+            if wanted.contains(&document.index_id) {
+                *counts.entry(document.index_id).or_insert(0) += 1;
+            }
+        }
+        Ok(counts)
     }
 
     pub async fn list_knowledge_index_chunks(

@@ -188,15 +188,15 @@ pub struct InMemoryDatabase {
     payment_accounts: RwLock<HashMap<Uuid, PaymentAccountRow>>,
     payment_policies: RwLock<HashMap<Uuid, PaymentPolicyRow>>,
     payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
-    // Memories (org-scoped named Memories — see specs/memory.md)
+    // Memories (org-scoped named Memories — see knowledge/runtime-resources/memory.md)
     memories: RwLock<HashMap<Uuid, MemoryRow>>,
     memory_files: RwLock<HashMap<Uuid, MemoryFileRow>>,
-    // Workspaces (org-scoped named working areas — see specs/workspace.md)
+    // Workspaces (org-scoped named working areas — see knowledge/runtime-resources/workspace.md)
     workspaces: RwLock<HashMap<Uuid, WorkspaceRow>>,
     // Knowledge bases (curated org knowledge)
     knowledge_bases: RwLock<HashMap<Uuid, KnowledgeBaseRow>>,
     knowledge_entries: RwLock<HashMap<Uuid, KnowledgeEntryRow>>,
-    // Knowledge indexes (source-backed embedded collections — see specs/knowledge-indexes.md)
+    // Knowledge indexes (source-backed embedded collections — see knowledge/runtime-resources/knowledge-indexes.md)
     knowledge_indexes: RwLock<HashMap<Uuid, KnowledgeIndexRow>>,
     knowledge_index_documents: RwLock<HashMap<Uuid, KnowledgeIndexDocumentRow>>,
     knowledge_index_chunks: RwLock<HashMap<Uuid, KnowledgeIndexChunkRow>>,
@@ -204,7 +204,7 @@ pub struct InMemoryDatabase {
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
     oauth_refresh_tokens: RwLock<HashMap<Uuid, OAuthRefreshTokenRow>>,
-    // Plugin marketplaces and installs (see specs/plugins.md)
+    // Plugin marketplaces and installs (see knowledge/integrations/plugins.md)
     plugin_marketplaces: RwLock<HashMap<Uuid, PluginMarketplaceRow>>,
     plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
     // Organization task webhooks (outbound HTTP on terminal task transitions)

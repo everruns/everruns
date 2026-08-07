@@ -52,7 +52,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.22"
+version = "0.17.23"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -117,7 +117,7 @@ aes-gcm = "0.11"
 rand = "0.10"
 base64 = "0.23"
 
-# Object storage (optional S3-compatible blob backend, specs/object-storage.md)
+# Object storage (optional S3-compatible blob backend, knowledge/runtime-resources/object-storage.md)
 object_store = { version = "0.14", features = ["aws"] }
 
 # Rate limiting
@@ -135,7 +135,7 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
-git2 = "0.21"
+git2 = { version = "0.21", features = ["https", "vendored-openssl"] }
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
@@ -154,13 +154,13 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-core = { path = "crates/core", version = "0.17.22" }
-everruns-provider = { path = "crates/provider", version = "0.17.22" }
+everruns-core = { path = "crates/core", version = "0.17.23" }
+everruns-provider = { path = "crates/provider", version = "0.17.23" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.22" }
-everruns-ard = { path = "crates/ard", version = "0.17.22" }
+everruns-mcp = { path = "crates/mcp", version = "0.17.23" }
+everruns-ard = { path = "crates/ard", version = "0.17.23" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-runtime = { path = "crates/runtime", version = "0.17.22" }
+everruns-runtime = { path = "crates/runtime", version = "0.17.23" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
@@ -178,7 +178,7 @@ prost = "0.14"
 
 # Deterministic network simulation (dev-only). Used to test worker↔control-plane
 # transport reliability (drops, partitions, latency, reorder) with a simulated
-# clock. See specs/agent-reliability-tests.md scenario 3.
+# clock. See knowledge/runtime-resources/agent-reliability-tests.md scenario 3.
 turmoil = "0.7"
 prost-build = "0.14"
 prost-types = "0.14"

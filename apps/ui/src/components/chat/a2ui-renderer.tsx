@@ -14,7 +14,7 @@
  *   throwing.
  * - Wrapped in an error boundary that falls back to the raw JSON code block.
  *
- * @see specs/a2ui.md
+ * @see knowledge/ui/a2ui.md
  */
 
 import {

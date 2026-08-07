@@ -62,7 +62,7 @@ Everruns does not claim ownership of remote Cursor agents per session because Cu
 
 ## Security
 
-Threat model entries live in `specs/threat-model.md` under `TM-CURSOR`.
+Threat model entries live in `knowledge/security/threat-model.md` under `TM-CURSOR`.
 
 Key controls:
 

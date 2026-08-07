@@ -166,6 +166,7 @@ pub async fn list_openai_compatible_models(
         .data
         .into_iter()
         .map(|model| DiscoveredModel {
+            capabilities: vec!["chat".to_string()],
             created_at: model
                 .created
                 .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
@@ -296,12 +297,110 @@ fn is_major_vendor_model(model_id: &str) -> bool {
         || model_id.starts_with("nvidia/")
 }
 
+/// One model matched by [`search_provider_models`], qualified by the provider
+/// it came from.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModelSearchMatch {
+    /// Caller-supplied label for the provider that offers this model.
+    pub provider: String,
+    /// Exact model id, as it must be passed back to the provider.
+    pub model_id: String,
+    /// Human-readable name, when known.
+    pub display_name: Option<String>,
+}
+
+/// Outcome of a search across several providers.
+///
+/// Partial results are the normal case, so failures are reported alongside
+/// matches rather than replacing them: one provider being down or holding a
+/// stale key should not hide the models the others offer.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModelSearchResult {
+    /// Matches, sorted by provider then model id.
+    pub matches: Vec<ModelSearchMatch>,
+    /// Providers that were actually queried (a provider with no catalog is
+    /// skipped rather than reported as an error).
+    pub providers_searched: Vec<String>,
+    /// Per-provider failures, as `"<provider>: <error>"`.
+    pub provider_errors: Vec<String>,
+}
+
+/// Search a provider's already-discovered catalog for `query`.
+///
+/// Case-insensitive substring match over the model id and display name. Split
+/// out from the fan-out so the matching rule is testable on its own and reusable
+/// by a host that keeps its own catalog.
+pub fn match_models(
+    provider: &str,
+    models: &[DiscoveredProviderModel],
+    query: &str,
+) -> Vec<ModelSearchMatch> {
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return Vec::new();
+    }
+    models
+        .iter()
+        .filter(|model| {
+            model.model_id.to_lowercase().contains(&needle)
+                || model
+                    .display_name
+                    .as_deref()
+                    .is_some_and(|name| name.to_lowercase().contains(&needle))
+        })
+        .map(|model| ModelSearchMatch {
+            provider: provider.to_string(),
+            model_id: model.model_id.clone(),
+            display_name: model.display_name.clone(),
+        })
+        .collect()
+}
+
+/// Search every supplied provider's catalog for `query`.
+///
+/// This is what turns "use the luna model" into a set of exact, provider-
+/// qualified ids a caller can act on, instead of sending an invented literal to
+/// a provider. Each entry in `providers` is a caller-chosen label paired with
+/// the config to query; the label is what comes back on each match.
+///
+/// Providers are queried in the order given. A provider with no catalog
+/// (`Ok(None)`) is silently skipped — that is "nothing to search", not a
+/// failure — while a provider that errors is recorded in `provider_errors` and
+/// the search continues.
+pub async fn search_provider_models(
+    registry: &DriverRegistry,
+    providers: &[(String, ProviderConfig)],
+    query: &str,
+) -> ModelSearchResult {
+    let mut result = ModelSearchResult::default();
+    if query.trim().is_empty() {
+        return result;
+    }
+
+    for (label, config) in providers {
+        match discover_provider_models(registry, config).await {
+            Ok(Some(models)) => {
+                result.providers_searched.push(label.clone());
+                result.matches.extend(match_models(label, &models, query));
+            }
+            Ok(None) => {}
+            Err(error) => result.provider_errors.push(format!("{label}: {error}")),
+        }
+    }
+
+    result
+        .matches
+        .sort_by(|a, b| (&a.provider, &a.model_id).cmp(&(&b.provider, &b.model_id)));
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn bare_discovered(model_id: &str) -> DiscoveredModel {
         DiscoveredModel {
+            capabilities: vec!["chat".to_string()],
             model_id: model_id.to_string(),
             display_name: None,
             created_at: None,
@@ -479,5 +578,77 @@ mod tests {
         assert!(ids.contains(&"llama3.2:latest"), "ids: {ids:?}");
         // Gemini-style `models/` prefixes are normalized to bare ids.
         assert!(ids.contains(&"qwen3"), "ids: {ids:?}");
+    }
+
+    fn presented(id: &str, display_name: Option<&str>) -> DiscoveredProviderModel {
+        DiscoveredProviderModel {
+            model_id: id.to_string(),
+            display_name: display_name.map(str::to_string),
+            description: None,
+        }
+    }
+
+    #[test]
+    fn matching_is_case_insensitive_over_id_and_display_name() {
+        let catalog = vec![
+            presented("openai/gpt-5.5", Some("GPT-5.5")),
+            presented("moon/luna-1", None),
+            presented("acme/nebula", Some("Luna Nebula")),
+        ];
+
+        let by_id = match_models("openrouter", &catalog, "LUNA");
+        let ids: Vec<&str> = by_id.iter().map(|m| m.model_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["moon/luna-1", "acme/nebula"],
+            "a display-name hit counts as much as an id hit"
+        );
+        assert!(by_id.iter().all(|m| m.provider == "openrouter"));
+    }
+
+    #[test]
+    fn an_empty_query_matches_nothing_rather_than_everything() {
+        // Returning the whole catalog for an empty query would flood the caller
+        // and, in a tool context, the model.
+        let catalog = vec![presented("openai/gpt-5.5", None)];
+        assert!(match_models("openrouter", &catalog, "   ").is_empty());
+    }
+
+    #[tokio::test]
+    async fn search_skips_catalog_less_providers_and_records_failures() {
+        let registry = DriverRegistry::new();
+        let providers = vec![
+            // No catalog to offer: skipped, not an error.
+            ("sim".to_string(), ProviderConfig::new(DriverId::LlmSim)),
+            // No driver registered and no base URL for the HTTP fallback: an
+            // error against this provider, which must not sink the search.
+            (
+                "broken".to_string(),
+                ProviderConfig::new(DriverId::OpenAI).with_api_key("k"),
+            ),
+        ];
+
+        let result = search_provider_models(&registry, &providers, "gpt").await;
+
+        assert!(result.matches.is_empty());
+        assert!(
+            !result.providers_searched.contains(&"sim".to_string()),
+            "a provider with no catalog was not searched"
+        );
+        assert_eq!(result.provider_errors.len(), 1);
+        assert!(result.provider_errors[0].starts_with("broken: "));
+    }
+
+    #[tokio::test]
+    async fn an_empty_query_short_circuits_before_any_provider_call() {
+        let registry = DriverRegistry::new();
+        let providers = vec![(
+            "broken".to_string(),
+            ProviderConfig::new(DriverId::OpenAI).with_api_key("k"),
+        )];
+
+        let result = search_provider_models(&registry, &providers, "").await;
+
+        assert_eq!(result, ModelSearchResult::default());
     }
 }

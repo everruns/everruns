@@ -1,7 +1,7 @@
 // MCP Server CRUD HTTP routes
 // Routes: /v1/mcp-servers/...
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (API endpoints)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (API endpoints)
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};

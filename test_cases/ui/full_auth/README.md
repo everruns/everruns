@@ -3,7 +3,7 @@
 These cases exercise the auth flow whose reachability contract is modelled in
 `apps/ui/src/lib/auth-flow/machine.ts` and enforced by `machine.test.ts`
 (structural reachability + no-misleading-remediation, ratcheted in CI). The
-diagram of that model lives in `specs/authentication.md` § Flow Reachability.
+diagram of that model lives in `knowledge/security/authentication.md` § Flow Reachability.
 
 `machine.test.ts` is the **automated** guard on the model itself; the cases
 below are the **manual** walk-throughs of the same flows against a running

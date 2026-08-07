@@ -1,5 +1,5 @@
 //! Server-side `KnowledgeStore` over `StorageBackend`, backing the agent-facing
-//! `search_knowledge` tool. See specs/okf-adoption.md and specs/knowledge-bases.md.
+//! `search_knowledge` tool. See knowledge/runtime-resources/okf-adoption.md and knowledge/runtime-resources/knowledge-bases.md.
 //!
 //! Scopes every search to the caller's org and resolves bound Knowledge Base
 //! public ids within that org, so ids from other orgs are silently skipped

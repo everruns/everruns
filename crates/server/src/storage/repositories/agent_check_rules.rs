@@ -1,4 +1,4 @@
-// Org-configurable agent check rule storage (PostgreSQL). See specs/agent-checks.md.
+// Org-configurable agent check rule storage (PostgreSQL). See knowledge/evaluation/agent-checks.md.
 
 use anyhow::Result;
 

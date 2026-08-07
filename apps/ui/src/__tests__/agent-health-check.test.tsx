@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import type { HealthCheckRun, LatestHealthCheckRun } from "@/lib/api/types";
 
@@ -67,16 +67,40 @@ describe("AgentHealthCheck", () => {
     expect(screen.getByText(/no health check has been run/i)).toBeInTheDocument();
   });
 
+  it("starts a run from the compact rail action", () => {
+    const mutate = jest.fn();
+    mockTrigger.mockReturnValue({ mutate, isPending: false, error: null });
+    render(<AgentHealthCheck agentId="agent_1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /run health check/i }));
+
+    expect(mutate).toHaveBeenCalledWith(
+      "agent_1",
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
   it("renders the score card and per-case results when completed", () => {
     mockRun = completedRun;
     render(<AgentHealthCheck agentId="agent_1" />);
     expect(screen.getByText("50%")).toBeInTheDocument();
+    expect(screen.getByText("Case results (2)")).toBeInTheDocument();
     expect(screen.getByText("greeting")).toBeInTheDocument();
     expect(screen.getByText("Responded politely.")).toBeInTheDocument();
     expect(screen.getByText("Did not clarify.")).toBeInTheDocument();
     // Token usage from the summary is surfaced.
     expect(screen.getByText(/1,500 input/)).toBeInTheDocument();
     expect(screen.getByText(/300 output tokens/)).toBeInTheDocument();
+  });
+
+  it("uses a rail-safe two-column summary and wrapped expandable details", () => {
+    mockRun = completedRun;
+    render(<AgentHealthCheck agentId="agent_1" />);
+
+    expect(screen.getByText("Pass rate").parentElement?.parentElement).toHaveClass("grid-cols-2");
+    const details = screen.getByText("Case results (2)").closest("details");
+    expect(details).toHaveClass("min-w-0");
+    expect(screen.getByText("Responded politely.")).toHaveClass("break-words");
   });
 
   it("shows the failure reason when the run failed", () => {

@@ -6,14 +6,14 @@
   },
   "metadata": {
     "description": "Everruns plugins for Cursor — connect Cursor to the Everruns(Dev) managed harnesses platform to manage agents, harnesses, capabilities, sessions, and apps.",
-    "version": "0.1.5"
+    "version": "0.1.6"
   },
   "plugins": [
     {
       "name": "everruns-dev",
       "source": "./plugins/everruns-dev",
       "description": "Interact with the Everruns(Dev) managed harnesses platform from Cursor. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "Everruns",
         "email": "support@everruns.com"
@@ -40,7 +40,7 @@
       "name": "everruns",
       "source": "./plugins/everruns",
       "description": "Interact with the Everruns managed harnesses platform from Cursor. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "Everruns",
         "email": "support@everruns.com"

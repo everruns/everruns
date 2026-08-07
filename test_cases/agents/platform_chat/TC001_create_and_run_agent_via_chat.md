@@ -4,7 +4,9 @@
 
 Verify that a user can use the Platform Chat global session to create a new agent end-to-end and then ask Platform Chat to invoke that agent — all from a single conversation. The chat must surface the new agent through clickable navigation links (not raw prefixed IDs), the run-agent flow must produce a coherent reply with structured tool blocks, and no harness-deletion error banners or raw tool-call leakage may appear.
 
-This test exercises the Platform Chat harness's `platform_management` capability path (create harness/agent, create session, send message, wait for idle, fetch reply) plus the chat UI's link rendering, tool-call formatting, and error-banner suppression.
+This test exercises the Platform Chat harness's catalog-backed `platform`
+capability path (`discover`, `query`, and `execute`) plus the chat UI's link
+rendering, tool-call formatting, and error-banner suppression.
 
 ## Preconditions
 
@@ -76,8 +78,11 @@ This test exercises the Platform Chat harness's `platform_management` capability
 
 ### Capability Wiring
 
-- Platform Chat session uses the `platform-chat` built-in harness (which inherits from `generic` and adds `platform_management`).
-- Platform Chat tool calls (`manage_agents`, `manage_sessions`, `session_send_message`, `session_read_response`, `session_read_messages`) succeed without auth, multitenancy, or quota errors.
+- Platform Chat session uses the `platform-chat` built-in harness (which inherits from `generic` and adds `platform`).
+- The trace uses `discover` when command names or schemas are unknown, `query`
+  for reads, and `execute` for the requested mutations.
+- Underlying agent/session commands succeed without authorization,
+  multitenancy, or quota errors.
 
 ### Happy Path Rendering
 
@@ -108,7 +113,7 @@ This test exercises the Platform Chat harness's `platform_management` capability
 
 | Failure | What to look for |
 |---------|-----------------|
-| Raw IDs in chat prose | Reply contains `agent_01...` or `session_01...` instead of clickable links — check Platform Chat link-rendering helpers and the `platform_management` tool result formatter |
+| Raw IDs in chat prose | Reply contains `agent_01...` or `session_01...` instead of clickable links — check command response decoration and Platform Chat link rendering |
 | Literal `to=functions.X` text | Tool calls leak as raw assistant text — check `message-content.tsx` tool-call detection / streaming parser |
 | `Execution stopped because the assigned harness was deleted` | Session was created against a stale/missing `harness_id`. Check org init, harness reconciliation, and that Platform Chat is resolving `generic` by name (not a stale UUID) |
 | 500 / red banner on empty name | `create_agent` validation missing — server should return 4xx with a structured error that the chat surfaces as plain text |

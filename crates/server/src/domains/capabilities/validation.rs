@@ -3,7 +3,8 @@
 // Ensures that capability refs persisted on agents, harnesses, and sessions
 // actually resolve: built-in IDs must exist in the registry, `mcp:{uuid}`
 // refs must point to an MCP server in the caller's org, and `skill:{uuid}`
-// refs must point to a skill in the caller's org.
+// refs must point to a skill in the caller's org. Server-managed plugin refs
+// resolve by stable installation public ID.
 //
 // See EVE-154 for context.
 
@@ -15,12 +16,14 @@ use everruns_core::capabilities::{
     is_declarative_capability, is_mcp_capability, is_skill_capability,
     parse_declarative_capability_id, parse_mcp_capability_id, parse_skill_capability_id,
 };
+use everruns_core::{is_plugin_capability, parse_plugin_capability_id};
 
 /// Validate that all capability references in `capabilities` resolve.
 ///
 /// - Built-in IDs are checked against a static `CapabilityRegistry::with_builtins()`.
 /// - `mcp:{uuid}` refs are resolved against the org's MCP servers.
 /// - `skill:{uuid}` refs are resolved against the org's skills.
+/// - `plugin:{install_id}` refs resolve only to that active org installation.
 ///
 /// Returns `Ok(())` on success, or a typed error identifying the first invalid ref.
 pub async fn validate_capability_refs(
@@ -57,6 +60,19 @@ pub async fn validate_capability_refs(
             if !matches!(row.status.as_str(), "active" | "disabled") {
                 return Err(ResourceNotFoundError::new("Declarative capability").into());
             }
+        } else if is_plugin_capability(cap_id) {
+            let public_id = parse_plugin_capability_id(cap_id).ok_or_else(|| {
+                BadRequestError::new(format!("Invalid plugin capability reference: {cap_id}"))
+            })?;
+            let row = db
+                .get_plugin_install_by_public_id(org_id, public_id)
+                .await?;
+            if row.is_none_or(|row| row.status != "active") {
+                return Err(BadRequestError::new(format!(
+                    "Plugin capability '{cap_id}' is unavailable. Remove it or reinstall the plugin and select the new capability."
+                ))
+                .into());
+            }
         } else {
             // Built-in capability — check registry
             let reg = registry.get_or_insert_with(CapabilityRegistry::with_builtins);
@@ -91,6 +107,7 @@ pub async fn normalize_capability_refs(
         if is_mcp_capability(cap_id)
             || is_skill_capability(cap_id)
             || is_declarative_capability(cap_id)
+            || is_plugin_capability(cap_id)
             || registry.get(cap_id).is_some()
         {
             normalized.push(cap);
@@ -119,9 +136,9 @@ pub async fn normalize_capability_refs(
 mod tests {
     use super::*;
     use crate::storage::models::{
-        CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreateSkillRow,
+        CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,
     };
-    use everruns_core::DEFAULT_ORG_ID;
+    use everruns_core::{DEFAULT_ORG_ID, PluginInstallId, plugin_capability_id};
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -195,6 +212,86 @@ mod tests {
 
         assert!(err.downcast_ref::<BadRequestError>().is_some());
         assert!(err.to_string().contains("Invalid capability config"));
+    }
+
+    async fn create_plugin(db: &StorageBackend, name: &str) -> String {
+        let public_id = PluginInstallId::new().to_string();
+        db.create_plugin_install(
+            DEFAULT_ORG_ID,
+            CreatePluginInstallRow {
+                public_id: public_id.clone(),
+                name: name.to_string(),
+                marketplace_id: None,
+                source: serde_json::json!({}),
+                version: Some("1.0.0".to_string()),
+                pinned_sha: None,
+                manifest: serde_json::json!({"name": name}),
+                definition: serde_json::json!({
+                    "name": name,
+                    "description": "Test plugin"
+                }),
+                warnings: serde_json::json!([]),
+            },
+        )
+        .await
+        .unwrap();
+        plugin_capability_id(&public_id)
+    }
+
+    #[tokio::test]
+    async fn active_plugin_install_ref_passes() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_ref = create_plugin(&db, "resend").await;
+
+        validate_capability_refs(
+            &db,
+            DEFAULT_ORG_ID,
+            &[AgentCapabilityConfig::new(capability_ref)],
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn plugin_name_is_not_a_capability_identity() {
+        let db = Arc::new(StorageBackend::in_memory());
+        create_plugin(&db, "resend").await;
+
+        let err = validate_capability_refs(
+            &db,
+            DEFAULT_ORG_ID,
+            &[AgentCapabilityConfig::new("plugin:resend")],
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("unavailable"));
+    }
+
+    #[tokio::test]
+    async fn disabled_or_uninstalled_plugin_ref_is_actionable() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_ref = create_plugin(&db, "resend").await;
+        let public_id = parse_plugin_capability_id(&capability_ref).unwrap();
+        let plugin = db
+            .get_plugin_install_by_public_id(DEFAULT_ORG_ID, public_id)
+            .await
+            .unwrap()
+            .unwrap();
+        db.delete_plugin_install(DEFAULT_ORG_ID, plugin.id)
+            .await
+            .unwrap();
+
+        let err = validate_capability_refs(
+            &db,
+            DEFAULT_ORG_ID,
+            &[AgentCapabilityConfig::new(capability_ref.as_str())],
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains(&capability_ref));
+        assert!(err.to_string().contains("reinstall"));
     }
 
     #[tokio::test]

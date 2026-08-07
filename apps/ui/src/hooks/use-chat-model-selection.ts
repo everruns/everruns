@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModelWithProvider, ReasoningEffort, Verbosity } from "@/lib/api/types";
+import { isChatModel } from "@/lib/model-capabilities";
 
 // How many recently-used models to remember and surface in the picker.
 const RECENT_MODELS_LIMIT = 2;
@@ -33,6 +34,8 @@ export function useChatModelSelection({
   sessionId,
   models,
   defaultModel,
+  defaultModelLoading,
+  modelsLoading,
   reasoningEffort,
   setReasoningEffort,
   verbosity,
@@ -42,6 +45,8 @@ export function useChatModelSelection({
   sessionId: string;
   models: ModelWithProvider[];
   defaultModel?: ModelWithProvider;
+  defaultModelLoading: boolean;
+  modelsLoading: boolean;
   reasoningEffort: ReasoningEffort | "";
   setReasoningEffort: (value: ReasoningEffort | "") => void;
   verbosity: Verbosity | "";
@@ -71,7 +76,7 @@ export function useChatModelSelection({
   }, []);
 
   const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId),
+    () => models.find((model) => model.id === selectedModelId && isChatModel(model)),
     [models, selectedModelId],
   );
 
@@ -79,7 +84,9 @@ export function useChatModelSelection({
   // disabled, or otherwise missing simply drops out of the picker.
   const recentModels = useMemo(() => {
     const usable = new Map(
-      models.filter((model) => model.enabled).map((model) => [model.id, model]),
+      models
+        .filter((model) => model.enabled && isChatModel(model))
+        .map((model) => [model.id, model]),
     );
     return recentModelIds
       .map((id) => usable.get(id))
@@ -146,10 +153,18 @@ export function useChatModelSelection({
     ? getVerbosityName(verbosityConfig.default)
     : "Medium";
 
-  const modelTriggerLabel = selectedModel?.display_name ?? "Default";
+  const modelTriggerLabel = selectedModelId
+    ? (selectedModel?.display_name ?? (modelsLoading ? "Loading model…" : "Unavailable model"))
+    : defaultModel?.display_name
+      ? `Default · ${defaultModel.display_name}`
+      : defaultModelLoading
+        ? "Default · Loading…"
+        : "Default · Unavailable";
   const defaultModelOptionLabel = defaultModel?.display_name
-    ? `Default (${defaultModel.display_name})`
-    : "Default";
+    ? `Default · ${defaultModel.display_name}`
+    : defaultModelLoading
+      ? "Default · Loading…"
+      : "Default · Unavailable";
 
   const handleModelChange = (value: string) => {
     hasUserSelectedModel.current = true;

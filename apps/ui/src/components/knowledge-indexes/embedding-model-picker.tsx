@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -8,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useModels } from "@/hooks/use-providers";
-import type { ModelWithProvider } from "@/lib/api/types";
+import { isEmbeddingModel } from "@/lib/model-capabilities";
 import { cn } from "@/lib/utils";
 
 interface EmbeddingModelPickerProps {
@@ -18,16 +20,9 @@ interface EmbeddingModelPickerProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
-}
-
-// A model is treated as an embeddings model when its capabilities advertise
-// "embeddings". The backend model registry does not reliably tag embedding
-// models through the list API today (model sync leaves capabilities empty for
-// many providers), so we fall back to listing all enabled models when no model
-// advertises the capability. The server still enforces that the chosen model
-// resolves to an Embeddings driver, so an invalid pick is rejected on save.
-export function isEmbeddingModel(model: ModelWithProvider): boolean {
-  return model.capabilities.some((cap) => cap.toLowerCase() === "embeddings");
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+  onValidityChange?: (valid: boolean) => void;
 }
 
 export function EmbeddingModelPicker({
@@ -37,14 +32,18 @@ export function EmbeddingModelPicker({
   placeholder = "Select an embedding model",
   disabled = false,
   className,
+  "aria-invalid": ariaInvalid = false,
+  "aria-describedby": ariaDescribedBy,
+  onValidityChange,
 }: EmbeddingModelPickerProps) {
   const { data: models = [], isLoading } = useModels();
 
-  const enabled = models.filter((m) => m.enabled);
-  const embeddingModels = enabled.filter(isEmbeddingModel);
-  // Fall back to all enabled models when the registry exposes no embeddings
-  // capability so the picker is never empty; the server validates the choice.
-  const candidates = embeddingModels.length > 0 ? embeddingModels : enabled;
+  const candidates = models.filter((model) => model.enabled && isEmbeddingModel(model));
+  const selectionValid = candidates.some((model) => model.id === value);
+
+  useEffect(() => {
+    onValidityChange?.(selectionValid);
+  }, [onValidityChange, selectionValid]);
 
   const sorted = [...candidates].sort((a, b) => {
     if (a.provider_name !== b.provider_name) {
@@ -54,28 +53,51 @@ export function EmbeddingModelPicker({
   });
 
   const selectedModel = models.find((m) => m.id === value);
+  const selectedIsInvalid = !!value && !isLoading && !selectionValid;
 
   return (
-    <Select value={value || undefined} onValueChange={onChange} disabled={disabled || isLoading}>
-      <SelectTrigger id={id} className={cn("w-full", className)} aria-label="Embedding model">
-        <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
-          {selectedModel
-            ? `${selectedModel.display_name} (${selectedModel.provider_name})`
-            : undefined}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        {sorted.length === 0 && (
-          <SelectItem value="__none__" disabled>
-            No models available
-          </SelectItem>
-        )}
-        {sorted.map((model) => (
-          <SelectItem key={model.id} value={model.id}>
-            {model.display_name} ({model.provider_name})
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <div className="space-y-2">
+      <Select
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled || isLoading || sorted.length === 0}
+      >
+        <SelectTrigger
+          id={id}
+          className={cn("w-full", className)}
+          aria-label="Embedding model"
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
+        >
+          <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
+            {selectedModel
+              ? `${selectedModel.display_name} (${selectedModel.provider_name})`
+              : undefined}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {sorted.map((model) => (
+            <SelectItem key={model.id} value={model.id}>
+              {model.display_name} ({model.provider_name})
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {!isLoading && sorted.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No embedding models are configured.{" "}
+          <Link href="/models" className="text-primary underline underline-offset-4">
+            Configure an embedding model
+          </Link>
+          .
+        </p>
+      )}
+      {selectedIsInvalid && (
+        <p className="text-xs text-destructive">
+          The configured model is unavailable or does not support embeddings. Choose an embedding
+          model to repair this index.
+        </p>
+      )}
+    </div>
   );
 }

@@ -122,6 +122,12 @@ export const apiKeySecretSchema = z.object({
   api_key: requiredString("API key"),
 });
 
+export const knowledgeIndexFormSchema = z.object({
+  name: requiredString("Name"),
+  description: optionalString(),
+  embedding_model_id: requiredString("Embedding model"),
+});
+
 export function createConnectionFormSchema(fields: ConnectionFormField[]) {
   const shape = Object.fromEntries(
     fields.map((field) => [

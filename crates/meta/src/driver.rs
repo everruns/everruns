@@ -129,6 +129,7 @@ async fn list_meta_models(
                 .data
                 .into_iter()
                 .map(|model| DiscoveredModel {
+                    capabilities: vec!["chat".to_string()],
                     created_at: model
                         .created
                         .and_then(|timestamp| chrono::Utc.timestamp_opt(timestamp, 0).single()),

@@ -48,6 +48,7 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/components/layout/sidebar", () => ({
   Sidebar: () => <div data-testid="sidebar">Sidebar</div>,
+  MobileSidebar: () => <div data-testid="mobile-sidebar">Mobile Sidebar</div>,
 }));
 
 jest.mock("@/components/command-palette", () => ({

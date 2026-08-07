@@ -174,7 +174,16 @@ impl Database {
     }
 
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
+        let display_name = input
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("User")
+            .to_string();
+        let name_changed = input.name.is_some();
         let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
+        let mut tx = self.pool.begin().await?;
 
         let row = sqlx::query_as::<_, UserRow>(
             r#"
@@ -196,8 +205,28 @@ impl Database {
         .bind(&roles_json)
         .bind(&input.password_hash)
         .bind(input.email_verified)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+
+        if row.is_some() && name_changed {
+            sqlx::query(
+                r#"
+                UPDATE session_participants AS participant
+                SET display_name = $2,
+                    updated_at = NOW()
+                FROM principals
+                WHERE participant.kind = 'user'
+                  AND participant.principal_id = principals.id
+                  AND principals.resolved_user_id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(display_name)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
 
         Ok(row)
     }

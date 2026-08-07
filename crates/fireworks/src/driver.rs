@@ -176,6 +176,7 @@ async fn list_fireworks_models(
                         .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single());
                     let display_name = Some(short_model_name(&m.id));
                     DiscoveredModel {
+                        capabilities: vec!["chat".to_string()],
                         created_at,
                         display_name,
                         owned_by: m.owned_by,

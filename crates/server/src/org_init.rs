@@ -8,7 +8,7 @@
 //   provisioning time. No UUIDs are hardcoded anywhere (no per-org split-brain).
 // Decision: Org settings keep separate default and base harness pointers
 //
-// Default marketplace seeding (see specs/plugins.md):
+// Default marketplace seeding (see knowledge/integrations/plugins.md):
 // Decision: The default marketplace ("everruns", github source everruns/everruns) is seeded
 //   once at org creation and in the 058_backfill_default_marketplace.sql backfill migration.
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
@@ -61,7 +61,7 @@ pub struct OrgInitContext<'a> {
 /// Registered via
 /// [`ServerAppBuilder::org_initializer`](crate::ServerAppBuilder::org_initializer);
 /// zero or more may be registered. When none are registered, default OSS
-/// behavior is unchanged. See `specs/embedding.md`.
+/// behavior is unchanged. See `knowledge/foundations/embedding.md`.
 #[async_trait]
 pub trait OrgInitializer: Send + Sync {
     /// Provision resources for the newly created org. Returning `Err` is handled
@@ -599,7 +599,7 @@ mod tests {
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(chat_cap_ids, vec!["platform_management"]);
+        assert_eq!(chat_cap_ids, vec!["platform"]);
     }
 
     #[tokio::test]

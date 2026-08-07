@@ -16,6 +16,7 @@ const mockSessionContext = {
   events: [],
   sessionId: "session-1",
   llmModel: null as ModelWithProvider | null,
+  llmModelLoading: false,
   chatEvents: [] as Event[],
   toolResultsMap: new Map(),
   toolProgressMap: new Map(),
@@ -59,7 +60,7 @@ jest.mock("@/components/session/session-participants-rail", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useModels: () => ({ data: [] }),
+  useModels: () => ({ data: [], isLoading: false }),
   useProviders: () => ({ data: [] }),
   useAgents: () => ({ data: [] }),
   useSessionParticipants: () => ({ data: [] }),
@@ -401,7 +402,7 @@ describe("ChatPanel placeholder", () => {
     expect(mockModelEffortMenu).toHaveBeenCalled();
     const props = mockModelEffortMenu.mock.calls.at(-1)?.[0];
     expect(props?.supportsReasoning).toBe(true);
-    expect(props?.modelTriggerLabel).toBe("Default");
+    expect(props?.modelTriggerLabel).toBe("Default · GPT-5.4");
     expect(Array.isArray(props?.recentModels)).toBe(true);
   });
 

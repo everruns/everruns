@@ -11,7 +11,7 @@ Keep each fact in exactly one layer, and read the layer that owns it.
 | Layer | Owns |
 |---|---|
 | `AGENTS.md` (this file, plus per-subtree ones) | repo gotchas that are not discoverable from the code |
-| `specs/` | why and what: design intent, contracts, success bars — start at `specs/README.md` |
+| `knowledge/` | why and what: OKF v0.2 design intent, contracts, success bars — start at `knowledge/index.md` |
 | `.agents/skills/` | how: workflows loaded on demand (`/ship`, `/maintenance`, `/process-issues`, `/manual-ui-testing`) |
 | source, `justfile`, `.github/workflows/` | exact commands, fields, shapes, and checks |
 
@@ -34,9 +34,10 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 - Rebases silently keep colliding migration numbers. After a rebase that touches
   `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
 - Run `just pre-push` before pushing.
-- Specs capture why/what; link to source instead of copying fields, enum variants, SQL DDL, or API
-  shapes. `docs/` holds public product documentation only — proposals and investigations belong in
-  `specs/` or `proposals/`.
+- Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
+  or API shapes. `docs/` holds public product documentation only — durable decisions and
+  investigations belong in `knowledge/` or `proposals/`. Run `just check-okf` after knowledge
+  changes.
 - Linear: OSS project, EVE team.
 
 ### Local dev
@@ -67,7 +68,7 @@ doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'
 
 ### Commits
 
-- Conventional Commits (`type(scope): description`); use `chore` for `specs/` and `AGENTS.md`.
+- Conventional Commits (`type(scope): description`); use `chore` for `knowledge/` and `AGENTS.md`.
 - Commit as the real human user. If `git config user.name`/`user.email` are missing or agent-like,
   set them from `GIT_USER_NAME`/`GIT_USER_EMAIL`; if those are absent, ask instead of committing
   with a bot identity.

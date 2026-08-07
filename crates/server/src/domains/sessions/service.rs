@@ -65,7 +65,7 @@ pub const SESSION_MANAGE: Policy = Policy {
 };
 
 /// Optional, caller-supplied overrides applied when forking a session
-/// (specs/forking-sessions.md). Every field omitted (`None`) inherits the
+/// (knowledge/runtime-resources/forking-sessions.md). Every field omitted (`None`) inherits the
 /// parent session's value.
 #[derive(Debug, Clone, Default)]
 pub struct ForkOverrides {
@@ -202,7 +202,7 @@ impl SessionService {
     /// while the App was created by a real user. Without this override, the
     /// session would be owned by `system-owner` and shared-session reuse via
     /// `find_app_session_by_tags_and_owner(.. app.owner_principal_id ..)` would
-    /// fail to match it. See `specs/app-invocation-channels.md` and EVE-A2A
+    /// fail to match it. See `knowledge/integrations/app-invocation-channels.md` and EVE-A2A
     /// follow-up.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_from_app(
@@ -257,7 +257,7 @@ impl SessionService {
         .await
     }
 
-    /// Fork a session into a new, independent session (specs/forking-sessions.md).
+    /// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
     /// `overrides`), then deep-copies the parent's conversation history (events)
@@ -708,7 +708,7 @@ impl SessionService {
         }
         // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
         // `slack:app:<id>` tags all drive budget hierarchy attribution (see
-        // specs/budgeting.md and `extract_app_subjects` in
+        // knowledge/security/budgeting.md and `extract_app_subjects` in
         // `crates/server/src/domains/budgets/service.rs`). Allowing external
         // callers to forge any of them would let an org member opt their
         // session into another app's budget — corrupting spend attribution and
@@ -744,7 +744,7 @@ impl SessionService {
 
         // Optional attach to an existing shared workspace. When absent, the
         // storage layer auto-creates a default 1:1 workspace (see
-        // specs/workspace.md, "Default Workspace per Session").
+        // knowledge/runtime-resources/workspace.md, "Default Workspace per Session").
         let workspace_id = match req.workspace_id {
             Some(public_id) => {
                 let workspace = self
@@ -898,6 +898,13 @@ impl SessionService {
             &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
             &session_capabilities,
         );
+        let effective_capabilities =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                self.db.as_ref(),
+                org_id,
+                effective_capabilities,
+            )
+            .await?;
 
         if let Some(service) = &self.session_sandbox_service {
             service
@@ -1291,6 +1298,30 @@ impl SessionService {
             }
             None => Ok(None),
         }
+    }
+
+    /// Resolve the model used by turns without a per-message override.
+    ///
+    /// Session creation materializes agent and harness defaults into `model_id`,
+    /// so only an unbound session continues to follow the organization default.
+    pub async fn resolved_model_id(
+        &self,
+        org_id: i64,
+        session: &Session,
+    ) -> Result<Option<ModelId>> {
+        if let Some(model_id) = session.model_id {
+            return Ok(self
+                .db
+                .get_model(org_id, model_id.uuid())
+                .await?
+                .map(|model| model.id));
+        }
+
+        Ok(self
+            .db
+            .get_default_model(org_id)
+            .await?
+            .map(|model| model.id))
     }
 
     /// Get session counts grouped by status for an organization.
@@ -1934,7 +1965,20 @@ impl SessionService {
             Vec::new()
         };
         let merged = merge_capabilities(&harness_caps, &agent_caps);
-        merge_capabilities(&merged, session_caps)
+        let merged = merge_capabilities(&merged, session_caps);
+        match crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            merged,
+        )
+        .await
+        {
+            Ok(capabilities) => capabilities,
+            Err(error) => {
+                tracing::warn!(%error, "failed to hydrate session capabilities");
+                Vec::new()
+            }
+        }
     }
 
     /// Fire session-lifecycle hooks (`session_start` / `session_end`) for a
@@ -2107,10 +2151,13 @@ impl SessionService {
             capability_configs = merge_capabilities(&capability_configs, &agent_capabilities);
         }
 
-        Ok(merge_capabilities(
-            &capability_configs,
-            session_capabilities,
-        ))
+        let capability_configs = merge_capabilities(&capability_configs, session_capabilities);
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            capability_configs,
+        )
+        .await
     }
 
     async fn collect_workspace_memory_mounts(
@@ -3350,6 +3397,75 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    #[tokio::test]
+    async fn resolved_model_id_tracks_default_and_preserves_explicit_binding() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let _ctx = test_ctx(caller.clone(), db.clone()).await;
+        let service = SessionService::new(db.clone());
+        let harness_id = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+
+        let inherited = service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, None),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            None
+        );
+
+        let first_default = create_model(&db, caller.org_id, "first-default").await;
+        db.upsert_organization_settings(caller.org_id, Some(first_default.uuid()))
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            Some(first_default)
+        );
+
+        let second_default = create_model(&db, caller.org_id, "second-default").await;
+        db.upsert_organization_settings(caller.org_id, Some(second_default.uuid()))
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            Some(second_default)
+        );
+
+        let explicit = service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, Some(first_default)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &explicit)
+                .await
+                .unwrap(),
+            Some(first_default)
+        );
     }
 
     #[tokio::test]

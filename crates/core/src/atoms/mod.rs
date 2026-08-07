@@ -73,7 +73,7 @@ pub struct AtomContext {
     /// means "derive from session id" (the default 1:1 case, and how older
     /// durable records — serialized before this field existed — replay). The
     /// runtime injects `Some(session.workspace_id)` so shared-workspace sessions
-    /// address the attached workspace's files. See specs/workspace.md.
+    /// address the attached workspace's files. See knowledge/runtime-resources/workspace.md.
     #[serde(default)]
     pub workspace_id: Option<WorkspaceId>,
 }

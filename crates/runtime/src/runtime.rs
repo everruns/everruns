@@ -273,7 +273,7 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Set the auth provider used to acquire credentials for scoped MCP
-    /// servers (specs/runtime-mcp.md D3). Defaults to no credentials, suitable
+    /// servers (knowledge/integrations/runtime-mcp.md D3). Defaults to no credentials, suitable
     /// for unauthenticated servers or servers carrying literal auth headers.
     pub fn mcp_auth_provider(mut self, provider: Arc<dyn everruns_mcp::McpAuthProvider>) -> Self {
         self.mcp_auth_provider = Some(provider);
@@ -1275,7 +1275,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         let model = self.provider_store.get_default_model().await?;
 
         // Discover tools from the session's scoped MCP servers so they appear
-        // to the LLM alongside built-in tools (specs/runtime-mcp.md D4).
+        // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         let mcp_tool_definitions = if scoped_servers.is_empty() {
             vec![]

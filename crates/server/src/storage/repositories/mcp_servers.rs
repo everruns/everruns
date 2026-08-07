@@ -1,6 +1,6 @@
 // PostgreSQL repository: MCP Servers
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
 use super::super::models::*;
 use super::Database;
@@ -94,7 +94,7 @@ impl Database {
     }
 
     /// Look up the owning org for an MCP server by its public id. See
-    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let Ok(id) = public_id.parse::<McpServerId>() else {
             return Ok(None);

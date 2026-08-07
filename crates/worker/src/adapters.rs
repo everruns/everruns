@@ -43,7 +43,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     //     pre_tool_use block path.
     //   - `tasks` — starts a background bash run via `spawn_background` and
     //     lists it with `list_tasks`, exercising the session task registry
-    //     end-to-end (specs/session-tasks.md) without an LLM API key.
+    //     end-to-end (knowledge/runtime-resources/session-tasks.md) without an LLM API key.
     //   - `monitor` — schedules a recurring monitor via `spawn_background`
     //     with a `schedule`, exercising the `monitor` task kind and its
     //     fire-history thread.

@@ -1,4 +1,4 @@
-// Session task registry API functions (specs/session-tasks.md)
+// Session task registry API functions (knowledge/runtime-resources/session-tasks.md)
 
 import { api } from "./client";
 import type {

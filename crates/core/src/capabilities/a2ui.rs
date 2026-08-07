@@ -7,7 +7,7 @@
 //! Runs in parallel with `openui`. Both may be enabled on the same agent, but
 //! that is rarely useful — instruct the agent to prefer one protocol.
 //!
-//! Ref: specs/a2ui.md
+//! Ref: knowledge/ui/a2ui.md
 //! Ref: https://github.com/google/a2ui
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};

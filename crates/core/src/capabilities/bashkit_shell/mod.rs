@@ -15,13 +15,13 @@
 //! - Outbound HTTP (curl/wget) is opt-in via per-capability config
 //!   `{"enable_http": true}` and only functions when the runtime provides an
 //!   `EgressService`: every request crosses the egress boundary through
-//!   `egress_transport::BashkitEgressTransport` (see `specs/egress.md`).
+//!   `egress_transport::BashkitEgressTransport` (see `knowledge/operations/egress.md`).
 //!   Without the config flag - or without an egress service in context - the
 //!   shell has no network path at all, preserving the historical default.
 //!
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `bashkit_shell`
+//!   (`knowledge/execution/capabilities.md`, `knowledge/security/permissions.md`), assigning `bashkit_shell`
 //!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
 //!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
 //!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
@@ -48,7 +48,7 @@ use crate::background::{
 };
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
-use crate::tool_types::ToolHints;
+use crate::tool_types::{DeferrablePolicy, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -333,6 +333,13 @@ impl Tool for BashTool {
             .with_cpu_bound(true)
     }
 
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        // Bash is a hot-path tool whose exact input contract must stay visible.
+        // Deferring it makes models more likely to substitute shell interfaces
+        // learned outside Everruns (for example `bash_run` with `command`).
+        DeferrablePolicy::Never
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "bash requires context. This tool must be executed with session context.",
@@ -415,13 +422,14 @@ impl Tool for BashTool {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
 
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                // Best-effort: if receiver dropped, we just ignore
-                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-                // Bounded: drop if full rather than growing without bound.
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Tool output events are text, so decode Bashkit's byte-native
+            // chunks explicitly at the event boundary.
+            // Best-effort: if receiver dropped, we just ignore
+            let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+            // Bounded: drop if full rather than growing without bound.
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         // Spawn a task that reads chunks from the channel and emits events
         let emit_context = context.clone();
@@ -634,16 +642,17 @@ impl BackgroundExecutableTool for BashTool {
         let sink_for_output = sink.clone();
         let dropped_chunks = Arc::new(AtomicUsize::new(0));
         let dropped_chunks_for_callback = dropped_chunks.clone();
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                if tx
-                    .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
-                    .is_err()
-                {
-                    dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
-                }
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Background output uses the same text boundary as foreground
+            // tool events.
+            if tx
+                .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
+                .is_err()
+            {
+                dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
+            }
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         let emit_task = tokio::spawn(async move {
             while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
@@ -811,7 +820,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Enable outbound HTTP for curl/wget when the per-capability config opted in
 /// AND the execution context provides an egress service.
 ///
-/// Design (specs/egress.md migration step 3, bashkit `specs/http-transport.md`):
+/// Design (knowledge/operations/egress.md migration step 3, bashkit `knowledge/security/http-transport.md`):
 /// bashkit keeps its full HTTP policy pipeline — `allow_all()` retains the
 /// private-IP-blocking SSRF precheck whose resolve-then-check result is
 /// forwarded as pinned addresses — while connectivity is owned by
@@ -827,7 +836,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Bot-auth request signing mirrors web_fetch: server-wide
 /// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
 /// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
-/// before it reaches the transport (bashkit `specs/request-signing.md`).
+/// before it reaches the transport (bashkit `knowledge/security/request-signing.md`).
 fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
     if !enable_http {
         return builder;
@@ -879,7 +888,7 @@ fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext
 }
 
 /// Read the server-wide bot-auth signing config once (same env contract as
-/// `web_fetch`; see `specs/fetchkit.md` "Bot-auth"). Returns a fresh clone per
+/// `web_fetch`; see `knowledge/execution/fetchkit.md` "Bot-auth"). Returns a fresh clone per
 /// call site because `BashBuilder::bot_auth` takes ownership.
 fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
     static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {
@@ -3048,6 +3057,12 @@ mod tests {
     fn test_bash_tool_display_name() {
         let tool = BashTool::default();
         assert_eq!(tool.display_name(), Some("Bash"));
+    }
+
+    #[test]
+    fn test_bash_tool_is_never_deferred() {
+        let tool = BashTool::default();
+        assert_eq!(tool.deferrable_policy(), DeferrablePolicy::Never);
     }
 
     #[test]

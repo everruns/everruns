@@ -12,7 +12,7 @@ capabilities:
   - current_time
   - session_file_system
   # Hook bundle: every tool call gets appended to /workspace/.audit.log
-  # by a post_tool_use bash hook. See specs/user-hooks.md and
+  # by a post_tool_use bash hook. See knowledge/runtime-resources/user-hooks.md and
   # docs/capabilities/user-hooks.md. Live demonstration of `user_hooks`
   # contributing observability independent of the LLM's own recordkeeping.
   - ref: user_hooks

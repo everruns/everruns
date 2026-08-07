@@ -10,7 +10,7 @@
 //!
 //! Missing-credential policy: these tests fail closed. If the feature flag is
 //! set but the credential is missing, the tests panic rather than silently
-//! passing, so CI live jobs cannot report false-green. See `specs/integrations.md`.
+//! passing, so CI live jobs cannot report false-green. See `knowledge/integrations/integrations.md`.
 //!
 //! Cleanup guarantee: Each test uses a `SandboxGuard` that deletes the sandbox
 //! on drop (both success and panic paths).
@@ -81,7 +81,7 @@ fn get_api_key() -> Option<String> {
 }
 
 /// Require `DAYTONA_API_KEY` or panic. Live tests fail closed so CI cannot
-/// silently pass when the credential is missing. See `specs/integrations.md`.
+/// silently pass when the credential is missing. See `knowledge/integrations/integrations.md`.
 macro_rules! require_api_key {
     () => {
         match get_api_key() {

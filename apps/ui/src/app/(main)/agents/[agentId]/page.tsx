@@ -15,7 +15,7 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +41,7 @@ import {
   Terminal,
   Boxes,
   Clock3,
+  MoreHorizontal,
 } from "lucide-react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -59,7 +60,7 @@ import {
   type SectionTabItem,
 } from "@/components/layout";
 import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -76,6 +77,13 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
 import { useWebMcp } from "@/providers/webmcp-context";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {
@@ -342,6 +350,122 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             </Button>
           </>
         }
+        compactActions={
+          <>
+            <Button
+              variant="accent"
+              onClick={handleNewSession}
+              disabled={createSession.isPending || agent.status !== "active"}
+            >
+              <Plus className="size-4" />
+              {createSession.isPending ? "Creating..." : "New session"}
+            </Button>
+            {observersEnabled && agent.status === "active" && (
+              <div className="hidden @sm/masthead:block">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    className={buttonVariants({ variant: "outline", size: "icon" })}
+                    aria-label="More actions"
+                  >
+                    <MoreHorizontal className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuPositioner align="end">
+                    <DropdownMenuContent>
+                      <DropdownMenuItem
+                        render={
+                          <Link
+                            href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
+                          />
+                        }
+                      >
+                        <Telescope className="size-4" />
+                        Observe this agent
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenuPositioner>
+                </DropdownMenu>
+              </div>
+            )}
+            <div className="@sm/masthead:hidden">
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  className={buttonVariants({ variant: "outline", size: "icon" })}
+                  aria-label="More actions"
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuPositioner align="end">
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={handleCopy} disabled={copyAgent.isPending}>
+                      <Copy className="size-4" />
+                      {copyAgent.isPending ? "Copying..." : "Copy"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExport} disabled={exportAgent.isPending}>
+                      <Download className="size-4" />
+                      {exportAgent.isPending ? "Exporting..." : "Export"}
+                    </DropdownMenuItem>
+                    {agent.status === "active" && (
+                      <DropdownMenuItem render={<Link href={`/agents/${agentId}/edit`} />}>
+                        <Pencil className="size-4" />
+                        Edit
+                      </DropdownMenuItem>
+                    )}
+                    {agent.status === "active" && (
+                      <DropdownMenuItem
+                        render={
+                          <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }} />
+                        }
+                      >
+                        <Rocket className="size-4" />
+                        Create app
+                      </DropdownMenuItem>
+                    )}
+                    {observersEnabled && agent.status === "active" && (
+                      <DropdownMenuItem
+                        render={
+                          <Link
+                            href={{ pathname: "/observers/new", query: { agent_id: agentId } }}
+                          />
+                        }
+                      >
+                        <Telescope className="size-4" />
+                        Observe this agent
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenuPositioner>
+              </DropdownMenu>
+            </div>
+          </>
+        }
+        compactActionStrip={
+          <>
+            {agent.status === "active" && (
+              <Link href={`/agents/${agentId}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="size-4" />
+                  Edit
+                </Button>
+              </Link>
+            )}
+            {agent.status === "active" && (
+              <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
+                <Button variant="outline">
+                  <Rocket className="size-4" />
+                  Create app
+                </Button>
+              </Link>
+            )}
+            <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
+              <Copy className="size-4" />
+              {copyAgent.isPending ? "Copying..." : "Copy"}
+            </Button>
+            <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
+              <Download className="size-4" />
+              {exportAgent.isPending ? "Exporting..." : "Export"}
+            </Button>
+          </>
+        }
       />
 
       <PageControlStrip>
@@ -423,14 +547,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     {agentCapabilities.map((capConfig) => {
                       const cap = getCapabilityInfo(capConfig.ref);
                       if (!cap) return null;
-                      const IconComponent = getCapabilityIcon(cap.icon);
-
                       return (
                         <div
                           key={capConfig.ref}
                           className="flex items-center gap-2 p-2 border bg-muted/50"
                         >
-                          <IconComponent className="w-4 h-4" />
+                          <CapabilityIcon icon={cap.icon} className="w-4 h-4" />
                           <div className="flex-1">
                             <p className="text-sm font-medium">
                               {localizedCapabilityName(cap, locale)}
