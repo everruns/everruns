@@ -157,11 +157,18 @@ impl BlobMetadata {
 /// Object key for a workspace file's content blob.
 ///
 /// `workspace_id` is the per-tenant partition (org ownership is enforced above
-/// this layer), `file_id` keys the logical file, and `content_sha256` makes each
-/// revision immutable. This prevents object-store overwrites from racing ahead
-/// of the PostgreSQL sidecar pointer that selects the current revision.
-pub fn workspace_file_key(workspace_id: Uuid, file_id: Uuid, content_sha256: &str) -> String {
-    format!("workspaces/{workspace_id}/files/{file_id}/sha256/{content_sha256}")
+/// this layer), `file_id` keys the logical file, and `revision_id` makes each
+/// revision unique even when content is later reverted. This lets a superseded
+/// object be deleted without racing a later write of the same content.
+pub fn workspace_file_key(
+    workspace_id: Uuid,
+    file_id: Uuid,
+    content_sha256: &str,
+    revision_id: Uuid,
+) -> String {
+    format!(
+        "workspaces/{workspace_id}/files/{file_id}/sha256/{content_sha256}/revisions/{revision_id}"
+    )
 }
 
 /// Object key for an image's primary data blob.
@@ -611,8 +618,8 @@ mod tests {
         let ws = Uuid::nil();
         let file = Uuid::from_u128(1);
         assert_eq!(
-            workspace_file_key(ws, file, "abc123"),
-            "workspaces/00000000-0000-0000-0000-000000000000/files/00000000-0000-0000-0000-000000000001/sha256/abc123"
+            workspace_file_key(ws, file, "abc123", Uuid::from_u128(3)),
+            "workspaces/00000000-0000-0000-0000-000000000000/files/00000000-0000-0000-0000-000000000001/sha256/abc123/revisions/00000000-0000-0000-0000-000000000003"
         );
         assert_eq!(
             image_data_key(7, file),

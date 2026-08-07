@@ -87,7 +87,7 @@ impl Database {
         {
             let file_id = Uuid::now_v7();
             let sha = content_sha256(content);
-            let key = workspace_file_key(workspace_id, file_id, &sha);
+            let key = workspace_file_key(workspace_id, file_id, &sha, Uuid::now_v7());
 
             // Write the blob first; if the row insert then fails (e.g. duplicate
             // path) we clean the orphan object up rather than leaving it behind.
@@ -283,20 +283,29 @@ impl Database {
         if let (Some(blob), Some(content)) = (self.blob_store(), input.content.as_ref()) {
             let size_bytes = content.len() as i64;
 
-            // Resolve the target file id without mutating anything yet.
+            // Serialize pointer changes so the superseded unique revision can
+            // be reclaimed safely after the transaction commits.
+            let mut tx = self.pool.begin().await?;
             let Some((file_id,)) = sqlx::query_as::<_, (Uuid,)>(
-                "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE",
+                "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE FOR UPDATE",
             )
             .bind(session_id)
             .bind(path)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *tx)
             .await?
             else {
                 return Ok(None);
             };
 
             let sha = content_sha256(content);
-            let key = workspace_file_key(session_id, file_id, &sha);
+            let old_key = sqlx::query_as::<_, (String,)>(
+                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(file_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|(key,)| key);
+            let key = workspace_file_key(session_id, file_id, &sha, Uuid::now_v7());
             blob.put(
                 &key,
                 content.clone(),
@@ -304,7 +313,6 @@ impl Database {
             )
             .await?;
 
-            let mut tx = self.pool.begin().await?;
             sqlx::query(
                 r#"
                 INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
@@ -339,6 +347,10 @@ impl Database {
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
+
+            if let Some(old_key) = old_key {
+                blob.delete(&old_key).await?;
+            }
 
             if let Some(row) = row.as_mut() {
                 row.content = Some(content.clone());
@@ -414,16 +426,15 @@ impl Database {
             // offloaded file the sidecar holds the current SHA-256; for a
             // still-inline file (pre-offload row) compare the column directly.
             let expected_sha = content_sha256(&expected_content);
-            let current_sha: Option<String> = sqlx::query_as::<_, (String,)>(
-                "SELECT content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+            let current_pointer: Option<(String, String)> = sqlx::query_as(
+                "SELECT blob_key, content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
             )
             .bind(existing.id)
             .fetch_optional(&mut *tx)
-            .await?
-            .map(|(s,)| s);
+            .await?;
 
-            let matches = match (&current_sha, &existing.content) {
-                (Some(sha), _) => *sha == expected_sha,
+            let matches = match (&current_pointer, &existing.content) {
+                (Some((_, sha)), _) => *sha == expected_sha,
                 (None, Some(content)) => *content == expected_content,
                 (None, None) => expected_content.is_empty(),
             };
@@ -434,7 +445,7 @@ impl Database {
 
             let size_bytes = new_content.len() as i64;
             let sha = content_sha256(&new_content);
-            let key = workspace_file_key(session_id, existing.id, &sha);
+            let key = workspace_file_key(session_id, existing.id, &sha, Uuid::now_v7());
             blob.put(
                 &key,
                 new_content.clone(),
@@ -476,6 +487,10 @@ impl Database {
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
+
+            if let Some((old_key, _)) = current_pointer {
+                blob.delete(&old_key).await?;
+            }
 
             if let Some(row) = row.as_mut() {
                 row.content = Some(new_content);
@@ -676,7 +691,7 @@ impl Database {
             // already durable; clean the blob up on any DB failure.
             let written_key = if let Some(content) = source.content.clone() {
                 let sha = content_sha256(&content);
-                let key = workspace_file_key(session_id, dest_id, &sha);
+                let key = workspace_file_key(session_id, dest_id, &sha, Uuid::now_v7());
                 blob.put(
                     &key,
                     content,
