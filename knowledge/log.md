@@ -1,5 +1,11 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-07
+
+* **Platform behavioral eval**: Replaced the legacy tool-name study with a
+  live-server Mira eval for `platform` command sequencing, safety, loop budgets,
+  and persisted hourly Agent/MCP/model/trigger state.
+
 ## 2026-08-06
 
 * **Platform command surface**: Added the high-risk built-in `platform`

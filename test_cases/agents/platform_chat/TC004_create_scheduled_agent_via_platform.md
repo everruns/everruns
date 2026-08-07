@@ -7,9 +7,16 @@ create an Agent with an explicit default model, and create an Agent Trigger for
 recurring autonomous work. This is the regression case for the failed
 dad-joke/Visti provisioning turn.
 
+Automated behavioral coverage: `evals/platform-capability`, preset
+`provisioning`. That study uses a documented dummy API key and verifies the
+created Agent, model, encrypted MCP registration and attachment, Agent Trigger,
+and absence of a Platform Chat Session Schedule through public resource APIs.
+
 Credential entry is intentionally outside this test. Use an MCP server that
 requires no secret, or preconfigure its Agent-scoped connection. A secret stored
 in Platform Chat's session must never be treated as available to the new Agent.
+Credential binding itself is covered by the automated dummy-credential case;
+never paste a production credential into this manual test transcript.
 
 ## Preconditions
 
@@ -31,20 +38,23 @@ in Platform Chat's session must never be treated as available to the new Agent.
    final agent and trigger links.
    ```
 
-3. Inspect the tool trace. Verify that Platform Chat:
+3. Platform Chat must ask for confirmation before creating the reusable
+   organization-wide Agent. Confirm the exact Agent, model, and trigger request.
+
+4. Inspect the tool trace after confirmation. Verify that Platform Chat:
    - uses `discover` to find model, Agent, and Agent Trigger operations rather
      than calling an invented tool such as `read_models`;
    - uses `query` to resolve `gpt-5.6-terra` and inspect existing resources;
    - uses `execute` for the requested creates;
    - queries the final Agent and Trigger state before answering.
 
-4. Open the returned Agent link and verify its `default_model_id` points to the
+5. Open the returned Agent link and verify its `default_model_id` points to the
    model whose provider model ID is `gpt-5.6-terra`.
 
-5. Open the returned Trigger link and verify it targets the new Agent and uses
+6. Open the returned Trigger link and verify it targets the new Agent and uses
    an hourly schedule.
 
-6. Verify no Session Schedule was added to the Platform Chat session.
+7. Verify no Session Schedule was added to the Platform Chat session.
 
 ## Expected Result
 

@@ -1,27 +1,27 @@
 //! A Mira `Subject` that drives a running everruns server's `platform-chat`
-//! session — the live-runtime path to evaluating the real `platform_management`
+//! session — the live-runtime path to evaluating the real `platform`
 //! capability end to end.
 //!
 //! For each sample it creates a session on the `platform-chat` harness (which
-//! carries `platform_management`), plays the sample's turns, waits for each turn
+//! carries `platform`), plays the sample's turns, waits for each turn
 //! to complete, then reads the session event stream back into a Mira
 //! `Transcript` (final response + tool calls + token usage). Scoring and
 //! reporting are shared with every other Mira subject.
 //!
 //! Why HTTP and not `mira-everruns`' in-process `RuntimeSubject`: the
-//! `platform_management` tools require a DB-backed `PlatformStore` and a session
+//! `platform` tools require a DB-backed `PlatformStore` and a session
 //! runner, which only the full server provides. Driving the server exercises the
 //! real tools against real persistence — the thing we actually want to measure.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mira::subject::summarize_events;
 use mira::{ErrorKind, RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
-/// Default harness that carries the `platform_management` capability.
+/// Default harness that carries the `platform` capability.
 const DEFAULT_HARNESS: &str = "platform-chat";
 
 pub struct EverrunsServerSubject {
@@ -159,6 +159,49 @@ impl EverrunsServerSubject {
             .ok_or_else(|| format!("create session: no id in response: {resp}"))
     }
 
+    async fn capture_scheduled_agent_state(&self, session_id: &str, resource_name: &str) -> Value {
+        let agent = match self.get(&format!("/v1/agents/{resource_name}")).await {
+            Ok(agent) => agent,
+            Err(error) => return json!({ "error": format!("read created agent: {error}") }),
+        };
+        let agent_id = agent.get("id").and_then(Value::as_str);
+        let model_id = agent.get("default_model_id").and_then(Value::as_str);
+
+        let model = match model_id {
+            Some(id) => self.get(&format!("/v1/models/{id}")).await.unwrap_or_else(
+                |error| json!({ "error": format!("read selected model: {error}") }),
+            ),
+            None => json!({ "error": "created agent has no default_model_id" }),
+        };
+        let triggers = match agent_id {
+            Some(id) => self
+                .get(&format!("/v1/agents/{id}/triggers"))
+                .await
+                .unwrap_or_else(
+                    |error| json!({ "error": format!("read agent triggers: {error}") }),
+                ),
+            None => json!({ "error": "created agent has no id" }),
+        };
+        let session_schedules = self
+            .get(&format!("/v1/sessions/{session_id}/schedules"))
+            .await
+            .unwrap_or_else(
+                |error| json!({ "error": format!("read Platform Chat schedules: {error}") }),
+            );
+        let mcp_servers = self
+            .get(&format!("/v1/mcp-servers?search={resource_name}-visti"))
+            .await
+            .unwrap_or_else(|error| json!({ "error": format!("read Visti MCP server: {error}") }));
+
+        json!({
+            "agent": agent,
+            "model": model,
+            "triggers": triggers,
+            "session_schedules": session_schedules,
+            "mcp_servers": mcp_servers,
+        })
+    }
+
     async fn send_message(&self, session_id: &str, text: &str) -> Result<(), String> {
         let body = json!({ "message": { "content": [{ "type": "text", "text": text }] } });
         self.post(&format!("/v1/sessions/{session_id}/messages"), body)
@@ -194,7 +237,15 @@ impl EverrunsServerSubject {
 
     /// After a message is sent, poll until the turn finishes (a `turn.completed`
     /// / `turn.failed` / `turn.cancelled` or `session.failed` event appears).
-    async fn wait_for_turn(&self, session_id: &str, cursor: i64) -> Result<i64, String> {
+    async fn wait_for_turn(
+        &self,
+        session_id: &str,
+        cursor: i64,
+        tool_calls_seen: &mut usize,
+        iterations_seen: &mut usize,
+        max_tool_calls: Option<usize>,
+        max_iterations: Option<usize>,
+    ) -> Result<i64, String> {
         const TERMINAL: &[&str] = &[
             "turn.completed",
             "turn.failed",
@@ -207,6 +258,26 @@ impl EverrunsServerSubject {
         loop {
             let (events, new_cur) = self.events_after(session_id, cur).await?;
             cur = new_cur;
+            *tool_calls_seen += events
+                .iter()
+                .filter(|event| event.get("type").and_then(Value::as_str) == Some("tool.started"))
+                .count();
+            *iterations_seen += events
+                .iter()
+                .filter(|event| event.get("type").and_then(Value::as_str) == Some("reason.started"))
+                .count();
+            let budget_error = budget_error(
+                *tool_calls_seen,
+                *iterations_seen,
+                max_tool_calls,
+                max_iterations,
+            );
+            if let Some(error) = budget_error {
+                let _ = self
+                    .post(&format!("/v1/sessions/{session_id}/cancel"), json!({}))
+                    .await;
+                return Err(error);
+            }
             if events
                 .iter()
                 .filter_map(|e| e.get("type").and_then(|t| t.as_str()))
@@ -244,13 +315,49 @@ impl Subject for EverrunsServerSubject {
         };
 
         let mut transcript = Transcript::default();
+        let max_tool_calls = sample
+            .metadata
+            .get("max_tool_calls")
+            .and_then(Value::as_u64)
+            .map(|value| value as usize);
+        let max_iterations = sample
+            .metadata
+            .get("max_iterations")
+            .and_then(Value::as_u64)
+            .map(|value| value as usize);
+        let mut tool_calls_seen = 0;
+        let mut iterations_seen = 0;
+        let resource_name = sample
+            .metadata
+            .get("resource_name_prefix")
+            .and_then(Value::as_str)
+            .map(unique_resource_name);
+        if let Some(name) = &resource_name {
+            transcript
+                .metadata
+                .insert("resource_name".to_string(), json!(name));
+        }
         for turn in &sample.input {
-            if let Err(e) = self.send_message(&session_id, turn).await {
+            let materialized = resource_name.as_ref().map_or_else(
+                || turn.clone(),
+                |name| turn.replace("{{resource_name}}", name),
+            );
+            if let Err(e) = self.send_message(&session_id, &materialized).await {
                 transcript.error = Some(e.clone());
                 transcript.error_kind = classify(&e);
                 break;
             }
-            match self.wait_for_turn(&session_id, cursor).await {
+            match self
+                .wait_for_turn(
+                    &session_id,
+                    cursor,
+                    &mut tool_calls_seen,
+                    &mut iterations_seen,
+                    max_tool_calls,
+                    max_iterations,
+                )
+                .await
+            {
                 Ok(c) => cursor = c,
                 Err(e) => {
                     transcript.error = Some(e.clone());
@@ -265,12 +372,18 @@ impl Subject for EverrunsServerSubject {
             Ok((events, _)) => {
                 transcript.tool_calls = extract_tool_calls(&events);
                 transcript.tool_calls_count = transcript.tool_calls.len();
-                transcript.iterations = count_turns(&events);
+                transcript.iterations = count_iterations(&events);
                 if let Some(final_text) = extract_final_response(&events) {
                     transcript.final_response = final_text;
                 }
                 let (usage, _tools) = summarize_events(&events);
                 transcript.usage = usage;
+                if transcript.error.is_none() {
+                    if let Some(error) = extract_terminal_error(&events) {
+                        transcript.error_kind = classify(&error);
+                        transcript.error = Some(error);
+                    }
+                }
                 transcript.events = events;
             }
             Err(e) => {
@@ -281,9 +394,42 @@ impl Subject for EverrunsServerSubject {
             }
         }
 
+        if sample.metadata.contains_key("expect_scheduled_agent") {
+            if let Some(name) = &resource_name {
+                let state = self.capture_scheduled_agent_state(&session_id, name).await;
+                transcript
+                    .metadata
+                    .insert("platform_state".to_string(), state);
+            }
+        }
+
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
     }
+}
+
+fn unique_resource_name(prefix: &str) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{prefix}-{:x}-{}", nanos & 0xffffffffff, std::process::id())
+}
+
+fn budget_error(
+    tool_calls: usize,
+    iterations: usize,
+    max_tool_calls: Option<usize>,
+    max_iterations: Option<usize>,
+) -> Option<String> {
+    max_tool_calls
+        .filter(|max| tool_calls > *max)
+        .map(|max| format!("tool call budget exceeded: {tool_calls}/{max}"))
+        .or_else(|| {
+            max_iterations
+                .filter(|max| iterations > *max)
+                .map(|max| format!("iteration budget exceeded: {iterations}/{max}"))
+        })
 }
 
 /// Tool names, in call order, from `tool.completed` events.
@@ -320,11 +466,28 @@ fn extract_final_response(events: &[Value]) -> Option<String> {
         })
 }
 
-fn count_turns(events: &[Value]) -> usize {
+fn count_iterations(events: &[Value]) -> usize {
     events
         .iter()
-        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("turn.completed"))
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("reason.started"))
         .count()
+}
+
+fn extract_terminal_error(events: &[Value]) -> Option<String> {
+    events.iter().rev().find_map(|event| {
+        matches!(
+            event.get("type").and_then(Value::as_str),
+            Some("turn.failed" | "session.failed")
+        )
+        .then(|| {
+            event
+                .pointer("/data/error_fields/detail")
+                .or_else(|| event.pointer("/data/error"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .flatten()
+    })
 }
 
 /// Bucket transport/timeout faults as infra (scored N/A, retried) and leave the
@@ -339,6 +502,10 @@ fn classify(message: &str) -> ErrorKind {
         "connection reset",
         "connection closed",
         "network",
+        "credit",
+        "quota",
+        "rate limit",
+        "429",
         "503",
         "502",
         "500",
@@ -349,5 +516,36 @@ fn classify(message: &str) -> ErrorKind {
         ErrorKind::Infra
     } else {
         ErrorKind::Subject
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_is_inclusive_and_reports_first_exceeded_limit() {
+        assert_eq!(budget_error(12, 20, Some(12), Some(20)), None);
+        assert_eq!(
+            budget_error(13, 21, Some(12), Some(20)).as_deref(),
+            Some("tool call budget exceeded: 13/12")
+        );
+        assert_eq!(
+            budget_error(2, 21, Some(12), Some(20)).as_deref(),
+            Some("iteration budget exceeded: 21/20")
+        );
+    }
+
+    #[test]
+    fn terminal_provider_failure_is_extracted_and_classified_as_infra() {
+        let events = vec![json!({
+            "type": "turn.failed",
+            "data": {
+                "error": "processing error",
+                "error_fields": {"detail": "credit_balance_exhausted: no credits remaining"}
+            }
+        })];
+        let error = extract_terminal_error(&events).unwrap();
+        assert_eq!(classify(&error), ErrorKind::Infra);
     }
 }

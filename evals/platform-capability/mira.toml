@@ -19,4 +19,9 @@ bin = "platform_capability"
 # Fast subset: read-only + safety cases create no entities, so they are safe to
 # run repeatedly. `mira run --preset smoke`.
 [presets.smoke]
-tag = "read"
+tag = "smoke"
+
+# The exact failed-turn regression. This creates uniquely named resources in
+# the target organization and validates their persisted state.
+[presets.provisioning]
+tag = "provisioning"

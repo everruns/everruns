@@ -1130,6 +1130,14 @@ Models compose the authoritative operations directly. Multi-command `execute`
 scripts are not transactional: callers must inspect state after a partial
 failure and avoid blindly repeating mutations.
 
+Behavioral validation lives in `evals/platform-capability`. Its live-server
+Mira study grades Platform command arguments, mutation safety, tool-call budgets,
+and persisted state. The provisioning regression resolves `gpt-5.6-terra`,
+binds an encrypted dummy MCP credential to the created Agent, and verifies that
+hourly autonomy is owned by an Agent Trigger rather than Platform Chat's
+Session. Manual UI coverage remains in
+`test_cases/agents/platform_chat/TC004_create_scheduled_agent_via_platform.md`.
+
 #### PlatformManagement (compatibility)
 
 - **Status**: Available
