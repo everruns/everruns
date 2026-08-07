@@ -157,6 +157,22 @@ describe("KnowledgeIndexDetailPage", () => {
     expect(screen.getByText(/auth failed/)).toBeInTheDocument();
   });
 
+  it("surfaces an invalid configured model and requires repair before retry", async () => {
+    mockUseModels.mockReturnValue({ data: [], isLoading: false });
+    await renderWithSuspense();
+
+    expect(screen.getAllByText("Embedding model unavailable").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Sync now/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByText(/No embedding models are configured/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Configure an embedding model" })).toHaveAttribute(
+      "href",
+      "/models",
+    );
+    expect(screen.getByRole("button", { name: "Save Changes" })).toBeDisabled();
+  });
+
   it("renders an empty documents state", async () => {
     mockUseKnowledgeIndexDocuments.mockReturnValue({ data: [], isLoading: false, error: null });
     await renderWithSuspense();

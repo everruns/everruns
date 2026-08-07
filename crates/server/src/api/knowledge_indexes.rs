@@ -18,6 +18,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
+use everruns_core::DriverRegistry;
 use std::sync::Arc;
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
@@ -26,11 +27,20 @@ use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
+    pub driver_registry: Arc<DriverRegistry>,
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
-        Self { db, auth }
+    pub fn new(
+        db: Arc<StorageBackend>,
+        auth: AuthState,
+        driver_registry: Arc<DriverRegistry>,
+    ) -> Self {
+        Self {
+            db,
+            auth,
+            driver_registry,
+        }
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
@@ -40,6 +50,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_driver_registry(self.driver_registry.clone())
     }
 }
 

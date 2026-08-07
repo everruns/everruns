@@ -146,7 +146,7 @@ async fn enqueue_claim_complete_round_trip() {
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
 
-    // idle -> pending
+    // Creation is already pending; an explicit retry remains idempotent.
     db.enqueue_knowledge_index_sync(DEFAULT_ORG_ID, index_id)
         .await
         .expect("enqueue")
@@ -210,6 +210,13 @@ async fn complete_rejects_stale_claim() {
     let encryption = EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap();
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
+
+    let created = db
+        .get_knowledge_index_by_id(DEFAULT_ORG_ID, index_id)
+        .await
+        .expect("get created index")
+        .expect("created index");
+    assert_eq!(created.sync_status, "pending");
 
     db.enqueue_knowledge_index_sync(DEFAULT_ORG_ID, index_id)
         .await
@@ -326,6 +333,12 @@ async fn embed_persists_documents_chunks_and_vectors() {
         Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
     let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
     let index_id = seed_index(&db, DEFAULT_ORG_ID, model_id).await;
+    let created = db
+        .get_knowledge_index_by_id(DEFAULT_ORG_ID, index_id)
+        .await
+        .expect("get created index")
+        .expect("created index");
+    assert_eq!(created.sync_status, "pending");
 
     let driver_registry = test_driver_registry();
     let provider_resolver = Arc::new(
@@ -343,16 +356,14 @@ async fn embed_persists_documents_chunks_and_vectors() {
         KnowledgeIndexSyncConfig::from_env(),
     );
 
-    // Claim the index, then drive the embed + persist path directly (bypassing
-    // the git clone, which is exercised separately by snapshot helpers).
-    db.enqueue_knowledge_index_sync(DEFAULT_ORG_ID, index_id)
-        .await
-        .expect("enqueue");
+    // Claim the automatically enqueued index, then drive the embed + persist
+    // path directly (the git checkout is exercised separately below).
     let claimed = db
         .claim_next_knowledge_index_sync()
         .await
         .expect("claim")
         .expect("pending");
+    assert_eq!(claimed.sync_status, "syncing");
 
     let long_text: String = std::iter::repeat_n('a', 3200).collect();
     let docs = vec![
@@ -440,4 +451,44 @@ async fn embed_persists_documents_chunks_and_vectors() {
             m.id
         );
     }
+}
+
+#[test]
+fn github_root_folder_limits_ingestion_and_keeps_relative_source_uris() {
+    let checkout = tempfile::TempDir::new().expect("checkout");
+    let knowledge = checkout.path().join("knowledge");
+    std::fs::create_dir_all(knowledge.join("guides")).expect("create root folder");
+    std::fs::write(checkout.path().join("outside.md"), "outside").expect("write outside");
+    std::fs::write(knowledge.join("guides/start.md"), "inside").expect("write inside");
+
+    let root = resolve_root_folder(checkout.path(), Some("knowledge")).expect("resolve root");
+    let source = ResolvedGitSource {
+        url: "https://github.com/everruns/bashkit.git".into(),
+        repository: "everruns/bashkit".into(),
+        branch: "main".into(),
+        root_folder: Some("knowledge".into()),
+        auth_token: None,
+    };
+    let limits = SnapshotLimits {
+        max_files: 10,
+        max_file_bytes: 1024,
+        max_total_bytes: 4096,
+    };
+    let mut documents = Vec::new();
+    let mut total_bytes = 0;
+    collect_documents(
+        &root,
+        &root,
+        &source,
+        &limits,
+        &mut documents,
+        &mut total_bytes,
+    )
+    .expect("collect documents");
+
+    assert_eq!(documents.len(), 1);
+    assert_eq!(
+        documents[0].source_uri,
+        "github://everruns/bashkit@main/guides/start.md"
+    );
 }

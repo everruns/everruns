@@ -93,11 +93,13 @@ jest.mock("@/components/ui/select", () => {
     value,
     onValueChange,
     children,
+    disabled,
     "aria-label": ariaLabel,
   }: {
     value: string;
     onValueChange: (value: string) => void;
     children: mockReact.ReactNode;
+    disabled?: boolean;
     "aria-label"?: string;
   }) {
     const trigger = findTrigger(children);
@@ -107,6 +109,7 @@ jest.mock("@/components/ui/select", () => {
         aria-label={trigger.ariaLabel ?? ariaLabel ?? "Source"}
         aria-invalid={trigger.ariaInvalid}
         aria-describedby={trigger.ariaDescribedBy}
+        disabled={disabled}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
       >
@@ -214,6 +217,14 @@ describe("KnowledgeIndexesPage", () => {
     );
   });
 
+  it("surfaces an invalid model and requires repair before sync", () => {
+    mockUseModels.mockReturnValue({ data: [], isLoading: false });
+    render(<KnowledgeIndexesPage />);
+
+    expect(screen.getByText("Embedding model unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync" })).not.toBeInTheDocument();
+  });
+
   it("passes search text into the query", () => {
     render(<KnowledgeIndexesPage />);
     fireEvent.change(screen.getByLabelText("Search knowledge indexes"), {
@@ -260,25 +271,21 @@ describe("KnowledgeIndexesPage", () => {
     );
   });
 
-  it("requires an embedding model before submit", async () => {
+  it("prevents submit when no embedding model is available", () => {
     const mutateAsync = jest.fn().mockResolvedValue({});
     mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseModels.mockReturnValue({ data: [], isLoading: false });
     render(<KnowledgeIndexesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "New index" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "No Model" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create Index" }));
 
-    const nameInput = within(dialog).getByLabelText("Name");
-    const embeddingModelPicker = within(dialog).getByRole("combobox", {
-      name: "Embedding model",
-    });
-    const error = within(dialog).getByText(/embedding model is required/i);
-
-    expect(nameInput).not.toHaveAttribute("aria-invalid", "true");
-    expect(embeddingModelPicker).toHaveAttribute("aria-invalid", "true");
-    expect(embeddingModelPicker).toHaveAttribute("aria-describedby", error.id);
+    expect(within(dialog).getByText(/no embedding models are configured/i)).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("link", { name: "Configure an embedding model" }),
+    ).toHaveAttribute("href", "/models");
+    expect(within(dialog).getByRole("button", { name: "Create Index" })).toBeDisabled();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
@@ -322,9 +329,7 @@ describe("KnowledgeIndexesPage", () => {
 
     const picker = within(screen.getByRole("dialog")).getByLabelText("Embedding model");
     expect(within(picker).queryByRole("option", { name: "GPT-5.6 (OpenAI)" })).toBeNull();
-    expect(
-      within(picker).getByRole("option", { name: "No embedding models available" }),
-    ).toBeDisabled();
+    expect(picker).toBeDisabled();
     expect(
       within(screen.getByRole("dialog")).getByRole("link", {
         name: "Configure an embedding model",
