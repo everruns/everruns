@@ -37,6 +37,7 @@ import {
 import { useHarnesses, usePageTitle } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api/client";
 import type { OrgRole } from "@/lib/api/types";
 
 const ROLE_LABELS: Record<OrgRole, string> = {
@@ -48,6 +49,11 @@ const ROLE_LABELS: Record<OrgRole, string> = {
 type SettingsGroupKey = "identity" | "models" | "harnesses";
 type AutoSaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
+interface GroupSaveState {
+  state: AutoSaveState;
+  error: string | null;
+}
+
 interface OrganizationDraft {
   name: string;
   defaultModelId: string;
@@ -57,6 +63,11 @@ interface OrganizationDraft {
 
 const CONTROL_CLASS_NAME = "w-full";
 const AUTOSAVE_DELAY_MS = 700;
+const INITIAL_SAVE_STATES: Record<SettingsGroupKey, GroupSaveState> = {
+  identity: { state: "idle", error: null },
+  models: { state: "idle", error: null },
+  harnesses: { state: "idle", error: null },
+};
 
 export default function OrganizationPage() {
   usePageTitle("Organization", "Settings");
@@ -78,11 +89,7 @@ export default function OrganizationPage() {
   const [defaultModelId, setDefaultModelId] = useState("");
   const [defaultHarnessId, setDefaultHarnessId] = useState("");
   const [baseHarnessId, setBaseHarnessId] = useState("");
-  const [dirtyGroups, setDirtyGroups] = useState<SettingsGroupKey[]>([]);
-  const [savingGroups, setSavingGroups] = useState<SettingsGroupKey[]>([]);
-  const [recentlySavedGroups, setRecentlySavedGroups] = useState<SettingsGroupKey[]>([]);
-  const [autoSaveState, setAutoSaveState] = useState<AutoSaveState>("idle");
-  const [autoSaveError, setAutoSaveError] = useState<string | null>(null);
+  const [saveStates, setSaveStates] = useState(INITIAL_SAVE_STATES);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
 
@@ -92,19 +99,33 @@ export default function OrganizationPage() {
     defaultHarnessId: "",
     baseHarnessId: "",
   });
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const saveVersionRef = useRef(0);
+  const saveTimersRef = useRef<Partial<Record<SettingsGroupKey, ReturnType<typeof setTimeout>>>>(
+    {},
+  );
+  const saveVersionsRef = useRef<Record<SettingsGroupKey, number>>({
+    identity: 0,
+    models: 0,
+    harnesses: 0,
+  });
+  const loadedOrganizationIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    saveVersionRef.current += 1;
-
-    if (!organizationId || !organizationName) {
+    if (
+      !organizationId ||
+      !organizationName ||
+      loadedOrganizationIdRef.current === organizationId
+    ) {
       return;
     }
+
+    for (const group of Object.keys(saveTimersRef.current) as SettingsGroupKey[]) {
+      clearTimeout(saveTimersRef.current[group]);
+      delete saveTimersRef.current[group];
+    }
+    for (const group of Object.keys(saveVersionsRef.current) as SettingsGroupKey[]) {
+      saveVersionsRef.current[group] += 1;
+    }
+    loadedOrganizationIdRef.current = organizationId;
 
     setName(organizationName);
     setDefaultModelId(organizationDefaultModelId);
@@ -118,11 +139,7 @@ export default function OrganizationPage() {
     };
 
     draftRef.current = draft;
-    setDirtyGroups([]);
-    setSavingGroups([]);
-    setRecentlySavedGroups([]);
-    setAutoSaveState("idle");
-    setAutoSaveError(null);
+    setSaveStates(INITIAL_SAVE_STATES);
   }, [
     organizationId,
     organizationName,
@@ -132,12 +149,13 @@ export default function OrganizationPage() {
   ]);
 
   useEffect(() => {
+    const saveTimers = saveTimersRef.current;
+    const saveVersions = saveVersionsRef.current;
     return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
+      for (const group of Object.keys(saveTimers) as SettingsGroupKey[]) {
+        clearTimeout(saveTimers[group]);
+        saveVersions[group] += 1;
       }
-      saveVersionRef.current += 1;
     };
   }, []);
 
@@ -149,60 +167,71 @@ export default function OrganizationPage() {
     setBaseHarnessId(nextDraft.baseHarnessId);
   };
 
-  const scheduleAutoSave = (groups: SettingsGroupKey[], nextDraft: OrganizationDraft) => {
+  const scheduleAutoSave = (group: SettingsGroupKey, nextDraft: OrganizationDraft) => {
     draftRef.current = nextDraft;
-    saveVersionRef.current += 1;
-    const saveVersion = saveVersionRef.current;
+    saveVersionsRef.current[group] += 1;
+    const saveVersion = saveVersionsRef.current[group];
 
-    setRecentlySavedGroups([]);
-    setDirtyGroups((current) => mergeGroups(current, groups));
-    setAutoSaveError(null);
+    setSaveStates((current) => ({
+      ...current,
+      [group]: { state: "dirty", error: null },
+    }));
 
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
+    if (saveTimersRef.current[group]) {
+      clearTimeout(saveTimersRef.current[group]);
     }
 
-    if (!nextDraft.name.trim() || !nextDraft.defaultHarnessId || !nextDraft.baseHarnessId) {
-      setAutoSaveState("dirty");
+    if (
+      (group === "identity" && !nextDraft.name.trim()) ||
+      (group === "models" && !nextDraft.defaultModelId) ||
+      (group === "harnesses" && (!nextDraft.defaultHarnessId || !nextDraft.baseHarnessId))
+    ) {
       return;
     }
 
-    setAutoSaveState("dirty");
-    saveTimerRef.current = setTimeout(async () => {
-      saveTimerRef.current = null;
-      setAutoSaveState("saving");
-      setSavingGroups(groups);
+    saveTimersRef.current[group] = setTimeout(async () => {
+      delete saveTimersRef.current[group];
+      setSaveStates((current) => ({
+        ...current,
+        [group]: { state: "saving", error: null },
+      }));
+
+      const payload =
+        group === "identity"
+          ? { name: nextDraft.name.trim() }
+          : group === "models"
+            ? { default_model_id: nextDraft.defaultModelId }
+            : {
+                default_harness_id: nextDraft.defaultHarnessId,
+                base_harness_id: nextDraft.baseHarnessId,
+              };
 
       try {
-        await updateOrganization.mutateAsync({
-          name: nextDraft.name.trim(),
-          ...(nextDraft.defaultModelId ? { default_model_id: nextDraft.defaultModelId } : {}),
-          default_harness_id: nextDraft.defaultHarnessId,
-          base_harness_id: nextDraft.baseHarnessId,
-        });
+        await updateOrganization.mutateAsync(payload);
 
-        if (saveVersionRef.current !== saveVersion) {
+        if (saveVersionsRef.current[group] !== saveVersion) {
           return;
         }
 
-        const savedDraft = {
-          ...nextDraft,
-          name: nextDraft.name.trim(),
-        };
-
-        setDraft(savedDraft);
-        setDirtyGroups([]);
-        setSavingGroups([]);
-        setRecentlySavedGroups(groups);
-        setAutoSaveState("saved");
+        if (group === "identity") {
+          setDraft({ ...draftRef.current, name: nextDraft.name.trim() });
+        }
+        setSaveStates((current) => ({
+          ...current,
+          [group]: { state: "saved", error: null },
+        }));
       } catch (err) {
-        if (saveVersionRef.current !== saveVersion) {
+        if (saveVersionsRef.current[group] !== saveVersion) {
           return;
         }
 
-        setSavingGroups([]);
-        setAutoSaveState("error");
-        setAutoSaveError(err instanceof Error ? err.message : "Failed to save organization");
+        setSaveStates((current) => ({
+          ...current,
+          [group]: {
+            state: "error",
+            error: getOrganizationSaveError(err),
+          },
+        }));
       }
     }, AUTOSAVE_DELAY_MS);
   };
@@ -211,14 +240,14 @@ export default function OrganizationPage() {
     const nextName = e.target.value;
     const nextDraft = { ...draftRef.current, name: nextName };
     setName(nextName);
-    scheduleAutoSave(["identity"], nextDraft);
+    scheduleAutoSave("identity", nextDraft);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-      scheduleAutoSave(["identity"], draftRef.current);
+    if (e.key === "Enter" && saveTimersRef.current.identity) {
+      clearTimeout(saveTimersRef.current.identity);
+      delete saveTimersRef.current.identity;
+      scheduleAutoSave("identity", draftRef.current);
     }
   };
 
@@ -273,15 +302,8 @@ export default function OrganizationPage() {
             <SettingsGroup
               title="Identity"
               description="Name and stable identifier for this organization."
-              status={
-                <AutoSaveBadge
-                  group="identity"
-                  state={autoSaveState}
-                  dirtyGroups={dirtyGroups}
-                  savingGroups={savingGroups}
-                  recentlySavedGroups={recentlySavedGroups}
-                />
-              }
+              status={<AutoSaveBadge saveState={saveStates.identity} />}
+              error={saveStates.identity.error}
             >
               <SettingsRow
                 label="Organization Name"
@@ -322,15 +344,8 @@ export default function OrganizationPage() {
             <SettingsGroup
               title="Models"
               description="Model fallbacks applied when agents or sessions do not set their own model."
-              status={
-                <AutoSaveBadge
-                  group="models"
-                  state={autoSaveState}
-                  dirtyGroups={dirtyGroups}
-                  savingGroups={savingGroups}
-                  recentlySavedGroups={recentlySavedGroups}
-                />
-              }
+              status={<AutoSaveBadge saveState={saveStates.models} />}
+              error={saveStates.models.error}
             >
               <SettingsRow
                 label="Default Model"
@@ -343,7 +358,7 @@ export default function OrganizationPage() {
                   onChange={(value) => {
                     const nextDraft = { ...draftRef.current, defaultModelId: value };
                     setDefaultModelId(value);
-                    scheduleAutoSave(["models"], nextDraft);
+                    scheduleAutoSave("models", nextDraft);
                   }}
                   placeholder="No default model"
                   className={CONTROL_CLASS_NAME}
@@ -354,15 +369,8 @@ export default function OrganizationPage() {
             <SettingsGroup
               title="Harnesses"
               description="Harness fallbacks applied when sessions do not set their own runtime environment."
-              status={
-                <AutoSaveBadge
-                  group="harnesses"
-                  state={autoSaveState}
-                  dirtyGroups={dirtyGroups}
-                  savingGroups={savingGroups}
-                  recentlySavedGroups={recentlySavedGroups}
-                />
-              }
+              status={<AutoSaveBadge saveState={saveStates.harnesses} />}
+              error={saveStates.harnesses.error}
             >
               <SettingsRow
                 label="Default Harness"
@@ -375,7 +383,7 @@ export default function OrganizationPage() {
                   onValueChange={(value) => {
                     const nextDraft = { ...draftRef.current, defaultHarnessId: value };
                     setDefaultHarnessId(value);
-                    scheduleAutoSave(["harnesses"], nextDraft);
+                    scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select default harness"
                   className={CONTROL_CLASS_NAME}
@@ -393,7 +401,7 @@ export default function OrganizationPage() {
                   onValueChange={(value) => {
                     const nextDraft = { ...draftRef.current, baseHarnessId: value };
                     setBaseHarnessId(value);
-                    scheduleAutoSave(["harnesses"], nextDraft);
+                    scheduleAutoSave("harnesses", nextDraft);
                   }}
                   placeholder="Select base harness"
                   className={CONTROL_CLASS_NAME}
@@ -406,10 +414,6 @@ export default function OrganizationPage() {
                 </div>
               )}
             </SettingsGroup>
-
-            {(autoSaveState === "error" || autoSaveError) && (
-              <p className="text-sm text-destructive">{autoSaveError}</p>
-            )}
           </div>
         )}
       </section>
@@ -525,22 +529,38 @@ export default function OrganizationPage() {
   );
 }
 
+function getOrganizationSaveError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+  if (error instanceof TypeError) {
+    return "Unable to reach the server";
+  }
+  return "Could not save this setting";
+}
+
 function SettingsGroup({
   title,
   description,
   status,
+  error,
   children,
 }: {
   title: string;
   description: string;
   status: React.ReactNode;
+  error: string | null;
   children: React.ReactNode;
 }) {
+  const headingId = `organization-settings-${title.toLowerCase()}`;
   return (
-    <div>
+    <section aria-labelledby={headingId}>
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          <h3
+            id={headingId}
+            className="text-sm font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+          >
             {title}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
@@ -548,7 +568,12 @@ function SettingsGroup({
         {status}
       </div>
       <Card className="overflow-hidden p-0 gap-0">{children}</Card>
-    </div>
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -576,52 +601,37 @@ function SettingsRow({
   );
 }
 
-function AutoSaveBadge({
-  group,
-  state,
-  dirtyGroups,
-  savingGroups,
-  recentlySavedGroups,
-}: {
-  group: SettingsGroupKey;
-  state: AutoSaveState;
-  dirtyGroups: SettingsGroupKey[];
-  savingGroups: SettingsGroupKey[];
-  recentlySavedGroups: SettingsGroupKey[];
-}) {
-  const isSaving = state === "saving" && savingGroups.includes(group);
-  const isDirty = dirtyGroups.includes(group);
-  const isRecentlySaved = state === "saved" && recentlySavedGroups.includes(group);
-  const isError = state === "error" && isDirty;
-
-  if (isSaving) {
+function AutoSaveBadge({ saveState }: { saveState: GroupSaveState }) {
+  if (saveState.state === "saving") {
     return (
-      <Badge variant="outline" className="text-muted-foreground">
+      <Badge role="status" aria-live="polite" variant="outline" className="text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
         Saving
       </Badge>
     );
   }
 
-  if (isError) {
-    return <Badge variant="destructive">Save failed</Badge>;
+  if (saveState.state === "error") {
+    return <Badge variant="destructive">Not saved</Badge>;
   }
 
-  if (isDirty) {
-    return <Badge variant="secondary">Unsaved changes</Badge>;
+  if (saveState.state === "dirty") {
+    return (
+      <Badge role="status" aria-live="polite" variant="secondary">
+        Unsaved changes
+      </Badge>
+    );
   }
 
   return (
-    <Badge variant="outline" className={cn(isRecentlySaved && "text-green-700")}>
+    <Badge
+      role="status"
+      aria-live="polite"
+      variant="outline"
+      className={cn(saveState.state === "saved" && "text-green-700")}
+    >
       <Check className="h-3 w-3" />
       Saved
     </Badge>
   );
-}
-
-function mergeGroups(
-  current: SettingsGroupKey[],
-  incoming: SettingsGroupKey[],
-): SettingsGroupKey[] {
-  return Array.from(new Set([...current, ...incoming]));
 }
