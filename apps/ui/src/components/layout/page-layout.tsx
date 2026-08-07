@@ -3,7 +3,7 @@
 // Zones (numbered ①–⑤ in the design source):
 //   1. Breadcrumb     — PageBreadcrumb: the context line (root → name → mode).
 //   2. Header         — PageMasthead: icon tile · title · status badge · meta, then a
-//                       right-aligned action cluster (primary verb first).
+//                       right-aligned action cluster.
 //   3. Control strip   — the shape-shifter: filters on list, stats on view, section nav
 //                       on edit. Same slot, always. Compose with PageControlStrip plus
 //                       SectionTabs / StatGrid as needed.
@@ -135,8 +135,12 @@ interface PageMastheadProps {
   description?: ReactNode;
   /** Meta run — small key/value spans rendered below the description. */
   meta?: ReactNode;
-  /** Right-aligned action cluster, primary verb first. */
+  /** Full right-aligned action cluster shown when the masthead has enough room. */
   actions?: ReactNode;
+  /** Prioritized actions shown instead of `actions` in constrained mastheads. */
+  compactActions?: ReactNode;
+  /** Frequent secondary actions shown on a separate row at tablet-like widths. */
+  compactActionStrip?: ReactNode;
   className?: string;
 }
 
@@ -151,12 +155,17 @@ export function PageMasthead({
   description,
   meta,
   actions,
+  compactActions,
+  compactActionStrip,
   className,
 }: PageMastheadProps) {
   return (
     <div
       data-slot="page-masthead"
-      className={cn("flex flex-wrap items-start gap-4 border-b pb-4", className)}
+      className={cn(
+        "@container/masthead flex flex-wrap items-start gap-4 border-b pb-4",
+        className,
+      )}
     >
       <div
         data-slot="page-masthead-identity"
@@ -183,9 +192,28 @@ export function PageMasthead({
       {actions && (
         <div
           data-slot="page-masthead-actions"
-          className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+          className={cn(
+            "ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal",
+            compactActions && "hidden @5xl/masthead:flex",
+          )}
         >
           {actions}
+        </div>
+      )}
+      {compactActions && (
+        <div
+          data-slot="page-masthead-compact-actions"
+          className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+        >
+          {compactActions}
+        </div>
+      )}
+      {compactActionStrip && (
+        <div
+          data-slot="page-masthead-compact-action-strip"
+          className="hidden w-full flex-wrap items-center gap-2 @sm/masthead:flex @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+        >
+          {compactActionStrip}
         </div>
       )}
     </div>
