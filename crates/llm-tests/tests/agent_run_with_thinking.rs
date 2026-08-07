@@ -44,7 +44,14 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     // non-determinism, but keep the accepted attempt's `runner` because the
     // reasoning-field assertions below inspect `runner.messages()` — so this
     // cannot use the `run_live_turn!` macro (which only returns the result).
-    const MAX_ATTEMPTS: usize = 3;
+    //
+    // The acceptance predicate below requires success + the answer + captured
+    // reasoning, so a single attempt can miss on any of three independent axes
+    // (streaming/transport error, answer not yet emitted, reasoning surfaced as
+    // public text instead of the private field). Opus in particular flaked all
+    // three in one run on `main`, so the budget is generous enough to absorb a
+    // couple of bad draws while still failing a genuinely broken provider.
+    const MAX_ATTEMPTS: usize = 6;
     let mut accepted: Option<(InMemoryAgenticLoop, TurnResult)> = None;
     for attempt in 1..=MAX_ATTEMPTS {
         let model = config.model().expect("model set (checked above)");
