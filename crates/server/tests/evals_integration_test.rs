@@ -782,6 +782,20 @@ async fn test_dataset_export_async_handle_produces_scrubbed_ndjson() {
         "seeded secret must be scrubbed from the exported dataset"
     );
     assert!(body.contains("[REDACTED]"), "scrubbed placeholder present");
+
+    // Repeating an identical export reuses the durable result instead of
+    // enqueueing duplicate reconstruction work or storing another body.
+    let repeated = service
+        .create_dataset_export(
+            &caller,
+            &eval_id,
+            &run_id,
+            ExportEvalRunDatasetRequest::default(),
+        )
+        .await
+        .expect("repeat export")
+        .expect("run exists");
+    assert_eq!(repeated.public_id, handle.public_id);
 }
 
 #[tokio::test]

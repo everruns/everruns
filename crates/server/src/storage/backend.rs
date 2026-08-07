@@ -4463,8 +4463,23 @@ impl StorageBackend {
         &self,
         org_id: i64,
         input: CreateEvalRunDatasetRow,
-    ) -> Result<EvalRunDatasetRow> {
+    ) -> Result<(EvalRunDatasetRow, bool)> {
         dispatch!(self, create_eval_run_dataset, org_id, input)
+    }
+
+    pub async fn find_eval_run_dataset_by_request(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+        request: &serde_json::Value,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        dispatch!(
+            self,
+            find_eval_run_dataset_by_request,
+            org_id,
+            eval_run_id,
+            request
+        )
     }
 
     pub async fn get_eval_run_dataset(

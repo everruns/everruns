@@ -808,20 +808,57 @@ impl Database {
         &self,
         org_id: i64,
         input: CreateEvalRunDatasetRow,
-    ) -> Result<EvalRunDatasetRow> {
-        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+    ) -> Result<(EvalRunDatasetRow, bool)> {
+        let inserted_id = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO eval_run_datasets (org_id, public_id, eval_run_id, request)
             VALUES ($1, $2, $3, $4)
-            RETURNING id, org_id, public_id, eval_run_id, request, status, body, record_count,
-                      error_message, started_at, completed_at, created_at, updated_at
+            ON CONFLICT (org_id, eval_run_id, request) WHERE eval_run_id IS NOT NULL
+            DO NOTHING
+            RETURNING id
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(input.eval_run_id)
         .bind(&input.request)
+        .fetch_optional(&self.pool)
+        .await?;
+        let created = inserted_id.is_some();
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+            r#"
+            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
+                   error_message, started_at, completed_at, created_at, updated_at
+            FROM eval_run_datasets
+            WHERE org_id = $1 AND eval_run_id = $2 AND request = $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(input.eval_run_id)
+        .bind(&input.request)
         .fetch_one(&self.pool)
+        .await?;
+        Ok((row, created))
+    }
+
+    pub async fn find_eval_run_dataset_by_request(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+        request: &serde_json::Value,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+            r#"
+            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
+                   error_message, started_at, completed_at, created_at, updated_at
+            FROM eval_run_datasets
+            WHERE org_id = $1 AND eval_run_id = $2 AND request = $3
+            "#,
+        )
+        .bind(org_id)
+        .bind(eval_run_id)
+        .bind(request)
+        .fetch_optional(&self.pool)
         .await?;
         Ok(row)
     }

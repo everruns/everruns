@@ -727,7 +727,15 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         input: CreateEvalRunDatasetRow,
-    ) -> Result<EvalRunDatasetRow> {
+    ) -> Result<(EvalRunDatasetRow, bool)> {
+        let mut datasets = self.eval_run_datasets.write();
+        if let Some(row) = datasets.values().find(|row| {
+            row.org_id == org_id
+                && row.eval_run_id == Some(input.eval_run_id)
+                && row.request == input.request
+        }) {
+            return Ok((row.clone(), false));
+        }
         let now = Self::now();
         let row = EvalRunDatasetRow {
             id: Uuid::now_v7(),
@@ -744,8 +752,26 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
-        self.eval_run_datasets.write().insert(row.id, row.clone());
-        Ok(row)
+        datasets.insert(row.id, row.clone());
+        Ok((row, true))
+    }
+
+    pub async fn find_eval_run_dataset_by_request(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+        request: &serde_json::Value,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        Ok(self
+            .eval_run_datasets
+            .read()
+            .values()
+            .find(|row| {
+                row.org_id == org_id
+                    && row.eval_run_id == Some(eval_run_id)
+                    && row.request == *request
+            })
+            .cloned())
     }
 
     pub async fn get_eval_run_dataset(
