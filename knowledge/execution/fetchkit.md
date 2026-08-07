@@ -29,7 +29,9 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
   which enforces the network access list and system allowlist.
 - **Direct path** (no egress service in context, e.g. embedded hosts):
   fetchkit owns transport; SSRF via `DnsPolicy::block_private_ips()` (blocks
-  loopback, RFC1918, link-local, cloud metadata).
+  loopback, RFC1918, link-local, cloud metadata). Crawl requests are rejected
+  when a network access list or system allowlist is active because this path
+  cannot re-check policy for discovered pages.
 - The system allowlist and network access list are pre-checked on the initial
   URL in the tool for clear user-facing errors on both paths.
 - See `crates/core/src/capabilities/web_fetch/mod.rs`
