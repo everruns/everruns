@@ -759,6 +759,26 @@ impl EvalService {
         if req.evals.is_empty() {
             return Err(BadRequestError::new("import must include at least one eval").into());
         }
+        // THREAT[TM-DOS-025]: Reject import fan-out before allocating result vectors or
+        // opening per-eval storage transactions.
+        if req.evals.len() > self.limits.max_evals_per_import {
+            return Err(BadRequestError::new(format!(
+                "import exceeds the limit of {} evals",
+                self.limits.max_evals_per_import
+            ))
+            .into());
+        }
+        if let Some(group) = req
+            .evals
+            .iter()
+            .find(|group| group.cases.len() > self.limits.max_cases_per_run)
+        {
+            return Err(BadRequestError::new(format!(
+                "eval '{}' exceeds the per-run limit of {} cases",
+                group.name, self.limits.max_cases_per_run
+            ))
+            .into());
+        }
         if req.source.system.trim().is_empty() {
             return Err(BadRequestError::new("source.system is required").into());
         }
@@ -1736,6 +1756,7 @@ mod tests {
         let svc = Arc::new(EvalService::new(Arc::new(db)).with_limits(EvalLimits {
             max_concurrent_runs_per_org: 2,
             max_cases_per_run: 500,
+            max_evals_per_import: 10,
         }));
 
         let eval_id = seed_eval(svc.db.as_ref(), org_id, 1).await;
@@ -1928,6 +1949,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn import_run_limits_fan_out_before_storage() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 10i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone()).with_limits(EvalLimits {
+            max_concurrent_runs_per_org: 5,
+            max_cases_per_run: 1,
+            max_evals_per_import: 1,
+        });
+
+        let err = svc
+            .import_run(&caller, import_request("too-many-cases", 0.0))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("per-run limit of 1 cases"));
+        assert!(db.list_evals(org_id, None, false).await.unwrap().is_empty());
+
+        let mut req = import_request("too-many-evals", 0.0);
+        req.evals[0].cases.truncate(1);
+        req.evals.push(req.evals[0].clone());
+        let err = svc.import_run(&caller, req).await.unwrap_err();
+        assert!(err.to_string().contains("limit of 1 evals"));
+        assert!(db.list_evals(org_id, None, false).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn share_link_resolves_sanitized_then_revokes() {
         let db = Arc::new(StorageBackend::in_memory());
         let org_id = 9i64;
@@ -2023,6 +2070,7 @@ mod tests {
         let svc = EvalService::new(Arc::new(db)).with_limits(EvalLimits {
             max_concurrent_runs_per_org: 100,
             max_cases_per_run: 2,
+            max_evals_per_import: 10,
         });
 
         // Eval has 3 cases — exceeds the 2-case limit.
