@@ -15,6 +15,16 @@ pub mod types;
 pub use commands::*;
 pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
 
+/// Reduce utility-provider failures to the shared actionable error taxonomy.
+/// Raw provider text is for server logs only: it can contain request context or
+/// credential-adjacent details and must never reach agent-check API responses.
+pub(crate) fn safe_agent_check_error(error: &str) -> everruns_core::UserFacingError {
+    everruns_core::classify_runtime_error_message(
+        error,
+        &everruns_core::UserFacingErrorContext::default(),
+    )
+}
+
 /// Policy: View agents (read-only).
 pub const AGENT_VIEW: Policy = Policy {
     id: "agent.view",

@@ -29,6 +29,22 @@ pub(crate) fn strip_code_fences(raw: &str) -> &str {
 }
 
 #[cfg(test)]
+mod error_tests {
+    #[test]
+    fn provider_failure_is_safe_for_persisted_health_run() {
+        let error = super::super::safe_agent_check_error(
+            "case generation failed: LLM error: credit_balance_exhausted; token=secret",
+        );
+
+        assert_eq!(error.code, "provider_quota_exhausted");
+        let message = error.fallback_message();
+        assert!(message.contains("out of credits or quota"));
+        assert!(!message.contains("token"));
+        assert!(!message.contains("secret"));
+    }
+}
+
+#[cfg(test)]
 pub(crate) mod test_support {
     use async_trait::async_trait;
     use everruns_core::{

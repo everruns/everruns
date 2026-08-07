@@ -31,13 +31,17 @@ interface AgentHealthCheckProps {
 export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const trigger = useTriggerHealthCheck();
   const [runId, setRunId] = useState<string | null>(null);
-  const { data: triggeredRun } = useHealthCheckRun(agentId, runId);
   const { data: latest } = useLatestHealthCheckRun(agentId);
+  const latestRun = latest?.run;
+  const latestActiveRunId =
+    latestRun?.status === "pending" || latestRun?.status === "running" ? latestRun.id : null;
+  const activeRunId = runId ?? latestActiveRunId;
+  const { data: triggeredRun } = useHealthCheckRun(agentId, activeRunId);
 
   // Show a freshly triggered run if there is one; otherwise fall back to the
   // latest persisted run loaded on mount so prior results appear immediately
   // without triggering a new LLM run (EVE-588).
-  const run = triggeredRun ?? latest?.run;
+  const run = triggeredRun ?? (runId ? trigger.data : latestRun);
   // Only hint staleness for the mounted latest run, not one we just triggered.
   const configChanged = !runId && !!latest?.run && latest.config_changed;
 

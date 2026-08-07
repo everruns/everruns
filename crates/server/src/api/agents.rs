@@ -1374,6 +1374,7 @@ pub async fn preview_agent(
     responses(
         (status = 200, description = "Agent analysis completed", body = AgentAnalysisResponse),
         (status = 400, description = "Utility LLM service not configured", body = ErrorResponse),
+        (status = 422, description = "Utility LLM provider rejected the analysis", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "agents"

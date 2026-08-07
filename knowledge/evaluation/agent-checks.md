@@ -126,6 +126,12 @@ Decided ordering (Option A → C → B from the design review):
    health checks are not `Eval` entities). Gated on the utility LLM and the
    org default harness being available.
 
+   The editor polls any displayed non-terminal run, including a latest run
+   discovered on mount, until it becomes terminal. Analyze and health-check
+   provider failures use the shared safe user-facing error taxonomy: they give
+   actionable operator guidance without exposing raw provider responses, and
+   a failed Analyze attempt does not replace built-in findings.
+
    The background task is fire-and-forget, so a run is made durable against
    process death two ways: a **boot reaper** transitions every non-terminal
    (`pending`/`running`) row to `failed` on server startup (a fresh process has

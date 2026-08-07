@@ -42,9 +42,10 @@ impl LlmErrorKind {
     pub fn from_provider_code(code: &str) -> Option<Self> {
         let code = code.trim().to_ascii_lowercase();
         match code.as_str() {
-            "insufficient_quota" | "billing_hard_limit_reached" | "credit_balance_too_low" => {
-                Some(Self::QuotaExhausted)
-            }
+            "insufficient_quota"
+            | "billing_hard_limit_reached"
+            | "credit_balance_too_low"
+            | "credit_balance_exhausted" => Some(Self::QuotaExhausted),
             "authentication_error" | "invalid_api_key" | "permission_denied" => {
                 Some(Self::Authentication)
             }
@@ -929,6 +930,13 @@ mod tests {
             LlmErrorKind::from_provider_status(
                 429,
                 "{\"error\":{\"type\":\"insufficient_quota\"}}"
+            ),
+            LlmErrorKind::QuotaExhausted
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(
+                429,
+                "{\"error\":{\"code\":\"credit_balance_exhausted\"}}"
             ),
             LlmErrorKind::QuotaExhausted
         );

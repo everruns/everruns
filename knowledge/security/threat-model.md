@@ -611,7 +611,7 @@ never treated as permission to bypass the egress boundary.
 |----|--------|----------|------------|--------|
 | TM-LLM-001 | API key at rest exposure | Critical | Encrypted via envelope encryption (AES-256-GCM); stored in `llm_providers.api_key_encrypted` | MITIGATED |
 | TM-LLM-002 | API key in logs | High | Never logged; tracing filters sensitive fields; generic error messages only | MITIGATED |
-| TM-LLM-003 | API key in error messages | High | Provider errors sanitized before returning to user; full errors logged server-side | MITIGATED |
+| TM-LLM-003 | API key in error messages | High | Provider errors are sanitized before returning to users; full errors remain server-side. Agent Analyze responses and persisted health-check terminal errors use the shared user-facing provider taxonomy, which preserves actionable failure categories without copying raw provider bodies. | MITIGATED |
 | TM-LLM-004 | API key lifetime in memory | Medium | Decrypted per-request; key dropped after LLM call completes | MITIGATED |
 | TM-LLM-005 | Provider failure retry amplifies cost or hides permanent account errors | Medium | Provider-boundary semantic classification separates transient transport/stall/overload/rate-limit/server failures from credentials, billing quota, unavailable models, invalid requests, and long-horizon usage limits. Automatic recovery is allowed only before assistant output commits, uses jittered exponential backoff, and is bounded by shared attempt and elapsed-time budgets; lower layers report consumed retries so nested loops cannot multiply attempts. Permanent classes fail fast. | MITIGATED |
 | TM-LLM-006 | Provider MITM | High | HTTPS required for all LLM provider communication | MITIGATED |

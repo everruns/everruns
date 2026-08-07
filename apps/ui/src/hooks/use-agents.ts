@@ -162,7 +162,7 @@ export function useHealthCheckRun(agentId: string, runId: string | null) {
     enabled: !!runId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === "completed" || status === "failed" ? false : 3000;
+      return !status || status === "pending" || status === "running" ? 3000 : false;
     },
   });
 }

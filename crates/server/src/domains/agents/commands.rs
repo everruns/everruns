@@ -1775,7 +1775,10 @@ impl Command for AnalyzeAgent {
             &preview.tools,
         )
         .await
-        .map_err(|e| CommandError::internal(anyhow::anyhow!(e)))?;
+        .map_err(|e| {
+            let safe = super::safe_agent_check_error(&e);
+            CommandError::unprocessable(safe.fallback_message()).with_code(safe.code)
+        })?;
         drop(analysis_permit);
         let mut findings = preview.findings;
         findings.extend(llm_findings);
@@ -1867,9 +1870,11 @@ mod tests {
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateHarnessRow;
+    use async_trait::async_trait;
     use everruns_core::{
-        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags,
-        OrgRole,
+        AgentLoopError, Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver,
+        FeatureFlags, LlmResponse, LlmResponseStream, OrgRole, Result as CoreResult,
+        UtilityLlmRequest, UtilityLlmService,
     };
     use std::sync::Arc;
     use uuid::Uuid;
@@ -1920,6 +1925,56 @@ mod tests {
                 ..FeatureFlags::default()
             },
         )
+    }
+
+    struct ExhaustedUtilityLlm;
+
+    #[async_trait]
+    impl UtilityLlmService for ExhaustedUtilityLlm {
+        fn is_configured(&self) -> bool {
+            true
+        }
+
+        async fn chat_completion(&self, _request: UtilityLlmRequest) -> CoreResult<LlmResponse> {
+            Err(AgentLoopError::llm(
+                "credit_balance_exhausted: credits depleted; api_key=secret",
+            ))
+        }
+
+        async fn chat_completion_stream(
+            &self,
+            _request: UtilityLlmRequest,
+        ) -> CoreResult<LlmResponseStream> {
+            unreachable!("agent analysis does not stream")
+        }
+    }
+
+    #[tokio::test]
+    async fn analyze_maps_provider_quota_failure_to_safe_actionable_error() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner)
+            .with_utility_llm_service(Arc::new(ExhaustedUtilityLlm));
+
+        let error = AnalyzeAgent {
+            system_prompt: Some("Be helpful.".to_string()),
+            capabilities: Vec::new(),
+            tools: Vec::new(),
+            mcp_servers: Default::default(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("exhausted provider must fail analysis");
+
+        let (status, axum::Json(body)): (
+            axum::http::StatusCode,
+            axum::Json<crate::api::common::ErrorResponse>,
+        ) = error.into();
+        assert_eq!(status, axum::http::StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.code.as_deref(), Some("provider_quota_exhausted"));
+        let detail = body.detail.expect("safe actionable detail");
+        assert!(detail.contains("out of credits or quota"));
+        assert!(!detail.contains("api_key"));
+        assert!(!detail.contains("secret"));
     }
 
     fn high_risk_agent_request(name: String) -> CreateAgentRequest {
