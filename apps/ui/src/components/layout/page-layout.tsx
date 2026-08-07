@@ -170,18 +170,37 @@ export function PageMasthead({
     >
       <div
         data-slot="page-masthead-identity"
-        className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-start gap-4 sm:flex-nowrap"
+        className={cn(
+          "grid min-w-0 flex-[1_1_20rem] items-start gap-4",
+          icon ? "grid-cols-[auto_minmax(0,1fr)]" : "grid-cols-1",
+        )}
       >
-        {icon && <IconTile icon={icon} />}
+        {icon && (
+          <IconTile
+            icon={icon}
+            className={compactActions ? "sm:row-start-2 @5xl/masthead:row-start-1" : undefined}
+          />
+        )}
         {compactActions && (
           <div
             data-slot="page-masthead-compact-actions"
-            className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+            className={cn(
+              "row-start-1 ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:col-span-full @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal",
+              icon ? "col-start-2 sm:col-start-1" : "col-start-1",
+            )}
           >
             {compactActions}
           </div>
         )}
-        <div className="min-w-0 flex-1 max-sm:w-full max-sm:flex-none">
+        <div
+          className={cn(
+            "min-w-0",
+            icon && !compactActions && "col-start-2",
+            compactActions &&
+              "col-span-full row-start-2 sm:col-span-1 sm:row-start-2 @5xl/masthead:row-start-1",
+            compactActions && icon && "sm:col-start-2",
+          )}
+        >
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground">
               {title}
@@ -207,14 +226,6 @@ export function PageMasthead({
           )}
         >
           {actions}
-        </div>
-      )}
-      {compactActions && (
-        <div
-          data-slot="page-masthead-compact-actions"
-          className="order-first ml-auto hidden w-full max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:flex @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
-        >
-          {compactActions}
         </div>
       )}
       {compactActionStrip && (
