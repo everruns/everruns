@@ -16,7 +16,7 @@ import Link from "next/link";
 import { CircleOff, Bot, Layers, Plus, Pencil, Puzzle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -110,14 +110,12 @@ function CapabilityStats({ capability }: { capability: Capability }) {
 
 function CapabilityCard({ capability }: { capability: Capability }) {
   const { locale } = useLocale();
-  const IconComponent = getCapabilityIcon(capability.icon);
-
   return (
     <Link href={`/capabilities/${capability.id}`}>
       <Card className="h-full cursor-pointer bg-background transition-colors hover:bg-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0">
           <div className="flex items-center gap-3 min-w-0">
-            <IconTile size="md" icon={<IconComponent />} />
+            <IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />
             <div className="flex items-center gap-2 min-w-0">
               <CardTitle className="text-lg truncate">
                 {localizedCapabilityName(capability, locale)}

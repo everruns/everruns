@@ -100,6 +100,12 @@ pub struct PluginManifest {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keywords: Vec<String>,
 
+    /// Relative path to a bundled SVG icon. Remote and data URLs are rejected
+    /// during compilation so capability lists never become an asset-loading
+    /// or tracking surface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+
     // --- Component path overrides ---
     /// Override for the skills directory or file list.
     #[serde(default, skip_serializing_if = "Option::is_none")]

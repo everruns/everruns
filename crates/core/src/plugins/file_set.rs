@@ -154,6 +154,7 @@ impl PluginFileSet {
                 repository: None,
                 license: None,
                 keywords: Vec::new(),
+                icon: None,
                 skills: None,
                 commands: None,
                 agents: None,

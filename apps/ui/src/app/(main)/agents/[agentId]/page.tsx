@@ -59,7 +59,7 @@ import {
   type SectionTabItem,
 } from "@/components/layout";
 import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -423,14 +423,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                     {agentCapabilities.map((capConfig) => {
                       const cap = getCapabilityInfo(capConfig.ref);
                       if (!cap) return null;
-                      const IconComponent = getCapabilityIcon(cap.icon);
-
                       return (
                         <div
                           key={capConfig.ref}
                           className="flex items-center gap-2 p-2 border bg-muted/50"
                         >
-                          <IconComponent className="w-4 h-4" />
+                          <CapabilityIcon icon={cap.icon} className="w-4 h-4" />
                           <div className="flex-1">
                             <p className="text-sm font-medium">
                               {localizedCapabilityName(cap, locale)}

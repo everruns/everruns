@@ -15,7 +15,7 @@ popularized by Claude Code and shared (with minor dialect differences) by
 Codex and Cursor: a directory with a `.claude-plugin/plugin.json` manifest,
 `skills/`, `commands/`, `agents/`, and `.mcp.json`. Everruns acts as a plugin
 **host**: installing a plugin into an organization produces a capability with
-reference `plugin:{name}` that agents and harnesses enable like any other
+reference `plugin:{install_public_id}` that agents and harnesses enable like any other
 capability.
 
 A Marketplace is an org-registered catalog in the `marketplace.json` format.
@@ -60,7 +60,8 @@ capability contributions:
 
 | Plugin component                  | Capability contribution                                       |
 | --------------------------------- | ------------------------------------------------------------- |
-| `name`                            | capability name; ref `plugin:{name}`                          |
+| `name`                            | capability display/discovery name                             |
+| `icon`                            | bundled relative SVG, validated and embedded in capability metadata |
 | `displayName`                     | `display_name`                                                |
 | `description`                     | `description`                                                 |
 | `version`, `author`, `homepage`, `repository`, `license`, `keywords` | install provenance metadata (not runtime) |
@@ -84,11 +85,13 @@ Notes:
   ([user-hooks.md](../runtime-resources/user-hooks.md)), the compiled capability must take
   `risk_level: high` and the admin assignment gate, same as the planned
   declarative `user_hooks` field.
-- Plugin names are kebab-case per the host convention; they reuse the
-  declarative name validation and must fit capability reference columns with
-  the `plugin:` prefix. Names are unique per organization across installed
-  plugins; the `plugin:` namespace keeps them from colliding with
-  `declarative:{name}` refs.
+- Plugin names are kebab-case per the host convention and unique per
+  organization across installed plugins. The server capability identity is
+  the install public ID; standalone runtimes without install rows use the
+  manifest name in the `plugin:` namespace.
+- Icon paths must stay inside the package and resolve to a bounded UTF-8 SVG.
+  Active content, external references, data URLs, and remote URLs are rejected
+  with an install warning and use the neutral plugin fallback instead.
 
 ## OAuth-authenticated MCP servers
 
@@ -175,9 +178,11 @@ never re-seeded lazily on read.
 - **Update**: explicit re-install at the marketplace's current entry;
   recompiles the definition. Version semantics follow the host convention:
   a manifest `version` pins until bumped, otherwise the commit SHA is the
-  effective version. Auto-update is deferred.
-- **Uninstall**: removes the capability; agents referencing `plugin:{name}`
-  surface the same dangling-ref behavior as deleted declarative capabilities.
+  effective version. The installation public ID is preserved, so assignments
+  retain the same identity. Auto-update is deferred.
+- **Uninstall**: removes the capability; agents referencing its
+  `plugin:{install_public_id}` surface an actionable dangling-ref error. A
+  reinstall gets a new public ID and cannot silently rebind those agents.
 - **Enable/disable**: installed plugins follow the standard building-block
   lifecycle and are assigned to agents/harnesses by capability ref.
 
@@ -211,7 +216,7 @@ API — full management parity with the API, not a read-only view:
   shown when the synced catalog resolves to a newer version or SHA than the
   installed pin. Update is always explicit user action in v1.
 - Installed plugins also surface in the existing capability picker as
-  `plugin:{name}` entries, so assignment to agents/harnesses reuses the
+  `plugin:{install_public_id}` entries, so assignment to agents/harnesses reuses the
   capability UI unchanged.
 
 ## Runtime mode
@@ -289,7 +294,7 @@ capability threat model:
 
 1. **v1**: marketplaces CRUD + sync (GitHub + direct URL sources), install
    with relative-path and `github` plugin sources, compile
-   skills/commands/agents/MCP, `plugin:{name}` refs, capability registry and
+   skills/commands/agents/MCP, stable installation refs, capability registry and
    picker integration, marketplace/plugin management UI, core-owned compiler
    with `InProcessRuntimeBuilder` local-directory loading, dogfood by
    installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.

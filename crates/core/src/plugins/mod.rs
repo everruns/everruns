@@ -3,8 +3,9 @@
 // This module implements the plugin compiler: loading a plugin directory
 // (PluginFileSet), parsing its manifest, and compiling the result into a
 // DeclarativeCapabilityDefinition (CompiledPlugin). The compiled definition is
-// then registered with `plugin:{name}` as its capability ID and executes
-// through the same declarative runtime path.
+// then registered with a `plugin:` capability ID and executes through the
+// same declarative runtime path. Standalone runtimes use `plugin:{name}`;
+// server-managed installs use `plugin:{install_public_id}`.
 //
 // See knowledge/integrations/plugins.md for the full specification.
 

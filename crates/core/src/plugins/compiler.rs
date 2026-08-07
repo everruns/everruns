@@ -16,6 +16,7 @@ use crate::mcp_server::{
 
 use super::file_set::PluginFileSet;
 use super::manifest::{McpServersField, PluginManifest};
+use base64::Engine;
 
 // `plugin:` prefix is 7 bytes, leaving 43 bytes for the name within the
 // VARCHAR(50) capability reference columns.
@@ -90,12 +91,14 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
         }
     }
 
+    let icon = compile_icon(file_set, &manifest, &mut warnings);
+
     let definition = DeclarativeCapabilityDefinition {
         name: name.clone(),
         display_name,
         description,
         status: CapabilityStatus::Available,
-        icon: Some("puzzle".to_string()),
+        icon,
         category: Some("Plugin".to_string()),
         system_prompt,
         mcp_servers,
@@ -115,6 +118,81 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
         definition,
         warnings,
     })
+}
+
+fn compile_icon(
+    file_set: &PluginFileSet,
+    manifest: &PluginManifest,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
+    let Some(path) = manifest.icon.as_deref() else {
+        return Some("puzzle".to_string());
+    };
+    let path = path.trim().trim_start_matches("./");
+    if path.is_empty()
+        || path.starts_with('/')
+        || path.contains("..")
+        || path.contains("://")
+        || path.starts_with("data:")
+        || !path.to_ascii_lowercase().ends_with(".svg")
+    {
+        warnings.push(format!(
+            "plugin manifest: icon '{path}' must be a relative path to a bundled SVG; using the plugin fallback"
+        ));
+        return Some("puzzle".to_string());
+    }
+
+    let Some(svg) = file_set.text_file(path) else {
+        warnings.push(format!(
+            "plugin manifest: icon '{path}' is missing or is not UTF-8; using the plugin fallback"
+        ));
+        return Some("puzzle".to_string());
+    };
+    if let Err(reason) = validate_plugin_svg(&svg) {
+        warnings.push(format!(
+            "plugin manifest: icon '{path}' is unsafe or malformed ({reason}); using the plugin fallback"
+        ));
+        return Some("puzzle".to_string());
+    }
+
+    let encoded = base64::engine::general_purpose::STANDARD.encode(svg.as_bytes());
+    Some(format!("data:image/svg+xml;base64,{encoded}"))
+}
+
+fn validate_plugin_svg(svg: &str) -> Result<(), &'static str> {
+    let trimmed = svg.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    if !lower.starts_with("<svg") || !lower.ends_with("</svg>") {
+        return Err("expected an SVG root element");
+    }
+
+    // SVG is rendered in an <img>, but reject active/external content before
+    // persisting it as a second defense against browser behavior changes.
+    const FORBIDDEN: &[&str] = &[
+        "<script",
+        "<style",
+        "<foreignobject",
+        "<iframe",
+        "<object",
+        "<embed",
+        "<image",
+        "<use",
+        "<!doctype",
+        "<?xml",
+        "href=",
+        "src=",
+        "url(",
+        "javascript:",
+        "data:",
+        "@import",
+    ];
+    if FORBIDDEN.iter().any(|needle| lower.contains(needle)) {
+        return Err("active or external content is not allowed");
+    }
+    if lower.contains(" on") || lower.contains("\non") || lower.contains("\ton") {
+        return Err("event handler attributes are not allowed");
+    }
+    Ok(())
 }
 
 /// Validate and normalize a plugin name into the format accepted by the
@@ -669,6 +747,72 @@ mod tests {
         assert!(err2.contains("only contain"), "{err2}");
     }
 
+    fn icon_plugin(icon: Option<&str>, asset: Option<&str>) -> CompiledPlugin {
+        let mut files = BTreeMap::new();
+        files.insert(
+            ".claude-plugin/plugin.json".to_string(),
+            serde_json::json!({
+                "name": "icon-test",
+                "description": "Icon test plugin",
+                "icon": icon,
+            })
+            .to_string()
+            .into_bytes(),
+        );
+        if let Some(asset) = asset {
+            files.insert("assets/icon.svg".to_string(), asset.as_bytes().to_vec());
+        }
+        let file_set = PluginFileSet::from_map("icon-test", files).unwrap();
+        compile_plugin(&file_set).unwrap()
+    }
+
+    #[test]
+    fn bundled_safe_svg_icon_is_embedded() {
+        let compiled = icon_plugin(
+            Some("./assets/icon.svg"),
+            Some(r##"<svg viewBox="0 0 16 16"><path fill="#456" d="M0 0h16v16H0z"/></svg>"##),
+        );
+
+        assert!(
+            compiled
+                .definition
+                .icon
+                .as_deref()
+                .unwrap()
+                .starts_with("data:image/svg+xml;base64,")
+        );
+        assert!(compiled.warnings.is_empty());
+    }
+
+    #[test]
+    fn missing_malformed_and_remote_icons_use_plugin_fallback() {
+        for (icon, asset) in [
+            (Some("assets/missing.svg"), None),
+            (
+                Some("assets/icon.svg"),
+                Some(r#"<svg><script>alert(1)</script></svg>"#),
+            ),
+            (Some("https://tracker.example/icon.svg"), None),
+        ] {
+            let compiled = icon_plugin(icon, asset);
+            assert_eq!(compiled.definition.icon.as_deref(), Some("puzzle"));
+            assert!(
+                compiled
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.contains("icon"))
+            );
+        }
+    }
+
+    #[test]
+    fn missing_icon_uses_plugin_fallback_without_warning() {
+        let compiled = icon_plugin(None, None);
+
+        assert_eq!(compiled.definition.icon.as_deref(), Some("puzzle"));
+        assert!(compiled.warnings.is_empty());
+    }
+
     #[test]
     fn stdio_mcp_produces_warning() {
         let mut warnings = Vec::new();
@@ -713,6 +857,7 @@ mod tests {
             repository: None,
             license: None,
             keywords: Vec::new(),
+            icon: None,
             skills: None,
             commands: None,
             agents: None,
@@ -765,6 +910,7 @@ mod tests {
             repository: None,
             license: None,
             keywords: Vec::new(),
+            icon: None,
             skills: None,
             commands: None,
             agents: None,
@@ -826,6 +972,7 @@ mod tests {
             repository: None,
             license: None,
             keywords: Vec::new(),
+            icon: None,
             skills: None,
             commands: None,
             agents: None,

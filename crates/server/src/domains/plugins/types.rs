@@ -81,7 +81,7 @@ pub struct MarketplaceCatalogEntry {
 // Installed Plugin DTO
 // ============================================================================
 
-/// An installed plugin that contributes a `plugin:{name}` capability.
+/// An installed plugin that contributes a stable `plugin:{install_id}` capability.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct InstalledPlugin {
     /// Public resource ID (`plugin_<32-hex>`).
@@ -90,7 +90,7 @@ pub struct InstalledPlugin {
     pub public_id: PluginInstallId,
     #[serde(skip)]
     pub internal_id: Uuid,
-    /// Kebab-case plugin name. Capability ref is `plugin:{name}`.
+    /// Kebab-case plugin name. This is display/discovery metadata, not capability identity.
     pub name: String,
     /// Human-readable display name from the plugin manifest.
     pub display_name: Option<String>,
@@ -102,7 +102,7 @@ pub struct InstalledPlugin {
     pub pinned_sha: Option<String>,
     /// Name of the marketplace this plugin was installed from.
     pub marketplace: Option<String>,
-    /// Capability ref: `plugin:{name}`.
+    /// Stable capability ref: `plugin:{install_id}`.
     pub capability_ref: String,
     /// Lifecycle status: `active` or `disabled`.
     pub status: String,
