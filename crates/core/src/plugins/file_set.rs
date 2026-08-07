@@ -7,13 +7,16 @@
 use std::collections::BTreeMap;
 use std::path::{Component, Path};
 
-use super::manifest::PluginManifest;
+use super::manifest::{
+    AGENT_PLUGINS_V1_MANIFEST_SCHEMA, PluginManifest, parse_agent_plugins_v1_manifest,
+};
 
-// Size / count limits (mirror declarative capability limits).
+// Package ingestion limits. Compiled text contributions still pass the
+// declarative capability's stricter per-component validation.
 /// Maximum number of files in a plugin directory.
 pub const MAX_PLUGIN_FILES: usize = 256;
 /// Maximum bytes per individual file.
-pub const MAX_PLUGIN_FILE_BYTES: usize = 64 * 1024;
+pub const MAX_PLUGIN_FILE_BYTES: usize = 128 * 1024;
 /// Maximum total bytes across all files.
 pub const MAX_PLUGIN_TOTAL_BYTES: usize = 4 * 1024 * 1024; // 4 MB
 
@@ -121,10 +124,32 @@ impl PluginFileSet {
 
     /// Resolve the plugin manifest.
     ///
-    /// Discovery order: `.claude-plugin/plugin.json`, then `.codex-plugin/plugin.json`,
-    /// then `.cursor-plugin/plugin.json`. If none is found, a minimal manifest
-    /// is synthesized from the directory name (Claude Code parity).
+    /// A canonical root `plugin.json` takes precedence when it declares the
+    /// Agent Plugins schema. Otherwise discovery falls back to the legacy
+    /// `.claude-plugin`, `.codex-plugin`, and `.cursor-plugin` manifests. If no
+    /// manifest is found, a minimal one is synthesized from the directory name.
     pub fn manifest(&self) -> Result<(PluginManifest, Vec<String>), String> {
+        if let Some(bytes) = self.files.get("plugin.json") {
+            let text = std::str::from_utf8(bytes)
+                .map_err(|_| "plugin.json is not valid UTF-8".to_string())?;
+            let schema = serde_json::from_str::<serde_json::Value>(text)
+                .ok()
+                .and_then(|value| value.get("$schema")?.as_str().map(str::to_string));
+            if schema.as_deref() == Some(AGENT_PLUGINS_V1_MANIFEST_SCHEMA)
+                || schema
+                    .as_deref()
+                    .is_some_and(|schema| schema.starts_with("https://agent-plugins.org/schemas/"))
+            {
+                return parse_agent_plugins_v1_manifest(text);
+            }
+            if !MANIFEST_PATHS
+                .iter()
+                .any(|manifest_path| self.files.contains_key(*manifest_path))
+            {
+                return parse_agent_plugins_v1_manifest(text);
+            }
+        }
+
         for manifest_path in MANIFEST_PATHS {
             if let Some(bytes) = self.files.get(*manifest_path) {
                 let text = std::str::from_utf8(bytes)
@@ -137,6 +162,12 @@ impl PluginFileSet {
                         "plugin manifest: unrecognized field '{key}' will be ignored"
                     ));
                 }
+                if self.files.contains_key("plugin.json") {
+                    warnings.push(
+                        "root plugin.json does not declare an Agent Plugins schema and was ignored"
+                            .to_string(),
+                    );
+                }
                 return Ok((manifest, warnings));
             }
         }
@@ -145,6 +176,7 @@ impl PluginFileSet {
         let name = dir_name_to_plugin_name(&self.dir_name);
         Ok((
             PluginManifest {
+                schema: None,
                 name,
                 display_name: None,
                 version: None,
@@ -155,6 +187,7 @@ impl PluginFileSet {
                 license: None,
                 keywords: Vec::new(),
                 icon: None,
+                extensions: Default::default(),
                 skills: None,
                 commands: None,
                 agents: None,
@@ -372,6 +405,74 @@ mod tests {
         assert!(
             warnings.iter().any(|w| w.contains("interface")),
             "expected warning about 'interface' field, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn canonical_manifest_ignores_unknown_fields() {
+        let mut files = BTreeMap::new();
+        files.insert(
+            "plugin.json".to_string(),
+            br#"{
+                "$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                "name":"portable-plugin",
+                "futureField":true
+            }"#
+            .to_vec(),
+        );
+        let file_set = PluginFileSet::from_map("portable-plugin", files).unwrap();
+
+        let (manifest, warnings) = file_set.manifest().unwrap();
+
+        assert!(manifest.is_agent_plugins_v1());
+        assert!(!manifest.extra.contains_key("futureField"));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("futureField"))
+        );
+    }
+
+    #[test]
+    fn canonical_manifest_rejects_fatal_schema_violations() {
+        let mut files = BTreeMap::new();
+        files.insert(
+            "plugin.json".to_string(),
+            br#"{
+                "$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+                "name":"portable-plugin",
+                "author":{"name":"Acme","unexpected":true}
+            }"#
+            .to_vec(),
+        );
+        let file_set = PluginFileSet::from_map("portable-plugin", files).unwrap();
+
+        let error = file_set.manifest().unwrap_err();
+
+        assert!(error.contains("invalid plugin.json"), "{error}");
+    }
+
+    #[test]
+    fn non_agent_root_manifest_does_not_mask_legacy_host_manifest() {
+        let mut files = BTreeMap::new();
+        files.insert(
+            "plugin.json".to_string(),
+            br#"{"name":"unrelated-package"}"#.to_vec(),
+        );
+        files.insert(
+            ".claude-plugin/plugin.json".to_string(),
+            br#"{"name":"legacy-plugin","description":"Legacy plugin"}"#.to_vec(),
+        );
+        let file_set = PluginFileSet::from_map("legacy-plugin", files).unwrap();
+
+        let (manifest, warnings) = file_set.manifest().unwrap();
+
+        assert_eq!(manifest.name, "legacy-plugin");
+        assert!(!manifest.is_agent_plugins_v1());
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("root plugin.json"))
         );
     }
 

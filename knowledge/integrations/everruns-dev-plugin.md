@@ -12,10 +12,10 @@ tags:
 
 Single-source plugins under `plugins/everruns-dev/` and `plugins/everruns/`
 package the Everruns MCP server, matching skills, and shared slash commands for
-Claude Code, Codex, and Cursor. `everruns-dev` targets
+Agent Plugins v1, Claude Code, Codex, and Cursor. `everruns-dev` targets
 `https://dev.everruns.com`; `everruns` targets `https://app.everruns.com`.
-The three host manifests
-(`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+The portable root `plugin.json` and three host manifests
+(`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, and
 `.cursor-plugin/plugin.json`) MUST stay in sync on shared metadata and on the
 shared payload they expose. Drift between any two hosts is a release-blocking
 bug.
@@ -28,6 +28,8 @@ marketplace registrations MUST keep that script green.
 
 ```
 plugins/everruns-dev/
+├── plugin.json                   # portable Agent Plugins manifest
+├── mcp.json                      # portable Streamable HTTP MCP config
 ├── .claude-plugin/plugin.json    # Claude Code manifest
 ├── .codex-plugin/plugin.json     # Codex manifest
 ├── .cursor-plugin/plugin.json    # Cursor manifest
@@ -48,7 +50,7 @@ Marketplace registrations live outside the plugin directory:
 
 ## Sync Contract
 
-The three manifests describe the same plugin to three different hosts. Some
+The four manifests describe the same plugin to portable and host-specific clients. Some
 fields are shared verbatim; some are host-specific. The Claude manifest is the
 canonical source for shared metadata; Codex and Cursor mirror it.
 
@@ -57,7 +59,7 @@ canonical source for shared metadata; Codex and Cursor mirror it.
 | Field        | Source of truth                                                  |
 | ------------ | ---------------------------------------------------------------- |
 | `name`       | `everruns-dev` for dev, `everruns` for production                |
-| `version`    | Bumped together across all manifests + Claude/Cursor marketplaces |
+| `version`    | Bumped together across the portable/host manifests + Claude/Cursor marketplaces |
 | `homepage`   | `https://everruns.com`                                           |
 | `repository` | `https://github.com/everruns/everruns`                           |
 | `license`    | `MIT`                                                            |
@@ -117,6 +119,11 @@ Cursor's default convention is `mcp.json` (no dot); we override discovery via
 the explicit `mcpServers: "./.mcp.json"` path so all three hosts read the
 same file. Cursor's official plugin validator emits a "no mcp.json file"
 warning, which is informational — the manifest path resolves correctly.
+
+Portable Agent Plugins clients instead discover fixed root `plugin.json` and
+`mcp.json`. The portable MCP entry uses `type: "streamable-http"`; OAuth is
+requested through `extensions.com.everruns` because Agent Plugins leaves
+authentication to the client. See [plugins.md](plugins.md).
 
 ### Host-Specific Fields
 
@@ -180,8 +187,8 @@ When changing the plugin:
 
 1. Update the shared payload (`.mcp.json`, `commands/`, `skills/`, README) once
    — all three hosts pick it up.
-2. Update all three `plugin.json` files together for any shared metadata change.
-3. Bump `version` in all three `plugin.json` files, in
+2. Update the portable and all three host `plugin.json` files together for any shared metadata change.
+3. Bump `version` in all four `plugin.json` files, in
    `.claude-plugin/marketplace.json`, and in `.cursor-plugin/marketplace.json`
    (both `metadata.version` and the per-plugin `version`) together. Codex
    marketplace does not pin a version.
@@ -229,9 +236,11 @@ three hosts behave the same.
 - `.mcp.json` `url` and `oauth_resource` equal `https://dev.everruns.com/mcp`,
   or `https://app.everruns.com/mcp` for the production plugin, with no
   `scopes`.
+- Portable `plugin.json` and `mcp.json` use the Agent Plugins v1 schemas,
+  Streamable HTTP URL, and `com.everruns` OAuth extension.
 - All three manifests declare the expected plugin name: `everruns-dev` or
   `everruns`.
-- `version` is identical across all three manifests, the Claude marketplace
+- `version` is identical across the portable and all three host manifests, the Claude marketplace
   entry, and both `metadata.version` and the per-plugin `version` of the
   Cursor marketplace.
 - Claude marketplace `source` points at the matching plugin directory; Codex
