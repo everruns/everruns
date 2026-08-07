@@ -511,8 +511,17 @@ impl EvalService {
             );
         }
 
-        // THREAT[TM-DOS-033]: reject excess work before creating durable rows;
-        // the permit lives for the complete background export.
+        let request_json = serde_json::to_value(&req)?;
+        if let Some(row) = self
+            .db
+            .find_eval_run_dataset_by_request(caller.org_id, run.internal_id, &request_json)
+            .await?
+        {
+            return Ok(Some(dataset_row_to_dataset(row, false)));
+        }
+
+        // THREAT[TM-DOS-033]: reject excess new work before creating durable
+        // rows; the permit lives for the complete background export.
         let Some(permit) = crate::domains::evals::dataset_export::try_acquire_export_permit()
         else {
             return Err(BadRequestError::new(
@@ -522,7 +531,6 @@ impl EvalService {
         };
 
         let public_id = everruns_core::typed_id::EvalDatasetId::from_uuid(Uuid::now_v7());
-        let request_json = serde_json::to_value(&req)?;
         let (row, created) = self
             .db
             .create_eval_run_dataset(

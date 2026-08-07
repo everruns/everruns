@@ -756,6 +756,24 @@ impl InMemoryDatabase {
         Ok((row, true))
     }
 
+    pub async fn find_eval_run_dataset_by_request(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+        request: &serde_json::Value,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        Ok(self
+            .eval_run_datasets
+            .read()
+            .values()
+            .find(|row| {
+                row.org_id == org_id
+                    && row.eval_run_id == Some(eval_run_id)
+                    && row.request == *request
+            })
+            .cloned())
+    }
+
     pub async fn get_eval_run_dataset(
         &self,
         org_id: i64,
