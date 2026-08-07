@@ -87,7 +87,25 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
         skip_if_quota!(result, config.label());
 
-        if result.success && result.response.contains("503") {
+        // Adaptive-thinking models occasionally answer correctly without emitting
+        // a thinking block; for providers that keep reasoning on the private
+        // `thinking` field, require it in the acceptance check so we retry rather
+        // than accept an attempt that would fail the reasoning assertions below.
+        let reasoning_captured = if config.reasoning_on_thinking_field {
+            runner
+                .messages()
+                .await
+                .ok()
+                .and_then(|msgs| {
+                    msgs.into_iter()
+                        .find(|m| m.role == MessageRole::Agent)
+                        .map(|m| m.thinking.is_some_and(|t| !t.is_empty()))
+                })
+                .unwrap_or(false)
+        } else {
+            true
+        };
+        if result.success && result.response.contains("503") && reasoning_captured {
             accepted = Some((runner, result));
             break;
         }
@@ -104,12 +122,13 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
                 .is_some_and(is_transient_transport_error);
         eprintln!(
             "{}: attempt {attempt}/{} extended-thinking not accepted \
-             (success={}, transient_transport={}, contains_503={}, error={:?}); retrying",
+             (success={}, transient_transport={}, contains_503={}, reasoning_captured={}, error={:?}); retrying",
             config.label(),
             MAX_ATTEMPTS,
             result.success,
             transient,
             result.response.contains("503"),
+            reasoning_captured,
             result.error,
         );
     }
