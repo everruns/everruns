@@ -365,7 +365,7 @@ function RemoveMarketplaceDialog({
 // Marketplace catalog browser dialog
 // ============================================
 
-function CatalogEntryRow({
+export function CatalogEntryRow({
   entry,
   marketplaceId,
 }: {
@@ -375,46 +375,53 @@ function CatalogEntryRow({
   const installMutation = useInstallPlugin();
   const isInstalled = entry.installed;
 
-  const handleInstall = async () => {
-    await installMutation.mutateAsync({ marketplace_id: marketplaceId, plugin_name: entry.name });
+  const handleInstall = () => {
+    installMutation.mutate({ marketplace_id: marketplaceId, plugin_name: entry.name });
   };
 
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{entry.display_name ?? entry.name}</span>
-          <span className="text-xs text-muted-foreground font-mono">{entry.name}</span>
-          {entry.version && (
-            <Badge variant="secondary" className="text-xs">
-              v{entry.version}
-            </Badge>
+    <div className="py-3 border-b last:border-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{entry.display_name ?? entry.name}</span>
+            <span className="text-xs text-muted-foreground font-mono">{entry.name}</span>
+            {entry.version && (
+              <Badge variant="secondary" className="text-xs">
+                v{entry.version}
+              </Badge>
+            )}
+            {entry.category && (
+              <Badge variant="outline" className="text-xs">
+                {entry.category}
+              </Badge>
+            )}
+            {isInstalled && (
+              <Badge variant="default" className="text-xs">
+                Installed
+              </Badge>
+            )}
+          </div>
+          {entry.description && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
           )}
-          {entry.category && (
-            <Badge variant="outline" className="text-xs">
-              {entry.category}
-            </Badge>
-          )}
-          {isInstalled && (
-            <Badge variant="default" className="text-xs">
-              Installed
-            </Badge>
-          )}
+          {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
         </div>
-        {entry.description && (
-          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
-        )}
-        {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
+        <Button
+          size="sm"
+          variant={isInstalled ? "outline" : "default"}
+          disabled={isInstalled || installMutation.isPending}
+          onClick={handleInstall}
+        >
+          <Download className="h-4 w-4 mr-1" />
+          {isInstalled ? "Installed" : installMutation.isPending ? "Installing..." : "Install"}
+        </Button>
       </div>
-      <Button
-        size="sm"
-        variant={isInstalled ? "outline" : "default"}
-        disabled={isInstalled || installMutation.isPending}
-        onClick={handleInstall}
-      >
-        <Download className="h-4 w-4 mr-1" />
-        {isInstalled ? "Installed" : installMutation.isPending ? "Installing..." : "Install"}
-      </Button>
+      {installMutation.isError && (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          Failed to install {entry.display_name ?? entry.name}: {installMutation.error.message}
+        </p>
+      )}
     </div>
   );
 }
