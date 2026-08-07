@@ -289,15 +289,15 @@ export const queryKeys = {
   // Plugin marketplace queries
   pluginMarketplaces: {
     all: ["plugin-marketplaces"] as const,
-    list: () => ["plugin-marketplaces"] as const,
-    detail: (id: string) => ["plugin-marketplace", id] as const,
-    catalog: (id: string) => ["plugin-marketplace", id, "catalog"] as const,
+    list: () => ["plugin-marketplaces", "list"] as const,
+    detail: (id: string) => ["plugin-marketplaces", id] as const,
+    catalog: (id: string) => ["plugin-marketplaces", id, "catalog"] as const,
   },
 
   // Installed plugin queries
   installedPlugins: {
     all: ["installed-plugins"] as const,
-    list: () => ["installed-plugins"] as const,
-    detail: (id: string) => ["installed-plugin", id] as const,
+    list: () => ["installed-plugins", "list"] as const,
+    detail: (id: string) => ["installed-plugins", id] as const,
   },
 };
