@@ -16,6 +16,7 @@ use crate::api::session_files::{
     raw_file_response, sandboxed_html_response, wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::session_files::queries::{USER_MEMORY_MOUNT_PATH, redact_user_memory_files};
 use crate::domains::session_files::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
     UpdateFileInput, WorkspaceFileService,
@@ -538,17 +539,21 @@ pub async fn grep_files(
     .await?;
     let results = state
         .file_service
-        .grep(
-            uuid,
-            GrepInput {
-                pattern: req.pattern,
-                path_pattern: req.path_pattern,
-                excluded_path_prefix: None,
-            },
-        )
+        .grep(uuid, workspace_grep_input(req))
         .await
         .map_err(service_error)?;
+    let results = redact_user_memory_files(results, |result| &result.path);
     Ok(Json(ListResponse::new(results)))
+}
+
+fn workspace_grep_input(req: GrepRequest) -> GrepInput {
+    GrepInput {
+        pattern: req.pattern,
+        path_pattern: req.path_pattern,
+        // This workspace-scoped endpoint cannot establish session ownership.
+        // Keep private user memory out of matching, reads, and scan accounting.
+        excluded_path_prefix: Some(USER_MEMORY_MOUNT_PATH.to_string()),
+    }
 }
 
 /// POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory
@@ -742,4 +747,41 @@ pub async fn preview_path(
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
     sandboxed_html_response(file)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_grep_redacts_private_memory_results() {
+        let results = vec![
+            GrepResult {
+                path: "/memory/user/secret.md".to_string(),
+                matches: Vec::new(),
+            },
+            GrepResult {
+                path: "/workspace/public.md".to_string(),
+                matches: Vec::new(),
+            },
+        ];
+
+        let results = redact_user_memory_files(results, |result| &result.path);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "/workspace/public.md");
+    }
+
+    #[test]
+    fn workspace_grep_excludes_private_memory_before_scanning() {
+        let input = workspace_grep_input(GrepRequest {
+            pattern: "secret".to_string(),
+            path_pattern: None,
+        });
+
+        assert_eq!(
+            input.excluded_path_prefix.as_deref(),
+            Some(USER_MEMORY_MOUNT_PATH)
+        );
+    }
 }
