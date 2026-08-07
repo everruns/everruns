@@ -544,7 +544,7 @@ fn classify_tool_call(tool_call: &ToolCall) -> ToolClass {
         "bash" => classify_bash_command(
             tool_call
                 .arguments
-                .get("command")
+                .get("commands")
                 .and_then(Value::as_str)
                 .unwrap_or_default(),
         ),
@@ -688,7 +688,7 @@ fn exploration_signature(tool_call: &ToolCall) -> Option<String> {
         "bash" => {
             let command = tool_call
                 .arguments
-                .get("command")
+                .get("commands")
                 .and_then(Value::as_str)
                 .map(normalize_command)
                 .unwrap_or_default();
@@ -1107,7 +1107,7 @@ mod tests {
             .await;
         }
         hook.after_exec(
-            &call("bash", json!({ "command": "cargo test --all-features" })),
+            &call("bash", json!({ "commands": "cargo test --all-features" })),
             &tool_def("bash"),
             &mut result(),
             &context,
@@ -1205,7 +1205,7 @@ mod tests {
             hook.after_exec(
                 &call(
                     "bash",
-                    json!({ "command": "cargo update -p everruns-core --precise 0.17.7" }),
+                    json!({ "commands": "cargo update -p everruns-core --precise 0.17.7" }),
                 ),
                 &tool_def("bash"),
                 &mut update,
@@ -1220,14 +1220,14 @@ mod tests {
         let state = Arc::new(Mutex::new(ProgressGuardState::default()));
         let hook = ProgressGuardHook { state };
         let context = ToolContext::new(SessionId::new());
-        let validation = call("bash", json!({ "command": "cargo check" }));
+        let validation = call("bash", json!({ "commands": "cargo check" }));
 
         hook.after_exec(&validation, &tool_def("bash"), &mut result(), &context)
             .await;
         hook.after_exec(
             &call(
                 "bash",
-                json!({ "command": "cargo update -p everruns-core --precise 0.17.7" }),
+                json!({ "commands": "cargo update -p everruns-core --precise 0.17.7" }),
             ),
             &tool_def("bash"),
             &mut result(),
@@ -1270,7 +1270,7 @@ mod tests {
         let state = Arc::new(Mutex::new(ProgressGuardState::default()));
         let hook = ProgressGuardHook { state };
         let context = ToolContext::new(SessionId::new());
-        let validation = call("bash", json!({ "command": "cargo test" }));
+        let validation = call("bash", json!({ "commands": "cargo test" }));
 
         let mut first = result();
         hook.after_exec(&validation, &tool_def("bash"), &mut first, &context)
@@ -1583,7 +1583,7 @@ mod tests {
         for command in polls {
             last = result();
             hook.after_exec(
-                &call("bash", json!({ "command": command })),
+                &call("bash", json!({ "commands": command })),
                 &tool_def("bash"),
                 &mut last,
                 &context,
@@ -1606,10 +1606,10 @@ mod tests {
         let hook = ProgressGuardHook { state };
         let context = ToolContext::new(SessionId::new());
         let cycle = [
-            call("bash", json!({ "command": "gh pr checks 42" })),
+            call("bash", json!({ "commands": "gh pr checks 42" })),
             call("read_file", json!({ "path": "/tmp/synthetic-ci-note" })),
             call("get_task", json!({ "task_id": "task_ci" })),
-            call("bash", json!({ "command": "gh run view 123" })),
+            call("bash", json!({ "commands": "gh run view 123" })),
         ];
         let mut warnings = Vec::new();
 
@@ -1649,7 +1649,7 @@ mod tests {
         for tool_call in [
             call("list_tasks", json!({})),
             call("get_task", json!({ "task_id": "task_once" })),
-            call("bash", json!({ "command": "gh pr checks 42" })),
+            call("bash", json!({ "commands": "gh pr checks 42" })),
         ] {
             let mut output = result();
             hook.after_exec(
@@ -1681,7 +1681,7 @@ mod tests {
         for _ in 0..(WAITING_WINDOW_THRESHOLD * 2) {
             let mut check = result();
             hook.after_exec(
-                &call("bash", json!({ "command": "gh pr checks 42" })),
+                &call("bash", json!({ "commands": "gh pr checks 42" })),
                 &tool_def("bash"),
                 &mut check,
                 &context,
@@ -1714,7 +1714,7 @@ mod tests {
         for _ in 0..REPEATED_STATUS_THRESHOLD {
             last = result();
             hook.after_exec(
-                &call("bash", json!({ "command": "git status --short" })),
+                &call("bash", json!({ "commands": "git status --short" })),
                 &tool_def("bash"),
                 &mut last,
                 &context,
