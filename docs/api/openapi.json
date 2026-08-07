@@ -18963,7 +18963,7 @@
             "example": "product-docs"
           },
           "source_config": {
-            "description": "Non-secret source coordinates. Never include credentials."
+            "description": "Non-secret source coordinates. GitHub repositories accept `owner/repo`\nor canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials."
           },
           "source_type": {
             "type": [

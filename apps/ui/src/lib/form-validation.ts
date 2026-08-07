@@ -128,6 +128,47 @@ export const knowledgeIndexFormSchema = z.object({
   embedding_model_id: requiredString("Embedding model"),
 });
 
+export const INVALID_GITHUB_REPOSITORY =
+  "Use owner/repo or https://github.com/owner/repo (optionally ending in .git)";
+
+export function normalizeGitHubRepositoryInput(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.length > 2048 || /\s/.test(trimmed)) return null;
+
+  let path = trimmed;
+  if (trimmed.includes("://")) {
+    try {
+      const parsed = new URL(trimmed);
+      if (
+        parsed.protocol !== "https:" ||
+        parsed.hostname !== "github.com" ||
+        parsed.port ||
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        return null;
+      }
+      path = parsed.pathname;
+    } catch {
+      return null;
+    }
+  } else if (trimmed.startsWith("git@github.com:")) {
+    path = trimmed.slice("git@github.com:".length);
+  }
+
+  path = path.replace(/^\/+|\/+$/g, "").replace(/\.git$/, "");
+  const parts = path.split("/");
+  if (
+    parts.length !== 2 ||
+    parts.some((part) => !part || part.length > 100 || !/^[A-Za-z0-9._-]+$/.test(part))
+  ) {
+    return null;
+  }
+  return `${parts[0]}/${parts[1]}`;
+}
+
 export function createConnectionFormSchema(fields: ConnectionFormField[]) {
   const shape = Object.fromEntries(
     fields.map((field) => [

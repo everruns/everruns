@@ -5,6 +5,7 @@ use super::types::{
 };
 use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, SOURCE_TYPES};
 use crate::domains::common::*;
+use crate::domains::git_sources::normalize_github_repository;
 use everruns_core::typed_id::KnowledgeIndexId;
 use everruns_core::vector_store::index_namespace;
 use everruns_core::{DriverId, Policy, ServiceKind};
@@ -42,6 +43,49 @@ fn validate_source_type(source_type: Option<&str>) -> Result<String, CommandErro
         )));
     }
     Ok(source_type.to_string())
+}
+
+fn normalize_source_config(
+    source_type: &str,
+    source_config: Option<serde_json::Value>,
+) -> Result<serde_json::Value, CommandError> {
+    let Some(mut config) = source_config else {
+        return Ok(serde_json::json!({}));
+    };
+    if source_type != "github" {
+        return Ok(config);
+    }
+    let object = config.as_object_mut().ok_or_else(|| {
+        CommandError::bad_request("GitHub source_config must be an object with a repository field")
+    })?;
+    if let Some(field) = object.keys().find(|field| {
+        !matches!(
+            field.as_str(),
+            "provider" | "repository" | "branch" | "root_folder"
+        )
+    }) {
+        return Err(CommandError::bad_request(format!(
+            "Unsupported GitHub source field '{field}'; credentials must use a GitHub connection"
+        )));
+    }
+    if object
+        .get("provider")
+        .is_some_and(|provider| provider.as_str() != Some("github"))
+    {
+        return Err(CommandError::bad_request(
+            "GitHub source provider must be 'github'",
+        ));
+    }
+    let repository = object
+        .get("repository")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| CommandError::bad_request("GitHub repository is required"))?;
+    let normalized = normalize_github_repository(repository).map_err(CommandError::bad_request)?;
+    object.insert(
+        "repository".to_string(),
+        serde_json::Value::String(normalized),
+    );
+    Ok(config)
 }
 
 const INVALID_EMBEDDING_MODEL: &str =
@@ -227,6 +271,7 @@ impl Command for CreateKnowledgeIndex {
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeIndexResponse, CommandError> {
         let name = validate_name(&self.name)?;
         let source_type = validate_source_type(self.source_type.as_deref())?;
+        let source_config = normalize_source_config(&source_type, self.source_config)?;
         let embedding_model_id = require_embedding_model(ctx, self.embedding_model_id).await?;
         // Assign the vector-store namespace at creation; it is org-prefixed and
         // never reused. See knowledge/runtime-resources/knowledge-indexes.md#multitenancy-and-naming.
@@ -237,7 +282,7 @@ impl Command for CreateKnowledgeIndex {
             name,
             description: self.description,
             source_type,
-            source_config: self.source_config.unwrap_or_else(|| serde_json::json!({})),
+            source_config,
             embedding_model_id,
             vector_namespace,
             owner_principal_id: None,
@@ -349,13 +394,18 @@ impl Command for UpdateKnowledgeIndexCmd {
             .map(validate_name)
             .transpose()?;
         // The embedding model is required, so it can be changed but not cleared.
-        let enqueue_sync =
-            self.request.source_config.is_some() || self.request.embedding_model_id.is_some();
+        let source_changed = self.request.source_config.is_some();
+        let enqueue_sync = source_changed || self.request.embedding_model_id.is_some();
         let embedding_model_id = match self.request.embedding_model_id {
             Some(model_id) => Some(require_embedding_model(ctx, model_id).await?),
             None => None,
         };
-        let resolved_owner_user_id = if self.request.source_config.is_some() {
+        let source_config = self
+            .request
+            .source_config
+            .map(|config| normalize_source_config(&existing.source_type, Some(config)))
+            .transpose()?;
+        let resolved_owner_user_id = if source_changed {
             // THREAT[TM-AUTHZ-011]: Source edits must not continue to use the
             // previous owner's external connection. Rebind the sync token owner
             // to the caller who selected the new source coordinates.
@@ -375,7 +425,7 @@ impl Command for UpdateKnowledgeIndexCmd {
                         everruns_durable::UpdateField::Clear => Some(None),
                         everruns_durable::UpdateField::Unchanged => None,
                     },
-                    source_config: self.request.source_config,
+                    source_config,
                     resolved_owner_user_id,
                     embedding_model_id,
                     enqueue_sync,
@@ -701,6 +751,84 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn github_source_urls_are_normalized_before_storage() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let created = CreateKnowledgeIndex {
+            name: "Public Docs".into(),
+            description: None,
+            source_type: Some("github".into()),
+            source_config: Some(serde_json::json!({
+                "repository": "https://github.com/everruns/bashkit.git/",
+                "branch": "main",
+                "root_folder": "knowledge"
+            })),
+            embedding_model_id: model_id,
+        }
+        .run(&ctx)
+        .await
+        .expect("create index");
+
+        assert_eq!(
+            created.source_config["repository"],
+            serde_json::json!("everruns/bashkit")
+        );
+    }
+
+    #[tokio::test]
+    async fn github_source_rejects_unsupported_urls() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let error = CreateKnowledgeIndex {
+            name: "Invalid Docs".into(),
+            description: None,
+            source_type: Some("github".into()),
+            source_config: Some(serde_json::json!({
+                "repository": "https://gitlab.com/everruns/bashkit"
+            })),
+            embedding_model_id: model_id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("unsupported host should fail");
+
+        assert!(matches!(error.kind, CommandErrorKind::BadRequest(_)));
+        assert!(error.message().contains("https://github.com/owner/repo"));
+    }
+
+    #[tokio::test]
+    async fn github_source_rejects_inline_credential_fields() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let error = CreateKnowledgeIndex {
+            name: "Secret Docs".into(),
+            description: None,
+            source_type: Some("github".into()),
+            source_config: Some(serde_json::json!({
+                "repository": "everruns/bashkit",
+                "token": "must-not-be-stored"
+            })),
+            embedding_model_id: model_id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("inline credentials should fail");
+
+        assert!(matches!(error.kind, CommandErrorKind::BadRequest(_)));
+        assert!(
+            error
+                .message()
+                .contains("credentials must use a GitHub connection")
+        );
+    }
+
+    #[tokio::test]
     async fn source_config_update_rebinds_sync_owner_to_caller() {
         let db = Arc::new(StorageBackend::in_memory());
         let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
@@ -725,7 +853,9 @@ mod tests {
             request: UpdateKnowledgeIndexRequest {
                 name: None,
                 description: everruns_durable::UpdateField::Unchanged,
-                source_config: Some(serde_json::json!({"repository": "owner/rebound"})),
+                source_config: Some(serde_json::json!({
+                    "repository": "https://github.com/owner/rebound.git/"
+                })),
                 embedding_model_id: None,
             },
         }
@@ -740,6 +870,7 @@ mod tests {
             .expect("get internal")
             .expect("row");
         assert_eq!(row.resolved_owner_user_id, Some(updater_user_id));
+        assert_eq!(row.source_config["repository"], "owner/rebound");
     }
 
     #[tokio::test]

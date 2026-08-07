@@ -271,6 +271,55 @@ describe("KnowledgeIndexesPage", () => {
     );
   });
 
+  it("normalizes a canonical GitHub URL before create", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
+    render(<KnowledgeIndexesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Bashkit" } });
+    fireEvent.change(within(dialog).getByLabelText("Embedding model"), {
+      target: { value: "model_001" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Repository"), {
+      target: { value: "https://github.com/everruns/bashkit.git/" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Index" }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_config: expect.objectContaining({ repository: "everruns/bashkit" }),
+        }),
+      ),
+    );
+  });
+
+  it("shows actionable validation for unsupported repository URLs", () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
+    render(<KnowledgeIndexesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Invalid" } });
+    fireEvent.change(within(dialog).getByLabelText("Embedding model"), {
+      target: { value: "model_001" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Repository"), {
+      target: { value: "https://gitlab.com/everruns/bashkit" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Index" }));
+
+    const repository = within(dialog).getByLabelText("Repository");
+    expect(repository).toHaveAttribute("aria-invalid", "true");
+    expect(
+      within(dialog).getByText(/Use owner\/repo or https:\/\/github.com/i),
+    ).toBeInTheDocument();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
   it("prevents submit when no embedding model is available", () => {
     const mutateAsync = jest.fn().mockResolvedValue({});
     mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });

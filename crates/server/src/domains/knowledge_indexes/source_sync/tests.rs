@@ -1,4 +1,4 @@
-// Tests for the Knowledge Index Syncout pipeline. No network/live calls.
+// Tests for the Knowledge Index Syncout pipeline. Live network coverage is ignored by default.
 
 use super::*;
 use crate::services::ProviderResolverService;
@@ -63,6 +63,54 @@ fn chunk_text_counts_unicode_scalars_not_bytes() {
     assert_eq!(chunks[0].char_start, 0);
     assert_eq!(chunks[0].char_end, 2);
     assert_eq!(chunks[2].char_end, 5);
+}
+
+#[test]
+fn stored_github_url_resolves_to_canonical_anonymous_clone() {
+    let source = ResolvedGitSource::from_github(
+        GithubSourceConfig {
+            repository: "https://github.com/everruns/bashkit/".into(),
+            branch: "main".into(),
+            root_folder: Some("knowledge".into()),
+        },
+        None,
+    )
+    .expect("resolve source");
+
+    assert_eq!(source.repository, "everruns/bashkit");
+    assert_eq!(source.url, "https://github.com/everruns/bashkit.git");
+    assert!(source.auth_token.is_none());
+}
+
+#[test]
+#[ignore = "requires anonymous network access to github.com"]
+fn live_stored_github_url_retry_reads_bashkit_knowledge_root() {
+    let source = ResolvedGitSource::from_github(
+        GithubSourceConfig {
+            repository: "https://github.com/everruns/bashkit/".into(),
+            branch: "main".into(),
+            root_folder: Some("knowledge".into()),
+        },
+        None,
+    )
+    .expect("resolve historical source");
+    let documents = snapshot_documents(
+        source,
+        KnowledgeIndexSyncConfig {
+            poll_interval: Duration::ZERO,
+            max_files: 5_000,
+            max_file_bytes: 5 * 1024 * 1024,
+            max_total_bytes: 100 * 1024 * 1024,
+        },
+    )
+    .expect("clone and read knowledge root");
+
+    assert!(!documents.is_empty());
+    assert!(documents.iter().all(|document| {
+        document
+            .source_uri
+            .starts_with("github://everruns/bashkit@main/")
+    }));
 }
 
 // ------------------------- sync claim/complete/fail -------------------------

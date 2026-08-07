@@ -11,6 +11,7 @@ use tokio::task;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::domains::memory::types::{
     GitHubMemorySourceResponse, GitMemorySourceResponse, MemorySourceResponse,
 };
@@ -188,6 +189,7 @@ async fn snapshot_memory_source(
 
     let source = match source {
         MemorySourceResponse::Github(source) => {
+            let mut resolved = ResolvedGitSource::from_github(source, None)?;
             // THREAT[TM-API-018]: GitHub tokens must not be persisted in memory source config.
             // Mitigation: resolve the owner's short-lived connection token only at sync time.
             let auth_token = match (connection_resolver, memory.resolved_owner_user_id) {
@@ -197,7 +199,8 @@ async fn snapshot_memory_source(
                     .map_err(|_| anyhow!("failed to resolve GitHub connection"))?,
                 _ => None,
             };
-            ResolvedGitSource::from_github(source, auth_token)
+            resolved.auth_token = auth_token;
+            resolved
         }
         MemorySourceResponse::Git(source) => ResolvedGitSource::from_git(source),
         MemorySourceResponse::Manual(_) => bail!("manual memories do not have a source to sync"),
@@ -237,7 +240,13 @@ fn clone_repository(source: &ResolvedGitSource, checkout_dir: &Path) -> Result<(
         .branch(&source.branch)
         .clone(&source.url, checkout_dir)
         .map(|_| ())
-        .map_err(|_| anyhow!("failed to clone repository"))
+        .map_err(|error| {
+            anyhow!(safe_git_clone_error(
+                &error,
+                source.github_source,
+                source.auth_token.is_some()
+            ))
+        })
 }
 
 fn resolve_root_folder(checkout_dir: &Path, root_folder: Option<&str>) -> Result<PathBuf> {
@@ -269,16 +278,19 @@ struct ResolvedGitSource {
     branch: String,
     root_folder: Option<String>,
     auth_token: Option<String>,
+    github_source: bool,
 }
 
 impl ResolvedGitSource {
-    fn from_github(source: GitHubMemorySourceResponse, auth_token: Option<String>) -> Self {
-        Self {
-            url: format!("https://github.com/{}.git", source.repository),
+    fn from_github(source: GitHubMemorySourceResponse, auth_token: Option<String>) -> Result<Self> {
+        let (url, _) = github_clone_url(&source.repository).map_err(|message| anyhow!(message))?;
+        Ok(Self {
+            url,
             branch: source.branch,
             root_folder: source.root_folder,
             auth_token,
-        }
+            github_source: true,
+        })
     }
 
     fn from_git(source: GitMemorySourceResponse) -> Self {
@@ -287,6 +299,7 @@ impl ResolvedGitSource {
             branch: source.branch,
             root_folder: source.root_folder,
             auth_token: None,
+            github_source: false,
         }
     }
 }

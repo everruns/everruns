@@ -73,7 +73,8 @@ pub struct CreateKnowledgeIndexRequest {
     #[schema(example = "github")]
     pub source_type: Option<String>,
     #[serde(default)]
-    /// Non-secret source coordinates. Never include credentials.
+    /// Non-secret source coordinates. GitHub repositories accept `owner/repo`
+    /// or canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials.
     #[schema(example = json!({"provider": "github", "repository": "owner/repo", "branch": "main"}))]
     pub source_config: Option<serde_json::Value>,
     #[schema(value_type = String)]
