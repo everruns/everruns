@@ -51,6 +51,30 @@ impl Model {
     }
 }
 
+#[cfg(test)]
+impl Model {
+    /// Test-only: a simulated model that records the provider-visible messages
+    /// of every LLM call into `capture`, in call order. Lets session tests
+    /// assert what history reached the provider on the second turn.
+    pub(crate) fn simulated_capturing(
+        response: impl Into<String>,
+        capture: std::sync::Arc<std::sync::Mutex<Vec<Vec<everruns_core::LlmMessage>>>>,
+    ) -> Self {
+        let mut sim = LlmSimConfig::fixed(response);
+        sim.message_capture = Some(capture);
+        Self {
+            resolved: ResolvedModel {
+                model: "llmsim-model".to_string(),
+                provider_type: DriverId::LlmSim,
+                api_key: Some("fake-key".to_string()),
+                base_url: None,
+                provider_metadata: None,
+            },
+            sim: Some(sim),
+        }
+    }
+}
+
 impl fmt::Debug for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Redact the resolved model's api key; report only the shape.
@@ -90,12 +114,9 @@ impl std::error::Error for BuildError {}
 /// The immutable, validated description of an agent.
 ///
 /// Produced by [`AgentBuilder::build`]. It holds the value-first configuration
-/// and can materialize independent in-process runtimes from it; the underlying
-/// runtime composition is kept in private fields.
-// The stored configuration and `build_runtime` seam are exercised by this
-// crate's tests and consumed by the forthcoming session API (EVE-831); they are
-// intentionally private and not otherwise read in a non-test build yet.
-#[allow(dead_code)]
+/// and materializes independent in-process runtimes from it, one per
+/// [`session`](Agent::session); the underlying runtime composition is kept in
+/// private fields.
 #[derive(Clone, Debug)]
 pub struct Agent {
     name: String,
@@ -127,16 +148,27 @@ impl Agent {
         AgentBuilder::default()
     }
 
-    /// Materialize a fresh, independent in-process runtime for this agent.
+    /// Open a new, independent multi-turn [`Session`](crate::Session) with this
+    /// agent.
     ///
-    /// Each call assembles a new `Harness`/`Agent`/`Session` composition with
-    /// freshly generated ids, so two calls yield two independent sessions. This
-    /// is the private seam the public session API builds on; running turns is
-    /// out of scope for this type.
-    #[allow(dead_code)] // Consumed by the forthcoming session API (EVE-831).
-    async fn build_runtime(
+    /// The session is lazy: the in-process runtime is assembled on the first
+    /// [`Session::run`](crate::Session::run). Each session gets a fresh id and
+    /// its own history, so two sessions from the same agent never share
+    /// conversation state, and cloning an `Agent` never shares history.
+    pub fn session(&self) -> crate::Session {
+        crate::Session::new(self.clone(), SessionId::new())
+    }
+
+    /// Materialize a fresh in-process runtime for this agent, seeded with the
+    /// given session id.
+    ///
+    /// Each call assembles a new `Harness`/`Agent`/`Session` composition, so
+    /// distinct session ids yield independent sessions. This is the private
+    /// seam [`Session`](crate::Session) builds on.
+    pub(crate) async fn build_runtime(
         &self,
-    ) -> Result<(InProcessRuntime, SessionId), everruns_core::AgentLoopError> {
+        session_id: SessionId,
+    ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
         let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
             .capabilities(self.capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
@@ -158,6 +190,7 @@ impl Agent {
         let agent = agent.build();
 
         let mut session = SessionBuilder::new(harness_id)
+            .id(session_id)
             .agent(agent_id)
             .capabilities(self.capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
@@ -166,7 +199,6 @@ impl Agent {
         for file in &self.initial_files {
             session = session.initial_file(file.clone());
         }
-        let session_id = session.session_id();
         let session = session.build();
 
         let mut builder = InProcessRuntimeBuilder::new()
@@ -177,8 +209,7 @@ impl Agent {
         if let Some(sim) = &self.model.sim {
             builder = builder.llm_sim(sim.clone());
         }
-        let runtime = builder.build().await?;
-        Ok((runtime, session_id))
+        builder.build().await
     }
 }
 
@@ -303,16 +334,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn one_agent_creates_two_independent_sessions() {
+    async fn build_runtime_seeds_the_requested_session_id() {
         let agent = Agent::builder()
             .instructions("You are concise.")
             .model(Model::simulated("Sure."))
             .build()
             .expect("valid agent");
 
-        let (_first, a) = agent.build_runtime().await.expect("first runtime");
-        let (_second, b) = agent.build_runtime().await.expect("second runtime");
-
-        assert_ne!(a, b, "each session must be independent");
+        let session_id = SessionId::new();
+        let runtime = agent
+            .build_runtime(session_id)
+            .await
+            .expect("runtime builds");
+        // The seeded session id is usable directly: a caller can run a turn
+        // against it without going through `default_session_id`.
+        let result = runtime
+            .run_turn(session_id, everruns_core::InputMessage::user("hi"))
+            .await
+            .expect("turn runs");
+        assert!(result.success);
+        assert_eq!(result.response, "Sure.");
     }
 }
