@@ -34,6 +34,10 @@ default = ["macros"]
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
 macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
+# Persist and resume a session's conversation as an append-only JSONL file
+# (EVE-836). Off by default; adds no new dependencies (only `std::fs` and the
+# already-present `serde_json`), so the standard build gains no filesystem edge.
+jsonl = []
 # Compile the experimental sandboxed Lua execution engine into the runtime.
 # Mirrors `everruns-runtime/lua`; off by default so the standard facade build
 # pulls in no interpreter.
@@ -72,3 +76,5 @@ serde = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 serde = { workspace = true }
 trybuild = { workspace = true }
+# Backing files for the `jsonl` persistence tests.
+tempfile = { workspace = true }

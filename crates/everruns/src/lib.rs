@@ -72,6 +72,15 @@ pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;
 
+// --- File-backed session persistence (feature-gated) --------------------
+/// Persist and resume a [`Session`]'s conversation as an append-only JSONL file
+/// with only `everruns` and the `jsonl` feature. Off by default; adds no
+/// filesystem dependencies to the standard build.
+#[cfg(feature = "jsonl")]
+pub mod persistence;
+#[cfg(feature = "jsonl")]
+pub use persistence::{JsonlError, JsonlSessionStore};
+
 // --- Function-tool procedural macro (feature-gated) ---------------------
 /// Turn a typed async function into an agent tool.
 ///
