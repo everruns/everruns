@@ -34,7 +34,15 @@ pub mod payment;
 pub mod principal;
 pub mod reporting;
 
+// Hosted management seam and capabilities carved out of `everruns-core` (EVE-839).
+pub mod capabilities;
+pub mod platform_store;
+
 pub use organization::Organization;
+pub use platform_store::{
+    PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreExt,
+    PlatformStoreSubagentDelegate,
+};
 pub use principal::Principal;
 
 // Payment accounting records (EVE-838). The execution-contract types

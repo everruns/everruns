@@ -17,7 +17,6 @@ use everruns_core::events::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::tools::Tool;
 use everruns_core::traits::{
@@ -35,6 +34,7 @@ use everruns_core::{
     UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
 };
+use everruns_platform::PlatformStore;
 use std::sync::Arc;
 use tracing::warn;
 
@@ -603,6 +603,22 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
     subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
 ) -> ToolContextServices {
+    // EVE-839: the adapter still yields a hosted `PlatformStore`, but core no
+    // longer names it. Thread it as the narrow subagent delegate (for portable
+    // subagent/handoff orchestration) and, when present, as the typed
+    // `PlatformStoreExt` extension the hosted platform capabilities resolve.
+    let platform_store = adapter.platform_store(org_id, session_id);
+    let subagent_delegate = platform_store.clone().map(|store| {
+        Arc::new(everruns_platform::PlatformStoreSubagentDelegate(store))
+            as Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>
+    });
+    let extensions = {
+        let mut extensions = everruns_core::traits::ToolContextExtensions::default();
+        if let Some(store) = platform_store {
+            extensions.insert(Arc::new(everruns_platform::PlatformStoreExt(store)));
+        }
+        extensions
+    };
     ToolContextServices {
         file_store: Some(adapter.file_store()),
         storage_store: adapter.storage_store(),
@@ -618,7 +634,8 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         agent_store: Some(adapter.agent_store(org_id)),
         connection_resolver: adapter.connection_resolver(),
         schedule_store: adapter.schedule_store(org_id),
-        platform_store: adapter.platform_store(org_id, session_id),
+        subagent_delegate,
+        extensions,
         knowledge_store: adapter.knowledge_store(),
         knowledge_index_search: adapter.knowledge_index_search(org_id),
         leased_resource_store: adapter.leased_resource_store(),

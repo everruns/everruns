@@ -1664,7 +1664,7 @@ pub enum ToolContextService {
     AgentStore,
     ConnectionResolver,
     ScheduleStore,
-    PlatformStore,
+    SubagentSessionDelegate,
     KnowledgeStore,
     KnowledgeIndexSearch,
     LeasedResourceStore,
@@ -1698,7 +1698,7 @@ impl ToolContextService {
             Self::AgentStore => "AgentStore",
             Self::ConnectionResolver => "ConnectionResolver",
             Self::ScheduleStore => "SessionScheduleStore",
-            Self::PlatformStore => "PlatformStore",
+            Self::SubagentSessionDelegate => "SubagentSessionDelegate",
             Self::KnowledgeStore => "KnowledgeStore",
             Self::KnowledgeIndexSearch => "KnowledgeIndexSearch",
             Self::LeasedResourceStore => "LeasedResourceStore",
@@ -1737,7 +1737,8 @@ pub struct ToolContextServices {
     pub agent_store: Option<Arc<dyn AgentStore>>,
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
-    pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
+    pub extensions: ToolContextExtensions,
     pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
     pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
@@ -1773,7 +1774,7 @@ impl ToolContextServices {
             ToolContextService::AgentStore => self.agent_store.is_some(),
             ToolContextService::ConnectionResolver => self.connection_resolver.is_some(),
             ToolContextService::ScheduleStore => self.schedule_store.is_some(),
-            ToolContextService::PlatformStore => self.platform_store.is_some(),
+            ToolContextService::SubagentSessionDelegate => self.subagent_delegate.is_some(),
             ToolContextService::KnowledgeStore => self.knowledge_store.is_some(),
             ToolContextService::KnowledgeIndexSearch => self.knowledge_index_search.is_some(),
             ToolContextService::LeasedResourceStore => self.leased_resource_store.is_some(),
@@ -1791,6 +1792,41 @@ impl ToolContextServices {
             ToolContextService::SubagentSpawnStore => self.subagent_spawn_store.is_some(),
             ToolContextService::ReasoningEffortHandle => self.reasoning_effort_handle.is_some(),
         }
+    }
+}
+
+/// Type-erased bag of host-supplied extension services carried on a
+/// [`ToolContext`]. Crates layered above core (e.g. `everruns-platform`) insert
+/// a concrete wrapper type and resolve it by type, so core need not name the
+/// hosted service (EVE-839).
+#[derive(Clone, Default)]
+pub struct ToolContextExtensions {
+    values: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
+}
+
+impl ToolContextExtensions {
+    /// Insert (or replace) an extension keyed by its concrete type.
+    pub fn insert<T: Any + Send + Sync>(&mut self, value: Arc<T>) {
+        Arc::make_mut(&mut self.values).insert(TypeId::of::<T>(), value);
+    }
+
+    /// Resolve an extension by its concrete type.
+    pub fn get<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.values
+            .get(&TypeId::of::<T>())
+            .and_then(|value| value.clone().downcast::<T>().ok())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+}
+
+impl std::fmt::Debug for ToolContextExtensions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ToolContextExtensions")
+            .field("len", &self.values.len())
+            .finish()
     }
 }
 
@@ -1860,8 +1896,15 @@ pub struct ToolContext {
     /// Optional session schedule store for scheduling tools.
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
 
-    /// Optional platform store for org-level management tools.
-    pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    /// Optional narrow child-session delegate for portable subagent/handoff
+    /// orchestration (EVE-839). The hosted `PlatformStore` seam itself is no
+    /// longer named by core; the platform crate implements this delegate and,
+    /// for its own management tools, is resolved via [`Self::extension`].
+    pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
+    /// Type-erased, host-supplied extensions keyed by concrete type. Lets crates
+    /// layered above core (e.g. `everruns-platform`) hang typed services on the
+    /// tool context without core naming them (EVE-839).
+    pub extensions: ToolContextExtensions,
     /// Optional knowledge store backing the `search_knowledge` tool.
     pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
 
@@ -1983,7 +2026,8 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
-            platform_store: None,
+            subagent_delegate: None,
+            extensions: ToolContextExtensions::default(),
             knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
@@ -2027,7 +2071,8 @@ impl ToolContext {
             agent_store: services.agent_store.clone(),
             connection_resolver: services.connection_resolver.clone(),
             schedule_store: services.schedule_store.clone(),
-            platform_store: services.platform_store.clone(),
+            subagent_delegate: services.subagent_delegate.clone(),
+            extensions: services.extensions.clone(),
             knowledge_store: services.knowledge_store.clone(),
             knowledge_index_search: services.knowledge_index_search.clone(),
             leased_resource_store: services.leased_resource_store.clone(),
@@ -2071,7 +2116,8 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
-            platform_store: None,
+            subagent_delegate: None,
+            extensions: ToolContextExtensions::default(),
             knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
@@ -2118,7 +2164,8 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
-            platform_store: None,
+            subagent_delegate: None,
+            extensions: ToolContextExtensions::default(),
             knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
@@ -2166,7 +2213,8 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
-            platform_store: None,
+            subagent_delegate: None,
+            extensions: ToolContextExtensions::default(),
             knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
@@ -2275,7 +2323,8 @@ impl ToolContext {
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
-            platform_store: None,
+            subagent_delegate: None,
+            extensions: ToolContextExtensions::default(),
             knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
@@ -2351,13 +2400,26 @@ impl ToolContext {
         self
     }
 
-    /// Add a platform store to this context.
-    pub fn with_platform_store(
+    /// Add a narrow child-session delegate to this context (EVE-839).
+    pub fn with_subagent_delegate(
         mut self,
-        store: Arc<dyn crate::platform_store::PlatformStore>,
+        delegate: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>,
     ) -> Self {
-        self.platform_store = Some(store);
+        self.subagent_delegate = Some(delegate);
         self
+    }
+
+    /// Insert a type-keyed host extension (e.g. `everruns-platform`'s
+    /// `PlatformStoreExt`) and return the updated context.
+    pub fn with_extension<T: std::any::Any + Send + Sync>(mut self, value: Arc<T>) -> Self {
+        self.extensions.insert(value);
+        self
+    }
+
+    /// Resolve a type-keyed host extension previously inserted via
+    /// [`Self::with_extension`].
+    pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.extensions.get::<T>()
     }
 
     /// Add a Knowledge Index search service to this context (for `search_index`).
@@ -2523,7 +2585,7 @@ impl std::fmt::Debug for ToolContext {
             .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
-            .field("platform_store", &self.platform_store.is_some())
+            .field("subagent_delegate", &self.subagent_delegate.is_some())
             .field(
                 "knowledge_index_search",
                 &self.knowledge_index_search.is_some(),

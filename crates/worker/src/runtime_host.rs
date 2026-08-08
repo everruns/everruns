@@ -306,7 +306,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
+    ) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
         Some(self.adapters.platform_store(org_id, session_id))
     }
 

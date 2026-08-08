@@ -1692,7 +1692,7 @@ impl SessionBackgroundSink {
         // and the background run finishes invisibly — the agent that spawned it
         // never learns it ended. Say so: a host that wires `spawn_background`
         // but no store has a hole, not a preference.
-        let Some(platform_store) = &self.context.platform_store else {
+        let Some(platform_store) = &self.context.subagent_delegate else {
             tracing::warn!(
                 run_id = %self.run_id,
                 tool = %self.tool_name,
@@ -2111,12 +2111,12 @@ impl Tool for FailingTool {
 mod tests {
     use super::*;
     use crate::capabilities::GetCurrentTimeTool;
-    use crate::platform_store::PlatformStore;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_task::SessionTaskRegistry;
+    use crate::subagent_delegation::SubagentSessionDelegate;
     use crate::traits::{SessionFileSystem, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
-    use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
+    use crate::{KeyInfo, SecretInfo};
     use async_trait::async_trait;
     use std::sync::{
         Arc as StdArc, Mutex,
@@ -2491,195 +2491,41 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct TestPlatformStore {
+    struct TestSubagentDelegate {
         sent_messages: Mutex<Vec<String>>,
     }
 
     #[async_trait]
-    impl PlatformStore for TestPlatformStore {
-        async fn list_harnesses(&self) -> crate::Result<Vec<crate::Harness>> {
-            Ok(Vec::new())
-        }
-        async fn get_harness(&self, _id: HarnessId) -> crate::Result<Option<crate::Harness>> {
-            Ok(None)
-        }
-        async fn create_harness(
+    #[async_trait]
+    impl SubagentSessionDelegate for TestSubagentDelegate {
+        async fn get_agent_by_id(
             &self,
-            _name: &str,
-            _display_name: Option<&str>,
-            _description: Option<&str>,
-            _system_prompt: Option<&str>,
-            _parent_harness_id: Option<HarnessId>,
-            _capabilities: &[String],
-        ) -> crate::Result<crate::Harness> {
-            unreachable!()
-        }
-        async fn update_harness(
-            &self,
-            _id: HarnessId,
-            _name: Option<&str>,
-            _display_name: Option<&str>,
-            _description: Option<&str>,
-            _system_prompt: Option<&str>,
-            _parent_harness_id: Option<Option<HarnessId>>,
-        ) -> crate::Result<crate::Harness> {
-            unreachable!()
-        }
-        async fn delete_harness(&self, _id: HarnessId) -> crate::Result<()> {
-            Ok(())
-        }
-        async fn copy_harness(
-            &self,
-            _id: HarnessId,
-            _new_name: Option<&str>,
-        ) -> crate::Result<crate::Harness> {
-            unreachable!()
-        }
-        async fn list_agents(&self) -> crate::Result<Vec<crate::Agent>> {
-            Ok(Vec::new())
-        }
-        async fn get_agent_by_id(&self, _id: AgentId) -> crate::Result<Option<crate::Agent>> {
-            Ok(None)
-        }
-        async fn create_agent(
-            &self,
-            _name: &str,
-            _display_name: Option<&str>,
-            _description: Option<&str>,
-            _system_prompt: &str,
-            _capabilities: &[String],
-        ) -> crate::Result<crate::Agent> {
-            unreachable!()
-        }
-        async fn update_agent(
-            &self,
-            _id: AgentId,
-            _name: Option<&str>,
-            _display_name: Option<&str>,
-            _description: Option<&str>,
-            _system_prompt: Option<&str>,
-        ) -> crate::Result<crate::Agent> {
-            unreachable!()
-        }
-        async fn delete_agent(&self, _id: AgentId) -> crate::Result<()> {
-            Ok(())
-        }
-        async fn list_apps(
-            &self,
-            _search: Option<&str>,
-            _include_archived: bool,
-        ) -> crate::Result<Vec<crate::App>> {
-            Ok(Vec::new())
-        }
-        async fn get_app(&self, _id: crate::AppId) -> crate::Result<Option<crate::App>> {
-            Ok(None)
-        }
-        async fn create_app(
-            &self,
-            _name: &str,
-            _description: Option<&str>,
-            _harness_id: HarnessId,
-            _agent_id: Option<AgentId>,
-            _agent_identity_id: Option<crate::AgentIdentityId>,
-            _channel_type: Option<crate::ChannelType>,
-            _channel_config: Option<&serde_json::Value>,
-        ) -> crate::Result<crate::App> {
-            unreachable!()
-        }
-        async fn update_app(
-            &self,
-            _id: crate::AppId,
-            _name: Option<&str>,
-            _description: Option<&str>,
-            _harness_id: Option<HarnessId>,
-            _agent_id: Option<AgentId>,
-            _agent_identity_id: Option<Option<crate::AgentIdentityId>>,
-        ) -> crate::Result<crate::App> {
-            unreachable!()
-        }
-        async fn delete_app(&self, _id: crate::AppId) -> crate::Result<()> {
-            Ok(())
-        }
-        async fn destroy_app(&self, _id: crate::AppId) -> crate::Result<()> {
-            Ok(())
-        }
-        async fn publish_app(&self, _id: crate::AppId) -> crate::Result<crate::App> {
-            unreachable!()
-        }
-        async fn unpublish_app(&self, _id: crate::AppId) -> crate::Result<crate::App> {
-            unreachable!()
-        }
-        async fn add_app_channel(
-            &self,
-            _app_id: crate::AppId,
-            _channel_type: crate::ChannelType,
-            _channel_config: Option<&serde_json::Value>,
-            _enabled: Option<bool>,
-        ) -> crate::Result<crate::AppChannel> {
-            unreachable!()
-        }
-        async fn update_app_channel(
-            &self,
-            _app_id: crate::AppId,
-            _channel_id: crate::AppChannelId,
-            _channel_type: Option<crate::ChannelType>,
-            _channel_config: Option<&serde_json::Value>,
-            _enabled: Option<bool>,
-        ) -> crate::Result<crate::AppChannel> {
-            unreachable!()
-        }
-        async fn delete_app_channel(
-            &self,
-            _app_id: crate::AppId,
-            _channel_id: crate::AppChannelId,
-        ) -> crate::Result<()> {
-            Ok(())
-        }
-        async fn list_sessions(
-            &self,
-            _limit: Option<usize>,
-            _agent_id: Option<AgentId>,
-        ) -> crate::Result<Vec<crate::Session>> {
-            Ok(Vec::new())
-        }
-        async fn create_session(
-            &self,
-            _harness_id: HarnessId,
-            _agent_id: Option<AgentId>,
-            _title: Option<&str>,
-            _locale: Option<&str>,
-            _blueprint_id: Option<&str>,
-            _blueprint_config: Option<&serde_json::Value>,
-            _parent_session_id: Option<SessionId>,
-        ) -> crate::Result<crate::Session> {
-            unreachable!()
-        }
-        async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
+            _id: crate::typed_id::AgentId,
+        ) -> crate::Result<Option<crate::Agent>> {
             Ok(None)
         }
         async fn add_agent_session_participant(
             &self,
             _session_id: SessionId,
-            _agent_id: AgentId,
-        ) -> crate::Result<crate::SessionParticipant> {
-            unreachable!()
+            _agent_id: crate::typed_id::AgentId,
+        ) -> crate::Result<crate::session::SessionParticipant> {
+            Err(crate::error::AgentLoopError::tool(
+                "test store does not add participants",
+            ))
         }
-        async fn get_session_context_report(
+        async fn get_harness(&self, _id: HarnessId) -> crate::Result<Option<crate::Harness>> {
+            Ok(None)
+        }
+        async fn create_session_with_options(
             &self,
-            id: SessionId,
-        ) -> crate::Result<crate::SessionContextReport> {
-            Ok(crate::SessionContextReport {
-                session_id: id.to_string(),
-                model: "llmsim".to_string(),
-                context_window_tokens: None,
-                estimated_input_tokens: 0,
-                sections: vec![],
-                contributions: vec![],
-                cumulative_usage: None,
-            })
+            _request: crate::subagent_delegation::PlatformCreateSessionRequest,
+        ) -> crate::Result<crate::Session> {
+            Err(crate::error::AgentLoopError::tool(
+                "test store does not create sessions",
+            ))
         }
-        async fn delete_session(&self, _id: SessionId) -> crate::Result<()> {
-            Ok(())
+        async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
+            Ok(None)
         }
         async fn send_message(&self, _session_id: SessionId, content: &str) -> crate::Result<()> {
             self.sent_messages.lock().unwrap().push(content.to_string());
@@ -2689,7 +2535,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _limit: Option<usize>,
-        ) -> crate::Result<Vec<PlatformMessage>> {
+        ) -> crate::Result<Vec<crate::subagent_delegation::PlatformMessage>> {
             Ok(Vec::new())
         }
         async fn wait_for_idle(
@@ -2698,15 +2544,6 @@ mod tests {
             _timeout_secs: Option<u64>,
         ) -> crate::Result<String> {
             Ok("idle".to_string())
-        }
-        async fn list_capabilities(
-            &self,
-            _search: Option<&str>,
-        ) -> crate::Result<Vec<crate::CapabilityInfo>> {
-            Ok(Vec::new())
-        }
-        fn base_url(&self) -> &str {
-            "http://localhost:9300"
         }
     }
 
@@ -3192,7 +3029,7 @@ mod tests {
     async fn test_spawn_background_executes_and_signals_session() {
         let session_id = SessionId::new();
         let file_store = Arc::new(TestFileStore::default());
-        let platform_store = Arc::new(TestPlatformStore::default());
+        let platform_store = Arc::new(TestSubagentDelegate::default());
         let storage_store = Arc::new(NoopStorageStore);
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let tool_registry = ToolRegistry::builder()
@@ -3202,7 +3039,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_platform_store(platform_store.clone())
+            .with_subagent_delegate(platform_store.clone())
             .with_session_task_registry(task_registry.clone());
 
         let tool = SpawnBackgroundTool;

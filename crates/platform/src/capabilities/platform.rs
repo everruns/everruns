@@ -1,10 +1,12 @@
 //! Catalog-backed platform management capability.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::tool_types::{DeferrablePolicy, ToolHints};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
+use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{ToolContext, ToolContextService};
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
@@ -102,12 +104,12 @@ impl PlatformCommandTool {
 impl Tool for PlatformCommandTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        use crate::tool_narration::ToolNarrationPhase;
+        use everruns_core::tool_narration::ToolNarrationPhase;
 
         let ukrainian = locale.is_some_and(|value| value.to_ascii_lowercase().starts_with("uk"));
         let text = match (self.operation, phase, ukrainian) {
@@ -203,9 +205,10 @@ impl Tool for PlatformCommandTool {
                 "organization_id is not accepted; Platform commands use the current session organization",
             );
         }
-        let Some(store) = context.platform_store.as_deref() else {
+        let Some(store) = context.extension::<crate::platform_store::PlatformStoreExt>() else {
             return ToolExecutionResult::tool_error("Platform command service is unavailable");
         };
+        let store = &store.0;
         let result = match self.operation {
             PlatformCommandOperation::Discover => store.platform_discover(arguments).await,
             PlatformCommandOperation::Query => store.platform_query(arguments).await,
@@ -222,7 +225,7 @@ impl Tool for PlatformCommandTool {
     }
 
     fn required_context_services(&self) -> &'static [ToolContextService] {
-        &[ToolContextService::PlatformStore]
+        &[]
     }
 
     fn hints(&self) -> ToolHints {
@@ -307,7 +310,7 @@ fn script_input_schema(commands_description: &str) -> Value {
 mod tests {
     use super::*;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::typed_id::SessionId;
+    use everruns_core::typed_id::SessionId;
     use std::sync::Arc;
 
     #[test]
@@ -331,8 +334,8 @@ mod tests {
 
     #[test]
     fn tools_own_phase_aware_human_narration() {
-        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use everruns_core::tool_types::ToolCall;
 
         let cases = [
             (
@@ -395,7 +398,11 @@ mod tests {
     #[tokio::test]
     async fn tools_dispatch_to_platform_store() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let context = ToolContext::new(SessionId::new()).with_extension(Arc::new(
+            crate::platform_store::PlatformStoreExt(
+                store as Arc<dyn crate::platform_store::PlatformStore>,
+            ),
+        ));
         let result = PlatformCommandTool::query()
             .execute_with_context(json!({ "commands": "list_models" }), &context)
             .await;
@@ -405,7 +412,11 @@ mod tests {
     #[tokio::test]
     async fn organization_override_is_rejected_even_if_injected() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let context = ToolContext::new(SessionId::new()).with_extension(Arc::new(
+            crate::platform_store::PlatformStoreExt(
+                store as Arc<dyn crate::platform_store::PlatformStore>,
+            ),
+        ));
         let result = PlatformCommandTool::query()
             .execute_with_context(
                 json!({ "commands": "list_models", "organization_id": "org_other" }),

@@ -26,7 +26,7 @@
 //!   raw, untrimmed value. For callers that validate non-blank yet preserve the
 //!   original text (e.g. free-form instructions).
 
-use crate::platform_store::PlatformStore;
+use crate::subagent_delegation::SubagentSessionDelegate;
 use crate::tools::ToolExecutionResult;
 use crate::traits::{SessionFileSystem, ToolContext};
 use serde_json::Value;
@@ -100,12 +100,12 @@ pub fn require_id<T: FromStr>(args: &Value, key: &str) -> Result<T, ToolExecutio
     parse_id(raw, key)
 }
 
-/// Extract the platform store from context or return a tool error.
-pub fn get_platform_store(
+/// Extract the narrow subagent-session delegate from context or return a tool error.
+pub fn get_subagent_delegate(
     context: &ToolContext,
-) -> Result<&dyn PlatformStore, ToolExecutionResult> {
+) -> Result<&dyn SubagentSessionDelegate, ToolExecutionResult> {
     context
-        .platform_store
+        .subagent_delegate
         .as_ref()
         .map(|store| store.as_ref())
         .ok_or_else(|| {

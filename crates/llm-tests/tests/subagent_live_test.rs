@@ -21,12 +21,12 @@ use llm_test_matrix::*;
 use async_trait::async_trait;
 use everruns_core::capabilities::SubagentCapability;
 use everruns_core::error::Result;
-use everruns_core::platform_store::{PlatformMessage, PlatformStore};
 use everruns_core::session::Session;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{CapabilityRegistry, MessageRole, PlatformDefinition};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_platform::{PlatformMessage, PlatformStore};
 use everruns_runtime::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, RuntimeBackends,
     RuntimeSessionStore, SessionBuilder,

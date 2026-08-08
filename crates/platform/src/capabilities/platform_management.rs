@@ -10,16 +10,16 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
-use super::{
+use async_trait::async_trait;
+use everruns_core::app::{App, AppChannel, ChannelType};
+use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
 };
-use crate::app::{App, AppChannel, ChannelType};
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
-use async_trait::async_trait;
+use everruns_core::capability_types::{MountAccess, MountSource, VirtualFileTree};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use include_dir::{Dir, include_dir};
 use serde_json::{Value, json};
@@ -367,7 +367,7 @@ async fn read_harnesses_impl(
     let base_url = store.base_url();
 
     if let Some(id_str) = get_str(&arguments, "id") {
-        let id: crate::typed_id::HarnessId = parse_id(id_str, "harness id")?;
+        let id: everruns_core::typed_id::HarnessId = parse_id(id_str, "harness id")?;
         return Ok(match store.get_harness(id).await {
             Ok(Some(h)) => ToolExecutionResult::success(json!({
                 "id": h.id.to_string(),
@@ -513,10 +513,9 @@ async fn manage_harnesses_impl(
             let system_prompt = get_str(&arguments, "system_prompt");
             let description = get_str(&arguments, "description");
             let parent_harness_id = match arguments.get("parent_harness_id") {
-                Some(Value::String(id_str)) => Some(parse_id::<crate::typed_id::HarnessId>(
-                    id_str,
-                    "parent_harness_id",
-                )?),
+                Some(Value::String(id_str)) => Some(
+                    parse_id::<everruns_core::typed_id::HarnessId>(id_str, "parent_harness_id")?,
+                ),
                 Some(Value::Null) | None => None,
                 Some(_) => {
                     return Ok(ToolExecutionResult::tool_error(
@@ -560,15 +559,16 @@ async fn manage_harnesses_impl(
 
         "update" => {
             let id_str = require_str(&arguments, "harness_id")?;
-            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            let id: everruns_core::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
             let name = get_str(&arguments, "name");
             let display_name = get_str(&arguments, "display_name");
             let description = get_str(&arguments, "description");
             let system_prompt = get_str(&arguments, "system_prompt");
             let parent_harness_id = match arguments.get("parent_harness_id") {
-                Some(Value::String(id_str)) => Some(Some(parse_id::<crate::typed_id::HarnessId>(
-                    id_str,
-                    "parent_harness_id",
+                Some(Value::String(id_str)) => Some(Some(parse_id::<
+                    everruns_core::typed_id::HarnessId,
+                >(
+                    id_str, "parent_harness_id"
                 )?)),
                 Some(Value::Null) => Some(None),
                 None => None,
@@ -605,7 +605,7 @@ async fn manage_harnesses_impl(
 
         "delete" => {
             let id_str = require_str(&arguments, "harness_id")?;
-            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            let id: everruns_core::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
             match store.delete_harness(id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "harness_id": id_str,
@@ -618,7 +618,7 @@ async fn manage_harnesses_impl(
 
         "copy" => {
             let id_str = require_str(&arguments, "harness_id")?;
-            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            let id: everruns_core::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
             let new_name = get_str(&arguments, "new_name");
             match store.copy_harness(id, new_name).await {
                 Ok(h) => ToolExecutionResult::success(json!({
@@ -709,7 +709,7 @@ async fn read_agents_impl(
     let base_url = store.base_url();
 
     if let Some(id_str) = get_str(&arguments, "id") {
-        let id: crate::typed_id::AgentId = parse_id(id_str, "agent id")?;
+        let id: everruns_core::typed_id::AgentId = parse_id(id_str, "agent id")?;
         return Ok(match store.get_agent_by_id(id).await {
             Ok(Some(a)) => ToolExecutionResult::success(json!({
                 "id": a.public_id.to_string(),
@@ -846,7 +846,7 @@ async fn manage_agents_impl(
     Ok(match operation {
         "create" => {
             let name = require_str(&arguments, "name")?;
-            if let Err(msg) = crate::agent::validate_addressable_name(name) {
+            if let Err(msg) = everruns_core::agent::validate_addressable_name(name) {
                 return Ok(ToolExecutionResult::tool_error(format!(
                     "Invalid agent name: {msg}"
                 )));
@@ -889,10 +889,10 @@ async fn manage_agents_impl(
 
         "update" => {
             let id_str = require_str(&arguments, "agent_id")?;
-            let id: crate::typed_id::AgentId = parse_id(id_str, "agent_id")?;
+            let id: everruns_core::typed_id::AgentId = parse_id(id_str, "agent_id")?;
             let name = get_str(&arguments, "name");
             if let Some(n) = name
-                && let Err(msg) = crate::agent::validate_addressable_name(n)
+                && let Err(msg) = everruns_core::agent::validate_addressable_name(n)
             {
                 return Ok(ToolExecutionResult::tool_error(format!(
                     "Invalid agent name: {msg}"
@@ -920,7 +920,7 @@ async fn manage_agents_impl(
 
         "delete" => {
             let id_str = require_str(&arguments, "agent_id")?;
-            let id: crate::typed_id::AgentId = parse_id(id_str, "agent_id")?;
+            let id: everruns_core::typed_id::AgentId = parse_id(id_str, "agent_id")?;
             match store.delete_agent(id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "agent_id": id_str,
@@ -1013,7 +1013,7 @@ async fn read_apps_impl(
     let base_url = store.base_url();
 
     if let Some(id_str) = get_str(&arguments, "id") {
-        let id: crate::typed_id::AppId = parse_id(id_str, "app id")?;
+        let id: everruns_core::typed_id::AppId = parse_id(id_str, "app id")?;
         return Ok(match store.get_app(id).await {
             Ok(Some(app)) => ToolExecutionResult::success(app_json(&app, base_url, true)),
             Ok(None) => ToolExecutionResult::tool_error(format!("App not found: {id_str}")),
@@ -1143,17 +1143,20 @@ async fn manage_apps_impl(
         "create" => {
             let name = require_str(&arguments, "name")?;
             let harness_id_str = require_str(&arguments, "harness_id")?;
-            let harness_id: crate::typed_id::HarnessId = parse_id(harness_id_str, "harness_id")?;
+            let harness_id: everruns_core::typed_id::HarnessId =
+                parse_id(harness_id_str, "harness_id")?;
             let description = get_str(&arguments, "description");
             let agent_id = match get_str(&arguments, "agent_id") {
-                Some(value) => Some(parse_id::<crate::typed_id::AgentId>(value, "agent_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(
+                    value, "agent_id",
+                )?),
                 None => None,
             };
             let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
                 if value.is_null() {
                     None
                 } else if let Some(value) = value.as_str() {
-                    Some(parse_id::<crate::typed_id::AgentIdentityId>(
+                    Some(parse_id::<everruns_core::typed_id::AgentIdentityId>(
                         value,
                         "agent_identity_id",
                     )?)
@@ -1194,20 +1197,25 @@ async fn manage_apps_impl(
 
         "update" => {
             let app_id_str = require_str(&arguments, "app_id")?;
-            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             let harness_id = match get_str(&arguments, "harness_id") {
-                Some(value) => Some(parse_id::<crate::typed_id::HarnessId>(value, "harness_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::HarnessId>(
+                    value,
+                    "harness_id",
+                )?),
                 None => None,
             };
             let agent_id = match get_str(&arguments, "agent_id") {
-                Some(value) => Some(parse_id::<crate::typed_id::AgentId>(value, "agent_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(
+                    value, "agent_id",
+                )?),
                 None => None,
             };
             let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
                 if value.is_null() {
                     Some(None)
                 } else if let Some(value) = value.as_str() {
-                    Some(Some(parse_id::<crate::typed_id::AgentIdentityId>(
+                    Some(Some(parse_id::<everruns_core::typed_id::AgentIdentityId>(
                         value,
                         "agent_identity_id",
                     )?))
@@ -1242,7 +1250,7 @@ async fn manage_apps_impl(
 
         "delete" => {
             let app_id_str = require_str(&arguments, "app_id")?;
-            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             match store.delete_app(app_id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "app_id": app_id_str,
@@ -1255,7 +1263,7 @@ async fn manage_apps_impl(
 
         "destroy" => {
             let app_id_str = require_str(&arguments, "app_id")?;
-            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             match store.destroy_app(app_id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "app_id": app_id_str,
@@ -1268,7 +1276,7 @@ async fn manage_apps_impl(
 
         "publish" => {
             let app_id_str = require_str(&arguments, "app_id")?;
-            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             match store.publish_app(app_id).await {
                 Ok(app) => {
                     let mut response = app_json(&app, base_url, true);
@@ -1281,7 +1289,7 @@ async fn manage_apps_impl(
 
         "unpublish" => {
             let app_id_str = require_str(&arguments, "app_id")?;
-            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             match store.unpublish_app(app_id).await {
                 Ok(app) => {
                     let mut response = app_json(&app, base_url, true);
@@ -1386,7 +1394,7 @@ async fn manage_app_channels_impl(
     let store = get_platform_store(context)?;
     let operation = require_str(&arguments, "operation")?;
     let app_id_str = require_str(&arguments, "app_id")?;
-    let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+    let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
     let base_url = store.base_url();
 
     Ok(match operation {
@@ -1413,7 +1421,8 @@ async fn manage_app_channels_impl(
 
         "update" => {
             let channel_id_str = require_str(&arguments, "channel_id")?;
-            let channel_id: crate::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            let channel_id: everruns_core::typed_id::AppChannelId =
+                parse_id(channel_id_str, "channel_id")?;
             let channel_type = match get_str(&arguments, "channel_type") {
                 Some(value) => Some(parse_channel_type(value, "channel_type")?),
                 None => None,
@@ -1438,7 +1447,8 @@ async fn manage_app_channels_impl(
 
         "delete" => {
             let channel_id_str = require_str(&arguments, "channel_id")?;
-            let channel_id: crate::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            let channel_id: everruns_core::typed_id::AppChannelId =
+                parse_id(channel_id_str, "channel_id")?;
             match store.delete_app_channel(app_id, channel_id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "app_id": app_id_str,
@@ -1534,7 +1544,7 @@ async fn read_sessions_impl(
     let base_url = store.base_url();
 
     if let Some(id_str) = get_str(&arguments, "id") {
-        let id: crate::typed_id::SessionId = parse_id(id_str, "session id")?;
+        let id: everruns_core::typed_id::SessionId = parse_id(id_str, "session id")?;
         return Ok(match store.get_session_by_id(id).await {
             Ok(Some(s)) => ToolExecutionResult::success(json!({
                 "id": s.id.to_string(),
@@ -1558,8 +1568,8 @@ async fn read_sessions_impl(
         .and_then(|v| v.as_u64())
         .map(|v| v as usize);
     // Invalid agent_id is silently ignored here (filter is best-effort).
-    let agent_id =
-        get_str(&arguments, "agent_id").and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
+    let agent_id = get_str(&arguments, "agent_id")
+        .and_then(|s| s.parse::<everruns_core::typed_id::AgentId>().ok());
     Ok(match store.list_sessions(limit, agent_id).await {
         Ok(sessions) => {
             let items: Vec<Value> = sessions
@@ -1650,7 +1660,7 @@ async fn session_context_report_impl(
     context: &ToolContext,
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let store = get_platform_store(context)?;
-    let id: crate::typed_id::SessionId = require_id(&arguments, "session_id")?;
+    let id: everruns_core::typed_id::SessionId = require_id(&arguments, "session_id")?;
 
     Ok(match store.get_session_context_report(id).await {
         Ok(report) => ToolExecutionResult::success(json!(report)),
@@ -1749,7 +1759,7 @@ async fn manage_sessions_impl(
     Ok(match operation {
         "create" => {
             let harness_id = if let Some(harness_id_str) = get_str(&arguments, "harness_id") {
-                parse_id::<crate::typed_id::HarnessId>(harness_id_str, "harness_id")?
+                parse_id::<everruns_core::typed_id::HarnessId>(harness_id_str, "harness_id")?
             } else {
                 // Fall back to the org's default (Generic) harness
                 match store.list_harnesses().await {
@@ -1775,7 +1785,7 @@ async fn manage_sessions_impl(
             };
             // Invalid agent_id is silently ignored here (best-effort).
             let agent_id = get_str(&arguments, "agent_id")
-                .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
+                .and_then(|s| s.parse::<everruns_core::typed_id::AgentId>().ok());
             let title = get_str(&arguments, "title");
             let locale = get_str(&arguments, "locale");
             match store
@@ -1799,7 +1809,7 @@ async fn manage_sessions_impl(
 
         "delete" => {
             let id_str = require_str(&arguments, "session_id")?;
-            let id: crate::typed_id::SessionId = parse_id(id_str, "session_id")?;
+            let id: everruns_core::typed_id::SessionId = parse_id(id_str, "session_id")?;
             match store.delete_session(id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "session_id": id_str,
@@ -1885,7 +1895,7 @@ async fn session_send_message_impl(
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let store = get_platform_store(context)?;
     let session_id_str = require_str(&arguments, "session_id")?;
-    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+    let session_id: everruns_core::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
     let content = require_str(&arguments, "content")?;
     let base_url = store.base_url();
 
@@ -1980,7 +1990,7 @@ async fn session_read_messages_impl(
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let store = get_platform_store(context)?;
     let session_id_str = require_str(&arguments, "session_id")?;
-    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+    let session_id: everruns_core::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
 
     let limit = parse_bounded_usize_arg(
         &arguments,
@@ -2104,7 +2114,7 @@ async fn session_read_response_impl(
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let store = get_platform_store(context)?;
     let session_id_str = require_str(&arguments, "session_id")?;
-    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+    let session_id: everruns_core::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
 
     let timeout_secs = arguments.get("timeout_secs").and_then(|v| v.as_u64());
     let base_url = store.base_url();
@@ -2262,14 +2272,13 @@ mod tests {
     use super::*;
     use crate::platform_store::PlatformStore;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::typed_id::{AgentId, HarnessId, SessionId};
+    use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
     use std::sync::Arc;
 
     fn mock_context() -> ToolContext {
         let store: Arc<dyn PlatformStore> = Arc::new(MockPlatformStore::new());
-        let mut ctx = ToolContext::new(SessionId::new());
-        ctx.platform_store = Some(store);
-        ctx
+        ToolContext::new(SessionId::new())
+            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store)))
     }
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
@@ -2645,7 +2654,7 @@ mod tests {
         let ctx = mock_context();
         let tool = ReadAppsTool;
         let result = tool
-            .execute_with_context(json!({"id": crate::AppId::new().to_string()}), &ctx)
+            .execute_with_context(json!({"id": everruns_core::AppId::new().to_string()}), &ctx)
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
@@ -2706,7 +2715,7 @@ mod tests {
         let tool = ManageAppsTool;
         let result = tool
             .execute_with_context(
-                json!({"operation": "publish", "app_id": crate::AppId::new().to_string()}),
+                json!({"operation": "publish", "app_id": everruns_core::AppId::new().to_string()}),
                 &ctx,
             )
             .await;
@@ -2724,7 +2733,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "operation": "update",
-                    "app_id": crate::AppId::new().to_string(),
+                    "app_id": everruns_core::AppId::new().to_string(),
                     "agent_identity_id": null
                 }),
                 &ctx,
@@ -2748,7 +2757,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "operation": "add",
-                    "app_id": crate::AppId::new().to_string(),
+                    "app_id": everruns_core::AppId::new().to_string(),
                     "channel_type": "webhook",
                     "channel_config": {
                         "token": "secret-1",
@@ -2774,8 +2783,8 @@ mod tests {
             .execute_with_context(
                 json!({
                     "operation": "delete",
-                    "app_id": crate::AppId::new().to_string(),
-                    "channel_id": crate::AppChannelId::new().to_string()
+                    "app_id": everruns_core::AppId::new().to_string(),
+                    "channel_id": everruns_core::AppChannelId::new().to_string()
                 }),
                 &ctx,
             )
@@ -2796,7 +2805,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "operation": "add",
-                    "app_id": crate::AppId::new().to_string(),
+                    "app_id": everruns_core::AppId::new().to_string(),
                     "channel_type": "pagerduty"
                 }),
                 &ctx,

@@ -10,18 +10,18 @@ use super::delegation_result::{
     MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
     normalize_result_schema, required_result_is_missing, result_value_for_task,
 };
-use super::util::{get_platform_store, require_str_nonblank as require_str};
+use super::util::{get_subagent_delegate, require_str_nonblank as require_str};
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
 };
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
-use crate::platform_store::PlatformCreateSessionRequest;
 use crate::session::{SessionSeedMode, SubagentStatus};
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
     TASK_KIND_SESSION, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
     TaskWakePolicy, task_message_text,
 };
+use crate::subagent_delegation::PlatformCreateSessionRequest;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -476,7 +476,7 @@ fn invite_conflict_message(
 }
 
 async fn harness_chain_overlay(
-    store: &dyn crate::platform_store::PlatformStore,
+    store: &dyn crate::subagent_delegation::SubagentSessionDelegate,
     harness_id: HarnessId,
 ) -> Result<AgentConfigOverlay, ToolExecutionResult> {
     let chain = store
@@ -494,7 +494,7 @@ async fn harness_chain_overlay(
 }
 
 async fn invite_mode_overlays(
-    store: &dyn crate::platform_store::PlatformStore,
+    store: &dyn crate::subagent_delegation::SubagentSessionDelegate,
     parent_session: &crate::session::Session,
     target: &AgentHandoffTargetConfig,
 ) -> Result<(AgentConfigOverlay, AgentConfigOverlay), ToolExecutionResult> {
@@ -538,7 +538,7 @@ fn child_task(task: &str, public_context: Option<&Value>) -> String {
     )
 }
 
-fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Option<String> {
+fn last_agent_message(messages: &[crate::subagent_delegation::PlatformMessage]) -> Option<String> {
     messages
         .iter()
         .rfind(|message| message.role == "agent" || message.role == "assistant")
@@ -612,7 +612,7 @@ fn handoff_error(status: &str, state: SessionTaskState) -> Option<TaskError> {
 }
 
 async fn handoff_result(
-    store: &dyn crate::platform_store::PlatformStore,
+    store: &dyn crate::subagent_delegation::SubagentSessionDelegate,
     child_session_id: crate::typed_id::SessionId,
     status: &str,
 ) -> Result<String, ToolExecutionResult> {
@@ -633,7 +633,7 @@ fn spawn_handoff_background_watcher(
 ) {
     let context = context.clone();
     tokio::spawn(async move {
-        let Some(store) = context.platform_store.clone() else {
+        let Some(store) = context.subagent_delegate.clone() else {
             return;
         };
 
@@ -902,7 +902,7 @@ impl Tool for SpawnAgentHandoffTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
+        let store = match get_subagent_delegate(context) {
             Ok(store) => store,
             Err(error) => return error,
         };
@@ -1286,7 +1286,7 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         message: &TaskMessage,
         context: &ToolContext,
     ) -> crate::error::Result<()> {
-        let Some(store) = context.platform_store.as_ref() else {
+        let Some(store) = context.subagent_delegate.as_ref() else {
             return Err(crate::error::AgentLoopError::tool(
                 "agent handoff task delivery requires platform_store context",
             ));
@@ -1302,7 +1302,7 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
     }
 
     async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
-        let Some(store) = context.platform_store.as_ref() else {
+        let Some(store) = context.subagent_delegate.as_ref() else {
             return Err(crate::error::AgentLoopError::tool(
                 "agent handoff task cancellation requires platform_store context",
             ));
@@ -1329,9 +1329,10 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         if task.state.is_terminal() {
             return Ok(());
         }
-        let (Some(store), Some(child_id)) =
-            (context.platform_store.as_ref(), task.links.child_session_id)
-        else {
+        let (Some(store), Some(child_id)) = (
+            context.subagent_delegate.as_ref(),
+            task.links.child_session_id,
+        ) else {
             return Ok(());
         };
         let status = store.wait_for_idle(child_id, Some(0)).await?;
@@ -1357,8 +1358,8 @@ mod tests {
     use super::*;
     use crate::Result;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::platform_store::tests::MockPlatformStore;
     use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart};
+    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;
@@ -1425,11 +1426,11 @@ mod tests {
     }
 
     fn context(
-        store: Arc<MockPlatformStore>,
+        store: Arc<MockSubagentDelegate>,
         resolver: Option<Arc<dyn UserConnectionResolver>>,
     ) -> ToolContext {
         let mut context = ToolContext::new(store.session.id);
-        context.platform_store = Some(store);
+        context.subagent_delegate = Some(store);
         context.connection_resolver = resolver;
         context
     }
@@ -1523,7 +1524,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_requires_configured_connection() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let config = target_config(
             store.agent.public_id,
             store.session.harness_id,
@@ -1555,7 +1556,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_rejects_other_target_types() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store, None);
@@ -1578,7 +1579,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_creates_agent_handoff_task() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
@@ -1626,7 +1627,7 @@ mod tests {
 
     #[tokio::test]
     async fn schema_bound_handoff_requires_report_result() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
@@ -1672,7 +1673,7 @@ mod tests {
 
     #[tokio::test]
     async fn handoff_message_schema_is_task_backed_and_wakes_on_activity() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = context(store.clone(), None);
@@ -1713,7 +1714,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_background_returns_task_handle() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
@@ -1766,7 +1767,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_invite_adds_member_participant() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), None);
@@ -1814,7 +1815,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_invite_rejects_inherited_harness_capability_conflict() {
-        let mut store_value = MockPlatformStore::new();
+        let mut store_value = MockSubagentDelegate::new();
         let parent_harness_id = HarnessId::new();
         let child_harness_id = HarnessId::new();
         let mut parent_harness = store_value.harness.clone();
@@ -1871,7 +1872,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_handoff_invite_rejects_capability_conflict() {
-        let mut store_value = MockPlatformStore::new();
+        let mut store_value = MockSubagentDelegate::new();
         store_value.session.capabilities = vec![crate::AgentCapabilityConfig::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
@@ -1918,7 +1919,7 @@ mod tests {
     /// parent's mounts/capabilities while gaining the target's tools.
     #[tokio::test]
     async fn spawn_agent_handoff_uses_target_harness_not_parent() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
@@ -1968,7 +1969,7 @@ mod tests {
     async fn agent_handoff_task_executor_delivers_followup() {
         let parent_id = SessionId::new();
         let child_id = SessionId::new();
-        let mut store_value = MockPlatformStore::new();
+        let mut store_value = MockSubagentDelegate::new();
         store_value.session.id = child_id;
         store_value.session.parent_session_id = Some(parent_id);
         let store = Arc::new(store_value);
@@ -2002,7 +2003,7 @@ mod tests {
         };
 
         let mut ctx = ToolContext::new(parent_id);
-        ctx.platform_store = Some(store);
+        ctx.subagent_delegate = Some(store);
         ctx.session_task_registry = Some(registry);
 
         AgentHandoffTaskExecutor
@@ -2015,7 +2016,7 @@ mod tests {
     async fn agent_handoff_task_executor_reconciles_terminal_child() {
         let parent_id = SessionId::new();
         let child_id = SessionId::new();
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
 
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
@@ -2037,7 +2038,7 @@ mod tests {
             .expect("create task");
 
         let mut ctx = ToolContext::new(parent_id);
-        ctx.platform_store = Some(store);
+        ctx.subagent_delegate = Some(store);
         ctx.session_task_registry = Some(registry.clone());
 
         AgentHandoffTaskExecutor

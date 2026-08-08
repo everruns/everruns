@@ -2210,7 +2210,7 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _session_id: everruns_core::SessionId,
-            ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+            ) -> Arc<dyn everruns_platform::PlatformStore> {
                 unimplemented!()
             }
             fn connection_resolver(

@@ -1840,7 +1840,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    ) -> Arc<dyn everruns_platform::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             org_id,
             session_id,
@@ -2849,7 +2849,7 @@ impl SessionCreationAuthority for DirectPlatformStore {
 }
 
 #[async_trait]
-impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
+impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn platform_discover(
         &self,
         arguments: serde_json::Value,
@@ -3396,7 +3396,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 
     async fn create_session_with_options(
         &self,
-        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+        request: everruns_platform::PlatformCreateSessionRequest,
     ) -> everruns_core::error::Result<Session> {
         self.execute_domain_command(
             "create_session",
@@ -3497,7 +3497,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         limit: Option<usize>,
-    ) -> everruns_core::error::Result<Vec<everruns_core::platform_store::PlatformMessage>> {
+    ) -> everruns_core::error::Result<Vec<everruns_platform::PlatformMessage>> {
         let mut messages: Vec<crate::api::messages::Message> = self
             .execute_domain_command(
                 "list_messages",
@@ -3529,7 +3529,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 if content.is_empty() {
                     return None;
                 }
-                Some(everruns_core::platform_store::PlatformMessage {
+                Some(everruns_platform::PlatformMessage {
                     role: match message.role {
                         crate::api::messages::MessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),
@@ -3626,7 +3626,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 mod tests {
     use super::*;
     use crate::storage::models::CreateHarnessRow;
-    use everruns_core::PlatformStore;
+    use everruns_platform::PlatformStore;
 
     #[test]
     fn string_to_provider_type_maps_gemini() {
