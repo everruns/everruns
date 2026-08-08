@@ -9,7 +9,7 @@
 use everruns_core::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
-    BuiltInHarnessDefinition, CapabilityRegistry, DirectEgressService, PlatformDefinition,
+    BuiltInHarnessDefinition, DirectEgressService, PlatformDefinition,
     SystemEmailConfig, SystemUtilityLlmConfig,
 };
 use std::sync::Arc;

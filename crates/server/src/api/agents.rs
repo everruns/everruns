@@ -1534,7 +1534,6 @@ mod high_risk_admin_gate_tests {
     use super::*;
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
-    use everruns_core::CapabilityRegistry;
     use std::sync::Arc;
 
     fn capability_service() -> CapabilityService {

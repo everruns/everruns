@@ -6,7 +6,7 @@
 //! connection providers and harness templates are server-owned by default.
 
 use everruns_core::{
-    CapabilityRegistry, DeploymentGrade, DirectEgressService, PlatformDefinition,
+    DeploymentGrade, DirectEgressService, PlatformDefinition,
     SystemUtilityLlmConfig,
 };
 use std::sync::Arc;
