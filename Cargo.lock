@@ -2569,6 +2569,7 @@ dependencies = [
  "everruns-runtime",
  "serde_json",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]

@@ -50,6 +50,13 @@ everruns-runtime.workspace = true
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
 serde_json.workspace = true
+# Session event streaming (broadcast channel) and cancellation (select). Only
+# the `sync` surface of tokio is needed on the non-dev build.
+tokio = { workspace = true, features = ["sync", "macros"] }
+# `CancellationToken` backs the facade's public cancellation handle without
+# leaking the tokio-util type onto the public surface. Matches the pin used by
+# everruns-core.
+tokio-util = { version = "0.7", default-features = false }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
