@@ -1,0 +1,5 @@
+error: `#[everruns::tool]` does not support generic parameters
+ --> tests/ui/fail_generic.rs:3:19
+  |
+3 | async fn identity<T>(value: T) -> T {
+  |                   ^

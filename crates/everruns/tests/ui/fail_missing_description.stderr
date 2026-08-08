@@ -1,0 +1,5 @@
+error: `#[everruns::tool]` requires a description: add a doc comment or `#[everruns::tool(description = "…")]`
+ --> tests/ui/fail_missing_description.rs:3:10
+  |
+3 | async fn undocumented(x: i64) -> i64 {
+  |          ^^^^^^^^^^^^

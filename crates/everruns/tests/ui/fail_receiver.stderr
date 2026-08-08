@@ -1,0 +1,5 @@
+error: `#[everruns::tool]` does not support a `self` receiver
+ --> tests/ui/fail_receiver.rs:6:18
+  |
+6 |     async fn add(&self, x: i64) -> i64 {
+  |                  ^^^^^

@@ -26,9 +26,14 @@ categories = ["development-tools", "asynchronous"]
 
 [features]
 # Default features stay offline: the facade activates no provider, MCP,
-# filesystem, SQLx, server, or worker integrations. Embedders opt into the
-# heavier surfaces through the escape-hatch modules or a later, promoted API.
-default = []
+# filesystem, SQLx, server, or worker integrations. The `macros` surface is the
+# one default beyond the bare re-exports — it pulls in no network or I/O edge,
+# only the proc-macro and schema-generation toolchain.
+default = ["macros"]
+# Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
+# runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
+# Schema generation), and `serde` (derive). Kept out of `everruns-core`.
+macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # Compile the experimental sandboxed Lua execution engine into the runtime.
 # Mirrors `everruns-runtime/lua`; off by default so the standard facade build
 # pulls in no interpreter.
@@ -57,6 +62,13 @@ tokio = { workspace = true, features = ["sync", "macros"] }
 # leaking the tokio-util type onto the public surface. Matches the pin used by
 # everruns-core.
 tokio-util = { version = "0.7", default-features = false }
+# Activated by the `macros` feature. `everruns-macros` provides the
+# `#[everruns::tool]` attribute; `schemars` and `serde` back the code it emits.
+everruns-macros = { workspace = true, optional = true }
+schemars = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+serde = { workspace = true }
+trybuild = { workspace = true }
