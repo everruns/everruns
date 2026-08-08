@@ -10,6 +10,7 @@
 //! this type only describes an agent and can materialize independent in-process
 //! runtimes from that description.
 
+use std::collections::HashSet;
 use std::fmt;
 
 use everruns_core::llmsim_driver::LlmSimConfig;
@@ -18,6 +19,8 @@ use everruns_runtime::{
     AgentBuilder as RuntimeAgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder,
     SessionBuilder,
 };
+
+use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 
 /// How an [`Agent`] talks to a model.
 ///
@@ -73,6 +76,26 @@ impl Model {
             sim: Some(sim),
         }
     }
+
+    /// Test-only: a simulated model that emits the given per-turn tool-call
+    /// sequence before replying with `response`. Lets a facade test drive the
+    /// end-to-end tool-execution loop for a function tool.
+    pub(crate) fn simulated_scripted(
+        response: impl Into<String>,
+        tool_call_sequence: Vec<Vec<everruns_core::ToolCall>>,
+    ) -> Self {
+        let sim = LlmSimConfig::fixed(response).with_tool_call_sequence(tool_call_sequence);
+        Self {
+            resolved: ResolvedModel {
+                model: "llmsim-model".to_string(),
+                provider_type: DriverId::LlmSim,
+                api_key: Some("fake-key".to_string()),
+                base_url: None,
+                provider_metadata: None,
+            },
+            sim: Some(sim),
+        }
+    }
 }
 
 impl fmt::Debug for Model {
@@ -96,6 +119,25 @@ pub enum BuildError {
     BlankInstructions,
     /// No model was selected.
     MissingModel,
+    /// A tool name is not a valid model-facing identifier.
+    InvalidToolName {
+        /// The rejected tool name.
+        name: String,
+        /// Why the name was rejected.
+        reason: String,
+    },
+    /// A tool's JSON argument schema is invalid.
+    InvalidToolSchema {
+        /// The tool whose schema was rejected.
+        name: String,
+        /// Why the schema was rejected.
+        reason: String,
+    },
+    /// Two tools were registered under the same name.
+    DuplicateTool {
+        /// The colliding tool name.
+        name: String,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -105,6 +147,15 @@ impl fmt::Display for BuildError {
                 write!(f, "agent instructions must not be blank")
             }
             BuildError::MissingModel => write!(f, "agent requires a model"),
+            BuildError::InvalidToolName { name, reason } => {
+                write!(f, "invalid tool name {name:?}: {reason}")
+            }
+            BuildError::InvalidToolSchema { name, reason } => {
+                write!(f, "invalid JSON schema for tool {name:?}: {reason}")
+            }
+            BuildError::DuplicateTool { name } => {
+                write!(f, "duplicate tool name {name:?}")
+            }
         }
     }
 }
@@ -123,6 +174,7 @@ pub struct Agent {
     instructions: String,
     model: Model,
     capabilities: Vec<AgentCapabilityConfig>,
+    function_tools: Vec<FunctionTool>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
 }
@@ -206,6 +258,12 @@ impl Agent {
             .agent(agent)
             .session(session)
             .default_model(self.model.resolved.clone());
+        // Register each function tool as a closure-backed, single-tool
+        // capability so the runtime can execute the model's calls; the matching
+        // capability ref was attached to the harness/agent/session above.
+        for tool in &self.function_tools {
+            builder = builder.capability(tool.clone().into_capability());
+        }
         if let Some(sim) = &self.model.sim {
             builder = builder.llm_sim(sim.clone());
         }
@@ -224,6 +282,7 @@ pub struct AgentBuilder {
     instructions: Option<String>,
     model: Option<Model>,
     capabilities: Vec<AgentCapabilityConfig>,
+    tools: Vec<Tool>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
 }
@@ -247,12 +306,36 @@ impl AgentBuilder {
         self
     }
 
-    /// Add a tool the agent can call, referenced by capability id.
+    /// Add a tool the agent can call.
     ///
-    /// Tools are wired through the capability system, so this is a
-    /// tool-flavored alias of [`capability`](Self::capability).
-    pub fn tool(mut self, tool: impl Into<AgentCapabilityConfig>) -> Self {
-        self.capabilities.push(tool.into());
+    /// Accepts anything that is [`IntoTool`](crate::IntoTool): a
+    /// [`FunctionTool`](crate::FunctionTool) backed by an async function or
+    /// closure, or a `&str`/`String` capability id for a capability-referenced
+    /// tool. Tool names and JSON schemas are validated, and duplicate names
+    /// rejected, at [`build`](Self::build).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use everruns::{Agent, FunctionTool, Model};
+    /// use serde_json::json;
+    ///
+    /// let agent = Agent::builder()
+    ///     .instructions("You are concise.")
+    ///     .model(Model::simulated("done"))
+    ///     .tool("test_math")
+    ///     .tool(FunctionTool::new(
+    ///         "roll",
+    ///         "Roll a die.",
+    ///         json!({ "type": "object", "properties": {} }),
+    ///         |_args: serde_json::Value| async move { Ok::<_, String>(json!({ "value": 4 })) },
+    ///     ))
+    ///     .build()?;
+    /// # let _ = agent;
+    /// # Ok::<(), everruns::BuildError>(())
+    /// ```
+    pub fn tool(mut self, tool: impl IntoTool) -> Self {
+        self.tools.push(tool.into_tool());
         self
     }
 
@@ -278,8 +361,14 @@ impl AgentBuilder {
     ///
     /// # Errors
     ///
-    /// Returns [`BuildError::BlankInstructions`] if instructions are missing or
-    /// only whitespace, or [`BuildError::MissingModel`] if no model was set.
+    /// - [`BuildError::BlankInstructions`] if instructions are missing or only
+    ///   whitespace.
+    /// - [`BuildError::MissingModel`] if no model was set.
+    /// - [`BuildError::InvalidToolName`] if a function tool's name is not a
+    ///   valid model-facing identifier.
+    /// - [`BuildError::InvalidToolSchema`] if a function tool's JSON schema is
+    ///   not a valid arguments schema.
+    /// - [`BuildError::DuplicateTool`] if two `.tool(..)` calls share a name.
     pub fn build(self) -> Result<Agent, BuildError> {
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
@@ -288,11 +377,44 @@ impl AgentBuilder {
         let model = self.model.ok_or(BuildError::MissingModel)?;
         let name = self.name.unwrap_or_else(|| "agent".to_string());
 
+        // Validate tools and split them into capability refs (attached to the
+        // agent) and function tools (also registered on the runtime). Names
+        // must be unique across all `.tool(..)` calls.
+        let mut capabilities = self.capabilities;
+        let mut function_tools = Vec::new();
+        let mut seen_tool_names: HashSet<String> = HashSet::new();
+        for tool in self.tools {
+            let tool_name = tool.name().to_string();
+            if !seen_tool_names.insert(tool_name.clone()) {
+                return Err(BuildError::DuplicateTool { name: tool_name });
+            }
+            match tool {
+                Tool::Capability(config) => capabilities.push(config),
+                Tool::Function(function_tool) => {
+                    validate_tool_name(function_tool.name()).map_err(|reason| {
+                        BuildError::InvalidToolName {
+                            name: tool_name.clone(),
+                            reason,
+                        }
+                    })?;
+                    validate_tool_schema(function_tool.schema()).map_err(|reason| {
+                        BuildError::InvalidToolSchema {
+                            name: tool_name.clone(),
+                            reason,
+                        }
+                    })?;
+                    capabilities.push(AgentCapabilityConfig::new(function_tool.name()));
+                    function_tools.push(function_tool);
+                }
+            }
+        }
+
         Ok(Agent {
             name,
             instructions,
             model,
-            capabilities: self.capabilities,
+            capabilities,
+            function_tools,
             initial_files: self.initial_files,
             parallel_tool_calls: self.parallel_tool_calls,
         })
@@ -301,7 +423,164 @@ impl AgentBuilder {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use everruns_core::ToolCall;
+    use serde_json::{Value, json};
+
     use super::*;
+    use crate::FunctionTool;
+
+    fn obj_schema() -> Value {
+        json!({ "type": "object", "properties": {}, "additionalProperties": false })
+    }
+
+    #[test]
+    fn build_rejects_invalid_tool_name() {
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .tool(FunctionTool::new(
+                "bad name",
+                "desc",
+                obj_schema(),
+                |_: Value| async move { Ok::<_, String>(json!({})) },
+            ))
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, BuildError::InvalidToolName { ref name, .. } if name == "bad name"),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn build_rejects_invalid_tool_schema() {
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .tool(FunctionTool::new(
+                "arr",
+                "desc",
+                json!({ "type": "array" }),
+                |_: Value| async move { Ok::<_, String>(json!({})) },
+            ))
+            .build()
+            .unwrap_err();
+        assert!(
+            matches!(err, BuildError::InvalidToolSchema { ref name, .. } if name == "arr"),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn build_rejects_duplicate_tool_names() {
+        let make = || {
+            FunctionTool::new("dup", "desc", obj_schema(), |_: Value| async move {
+                Ok::<_, String>(json!({}))
+            })
+        };
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .tool(make())
+            .tool(make())
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
+            BuildError::DuplicateTool {
+                name: "dup".to_string()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn function_tool_executes_end_to_end() {
+        // Capture what the handler received to prove args flowed in.
+        let received: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
+        let sink = received.clone();
+        let tool = FunctionTool::new(
+            "greet",
+            "Greet a person by name.",
+            json!({
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"],
+            }),
+            move |args: Value| {
+                let sink = sink.clone();
+                async move {
+                    *sink.lock().unwrap() = Some(args.clone());
+                    let name = args["name"].as_str().unwrap_or("world");
+                    Ok::<_, String>(json!({ "greeting": format!("Hello, {name}!") }))
+                }
+            },
+        );
+
+        let agent = Agent::builder()
+            .instructions("Call greet when asked to greet someone.")
+            .model(Model::simulated_scripted(
+                "All done.",
+                vec![
+                    vec![ToolCall {
+                        id: "call_greet_1".into(),
+                        name: "greet".into(),
+                        arguments: json!({ "name": "Ada" }),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .build()
+            .expect("valid agent");
+
+        let mut session = agent.session();
+        let turn = session.run("Please greet Ada.").await.expect("turn runs");
+
+        assert!(turn.success, "turn should succeed: {:?}", turn.error);
+        assert_eq!(turn.tool_calls, 1, "the function tool must have executed");
+        assert_eq!(turn.response, "All done.");
+        assert_eq!(
+            received.lock().unwrap().as_ref().expect("handler ran")["name"],
+            json!("Ada"),
+            "handler must receive the model's call arguments",
+        );
+    }
+
+    #[tokio::test]
+    async fn function_tool_handler_error_is_model_visible_not_a_panic() {
+        let tool = FunctionTool::new(
+            "always_fails",
+            "Always returns an error.",
+            obj_schema(),
+            |_: Value| async move { Err::<Value, String>("boom".to_string()) },
+        );
+
+        let agent = Agent::builder()
+            .instructions("Call the tool.")
+            .model(Model::simulated_scripted(
+                "Handled.",
+                vec![
+                    vec![ToolCall {
+                        id: "call_fail_1".into(),
+                        name: "always_fails".into(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .build()
+            .expect("valid agent");
+
+        let mut session = agent.session();
+        // The handler error becomes a tool result the model consumes; the turn
+        // still completes rather than panicking.
+        let turn = session.run("go").await.expect("turn runs");
+        assert!(turn.success, "turn should recover from a tool error");
+        assert_eq!(turn.tool_calls, 1);
+    }
 
     #[test]
     fn build_rejects_blank_instructions() {
