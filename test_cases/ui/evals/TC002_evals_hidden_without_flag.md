@@ -16,7 +16,7 @@ None.
 ## Steps
 
 1. Observe the sidebar navigation
-2. Look for "Evals" link in the Building Blocks section
+2. Look for "Evals" link in the Quality section
 
 ## Expected Result
 

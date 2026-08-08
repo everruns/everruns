@@ -17,7 +17,7 @@ Verify that an MCP server can be archived and remains available in the archived 
 
 ## Steps
 
-1. Navigate to Building blocks > MCP Servers
+1. Navigate to Registries > MCP servers
 2. Find an active MCP server
 3. Open the server actions and click "Archive"
 4. Confirm the action

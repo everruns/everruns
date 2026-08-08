@@ -19,7 +19,7 @@ Verify that an existing MCP server's name, description, and URL can be edited fr
 
 ## Steps
 
-1. Navigate to Building blocks > MCP Servers
+1. Navigate to Registries > MCP servers
 2. Find the row for the server "test-mcp-server"
 3. Click the "Edit" button in that row
 4. In the "Edit MCP Server" dialog, update Name to: `updated-mcp-server`

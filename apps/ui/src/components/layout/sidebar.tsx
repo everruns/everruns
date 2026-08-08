@@ -27,7 +27,6 @@ import {
   ChartColumn,
   ClipboardCheck,
   FlaskConical,
-  LayoutDashboard,
   Library,
   ListTodo,
   MessageCircle,
@@ -40,7 +39,6 @@ import {
   Shield,
   Telescope,
   UserRound,
-  Waypoints,
   Workflow,
   Cog,
   Cpu,
@@ -94,26 +92,38 @@ export interface SidebarConfig {
   };
 }
 
-export const defaultTopNavigation: NavigationItem[] = [
-  { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
-  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Reports", href: "/reports", icon: ChartColumn },
-  { name: "Sessions", href: "/sessions", icon: MessageSquare },
-  { name: "Work", href: "/work", icon: Waypoints },
+/**
+ * Navigation is grouped by what you do with a thing, not what it is. The placement
+ * rule and the dismissed alternatives live in `knowledge/ui/information-architecture.md`;
+ * consult it before adding an entity to a group.
+ */
+export const defaultChatsNavigation: NavigationItem[] = [
+  { name: "Chats", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
 ];
 
-export const defaultBuildingBlocksNavigation: NavigationItem[] = [
-  { name: "Harnesses", href: "/harnesses", icon: Shield },
+export const defaultOperationalNavigation: NavigationItem[] = [
+  { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  { name: "Reports", href: "/reports", icon: ChartColumn },
+];
+
+export const defaultBuildingNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
-  { name: "Agent Identities", href: "/agent-identities", icon: UserRound },
-  { name: "Skills", href: "/skills", icon: BookOpen },
+  { name: "Harnesses", href: "/harnesses", icon: Shield },
+  { name: "Identities", href: "/agent-identities", icon: UserRound },
+  { name: "Knowledge indexes", href: "/knowledge-indexes", icon: Library },
   { name: "Memory", href: "/memory", icon: Brain },
-  { name: "Knowledge Indexes", href: "/knowledge-indexes", icon: Library },
-  { name: "Models", href: "/models", icon: Cpu },
-  { name: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
-  { name: "Plugins", href: "/plugins", icon: Puzzle },
   { name: "Apps", href: "/apps", icon: Rocket },
+];
+
+export const defaultRegistriesNavigation: NavigationItem[] = [
+  { name: "Models", href: "/models", icon: Cpu },
+  { name: "MCP servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
+  { name: "Skills", href: "/skills", icon: BookOpen },
+  { name: "Capabilities", href: "/capabilities", icon: Puzzle },
+  { name: "Plugins", href: "/plugins", icon: Puzzle },
+];
+
+export const defaultQualityNavigation: NavigationItem[] = [
   { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
   {
     name: "Observers",
@@ -147,8 +157,11 @@ export const defaultDevNavigation: NavigationItem[] = [
 ];
 
 export const defaultNavigationSections: NavigationSection[] = [
-  { items: defaultTopNavigation },
-  { label: "Building Blocks", items: defaultBuildingBlocksNavigation },
+  { items: defaultChatsNavigation },
+  { label: "Operational", items: defaultOperationalNavigation },
+  { label: "Building", items: defaultBuildingNavigation },
+  { label: "Registries", items: defaultRegistriesNavigation },
+  { label: "Quality", items: defaultQualityNavigation },
   { items: defaultBottomNavigation },
   { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
   { label: "Dev", items: defaultDevNavigation, devOnly: true },

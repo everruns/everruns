@@ -296,28 +296,43 @@ describe("Sidebar", () => {
   it("renders all navigation items", () => {
     render(<Sidebar />);
 
-    expect(screen.getByText("Chat")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Chats")).toBeInTheDocument();
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Reports")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Identities")).toBeInTheDocument();
+    expect(screen.getByText("Knowledge indexes")).toBeInTheDocument();
     expect(screen.getByText("Memory")).toBeInTheDocument();
+    expect(screen.getByText("Apps")).toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
+    expect(screen.getByText("MCP servers")).toBeInTheDocument();
+    expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    expect(screen.getByText("Plugins")).toBeInTheDocument();
+    expect(screen.getByText("Evals")).toBeInTheDocument();
+    expect(screen.getByText("Observers")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {
     render(<Sidebar />);
 
-    const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
+    const chatsLink = screen.getByRole("link", { name: /chats/i });
     const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
     const memoryLink = screen.getByRole("link", { name: "Memory" });
     const modelsLink = screen.getByRole("link", { name: "Models" });
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
+    const identitiesLink = screen.getByRole("link", { name: "Identities" });
+    const knowledgeLink = screen.getByRole("link", { name: "Knowledge indexes" });
+    const mcpServersLink = screen.getByRole("link", { name: "MCP servers" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
-    expect(dashboardLink).toHaveAttribute("href", "/dashboard");
+    expect(chatsLink).toHaveAttribute("href", "/chat");
+    expect(identitiesLink).toHaveAttribute("href", "/agent-identities");
+    expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
+    expect(mcpServersLink).toHaveAttribute("href", "/mcp-servers");
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
     expect(memoryLink).toHaveAttribute("href", "/memory");
@@ -363,6 +378,9 @@ describe("Sidebar", () => {
     render(<Sidebar />);
 
     expect(screen.queryByText("Runs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Work")).not.toBeInTheDocument();
   });
 
   it("highlights the active navigation item", () => {
@@ -410,11 +428,22 @@ describe("Sidebar", () => {
   // cosmetic refactors while asserting no behavior. Active-state/routing tests
   // that verify *which* item is highlighted are kept below.
 
-  it("renders section labels for Building Blocks and Durable Execution", () => {
+  it("renders the grouped section labels and Durable Execution", () => {
     render(<Sidebar />);
 
-    expect(screen.getByText("Building Blocks")).toBeInTheDocument();
+    expect(screen.getByText("Operational")).toBeInTheDocument();
+    expect(screen.getByText("Building")).toBeInTheDocument();
+    expect(screen.getByText("Registries")).toBeInTheDocument();
+    expect(screen.getByText("Quality")).toBeInTheDocument();
     expect(screen.getByText("Durable Execution")).toBeInTheDocument();
+  });
+
+  it("leads with Chats above the first labelled group", () => {
+    render(<Sidebar />);
+
+    const navigation = screen.getByRole("navigation");
+    const links = within(navigation).getAllByRole("link");
+    expect(links[0]).toHaveAttribute("href", "/chat");
   });
 
   it("hides Durable Execution navigation items by default (collapsed)", () => {
@@ -493,7 +522,7 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Custom")).toBeInTheDocument();
     expect(screen.getByText("Custom Page")).toBeInTheDocument();
     // Default items should not appear
-    expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
+    expect(screen.queryByText("Building")).not.toBeInTheDocument();
     expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
       "data-prefetch",
@@ -512,8 +541,8 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={{ extraSections: extra }} />);
 
     // Default items still present
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
-    expect(screen.getByText("Building Blocks")).toBeInTheDocument();
+    expect(screen.getByText("Sessions")).toBeInTheDocument();
+    expect(screen.getByText("Building")).toBeInTheDocument();
     // Extra section appended
     expect(screen.getByText("Billing")).toBeInTheDocument();
     expect(screen.getByText("Usage")).toBeInTheDocument();
@@ -536,7 +565,7 @@ describe("Sidebar with config", () => {
     expect(screen.getByText("Extra")).toBeInTheDocument();
     expect(screen.getByText("Extra Item")).toBeInTheDocument();
     // Default items replaced
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText("Sessions")).not.toBeInTheDocument();
   });
 
   it("does not render CreateOrganizationDialog when custom createOrg is provided", () => {
