@@ -296,6 +296,7 @@ pub mod tests {
             }
         }
 
+        #[allow(clippy::too_many_arguments)]
         async fn create_session(
             &self,
             hid: HarnessId,
