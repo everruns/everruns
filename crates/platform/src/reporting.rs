@@ -3,13 +3,16 @@
 //! Reporting facts are derived, org-scoped analytical data. Callers submit a
 //! constrained semantic query; backend implementations compile that shape to
 //! their own storage/query language and must inject tenant scope themselves.
+//!
+//! Moved out of `everruns-core` in EVE-838. `ReportScope` embeds
+//! `everruns_core::Caller` (direction: platform -> core).
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::Caller;
+use everruns_core::Caller;
 
 #[derive(Debug, Clone)]
 pub struct ReportScope {

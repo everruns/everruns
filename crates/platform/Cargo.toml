@@ -2,11 +2,13 @@
 #
 # Decision (EVE-837): the platform crate owns the durable backend identity
 # aggregates that were historically defined in `everruns-core` — starting with
-# the `Organization` and `Principal` entity structs. Cross-cutting value types
-# that core's runtime, permissions, and domain models embed (OrgRole,
-# OrgMembership, PrincipalKind, PrincipalStatus, PrincipalSummary, and the
-# multitenancy constants) remain in `everruns-core` and are re-exported here for
-# a unified consumer surface.
+# the `Organization` and `Principal` entity structs. EVE-838 extended it with
+# the payment accounting, reporting, and audit records. Cross-cutting value
+# types that core's runtime, permissions, and domain models embed (OrgRole,
+# OrgMembership, PrincipalKind, PrincipalStatus, PrincipalSummary, the
+# multitenancy constants, and the payment execution contract PaymentRail/
+# PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) remain in
+# `everruns-core` and are re-exported here for a unified consumer surface.
 #
 # Dependency direction is strictly `platform -> core`. Core never depends on
 # platform (enforced by crates/core/tests/no_platform_dependency.rs).
@@ -21,7 +23,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-platform"
-description = "Backend platform identity entities (organizations, principals) for the Everruns agentic runtime"
+description = "Backend platform entities (organizations, principals, payment/reporting/audit records) for the Everruns agentic runtime"
 readme = "README.md"
 keywords = ["agent", "agentic", "multitenancy", "identity", "everruns"]
 categories = ["development-tools", "asynchronous"]
@@ -38,15 +40,23 @@ openapi = ["dep:utoipa", "everruns-core/openapi"]
 sqlx = ["everruns-core/sqlx"]
 
 [dependencies]
-# Cross-cutting identity value types (PrincipalKind/PrincipalStatus/
-# PrincipalSummary), typed IDs, and multitenancy constants live in core; the
-# platform aggregates embed and re-export them. Direction is platform -> core.
+# Cross-cutting value types (PrincipalKind/PrincipalStatus/PrincipalSummary,
+# Caller, the payment execution contract), typed IDs, domain aggregates
+# (Harness/Agent/Session), and multitenancy constants live in core; the platform
+# aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
 
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+
+# Async traits for the reporting/audit contracts, plus their error and runtime
+# support (reporting/audit returns, audit fire-and-forget emit).
+async-trait.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
 
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }

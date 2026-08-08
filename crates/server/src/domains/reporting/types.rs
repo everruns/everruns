@@ -1,11 +1,11 @@
 use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
-pub use everruns_core::reporting::{
+use everruns_durable::UpdateField;
+pub use everruns_platform::reporting::{
     DatasetCatalog, DatasetCatalogEntry, ReportColumn, ReportColumnKind, ReportFilter,
     ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery, ReportResult, ReportScope,
     ReportTimeRange,
 };
-use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

@@ -74,9 +74,6 @@ pub mod error_reporter;
 // See knowledge/foundations/id-schema.md for specification
 pub use everruns_provider::typed_id;
 
-// Audit logging types and trait (EVE-226)
-pub mod audit;
-
 // Budget types (budgets, ledger, rules, actions)
 pub mod background;
 pub mod budget;
@@ -111,7 +108,6 @@ pub mod organization;
 pub mod payment;
 pub mod principal;
 pub use everruns_provider::provider;
-pub mod reporting;
 pub mod session;
 pub mod session_file;
 pub mod session_path;
@@ -519,10 +515,11 @@ pub use organization::{
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, generate_org_public_id,
     org_public_id_from_internal, validate_org_public_id,
 };
-pub use payment::{
-    MachinePaymentRequest, MachinePaymentResponse, PaymentAccount, PaymentAttempt, PaymentMethod,
-    PaymentOwnerType, PaymentPolicy, PaymentRail, PaymentStatus,
-};
+// EVE-838: the payment accounting records (`PaymentAccount`, `PaymentPolicy`,
+// `PaymentAttempt`, `PaymentOwnerType`, `PaymentStatus`) moved to the
+// `everruns-platform` crate. The capability-internal execution contract below
+// stays here — it is bound to the `PaymentAuthority` trait and `ToolContext`.
+pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail};
 // EVE-837: `Principal` moved to the `everruns-platform` crate. The value types
 // below stay here — they are embedded by `Session`/`App`/`SessionSchedule` and
 // the agent-identity lifecycle.
@@ -566,12 +563,6 @@ pub use typed_id::{
     SessionId, SessionParticipantId, SkillId, TriggerId, TurnId, TypedId, WorkspaceId,
 };
 pub use wake_queue::{PendingWake, SessionWakeQueue, wake_text_for};
-
-// Audit logging re-exports
-pub use audit::{
-    AgentAction, AuditAction, AuditDomain, AuditEvent, AuditEventBuilder, AuditLogger, AuditTarget,
-    ManagementAction,
-};
 
 // Permissions re-exports
 pub use permissions::{

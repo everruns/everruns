@@ -25,16 +25,16 @@ use chrono::{DateTime, Duration, Timelike, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, ApiEndpointChannelConfig,
-    App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppStatus, AuditEvent, ChannelType, FcpChannelConfig, Policy, PublicChatChannelConfig,
-    SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, ApiEndpointChannelConfig, App,
+    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
+    AppStatus, ChannelType, FcpChannelConfig, Policy, PublicChatChannelConfig, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleExecutionStatus, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
     WorkflowEventStore,
 };
+use everruns_platform::{AgentAction, AuditEvent};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};

@@ -16,7 +16,7 @@ use crate::storage::StorageBackend;
 use crate::storage::models::CreateAuditLogRow;
 use axum::extract::{ConnectInfo, Extension};
 use axum::http::HeaderMap;
-use everruns_core::{AuditEvent, AuditLogger};
+use everruns_platform::{AuditEvent, AuditLogger};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;

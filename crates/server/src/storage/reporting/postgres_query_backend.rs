@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use everruns_core::reporting::{
+use everruns_platform::reporting::{
     ReportColumn, ReportColumnKind, ReportFilterOp, ReportOrderDirection, ReportQuery,
     ReportResult, ReportScope, ReportingQueryBackend,
 };
