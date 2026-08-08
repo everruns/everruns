@@ -26,8 +26,9 @@ change is ready; do not walk this file as a fixed checklist.
    [`references/security-review.md`](references/security-review.md).
 5. **Sync artifacts** the change actually affects: `knowledge/`, `knowledge/security/threat-model.md`, `AGENTS.md`,
    `test_cases/`, `apps/docs/`, OpenAPI exports.
-6. **Smoke test the affected flows** end to end — `just start-dev --no-watch`, or
-   `just start-all --no-watch` when database, migration, infra, or API integration risk exists.
+6. **Smoke test the affected flows** end to end. For a coding-agent stack, follow the canonical
+   startup contract in the root `AGENTS.md`; it includes the DB-backed infrastructure required for
+   database, migration, infra, or API integration risk.
    Stop anything you started. Docs- or config-only changes may skip this with a stated reason.
 7. **Decide follow-ups explicitly.** Prefer implementing in-scope work now. List anything deferred
    under **Follow-ups** in the PR body with a one-line rationale, or state "No follow-ups." — a

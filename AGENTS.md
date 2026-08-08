@@ -43,12 +43,41 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 ### Local dev
 
 ```bash
-PORT_PREFIX=271 just start-dev   # in-memory, no external services
-PORT_PREFIX=271 just start-all   # PostgreSQL + Valkey + NATS
-cd apps/ui && ./node_modules/.bin/next dev --port 9120   # UI only
+# Canonical coding-agent stack; choose a distinct prefix per worktree.
+PORT_PREFIX=271 AUTH_MODE=none ./scripts/start-agent-dev.sh
 ```
 
-Use a distinct `PORT_PREFIX` per worktree so parallel stacks do not collide.
+This is the single agent startup contract. The script preserves the caller's `PORT_PREFIX` and
+`AUTH_MODE` through Doppler, then runs `just start-all --no-watch`. It starts PostgreSQL, Valkey,
+and NATS as local processes (no Docker), plus the API, worker, UI, and Caddy. The proxy is
+`http://localhost/<PORT_PREFIX>00` (prefix `271` → `http://localhost:27100`). Pick an unused prefix
+from `1` through `654`; never reuse one across concurrent worktrees.
+
+Prerequisites: Rust and Node.js, a configured Doppler CLI, and the repository dependencies. On a
+first checkout run `./scripts/init-cloud-env.sh` and then `just init`. The first Rust and Next.js
+build can take several minutes.
+
+`AUTH_MODE=none` is local-development-only and gives the anonymous user admin access. For
+authenticated testing, explicitly select `admin`, `full`, or `external` and configure that mode's
+variables per `docs/sre/runbooks/authentication.md`.
+
+`start-all` maps Doppler's `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` to
+`DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY`. Analyze/Health additionally requires
+`UTILITY_OPENAI_API_KEY`; no extra setup is needed when Doppler already supplies it. If Doppler does
+not supply `SECRETS_ENCRYPTION_KEY`, the wrapper creates a mode-`0600`, per-prefix key under
+`.local/agent-dev/`; it never prints the value.
+
+PostgreSQL and NATS data persist under `.local/data/`, isolated by the derived ports. Valkey is
+started without snapshots. Stop the foreground stack with Ctrl+C, or from another shell with
+`PORT_PREFIX=271 just stop-all`; that command also stops the prefix's infrastructure processes.
+Delete persistent data only with the explicit, prefix-scoped `PORT_PREFIX=271 just reset` command.
+
+Verify the selected stack and auth contract with the actual `/health` endpoint:
+
+```bash
+curl -fsS http://localhost:27100/health
+curl -fsS -o /dev/null -w '%{http_code}\n' http://localhost:27100/
+```
 
 ### Cloud agents and secrets
 
@@ -57,7 +86,7 @@ Use a distinct `PORT_PREFIX` per worktree so parallel stacks do not collide.
 ```bash
 ./scripts/init-cloud-env.sh
 export CARGO_INCREMENTAL=0
-doppler run -- just start-dev --no-watch
+# Then use the canonical command in "Local dev" above.
 ```
 
 Failing GitHub auth means the token was not passed through, not that it expired:

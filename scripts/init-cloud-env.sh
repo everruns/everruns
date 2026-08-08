@@ -329,8 +329,8 @@ main() {
     echo ""
     echo "Next steps:"
     echo "  just --list              # See available commands"
-    echo "  just start-dev --no-watch  # Quick start (recommended for cloud)"
     echo "  just init                # Full dev environment setup (for local dev)"
+    echo "  See AGENTS.md            # Canonical coding-agent startup command"
     echo "  doppler run -- bash -lc 'GH_TOKEN=\"\$GITHUB_TOKEN\" gh auth status'"
     echo "================================================"
 }

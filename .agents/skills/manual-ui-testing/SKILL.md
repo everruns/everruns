@@ -23,12 +23,9 @@ auth → org → features.
 ## Stack
 
 Full auth mode needs the real stack, not DEV_MODE. Start it with a unique per-worktree prefix and
-wait for PostgreSQL, Valkey, API, worker, UI, and Caddy to come up:
-
-```bash
-PORT_PREFIX=<prefix> doppler run -- just start-all
-curl -s http://localhost:<prefix>00/healthz
-```
+wait for PostgreSQL, Valkey, NATS, API, worker, UI, and Caddy to come up. Follow the canonical
+coding-agent startup contract in the root [`AGENTS.md`](../../../AGENTS.md), selecting the auth mode
+required by the test case. Verify it through the documented `/health` endpoint before testing.
 
 If a stack is already running, confirm its `PORT_PREFIX` and auth mode before using it.
 
