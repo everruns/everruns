@@ -145,6 +145,13 @@ jobs:
               - 'scripts/test-*.sh'
               - 'scripts/check_okf.py'
               - 'scripts/lib/**'
+              - 'scripts/sync-publish-pin-versions.py'
+              # scripts/test-publish-crates-order.sh reads the publish workflow
+              # and the workspace member manifests it publishes.
+              - '.github/workflows/publish-crates.yml'
+              - 'Cargo.toml'
+              - 'crates/*/Cargo.toml'
+              - 'integrations/*/Cargo.toml'
               - 'plugins/everruns-dev/**'
               - '.agents/plugins/**'
               - '.claude-plugin/**'
