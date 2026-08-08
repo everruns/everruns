@@ -2560,6 +2560,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns"
+version = "0.17.23"
+dependencies = [
+ "everruns-core",
+ "everruns-runtime",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-a2ui"
 version = "0.17.23"
 
