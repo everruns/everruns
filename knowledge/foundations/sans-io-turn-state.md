@@ -157,5 +157,8 @@ converge later.
 
 - `crates/core/src/turn.rs` — `TurnStateMachine`, `TurnPhase`, `TurnAction`, `TurnOutcome`
 - `crates/core/src/turn_state.rs` — the stage-1 value
-- `crates/runtime/src/turn_strategy.rs` — `RuntimeTurnState`, `plan_next_host_turn`
+- `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
+  `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
+- `crates/runtime/src/turn_strategy.rs` — `plan_next_host_turn`, the runtime host's thin
+  I/O wrapper over the engine planner (plus compat re-exports of the pre-EVE-840 names)
 - `knowledge/operations/durable-execution-engine.md` — the durable host this converges with

@@ -1,163 +1,33 @@
-// Shared turn-strategy planning for embedded, durable, and custom hosts.
-// Decision: everruns-runtime stays durable-agnostic and returns generic next-step plans.
+// Thin I/O wrapper over the pure turn planner in `everruns-engine`.
+//
+// Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
+// brain lives in `everruns-engine` as pure, deterministic functions. This
+// module is the runtime host's I/O shell around it: it resolves the same facts
+// via the adapter *in exactly the same conditions as before* (fetch the session
+// only when scheduling an act; read the setup_connection hint only when the act
+// paused for tool results), supplies `Utc::now()`, calls the engine planner,
+// then performs any returned `TurnLifecycleEffect`s via `RuntimeSessionLifecycle`
+// (identical order to the pre-extraction code), and returns the plan. The
+// runtime carries no second copy of the planning brain.
 
 use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
-use chrono::{DateTime, Utc};
-use everruns_core::atoms::{ActInput, AtomContext};
+use chrono::Utc;
+use everruns_core::Controls;
+use everruns_core::atoms::ReasonResult;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::events::TokenUsage;
-use everruns_core::turn::TurnStopReason;
-use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::{
-    Controls, ReasonResult, UserFacingError, UserFacingErrorContext,
-    classify_runtime_error_message, user_facing_error_codes,
+use everruns_core::typed_id::{SessionId, TurnId};
+use everruns_engine::{
+    ActOutcome, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
+    plan_next_turn, reason_schedules_act,
 };
-use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
 
-/// Host-owned state carried across turn phases.
-///
-/// Durable hosts can persist this between activities; in-memory hosts can hold
-/// it directly in memory. The type itself is runtime-level and has no durable
-/// engine coupling.
-///
-/// Hosts are expected to serialize this however they want. `everruns-runtime`
-/// only defines the fields required to resume the next semantic step.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeTurnState {
-    pub org_id: i64,
-    pub session_id: SessionId,
-    pub harness_id: HarnessId,
-    pub agent_id: Option<AgentId>,
-    pub input_message_id: MessageId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub turn_id: Option<TurnId>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub previous_response_id: Option<String>,
-    #[serde(default = "default_iteration")]
-    pub iteration: u32,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub request_id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub started_at: Option<DateTime<Utc>>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub cumulative_usage: Option<TokenUsage>,
-    #[serde(default)]
-    pub tool_call_count: u32,
-    #[serde(default)]
-    pub llm_call_count: u32,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub time_to_first_token_ms: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub final_message_id: Option<MessageId>,
-    #[serde(skip_serializing_if = "Option::is_none", default)]
-    pub final_answer_preview: Option<String>,
-}
-
-fn default_iteration() -> u32 {
-    1
-}
-
-/// Runtime-owned act scheduling payload.
-///
-/// Hosts enqueue or execute this immediately using their own worker model.
-#[derive(Debug, Clone)]
-pub struct RuntimeActPlan {
-    pub input: ActInput,
-    pub previous_response_id: Option<String>,
-    pub iteration: u32,
-    pub request_id: Option<String>,
-    pub resume_state: Box<RuntimeTurnState>,
-}
-
-/// Generic next-step decision for a host turn.
-///
-/// This intentionally stops at the semantic boundary:
-/// - runtime decides what should happen next
-/// - the host decides how to persist, enqueue, retry, or resume it
-#[derive(Debug, Clone)]
-pub enum RuntimeTurnPlan {
-    ScheduleReason(RuntimeTurnState),
-    ScheduleAct(RuntimeActPlan),
-    Complete {
-        stop_reason: TurnStopReason,
-        error: Option<String>,
-    },
-    WaitForToolResults {
-        resume: RuntimeTurnState,
-    },
-}
-
-fn preview_final_answer(text: &str) -> Option<String> {
-    if text.is_empty() {
-        return None;
-    }
-
-    Some(text.chars().take(2000).collect())
-}
-
-fn add_usage(current: &mut Option<TokenUsage>, next: &TokenUsage) {
-    match current {
-        Some(current) => current.add(next),
-        None => *current = Some(next.clone()),
-    }
-}
-
-impl RuntimeTurnState {
-    fn with_reason_summary(&self, reason_result: &ReasonResult) -> Self {
-        let mut next = self.clone();
-        next.llm_call_count = next.llm_call_count.saturating_add(1);
-        next.tool_call_count = next
-            .tool_call_count
-            .saturating_add(reason_result.tool_calls.len() as u32);
-        if let Some(usage) = &reason_result.usage {
-            add_usage(&mut next.cumulative_usage, usage);
-        }
-        if next.time_to_first_token_ms.is_none() {
-            next.time_to_first_token_ms = reason_result.time_to_first_token_ms;
-        }
-        next.final_message_id = reason_result.output_message_id;
-        next.final_answer_preview = preview_final_answer(&reason_result.text);
-        next
-    }
-
-    fn duration_ms(&self) -> Option<u64> {
-        self.started_at
-            .map(|started_at| Utc::now().signed_duration_since(started_at))
-            .and_then(|duration| u64::try_from(duration.num_milliseconds()).ok())
-    }
-}
-
-fn classify_reason_failure(reason_result: &ReasonResult) -> UserFacingError {
-    // The reason atom already classified and disclosure-filtered the failure.
-    // Reuse it so the turn.failed event matches what the session message
-    // showed; re-classifying strings here could leak past a generic mode.
-    if let Some(user_error) = &reason_result.user_facing_error {
-        return user_error.clone();
-    }
-
-    let from_text =
-        classify_runtime_error_message(&reason_result.text, &UserFacingErrorContext::default());
-
-    let Some(error) = reason_result.error.as_deref() else {
-        return from_text;
-    };
-
-    let from_error = classify_runtime_error_message(error, &UserFacingErrorContext::default());
-
-    if from_error.code == user_facing_error_codes::PROCESSING_ERROR {
-        return from_text;
-    }
-
-    if from_error.code == from_text.code
-        && from_error.fields.is_empty()
-        && !from_text.fields.is_empty()
-    {
-        return from_text;
-    }
-
-    from_error
-}
+// Compat re-exports (EVE-840): existing callers keep importing the turn-planning
+// types from `everruns-runtime`. The types now live in `everruns-engine` and
+// dropped their `Runtime` prefix; these aliases preserve the old names so
+// pattern matches and signatures compile unchanged.
+pub use everruns_engine::{
+    ActPlan as RuntimeActPlan, TurnPlan as RuntimeTurnPlan, TurnState as RuntimeTurnState,
+};
 
 /// Determine the next host step after an activity finishes.
 ///
@@ -167,8 +37,8 @@ fn classify_reason_failure(reason_result: &ReasonResult) -> UserFacingError {
 /// - `output`: serialized activity output
 /// - `pending_user_message_count`: number of queued steering messages already consumed by the host
 ///
-/// Runtime owns the semantic decision. Hosts translate the returned plan into
-/// their own queueing / persistence model.
+/// The engine owns the semantic decision; this wrapper owns the I/O around it.
+/// Hosts translate the returned plan into their own queueing / persistence model.
 ///
 /// Typical host mapping:
 /// - `ScheduleReason` => enqueue or invoke a reason phase with the returned state
@@ -188,197 +58,156 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 .get("turn_id")
                 .and_then(|value| value.as_str())
                 .and_then(|value| value.parse().ok());
-            let next = RuntimeTurnState {
-                turn_id,
-                previous_response_id: None,
-                iteration: 1,
-                started_at: state.started_at.or_else(|| Some(Utc::now())),
-                ..state.clone()
-            };
-            debug!(session_id = %state.session_id, turn_id = ?turn_id, "planned reason step");
-            Ok(RuntimeTurnPlan::ScheduleReason(next))
+            let (plan, effects) = plan_next_turn(
+                state,
+                ActivityOutcome::ProcessInput { turn_id },
+                pending_user_message_count,
+                Utc::now(),
+                HostFacts::default(),
+            );
+            perform_effects(adapter, state, effects).await;
+            Ok(plan)
         }
         "reason" => {
             let reason_result: ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|error| AgentLoopError::Internal(error.into()))?;
-            let response_id = reason_result.response_id.clone();
-            let summarized_state = state.with_reason_summary(&reason_result);
-            let max_turn_requests_reached = state.iteration >= reason_result.max_iterations as u32;
 
-            if reason_result.has_tool_calls && reason_result.success && !max_turn_requests_reached {
+            // Fetch the session only when the reason outcome schedules an act —
+            // the exact condition the pre-extraction planner fetched under — to
+            // resolve the act's blueprint + workspace.
+            let act_scheduling = if reason_schedules_act(state, &reason_result) {
                 let session = adapter
                     .session_store(state.org_id)
                     .get_session(state.session_id)
                     .await?;
-                let session_blueprint_id = session.as_ref().and_then(|s| s.blueprint_id.clone());
-                // Attach the session's workspace so tool file I/O addresses the
-                // (possibly shared) workspace, not the session's own keyspace.
-                let workspace_id = session.as_ref().map(|s| s.workspace_id);
-                let plan = RuntimeActPlan {
-                    input: ActInput {
-                        org_id: Some(state.org_id),
-                        context: AtomContext {
-                            session_id: state.session_id,
-                            turn_id: state.turn_id.unwrap_or_default(),
-                            input_message_id: state.input_message_id,
-                            exec_id: ExecId::new(),
-                            workspace_id,
-                        },
-                        harness_id: state.harness_id,
-                        agent_id: state.agent_id,
-                        tool_calls: reason_result.tool_calls,
-                        tool_definitions: reason_result.tool_definitions,
-                        locale: reason_result.locale,
-                        blueprint_id: session_blueprint_id,
-                        network_access: reason_result.network_access,
-                        // Request-level parallel tool calling preference, carried
-                        // from agent config through the reason path (EVE-598).
-                        parallel_tool_calls: reason_result.parallel_tool_calls,
-                    },
-                    previous_response_id: response_id,
-                    iteration: state.iteration,
-                    request_id: state.request_id.clone(),
-                    resume_state: Box::new(summarized_state),
-                };
-                return Ok(RuntimeTurnPlan::ScheduleAct(plan));
-            }
-
-            if reason_result.success && pending_user_message_count > 0 && !max_turn_requests_reached
-            {
-                if pending_user_message_count > 1 {
-                    info!(
-                        session_id = %state.session_id,
-                        pending_user_message_count,
-                        "multiple steering messages arrived during turn"
-                    );
-                }
-
-                let next = RuntimeTurnState {
-                    previous_response_id: response_id,
-                    iteration: state.iteration.saturating_add(1),
-                    ..summarized_state
-                };
-                return Ok(RuntimeTurnPlan::ScheduleReason(next));
-            }
-
-            let lifecycle =
-                RuntimeSessionLifecycle::new(adapter.clone(), state.org_id, state.session_id);
-            let turn_id = state.turn_id.unwrap_or_default();
-
-            if reason_result.success {
-                lifecycle
-                    .emit_turn_completed(
-                        state.input_message_id,
-                        everruns_core::events::TurnCompletedData {
-                            turn_id,
-                            iterations: state.iteration,
-                            duration_ms: summarized_state.duration_ms(),
-                            usage: summarized_state.cumulative_usage.clone(),
-                            input_content: None,
-                            final_message_id: summarized_state.final_message_id,
-                            final_answer_preview: summarized_state.final_answer_preview.clone(),
-                            time_to_first_token_ms: summarized_state.time_to_first_token_ms,
-                            tool_call_count: Some(summarized_state.tool_call_count),
-                            llm_call_count: Some(summarized_state.llm_call_count),
-                            status: Some("completed".to_string()),
-                        },
-                    )
-                    .await;
-                lifecycle
-                    .emit_session_idled(
-                        turn_id,
-                        state.input_message_id,
-                        Some(state.iteration),
-                        summarized_state.cumulative_usage.clone(),
-                    )
-                    .await;
+                Some(ActSchedulingFacts {
+                    blueprint_id: session.as_ref().and_then(|s| s.blueprint_id.clone()),
+                    // Attach the session's workspace so tool file I/O addresses
+                    // the (possibly shared) workspace, not the session's own
+                    // keyspace.
+                    workspace_id: session.as_ref().map(|s| s.workspace_id),
+                })
             } else {
-                let user_error = classify_reason_failure(&reason_result);
-                lifecycle
-                    .turn_failed_with_disclosure(
-                        turn_id,
-                        state.input_message_id,
-                        &reason_result.text,
-                        Some(&user_error),
-                        reason_result.error_disclosure,
-                    )
-                    .await;
-            }
-
-            // turn_end lifecycle hooks (advisory). Fired once the turn reaches a
-            // terminal reason outcome on the durable/strategy path.
-            lifecycle
-                .fire_turn_end_hooks(
-                    state.harness_id,
-                    state.agent_id,
-                    turn_id,
-                    reason_result.success,
-                )
-                .await;
-
-            let stop_reason = if !reason_result.success {
-                match TurnStopReason::from_provider_finish_reason(
-                    reason_result.finish_reason.as_deref(),
-                ) {
-                    TurnStopReason::Refusal => TurnStopReason::Refusal,
-                    _ => TurnStopReason::Error,
-                }
-            } else if max_turn_requests_reached
-                && (reason_result.has_tool_calls || pending_user_message_count > 0)
-            {
-                TurnStopReason::MaxTurnRequests
-            } else {
-                TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
+                None
             };
 
-            Ok(RuntimeTurnPlan::Complete {
-                stop_reason,
-                error: reason_result.error,
-            })
+            let (plan, effects) = plan_next_turn(
+                state,
+                ActivityOutcome::Reason(Box::new(reason_result)),
+                pending_user_message_count,
+                Utc::now(),
+                HostFacts {
+                    act_scheduling,
+                    ..HostFacts::default()
+                },
+            );
+            perform_effects(adapter, state, effects).await;
+            Ok(plan)
         }
         "act" => {
-            if output
-                .get("blocked")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false)
-            {
-                return Ok(RuntimeTurnPlan::Complete {
-                    stop_reason: TurnStopReason::EndTurn,
-                    error: None,
-                });
-            }
-
-            let waiting_for_tool_results = output
-                .get("waiting_for_tool_results")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            let should_pause_for_tool_results = waiting_for_tool_results
-                && setup_connection_hint_enabled(adapter, state.org_id, state.session_id).await;
-
-            let next = RuntimeTurnState {
-                iteration: state.iteration.saturating_add(1),
-                ..state.clone()
+            let outcome = ActOutcome {
+                blocked: output
+                    .get("blocked")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false),
+                waiting_for_tool_results: output
+                    .get("waiting_for_tool_results")
+                    .and_then(|value| value.as_bool())
+                    .unwrap_or(false),
             };
 
-            if should_pause_for_tool_results {
-                let lifecycle =
-                    RuntimeSessionLifecycle::new(adapter.clone(), state.org_id, state.session_id);
-                lifecycle.waiting_for_tool_results().await;
-                return Ok(RuntimeTurnPlan::WaitForToolResults { resume: next });
-            }
+            // Read the setup_connection hint only when the act actually paused
+            // for tool results — the same short-circuit the pre-extraction
+            // planner used. A blocked act returns before the hint is consulted,
+            // so gate on `!blocked` too to avoid any extra fetch.
+            let setup_connection_hint_enabled =
+                if !outcome.blocked && outcome.waiting_for_tool_results {
+                    setup_connection_hint_enabled(adapter, state.org_id, state.session_id).await
+                } else {
+                    false
+                };
 
-            if waiting_for_tool_results {
-                info!(
-                    session_id = %state.session_id,
-                    "setup_connection hint absent, continuing turn instead of pausing"
-                );
-            }
-
-            Ok(RuntimeTurnPlan::ScheduleReason(next))
+            let (plan, effects) = plan_next_turn(
+                state,
+                ActivityOutcome::Act(outcome),
+                pending_user_message_count,
+                Utc::now(),
+                HostFacts {
+                    setup_connection_hint_enabled,
+                    ..HostFacts::default()
+                },
+            );
+            perform_effects(adapter, state, effects).await;
+            Ok(plan)
         }
         other => Err(AgentLoopError::config(format!(
             "Unknown activity type completed: {other}"
         ))),
+    }
+}
+
+/// Perform the engine-returned lifecycle effects, in list order, via
+/// `RuntimeSessionLifecycle`. The engine never emits — it returns these — so
+/// this is the single place the runtime host translates a planning decision
+/// into event/status/hook I/O, preserving the exact stream and ordering.
+async fn perform_effects<A: RuntimeHostAdapter>(
+    adapter: &A,
+    state: &RuntimeTurnState,
+    effects: Vec<TurnLifecycleEffect>,
+) {
+    if effects.is_empty() {
+        return;
+    }
+    let lifecycle = RuntimeSessionLifecycle::new(adapter.clone(), state.org_id, state.session_id);
+    for effect in effects {
+        match effect {
+            TurnLifecycleEffect::TurnCompleted {
+                input_message_id,
+                data,
+            } => {
+                lifecycle.emit_turn_completed(input_message_id, data).await;
+            }
+            TurnLifecycleEffect::SessionIdled {
+                turn_id,
+                input_message_id,
+                iterations,
+                usage,
+            } => {
+                lifecycle
+                    .emit_session_idled(turn_id, input_message_id, iterations, usage)
+                    .await;
+            }
+            TurnLifecycleEffect::TurnFailedWithDisclosure {
+                turn_id,
+                input_message_id,
+                text,
+                user_error,
+                disclosure,
+            } => {
+                lifecycle
+                    .turn_failed_with_disclosure(
+                        turn_id,
+                        input_message_id,
+                        &text,
+                        user_error.as_ref(),
+                        disclosure,
+                    )
+                    .await;
+            }
+            TurnLifecycleEffect::FireTurnEndHooks {
+                harness_id,
+                agent_id,
+                turn_id,
+                success,
+            } => {
+                lifecycle
+                    .fire_turn_end_hooks(harness_id, agent_id, turn_id, success)
+                    .await;
+            }
+            TurnLifecycleEffect::WaitingForToolResults => {
+                lifecycle.waiting_for_tool_results().await;
+            }
+        }
     }
 }
 
