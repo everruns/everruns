@@ -37,6 +37,7 @@ futures.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+urlencoding = "2"
 serde_yaml.workspace = true
 toml = "1.1"
 
