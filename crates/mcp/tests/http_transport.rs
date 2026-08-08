@@ -13,7 +13,8 @@ use everruns_core::{
     McpServerAuthMode, ToolCall,
 };
 use everruns_mcp::{
-    McpClient, McpConnection, McpExecutor, StaticAuthProvider, StaticConnectionResolver,
+    McpClient, McpConnection, McpExecutor, McpSecretBinding, StaticAuthProvider,
+    StaticConnectionResolver,
 };
 use serde_json::json;
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ use std::sync::{Arc, Mutex};
 struct FakeEgress {
     body: Vec<u8>,
     last_authorization: Arc<Mutex<Option<String>>>,
+    last_body: Arc<Mutex<Vec<u8>>>,
 }
 
 impl FakeEgress {
@@ -30,6 +32,7 @@ impl FakeEgress {
         let egress = Arc::new(Self {
             body: body.into(),
             last_authorization: last_authorization.clone(),
+            last_body: Arc::new(Mutex::new(Vec::new())),
         });
         (egress, last_authorization)
     }
@@ -39,6 +42,7 @@ impl FakeEgress {
 impl EgressService for FakeEgress {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
         *self.last_authorization.lock().unwrap() = request.headers.get("Authorization").cloned();
+        *self.last_body.lock().unwrap() = request.body;
         Ok(EgressResponse {
             status: 200,
             headers: Default::default(),
@@ -49,6 +53,132 @@ impl EgressService for FakeEgress {
     async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
         unimplemented!("not used by MCP transport")
     }
+}
+
+#[tokio::test]
+async fn executor_injects_bound_credential_only_at_egress_boundary() {
+    let sentinel = "test-secret-never-model-visible";
+    let (egress, _) = FakeEgress::new(
+        serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "content": [{ "type": "text", "text": "sent" }], "isError": false }
+        }))
+        .unwrap(),
+    );
+    let captured_body = egress.last_body.clone();
+    let client = Arc::new(McpClient::new(
+        egress,
+        Arc::new(everruns_mcp::NoAuthProvider),
+    ));
+    let mut connection = McpConnection::http("visti", FAKE_URL);
+    connection.secret_bindings.insert(
+        "visti_send".to_string(),
+        vec![McpSecretBinding {
+            parameter_name: "channel_key".to_string(),
+            value: Some(sentinel.to_string()),
+            setup_url: "/agents/agent_test?tab=credentials".to_string(),
+            label: "Visti channel key".to_string(),
+        }],
+    );
+    let executor = McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    );
+    let tool_call = ToolCall {
+        id: "call_bound".into(),
+        name: "mcp_visti__visti_send".into(),
+        arguments: json!({ "message": "controlled test" }),
+    };
+
+    let result = executor.execute_mcp_tool(&tool_call).await.unwrap();
+
+    assert!(!tool_call.arguments.to_string().contains(sentinel));
+    assert!(!serde_json::to_string(&result).unwrap().contains(sentinel));
+    let outbound: serde_json::Value =
+        serde_json::from_slice(&captured_body.lock().unwrap()).unwrap();
+    assert_eq!(outbound["params"]["arguments"]["channel_key"], sentinel);
+}
+
+#[tokio::test]
+async fn missing_bound_credential_returns_structured_safe_setup_result() {
+    let mut connection = McpConnection::http("visti", FAKE_URL);
+    connection.secret_bindings.insert(
+        "visti_send".to_string(),
+        vec![McpSecretBinding {
+            parameter_name: "channel_key".to_string(),
+            value: None,
+            setup_url: "/agents/agent_test?tab=credentials".to_string(),
+            label: "Visti channel key".to_string(),
+        }],
+    );
+    let executor = McpExecutor::new(
+        Arc::new(McpClient::direct()),
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    );
+    let result = executor
+        .execute_mcp_tool(&ToolCall {
+            id: "call_missing".into(),
+            name: "mcp_visti__visti_send".into(),
+            arguments: json!({ "message": "test" }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.result.as_ref().unwrap()["code"],
+        "credential_required"
+    );
+    assert_eq!(
+        result.result.as_ref().unwrap()["setup_url"],
+        "/agents/agent_test?tab=credentials"
+    );
+    assert!(result.error.is_none());
+}
+
+#[tokio::test]
+async fn model_cannot_override_bound_credential() {
+    let mut connection = McpConnection::http("visti", FAKE_URL);
+    connection.secret_bindings.insert(
+        "visti_send".to_string(),
+        vec![McpSecretBinding {
+            parameter_name: "channel_key".to_string(),
+            value: Some("server-value".to_string()),
+            setup_url: "/agents/agent_test?tab=credentials".to_string(),
+            label: "Visti channel key".to_string(),
+        }],
+    );
+    let executor = McpExecutor::new(
+        Arc::new(McpClient::direct()),
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    );
+    let result = executor
+        .execute_mcp_tool(&ToolCall {
+            id: "call_override".into(),
+            name: "mcp_visti__visti_send".into(),
+            arguments: json!({ "message": "test", "channel_key": "model-value" }),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        result.result.as_ref().unwrap()["code"],
+        "credential_override_rejected"
+    );
+}
+
+#[test]
+fn credential_binding_debug_output_is_redacted() {
+    let binding = McpSecretBinding {
+        parameter_name: "channel_key".to_string(),
+        value: Some("debug-sentinel-secret".to_string()),
+        setup_url: "/agents/agent_test?tab=credentials".to_string(),
+        label: "Visti channel key".to_string(),
+    };
+
+    let rendered = format!("{binding:?}");
+    assert!(rendered.contains("configured: true"));
+    assert!(!rendered.contains("debug-sentinel-secret"));
 }
 
 // A public, non-blocked IP literal: passes SSRF validation without DNS and is

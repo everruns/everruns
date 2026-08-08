@@ -542,6 +542,34 @@ pub struct AgentVersionRow {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentMcpSecretBindingRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub mcp_server_name: String,
+    pub mcp_server_url: String,
+    pub tool_name: String,
+    pub parameter_name: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub value_encrypted: Option<Vec<u8>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpsertAgentMcpSecretBindingRow {
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub mcp_server_name: String,
+    pub mcp_server_url: String,
+    pub tool_name: String,
+    pub parameter_name: String,
+    pub label: String,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateAgentVersionRow {
     pub id: everruns_core::AgentVersionId,

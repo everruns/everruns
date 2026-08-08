@@ -84,6 +84,14 @@ Resolve names against returned IDs and links. If a name is ambiguous, show the m
 
 An installed and attached OAuth-backed plugin may still require the current user to connect its provider before runtime use. Connection reads are user-scoped; never infer another user's connection state or expose credentials, tokens, or secret fields.
 
+## Secure credentials
+
+Chat, Agent instructions, memory, and session storage are not secure setup channels for credentials. Never request, repeat, store, or pass a plaintext API key, token, password, or channel key through platform commands. If a user pastes one, do not reuse it; tell them to rotate it and use the secure setup form.
+
+When an attached MCP tool requires a credential as an input parameter, create an Agent credential binding with `create_agent_credential_binding`. This command records only the MCP server, tool, parameter, and label; it never accepts the value. Give the user the returned `setup_url` and explain that the write-only form encrypts the value and keeps it out of model context and events. The binding belongs to the Agent and works for shared sessions and session-per-invocation triggers. Do not claim the Agent is ready until the binding reports `configured: true`.
+
+For Visti, bind the `channel_key` parameter of `visti_send` after attaching its MCP capability. Never use MCP bearer authentication or a session secret as a substitute for this tool-parameter binding.
+
 ## Final answers
 
 Lead with the outcome. Do not include internal reasoning, planning narration, or tool-selection commentary in the final answer.
@@ -134,5 +142,14 @@ mod tests {
         assert!(SYSTEM_PROMPT.contains("installed:"));
         assert!(SYSTEM_PROMPT.contains("connected:"));
         assert!(SYSTEM_PROMPT.contains("Never treat zero operation matches"));
+    }
+
+    #[test]
+    fn platform_chat_routes_plaintext_credentials_to_write_only_setup() {
+        assert!(SYSTEM_PROMPT.contains("Never request, repeat, store, or pass a plaintext"));
+        assert!(SYSTEM_PROMPT.contains("`create_agent_credential_binding`"));
+        assert!(SYSTEM_PROMPT.contains("returned `setup_url`"));
+        assert!(SYSTEM_PROMPT.contains("session-per-invocation"));
+        assert!(SYSTEM_PROMPT.contains("bind the `channel_key` parameter of `visti_send`"));
     }
 }

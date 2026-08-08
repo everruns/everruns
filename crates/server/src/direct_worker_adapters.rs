@@ -1327,12 +1327,14 @@ impl WorkerAdapters for DirectWorkerAdapters {
         session_id: Option<Uuid>,
         server_prefix: &str,
     ) -> Result<McpServerInfo> {
+        let mut runtime_agent_id = None;
         if let Some(session_id) = session_id
             && let Some(session) = self.get_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
         {
+            runtime_agent_id = session.agent_id;
             let mut agent = match session.agent_id {
                 Some(agent_id) => self.get_agent(org_id, agent_id.uuid()).await?,
                 None => None,
@@ -1351,6 +1353,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 server_prefix,
                 &self.capability_registry,
             ) {
+                let secret_bindings =
+                    crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                        self.db.as_ref(),
+                        self.encryption.as_deref(),
+                        org_id,
+                        runtime_agent_id,
+                        &resolved.name,
+                        &resolved.url,
+                    )
+                    .await
+                    .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
                 return Ok(McpServerInfo {
                     id: resolved.id,
                     name: resolved.name,
@@ -1360,6 +1373,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     auth_mode: resolved.auth_mode,
                     protocol_mode: resolved.protocol_mode,
                     oauth_provider_id: resolved.oauth_provider_id,
+                    secret_bindings,
                 });
             }
         }
@@ -1374,6 +1388,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
             })?
             .ok_or_else(|| store_error(format!("MCP server not found: {}", server_prefix)))?;
 
+        let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+            self.db.as_ref(),
+            self.encryption.as_deref(),
+            org_id,
+            runtime_agent_id,
+            &resolved.name,
+            &resolved.url,
+        )
+        .await
+        .map_err(|e| store_error(format!("Failed to resolve MCP credentials: {e}")))?;
+
         Ok(McpServerInfo {
             id: resolved.id,
             name: resolved.name,
@@ -1383,6 +1408,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             auth_mode: resolved.auth_mode,
             protocol_mode: resolved.protocol_mode,
             oauth_provider_id: resolved.oauth_provider_id,
+            secret_bindings,
         })
     }
 
@@ -1483,6 +1509,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let mut mcp_tool_definitions = org_mcp_tool_definitions;
         mcp_tool_definitions.extend(local_mcp_tool_definitions);
+        let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
+            self.db.as_ref(),
+            org_id,
+            session.agent_id,
+        )
+        .await
+        .map_err(|e| store_error(format!("Failed to load MCP credential metadata: {e}")))?;
+        everruns_core::apply_mcp_secret_binding_schemas(
+            &mut mcp_tool_definitions,
+            &binding_metadata,
+        );
 
         // Load messages through the same capability-aware windowing used by
         // reason atoms. Long sessions should fetch a bounded prompt candidate

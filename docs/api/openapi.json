@@ -707,6 +707,163 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/credentials": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "list_credentials",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "create_credential_binding",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentCredentialBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/credentials/{binding_id}": {
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "set_credential_value",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAgentCredentialValueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "operationId": "delete_credential_binding",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -13029,6 +13186,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/storage/secrets/{name}": {
+      "delete": {
+        "tags": [
+          "session-storage"
+        ],
+        "operationId": "delete_secret",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tasks": {
       "get": {
         "tags": [
@@ -15829,6 +16027,64 @@
           }
         }
       },
+      "AgentCredentialBinding": {
+        "type": "object",
+        "required": [
+          "id",
+          "agent_id",
+          "mcp_server_name",
+          "mcp_server_url",
+          "tool_name",
+          "parameter_name",
+          "label",
+          "configured",
+          "created_at",
+          "updated_at",
+          "setup_url"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "configured": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string"
+          },
+          "mcp_server_name": {
+            "type": "string"
+          },
+          "mcp_server_url": {
+            "type": "string"
+          },
+          "parameter_name": {
+            "type": "string"
+          },
+          "setup_url": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string"
+          }
+        }
+      },
       "AgentMessage": {
         "type": "object",
         "required": [
@@ -18313,6 +18569,38 @@
             "type": "number",
             "format": "double",
             "description": "Output cost per million tokens (USD) for this tier"
+          }
+        }
+      },
+      "CreateAgentCredentialBinding": {
+        "type": "object",
+        "required": [
+          "mcp_server_name",
+          "tool_name",
+          "parameter_name",
+          "label"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "mcp_server_name": {
+            "type": "string"
+          },
+          "parameter_name": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
           }
         }
       },
@@ -24075,6 +24363,77 @@
                       "description": "Cumulative token usage across all sessions for this agent."
                     }
                   ]
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_AgentCredentialBinding": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "agent_id",
+                "mcp_server_name",
+                "mcp_server_url",
+                "tool_name",
+                "parameter_name",
+                "label",
+                "configured",
+                "created_at",
+                "updated_at",
+                "setup_url"
+              ],
+              "properties": {
+                "agent_id": {
+                  "type": "string"
+                },
+                "configured": {
+                  "type": "boolean"
+                },
+                "created_at": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "mcp_server_name": {
+                  "type": "string"
+                },
+                "mcp_server_url": {
+                  "type": "string"
+                },
+                "parameter_name": {
+                  "type": "string"
+                },
+                "setup_url": {
+                  "type": "string"
+                },
+                "tool_name": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string"
                 }
               }
             },
@@ -34043,6 +34402,18 @@
           "title": {
             "type": "string",
             "description": "New session title."
+          }
+        }
+      },
+      "SetAgentCredentialValueRequest": {
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Write-only credential value. It is encrypted and never returned."
           }
         }
       },

@@ -12,7 +12,7 @@ import {
   useAgentStats,
   usePageTitle,
 } from "@/hooks";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -41,9 +41,11 @@ import {
   Terminal,
   Boxes,
   Clock3,
+  LockKeyhole,
   MoreHorizontal,
 } from "lucide-react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
+import { AgentCredentialsPanel } from "@/components/agents/agent-credentials-panel";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import {
   PageContainer,
@@ -93,7 +95,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { agentId } = use(params);
   const { locale } = useLocale();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("overview");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "overview");
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
   const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
@@ -259,6 +262,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
     { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
     { value: "triggers", label: "Triggers", icon: <Clock3 className="size-4" /> },
+    { value: "credentials", label: "Credentials", icon: <LockKeyhole className="size-4" /> },
     { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
     ...(agentVersionsEnabled
       ? [{ value: "versions", label: "Versions", icon: <GitBranch className="size-4" /> }]
@@ -665,6 +669,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         <PageColumns>
           <PageMain>
             <AgentTriggersPanel agentId={agentId} />
+          </PageMain>
+        </PageColumns>
+      )}
+
+      {activeTab === "credentials" && (
+        <PageColumns>
+          <PageMain>
+            <AgentCredentialsPanel agentId={agentId} />
           </PageMain>
         </PageColumns>
       )}

@@ -7,7 +7,7 @@
 //! when the crate is built with the `mcp-stdio` feature (off in hosted
 //! builds), and are otherwise skipped with a warning.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use everruns_core::capabilities::Capability;
 use everruns_core::{
@@ -60,6 +60,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     protocol_mode: server.protocol_mode,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                     pending_oauth_provider: None,
+                    secret_bindings: HashMap::new(),
                 },
                 tool_discovery: server.tool_discovery,
             })

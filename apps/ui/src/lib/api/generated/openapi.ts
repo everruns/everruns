@@ -184,6 +184,38 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/credentials": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_credentials"];
+    put?: never;
+    post: operations["create_credential_binding"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/credentials/{binding_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put: operations["set_credential_value"];
+    post?: never;
+    delete: operations["delete_credential_binding"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/export": {
     parameters: {
       query?: never;
@@ -3293,6 +3325,22 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/storage/secrets/{name}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete: operations["delete_secret"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/tasks": {
     parameters: {
       query?: never;
@@ -4179,6 +4227,21 @@ export interface components {
       config?: unknown;
       /** @description Reference to the capability ID */
       ref: string;
+    };
+    AgentCredentialBinding: {
+      agent_id: string;
+      configured: boolean;
+      created_at: string;
+      description?: string | null;
+      /** Format: uuid */
+      id: string;
+      label: string;
+      mcp_server_name: string;
+      mcp_server_url: string;
+      parameter_name: string;
+      setup_url: string;
+      tool_name: string;
+      updated_at: string;
     };
     AgentMessage: {
       role: string;
@@ -5506,6 +5569,14 @@ export interface components {
        * @description Output cost per million tokens (USD) for this tier
        */
       output: number;
+    };
+    CreateAgentCredentialBinding: {
+      agent_id?: string;
+      description?: string | null;
+      label: string;
+      mcp_server_name: string;
+      parameter_name: string;
+      tool_name: string;
     };
     /** @description Request to create a new agent */
     CreateAgentRequest: {
@@ -8838,6 +8909,28 @@ export interface components {
          */
         updated_at: string;
         usage?: null | components["schemas"]["TokenUsage"];
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_AgentCredentialBinding: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        agent_id: string;
+        configured: boolean;
+        created_at: string;
+        description?: string | null;
+        /** Format: uuid */
+        id: string;
+        label: string;
+        mcp_server_name: string;
+        mcp_server_url: string;
+        parameter_name: string;
+        setup_url: string;
+        tool_name: string;
+        updated_at: string;
       }[];
     };
     /**
@@ -14566,6 +14659,10 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    SetAgentCredentialValueRequest: {
+      /** @description Write-only credential value. It is encrypted and never returned. */
+      value: string;
+    };
     /** @description Request body for the `set_default_agent_version` operation. */
     SetDefaultAgentVersionRequest: {
       /**
@@ -18889,6 +18986,106 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_credentials: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ListResponse_AgentCredentialBinding"];
+        };
+      };
+    };
+  };
+  create_credential_binding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentCredentialBinding"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCredentialBinding"];
+        };
+      };
+    };
+  };
+  set_credential_value: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        binding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetAgentCredentialValueRequest"];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentCredentialBinding"];
+        };
+      };
+    };
+  };
+  delete_credential_binding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        agent_id: string;
+        binding_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -28716,6 +28913,34 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  delete_secret: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        session_id: string;
+        name: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
     };
   };

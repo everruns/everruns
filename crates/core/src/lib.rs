@@ -489,10 +489,11 @@ pub use leased_resource::{
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
     MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
-    McpContent, McpError, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
-    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
-    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
+    McpContent, McpError, McpProtocolMode, McpSecretBindingMetadata, McpServer, McpServerAuthMode,
+    McpServerStatus, McpServerTransportType, McpToolAnnotations, McpToolCallParams,
+    McpToolCallRequest, McpToolCallResponse, McpToolCallResult, McpToolDefinition,
+    McpToolsListRequest, McpToolsListResponse, McpToolsListResult, ScopedMcpServer,
+    ScopedMcpServers, apply_mcp_secret_binding_schemas, is_mcp_tool,
     mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
     merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
     sanitize_mcp_server_name, scoped_mcp_servers_is_empty,

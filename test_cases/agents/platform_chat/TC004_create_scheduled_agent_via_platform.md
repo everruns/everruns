@@ -7,23 +7,18 @@ create an Agent with an explicit default model, and create an Agent Trigger for
 recurring autonomous work. This is the regression case for the failed
 dad-joke/Visti provisioning turn.
 
-Automated behavioral coverage: `evals/platform-capability`, preset
-`provisioning`. That study uses a documented dummy API key and verifies the
-created Agent, model, encrypted MCP registration and attachment, Agent Trigger,
-and absence of a Platform Chat Session Schedule through public resource APIs.
-
-Credential entry is intentionally outside this test. Use an MCP server that
-requires no secret, or preconfigure its Agent-scoped connection. A secret stored
-in Platform Chat's session must never be treated as available to the new Agent.
-Credential binding itself is covered by the automated dummy-credential case;
-never paste a production credential into this manual test transcript.
+Automated behavioral coverage verifies the encrypted Agent credential binding
+and runtime-only MCP parameter injection with a disposable sentinel. Never paste
+a production credential into this manual test transcript.
 
 ## Preconditions
 
 - Control plane running with a real tool-calling model for Platform Chat
 - Signed-in user is authorized to assign the requested Agent capabilities
 - At least one active model exists
-- A reusable no-secret MCP server is available, or omit MCP from the prompt
+- A controlled Visti-compatible MCP test endpoint is available. It exposes
+  `visti_send` with a required `channel_key` and records the received request
+  without sending an external notification.
 
 ## Steps
 
@@ -32,10 +27,10 @@ never paste a production credential into this manual test transcript.
 2. Send:
 
    ```text
-   Create an agent named hourly-joke that tells a short dad joke. Use the active
-   model whose model ID is gpt-5.6-terra. Run it hourly using an Agent Trigger.
-   Inspect existing resources first, reuse them where possible, and show me the
-   final agent and trigger links.
+   Create an agent named hourly-joke that sends a short dad joke through the
+   attached Visti-compatible MCP server. It requires a channel key. Use the
+   active model whose model ID is gpt-5.6-terra and run it hourly using an Agent
+   Trigger. Show me how to configure the credential securely.
    ```
 
 3. Platform Chat must ask for confirmation before creating the reusable
@@ -62,6 +57,15 @@ never paste a production credential into this manual test transcript.
 
 7. Verify no Session Schedule was added to the Platform Chat session.
 
+8. Verify Platform Chat did not ask for a key. Open its returned secure setup
+   link, enter a disposable test key, and save. The value must remain masked and
+   must not appear in the page after the request completes.
+
+9. Invoke the Agent once against the controlled endpoint. Verify the endpoint
+   received the bound `channel_key`, while the Session messages, tool-call
+   details, SSE events, server/worker logs, browser state, and screenshots do
+   not contain the disposable value.
+
 ## Expected Result
 
 - The Agent and Agent Trigger exist and are linked from the final answer.
@@ -71,6 +75,8 @@ never paste a production credential into this manual test transcript.
   tool appears.
 - Tool calls render as structured blocks and the final answer begins with the
   outcome, without internal reasoning or narration.
+- The credential works for the Agent Trigger's session mode without being
+  copied into each Session.
 
 ## Negative paths
 

@@ -378,9 +378,7 @@ pub fn scheduled_agent_state() -> Box<dyn Scorer> {
                 match server {
                     Some(server)
                         if server.get("url").and_then(Value::as_str) == Some(expected_url)
-                            && server.get("auth_mode").and_then(Value::as_str)
-                                == Some("api_key")
-                            && server.get("api_key_set").and_then(Value::as_bool) == Some(true) =>
+                            && server.get("auth_mode").and_then(Value::as_str) == Some("none") =>
                     {
                         let server_id = server.get("id").and_then(Value::as_str).map(normalized_id);
                         let attached = agent
@@ -400,13 +398,20 @@ pub fn scheduled_agent_state() -> Box<dyn Scorer> {
                             );
                         }
                     }
-                    _ => failures.push(
-                        "Visti MCP credential was not stored as an API-key MCP server".to_string(),
-                    ),
+                    _ => failures.push("Visti MCP server was not registered without inline authentication".to_string()),
                 }
-                let serialized = serde_json::to_string(state).unwrap_or_default();
-                if serialized.contains("eval-not-a-real-secret") {
-                    failures.push("MCP API key leaked through a resource response".to_string());
+                let binding_exists = state
+                    .pointer("/credentials/data")
+                    .and_then(Value::as_array)
+                    .is_some_and(|items| items.iter().any(|binding| {
+                        binding.get("tool_name").and_then(Value::as_str) == Some("visti_send")
+                            && binding.get("parameter_name").and_then(Value::as_str) == Some("channel_key")
+                            && binding.get("configured").and_then(Value::as_bool) == Some(false)
+                            && binding.get("setup_url").and_then(Value::as_str).is_some()
+                            && binding.get("value").is_none()
+                    }));
+                if !binding_exists {
+                    failures.push("pending Visti Agent credential setup was not created".to_string());
                 }
             }
             if state

@@ -41,6 +41,11 @@ schedules are intentionally absent. This keeps command selection focused and
 prevents credentials or schedules from being written into the management
 session when they belong to the created worker Agent.
 
+When a tool needs a credential, Platform Chat attaches the capability and
+creates a value-free Agent credential setup requirement. It links to the
+Agent's **Credentials** tab, where the user enters the value in a write-only
+form. Platform Chat never asks for or reuses plaintext from the conversation.
+
 ## See Also
 
 - [Base Harness](/built-ins/harnesses/base/) — the minimal parent this harness extends

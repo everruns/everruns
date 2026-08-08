@@ -20,9 +20,9 @@ The focused dataset covers:
 - refusal to execute ambiguous, broad-destructive, and off-topic mutations;
 - bounded tool-call counts to catch repeated discovery/query loops; and
 - the failed-turn regression: create a uniquely named hourly dad-joke agent,
-  select `gpt-5.6-terra`, register an API-key Visti MCP server, attach it to the
-  worker agent, and create an agent-owned trigger rather than a schedule on the
-  Platform Chat session.
+  select `gpt-5.6-terra`, register and attach the Visti MCP server, create a
+  value-free `visti_send.channel_key` setup requirement, and create an
+  agent-owned trigger rather than a schedule on the Platform Chat session.
 
 The provisioning sample is intentionally two-turn: Platform Chat first asks for
 confirmation because Agents are reusable organization-wide entities, then the
@@ -31,14 +31,10 @@ second user turn confirms the exact mutation.
 The provisioning case is graded against persisted server state, not the
 assistant's claim. After the turn, the subject reads the agent, selected model,
 agent triggers, MCP server, and Platform Chat session schedules. The scorer
-checks the model reference, encrypted-credential indicator (`api_key_set`, with
-no key returned), MCP capability attachment, hourly cron/message, and absence
-of a session schedule.
-
-The dataset uses a documented dummy credential. It proves safe binding and
-non-disclosure through resource APIs, not that a real Visti credential works.
-The command transcript necessarily contains the dummy value supplied in the
-prompt, so never put production credentials in a dataset.
+checks the model reference, pending Agent credential metadata (with no value),
+MCP capability attachment, hourly cron/message, and absence of a session
+schedule. Runtime injection is covered separately with a controlled MCP egress
+test; no credential value belongs in this dataset or its transcript.
 
 ## Signals
 

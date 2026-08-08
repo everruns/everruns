@@ -106,6 +106,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             protocol_mode: info.protocol_mode,
             oauth_provider_id: info.oauth_provider_id,
             pending_oauth_provider,
+            secret_bindings: info.secret_bindings,
         }))
     }
 }

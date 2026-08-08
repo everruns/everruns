@@ -5,6 +5,7 @@
 
 pub mod a2a_signing;
 pub mod ag_ui;
+pub mod agent_credentials;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;

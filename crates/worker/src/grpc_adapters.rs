@@ -385,6 +385,21 @@ impl GrpcClient {
                 proto_server.protocol_mode.as_str(),
             ),
             oauth_provider_id: proto_server.oauth_provider_id,
+            secret_bindings: proto_server.secret_bindings.into_iter().fold(
+                std::collections::HashMap::new(),
+                |mut bindings, binding| {
+                    bindings
+                        .entry(binding.tool_name)
+                        .or_insert_with(Vec::new)
+                        .push(everruns_mcp::McpSecretBinding {
+                            parameter_name: binding.parameter_name,
+                            value: binding.value,
+                            setup_url: binding.setup_url,
+                            label: binding.label,
+                        });
+                    bindings
+                },
+            ),
         })
     }
 

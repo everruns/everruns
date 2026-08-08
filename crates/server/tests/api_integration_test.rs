@@ -207,6 +207,141 @@ async fn test_create_agent() {
 }
 
 #[tokio::test]
+async fn test_agent_mcp_credential_is_write_only_and_agent_scoped() {
+    let server = TestServer::in_memory().await;
+    let sentinel = "security-test-secret-must-not-be-returned";
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "credential-owner",
+                "display_name": "Credential Owner",
+                "system_prompt": "Use the attached test tool",
+                "mcpServers": {
+                    "visti-test": { "url": "https://example.com/mcp" }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let other: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "credential-non-owner",
+                "display_name": "Credential Non-owner",
+                "system_prompt": "No credentials"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let binding: Value = server
+        .post(
+            &format!("/v1/agents/{}/credentials", agent.public_id),
+            json!({
+                "mcp_server_name": "visti-test",
+                "tool_name": "visti_send",
+                "parameter_name": "channel_key",
+                "label": "Visti channel key"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(binding["configured"], false);
+    assert!(binding.get("value").is_none());
+    let binding_id = binding["id"].as_str().unwrap();
+
+    let rotated: Value = server
+        .put(
+            &format!("/v1/agents/{}/credentials/{binding_id}", agent.public_id),
+            json!({ "value": sentinel }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(rotated["configured"], true);
+    assert!(!rotated.to_string().contains(sentinel));
+    assert!(rotated.get("value").is_none());
+
+    let listed: Value = server
+        .get(&format!("/v1/agents/{}/credentials", agent.public_id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(listed["data"][0]["configured"], true);
+    assert!(!listed.to_string().contains(sentinel));
+    let stored_agent = server
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent.public_id.to_string())
+        .await
+        .unwrap()
+        .unwrap();
+    let runtime_bindings =
+        everruns_server::domains::agents::credentials::resolve_runtime_secret_bindings(
+            server.db.as_ref(),
+            server.encryption.as_deref(),
+            DEFAULT_ORG_ID,
+            Some(stored_agent.id),
+            "visti-test",
+            "https://example.com/mcp",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        runtime_bindings["visti_send"][0].value.as_deref(),
+        Some(sentinel)
+    );
+
+    server
+        .patch(
+            &format!("/v1/agents/{}", agent.public_id),
+            json!({
+                "mcpServers": {
+                    "visti-test": { "url": "https://example.org/replaced-mcp" }
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let endpoint_changed: Value = server
+        .post(
+            &format!("/v1/agents/{}/credentials", agent.public_id),
+            json!({
+                "agent_id": agent.public_id,
+                "mcp_server_name": "visti-test",
+                "tool_name": "visti_send",
+                "parameter_name": "channel_key",
+                "label": "Visti channel key"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(endpoint_changed["id"], binding_id);
+    assert_eq!(endpoint_changed["configured"], false);
+
+    server
+        .put(
+            &format!("/v1/agents/{}/credentials/{binding_id}", other.public_id),
+            json!({ "value": "attempted-cross-agent-replacement" }),
+        )
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    server
+        .delete(&format!(
+            "/v1/agents/{}/credentials/{binding_id}",
+            agent.public_id
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
 async fn test_agent_versions_snapshot_diff_default_and_session_capture() {
     // Feature flags are process-level env in this pilot; enable explicitly for
     // the in-process server before it computes route state.
@@ -635,6 +770,76 @@ async fn test_create_session() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(fetched.locale.as_deref(), Some("uk-UA"));
+}
+
+#[tokio::test]
+async fn test_session_secret_lifecycle_is_write_only_and_reserves_internal_names() {
+    let server = TestServer::in_memory().await;
+    let sentinel = "session-secret-must-never-be-returned";
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "session-secret-agent",
+                "display_name": "Session Secret Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id,
+                "title": "Session secret lifecycle"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let secrets_url = format!("/v1/sessions/{}/storage/secrets", session.id);
+
+    let stored: Value = server
+        .put(
+            &secrets_url,
+            json!({ "secrets": { "DISPOSABLE_KEY": sentinel } }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(stored["count"], 1);
+    assert!(!stored.to_string().contains(sentinel));
+
+    let listed: Value = server
+        .get(&secrets_url)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(listed["data"][0]["name"], "DISPOSABLE_KEY");
+    assert!(listed["data"][0].get("value").is_none());
+    assert!(!listed.to_string().contains(sentinel));
+
+    server
+        .put(
+            &secrets_url,
+            json!({ "secrets": { "mcp_oauth:server:access_token": "blocked" } }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    server
+        .delete(&format!("{secrets_url}/DISPOSABLE_KEY"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let empty: Value = server
+        .get(&secrets_url)
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(empty["data"], json!([]));
 }
 
 #[tokio::test]
