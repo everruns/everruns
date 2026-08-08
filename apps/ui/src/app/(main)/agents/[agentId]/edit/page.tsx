@@ -28,6 +28,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  PageJumpNav,
   PageColumns,
   PageMain,
   PageRail,
@@ -305,7 +306,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         }
       />
 
-      <PageControlStrip>
+      <PageControlStrip className="flex flex-col border-b lg:flex-row lg:items-end lg:justify-between">
         <SectionTabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -313,7 +314,19 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
             { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
             { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
           ]}
+          className="border-b-0"
         />
+        {activeTab === "edit" && (
+          <PageJumpNav
+            items={[
+              { href: "#identity", label: "Identity" },
+              { href: "#behavior", label: "Behavior" },
+              { href: "#files", label: "Files" },
+              { href: "#network", label: "Network" },
+            ]}
+            className="px-3.5"
+          />
+        )}
       </PageControlStrip>
 
       {activeTab === "edit" && (
@@ -321,9 +334,10 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           <PageColumns>
             {/* Main form */}
             <PageMain>
-              <Card>
+              <Card id="identity" className="scroll-mt-6">
                 <CardHeader>
-                  <CardTitle>Agent Details</CardTitle>
+                  <CardTitle>Identity</CardTitle>
+                  <CardDescription>How the agent is named and found</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
@@ -408,38 +422,48 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       Press Enter or comma to add a tag. Backspace removes the last tag.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="harness">
-                      Harness <span className="text-destructive">*</span>
-                    </Label>
-                    <HarnessSelect
-                      id="harness"
-                      value={formData.harness_id}
-                      onValueChange={(value) => handleFormChange("harness_id", value)}
-                      disabled={isSaving || isReadOnly}
-                      placeholder="Select a harness"
-                    />
-                    {fieldErrors.harness_id && (
-                      <p className="text-xs text-destructive">{fieldErrors.harness_id}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      The base execution harness this agent runs on. Sessions started from this
-                      agent inherit it.
-                    </p>
-                  </div>
+              <Card id="behavior" className="scroll-mt-6">
+                <CardHeader>
+                  <CardTitle>Behavior</CardTitle>
+                  <CardDescription>Execution target and instructions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="harness">
+                        Harness <span className="text-destructive">*</span>
+                      </Label>
+                      <HarnessSelect
+                        id="harness"
+                        value={formData.harness_id}
+                        onValueChange={(value) => handleFormChange("harness_id", value)}
+                        disabled={isSaving || isReadOnly}
+                        placeholder="Select a harness"
+                      />
+                      {fieldErrors.harness_id && (
+                        <p className="text-xs text-destructive">{fieldErrors.harness_id}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        The base execution harness this agent runs on. Sessions started from this
+                        agent inherit it.
+                      </p>
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="model">Model (optional)</Label>
-                    <ModelPicker
-                      value={formData.default_model_id || ""}
-                      onChange={(value) => handleFormChange("default_model_id", value)}
-                      disabled={isSaving || isReadOnly}
-                      placeholder="Use default model"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Select a specific model or leave empty to use the default
-                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="model">Model (optional)</Label>
+                      <ModelPicker
+                        value={formData.default_model_id || ""}
+                        onChange={(value) => handleFormChange("default_model_id", value)}
+                        disabled={isSaving || isReadOnly}
+                        placeholder="Use default model"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Select a specific model or leave empty to use the default
+                      </p>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -459,14 +483,22 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       Instructions for the AI model (supports Markdown)
                     </p>
                   </div>
+                </CardContent>
+              </Card>
 
+              <Card id="files" className="scroll-mt-6">
+                <CardContent className="pt-6">
                   <InitialFilesEditor
                     value={selectedInitialFiles}
                     onChange={setLocalInitialFiles}
                     disabled={isSaving || isReadOnly}
                     description="Files copied into each new session for this agent."
                   />
+                </CardContent>
+              </Card>
 
+              <Card id="network" className="scroll-mt-6">
+                <CardContent className="pt-6">
                   <NetworkAccessEditor
                     value={initialNetworkAccess}
                     onChange={setLocalNetworkAccess}
