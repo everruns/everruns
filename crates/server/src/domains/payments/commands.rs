@@ -6,7 +6,7 @@ use crate::storage::models::{
     UpdatePaymentPolicyRow,
 };
 use everruns_core::Policy;
-use everruns_core::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
+use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

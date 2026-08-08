@@ -20,7 +20,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
-use everruns_core::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
+use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, impl_auth_state};

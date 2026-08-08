@@ -3207,10 +3207,14 @@ version = "0.17.23"
 name = "everruns-platform"
 version = "0.17.23"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "chrono",
  "everruns-core",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
  "utoipa",
  "uuid 1.24.0",
 ]

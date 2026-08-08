@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
-use everruns_core::reporting::{DatasetCatalog, ReportQuery, ReportResult};
+use everruns_platform::reporting::{DatasetCatalog, ReportQuery, ReportResult};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

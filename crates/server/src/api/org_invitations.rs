@@ -28,7 +28,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
-use everruns_core::{AuditEvent, EmailError, EmailMessage, EmailSender, ManagementAction, OrgRole};
+use everruns_core::{EmailError, EmailMessage, EmailSender, OrgRole};
+use everruns_platform::{AuditEvent, ManagementAction};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

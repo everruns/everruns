@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use everruns_core::reporting::{
+use everruns_platform::reporting::{
     DatasetCatalog, DatasetCatalogEntry, ReportFilterOp, ReportOrderBy, ReportQuery,
 };
 
@@ -767,7 +767,7 @@ fn validate_order_by(dataset: &DatasetSpec, order: &ReportOrderBy) -> Result<(),
 #[cfg(test)]
 mod tests {
     use chrono::{Duration, Utc};
-    use everruns_core::reporting::{
+    use everruns_platform::reporting::{
         ReportFilter, ReportFilterOp, ReportOrderBy, ReportOrderDirection, ReportQuery,
         ReportTimeRange,
     };

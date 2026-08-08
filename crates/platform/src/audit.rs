@@ -5,6 +5,11 @@
 // Decision: Fire-and-forget pattern — audit failures never block operations (TM-OBS-007).
 // Decision: Domain-specific builders enforce type safety at compile time.
 // See knowledge/security/audit-logging.md for full design.
+//
+// Moved out of `everruns-core` in EVE-838. The `HasAuditTargetId` impls target
+// core domain types (`everruns_core::{Harness, Agent, Session}`); implementing
+// this crate's local trait for those foreign types keeps the direction
+// platform -> core.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -463,19 +468,19 @@ impl<T: HasAuditTargetId> HasAuditTargetId for Vec<T> {
 }
 
 // Domain type implementations
-impl HasAuditTargetId for crate::Harness {
+impl HasAuditTargetId for everruns_core::Harness {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }
 }
 
-impl HasAuditTargetId for crate::Agent {
+impl HasAuditTargetId for everruns_core::Agent {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.public_id.to_string())
     }
 }
 
-impl HasAuditTargetId for crate::Session {
+impl HasAuditTargetId for everruns_core::Session {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }
