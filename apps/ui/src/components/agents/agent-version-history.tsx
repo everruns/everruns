@@ -14,7 +14,7 @@ import {
 import type { Agent, AgentVersion, AgentVersionChangeKind } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -96,6 +96,10 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
   const [changeKind, setChangeKind] = useState<AgentVersionChangeKind>("manual");
   const [fromVersionId, setFromVersionId] = useState<string>("");
   const [toVersionId, setToVersionId] = useState<string>("");
+  const [comparedVersionIds, setComparedVersionIds] = useState<{
+    from: string;
+    to: string;
+  } | null>(null);
   const [rollbackVersion, setRollbackVersion] = useState<AgentVersion | null>(null);
   const [forkVersion, setForkVersion] = useState<AgentVersion | null>(null);
   const [forkName, setForkName] = useState("");
@@ -106,7 +110,7 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
   const setDefault = useSetDefaultAgentVersion();
   const rollback = useRollbackAgentVersion();
   const fork = useForkAgentVersion();
-  const diff = useAgentVersionDiff(agent.id, fromVersionId || undefined, toVersionId || undefined);
+  const diff = useAgentVersionDiff(agent.id, comparedVersionIds?.from, comparedVersionIds?.to);
   const publishedVersions = useMemo(
     () => versions.filter((version) => version.is_published),
     [versions],
@@ -118,13 +122,23 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
   const latest = publishedVersions[0];
 
   const selectedFrom = useMemo(
-    () => versions.find((version) => version.id === fromVersionId),
-    [fromVersionId, versions],
+    () => versions.find((version) => version.id === comparedVersionIds?.from),
+    [comparedVersionIds?.from, versions],
   );
   const selectedTo = useMemo(
-    () => versions.find((version) => version.id === toVersionId),
-    [toVersionId, versions],
+    () => versions.find((version) => version.id === comparedVersionIds?.to),
+    [comparedVersionIds?.to, versions],
   );
+
+  const selectFromVersion = (versionId: string) => {
+    setFromVersionId(versionId);
+    setComparedVersionIds(null);
+  };
+
+  const selectToVersion = (versionId: string) => {
+    setToVersionId(versionId);
+    setComparedVersionIds(null);
+  };
 
   const saveVersion = async () => {
     await createVersion.mutateAsync({
@@ -167,14 +181,70 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="space-y-6">
+    <div className="mx-auto w-full max-w-4xl space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            {publishedVersions.length === 0 ? "Save your first version" : "Save a new version"}
+          </CardTitle>
+          <CardDescription>
+            {publishedVersions.length === 0
+              ? "Save the current configuration so you can return to it later."
+              : "Create a restore point for the current configuration."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div>
+              <Label htmlFor="version-summary">What changed? (optional)</Label>
+              <Input
+                id="version-summary"
+                value={summary}
+                onChange={(event) => setSummary(event.target.value)}
+                placeholder="For example: Updated the instructions"
+              />
+            </div>
+            <Button onClick={saveVersion} disabled={createVersion.isPending}>
+              <Save className="mr-2 h-4 w-4" />
+              {createVersion.isPending ? "Saving..." : "Save current version"}
+            </Button>
+          </div>
+          <details className="text-sm">
+            <summary className="w-fit cursor-pointer text-muted-foreground hover:text-foreground">
+              Version options
+            </summary>
+            <div className="mt-3 max-w-xs space-y-1">
+              <Label>Type of change</Label>
+              <Select
+                value={changeKind}
+                onValueChange={(value) => setChangeKind(value as AgentVersionChangeKind)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Standard update</SelectItem>
+                  <SelectItem value="patch">Bug fix</SelectItem>
+                  <SelectItem value="minor">New feature</SelectItem>
+                  <SelectItem value="major">Breaking change</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                This controls how the version number changes.
+              </p>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
+
+      {publishedVersions.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <History className="h-4 w-4" />
-              Version History
+              Saved versions
             </CardTitle>
+            <CardDescription>Versions you chose to keep.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -182,10 +252,6 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
               </div>
-            ) : publishedVersions.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                No saved versions yet.
-              </p>
             ) : (
               <div className="divide-y border">
                 {publishedVersions.map((version) => (
@@ -219,7 +285,7 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                         disabled={version.id === agent.default_version_id || setDefault.isPending}
                       >
                         <Star className="mr-1 h-3 w-3" />
-                        Default
+                        Use by default
                       </Button>
                       <Button
                         size="sm"
@@ -227,11 +293,11 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                         onClick={() => setRollbackVersion(version)}
                       >
                         <RotateCcw className="mr-1 h-3 w-3" />
-                        Rollback
+                        Restore
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setForkVersion(version)}>
                         <GitBranch className="mr-1 h-3 w-3" />
-                        Fork
+                        Create copy
                       </Button>
                     </div>
                   </div>
@@ -240,21 +306,22 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
             )}
           </CardContent>
         </Card>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Automatic Snapshots</CardTitle>
-          </CardHeader>
-          <CardContent>
+      {draftSnapshots.length > 0 && (
+        <details className="border bg-card text-card-foreground">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium hover:bg-muted/40">
+            Recovery snapshots ({draftSnapshots.length})
+          </summary>
+          <div className="space-y-3 border-t px-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Everruns saves these automatically in case you need to recover an earlier draft.
+            </p>
             {isLoading ? (
               <div className="space-y-2">
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
               </div>
-            ) : draftSnapshots.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                No automatic snapshots yet.
-              </p>
             ) : (
               <div className="divide-y border">
                 {draftSnapshots.map((version) => (
@@ -275,43 +342,55 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                         onClick={() => setRollbackVersion(version)}
                       >
                         <RotateCcw className="mr-1 h-3 w-3" />
-                        Rollback
+                        Restore
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setForkVersion(version)}>
                         <GitBranch className="mr-1 h-3 w-3" />
-                        Fork
+                        Create copy
                       </Button>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </details>
+      )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Compare Versions</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {versions.length >= 2 && (
+        <details className="border bg-card text-card-foreground">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-medium hover:bg-muted/40">
+            Compare versions
+          </summary>
+          <div className="space-y-4 border-t px-4 py-4">
             <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <Label>From</Label>
                 <VersionSelect
+                  label="From revision"
                   value={fromVersionId}
                   versions={versions}
-                  onValueChange={setFromVersionId}
+                  onValueChange={selectFromVersion}
                 />
               </div>
               <div>
                 <Label>To</Label>
                 <VersionSelect
+                  label="To revision"
                   value={toVersionId}
                   versions={versions}
-                  onValueChange={setToVersionId}
+                  onValueChange={selectToVersion}
                 />
               </div>
             </div>
+            {fromVersionId && toVersionId && fromVersionId !== toVersionId && (
+              <Button
+                variant="outline"
+                onClick={() => setComparedVersionIds({ from: fromVersionId, to: toVersionId })}
+              >
+                Compare revisions
+              </Button>
+            )}
             {selectedFrom && selectedTo && diff.data && (
               <div className="space-y-5">
                 <p className="text-sm text-muted-foreground">
@@ -321,63 +400,25 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                 <DiffBlock title="Resolved Configuration" diff={diff.data.resolved_diff} />
               </div>
             )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Save Version</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Change type</Label>
-            <Select
-              value={changeKind}
-              onValueChange={(value) => setChangeKind(value as AgentVersionChangeKind)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="manual">Manual</SelectItem>
-                <SelectItem value="patch">Patch</SelectItem>
-                <SelectItem value="minor">Minor</SelectItem>
-                <SelectItem value="major">Major</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-          <div>
-            <Label htmlFor="version-summary">Summary</Label>
-            <Textarea
-              id="version-summary"
-              value={summary}
-              onChange={(event) => setSummary(event.target.value)}
-              placeholder="What changed in this agent configuration?"
-            />
-          </div>
-          <Button onClick={saveVersion} disabled={createVersion.isPending} className="w-full">
-            <Save className="mr-2 h-4 w-4" />
-            {createVersion.isPending ? "Saving..." : "Save Version"}
-          </Button>
-        </CardContent>
-      </Card>
+        </details>
+      )}
 
       <Dialog open={!!rollbackVersion} onOpenChange={(open) => !open && setRollbackVersion(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rollback to {rollbackVersion?.version}</DialogTitle>
+            <DialogTitle>Restore {rollbackVersion?.version}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            The editable agent draft will be replaced with this version. A rollback version will be
-            saved so the history stays auditable.
+            This replaces the current editable configuration. Everruns will save the current state
+            first, so you can undo this restore later.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRollbackVersion(null)}>
               Cancel
             </Button>
             <Button onClick={submitRollback} disabled={rollback.isPending}>
-              {rollback.isPending ? "Rolling back..." : "Rollback"}
+              {rollback.isPending ? "Restoring..." : "Restore version"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -386,7 +427,7 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
       <Dialog open={!!forkVersion} onOpenChange={(open) => !open && setForkVersion(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Fork {forkVersion?.version}</DialogTitle>
+            <DialogTitle>Create a copy of {forkVersion?.version}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
@@ -419,7 +460,7 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
               Cancel
             </Button>
             <Button onClick={submitFork} disabled={fork.isPending || !forkName.trim()}>
-              {fork.isPending ? "Forking..." : "Fork Agent"}
+              {fork.isPending ? "Creating..." : "Create agent copy"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -429,17 +470,19 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
 }
 
 function VersionSelect({
+  label,
   value,
   versions,
   onValueChange,
 }: {
+  label: string;
   value: string;
   versions: AgentVersion[];
   onValueChange: (value: string) => void;
 }) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger>
+      <SelectTrigger aria-label={label}>
         <SelectValue placeholder="Select version" />
       </SelectTrigger>
       <SelectContent>
