@@ -5,10 +5,11 @@
 
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    ANONYMOUS_USER_ID, Caller, ExternalActor, Principal, PrincipalId, PrincipalKind,
-    PrincipalStatus, PrincipalSummary, org_public_id_from_internal,
+    ANONYMOUS_USER_ID, Caller, ExternalActor, PrincipalId, PrincipalKind, PrincipalStatus,
+    PrincipalSummary, org_public_id_from_internal,
 };
 use everruns_durable::UpdateField;
+use everruns_platform::Principal;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

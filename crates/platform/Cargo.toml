@@ -1,0 +1,52 @@
+# Backend platform/identity domain entities for Everruns.
+#
+# Decision (EVE-837): the platform crate owns the durable backend identity
+# aggregates that were historically defined in `everruns-core` — starting with
+# the `Organization` and `Principal` entity structs. Cross-cutting value types
+# that core's runtime, permissions, and domain models embed (OrgRole,
+# OrgMembership, PrincipalKind, PrincipalStatus, PrincipalSummary, and the
+# multitenancy constants) remain in `everruns-core` and are re-exported here for
+# a unified consumer surface.
+#
+# Dependency direction is strictly `platform -> core`. Core never depends on
+# platform (enforced by crates/core/tests/no_platform_dependency.rs).
+
+[package]
+name = "everruns-platform"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-platform"
+description = "Backend platform identity entities (organizations, principals) for the Everruns agentic runtime"
+readme = "README.md"
+keywords = ["agent", "agentic", "multitenancy", "identity", "everruns"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+# Default build stays free of OpenAPI/SQLx subtrees, matching how provider-only
+# consumers depend on core.
+default = []
+# OpenAPI schema generation (utoipa ToSchema derives). Mirrors the server build,
+# which activates `everruns-core/openapi`.
+openapi = ["dep:utoipa", "everruns-core/openapi"]
+# SQLx support for the typed IDs embedded in these entities. Passthrough to core,
+# kept for parity with server builds that enable `everruns-core/sqlx`.
+sqlx = ["everruns-core/sqlx"]
+
+[dependencies]
+# Cross-cutting identity value types (PrincipalKind/PrincipalStatus/
+# PrincipalSummary), typed IDs, and multitenancy constants live in core; the
+# platform aggregates embed and re-export them. Direction is platform -> core.
+everruns-core = { workspace = true }
+
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+# OpenAPI schema generation (optional, enabled by everruns-server).
+utoipa = { workspace = true, optional = true }
