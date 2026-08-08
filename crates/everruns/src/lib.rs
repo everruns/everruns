@@ -58,8 +58,10 @@
 // --- Value-first agent description and execution -------------------------
 mod agent;
 mod session;
+mod tool;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use session::{RunError, Session, Turn};
+pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the runtime
@@ -102,7 +104,10 @@ pub use everruns_runtime as runtime;
 /// assert!(agent.is_ok());
 /// ```
 pub mod prelude {
-    pub use crate::{Agent, AgentBuilder, BuildError, Model, RunError, Session, Turn};
+    pub use crate::{
+        Agent, AgentBuilder, BuildError, FunctionTool, IntoTool, IntoToolResult, Model, RunError,
+        Session, Tool, ToolResponse, Turn,
+    };
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, MessageRole};
 }

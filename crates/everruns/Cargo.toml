@@ -39,6 +39,8 @@ mcp-stdio = ["everruns-runtime/mcp-stdio"]
 [dependencies]
 everruns-core.workspace = true
 everruns-runtime.workspace = true
+async-trait.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

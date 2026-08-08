@@ -2563,8 +2563,10 @@ dependencies = [
 name = "everruns"
 version = "0.17.23"
 dependencies = [
+ "async-trait",
  "everruns-core",
  "everruns-runtime",
+ "serde_json",
  "tokio",
 ]
 
