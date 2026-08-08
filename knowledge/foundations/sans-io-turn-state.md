@@ -10,12 +10,17 @@ tags:
 
 ## Abstract
 
-The turn loop is implemented twice. `TurnStateMachine`
-(`crates/core/src/turn.rs`) is a mutable, in-memory machine driven by the
-in-process runtime; `RuntimeTurnState` + `plan_next_host_turn`
-(`crates/runtime/src/turn_strategy.rs`) is a serializable state plus a planner
-driven by the durable worker. They encode the same phases and the same
-transitions, in different shapes, and neither can be derived from the other.
+The turn loop was implemented twice. `TurnStateMachine`
+(`crates/core/src/turn.rs`) is a mutable, in-memory machine; `RuntimeTurnState` +
+`plan_next_host_turn` (`crates/runtime/src/turn_strategy.rs`) is a serializable
+state plus a planner driven by the durable worker. They encode the same phases
+and the same transitions, in different shapes, and neither can be derived from
+the other.
+
+Both real hosts now plan through the engine: the durable worker via
+`plan_next_host_turn`, and the in-process runtime since EVE-842. The mutable
+machine survives only behind core's `in_memory_loop`, which no shipped host
+drives.
 
 This spec proposes converging them on one **sans-IO** representation: a
 serializable `TurnState` whose transitions are pure functions, with all I/O —
@@ -24,8 +29,10 @@ loading messages, calling the model, running tools, emitting events, persisting
 host is an in-process host that persists between steps, rather than a second
 implementation of the same loop.
 
-Status: **stage 1 landed** (the value type and its equivalence proof). Later
-stages are proposals, not commitments.
+Status: **stage 1 landed** (the value type and its equivalence proof); the
+planner has since been extracted into `everruns-engine` (EVE-840) and the
+in-process runtime rewired onto it (EVE-842). Later stages are proposals, not
+commitments.
 
 ## Motivation
 
@@ -92,6 +99,15 @@ asserts the same actions and outcomes.
 
 Nothing is rewired. The deliverable is a representation both hosts *could*
 share, plus the evidence that it behaves identically.
+
+### Stage 1b — one planner, two hosts (landed)
+
+`crates/engine`: the planner moved out of the runtime into `everruns-engine`
+(EVE-840), then `InProcessRuntime::run_turn` was rewired onto it (EVE-842). The
+in-process loop no longer decides reason-vs-act-vs-complete; it executes the host
+operation each `TurnPlan` names and performs the returned `TurnLifecycleEffect`s.
+`crates/runtime/tests/engine_planned_turn_test.rs` carries the behavior-preserving
+evidence and the restart-between-steps property.
 
 ### Stage 2 — fold in the durable bookkeeping
 
@@ -160,5 +176,8 @@ converge later.
 - `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
 - `crates/runtime/src/turn_strategy.rs` — `plan_next_host_turn`, the runtime host's thin
-  I/O wrapper over the engine planner (plus compat re-exports of the pre-EVE-840 names)
+  I/O wrapper over the engine planner (plus compat re-exports of the pre-EVE-840 names),
+  and the host-fact resolvers / effect applier both runtime hosts share
+- `crates/runtime/src/runtime.rs` — `InProcessRuntime::run_turn`, the engine-planned
+  in-process loop (EVE-842)
 - `knowledge/operations/durable-execution-engine.md` — the durable host this converges with
