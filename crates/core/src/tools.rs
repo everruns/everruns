@@ -2116,7 +2116,7 @@ mod tests {
     use crate::session_task::SessionTaskRegistry;
     use crate::traits::{SessionFileSystem, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
-    use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
+    use crate::{KeyInfo, SecretInfo};
     use async_trait::async_trait;
     use std::sync::{
         Arc as StdArc, Mutex,
@@ -2503,6 +2503,15 @@ mod tests {
             _id: crate::typed_id::AgentId,
         ) -> crate::Result<Option<crate::Agent>> {
             Ok(None)
+        }
+        async fn add_agent_session_participant(
+            &self,
+            _session_id: SessionId,
+            _agent_id: crate::typed_id::AgentId,
+        ) -> crate::Result<crate::session::SessionParticipant> {
+            Err(crate::error::AgentLoopError::tool(
+                "test store does not add participants",
+            ))
         }
         async fn get_harness(&self, _id: HarnessId) -> crate::Result<Option<crate::Harness>> {
             Ok(None)

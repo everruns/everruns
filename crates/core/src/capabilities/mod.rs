@@ -155,7 +155,7 @@ mod tool_output_persistence;
 mod tool_search;
 mod usage_limit_auto_continue;
 pub mod user_hooks;
-mod util;
+pub mod util;
 #[cfg(feature = "web-fetch")]
 mod web_fetch;
 

@@ -203,9 +203,10 @@ impl Tool for PlatformCommandTool {
                 "organization_id is not accepted; Platform commands use the current session organization",
             );
         }
-        let Some(store) = context.platform_store.as_deref() else {
+        let Some(store) = context.extension::<crate::platform_store::PlatformStoreExt>() else {
             return ToolExecutionResult::tool_error("Platform command service is unavailable");
         };
+        let store = &store.0;
         let result = match self.operation {
             PlatformCommandOperation::Discover => store.platform_discover(arguments).await,
             PlatformCommandOperation::Query => store.platform_query(arguments).await,
@@ -222,7 +223,7 @@ impl Tool for PlatformCommandTool {
     }
 
     fn required_context_services(&self) -> &'static [ToolContextService] {
-        &[ToolContextService::PlatformStore]
+        &[]
     }
 
     fn hints(&self) -> ToolHints {
@@ -395,7 +396,8 @@ mod tests {
     #[tokio::test]
     async fn tools_dispatch_to_platform_store() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let context = ToolContext::new(SessionId::new())
+            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store as Arc<dyn crate::platform_store::PlatformStore>)));
         let result = PlatformCommandTool::query()
             .execute_with_context(json!({ "commands": "list_models" }), &context)
             .await;
@@ -405,7 +407,8 @@ mod tests {
     #[tokio::test]
     async fn organization_override_is_rejected_even_if_injected() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let context = ToolContext::new(SessionId::new())
+            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store as Arc<dyn crate::platform_store::PlatformStore>)));
         let result = PlatformCommandTool::query()
             .execute_with_context(
                 json!({ "commands": "list_models", "organization_id": "org_other" }),

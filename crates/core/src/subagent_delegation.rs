@@ -13,11 +13,12 @@
 use crate::agent::Agent;
 use crate::error::Result;
 use crate::harness::Harness;
-use crate::session::{Session, SessionSeedMode};
+use crate::session::{Session, SessionParticipant, SessionSeedMode};
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Simplified message representation for subagent/handoff result collection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -55,6 +56,37 @@ pub trait SubagentSessionDelegate: Send + Sync {
 
     /// Look up a harness by id (parent harness resolution).
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
+
+    /// Resolve the inheritance chain (root-first) for a harness. Default impl
+    /// walks `parent_harness_id` via [`Self::get_harness`], guarding cycles.
+    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
+        let mut chain = Vec::new();
+        let mut current_id = Some(id);
+        let mut seen = HashSet::new();
+
+        while let Some(harness_id) = current_id {
+            if !seen.insert(harness_id) {
+                return Err(crate::error::AgentLoopError::tool(format!(
+                    "Harness inheritance cycle detected at {harness_id}"
+                )));
+            }
+            let Some(harness) = self.get_harness(harness_id).await? else {
+                return Ok(Vec::new());
+            };
+            current_id = harness.parent_harness_id;
+            chain.push(harness);
+        }
+
+        chain.reverse();
+        Ok(chain)
+    }
+
+    /// Add an agent as a member participant in an existing session.
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant>;
 
     /// Create a child session with the given options.
     async fn create_session_with_options(
@@ -300,6 +332,29 @@ pub mod tests {
             _id: crate::typed_id::AgentId,
         ) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
+        }
+
+        async fn add_agent_session_participant(
+            &self,
+            session_id: SessionId,
+            agent_id: AgentId,
+        ) -> Result<SessionParticipant> {
+            let participant = SessionParticipant {
+                id: crate::typed_id::SessionParticipantId::new(),
+                session_id,
+                kind: crate::session::SessionParticipantKind::Agent,
+                agent_id: Some(agent_id),
+                agent_version_id: self.agent.default_version_id,
+                principal_id: self.session.owner_principal_id,
+                display_name: None,
+                role: crate::session::SessionParticipantRole::Member,
+                joined_at: chrono::Utc::now(),
+                left_at: None,
+            };
+            if let Ok(mut participants) = self.joined_participants.lock() {
+                participants.push(participant.clone());
+            }
+            Ok(participant)
         }
 
         async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {

@@ -9,6 +9,7 @@
 
 pub mod platform;
 pub mod platform_management;
+pub mod util;
 
 pub use platform::{
     DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,

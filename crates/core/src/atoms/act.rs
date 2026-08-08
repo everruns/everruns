@@ -2861,45 +2861,7 @@ mod tests {
         );
     }
 
-    fn manage_harnesses_tool_def() -> crate::ToolDefinition {
-        crate::ToolDefinition::Builtin(crate::BuiltinTool {
-            name: "manage_harnesses".to_string(),
-            display_name: None,
-            description: "CRUD operations for harnesses".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "operation": {"type": "string"}
-                },
-                "required": ["operation"]
-            }),
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: crate::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })
-    }
 
-    fn read_capabilities_tool_def() -> crate::ToolDefinition {
-        crate::ToolDefinition::Builtin(crate::BuiltinTool {
-            name: "read_capabilities".to_string(),
-            display_name: None,
-            description: "List capabilities".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                    "search": {"type": "string"}
-                }
-            }),
-            policy: Default::default(),
-            category: None,
-            deferrable: Default::default(),
-            hints: crate::tool_types::ToolHints::default(),
-            full_parameters: None,
-        })
-    }
 
     #[test]
     fn test_act_result_connection_required_serialization() {
