@@ -10,6 +10,7 @@ jest.mock("next/navigation", () => ({
     replace: jest.fn(),
     back: jest.fn(),
   }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 // Mock next/link
