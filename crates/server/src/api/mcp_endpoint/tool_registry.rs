@@ -570,6 +570,7 @@ fn discover_output_schema() -> Value {
         "properties": {
             "count": { "type": "integer" },
             "include_schemas": { "type": "boolean" },
+            "result_scope": { "type": "string", "enum": ["operation_catalog"] },
             "operations": {
                 "type": "array",
                 "items": operation_schema
@@ -598,9 +599,10 @@ fn discover_output_schema() -> Value {
                 "type": "array",
                 "items": { "type": "string" }
             },
-            "refine_hint": { "type": "string" }
+            "refine_hint": { "type": "string" },
+            "resource_absence_warning": { "type": "string" }
         },
-        "required": ["count", "include_schemas", "shape_hints", "script_guidance"]
+        "required": ["count", "include_schemas", "result_scope", "shape_hints", "script_guidance"]
     })
 }
 

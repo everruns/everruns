@@ -531,6 +531,7 @@ pub struct WorkerServiceImpl {
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
+    connector_registry: everruns_core::connector::ConnectorRegistry,
 }
 
 impl WorkerServiceImpl {
@@ -594,6 +595,7 @@ impl WorkerServiceImpl {
             capability_registry,
         ));
         let utility_llm_service = platform_definition.utility_llm_service();
+        let connector_registry = platform_definition.connectors().clone();
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -669,6 +671,7 @@ impl WorkerServiceImpl {
             org_rate_limiter: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
+            connector_registry,
         }
     }
 
@@ -716,6 +719,7 @@ impl WorkerServiceImpl {
             self.encryption.clone(),
             resolver,
         )
+        .with_connector_registry(self.connector_registry.clone())
         .with_utility_llm_service(self.utility_llm_service.clone())
         .with_workflow_store(
             self.durable_store

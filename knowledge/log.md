@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-08
+
+* **Platform resource grounding**: Distinguished operation discovery from
+  authoritative entity reads, added user-scoped connection preflight, and
+  required Platform Chat to report installed, available, attached, and connected
+  integration state independently before reusable-resource confirmation.
+
 ## 2026-08-07
 
 * **Slate fidelity**: Retired the handwritten experimental page stamp; experimental

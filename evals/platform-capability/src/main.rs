@@ -85,7 +85,7 @@ mod tests {
     #[test]
     fn embedded_dataset_parses() {
         let ds = Dataset::from_jsonl_str(DATASET).expect("dataset.jsonl parses");
-        assert_eq!(ds.samples.len(), 8, "expected 8 focused samples");
+        assert_eq!(ds.samples.len(), 9, "expected 9 focused samples");
         for s in &ds.samples {
             assert!(!s.input.is_empty(), "{} has no input", s.id);
             // Every sample declares at least one expectation the scorers read.

@@ -2177,6 +2177,7 @@ impl ServerAppBuilder {
                     platform_definition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
+                .with_connector_registry(platform_definition.connectors().clone())
                 .with_budget_service(budget_service.clone())
                 .with_encryption(encryption.clone())
                 .with_workflow_store(durable_store.clone())

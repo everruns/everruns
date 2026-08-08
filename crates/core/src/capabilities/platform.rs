@@ -9,11 +9,11 @@ use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
 
-pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns API catalog to find available operations. Multi-match searches return a compact name list; call discover once more with the exact command name to get its schema and copyable bash_usage. Do not use all: true for a task-specific lookup. Read-only operations are available as bash builtins in query; the full catalog is available in execute.";
+pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns operation catalog to find commands, not resource instances. Resource-oriented phrases rank relevant list/get operations, but zero matches never prove that a plugin, capability, agent, or other resource is absent. Inspect current resource state by running authoritative read operations with query. Multi-match searches return a compact name list; call discover once more with the exact command name to get its schema and copyable bash_usage. Do not use all: true for a task-specific lookup.";
 pub const QUERY_DESCRIPTION: &str = "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.";
 pub const EXECUTE_DESCRIPTION: &str = "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.";
 
-const SYSTEM_PROMPT: &str = r#"Use `discover` when an Everruns operation or schema is unknown. Search once per concept. Multi-match search results are intentionally compact; pick the operation name and discover that exact name once to get `bash_usage` and `output_fields`. Do not use `all: true` for a task-specific lookup and do not rediscover a single-match result. Invoke commands with exactly the flags in `bash_usage`, and use `output_fields` to select jq paths instead of guessing resource fields. Platform builtins do not implement `--help`; do not probe them with `--help`, shell inventory commands, or saved-output searches. Filesystem redirection is disabled: never write intermediate output to `/tmp` or another file; keep JSON in shell variables and pipe it directly to `jq`. Pass array and object flags as JSON text. For dependent mutations, capture JSON output and use `jq` to feed returned IDs or capability references to later commands in the same `execute` script. `create_mcp_server` returns `capability_ref`, which is accepted in `create_agent --capabilities`; there is no separate MCP attachment operation. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names or flags. Platform commands are already scoped to the current organization."#;
+const SYSTEM_PROMPT: &str = r#"Use `discover` only to find an Everruns operation or unknown schema. It searches operation metadata, not resource instances: a zero-match result never proves that a plugin, capability, agent, harness, MCP server, connection, model, knowledge index, schedule, or other entity is absent. For a resource question, discover the relevant authoritative list/get operation once if needed, then run it with `query`; do not repeat discovery or request a giant inventory. Before mutations, use one bounded query script to resolve names, status, references, attachments, and user-scoped connection state. Treat installed, active/available, attached, and connected as separate facts and report only fields returned by authoritative reads. Multi-match search results are intentionally compact; pick the operation name and discover that exact name once to get `bash_usage` and `output_fields`. Do not use `all: true` for a task-specific lookup and do not rediscover a single-match result. Invoke commands with exactly the flags in `bash_usage`, and use `output_fields` to select jq paths instead of guessing resource fields. Platform builtins do not implement `--help`; do not probe them with `--help`, shell inventory commands, or saved-output searches. Filesystem redirection is disabled: never write intermediate output to `/tmp` or another file; keep JSON in shell variables and pipe it directly to `jq`. Pass array and object flags as JSON text. For dependent mutations, capture JSON output and use `jq` to feed returned IDs or capability references to later commands in the same `execute` script. `create_mcp_server` returns `capability_ref`, which is accepted in `create_agent --capabilities`; there is no separate MCP attachment operation. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names or flags. Platform commands are already scoped to the current organization."#;
 
 pub struct PlatformCapability;
 
@@ -256,7 +256,7 @@ pub fn discover_input_schema() -> Value {
         "properties": {
             "query": {
                 "type": "string",
-                "description": "Search query to find API operations."
+                "description": "Search operation metadata. Resource names may help rank list/get operations, but matches and misses do not report resource existence."
             },
             "all": {
                 "type": "boolean",
@@ -382,6 +382,14 @@ mod tests {
                 Some(completed)
             );
         }
+    }
+
+    #[test]
+    fn discovery_contract_distinguishes_operations_from_resources() {
+        assert!(DISCOVER_DESCRIPTION.contains("not resource instances"));
+        assert!(DISCOVER_DESCRIPTION.contains("zero matches never prove"));
+        assert!(SYSTEM_PROMPT.contains("one bounded query script"));
+        assert!(SYSTEM_PROMPT.contains("installed, active/available, attached, and connected"));
     }
 
     #[tokio::test]

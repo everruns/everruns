@@ -1338,6 +1338,7 @@ async fn test_mcp_discover_capabilities() {
         tool_text(&resp)
     );
     let payload = tool_json(&resp);
+    assert_eq!(payload["result_scope"], "operation_catalog");
     let text = payload.to_string();
     assert!(
         text.contains("list_capabilities"),
@@ -1354,6 +1355,32 @@ async fn test_mcp_discover_capabilities() {
         .find(|op| op["name"] == "list_capabilities")
         .expect("list_capabilities operation");
     assert_eq!(list_capabilities["output_shape"], "paginated");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_resource_phrase_ranks_read_paths() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "resend email capability plugin", "include_schemas": false }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "discover failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    let names = payload["operations"]
+        .as_array()
+        .expect("operations")
+        .iter()
+        .filter_map(|operation| operation["name"].as_str())
+        .collect::<Vec<_>>();
+    for expected in ["list_plugins", "list_capabilities"] {
+        assert!(names.contains(&expected), "missing {expected}: {names:?}");
+    }
 }
 
 // ============================================================================
@@ -1428,6 +1455,32 @@ async fn test_mcp_query_reporting_catalog_and_model_usage() {
     .await;
     assert!(tool_is_error(&invalid));
     assert!(tool_text(&invalid).contains("bad_request:"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_exposes_connection_provider_reads() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "query",
+        json!({ "commands": "list_connection_providers" }),
+    )
+    .await;
+    assert!(!tool_is_error(&resp), "query failed: {}", tool_text(&resp));
+    assert!(tool_json(&resp).is_array(), "provider read must be bounded");
+
+    // The shared catalog contains the user-scoped read, but organization API
+    // keys intentionally cannot execute it because they have no user identity.
+    let discover = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "list_user_connections" }),
+    )
+    .await;
+    assert_eq!(
+        tool_json(&discover)["operations"][0]["name"],
+        "list_user_connections"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2184,8 +2237,23 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
         tool_text(&discover_agents)
     );
     let discover_agent_text = tool_text(&discover_agents);
+    assert!(discover_agent_text.contains("list_agents"));
     assert!(discover_agent_text.contains("get_agent"));
-    assert!(discover_agent_text.contains("update_agent"));
+
+    // Broad entity discovery is intentionally bounded and read-first. Resolve
+    // the mutation by exact name before exercising its tenant boundary below.
+    let discover_update_agent = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "update_agent", "include_schemas": true }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&discover_update_agent),
+        "discover update_agent failed: {}",
+        tool_text(&discover_update_agent)
+    );
+    assert!(tool_text(&discover_update_agent).contains("update_agent"));
 
     let discover_sessions = mcp_tool_call(
         &server,
@@ -2199,8 +2267,21 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
         tool_text(&discover_sessions)
     );
     let discover_session_text = tool_text(&discover_sessions);
+    assert!(discover_session_text.contains("list_sessions"));
     assert!(discover_session_text.contains("get_session"));
-    assert!(discover_session_text.contains("create_message"));
+
+    let discover_create_message = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "create_message", "include_schemas": true }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&discover_create_message),
+        "discover create_message failed: {}",
+        tool_text(&discover_create_message)
+    );
+    assert!(tool_text(&discover_create_message).contains("create_message"));
 
     let wrong_org_query = mcp_tool_call(
         &server,

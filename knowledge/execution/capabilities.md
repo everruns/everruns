@@ -1122,6 +1122,19 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
   remain authoritative. Builtins do not implement `--help`; callers use exact
   discovery instead. Registered domain commands remain the source of truth and
   execute through `Command::run`.
+- **Resource-grounding boundary**: `discover` searches operation metadata, not
+  entity instances. Resource-oriented phrases rank the bounded read operations
+  for matching domain families, and every result identifies its scope as the
+  operation catalog. A zero-match result is never evidence that an entity is
+  absent. Entity existence and state come only from authorized list/get commands
+  run through `query`. Integration preflight keeps installation, lifecycle
+  availability, Agent/Harness attachment, provider availability, and the
+  current user's connection state as separate facts.
+- **Connection reads**: The scriptable catalog exposes sanitized current-user
+  connection state and org-scoped provider discovery. Connection results never
+  include tokens, credentials, provider metadata, or cross-user records; OAuth
+  providers contributed by installed plugins remain discoverable through their
+  org-scoped anchors even though those anchors are not runtime capabilities.
 - **Flag validation**: Before dispatch, scripting rejects every parameter not
   declared by the command's composed input schema and reports the supported
   flags. Unknown or guessed mutation flags cannot be silently ignored, which is
@@ -1156,8 +1169,9 @@ Mira study grades Platform command arguments, mutation safety, tool-call budgets
 and persisted state. The provisioning regression resolves `gpt-5.6-terra`,
 binds an encrypted dummy MCP credential to the created Agent, and verifies that
 hourly autonomy is owned by an Agent Trigger rather than Platform Chat's
-Session. Manual UI coverage remains in
-`test_cases/agents/platform_chat/TC004_create_scheduled_agent_via_platform.md`.
+Session. Resource-grounding coverage verifies a bounded plugin/capability/Agent/
+connection preflight. Manual UI coverage remains in the Platform Chat cases
+under `test_cases/agents/platform_chat/`.
 
 #### PlatformManagement (compatibility)
 
