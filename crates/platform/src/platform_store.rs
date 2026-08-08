@@ -14,8 +14,6 @@ use everruns_core::harness::Harness;
 use everruns_core::session::{Session, SessionParticipant, SessionSeedMode};
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 // The narrow session-delegation DTOs live in `everruns-core` (they are part of
@@ -364,6 +362,16 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate
     }
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
         self.0.get_harness(id).await
+    }
+    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
+        self.0.get_harness_chain(id).await
+    }
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        self.0.add_agent_session_participant(session_id, agent_id).await
     }
     async fn create_session_with_options(
         &self,

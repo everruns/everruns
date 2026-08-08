@@ -10,7 +10,7 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
-use super::{
+use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
 };
 use everruns_core::app::{App, AppChannel, ChannelType};
@@ -2267,9 +2267,8 @@ mod tests {
 
     fn mock_context() -> ToolContext {
         let store: Arc<dyn PlatformStore> = Arc::new(MockPlatformStore::new());
-        let mut ctx = ToolContext::new(SessionId::new());
-        ctx.platform_store = Some(store);
-        ctx
+        ToolContext::new(SessionId::new())
+            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store)))
     }
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.

@@ -1,6 +1,6 @@
 //! Catalog-backed platform management capability.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{ToolContext, ToolContextService};

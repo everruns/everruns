@@ -35,6 +35,10 @@ default = []
 # OpenAPI schema generation (utoipa ToSchema derives). Mirrors the server build,
 # which activates `everruns-core/openapi`.
 openapi = ["dep:utoipa", "everruns-core/openapi"]
+# Embed the workspace `docs/` tree into the platform-management docs tools,
+# mirroring core's former build. Off by default; the build script gates the
+# actual embedding on the docs directory existing (EVE-839).
+embedded-platform-docs = ["dep:include_dir", "everruns-core/embedded-platform-docs"]
 # SQLx support for the typed IDs embedded in these entities. Passthrough to core,
 # kept for parity with server builds that enable `everruns-core/sqlx`.
 sqlx = ["everruns-core/sqlx"]
@@ -60,3 +64,7 @@ tracing.workspace = true
 
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }
+
+# Embeds the workspace docs tree for the platform-management docs tools when the
+# `embedded-platform-docs` feature is on (EVE-839; moved with the capability).
+include_dir = { version = "0.7", optional = true }
