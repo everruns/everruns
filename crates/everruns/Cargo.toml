@@ -1,0 +1,44 @@
+# The application-facing `everruns` library: a thin, publishable facade over the
+# existing in-process runtime.
+#
+# Decision (EVE-830): the first public `everruns` crate is a compatibility facade
+# over `everruns-core` and `everruns-runtime`. It moves no engine code and only
+# re-exports the minimum needed to construct and run the in-process runtime.
+# Default features stay offline — no provider, MCP, filesystem, SQLx, server, or
+# worker integrations are activated by default. The escape-hatch `everruns::core`
+# and `everruns::runtime` modules expose the underlying crates for APIs not yet
+# promoted onto the facade.
+
+[package]
+name = "everruns"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns"
+description = "Build and run durable AI agents in Rust — the application-facing entrypoint to the Everruns agentic framework"
+readme = "README.md"
+keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+# Default features stay offline: the facade activates no provider, MCP,
+# filesystem, SQLx, server, or worker integrations. Embedders opt into the
+# heavier surfaces through the escape-hatch modules or a later, promoted API.
+default = []
+# Compile the experimental sandboxed Lua execution engine into the runtime.
+# Mirrors `everruns-runtime/lua`; off by default so the standard facade build
+# pulls in no interpreter.
+lua = ["everruns-runtime/lua"]
+# Enable local-process (stdio) MCP servers, mirroring `everruns-runtime/mcp-stdio`.
+mcp-stdio = ["everruns-runtime/mcp-stdio"]
+
+[dependencies]
+everruns-core.workspace = true
+everruns-runtime.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

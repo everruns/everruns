@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "crates/server",
     "crates/worker",
+    "crates/everruns",
     "crates/core",
     "crates/provider",
     "crates/bedrock",
@@ -161,6 +162,7 @@ everruns-mcp = { path = "crates/mcp", version = "0.17.23" }
 everruns-ard = { path = "crates/ard", version = "0.17.23" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
 everruns-runtime = { path = "crates/runtime", version = "0.17.23" }
+everruns = { path = "crates/everruns", version = "0.17.23" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
