@@ -8,13 +8,15 @@ use crate::backends::{
 };
 use crate::builders::SingleSessionBuilder;
 use crate::host::{
-    RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, execute_act_activity,
-    execute_input_activity, execute_reason_activity_with_prompt_messages,
+    RuntimeHostAdapter, RuntimeHostTurnContext, execute_act_activity, execute_input_activity,
+    execute_reason_activity_with_prompt_messages,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
+use crate::turn_strategy::{RuntimeTurnPlan, RuntimeTurnState};
 use async_trait::async_trait;
+use chrono::Utc;
 use everruns_core::agent::Agent;
-use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput, ReasonInput};
+use everruns_core::atoms::{AtomContext, InputAtomInput, ReasonInput};
 use everruns_core::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, collect_capability_mcp_servers,
     resolve_capability_configs,
@@ -39,12 +41,13 @@ use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
-use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, OrgId, SessionId};
+use everruns_core::turn::TurnStopReason;
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext, plugin_capability_id, resolve_runtime_capabilities,
 };
+use everruns_engine::{ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::Arc;
@@ -139,65 +142,41 @@ pub struct CapabilityDelta {
     pub surfaces_dirty: bool,
 }
 
-impl TurnResult {
-    fn from_outcome(outcome: TurnOutcome, turn_id: everruns_core::typed_id::TurnId) -> Self {
-        let stop_reason = outcome.stop_reason();
-        match outcome {
-            TurnOutcome::Success {
-                response,
-                iterations,
-                tool_calls_count,
-                ..
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: true,
-                error: None,
-                stop_reason,
-                turn_id,
-            },
-            TurnOutcome::Failed {
-                error, iterations, ..
-            } => Self {
-                response: String::new(),
-                iterations,
-                tool_calls_count: 0,
-                success: false,
-                error: Some(error),
-                stop_reason,
-                turn_id,
-            },
-            TurnOutcome::MaxIterationsReached {
-                response,
-                iterations,
-                tool_calls_count,
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: true,
-                error: None,
-                stop_reason,
-                turn_id,
-            },
-            // A sealed turn was deliberately stopped (EVE-534) — distinct from a
-            // success. Report it as non-success carrying the seal reason.
-            TurnOutcome::Sealed {
-                reason,
-                response,
-                iterations,
-                tool_calls_count,
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: false,
-                error: Some(format!("turn sealed: {reason}")),
-                stop_reason,
-                turn_id,
-            },
-        }
+/// Summarize a terminal engine plan into the public [`TurnResult`].
+///
+/// The engine reports the stop reason and the carried error; the host supplies
+/// the running summaries it accumulated while executing the planned steps. A
+/// carried error is the failure signal (it is exactly what the pre-engine state
+/// machine kept in `pending_error`), and a failed turn reports no response and
+/// no tool calls, matching the previous `TurnOutcome::Failed` mapping.
+fn finish_turn(
+    turn_id: everruns_core::typed_id::TurnId,
+    stop_reason: TurnStopReason,
+    error: Option<String>,
+    response: String,
+    iterations: usize,
+    tool_calls_count: usize,
+) -> TurnResult {
+    if error.is_some() {
+        return TurnResult {
+            response: String::new(),
+            iterations,
+            tool_calls_count: 0,
+            success: false,
+            error,
+            stop_reason,
+            turn_id,
+        };
+    }
+
+    TurnResult {
+        response,
+        iterations,
+        tool_calls_count,
+        success: true,
+        error: None,
+        stop_reason,
+        turn_id,
     }
 }
 
@@ -852,8 +831,9 @@ impl InProcessRuntime {
     /// Execute one turn for an existing session.
     ///
     /// The input message is stored in the runtime history, an `input.message`
-    /// event is emitted, and the turn then executes the shared core
-    /// `input -> reason -> act` state machine.
+    /// event is emitted, and the turn then runs `input -> reason -> act` as
+    /// planned step-by-step by [`everruns_engine`] — the same planner the
+    /// durable worker drives its turns with.
     pub async fn run_turn(
         &self,
         session_id: SessionId,
@@ -881,169 +861,164 @@ impl InProcessRuntime {
             ))
             .await?;
 
-        let assembled = self
-            .inspect_context_with_ids(session_id, session.harness_id, session.agent_id)
-            .await?;
-        let synthetic_agent_id = session
-            .agent_id
-            .unwrap_or_else(|| AgentId::from_uuid(session.id.uuid()));
         let org_id = in_process_internal_org_id(&session.organization_id);
-        let mut state_machine = TurnStateMachine::new(
-            TurnContext::new(session_id, input_message.id, synthetic_agent_id, org_id),
-            assembled.runtime_agent.max_iterations,
-        );
+        let turn_id = TurnId::new();
 
-        let mut previous_response_id: Option<String> = None;
-        let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
+        // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
+        // decision comes from `everruns-engine`; this loop only executes the
+        // host operation each plan names and performs the lifecycle effects the
+        // engine returns as data. There is no second copy of the planning brain
+        // in the runtime.
+        let mut state = RuntimeTurnState {
+            org_id,
+            session_id,
+            harness_id: session.harness_id,
+            agent_id: session.agent_id,
+            input_message_id: input_message.id,
+            turn_id: None,
+            previous_response_id: None,
+            iteration: 1,
+            request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
+        };
+
+        let base_context = |exec: bool| {
+            let context = AtomContext::new(session_id, turn_id, input_message.id)
+                .with_workspace_id(session.workspace_id);
+            if exec { context.next_exec() } else { context }
+        };
+
+        // `process_input` is the turn's fixed entry step: the durable host
+        // enqueues it before any planning, and it is what mints the turn id the
+        // planner then carries.
+        execute_input_activity(
+            self,
+            org_id,
+            InputAtomInput {
+                context: base_context(false),
+            },
+        )
+        .await?;
+        let mut plan = plan_after_process_input(&state, Some(turn_id), Utc::now());
+
+        // Host-side bookkeeping for the returned `TurnResult`. These are
+        // summaries of what the host executed, not inputs to any decision.
+        let mut iterations: usize = 0;
+        let mut tool_calls_count: usize = 0;
+        let mut last_response = String::new();
 
         loop {
-            match state_machine.next_action() {
-                TurnAction::ExecuteInput => {
-                    let ctx = state_machine.context();
-                    let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
-                            .with_workspace_id(session.workspace_id);
-                    execute_input_activity(
-                        self,
-                        org_id,
-                        InputAtomInput {
-                            context: base_context,
-                        },
-                    )
-                    .await?;
-                    state_machine.on_input_completed();
-                }
-                TurnAction::ExecuteReason => {
-                    let ctx = state_machine.context();
-                    let session_id = ctx.session_id;
+            match plan {
+                RuntimeTurnPlan::ScheduleReason(next_state) => {
+                    state = next_state;
                     // Iteration boundary: drain queued task wakes and inject
                     // them before the LLM call so this reason reacts to them
                     // (EVE-681, part A). Draining here also delivers wakes that
                     // arrived while the session was idle, on the next turn's
                     // first iteration (between-turn fallback).
                     let wake_message_ids = self.drain_and_inject_wakes(session_id).await?;
-                    let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
-                            .with_workspace_id(session.workspace_id);
                     let mut prompt_message_ids = wake_message_ids;
-                    if state_machine.current_iteration() == 0 {
-                        prompt_message_ids.insert(0, ctx.input_message_id);
+                    if state.iteration == 1 {
+                        prompt_message_ids.insert(0, input_message.id);
                     }
                     let reason_result = execute_reason_activity_with_prompt_messages(
                         self,
                         org_id,
                         ReasonInput {
-                            context: base_context.next_exec(),
+                            context: base_context(true),
                             harness_id: session.harness_id,
                             agent_id: session.agent_id,
                             org_id,
                             mcp_tool_definitions: vec![],
-                            previous_response_id: previous_response_id.take(),
-                            iteration: state_machine.current_iteration() as u32 + 1,
+                            previous_response_id: state.previous_response_id.clone(),
+                            iteration: state.iteration,
                         },
                         prompt_message_ids,
                     )
                     .await?;
-                    previous_response_id = reason_result.response_id.clone();
+
+                    iterations += 1;
+                    if !reason_result.text.is_empty() {
+                        last_response = reason_result.text.clone();
+                    }
+
                     // If a wake landed during this reason (e.g. a background
                     // task settling on another task), continue a would-idle turn
                     // so it is delivered on the very next iteration rather than
-                    // after the session idles.
-                    let has_pending_wakes = self
-                        .session_wake_queue
-                        .as_ref()
-                        .is_some_and(|q| q.has_pending(session_id));
-                    state_machine.on_reason_completed(
-                        reason_result.text.clone(),
-                        reason_result.tool_calls.len(),
-                        reason_result.success,
-                        reason_result.error.clone(),
-                        reason_result.finish_reason.clone(),
-                        has_pending_wakes,
+                    // after the session idles. The engine reads this as the
+                    // steering-message count the durable host reports.
+                    let pending_user_message_count = usize::from(
+                        self.session_wake_queue
+                            .as_ref()
+                            .is_some_and(|q| q.has_pending(session_id)),
                     );
-                    if reason_result.has_tool_calls {
-                        last_reason_result = Some(reason_result);
-                    }
-                }
-                TurnAction::ExecuteAct => {
-                    let reason_result = last_reason_result
-                        .take()
-                        .expect("ExecuteAct requires a prior ReasonResult");
-                    let ctx = state_machine.context();
-                    let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
-                            .with_workspace_id(session.workspace_id);
-                    execute_act_activity(
-                        self,
-                        ActInput {
-                            org_id: Some(org_id),
-                            context: base_context.next_exec(),
-                            harness_id: session.harness_id,
-                            agent_id: session.agent_id,
-                            tool_calls: reason_result.tool_calls,
-                            tool_definitions: reason_result.tool_definitions,
-                            locale: reason_result.locale,
-                            blueprint_id: None,
-                            network_access: reason_result.network_access,
-                            // Request-level parallel tool calling preference,
-                            // carried from agent config through reason (EVE-598).
-                            parallel_tool_calls: reason_result.parallel_tool_calls,
-                        },
-                    )
-                    .await?;
-                    state_machine.on_act_completed();
-                }
-                TurnAction::Complete(outcome) => {
-                    let ctx = state_machine.context();
-                    let lifecycle =
-                        RuntimeSessionLifecycle::new(self.clone(), org_id, ctx.session_id);
-                    let turn_succeeded = matches!(
-                        &outcome,
-                        TurnOutcome::Success { .. } | TurnOutcome::MaxIterationsReached { .. }
+
+                    let act_scheduling =
+                        crate::turn_strategy::resolve_act_scheduling(self, &state, &reason_result)
+                            .await?;
+                    let (next, effects) = plan_after_reason(
+                        &state,
+                        reason_result,
+                        pending_user_message_count,
+                        Utc::now(),
+                        act_scheduling,
                     );
-                    match &outcome {
-                        TurnOutcome::Success { iterations, .. }
-                        | TurnOutcome::MaxIterationsReached { iterations, .. } => {
-                            lifecycle
-                                .turn_completed(
-                                    ctx.turn_id,
-                                    ctx.input_message_id,
-                                    *iterations as u32,
-                                    None,
-                                    None,
-                                )
-                                .await;
-                        }
-                        TurnOutcome::Failed { error, .. } => {
-                            lifecycle
-                                .turn_failed(ctx.turn_id, ctx.input_message_id, error, None)
-                                .await;
-                        }
-                        TurnOutcome::Sealed {
-                            reason, iterations, ..
-                        } => {
-                            lifecycle
-                                .turn_sealed(
-                                    ctx.turn_id,
-                                    ctx.input_message_id,
-                                    reason.as_str(),
-                                    *iterations as u32,
-                                    None,
-                                )
-                                .await;
-                        }
-                    }
-                    // turn_end lifecycle hooks (advisory). Fired after the
-                    // terminal turn event for both success and failure.
-                    lifecycle
-                        .fire_turn_end_hooks(
-                            session.harness_id,
-                            session.agent_id,
-                            ctx.turn_id,
-                            turn_succeeded,
+                    crate::turn_strategy::perform_effects(self, org_id, session_id, effects).await;
+                    plan = next;
+                }
+                RuntimeTurnPlan::ScheduleAct(act_plan) => {
+                    tool_calls_count += act_plan.input.tool_calls.len();
+                    // Same resume contract the durable host applies when it
+                    // dequeues the act task: the plan's response id / iteration
+                    // / request id override the carried state.
+                    state = *act_plan.resume_state;
+                    state.previous_response_id = act_plan.previous_response_id;
+                    state.iteration = act_plan.iteration;
+                    state.request_id = act_plan.request_id;
+
+                    let act_result = execute_act_activity(self, act_plan.input).await?;
+                    let outcome = ActOutcome {
+                        blocked: act_result.blocked,
+                        waiting_for_tool_results: act_result.waiting_for_tool_results,
+                    };
+                    let setup_connection_hint_enabled =
+                        crate::turn_strategy::resolve_setup_connection_hint(
+                            self, org_id, session_id, outcome,
                         )
                         .await;
-                    return Ok(TurnResult::from_outcome(outcome, ctx.turn_id));
+                    let (next, effects) =
+                        plan_after_act(&state, outcome, setup_connection_hint_enabled);
+                    crate::turn_strategy::perform_effects(self, org_id, session_id, effects).await;
+                    plan = next;
+                }
+                RuntimeTurnPlan::Complete { stop_reason, error } => {
+                    return Ok(finish_turn(
+                        turn_id,
+                        stop_reason,
+                        error,
+                        last_response,
+                        iterations,
+                        tool_calls_count,
+                    ));
+                }
+                // The in-process runtime has no external tool-result delivery
+                // path, so a pause resolves the turn here. The session has
+                // already been marked `waiting_for_tool_results` by the effect.
+                RuntimeTurnPlan::WaitForToolResults { .. } => {
+                    return Ok(finish_turn(
+                        turn_id,
+                        TurnStopReason::EndTurn,
+                        None,
+                        last_response,
+                        iterations,
+                        tool_calls_count,
+                    ));
                 }
             }
         }

@@ -65,31 +65,14 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 Utc::now(),
                 HostFacts::default(),
             );
-            perform_effects(adapter, state, effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, effects).await;
             Ok(plan)
         }
         "reason" => {
             let reason_result: ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|error| AgentLoopError::Internal(error.into()))?;
 
-            // Fetch the session only when the reason outcome schedules an act —
-            // the exact condition the pre-extraction planner fetched under — to
-            // resolve the act's blueprint + workspace.
-            let act_scheduling = if reason_schedules_act(state, &reason_result) {
-                let session = adapter
-                    .session_store(state.org_id)
-                    .get_session(state.session_id)
-                    .await?;
-                Some(ActSchedulingFacts {
-                    blueprint_id: session.as_ref().and_then(|s| s.blueprint_id.clone()),
-                    // Attach the session's workspace so tool file I/O addresses
-                    // the (possibly shared) workspace, not the session's own
-                    // keyspace.
-                    workspace_id: session.as_ref().map(|s| s.workspace_id),
-                })
-            } else {
-                None
-            };
+            let act_scheduling = resolve_act_scheduling(adapter, state, &reason_result).await?;
 
             let (plan, effects) = plan_next_turn(
                 state,
@@ -101,7 +84,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state, effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, effects).await;
             Ok(plan)
         }
         "act" => {
@@ -116,16 +99,9 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     .unwrap_or(false),
             };
 
-            // Read the setup_connection hint only when the act actually paused
-            // for tool results — the same short-circuit the pre-extraction
-            // planner used. A blocked act returns before the hint is consulted,
-            // so gate on `!blocked` too to avoid any extra fetch.
             let setup_connection_hint_enabled =
-                if !outcome.blocked && outcome.waiting_for_tool_results {
-                    setup_connection_hint_enabled(adapter, state.org_id, state.session_id).await
-                } else {
-                    false
-                };
+                resolve_setup_connection_hint(adapter, state.org_id, state.session_id, outcome)
+                    .await;
 
             let (plan, effects) = plan_next_turn(
                 state,
@@ -137,7 +113,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state, effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, effects).await;
             Ok(plan)
         }
         other => Err(AgentLoopError::config(format!(
@@ -146,19 +122,63 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
     }
 }
 
+/// Resolve the act-scheduling session facts, fetching the session only when the
+/// reason outcome actually schedules an act — the exact condition the
+/// pre-extraction planner fetched under.
+///
+/// Shared by the JSON-shaped [`plan_next_host_turn`] wrapper and the in-process
+/// runtime loop (EVE-842) so both hosts do the same I/O under the same
+/// condition.
+pub(crate) async fn resolve_act_scheduling<A: RuntimeHostAdapter>(
+    adapter: &A,
+    state: &RuntimeTurnState,
+    reason_result: &ReasonResult,
+) -> Result<Option<ActSchedulingFacts>> {
+    if !reason_schedules_act(state, reason_result) {
+        return Ok(None);
+    }
+    let session = adapter
+        .session_store(state.org_id)
+        .get_session(state.session_id)
+        .await?;
+    Ok(Some(ActSchedulingFacts {
+        blueprint_id: session.as_ref().and_then(|s| s.blueprint_id.clone()),
+        // Attach the session's workspace so tool file I/O addresses the
+        // (possibly shared) workspace, not the session's own keyspace.
+        workspace_id: session.as_ref().map(|s| s.workspace_id),
+    }))
+}
+
+/// Resolve the `setup_connection` hint only when the act actually paused for
+/// tool results — the same short-circuit the pre-extraction planner used. A
+/// blocked act returns before the hint is consulted, so gate on `!blocked` too
+/// to avoid any extra fetch.
+pub(crate) async fn resolve_setup_connection_hint<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    session_id: SessionId,
+    outcome: ActOutcome,
+) -> bool {
+    if outcome.blocked || !outcome.waiting_for_tool_results {
+        return false;
+    }
+    setup_connection_hint_enabled(adapter, org_id, session_id).await
+}
+
 /// Perform the engine-returned lifecycle effects, in list order, via
 /// `RuntimeSessionLifecycle`. The engine never emits — it returns these — so
 /// this is the single place the runtime host translates a planning decision
 /// into event/status/hook I/O, preserving the exact stream and ordering.
-async fn perform_effects<A: RuntimeHostAdapter>(
+pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
     adapter: &A,
-    state: &RuntimeTurnState,
+    org_id: i64,
+    session_id: SessionId,
     effects: Vec<TurnLifecycleEffect>,
 ) {
     if effects.is_empty() {
         return;
     }
-    let lifecycle = RuntimeSessionLifecycle::new(adapter.clone(), state.org_id, state.session_id);
+    let lifecycle = RuntimeSessionLifecycle::new(adapter.clone(), org_id, session_id);
     for effect in effects {
         match effect {
             TurnLifecycleEffect::TurnCompleted {
