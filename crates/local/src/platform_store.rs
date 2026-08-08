@@ -16,7 +16,7 @@ use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::harness::Harness;
-use everruns_core::platform_store::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
+use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
 use everruns_core::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,

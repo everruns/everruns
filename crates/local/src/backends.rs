@@ -10,7 +10,7 @@
 use std::sync::Arc;
 
 use everruns_core::error::Result;
-use everruns_core::platform_store::PlatformStore;
+use everruns_platform::PlatformStore;
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, SessionId};
 use everruns_runtime::{PlatformStoreFactory, RuntimeBackends, ScheduleStoreFactory};

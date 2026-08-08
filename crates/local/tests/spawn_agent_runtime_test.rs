@@ -34,7 +34,7 @@ use everruns_core::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
 use everruns_core::llmsim_driver::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
-use everruns_core::platform_store::{PlatformMessage, PlatformStore};
+use everruns_platform::{PlatformMessage, PlatformStore};
 use everruns_core::session::Session;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,

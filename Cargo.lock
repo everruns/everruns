@@ -2925,6 +2925,7 @@ dependencies = [
  "cron",
  "dirs",
  "everruns-core",
+ "everruns-platform",
  "everruns-runtime",
  "futures",
  "libc",

@@ -9,7 +9,7 @@
 //!   over SQLite, with an additive JSON metadata bag (see its module docs).
 //! - [`LocalScheduleRunner`] — an explicitly managed in-process executor that
 //!   claims due schedules and delivers them through [`LocalSessionRunner`].
-//! - [`LocalPlatformStore`] — a [`everruns_core::platform_store::PlatformStore`]
+//! - [`LocalPlatformStore`] — a [`everruns_platform::PlatformStore`]
 //!   implementing the subagent-critical core honestly and returning explicit
 //!   unsupported errors for platform-management-only operations.
 //! - [`LocalProfile`] — named local env config (data dir, workspace, base URL,

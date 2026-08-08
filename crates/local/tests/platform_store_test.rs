@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::platform_store::{PlatformMessage, PlatformStore};
+use everruns_platform::{PlatformMessage, PlatformStore};
 use everruns_core::session::Session;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner};

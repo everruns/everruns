@@ -28,6 +28,7 @@ libc = "0.2"
 # default-features = false would be a no-op. This is not a thin provider crate.
 everruns-core.workspace = true
 everruns-runtime.workspace = true
+everruns-platform.workspace = true
 
 # Async
 tokio = { workspace = true, features = ["rt", "time", "sync"] }

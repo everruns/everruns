@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::platform_store::{PlatformCreateSessionRequest, PlatformMessage};
+use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_core::session::Session;
 use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
 use everruns_core::traits::SessionScheduleStore;
