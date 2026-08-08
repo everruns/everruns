@@ -15,7 +15,7 @@ export const chatSurfaceStyles = {
     "animate-chat-row-in flex-1 space-y-1.5 border-l border-l-primary/65 bg-card/90 px-3 py-2.5 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]",
   composerSection: "bg-background/55 px-3 pb-3 pt-2.5 backdrop-blur-[1px] sm:px-4",
   composerInputShell:
-    "relative overflow-hidden border border-border/70 bg-background/95 shadow-[0_1px_0_hsl(var(--background)/0.88)] transition-[background-color,border-color,box-shadow] duration-200 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/10",
+    "relative border border-border/70 bg-background/95 shadow-[0_1px_0_hsl(var(--background)/0.88)] transition-[background-color,border-color,box-shadow] duration-200 focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/10",
   composerControlChip:
     "flex h-8 items-center gap-1.5 border border-border/70 bg-card/85 px-2 text-[13px] shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]",
   composerIconButton: "h-8 w-8 border-border/70 bg-card/85 shadow-none hover:bg-muted/40",

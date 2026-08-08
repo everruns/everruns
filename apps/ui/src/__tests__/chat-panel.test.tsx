@@ -10,6 +10,8 @@ const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
 const mockModelEffortMenu = jest.fn((_props: Record<string, unknown>) => null);
+const mockParticipants: Array<Record<string, unknown>> = [];
+const mockAgents: Array<Record<string, unknown>> = [];
 
 const mockSessionContext = {
   agentId: "agent-1",
@@ -62,8 +64,8 @@ jest.mock("@/components/session/session-participants-rail", () => ({
 jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [], isLoading: false }),
   useProviders: () => ({ data: [] }),
-  useAgents: () => ({ data: [] }),
-  useSessionParticipants: () => ({ data: [] }),
+  useAgents: () => ({ data: mockAgents }),
+  useSessionParticipants: () => ({ data: mockParticipants }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,
@@ -216,6 +218,8 @@ beforeEach(() => {
   mockUseFeatureFlag.mockReturnValue(false);
   mockStartSessionVoice.mockReset();
   mockEndSessionVoice.mockReset();
+  mockParticipants.length = 0;
+  mockAgents.length = 0;
 });
 
 describe("ChatPanel compaction divider", () => {
@@ -352,6 +356,116 @@ describe("ChatPanel placeholder", () => {
     expect(
       screen.getByPlaceholderText("Type a message or / for commands... (Enter to send)"),
     ).toBeInTheDocument();
+  });
+
+  it("addresses a message through an in-composer participant mention", async () => {
+    mockParticipants.push(
+      {
+        id: "part_host",
+        session_id: "session-1",
+        principal_id: "principal-host",
+        agent_id: "agent-1",
+        display_name: "Host",
+        kind: "agent",
+        role: "host",
+        joined_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "part_guest_123456",
+        session_id: "session-1",
+        principal_id: "principal-guest",
+        agent_id: "agent-2",
+        display_name: "Researcher",
+        kind: "agent",
+        role: "member",
+        joined_at: "2026-01-01T00:00:00Z",
+      },
+    );
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValueOnce(undefined);
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    fireEvent.change(textarea, { target: { value: "@", selectionStart: 1 } });
+
+    expect(screen.getByRole("listbox", { name: "Address a participant" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Researcher/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Host/ })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+    expect(screen.getByTestId("participant-mention-token")).toHaveTextContent("Researcher");
+
+    fireEvent.change(textarea, { target: { value: "Summarize the findings", selectionStart: 22 } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() =>
+      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        content: "Summarize the findings",
+        controls: { locale: "en-US" },
+        addressedParticipantId: "part_guest_123456",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("participant-mention-token")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("disambiguates duplicate participant display names and supports mention removal", () => {
+    mockParticipants.push(
+      {
+        id: "part_guest_aaaaaa",
+        session_id: "session-1",
+        principal_id: "principal-a",
+        display_name: "Helper",
+        kind: "agent",
+        role: "member",
+        joined_at: "2026-01-01T00:00:00Z",
+      },
+      {
+        id: "part_guest_bbbbbb",
+        session_id: "session-1",
+        principal_id: "principal-b",
+        display_name: "Helper",
+        kind: "agent",
+        role: "member",
+        joined_at: "2026-01-01T00:00:00Z",
+      },
+    );
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    fireEvent.change(textarea, { target: { value: "@help", selectionStart: 5 } });
+    fireEvent.click(screen.getByRole("option", { name: /Helper \(bbbbbb\)/ }));
+
+    expect(screen.getByTestId("participant-mention-token")).toHaveTextContent("Helper (bbbbbb)");
+    fireEvent.keyDown(textarea, { key: "Backspace", code: "Backspace" });
+    expect(screen.queryByTestId("participant-mention-token")).not.toBeInTheDocument();
+  });
+
+  it("shows mention empty states without interfering with slash commands", () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: {
+        commands: [{ name: "clear", description: "Clear the session", source: "system" }],
+      },
+    });
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText(
+      "Type a message or / for commands... (Enter to send)",
+    );
+    fireEvent.change(textarea, { target: { value: "@", selectionStart: 1 } });
+    expect(screen.getByText("No participants available")).toBeInTheDocument();
+
+    fireEvent.keyDown(textarea, { key: "Escape", code: "Escape" });
+    expect(screen.queryByText("No participants available")).not.toBeInTheDocument();
+
+    fireEvent.change(textarea, { target: { value: "/", selectionStart: 1 } });
+    expect(
+      screen.queryByRole("listbox", { name: "Address a participant" }),
+    ).not.toBeInTheDocument();
   });
 
   it("does not render a top border between messages and composer", () => {
