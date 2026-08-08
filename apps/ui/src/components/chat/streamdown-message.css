@@ -20,6 +20,15 @@
 .streamdown p {
   margin: 0.5em 0;
 }
+.streamdown-work-log p {
+  margin: 0;
+}
+.streamdown-work-log p + p {
+  margin-top: 0.5em;
+}
+.streamdown-work-log > div {
+  white-space: pre-wrap;
+}
 .streamdown ul,
 .streamdown ol {
   margin: 0.5em 0;

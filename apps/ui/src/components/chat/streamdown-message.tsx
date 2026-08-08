@@ -100,6 +100,8 @@ export interface StreamdownMessageProps {
    * looked up in this map (keyed by 1-based source number).
    */
   citations?: Map<number, CitationSource>;
+  /** Do not parse raw HTML into DOM nodes. */
+  skipHtml?: boolean;
 }
 
 /**
@@ -119,6 +121,7 @@ export function StreamdownMessage({
   className,
   variant = "default",
   citations,
+  skipHtml = false,
 }: StreamdownMessageProps) {
   const mermaid = useMermaidPlugin();
 
@@ -145,6 +148,7 @@ export function StreamdownMessage({
         isAnimating={isAnimating}
         remarkPlugins={[remarkGfm, remarkGithubAlerts]}
         components={components}
+        skipHtml={skipHtml}
       >
         {children}
       </Streamdown>
@@ -160,10 +164,12 @@ export function InlineStreamdownMessage({
   children,
   className,
   isAnimating = false,
+  skipHtml = false,
 }: {
   children: string;
   className?: string;
   isAnimating?: boolean;
+  skipHtml?: boolean;
 }) {
   return (
     <StreamdownMessage
@@ -171,6 +177,7 @@ export function InlineStreamdownMessage({
       className={className}
       isAnimating={isAnimating}
       enableCodeHighlighting={false}
+      skipHtml={skipHtml}
     >
       {children}
     </StreamdownMessage>
