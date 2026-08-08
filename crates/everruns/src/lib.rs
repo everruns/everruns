@@ -55,9 +55,11 @@
 //! # }
 //! ```
 
-// --- Value-first agent description ---------------------------------------
+// --- Value-first agent description and execution -------------------------
 mod agent;
+mod session;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
+pub use session::{RunError, Session, Turn};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the runtime
@@ -69,9 +71,10 @@ pub use everruns_runtime::{
 };
 
 // --- Portable message, model, and platform types ------------------------
+pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentLoopError, CapabilityRegistry, DriverId, DriverRegistry, InputMessage, PlatformDefinition,
-    ResolvedModel,
+    AgentLoopError, CapabilityRegistry, ContentPart, DriverId, DriverRegistry, InputMessage,
+    MessageRole, PlatformDefinition, ResolvedModel,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------
@@ -86,3 +89,20 @@ pub use everruns_core as core;
 /// promoted onto the facade. Prefer the re-exports above; reach here only for
 /// types the facade does not yet surface directly.
 pub use everruns_runtime as runtime;
+
+/// The common path: everything needed to describe an agent and run turns.
+///
+/// ```
+/// use everruns::prelude::*;
+///
+/// let agent = Agent::builder()
+///     .instructions("You are concise.")
+///     .model(Model::simulated("Sure."))
+///     .build();
+/// assert!(agent.is_ok());
+/// ```
+pub mod prelude {
+    pub use crate::{Agent, AgentBuilder, BuildError, Model, RunError, Session, Turn};
+    pub use everruns_core::turn::TurnStopReason;
+    pub use everruns_core::{ContentPart, InputMessage, MessageRole};
+}
