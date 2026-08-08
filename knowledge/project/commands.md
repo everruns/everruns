@@ -64,7 +64,7 @@ Current built-in system command:
   - does not append a message to the main chat history
   - is shown in the UI as a dismissible overlay
 
-`/btw` is enabled by the Generic harness via the `btw` capability.
+`/btw` is enabled by the Generic and Platform Chat harnesses via the `btw` capability.
 
 ## Skill Invocability
 

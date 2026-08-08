@@ -3288,6 +3288,50 @@ async fn test_global_chat_returns_same_session() {
 }
 
 #[tokio::test]
+async fn test_global_chat_none_mode_reuse_accepts_messages_and_commands() {
+    let server = TestServer::in_memory().await;
+
+    let first: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+    let reused: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+    assert_eq!(reused.id, first.id);
+
+    server
+        .post(
+            &format!("/v1/sessions/{}/messages", reused.id),
+            json!({
+                "message": {
+                    "role": "user",
+                    "content": [{ "type": "text", "text": "hello" }]
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let commands = server
+        .get(&format!("/v1/sessions/{}/commands", reused.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    assert!(
+        commands["commands"]
+            .as_array()
+            .expect("commands array")
+            .iter()
+            .any(|command| command["name"] == "btw"),
+        "the recovered Platform Chat session should resolve its harness commands"
+    );
+}
+
+#[tokio::test]
 async fn test_global_chat_has_chat_harness() {
     let server = TestServer::new().await;
 
@@ -3342,15 +3386,16 @@ async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
         .assert_success()
         .json();
 
+    let attacker_user_id = Uuid::new_v4();
     let attacker_principal = server
         .db
         .create_principal(CreatePrincipalRow {
             id: PrincipalId::from_uuid(Uuid::new_v4()),
             org_id: DEFAULT_ORG_ID,
             kind: "user".to_string(),
-            subject_id: Some(Uuid::new_v4()),
+            subject_id: Some(attacker_user_id),
             parent_principal_id: None,
-            resolved_user_id: Some(Uuid::new_v4()),
+            resolved_user_id: Some(attacker_user_id),
             metadata: json!({}),
         })
         .await
@@ -3363,6 +3408,7 @@ async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
             initial.id,
             UpdateSession {
                 owner_principal_id: Some(attacker_principal.id),
+                resolved_owner_user_id: everruns_durable::UpdateField::Set(attacker_user_id),
                 ..Default::default()
             },
         )
@@ -3384,6 +3430,11 @@ async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
         recreated.owner_principal_id, attacker_principal.id,
         "new global chat should be owned by the authenticated user's principal"
     );
+
+    server
+        .get(&format!("/v1/sessions/{}/commands", initial.id))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
@@ -3486,11 +3537,12 @@ async fn test_chat_harness_includes_platform_capability() {
         cap_ids,
         vec![
             "platform",
+            "btw",
             "loop_detection",
             "error_disclosure",
             "compaction"
         ],
-        "Platform Chat should keep only platform operations and runtime safeguards locally"
+        "Platform Chat should keep platform operations, commands, and runtime safeguards locally"
     );
 
     let preview: Value = server

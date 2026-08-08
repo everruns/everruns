@@ -53,9 +53,10 @@ interface ParsedSystemCommand {
   argumentsText: string;
 }
 
-interface BtwOverlayState {
-  question: string;
-  answer: string;
+interface CommandOverlayState {
+  commandName: string;
+  argumentsText: string;
+  message: string;
   error: string | null;
   pending: boolean;
 }
@@ -240,7 +241,8 @@ export function ChatPanel() {
 
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
-  const [btwOverlay, setBtwOverlay] = useState<BtwOverlayState | null>(null);
+  const [commandOverlay, setCommandOverlay] = useState<CommandOverlayState | null>(null);
+  const activeSessionIdRef = useRef(sessionId);
   const voiceAvailable =
     voiceFeatureEnabled &&
     typeof window !== "undefined" &&
@@ -395,24 +397,34 @@ export function ChatPanel() {
     }
   }, [startVoice, stopVoice, voiceState]);
 
-  const closeBtwOverlay = useCallback(() => {
-    setBtwOverlay(null);
+  useEffect(() => {
+    if (activeSessionIdRef.current === sessionId) return;
+    activeSessionIdRef.current = sessionId;
+    setInputValue("");
+    setSubmitError(null);
+    setCommandOverlay(null);
+    setAddressedParticipantId(null);
+    clearImages();
+  }, [clearImages, sessionId]);
+
+  const closeCommandOverlay = useCallback(() => {
+    setCommandOverlay(null);
     textareaRef.current?.focus();
   }, []);
 
   useEffect(() => {
-    if (!btwOverlay) return;
+    if (!commandOverlay) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") {
         return;
       }
-      closeBtwOverlay();
+      closeCommandOverlay();
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [btwOverlay, closeBtwOverlay]);
+  }, [commandOverlay, closeCommandOverlay]);
 
   const runSystemCommand = useCallback(
     async (command: CommandDescriptor, argumentsText: string, controls?: Controls) => {
@@ -423,14 +435,14 @@ export function ChatPanel() {
         return;
       }
 
-      if (command.name === "btw") {
-        setBtwOverlay({
-          question: trimmedArguments,
-          answer: "",
-          error: null,
-          pending: true,
-        });
-      }
+      const requestSessionId = sessionId;
+      setCommandOverlay({
+        commandName: command.name,
+        argumentsText: trimmedArguments,
+        message: "",
+        error: null,
+        pending: true,
+      });
 
       setInputValue("");
       persistSelection();
@@ -442,27 +454,27 @@ export function ChatPanel() {
           controls,
         });
 
-        if (command.name === "btw") {
-          setBtwOverlay({
-            question: trimmedArguments,
-            answer: result.message,
-            error: result.success ? null : result.message,
-            pending: false,
-          });
-        }
+        if (activeSessionIdRef.current !== requestSessionId) return;
+        setCommandOverlay({
+          commandName: command.name,
+          argumentsText: trimmedArguments,
+          message: result.message,
+          error: result.success ? null : result.message,
+          pending: false,
+        });
       } catch (error) {
         console.error(`Failed to execute /${command.name}:`, error);
-        if (command.name === "btw") {
-          setBtwOverlay({
-            question: trimmedArguments,
-            answer: "",
-            error: "Failed to answer side question.",
-            pending: false,
-          });
-        }
+        if (activeSessionIdRef.current !== requestSessionId) return;
+        setCommandOverlay({
+          commandName: command.name,
+          argumentsText: trimmedArguments,
+          message: "",
+          error: "Command execution failed. Try again.",
+          pending: false,
+        });
       }
     },
-    [executeCommand, persistSelection, setInputValue],
+    [executeCommand, persistSelection, sessionId, setInputValue],
   );
 
   const agentNameById = useMemo(() => {
@@ -717,43 +729,44 @@ export function ChatPanel() {
         <SessionParticipantsRail sessionId={sessionId} />
       </div>
 
-      <Dialog open={!!btwOverlay} onOpenChange={(open) => !open && closeBtwOverlay()}>
+      <Dialog open={!!commandOverlay} onOpenChange={(open) => !open && closeCommandOverlay()}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>/btw</DialogTitle>
+            <DialogTitle>/{commandOverlay?.commandName}</DialogTitle>
             <DialogDescription>
-              Side question about the current session. This answer is ephemeral and does not alter
-              the main chat history.
+              This command result is ephemeral and does not alter the main chat history.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="rounded-sm border border-border bg-muted/30 p-3">
-              <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Question
+            {commandOverlay?.argumentsText && (
+              <div className="rounded-sm border border-border bg-muted/30 p-3">
+                <div className="mb-1 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                  Arguments
+                </div>
+                <div className="text-sm text-foreground">{commandOverlay.argumentsText}</div>
               </div>
-              <div className="text-sm text-foreground">{btwOverlay?.question}</div>
-            </div>
+            )}
 
             <div className="rounded-sm border border-border p-4">
               <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                Answer
+                Result
               </div>
-              {btwOverlay?.pending ? (
+              {commandOverlay?.pending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Thinking...
                 </div>
-              ) : btwOverlay?.error ? (
-                <div className="text-sm text-destructive">{btwOverlay.error}</div>
-              ) : btwOverlay?.answer ? (
-                <MessageContent text={btwOverlay.answer} />
+              ) : commandOverlay?.error ? (
+                <div className="text-sm text-destructive">{commandOverlay.error}</div>
+              ) : commandOverlay?.message ? (
+                <MessageContent text={commandOverlay.message} />
               ) : null}
             </div>
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={closeBtwOverlay}>
+            <Button type="button" variant="outline" onClick={closeCommandOverlay}>
               Dismiss
             </Button>
           </DialogFooter>

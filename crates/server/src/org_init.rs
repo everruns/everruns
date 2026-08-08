@@ -599,6 +599,7 @@ mod tests {
             chat_cap_ids,
             vec![
                 "platform",
+                "btw",
                 "loop_detection",
                 "error_disclosure",
                 "compaction"
