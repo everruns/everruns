@@ -371,7 +371,7 @@ fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecut
 // Helper: get platform store from context
 // =============================================================================
 
-use super::util::{get_platform_store, require_str_nonblank as require_str};
+use super::util::{get_subagent_delegate, require_str_nonblank as require_str};
 
 fn get_session_store(
     context: &ToolContext,
@@ -870,7 +870,7 @@ async fn spawn_agent_subagent_impl(
     let lifetime = SpawnLifetime::parse(&arguments)?;
     let seed = parse_seed(&arguments)?;
 
-    let store = get_platform_store(context)?;
+    let store = get_subagent_delegate(context)?;
     let session_store = get_session_store(context)?;
 
     let blueprint_param = arguments

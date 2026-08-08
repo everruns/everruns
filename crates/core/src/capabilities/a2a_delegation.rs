@@ -950,7 +950,7 @@ async fn write_result_artifact(context: &ToolContext, record: &mut AgentRunRecor
 }
 
 async fn wake_parent(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
-    let Some(platform_store) = &context.platform_store else {
+    let Some(platform_store) = &context.subagent_delegate else {
         return Ok(());
     };
     let summary = record

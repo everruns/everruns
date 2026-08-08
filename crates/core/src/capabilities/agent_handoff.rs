@@ -10,7 +10,7 @@ use super::delegation_result::{
     MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
     normalize_result_schema, required_result_is_missing, result_value_for_task,
 };
-use super::util::{get_platform_store, require_str_nonblank as require_str};
+use super::util::{get_subagent_delegate, require_str_nonblank as require_str};
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
 };
@@ -902,7 +902,7 @@ impl Tool for SpawnAgentHandoffTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
+        let store = match get_subagent_delegate(context) {
             Ok(store) => store,
             Err(error) => return error,
         };
@@ -2002,7 +2002,7 @@ mod tests {
         };
 
         let mut ctx = ToolContext::new(parent_id);
-        ctx.platform_store = Some(store);
+        ctx.subagent_delegate = Some(store);
         ctx.session_task_registry = Some(registry);
 
         AgentHandoffTaskExecutor
@@ -2037,7 +2037,7 @@ mod tests {
             .expect("create task");
 
         let mut ctx = ToolContext::new(parent_id);
-        ctx.platform_store = Some(store);
+        ctx.subagent_delegate = Some(store);
         ctx.session_task_registry = Some(registry.clone());
 
         AgentHandoffTaskExecutor

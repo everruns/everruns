@@ -405,11 +405,11 @@ where
     }
 
     /// Set platform store for org-level management tools.
-    pub fn with_platform_store(
+    pub fn with_subagent_delegate(
         mut self,
         store: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>,
     ) -> Self {
-        self.context_services.platform_store = Some(store);
+        self.context_services.subagent_delegate = Some(store);
         self
     }
 
@@ -2899,99 +2899,6 @@ mod tests {
             hints: crate::tool_types::ToolHints::default(),
             full_parameters: None,
         })
-    }
-
-    #[tokio::test]
-    async fn test_act_atom_platform_tool_works_with_platform_store() {
-        use crate::capabilities::{Capability, PlatformManagementCapability};
-
-        let mut executor = ToolRegistry::with_defaults();
-        for tool in PlatformManagementCapability.tools() {
-            executor.register_boxed(tool);
-        }
-        let event_emitter = NoopEventEmitter;
-
-        // Build mock platform store
-        let mock_store = crate::subagent_delegation::tests::MockSubagentDelegate::new();
-        let platform_store: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate> = Arc::new(mock_store);
-
-        let atom = ActAtom::new(executor, event_emitter).with_platform_store(platform_store);
-
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
-        let input = ActInput {
-            org_id: Some(1),
-            context,
-            harness_id: HarnessId::from_seed(1),
-            agent_id: None,
-            tool_calls: vec![ToolCall {
-                id: "call_1".to_string(),
-                name: "read_capabilities".to_string(),
-                arguments: json!({}),
-            }],
-            tool_definitions: vec![read_capabilities_tool_def()],
-            locale: None,
-            blueprint_id: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        };
-
-        let result = atom.execute(input).await.unwrap();
-
-        assert!(result.completed);
-        assert_eq!(result.results.len(), 1);
-        assert!(
-            result.results[0].success,
-            "read_capabilities should succeed when platform_store is wired: {:?}",
-            result.results[0].result.error
-        );
-    }
-
-    /// Regression test: `manage_harnesses` called through ActAtom WITHOUT
-    /// `platform_store` should produce an error message in the result body.
-    /// ToolErrors set error field so they are logged as failures in events.
-    #[tokio::test]
-    async fn test_act_atom_platform_tool_fails_without_platform_store() {
-        use crate::capabilities::{Capability, PlatformManagementCapability};
-
-        let mut executor = ToolRegistry::with_defaults();
-        for tool in PlatformManagementCapability.tools() {
-            executor.register_boxed(tool);
-        }
-        let event_emitter = NoopEventEmitter;
-
-        // No platform_store set → tool returns ToolError about platform management
-        // not being available (execute_with_context is always used now).
-        let atom = ActAtom::new(executor, event_emitter);
-
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
-        let input = ActInput {
-            org_id: Some(1),
-            context,
-            harness_id: HarnessId::from_seed(1),
-            agent_id: None,
-            tool_calls: vec![ToolCall {
-                id: "call_1".to_string(),
-                name: "manage_harnesses".to_string(),
-                arguments: json!({"operation": "list"}),
-            }],
-            tool_definitions: vec![manage_harnesses_tool_def()],
-            locale: None,
-            blueprint_id: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        };
-
-        let result = atom.execute(input).await.unwrap();
-
-        assert!(result.completed);
-        assert_eq!(result.results.len(), 1);
-        // ToolErrors set error field and are logged as failures
-        assert!(!result.results[0].success);
-        let err_msg = result.results[0].result.error.as_deref().unwrap();
-        assert!(
-            err_msg.contains("Platform management not available"),
-            "Expected platform management error, got: {err_msg}"
-        );
     }
 
     #[test]

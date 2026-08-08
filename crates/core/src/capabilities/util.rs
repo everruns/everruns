@@ -100,12 +100,12 @@ pub fn require_id<T: FromStr>(args: &Value, key: &str) -> Result<T, ToolExecutio
     parse_id(raw, key)
 }
 
-/// Extract the platform store from context or return a tool error.
-pub fn get_platform_store(
+/// Extract the narrow subagent-session delegate from context or return a tool error.
+pub fn get_subagent_delegate(
     context: &ToolContext,
 ) -> Result<&dyn SubagentSessionDelegate, ToolExecutionResult> {
     context
-        .platform_store
+        .subagent_delegate
         .as_ref()
         .map(|store| store.as_ref())
         .ok_or_else(|| {
