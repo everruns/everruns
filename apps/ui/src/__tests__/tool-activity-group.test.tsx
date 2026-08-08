@@ -96,6 +96,43 @@ describe("ToolActivityGroup", () => {
     expect(screen.queryByText(/"stdout":/)).not.toBeInTheDocument();
   });
 
+  it("keeps Markdown-looking tool output as literal machine text", () => {
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-shell-markdown",
+        name: "bash",
+        arguments: { command: "printf output" },
+      },
+    ];
+    const stdout = "Created [Agent](/agents/agent_123) in **UTC**";
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-shell-markdown",
+        {
+          tool_call_id: "tool-shell-markdown",
+          tool_name: "bash",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({ stdout, stderr: "", exit_code: 0, success: true }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const { container } = render(
+      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /\$ printf output/i }));
+
+    expect(screen.getByText(stdout)).toBeInTheDocument();
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("strong")).toBeNull();
+  });
+
   it("renders MCP App resources in generic tool activity rows", () => {
     const html = "<!doctype html><html><body>Agent card</body></html>";
     const toolCalls: ToolCallContent[] = [

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 
 export type MarkdownLinkKind = "everruns" | "github" | "twitter" | "web";
 
+const SAFE_MARKDOWN_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+
 const EVERRUNS_HOSTS = new Set([
   "everruns.com",
   "app.everruns.com",
@@ -27,6 +29,17 @@ function isEverrunsHost(hostname: string): boolean {
 
 function getCurrentOrigin(): string | undefined {
   return typeof window === "undefined" ? undefined : window.location.origin;
+}
+
+export function isSafeMarkdownHref(href?: string): boolean {
+  if (!href) return false;
+
+  try {
+    const url = new URL(href.trim(), getCurrentOrigin() ?? "https://everruns.invalid");
+    return SAFE_MARKDOWN_PROTOCOLS.has(url.protocol);
+  } catch {
+    return false;
+  }
 }
 
 export function getMarkdownLinkKind(href?: string): MarkdownLinkKind | null {
@@ -82,6 +95,8 @@ export const MarkdownLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>
   href,
   ...props
 }) => {
+  if (!isSafeMarkdownHref(href)) return <span className={className}>{children}</span>;
+
   const kind = getMarkdownLinkKind(href);
 
   return (

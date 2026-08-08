@@ -32,6 +32,7 @@ import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
+import { WorkLogNarration } from "@/components/chat/work-log-narration";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import {
   getReasoningMultiIterationTurnIds,
@@ -102,7 +103,7 @@ function ReasoningLogRow({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-2 py-1 text-[15px] leading-6 text-muted-foreground">
       <Sparkles className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-primary/70" />
-      <p className="whitespace-pre-wrap">{text}</p>
+      <WorkLogNarration>{text}</WorkLogNarration>
     </div>
   );
 }

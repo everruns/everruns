@@ -31,7 +31,7 @@ jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 
 import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { getMarkdownLinkKind } from "@/components/markdown/markdown-link";
+import { getMarkdownLinkKind, MarkdownLink } from "@/components/markdown/markdown-link";
 
 describe("StreamdownMessage", () => {
   beforeEach(() => {
@@ -88,6 +88,16 @@ describe("StreamdownMessage", () => {
     expect(link).toHaveAttribute("title", "Example");
     expect(link).toHaveAttribute("target", "_blank");
   });
+
+  it.each(['javascript:alert("x")', "java\nscript:alert(1)", "data:text/html,<script />"])(
+    "MarkdownLink renders unsafe URL %s as inert text",
+    (href) => {
+      const { container } = render(<MarkdownLink href={href}>Unsafe destination</MarkdownLink>);
+
+      expect(screen.getByText("Unsafe destination")).toBeInTheDocument();
+      expect(container.querySelector("a")).toBeNull();
+    },
+  );
 
   it("MarkdownLink renders Everruns logo for internal links", () => {
     render(<StreamdownMessage>test</StreamdownMessage>);

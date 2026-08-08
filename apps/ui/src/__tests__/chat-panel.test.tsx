@@ -212,6 +212,10 @@ jest.mock("@/components/chat/message-content", () => ({
   MessageContent: ({ text }: { text: string }) => <div>{text}</div>,
 }));
 
+jest.mock("@/components/chat/work-log-narration", () => ({
+  WorkLogNarration: ({ children }: { children: string }) => <div>{children}</div>,
+}));
+
 jest.mock("@/components/chat/tool-activity-group", () => ({
   ToolActivityGroup: () => null,
 }));
