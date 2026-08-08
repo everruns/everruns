@@ -1002,8 +1002,16 @@ fn dispatch_for<C: Command>(
     ctx: &Ctx,
 ) -> Pin<Box<dyn Future<Output = Result<String, CommandError>> + Send + '_>> {
     Box::pin(async move {
-        let cmd: C =
-            serde_json::from_value(params).map_err(|e| CommandError::bad_request(e.to_string()))?;
+        // Command transports encode no arguments as `{}`, while serde represents
+        // Rust unit structs as `null`. Retry only the empty-object shape so
+        // commands with declared fields keep their original validation errors.
+        let empty_object = params.as_object().is_some_and(serde_json::Map::is_empty);
+        let cmd: C = match serde_json::from_value(params) {
+            Ok(cmd) => cmd,
+            Err(object_error) if empty_object => serde_json::from_value(serde_json::Value::Null)
+                .map_err(|_| CommandError::bad_request(object_error.to_string()))?,
+            Err(error) => return Err(CommandError::bad_request(error.to_string())),
+        };
 
         // `run` handles the policy check using the active resolver in `ctx`.
         let result = cmd.run(ctx).await?;
@@ -1247,6 +1255,35 @@ where
 #[cfg(test)]
 mod error_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn dispatch_accepts_empty_object_for_unit_commands() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
+
+        let result = dispatch("get_report_catalog", serde_json::json!({}), &ctx)
+            .await
+            .expect("empty MCP params should dispatch to a unit command");
+        let value: serde_json::Value = serde_json::from_str(&result).expect("catalog JSON");
+
+        assert!(value.get("datasets").is_some());
+    }
+
+    #[tokio::test]
+    async fn dispatch_does_not_coerce_nonempty_objects_for_unit_commands() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = Ctx::minimal_for_test(Caller::internal(1), db, None);
+
+        let error = dispatch(
+            "get_report_catalog",
+            serde_json::json!({ "unexpected": true }),
+            &ctx,
+        )
+        .await
+        .expect_err("non-empty params must remain invalid for a unit command");
+
+        assert!(matches!(error.kind, CommandErrorKind::BadRequest(_)));
+    }
 
     #[test]
     fn classify_anyhow_maps_bad_request_error() {

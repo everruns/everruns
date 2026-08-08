@@ -640,8 +640,12 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// POST-style helpers intentionally available through MCP `query`.
 /// They do not persist state and each still declares a view policy.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
+    "export_report_query",
+    "export_saved_report",
     "grep_workspace_files",
     "preview_agent",
     "preview_harness",
+    "run_report_query",
+    "run_saved_report",
     "stat_workspace_file",
 ];

@@ -1376,6 +1376,61 @@ async fn test_mcp_query_list_harnesses() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_reporting_catalog_and_model_usage() {
+    let server = TestServer::in_memory().await;
+
+    let catalog = mcp_tool_call(
+        &server,
+        "query",
+        json!({ "commands": "get_report_catalog" }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&catalog),
+        "query get_report_catalog failed: {}",
+        tool_text(&catalog)
+    );
+    assert!(
+        tool_json(&catalog)["datasets"]
+            .as_array()
+            .expect("report datasets")
+            .iter()
+            .any(|dataset| dataset["name"] == "llm_generations")
+    );
+
+    let report = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": "run_report_query --dataset llm_generations --time_range '{\"from\":\"2026-01-01T00:00:00Z\",\"to\":\"2026-08-09T00:00:00Z\"}' --dimensions '[\"provider\",\"model\"]' --measures '[\"input_tokens\",\"output_tokens\"]'"
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&report),
+        "query run_report_query failed: {}",
+        tool_text(&report)
+    );
+    let result = tool_json(&report);
+    assert_eq!(result["columns"][0]["name"], "provider");
+    assert_eq!(result["columns"][1]["name"], "model");
+    assert_eq!(result["columns"][2]["name"], "input_tokens");
+    assert_eq!(result["columns"][3]["name"], "output_tokens");
+    assert!(result["rows"].is_array());
+
+    let invalid = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": "run_report_query --dataset llm_generations --time_range '{\"from\":\"2026-01-01T00:00:00Z\",\"to\":\"2026-08-09T00:00:00Z\"}' --dimensions '[\"not_a_dimension\"]' --measures '[\"input_tokens\"]'"
+        }),
+    )
+    .await;
+    assert!(tool_is_error(&invalid));
+    assert!(tool_text(&invalid).contains("bad_request:"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_query_missing_commands() {
     let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "query", json!({})).await;

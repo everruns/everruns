@@ -36,6 +36,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
+use crate::domains::reporting::ReportingService;
 use crate::domains::session_files::WorkspaceFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::SessionService;
@@ -303,6 +304,7 @@ pub struct AppState {
     pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
     pub budget_service: Arc<BudgetService>,
+    pub reporting_service: Arc<ReportingService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
@@ -362,6 +364,7 @@ impl AppState {
             session_sandbox_service: None,
             capability_service,
             budget_service: Arc::new(BudgetService::new(db.clone())),
+            reporting_service: Arc::new(ReportingService::new(db.clone())),
             db,
             runner,
             auth,
@@ -1830,6 +1833,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
     .with_session_service(state.session_service.clone())
     .with_message_service(state.message_service.clone())
     .with_event_service(state.event_service.clone())
+    .with_reporting_service(state.reporting_service.clone())
     .with_session_file_service(state.session_file_service.clone())
     .with_runner(state.runner.clone())
     .with_fallback_harness_name(state.fallback_default_harness_name.clone())

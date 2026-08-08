@@ -33,6 +33,10 @@ impl Command for RunReportQuery {
         Some(&REPORT_VIEW)
     }
 
+    fn read_only() -> bool {
+        true
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
             CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
@@ -265,6 +269,10 @@ impl Command for RunSavedReport {
         Some(&REPORT_VIEW)
     }
 
+    fn read_only() -> bool {
+        true
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
             CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
@@ -301,6 +309,10 @@ impl Command for ExportReportQuery {
 
     fn policy() -> Option<&'static Policy> {
         Some(&REPORT_VIEW)
+    }
+
+    fn read_only() -> bool {
+        true
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
@@ -345,6 +357,10 @@ impl Command for ExportSavedReport {
 
     fn policy() -> Option<&'static Policy> {
         Some(&REPORT_VIEW)
+    }
+
+    fn read_only() -> bool {
+        true
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
@@ -465,3 +481,16 @@ impl Command for BackfillReporting {
 }
 
 inventory::submit! { CommandDescriptor::of::<BackfillReporting>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn semantic_report_reads_are_available_to_mcp_query() {
+        assert!(RunReportQuery::read_only());
+        assert!(RunSavedReport::read_only());
+        assert!(ExportReportQuery::read_only());
+        assert!(ExportSavedReport::read_only());
+    }
+}
