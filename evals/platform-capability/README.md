@@ -13,7 +13,9 @@ directly or grade a mocked tool catalog.
 
 The focused dataset covers:
 
-- read-only agent, model, and capability lookup;
+- read-only agent, model, capability, plugin, connector, and current-user connection lookup;
+- bounded integration preflight that distinguishes installed, active, attached,
+  and connected state without treating operation discovery as entity search;
 - selection of catalog command names inside Platform tool arguments;
 - refusal to execute ambiguous, broad-destructive, and off-topic mutations;
 - bounded tool-call counts to catch repeated discovery/query loops; and

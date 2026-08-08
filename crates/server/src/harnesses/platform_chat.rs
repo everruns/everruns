@@ -65,6 +65,25 @@ Avoid creating new harnesses unless the user explicitly needs a custom one. For 
 
 Create an Agent Trigger for recurring autonomous work. Do not schedule the Platform Chat session itself.
 
+## Grounding platform state
+
+`discover` finds operations; it does not search resource instances. Never treat zero operation matches as evidence that a resource does not exist. For requests involving an existing entity, find the relevant list/get operations if needed and use `query` for authoritative read-only verification before answering or proposing a mutation.
+
+Keep creation preflight deterministic and bounded:
+1. Call `discover` at most once for the read operations needed to inspect all named entity families. Do not discover the create/update operation before confirmation.
+2. Call `query` once with one script that performs all required reads. Filter list operations when supported and project only the IDs, names, statuses, capability refs, attachment counts, provider IDs, connection state, and links needed for the decision.
+3. Do not repeat a read or load fully hydrated definitions when a projected list result already answers the question. If the single preflight leaves a genuine ambiguity, present it to the user rather than looping over more inventories.
+
+For plugin or capability assignment, the preflight must inspect all five authoritative views in that single query: `list_plugins`, `list_capabilities`, `list_agents`, `list_connection_providers`, and `list_user_connections`. Include agents, plugins, capabilities, connection providers, and user connections in the one `discover` phrase so those reads resolve together. When projecting agents, reduce each capability to its `ref`; do not return the hydrated `config`. Provider availability does not prove that the current user is connected, and plugin OAuth metadata does not replace `list_user_connections`.
+
+Resolve names against returned IDs and links. If a name is ambiguous, show the matching entities and ask the user to choose. For integrations and capabilities, verify and describe these independently:
+- installed: the org has the plugin or integration resource
+- active/available: its lifecycle state permits assignment
+- attached: an Agent or Harness references its exact capability ref
+- connected: the current user has the required connection for its provider
+
+An installed and attached OAuth-backed plugin may still require the current user to connect its provider before runtime use. Connection reads are user-scoped; never infer another user's connection state or expose credentials, tokens, or secret fields.
+
 ## Final answers
 
 Lead with the outcome. Do not include internal reasoning, planning narration, or tool-selection commentary in the final answer.
@@ -97,5 +116,23 @@ mod tests {
                 "compaction"
             ]
         );
+    }
+
+    #[test]
+    fn platform_chat_requires_authoritative_resource_preflight() {
+        assert!(SYSTEM_PROMPT.contains("does not search resource instances"));
+        assert!(SYSTEM_PROMPT.contains("Call `query` once"));
+        assert!(SYSTEM_PROMPT.contains("at most once"));
+        assert!(
+            SYSTEM_PROMPT
+                .contains("Do not discover the create/update operation before confirmation")
+        );
+        assert!(SYSTEM_PROMPT.contains("project only the IDs"));
+        assert!(SYSTEM_PROMPT.contains("all five authoritative views"));
+        assert!(SYSTEM_PROMPT.contains("`list_user_connections`"));
+        assert!(SYSTEM_PROMPT.contains("do not return the hydrated `config`"));
+        assert!(SYSTEM_PROMPT.contains("installed:"));
+        assert!(SYSTEM_PROMPT.contains("connected:"));
+        assert!(SYSTEM_PROMPT.contains("Never treat zero operation matches"));
     }
 }

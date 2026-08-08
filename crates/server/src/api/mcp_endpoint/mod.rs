@@ -303,6 +303,7 @@ pub struct AppState {
     pub session_file_service: Arc<WorkspaceFileService>,
     pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
+    pub connector_registry: everruns_core::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
     pub reporting_service: Arc<ReportingService>,
     pub runner: Arc<dyn AgentRunner>,
@@ -363,6 +364,7 @@ impl AppState {
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             session_sandbox_service: None,
             capability_service,
+            connector_registry: platform_definition.connectors().clone(),
             budget_service: Arc::new(BudgetService::new(db.clone())),
             reporting_service: Arc::new(ReportingService::new(db.clone())),
             db,
@@ -1829,6 +1831,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
         state.encryption.clone(),
         state.auth.permission_resolver.clone(),
     )
+    .with_connector_registry(state.connector_registry.clone())
     .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_session_service(state.session_service.clone())
     .with_message_service(state.message_service.clone())

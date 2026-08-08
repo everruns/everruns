@@ -49,13 +49,34 @@ fn discover(arguments: &Value) -> Result<String, String> {
                 "Provide a 'query' to search or set 'all: true' to list everything.".into(),
             );
         }
-        entries.retain(|entry| catalog_entry_matches(entry, query));
         let normalized_query = normalize_operation_name(query);
         if entries
             .iter()
             .any(|entry| normalize_operation_name(entry.name) == normalized_query)
         {
             entries.retain(|entry| normalize_operation_name(entry.name) == normalized_query);
+        } else {
+            let mut scored = entries
+                .into_iter()
+                .filter_map(|entry| {
+                    let score = catalog_entry_score(&entry, query);
+                    (score > 0).then_some((score, entry))
+                })
+                .collect::<Vec<_>>();
+            scored.sort_by_key(|(score, entry)| {
+                (
+                    std::cmp::Reverse(*score),
+                    std::cmp::Reverse(entry.read_only),
+                    entry.category,
+                    entry.name,
+                )
+            });
+            // Resource-oriented phrases may include a product/entity name that
+            // is not present in operation metadata. Return the best bounded
+            // read paths for the matching entity families instead of either a
+            // giant inventory or a misleading empty result.
+            scored.truncate(12);
+            entries = scored.into_iter().map(|(_, entry)| entry).collect();
         }
     }
 
@@ -120,6 +141,7 @@ fn discover(arguments: &Value) -> Result<String, String> {
             "count": entries.len(),
             "include_schemas": include_schemas,
             "categories": categories,
+            "result_scope": "operation_catalog",
             "shape_hints": output_shape_hints(),
             "script_guidance": script_guidance(),
         })
@@ -128,6 +150,7 @@ fn discover(arguments: &Value) -> Result<String, String> {
             "count": entries.len(),
             "include_schemas": include_schemas,
             "operations": entries.iter().map(operation_json).collect::<Vec<_>>(),
+            "result_scope": "operation_catalog",
             "shape_hints": output_shape_hints(),
             "script_guidance": script_guidance(),
         })
@@ -135,6 +158,11 @@ fn discover(arguments: &Value) -> Result<String, String> {
     if !show_all && requested_schemas && !include_schemas {
         value["refine_hint"] = json!(
             "Multiple operations matched. Schemas were omitted to keep the result compact; call discover once more with the exact operation name you need."
+        );
+    }
+    if !show_all && entries.is_empty() {
+        value["resource_absence_warning"] = json!(
+            "No operation names matched. This searches the operation catalog only and does not establish that any platform resource is absent. Find the relevant list/get operation, then inspect current state with query."
         );
     }
 
@@ -152,23 +180,51 @@ fn script_guidance() -> Value {
     ])
 }
 
-fn catalog_entry_matches(entry: &crate::domains::common::CommandCatalogEntry, query: &str) -> bool {
-    let haystack = format!(
-        "{} {} {} {}",
-        entry.name,
-        entry.name.replace('_', " "),
-        entry.category,
-        entry.description
-    )
-    .to_lowercase();
-    let normalized_query = query.replace('_', " ").to_lowercase();
-    query
-        .to_lowercase()
-        .split_whitespace()
-        .all(|term| haystack.contains(term))
-        || normalized_query
+fn catalog_entry_score(entry: &crate::domains::common::CommandCatalogEntry, query: &str) -> u16 {
+    let name = normalize_operation_name(entry.name);
+    let category = normalize_search_term(entry.category);
+    let description = entry.description.to_ascii_lowercase();
+    let terms = query
+        .split(|ch: char| !ch.is_ascii_alphanumeric())
+        .map(normalize_search_term)
+        .filter(|term| term.len() > 1)
+        .collect::<Vec<_>>();
+
+    let mut score = 0;
+    for term in terms {
+        if name
             .split_whitespace()
-            .all(|term| haystack.contains(term))
+            .any(|part| normalize_search_term(part) == term)
+        {
+            score += 8;
+        } else if name.contains(&term) {
+            score += 5;
+        }
+        if category == term {
+            score += 7;
+        } else if category.contains(&term) {
+            score += 3;
+        }
+        if description.contains(&term) {
+            score += 1;
+        }
+    }
+    if score > 0 && entry.read_only {
+        score += 4;
+    }
+    if score > 0 && (name.starts_with("list ") || name.starts_with("get ")) {
+        score += 4;
+    }
+    score
+}
+
+fn normalize_search_term(value: &str) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    normalized
+        .strip_suffix("ies")
+        .map(|stem| format!("{stem}y"))
+        .or_else(|| normalized.strip_suffix('s').map(str::to_string))
+        .unwrap_or(normalized)
 }
 
 fn normalize_operation_name(value: &str) -> String {
@@ -370,6 +426,52 @@ mod tests {
             broad_value["refine_hint"]
                 .as_str()
                 .is_some_and(|hint| hint.contains("exact operation name"))
+        );
+    }
+
+    #[test]
+    fn resource_language_resolves_authoritative_read_operations() {
+        for (query, expected) in [
+            (
+                "resend email capability plugin",
+                ["list_plugins", "list_capabilities"],
+            ),
+            ("customer support agent", ["list_agents", "get_agent"]),
+            ("generic harness", ["list_harnesses", "get_harness"]),
+            (
+                "oauth connections",
+                ["list_user_connections", "list_connection_providers"],
+            ),
+        ] {
+            let output = discover(&json!({ "query": query, "include_schemas": false }))
+                .expect("resource-oriented discovery");
+            let value: Value = serde_json::from_str(&output).expect("discover JSON");
+            let names = value["operations"]
+                .as_array()
+                .expect("operations")
+                .iter()
+                .filter_map(|operation| operation["name"].as_str())
+                .collect::<Vec<_>>();
+            for operation in expected {
+                assert!(
+                    names.contains(&operation),
+                    "{query:?} should suggest {operation}; got {names:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn zero_matches_are_explicitly_not_resource_absence_evidence() {
+        let output = discover(&json!({ "query": "zzqxvbnm" })).expect("zero-match discovery");
+        let value: Value = serde_json::from_str(&output).expect("discover JSON");
+
+        assert_eq!(value["count"], 0);
+        assert_eq!(value["result_scope"], "operation_catalog");
+        assert!(
+            value["resource_absence_warning"]
+                .as_str()
+                .is_some_and(|warning| warning.contains("does not establish"))
         );
     }
 }

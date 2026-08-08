@@ -274,6 +274,7 @@ pub struct DirectWorkerAdapters {
     provider_resolver: Arc<ProviderResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
+    connector_registry: everruns_core::connector::ConnectorRegistry,
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
     egress_service: Option<Arc<dyn EgressService>>,
@@ -312,6 +313,7 @@ impl DirectWorkerAdapters {
             provider_resolver,
             mcp_server_service,
             capability_registry,
+            connector_registry: everruns_core::connector::ConnectorRegistry::new(),
             driver_registry,
             utility_llm_service: None,
             egress_service: None,
@@ -363,6 +365,14 @@ impl DirectWorkerAdapters {
     /// Set the agent runner for platform management tools (send_message, etc.)
     pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
         self.runner = Some(runner);
+        self
+    }
+
+    pub fn with_connector_registry(
+        mut self,
+        registry: everruns_core::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = registry;
         self
     }
 
@@ -1676,6 +1686,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 event_service: self.event_service.clone(),
                 runner: self.runner.clone(),
                 capability_registry: self.capability_registry.clone(),
+                connector_registry: self.connector_registry.clone(),
                 encryption: self.encryption.clone(),
                 workflow_store: self.workflow_store.clone(),
                 permission_resolver: self.permission_resolver.clone(),
@@ -1801,6 +1812,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 event_service: self.event_service.clone(),
                 runner: self.runner.clone(),
                 capability_registry: self.capability_registry.clone(),
+                connector_registry: self.connector_registry.clone(),
                 encryption: self.encryption.clone(),
                 workflow_store: self.workflow_store.clone(),
                 permission_resolver: self.permission_resolver.clone(),
@@ -2543,6 +2555,7 @@ struct DirectPlatformStoreDeps {
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     capability_registry: CapabilityRegistry,
+    connector_registry: everruns_core::connector::ConnectorRegistry,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -2561,6 +2574,7 @@ pub struct DirectPlatformStore {
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
+    connector_registry: everruns_core::connector::ConnectorRegistry,
     resolved_caller: Arc<OnceCell<Caller>>,
 }
 
@@ -2604,6 +2618,7 @@ impl DirectPlatformStore {
             encryption: deps.encryption,
             workflow_store: deps.workflow_store,
             permission_resolver: deps.permission_resolver,
+            connector_registry: deps.connector_registry,
             resolved_caller: Arc::new(OnceCell::new()),
         }
     }
@@ -2661,6 +2676,7 @@ impl DirectPlatformStore {
             self.encryption.clone(),
             self.permission_resolver.clone(),
         )
+        .with_connector_registry(self.connector_registry.clone())
         .with_workflow_store(self.workflow_store.clone())
         .with_session_service(self.session_service.clone())
         // wait_for_idle probes terminal turn events through list_events; without
@@ -3944,6 +3960,7 @@ mod tests {
                 event_service: adapters.event_service.clone(),
                 runner: None,
                 capability_registry: adapters.capability_registry.clone(),
+                connector_registry: adapters.connector_registry.clone(),
                 encryption: None,
                 workflow_store: None,
                 permission_resolver: adapters.permission_resolver.clone(),

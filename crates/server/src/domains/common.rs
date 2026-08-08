@@ -322,6 +322,9 @@ pub struct Ctx {
     /// Platform driver declarations used by domain validation at provider/model
     /// trust boundaries.
     pub driver_registry: Arc<DriverRegistry>,
+    /// Connection providers available to the deployment. Optional because most
+    /// command contexts do not inspect connector discovery.
+    pub connector_registry: Option<everruns_core::connector::ConnectorRegistry>,
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -391,6 +394,7 @@ impl Ctx {
             permission_resolver,
             db,
             driver_registry: DEFAULT_DRIVER_REGISTRY.clone(),
+            connector_registry: None,
             feature_flags: FeatureFlags::current(),
             capability_service,
             encryption,
@@ -464,6 +468,14 @@ impl Ctx {
 
     pub fn with_driver_registry(mut self, driver_registry: Arc<DriverRegistry>) -> Self {
         self.driver_registry = driver_registry;
+        self
+    }
+
+    pub fn with_connector_registry(
+        mut self,
+        connector_registry: everruns_core::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = Some(connector_registry);
         self
     }
 
