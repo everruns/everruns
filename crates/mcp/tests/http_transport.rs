@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 
 /// Fake egress that records the last request and returns a canned body.
 struct FakeEgress {
+    status: u16,
     body: Vec<u8>,
     last_authorization: Arc<Mutex<Option<String>>>,
     last_body: Arc<Mutex<Vec<u8>>>,
@@ -30,11 +31,21 @@ impl FakeEgress {
     fn new(body: impl Into<Vec<u8>>) -> (Arc<Self>, Arc<Mutex<Option<String>>>) {
         let last_authorization = Arc::new(Mutex::new(None));
         let egress = Arc::new(Self {
+            status: 200,
             body: body.into(),
             last_authorization: last_authorization.clone(),
             last_body: Arc::new(Mutex::new(Vec::new())),
         });
         (egress, last_authorization)
+    }
+
+    fn with_status(status: u16, body: impl Into<Vec<u8>>) -> Arc<Self> {
+        Arc::new(Self {
+            status,
+            body: body.into(),
+            last_authorization: Arc::new(Mutex::new(None)),
+            last_body: Arc::new(Mutex::new(Vec::new())),
+        })
     }
 }
 
@@ -44,7 +55,7 @@ impl EgressService for FakeEgress {
         *self.last_authorization.lock().unwrap() = request.headers.get("Authorization").cloned();
         *self.last_body.lock().unwrap() = request.body;
         Ok(EgressResponse {
-            status: 200,
+            status: self.status,
             headers: Default::default(),
             body: self.body.clone(),
         })
@@ -98,6 +109,87 @@ async fn executor_injects_bound_credential_only_at_egress_boundary() {
     let outbound: serde_json::Value =
         serde_json::from_slice(&captured_body.lock().unwrap()).unwrap();
     assert_eq!(outbound["params"]["arguments"]["channel_key"], sentinel);
+}
+
+#[tokio::test]
+async fn executor_redacts_bound_credential_reflected_by_server() {
+    let sentinel = "reflected-secret-never-model-visible";
+    let (egress, _) = FakeEgress::new(
+        serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "content": [{ "type": "text", "text": format!("echo: {sentinel}") }],
+                "isError": false
+            }
+        }))
+        .unwrap(),
+    );
+    let executor = executor_with_bound_secret(egress, sentinel);
+
+    let result = executor.execute_mcp_tool(&bound_tool_call()).await.unwrap();
+    let serialized = serde_json::to_string(&result).unwrap();
+
+    assert!(!serialized.contains(sentinel));
+    assert!(serialized.contains("[REDACTED]"));
+}
+
+#[tokio::test]
+async fn executor_redacts_bound_credential_from_mcp_errors() {
+    let sentinel = "reflected-error-secret";
+    let bodies = [
+        (
+            200,
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "error": { "code": -32000, "message": format!("rejected {sentinel}") }
+            }))
+            .unwrap(),
+        ),
+        (500, format!("request contained {sentinel}").into_bytes()),
+    ];
+
+    for (status, body) in bodies {
+        let executor = executor_with_bound_secret(FakeEgress::with_status(status, body), sentinel);
+        let error = executor
+            .execute_mcp_tool(&bound_tool_call())
+            .await
+            .unwrap_err()
+            .to_string();
+
+        assert!(!error.contains(sentinel));
+        assert!(error.contains("[REDACTED]"));
+    }
+}
+
+fn executor_with_bound_secret(egress: Arc<FakeEgress>, secret: &str) -> McpExecutor {
+    let client = Arc::new(McpClient::new(
+        egress,
+        Arc::new(everruns_mcp::NoAuthProvider),
+    ));
+    let mut connection = McpConnection::http("visti", FAKE_URL);
+    connection.secret_bindings.insert(
+        "visti_send".to_string(),
+        vec![McpSecretBinding {
+            parameter_name: "channel_key".to_string(),
+            value: Some(secret.to_string()),
+            setup_url: "/agents/agent_test?tab=credentials".to_string(),
+            label: "Visti channel key".to_string(),
+        }],
+    );
+    McpExecutor::new(
+        client,
+        Arc::new(StaticConnectionResolver::new().with(connection)),
+    )
+}
+
+fn bound_tool_call() -> ToolCall {
+    ToolCall {
+        id: "call_bound".into(),
+        name: "mcp_visti__visti_send".into(),
+        arguments: json!({ "message": "controlled test" }),
+    }
 }
 
 #[tokio::test]

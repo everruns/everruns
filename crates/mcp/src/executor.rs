@@ -16,6 +16,55 @@ use everruns_core::{AgentLoopError, McpToolInvoker, ToolCall, ToolResult, parse_
 use std::collections::HashMap;
 use std::sync::Arc;
 
+const REDACTED_CREDENTIAL: &str = "[REDACTED]";
+
+fn redact_text(text: &mut String, secrets: &[String]) {
+    for secret in secrets {
+        if !secret.is_empty() {
+            *text = text.replace(secret, REDACTED_CREDENTIAL);
+        }
+    }
+}
+
+fn redact_json(value: &mut serde_json::Value, secrets: &[String]) {
+    match value {
+        serde_json::Value::String(text) => redact_text(text, secrets),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                redact_json(value, secrets);
+            }
+        }
+        serde_json::Value::Object(object) => {
+            for value in object.values_mut() {
+                redact_json(value, secrets);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
+    if let Some(value) = &mut result.result {
+        redact_json(value, secrets);
+    }
+    if let Some(images) = &mut result.images {
+        for image in images {
+            redact_text(&mut image.base64, secrets);
+            redact_text(&mut image.media_type, secrets);
+        }
+    }
+    for text in [
+        &mut result.error,
+        &mut result.connection_required,
+        &mut result.raw_output,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        redact_text(text, secrets);
+    }
+}
+
 /// Resolves a sanitized server prefix to a connection. Implementations differ
 /// per host (runtime: effective scoped servers; worker: gRPC lookup).
 #[async_trait]
@@ -106,6 +155,7 @@ impl McpExecutor {
         }
 
         let mut arguments = tool_call.arguments.clone();
+        let mut injected_secrets = Vec::new();
         if let Some(bindings) = connection.secret_bindings.get(&original_tool_name) {
             let object = arguments
                 .as_object_mut()
@@ -150,17 +200,32 @@ impl McpExecutor {
                     binding.parameter_name.clone(),
                     serde_json::Value::String(value.clone()),
                 );
+                injected_secrets.push(value.clone());
             }
         }
 
-        self.client
+        // THREAT[TM-TOOL-029]: The remote endpoint is untrusted and may reflect
+        // injected credentials in either successful content or transport errors.
+        let result = self
+            .client
             .call_as_tool_result(
                 &connection,
                 tool_call.id.clone(),
                 &original_tool_name,
                 arguments,
             )
-            .await
+            .await;
+        match result {
+            Ok(mut result) => {
+                redact_tool_result(&mut result, &injected_secrets);
+                Ok(result)
+            }
+            Err(error) => {
+                let mut message = error.to_string();
+                redact_text(&mut message, &injected_secrets);
+                Err(anyhow!(message))
+            }
+        }
     }
 }
 
