@@ -29,6 +29,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  PageJumpNav,
   PageColumns,
   PageMain,
   PageRail,
@@ -309,7 +310,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         }
       />
 
-      <PageControlStrip>
+      <PageControlStrip className="flex flex-col border-b lg:flex-row lg:items-end lg:justify-between">
         <SectionTabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -317,7 +318,19 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
             { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
             { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
           ]}
+          className="border-b-0"
         />
+        {activeTab === "edit" && (
+          <PageJumpNav
+            items={[
+              { href: "#identity", label: "Identity" },
+              { href: "#behavior", label: "Behavior" },
+              { href: "#files", label: "Files" },
+              { href: "#network", label: "Network" },
+            ]}
+            className="px-3.5"
+          />
+        )}
       </PageControlStrip>
 
       {activeTab === "edit" && (
@@ -325,9 +338,10 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           <PageColumns>
             {/* Main form */}
             <PageMain>
-              <Card>
+              <Card id="identity" className="scroll-mt-6">
                 <CardHeader>
-                  <CardTitle>Harness Details</CardTitle>
+                  <CardTitle>Identity</CardTitle>
+                  <CardDescription>How the harness is named and found</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
@@ -395,23 +409,6 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="parent-harness">Parent Harness</Label>
-                    <HarnessSelect
-                      value={formData.parent_harness_id}
-                      onValueChange={(value) => handleFormChange("parent_harness_id", value)}
-                      placeholder="No parent harness"
-                      includeNoneOption
-                      noneLabel="No parent harness"
-                      excludeIds={[harnessId]}
-                      disabled={isSaving || isReadOnly}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Inherit prompt, capabilities, initial files, and model fallback from a parent
-                      harness.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
                     <Label htmlFor="tags">Tags</Label>
                     <TagInput
                       id="tags"
@@ -425,18 +422,46 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       Press Enter or comma to add a tag. Backspace removes the last tag.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="model">Model (optional)</Label>
-                    <ModelPicker
-                      value={formData.default_model_id || ""}
-                      onChange={(value) => handleFormChange("default_model_id", value)}
-                      disabled={isSaving || isReadOnly}
-                      placeholder="Use default model"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Select a specific model or leave empty to use the default
-                    </p>
+              <Card id="behavior" className="scroll-mt-6">
+                <CardHeader>
+                  <CardTitle>Behavior</CardTitle>
+                  <CardDescription>Inheritance, model, and base instructions</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="parent-harness">Parent Harness</Label>
+                      <HarnessSelect
+                        id="parent-harness"
+                        value={formData.parent_harness_id}
+                        onValueChange={(value) => handleFormChange("parent_harness_id", value)}
+                        placeholder="No parent harness"
+                        includeNoneOption
+                        noneLabel="No parent harness"
+                        excludeIds={[harnessId]}
+                        disabled={isSaving || isReadOnly}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Inherit prompt, capabilities, initial files, and model fallback from a
+                        parent harness.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="model">Model (optional)</Label>
+                      <ModelPicker
+                        value={formData.default_model_id || ""}
+                        onChange={(value) => handleFormChange("default_model_id", value)}
+                        disabled={isSaving || isReadOnly}
+                        placeholder="Use default model"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Select a specific model or leave empty to use the default
+                      </p>
+                    </div>
                   </div>
 
                   <div className="space-y-2">
@@ -457,14 +482,22 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       capabilities still apply.
                     </p>
                   </div>
+                </CardContent>
+              </Card>
 
+              <Card id="files" className="scroll-mt-6">
+                <CardContent className="pt-6">
                   <InitialFilesEditor
                     value={selectedInitialFiles}
                     onChange={setLocalInitialFiles}
                     disabled={isSaving || isReadOnly}
                     description="Files copied into each new session created from this harness."
                   />
+                </CardContent>
+              </Card>
 
+              <Card id="network" className="scroll-mt-6">
+                <CardContent className="pt-6">
                   <NetworkAccessEditor
                     value={initialNetworkAccess}
                     onChange={setLocalNetworkAccess}

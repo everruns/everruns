@@ -16,7 +16,7 @@
 
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { cn } from "@/lib/utils";
 
@@ -314,6 +314,44 @@ export function SectionTabs({
         );
       })}
     </div>
+  );
+}
+
+export interface PageJumpNavItem {
+  href: `#${string}`;
+  label: ReactNode;
+}
+
+/** Compact in-page navigation for long create and edit forms. */
+export function PageJumpNav({
+  items,
+  className,
+}: {
+  items: PageJumpNavItem[];
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="Jump to section"
+      className={cn(
+        "flex max-w-full items-center gap-3 overflow-x-auto py-2 text-[13px] text-muted-foreground",
+        className,
+      )}
+    >
+      <span className="inline-flex shrink-0 items-center gap-1.5">
+        <ArrowRight className="size-3.5" />
+        Jump to
+      </span>
+      {items.map((item) => (
+        <a
+          key={item.href}
+          href={item.href}
+          className="shrink-0 transition-colors hover:text-foreground"
+        >
+          {item.label}
+        </a>
+      ))}
+    </nav>
   );
 }
 

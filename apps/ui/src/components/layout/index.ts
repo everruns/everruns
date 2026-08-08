@@ -17,6 +17,7 @@ export {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  PageJumpNav,
   EmptyState,
   StatCard,
   StatGrid,
@@ -27,4 +28,4 @@ export {
   PageFooter,
   BackLink,
 } from "./page-layout";
-export type { BreadcrumbItem, SectionTabItem } from "./page-layout";
+export type { BreadcrumbItem, PageJumpNavItem, SectionTabItem } from "./page-layout";
