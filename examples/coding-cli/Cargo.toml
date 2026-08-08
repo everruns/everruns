@@ -1,39 +1,31 @@
+# A minimal coding agent that depends only on the public `everruns` library
+# (EVE-835): the executable acceptance test for the OSS library surface. It must
+# never depend on `everruns-core` or `everruns-runtime` directly — a dependency
+# and a source scan in `tests/` enforce that.
+
 [package]
 name = "everruns-coding-cli"
 version = "0.1.0"
 edition = "2024"
 license.workspace = true
 publish = false
-description = "A minimal terminal coding agent built on everruns-runtime"
+description = "A minimal terminal coding agent built on the everruns public library"
+
+[lib]
+name = "everruns_coding_cli"
+path = "src/lib.rs"
 
 [[bin]]
 name = "ercode"
 path = "src/main.rs"
 
 [dependencies]
+# The only Everruns dependency: the public facade, with the real-provider edge.
+everruns = { path = "../../crates/everruns", features = ["openai"] }
 anyhow = "1.0"
-async-trait = "0.1"
-chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4.5", features = ["derive"] }
-crossterm = "0.29"
-dirs = "6"
-ratatui = "0.30"
-serde = { version = "1.0", features = ["derive"] }
-ratatui-textarea = "0.9.1"
 serde_json = "1.0"
-similar = "3"
-textwrap = "0.16"
-tokio = { version = "1.50", features = ["full"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-everruns-anthropic = { path = "../../crates/anthropic" }
-everruns-core = { path = "../../crates/core" }
-everruns-openai = { path = "../../crates/openai" }
-# `mcp-stdio` lets the CLI talk to local-process MCP servers; the hosted
-# server/worker never enable it (knowledge/integrations/runtime-mcp.md D2).
-everruns-runtime = { path = "../../crates/runtime", features = ["mcp-stdio"] }
-everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread", "fs", "io-std", "io-util"] }
 
 [dev-dependencies]
 tempfile = "3"
