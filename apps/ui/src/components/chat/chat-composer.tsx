@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { ImagePlus, Loader2, Mic, MicOff, Send, StopCircle } from "lucide-react";
+import { AtSign, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelEffortMenu } from "@/components/chat/model-effort-menu";
@@ -15,7 +15,14 @@ import {
   CommandAutocomplete,
   shouldShowCommandAutocomplete,
 } from "@/components/chat/command-autocomplete";
+import {
+  getMentionQuery,
+  ParticipantMentionAutocomplete,
+  type MentionQuery,
+  type ParticipantMentionOption,
+} from "@/components/chat/participant-mention-autocomplete";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
+import { COMPOSER_AUTOCOMPLETE_LISTBOX_ID } from "@/components/chat/composer-autocomplete";
 import { cn } from "@/lib/utils";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
 import type {
@@ -36,6 +43,9 @@ export function ChatComposer({
   onInputChange,
   onSubmit,
   onCommandSelect,
+  mentionOptions = [],
+  selectedMention = null,
+  onMentionChange,
   pendingImages,
   hasImages,
   removeImage,
@@ -77,6 +87,9 @@ export function ChatComposer({
   onInputChange: (value: string) => void;
   onSubmit: (controls?: Controls) => Promise<void>;
   onCommandSelect: (cmd: CommandDescriptor, controls?: Controls) => Promise<void> | void;
+  mentionOptions?: ParticipantMentionOption[];
+  selectedMention?: ParticipantMentionOption | null;
+  onMentionChange?: (participant: ParticipantMentionOption | null) => void;
   pendingImages: PendingImage[];
   hasImages: boolean;
   removeImage: (tempId: string) => void;
@@ -115,6 +128,7 @@ export function ChatComposer({
   const { backendLocale, t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCommands, setShowCommands] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const hasCommands = commands.length > 0;
   const inputPlaceholder = hasCommands ? t("type_message_or_commands") : t("type_message");
 
@@ -139,11 +153,22 @@ export function ChatComposer({
     if (!canSubmit) return;
     await onSubmit(buildControls());
     setShowCommands(false);
+    setMentionQuery(null);
     textareaRef.current?.focus();
   };
 
   const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showCommands) return;
+    if (showCommands || mentionQuery) return;
+    if (
+      event.key === "Backspace" &&
+      selectedMention &&
+      inputValue.length === 0 &&
+      onMentionChange
+    ) {
+      event.preventDefault();
+      onMentionChange(null);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       await onSubmit(buildControls());
@@ -156,6 +181,18 @@ export function ChatComposer({
       addFiles(Array.from(files));
     }
     event.target.value = "";
+  };
+
+  const selectMention = (option: ParticipantMentionOption) => {
+    if (!mentionQuery || !onMentionChange) return;
+    const nextValue = `${inputValue.slice(0, mentionQuery.start)}${inputValue.slice(mentionQuery.end)}`;
+    onInputChange(nextValue);
+    onMentionChange(option);
+    setMentionQuery(null);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(mentionQuery.start, mentionQuery.start);
+    });
   };
 
   return (
@@ -180,6 +217,13 @@ export function ChatComposer({
           )}
           {...dropZoneProps}
         >
+          <ParticipantMentionAutocomplete
+            options={mentionOptions}
+            query={mentionQuery?.query ?? ""}
+            visible={mentionQuery !== null}
+            onSelect={selectMention}
+            onDismiss={() => setMentionQuery(null)}
+          />
           <CommandAutocomplete
             commands={commands}
             inputValue={inputValue}
@@ -190,18 +234,47 @@ export function ChatComposer({
             }}
             onDismiss={() => setShowCommands(false)}
           />
+          {selectedMention && onMentionChange && (
+            <div className="flex px-3 pt-3 sm:px-4" data-testid="participant-mention-token">
+              <span className="inline-flex max-w-full items-center gap-1 border border-accent/40 bg-[hsl(var(--accent)/0.08)] px-2 py-1 text-xs font-medium text-foreground">
+                <AtSign className="h-3 w-3 shrink-0 text-accent" />
+                <span className="truncate">{selectedMention.label}</span>
+                <button
+                  type="button"
+                  className="ml-1 inline-flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                  aria-label={`Remove mention of ${selectedMention.label}`}
+                  onClick={() => {
+                    onMentionChange(null);
+                    textareaRef.current?.focus();
+                  }}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            </div>
+          )}
           <Textarea
             ref={textareaRef}
             value={inputValue}
             onChange={(event) => {
               const value = event.target.value;
               onInputChange(value);
-              setShowCommands(hasCommands && shouldShowCommandAutocomplete(value));
+              const nextMentionQuery = getMentionQuery(value, event.target.selectionStart);
+              setMentionQuery(nextMentionQuery);
+              setShowCommands(
+                nextMentionQuery === null && hasCommands && shouldShowCommandAutocomplete(value),
+              );
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             placeholder={inputPlaceholder}
             className={chatSurfaceStyles.composerTextarea}
+            role={mentionQuery || showCommands ? "combobox" : undefined}
+            aria-autocomplete={mentionQuery || showCommands ? "list" : undefined}
+            aria-expanded={mentionQuery !== null || showCommands}
+            aria-controls={
+              mentionQuery || showCommands ? COMPOSER_AUTOCOMPLETE_LISTBOX_ID : undefined
+            }
           />
         </div>
 

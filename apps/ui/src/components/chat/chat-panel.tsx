@@ -18,6 +18,8 @@ import {
   useTurnKeyboardNavigation,
 } from "@/hooks";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { getSessionParticipantLabel } from "@/lib/session-participant-label";
+import type { ParticipantMentionOption } from "@/components/chat/participant-mention-autocomplete";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -32,13 +34,6 @@ import { ChatComposer } from "@/components/chat/chat-composer";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { StreamingMessage } from "@/components/streaming-message";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { Button } from "@/components/ui/button";
@@ -470,9 +465,6 @@ export function ChatPanel() {
     [executeCommand, persistSelection, setInputValue],
   );
 
-  // Addressing: a compact selector lets the user route a turn to a specific
-  // guest agent. Only surfaced when the session has ≥2 active agent
-  // participants; the default (none) preserves host-responds behavior.
   const agentNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents ?? []) {
@@ -489,10 +481,24 @@ export function ChatPanel() {
     () => activeAgentParticipants.filter((p) => p.role !== "host"),
     [activeAgentParticipants],
   );
-  const showAddressing = activeAgentParticipants.length >= 2 && addressableParticipants.length > 0;
+  const mentionOptions = useMemo<ParticipantMentionOption[]>(() => {
+    const labels = addressableParticipants.map((participant) =>
+      getSessionParticipantLabel(participant, agentNameById),
+    );
+    const labelCounts = new Map<string, number>();
+    for (const label of labels) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
 
-  // Drop a stale selection if the addressed participant leaves or the session
-  // changes, so a departed guest can't silently keep receiving turns.
+    return addressableParticipants.map((participant, index) => {
+      const label = labels[index];
+      const suffix = participant.id.replace(/^part_/, "").slice(-6);
+      return {
+        id: participant.id,
+        label: labelCounts.get(label)! > 1 ? `${label} (${suffix})` : label,
+        description: `Guest agent · ${suffix}`,
+      };
+    });
+  }, [addressableParticipants, agentNameById]);
+
   useEffect(() => {
     if (
       addressedParticipantId &&
@@ -502,8 +508,8 @@ export function ChatPanel() {
     }
   }, [addressableParticipants, addressedParticipantId]);
 
-  const addressedParticipantLabel = (p: (typeof addressableParticipants)[number]): string =>
-    (p.agent_id && agentNameById.get(p.agent_id)) || "Agent";
+  const selectedMention =
+    mentionOptions.find((participant) => participant.id === addressedParticipantId) ?? null;
 
   const submitMessage = async (controls?: Controls) => {
     if (!canSubmit) return;
@@ -541,6 +547,7 @@ export function ChatPanel() {
 
       persistSelection();
       setInputValue("");
+      setAddressedParticipantId(null);
       setIsWaitingForResponse(true);
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -658,37 +665,6 @@ export function ChatPanel() {
             hasTasksFeature={hasTasksFeature}
           />
 
-          {showAddressing && (
-            <div className="flex items-center gap-2 px-3 pt-2 sm:px-4">
-              <span className="text-xs text-muted-foreground">Address</span>
-              <Select
-                value={addressedParticipantId ?? "__host__"}
-                onValueChange={(value) =>
-                  setAddressedParticipantId(value === "__host__" ? null : value)
-                }
-              >
-                <SelectTrigger size="sm" className="h-7 w-auto min-w-40">
-                  <SelectValue>
-                    {addressedParticipantId
-                      ? addressedParticipantLabel(
-                          addressableParticipants.find((p) => p.id === addressedParticipantId) ??
-                            addressableParticipants[0],
-                        )
-                      : "Session host (default)"}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__host__">Session host (default)</SelectItem>
-                  {addressableParticipants.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {addressedParticipantLabel(p)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           <ChatComposer
             commands={commands}
             models={models}
@@ -696,6 +672,9 @@ export function ChatPanel() {
             onInputChange={setInputValue}
             onSubmit={submitMessage}
             onCommandSelect={handleCommandSelect}
+            mentionOptions={mentionOptions}
+            selectedMention={selectedMention}
+            onMentionChange={(participant) => setAddressedParticipantId(participant?.id ?? null)}
             pendingImages={pendingImages}
             hasImages={hasImages}
             removeImage={removeImage}
