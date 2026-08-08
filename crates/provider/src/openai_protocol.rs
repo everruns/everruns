@@ -458,7 +458,9 @@ impl OpenAIProtocolChatDriver {
                 function: OpenAiFunction {
                     name: tool.name().to_string(),
                     description: tool.description().to_string(),
-                    parameters: tool.parameters().clone(),
+                    parameters: crate::tool_schema_compat::sanitize_openai_tool_schema(
+                        tool.parameters(),
+                    ),
                 },
             })
             .collect()

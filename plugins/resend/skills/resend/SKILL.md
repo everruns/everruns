@@ -36,5 +36,5 @@ tool descriptions over assumptions.
 
 The Resend MCP server uses OAuth. If Resend tools are missing from the tool
 list, or a call fails with an authentication error, tell the user to connect
-Resend under **Settings → Connections** (provider "resend"), then retry.
+Resend under **Settings → Connections** (provider "Resend"), then retry.
 Do not ask the user for a Resend API key.

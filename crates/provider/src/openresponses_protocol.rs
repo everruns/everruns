@@ -476,7 +476,7 @@ impl OpenResponsesProtocolChatDriver {
     /// Ensure an object-typed JSON Schema has a `properties` key.
     /// OpenAI rejects function schemas where `type: "object"` lacks `properties`.
     fn sanitize_parameters(params: &Value) -> Value {
-        let mut p = params.clone();
+        let mut p = crate::tool_schema_compat::sanitize_openai_tool_schema(params);
         if let Some(obj) = p.as_object_mut()
             && obj.get("type").and_then(|v| v.as_str()) == Some("object")
             && !obj.contains_key("properties")
@@ -5269,6 +5269,27 @@ mod tests {
         let params = json!({"type": "string"});
         let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(sanitized, params);
+    }
+
+    #[test]
+    fn test_sanitize_parameters_rewrites_resend_email_lookaround() {
+        let params = json!({
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                }
+            }
+        });
+
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
+        let pattern = sanitized["properties"]["email"]["pattern"]
+            .as_str()
+            .unwrap();
+
+        assert!(!pattern.contains("(?!"));
+        assert!(pattern.contains('@'));
     }
 
     // ========================================================================

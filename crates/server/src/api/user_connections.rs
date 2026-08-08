@@ -9,6 +9,7 @@ use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
+use crate::domains::plugins::oauth_anchor::humanize_connection_name;
 use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -32,7 +33,7 @@ use rand::RngExt;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
 
 use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
@@ -305,13 +306,44 @@ pub async fn list_connectors(
         });
     }
 
+    let plugin_display_names = match state.db.list_active_plugin_installs(org.org_id).await {
+        Ok(installs) => installs
+            .into_iter()
+            .map(|install| {
+                let display_name = serde_json::from_value::<
+                    everruns_core::DeclarativeCapabilityDefinition,
+                >(install.definition.clone())
+                .ok()
+                .and_then(|definition| definition.display_name)
+                .or_else(|| {
+                    install
+                        .manifest
+                        .get("displayName")
+                        .or_else(|| install.manifest.get("display_name"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                })
+                .unwrap_or_else(|| humanize_connection_name(&install.name));
+                (install.name, display_name)
+            })
+            .collect::<HashMap<_, _>>(),
+        Err(error) => {
+            tracing::error!(%error, org_id = org.org_id, "Failed to list plugin connection labels");
+            HashMap::new()
+        }
+    };
+
     match state.db.list_mcp_servers(org.org_id, None, false).await {
         Ok(servers) => {
             providers.extend(servers.into_iter().filter_map(|server| {
                 let settings = McpServerService::settings_from_row(&server);
                 (settings.auth_mode == McpServerAuthMode::OAuth).then(|| ProviderResponse {
                     provider_id: mcp_oauth_provider_id_for_uuid(server.id.uuid()),
-                    display_name: server.name.clone(),
+                    display_name: mcp_connection_display_name(
+                        &server.settings,
+                        &server.name,
+                        &plugin_display_names,
+                    ),
                     description: server.description.unwrap_or_else(|| {
                         format!("Authenticate {} for chat MCP tool access", server.name)
                     }),
@@ -327,6 +359,36 @@ pub async fn list_connectors(
     }
 
     Json(providers)
+}
+
+fn mcp_connection_display_name(
+    settings: &serde_json::Value,
+    fallback: &str,
+    plugin_display_names: &HashMap<String, String>,
+) -> String {
+    if let Some(display_name) = settings
+        .get(crate::domains::plugins::oauth_anchor::CONNECTION_DISPLAY_NAME_KEY)
+        .and_then(|value| value.as_str())
+    {
+        return display_name.to_string();
+    }
+
+    let Some(anchor) = settings.get("plugin_anchor") else {
+        return fallback.to_string();
+    };
+    let Some(plugin_name) = anchor.get("plugin").and_then(|value| value.as_str()) else {
+        return fallback.to_string();
+    };
+    let plugin_display_name = plugin_display_names
+        .get(plugin_name)
+        .cloned()
+        .unwrap_or_else(|| humanize_connection_name(plugin_name));
+    match anchor.get("server").and_then(|value| value.as_str()) {
+        Some(server_name) if server_name != plugin_name => {
+            format!("{plugin_display_name} — {server_name}")
+        }
+        _ => plugin_display_name,
+    }
 }
 
 /// POST /v1/user/connections/:provider — Create API-key connection
@@ -1553,6 +1615,31 @@ mod tests {
         assert!(
             json.get("error").is_none(),
             "error field should be skipped when None"
+        );
+    }
+
+    #[test]
+    fn existing_plugin_anchor_uses_manifest_connection_display_name() {
+        let settings = serde_json::json!({
+            "plugin_anchor": {"plugin": "resend", "server": "resend"}
+        });
+        let display_names = HashMap::from([("resend".to_string(), "Resend".to_string())]);
+
+        assert_eq!(
+            mcp_connection_display_name(&settings, "resend", &display_names),
+            "Resend"
+        );
+    }
+
+    #[test]
+    fn plugin_connection_label_distinguishes_multiple_servers() {
+        let settings = serde_json::json!({
+            "plugin_anchor": {"plugin": "mail-suite", "server": "transactional"}
+        });
+
+        assert_eq!(
+            mcp_connection_display_name(&settings, "plugin-mail", &HashMap::new()),
+            "Mail Suite — transactional"
         );
     }
 

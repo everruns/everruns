@@ -29,12 +29,31 @@ use crate::storage::models::{CreateMcpServerRow, McpServerRow, UpdateMcpServer};
 
 /// Marker key inside `mcp_servers.settings` identifying a plugin OAuth anchor.
 const ANCHOR_KEY: &str = "plugin_anchor";
+pub(crate) const CONNECTION_DISPLAY_NAME_KEY: &str = "connection_display_name";
+
+pub(crate) fn humanize_connection_name(name: &str) -> String {
+    name.split(['-', '_', ' '])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut characters = part.chars();
+            match characters.next() {
+                Some(first) => first.to_uppercase().chain(characters).collect(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 
 /// Build the `settings` JSON for an anchor row. Auth mode is serialized through
 /// the typed `McpServerSettings` (not a hand-written string) so it matches the
 /// exact serde representation `settings_from_row` deserializes — otherwise the
 /// connections API would read the anchor as `auth_mode = none`.
-fn anchor_settings_value(plugin_name: &str, server_name: &str) -> serde_json::Value {
+fn anchor_settings_value(
+    plugin_name: &str,
+    server_name: &str,
+    connection_display_name: &str,
+) -> serde_json::Value {
     let settings = McpServerSettings {
         auth_mode: McpServerAuthMode::OAuth,
         ..Default::default()
@@ -44,6 +63,10 @@ fn anchor_settings_value(plugin_name: &str, server_name: &str) -> serde_json::Va
         obj.insert(
             ANCHOR_KEY.to_string(),
             serde_json::json!({ "plugin": plugin_name, "server": server_name }),
+        );
+        obj.insert(
+            CONNECTION_DISPLAY_NAME_KEY.to_string(),
+            serde_json::json!(connection_display_name),
         );
     }
     value
@@ -93,12 +116,22 @@ pub async fn sync_plugin_oauth_anchors(
     definition: &mut DeclarativeCapabilityDefinition,
 ) -> Result<()> {
     let mut existing = list_plugin_anchors(db, org_id, plugin_name).await?;
+    let fallback_display_name = humanize_connection_name(plugin_name);
+    let plugin_display_name = definition
+        .display_name
+        .as_deref()
+        .unwrap_or(&fallback_display_name);
 
     if let Some(servers) = definition.mcp_servers.as_mut() {
         for (server_name, server) in servers.iter_mut() {
             if server.auth_mode != McpServerAuthMode::OAuth {
                 continue;
             }
+            let connection_display_name = if server_name == plugin_name {
+                plugin_display_name.to_string()
+            } else {
+                format!("{plugin_display_name} — {server_name}")
+            };
             let anchor_id = match existing.remove(server_name) {
                 Some(row) => {
                     if row.url != server.url {
@@ -106,12 +139,46 @@ pub async fn sync_plugin_oauth_anchors(
                         // Never reuse it after retargeting: the refresh path must
                         // not send old user secrets to newly discovered metadata.
                         db.delete_mcp_server(org_id, row.id.uuid()).await?;
-                        create_anchor(db, org_id, plugin_name, server_name, &server.url).await?
+                        create_anchor(
+                            db,
+                            org_id,
+                            plugin_name,
+                            server_name,
+                            &connection_display_name,
+                            &server.url,
+                        )
+                        .await?
                     } else {
+                        let mut settings = row.settings.clone();
+                        if let Some(object) = settings.as_object_mut() {
+                            object.insert(
+                                CONNECTION_DISPLAY_NAME_KEY.to_string(),
+                                serde_json::json!(connection_display_name),
+                            );
+                        }
+                        db.update_mcp_server(
+                            org_id,
+                            row.id.uuid(),
+                            UpdateMcpServer {
+                                settings: Some(settings),
+                                ..Default::default()
+                            },
+                        )
+                        .await?;
                         row.id.uuid()
                     }
                 }
-                None => create_anchor(db, org_id, plugin_name, server_name, &server.url).await?,
+                None => {
+                    create_anchor(
+                        db,
+                        org_id,
+                        plugin_name,
+                        server_name,
+                        &connection_display_name,
+                        &server.url,
+                    )
+                    .await?
+                }
             };
             server.oauth_provider_id = Some(mcp_oauth_provider_id_for_uuid(anchor_id));
         }
@@ -144,6 +211,7 @@ async fn create_anchor(
     org_id: i64,
     plugin_name: &str,
     server_name: &str,
+    connection_display_name: &str,
     url: &str,
 ) -> Result<Uuid> {
     // Prefer the friendliest available name — it is what the Connections UI
@@ -178,7 +246,11 @@ async fn create_anchor(
                 transport_type: "http".to_string(),
                 api_key_encrypted: None,
                 headers: None,
-                settings: Some(anchor_settings_value(plugin_name, server_name)),
+                settings: Some(anchor_settings_value(
+                    plugin_name,
+                    server_name,
+                    connection_display_name,
+                )),
             },
         )
         .await
@@ -239,7 +311,6 @@ mod tests {
     async fn sync_creates_disabled_anchor_and_assigns_provider_id() {
         let db = Arc::new(StorageBackend::in_memory());
         let mut definition = oauth_definition("resend", "https://mcp.resend.com/mcp");
-
         sync_plugin_oauth_anchors(&db, 1, "resend", &mut definition)
             .await
             .unwrap();
@@ -267,6 +338,10 @@ mod tests {
             serde_json::from_value(anchor.settings.clone()).expect("settings round-trip");
         assert_eq!(settings.auth_mode, McpServerAuthMode::OAuth);
         assert!(anchor.settings.get(ANCHOR_KEY).is_some());
+        assert_eq!(
+            anchor.settings[CONNECTION_DISPLAY_NAME_KEY],
+            serde_json::json!("Resend")
+        );
     }
 
     #[tokio::test]

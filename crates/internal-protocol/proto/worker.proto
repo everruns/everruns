@@ -372,6 +372,9 @@ message Agent {
     optional string display_name = 12;
     optional bool parallel_tool_calls = 13;
     optional Uuid harness_id = 14;
+    // Full JSON-encoded AgentCapabilityConfig values. Workers prefer this
+    // field; capability_ids remains for compatibility with older workers.
+    repeated string capabilities = 15;
 }
 
 message GetAgentRequest {
@@ -402,6 +405,9 @@ message Harness {
     optional Uuid parent_harness_id = 11;
     bool is_built_in = 12;
     optional string display_name = 13;
+    // Full JSON-encoded AgentCapabilityConfig values. Workers prefer this
+    // field; capability_ids remains for compatibility with older workers.
+    repeated string capabilities = 14;
 }
 
 message GetHarnessRequest {

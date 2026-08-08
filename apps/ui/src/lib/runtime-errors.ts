@@ -102,6 +102,8 @@ function localizeRuntimeErrorBase(
       return formatMessage(locale, "runtime_error_processing_error");
     case "dependency_unavailable":
       return formatMessage(locale, "runtime_error_dependency_unavailable");
+    case "invalid_tool_schema":
+      return formatMessage(locale, "runtime_error_invalid_tool_schema");
     default:
       return fallback;
   }

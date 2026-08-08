@@ -28,6 +28,7 @@ pub mod codes {
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
+    pub const INVALID_TOOL_SCHEMA: &str = "invalid_tool_schema";
     pub const MAX_ITERATIONS: &str = "max_iterations";
     pub const SOFT_LIMIT_REACHED: &str = "soft_limit_reached";
     /// A `user_prompt_submit` hook rejected the inbound user message.
@@ -299,6 +300,10 @@ impl UserFacingError {
             codes::DEPENDENCY_UNAVAILABLE => {
                 "Execution stopped because a required dependency is unavailable.".to_string()
             }
+            codes::INVALID_TOOL_SCHEMA => {
+                "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
+                    .to_string()
+            }
             _ => "I encountered an error while processing your request. Please try again later."
                 .to_string(),
         }
@@ -357,6 +362,13 @@ pub fn classify_runtime_error_message(
         return UserFacingError::new(codes::REQUEST_TOO_LARGE)
             .with_optional_field("provider", context.provider.clone())
             .with_optional_field("model_id", context.model_id.clone());
+    }
+
+    if is_invalid_tool_schema_message(&lower) {
+        return UserFacingError::new(codes::INVALID_TOOL_SCHEMA)
+            .with_optional_field("provider", context.provider.clone())
+            .with_optional_field("model_id", context.model_id.clone())
+            .with_optional_field("schema_path", extract_schema_path(normalized));
     }
 
     // Exhausted provider billing (OpenAI: HTTP 429 + `insufficient_quota`,
@@ -421,6 +433,28 @@ pub fn classify_runtime_error_message(
     UserFacingError::new(codes::PROCESSING_ERROR)
         .with_optional_field("provider", context.provider.clone())
         .with_optional_field("model_id", context.model_id.clone())
+}
+
+fn is_invalid_tool_schema_message(lower: &str) -> bool {
+    lower.contains("invalid_function_parameters")
+        || lower.contains("invalid function parameters")
+        || (lower.contains("invalid json schema") && lower.contains("$.properties"))
+        || lower.contains("invalid tool schema")
+}
+
+fn extract_schema_path(message: &str) -> Option<String> {
+    let path = message.split_once("Found at ")?.1;
+    let path = path
+        .split(|character: char| character.is_whitespace() || character == '`')
+        .next()?
+        .trim_end_matches(['.', ',', ';', ':']);
+    (path.starts_with('$')
+        && path.len() <= 200
+        && path.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || matches!(character, '$' | '.' | '_' | '-' | '[' | ']')
+        }))
+    .then(|| path.to_string())
 }
 
 pub fn trim_error_chain_prefixes(error_chain: &str) -> &str {
@@ -629,6 +663,38 @@ mod tests {
         assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
         assert_eq!(string_field(&error.fields, "model_id"), Some("gpt-5"));
         assert_eq!(number_field(&error.fields, "retry_after"), Some(7.0));
+    }
+
+    #[test]
+    fn classifies_openai_tool_schema_rejection_without_exposing_provider_payload() {
+        let error = classify_runtime_error_message(
+            "OpenAI Responses API error (400 Bad Request): Invalid JSON schema: regex lookaround is not supported. Found at $.properties.email.pattern.",
+            &UserFacingErrorContext::default()
+                .with_provider("openai")
+                .with_model_id("gpt-5.6-terra"),
+        );
+
+        assert_eq!(error.code, codes::INVALID_TOOL_SCHEMA);
+        assert_eq!(
+            error.fields.get("schema_path").and_then(Value::as_str),
+            Some("$.properties.email.pattern")
+        );
+        assert_eq!(
+            error.fallback_message(),
+            "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again."
+        );
+        assert!(!error.fallback_message().contains("regex lookaround"));
+    }
+
+    #[test]
+    fn invalid_tool_schema_drops_unsafe_provider_schema_path() {
+        let error = classify_runtime_error_message(
+            "Invalid JSON schema at $.properties: Found at $.properties.email.pattern?<token>.",
+            &UserFacingErrorContext::default(),
+        );
+
+        assert_eq!(error.code, codes::INVALID_TOOL_SCHEMA);
+        assert!(!error.fields.contains_key("schema_path"));
     }
 
     #[test]

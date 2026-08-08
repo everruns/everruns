@@ -17,6 +17,13 @@ Installing either dialect into an organization produces a capability with
 reference `plugin:{install_public_id}` that agents and harnesses enable like any other
 capability.
 
+The control plane owns hydration of installed definitions. Durable execution
+transports the complete hydrated capability configs for agents and harnesses,
+not only their references, so the worker evaluates the same definition that
+passed install-time compilation. Older workers remain readable through the
+reference-only compatibility path, but data-backed contributions require the
+full config contract.
+
 Portable packages use root `plugin.json`, fixed `skills/`, and optional root
 `mcp.json`. Legacy packages continue to use their host-specific hidden manifest,
 component path overrides, `commands/`, `agents/`, and `.mcp.json`. A canonical
@@ -129,6 +136,13 @@ machinery unchanged:
   server's `oauth_provider_id` and injects it as a `Bearer` header. When no
   token is connected, the MCP executor returns a `connection_required` tool
   result, rendering the inline "connect" prompt instead of a raw 401.
+
+Connection providers use the plugin's display name (and the server name when a
+plugin contributes more than one OAuth server), so package identifiers do not
+leak into the user-facing Connections list. Connection resolution and live
+tool discovery run again for each reasoning turn. A connection completed while
+a session is open is therefore available on that session's next turn; starting
+a new session is not required.
 
 Anchors are reused across plugin **updates** while the server URL is unchanged.
 A changed URL replaces the anchor and rotates its provider id, requiring users

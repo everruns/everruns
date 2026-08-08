@@ -1324,6 +1324,26 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         _ => everruns_core::AgentStatus::Active,
     };
 
+    let capabilities = if proto_agent.capabilities.is_empty() {
+        proto_agent
+            .capability_ids
+            .into_iter()
+            .map(everruns_core::AgentCapabilityConfig::new)
+            .collect()
+    } else {
+        proto_agent
+            .capabilities
+            .into_iter()
+            .map(|config| {
+                serde_json::from_str(&config).map_err(|error| {
+                    AgentLoopError::store(format!(
+                        "Invalid agent capability config in gRPC response: {error}"
+                    ))
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
     Ok(Agent {
         public_id: everruns_core::AgentId::from_uuid(id),
         internal_id: id,
@@ -1338,11 +1358,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         forked_from_version_id: None,
         root_agent_id: None,
         tags: vec![],
-        capabilities: proto_agent
-            .capability_ids
-            .into_iter()
-            .map(everruns_core::AgentCapabilityConfig::new)
-            .collect(),
+        capabilities,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
@@ -1411,6 +1427,26 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         _ => HarnessStatus::Active,
     };
 
+    let capabilities = if proto_harness.capabilities.is_empty() {
+        proto_harness
+            .capability_ids
+            .into_iter()
+            .map(everruns_core::AgentCapabilityConfig::new)
+            .collect()
+    } else {
+        proto_harness
+            .capabilities
+            .into_iter()
+            .map(|config| {
+                serde_json::from_str(&config).map_err(|error| {
+                    AgentLoopError::store(format!(
+                        "Invalid harness capability config in gRPC response: {error}"
+                    ))
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
     Ok(Harness {
         id: id.into(),
         name: proto_harness.name,
@@ -1421,11 +1457,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         parent_harness_id: parent_harness_id.map(|u| u.into()),
         default_model_id: default_model_id.map(|u| u.into()),
         tags: proto_harness.tags,
-        capabilities: proto_harness
-            .capability_ids
-            .into_iter()
-            .map(everruns_core::AgentCapabilityConfig::new)
-            .collect(),
+        capabilities,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
@@ -4335,6 +4367,13 @@ mod tests {
             parent_harness_id: Some(uuid_to_proto(parent_id)),
             is_built_in: true,
             display_name: Some("Platform Chat".into()),
+            capabilities: vec![
+                serde_json::json!({
+                    "ref": "plugin:plugin_019fda530ed27b4291c67d9f786961d9",
+                    "config": {"name": "resend", "description": "Send email"}
+                })
+                .to_string(),
+            ],
         };
 
         let harness = proto_harness_to_harness(proto).expect("proto harness should convert");
@@ -4348,6 +4387,7 @@ mod tests {
             harness.tags,
             vec!["chat".to_string(), "built-in".to_string()]
         );
+        assert_eq!(harness.capabilities[0].config["name"], "resend");
         assert!(harness.is_built_in);
     }
 
