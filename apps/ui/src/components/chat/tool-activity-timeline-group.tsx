@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -8,13 +8,8 @@ import { McpAppResourceList } from "./mcp-app-resource-list";
 import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
 import { extractMcpAppResources, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
-
-export interface TimelineToolRow {
-  id: string;
-  label: string;
-  result?: ToolCompletedData;
-  state: "running" | "waiting" | "completed" | "error";
-}
+import type { TimelineToolRow } from "./tool-activity-groups";
+export type { TimelineToolRow } from "./tool-activity-groups";
 
 interface ToolActivityTimelineGroupProps {
   headline: string;
@@ -24,7 +19,7 @@ interface ToolActivityTimelineGroupProps {
 
 function resultPreview(result?: ToolCompletedData): string | null {
   if (!result) return null;
-  if (result.error) return result.error;
+  if (result.error) return null;
   return getResultPreview(
     { id: result.tool_call_id, name: result.tool_name, arguments: {} },
     result,
@@ -34,6 +29,7 @@ function resultPreview(result?: ToolCompletedData): string | null {
 function TimelineRow({ row }: { row: TimelineToolRow }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
   const fullText = row.result
     ? formatResultDetails(
         { id: row.result.tool_call_id, name: row.result.tool_name, arguments: {} },
@@ -75,6 +71,8 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
               type="button"
               onClick={() => setExpanded((current) => !current)}
               className="mt-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70 transition-colors hover:text-foreground"
+              aria-expanded={expanded}
+              aria-controls={detailsId}
             >
               {expanded ? (
                 <ChevronDown className="h-3 w-3" />
@@ -86,6 +84,8 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           )}
 
           <div
+            id={detailsId}
+            aria-hidden={!expanded}
             className={cn(
               "grid transition-all duration-200 ease-out",
               expanded ? "mt-1 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
@@ -116,7 +116,9 @@ export function ToolActivityTimelineGroup({
     [rows],
   );
   const isActive = completedCount < rows.length;
-  const [expanded, setExpanded] = useState(() => isActive);
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
+  const expanded = userExpanded ?? isActive;
+  const groupId = useId();
   const displayHeadline = isActive ? headline : (completedHeadline ?? headline);
 
   // Single row: render inline with headline as label, no nested wrapper
@@ -129,19 +131,24 @@ export function ToolActivityTimelineGroup({
     <div className="space-y-2">
       <button
         type="button"
-        onClick={() => setExpanded((current) => !current)}
-        className="inline-flex items-start gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
+        onClick={() => setUserExpanded(!expanded)}
+        className="inline-flex min-w-0 max-w-full items-start gap-2 text-left text-muted-foreground transition-colors hover:text-foreground"
         aria-label={expanded ? t("collapse_activity_group") : t("expand_activity_group")}
+        aria-expanded={expanded}
+        aria-controls={groupId}
       >
         {expanded ? (
           <ChevronDown className="mt-[2px] h-4 w-4 flex-shrink-0" />
         ) : (
           <ChevronRight className="mt-[2px] h-4 w-4 flex-shrink-0" />
         )}
-        <span className="text-[15px] leading-6">{displayHeadline}</span>
+        <span className="min-w-0 break-words text-[15px] leading-6">{displayHeadline}</span>
       </button>
 
       <div
+        id={groupId}
+        aria-hidden={!expanded}
+        inert={!expanded}
         className={cn(
           "grid transition-all duration-200 ease-out",
           expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",

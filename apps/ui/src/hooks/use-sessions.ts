@@ -265,6 +265,7 @@ const SSE_EVENT_TYPES = [
   "act.started",
   "act.completed",
   "tool.started",
+  "tool.progress",
   "tool.completed",
   "tool.output.delta",
   "tool.call_requested",

@@ -419,7 +419,7 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
                 } => {
                     let event = EventRequest::new(
                         context.session_id,
-                        EventContext::turn(context.turn_id, context.input_message_id),
+                        EventContext::from_atom_context(context),
                         ToolCallRequestedData::with_definitions_and_locale(
                             &tool_calls,
                             &action_defs,

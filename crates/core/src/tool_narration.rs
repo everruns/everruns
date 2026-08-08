@@ -579,7 +579,7 @@ pub fn narrate_provider_search(
     if is_uk(locale) {
         labeled_phrase("Шукаю", "Завершив пошук", "Не вдалося знайти", query, phase)
     } else {
-        labeled_phrase("Search", "Searched", "Could not search", query, phase)
+        labeled_phrase("Searching", "Searched", "Could not search", query, phase)
     }
 }
 
@@ -611,26 +611,14 @@ pub fn narrate_secret_store(
                 .to_string(),
         }
     } else {
-        let started = format!("{}ing", title_case(operation));
-        match phase {
-            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                format!("{started} {target}").trim().to_string()
-            }
-            ToolNarrationPhase::Completed => {
-                if operation.eq_ignore_ascii_case("list") {
-                    format!("Listed {target}").trim().to_string()
-                } else {
-                    format!("{} {}", title_case(operation), target)
-                        .trim()
-                        .to_string()
-                }
-            }
-            ToolNarrationPhase::Failed => {
-                format!("Failed to {} {}", operation.to_lowercase(), target)
-                    .trim()
-                    .to_string()
-            }
-        }
+        let verbs = match operation.to_ascii_lowercase().as_str() {
+            "get" | "read" => ("Getting", "Got", "Failed to get"),
+            "set" => ("Setting", "Set", "Failed to set"),
+            "delete" => ("Deleting", "Deleted", "Failed to delete"),
+            "list" => ("Listing", "Listed", "Failed to list"),
+            _ => ("Using", "Used", "Failed to use"),
+        };
+        phrase3(verbs, Some(target), phase)
     }
 }
 
@@ -694,7 +682,11 @@ pub fn narrate_web_fetch(
     let verbs = if is_download {
         pick(
             locale,
-            ("Download URL", "Downloaded URL", "Could not download URL"),
+            (
+                "Downloading URL",
+                "Downloaded URL",
+                "Could not download URL",
+            ),
             (
                 "Завантажую URL",
                 "Завантажив URL",
@@ -704,7 +696,7 @@ pub fn narrate_web_fetch(
     } else {
         pick(
             locale,
-            ("Fetch URL", "Fetched URL", "Could not fetch URL"),
+            ("Fetching URL", "Fetched URL", "Could not fetch URL"),
             ("Отримую URL", "Отримав URL", "Не вдалося отримати URL"),
         )
     };
@@ -720,7 +712,11 @@ pub fn narrate_tool_search(
     let value = safe_arg_str(arguments, &["query"]).map(|q| truncate(q, 64));
     let verbs = pick(
         locale,
-        ("Search tools", "Searched tools", "Could not search tools"),
+        (
+            "Searching tools",
+            "Searched tools",
+            "Could not search tools",
+        ),
         (
             "Шукаю інструменти",
             "Знайшов інструменти",
@@ -740,21 +736,21 @@ pub fn narrate_skill(
     let value = safe_arg_str(arguments, &["name", "skill", "id"]).map(|v| truncate(v, 48));
     let phrase = match tool_name {
         "activate_skill" => labeled_phrase(
-            "Activate skill",
+            "Activating skill",
             "Activated skill",
             "Could not activate skill",
             value,
             phase,
         ),
         "read_skill" => labeled_phrase(
-            "Read skill",
+            "Reading skill",
             "Read skill",
             "Could not read skill",
             value,
             phase,
         ),
         "write_skill" => labeled_phrase(
-            "Write skill",
+            "Writing skill",
             "Wrote skill",
             "Could not write skill",
             value,
@@ -783,7 +779,7 @@ pub fn narrate_write_session_title(
     let verbs = pick(
         locale,
         (
-            "Update session title",
+            "Updating session title",
             "Updated session title",
             "Failed to update session title",
         ),
@@ -828,7 +824,7 @@ pub fn narrate_session_schedule(
             let verbs = pick(
                 locale,
                 (
-                    "Create schedule",
+                    "Creating schedule",
                     "Created schedule",
                     "Failed to create schedule",
                 ),
@@ -903,7 +899,7 @@ pub fn narrate_session_task(
         "get_task" => {
             let verbs = pick(
                 locale,
-                ("Read task", "Read task", "Could not read task"),
+                ("Reading task", "Read task", "Could not read task"),
                 (
                     "Читаю завдання",
                     "Прочитав завдання",
@@ -915,7 +911,7 @@ pub fn narrate_session_task(
         "message_task" => {
             let verbs = pick(
                 locale,
-                ("Message task", "Messaged task", "Could not message task"),
+                ("Messaging task", "Messaged task", "Could not message task"),
                 (
                     "Надсилаю повідомлення завданню",
                     "Надіслав повідомлення завданню",
@@ -927,7 +923,7 @@ pub fn narrate_session_task(
         "cancel_task" => {
             let verbs = pick(
                 locale,
-                ("Cancel task", "Cancelled task", "Could not cancel task"),
+                ("Cancelling task", "Cancelled task", "Could not cancel task"),
                 (
                     "Скасовую завдання",
                     "Скасував завдання",
@@ -939,7 +935,11 @@ pub fn narrate_session_task(
         "wait_task" => {
             let verbs = pick(
                 locale,
-                ("Wait for task", "Task finished", "Could not wait for task"),
+                (
+                    "Waiting for task",
+                    "Task finished",
+                    "Could not wait for task",
+                ),
                 (
                     "Очікую на завдання",
                     "Завдання завершено",
@@ -982,7 +982,7 @@ pub fn narrate_sandbox_manage(
     let verbs = pick(
         locale,
         (
-            "Manage sandbox",
+            "Managing sandbox",
             "Managed sandbox",
             "Failed to manage sandbox",
         ),
@@ -1055,7 +1055,7 @@ pub fn narrate_search_knowledge(
     let verbs = pick(
         locale,
         (
-            "Search knowledge",
+            "Searching knowledge",
             "Searched knowledge",
             "Could not search knowledge",
         ),
@@ -1114,7 +1114,7 @@ pub fn narrate_query_history(
     let verbs = pick(
         locale,
         (
-            "Search history",
+            "Searching history",
             "Searched history",
             "Could not search history",
         ),
@@ -1138,7 +1138,7 @@ pub fn narrate_spawn_background(
     let verbs = pick(
         locale,
         (
-            "Start background run",
+            "Starting background run",
             "Started background run",
             "Failed to start background run",
         ),
@@ -1611,7 +1611,7 @@ mod tests {
         }));
         assert_eq!(
             narrate_web_fetch(&a, ToolNarrationPhase::Started, None),
-            "Download URL: example.com/file"
+            "Downloading URL: example.com/file"
         );
         assert_eq!(
             narrate_web_fetch(&a, ToolNarrationPhase::Completed, None),
@@ -1666,7 +1666,7 @@ mod tests {
             let a = args(json!({ "url": raw }));
             let started = narrate_web_fetch(&a, ToolNarrationPhase::Started, None);
             let completed = narrate_web_fetch(&a, ToolNarrationPhase::Completed, None);
-            assert_eq!(started, "Fetch URL", "input: {raw}");
+            assert_eq!(started, "Fetching URL", "input: {raw}");
             assert_eq!(completed, "Fetched URL", "input: {raw}");
             assert!(
                 !started.contains("secret"),
@@ -1688,7 +1688,29 @@ mod tests {
         let a = args(json!({ "token": "super-secret" }));
         assert_eq!(
             narrate_provider_search(&a, ToolNarrationPhase::Started, None),
-            "Search"
+            "Searching"
+        );
+    }
+
+    #[test]
+    fn secret_store_uses_real_verb_conjugations() {
+        let get = json!({ "operation": "get", "name": "OPENAI_API_KEY" });
+        let set = json!({ "operation": "set", "name": "OPENAI_API_KEY" });
+        assert_eq!(
+            narrate_secret_store(&get, "secret store", ToolNarrationPhase::Started, None),
+            "Getting OPENAI_API_KEY"
+        );
+        assert_eq!(
+            narrate_secret_store(&get, "secret store", ToolNarrationPhase::Completed, None),
+            "Got OPENAI_API_KEY"
+        );
+        assert_eq!(
+            narrate_secret_store(&set, "secret store", ToolNarrationPhase::Started, None),
+            "Setting OPENAI_API_KEY"
+        );
+        assert_eq!(
+            narrate_secret_store(&set, "secret store", ToolNarrationPhase::Completed, None),
+            "Set OPENAI_API_KEY"
         );
     }
 
@@ -1749,7 +1771,7 @@ mod tests {
         let a = args(json!({ "title": "Improve tool narration" }));
         assert_eq!(
             narrate_write_session_title(&a, ToolNarrationPhase::Started, None),
-            "Update session title: Improve tool narration"
+            "Updating session title: Improve tool narration"
         );
         assert_eq!(
             narrate_write_session_title(&a, ToolNarrationPhase::Completed, None),
@@ -1771,11 +1793,11 @@ mod tests {
         let long = "x".repeat(120);
         let a = args(json!({ "title": long }));
         let narration = narrate_write_session_title(&a, ToolNarrationPhase::Started, None);
-        // 48-char cap + ellipsis, plus the "Update session title: " label.
-        assert!(narration.starts_with("Update session title: "));
+        // 48-char cap + ellipsis, plus the phase-specific label.
+        assert!(narration.starts_with("Updating session title: "));
         assert!(narration.ends_with("..."));
         assert!(
-            narration.chars().count() <= "Update session title: ".chars().count() + 48 + 3,
+            narration.chars().count() <= "Updating session title: ".chars().count() + 48 + 3,
             "narration too long: {narration}"
         );
 
@@ -1783,7 +1805,7 @@ mod tests {
         let empty = args(json!({}));
         assert_eq!(
             narrate_write_session_title(&empty, ToolNarrationPhase::Started, None),
-            "Update session title"
+            "Updating session title"
         );
     }
 
@@ -1853,7 +1875,7 @@ mod tests {
         // No task_id → bare verb.
         assert_eq!(
             narrate_session_task("cancel_task", &json!({}), ToolNarrationPhase::Started, None),
-            Some("Cancel task".to_string())
+            Some("Cancelling task".to_string())
         );
         assert_eq!(
             narrate_session_task("wait_task", &a, ToolNarrationPhase::Failed, None),
@@ -1874,7 +1896,7 @@ mod tests {
         let a = args(json!({ "action": "pause" }));
         assert_eq!(
             narrate_sandbox_manage(&a, ToolNarrationPhase::Started, None),
-            "Manage sandbox: pause"
+            "Managing sandbox: pause"
         );
         assert_eq!(
             narrate_sandbox_manage(&json!({}), ToolNarrationPhase::Failed, None),
@@ -1918,7 +1940,7 @@ mod tests {
         let secret = args(json!({ "api_key": "sk-live-123" }));
         assert_eq!(
             narrate_search_knowledge(&secret, ToolNarrationPhase::Started, None),
-            "Search knowledge"
+            "Searching knowledge"
         );
     }
 

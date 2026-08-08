@@ -537,6 +537,15 @@ impl ContentPart {
         ContentPart::Text(TextContentPart::new(text))
     }
 
+    /// Convert a JSON tool result into text without JSON-quoting string values.
+    /// Structured values retain their JSON representation for transport and details views.
+    pub fn tool_result_text(value: &serde_json::Value) -> Self {
+        match value {
+            serde_json::Value::String(text) => Self::text(text.clone()),
+            other => Self::text(other.to_string()),
+        }
+    }
+
     /// Create an image content part from URL
     pub fn image_url(url: impl Into<String>) -> Self {
         ContentPart::Image(ImageContentPart::from_url(url))
@@ -1556,5 +1565,23 @@ mod tests {
         let h = deserialized.hints.unwrap();
         assert_eq!(h["setup_connection"], serde_json::json!(true));
         assert_eq!(h["theme"], serde_json::json!("dark"));
+    }
+
+    #[test]
+    fn tool_result_text_preserves_strings_without_json_escaping() {
+        let value = serde_json::json!("{\n  \"count\": 1\n}");
+        assert_eq!(
+            ContentPart::tool_result_text(&value).as_text(),
+            Some("{\n  \"count\": 1\n}")
+        );
+    }
+
+    #[test]
+    fn tool_result_text_serializes_structured_values() {
+        let value = serde_json::json!({"count": 1});
+        assert_eq!(
+            ContentPart::tool_result_text(&value).as_text(),
+            Some("{\"count\":1}")
+        );
     }
 }

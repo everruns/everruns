@@ -100,6 +100,63 @@ impl PlatformCommandTool {
 
 #[async_trait]
 impl Tool for PlatformCommandTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        use crate::tool_narration::ToolNarrationPhase;
+
+        let ukrainian = locale.is_some_and(|value| value.to_ascii_lowercase().starts_with("uk"));
+        let text = match (self.operation, phase, ukrainian) {
+            (PlatformCommandOperation::Discover, ToolNarrationPhase::Completed, false) => {
+                "Discovered operations"
+            }
+            (PlatformCommandOperation::Discover, ToolNarrationPhase::Failed, false) => {
+                "Could not discover operations"
+            }
+            (PlatformCommandOperation::Discover, _, false) => "Discovering operations",
+            (PlatformCommandOperation::Query, ToolNarrationPhase::Completed, false) => {
+                "Queried platform"
+            }
+            (PlatformCommandOperation::Query, ToolNarrationPhase::Failed, false) => {
+                "Could not query platform"
+            }
+            (PlatformCommandOperation::Query, _, false) => "Querying platform",
+            (PlatformCommandOperation::Execute, ToolNarrationPhase::Completed, false) => {
+                "Executed platform commands"
+            }
+            (PlatformCommandOperation::Execute, ToolNarrationPhase::Failed, false) => {
+                "Could not execute platform commands"
+            }
+            (PlatformCommandOperation::Execute, _, false) => "Executing platform commands",
+            (PlatformCommandOperation::Discover, ToolNarrationPhase::Completed, true) => {
+                "Знайдено операції"
+            }
+            (PlatformCommandOperation::Discover, ToolNarrationPhase::Failed, true) => {
+                "Не вдалося знайти операції"
+            }
+            (PlatformCommandOperation::Discover, _, true) => "Шукаю операції",
+            (PlatformCommandOperation::Query, ToolNarrationPhase::Completed, true) => {
+                "Опитано платформу"
+            }
+            (PlatformCommandOperation::Query, ToolNarrationPhase::Failed, true) => {
+                "Не вдалося опитати платформу"
+            }
+            (PlatformCommandOperation::Query, _, true) => "Опитую платформу",
+            (PlatformCommandOperation::Execute, ToolNarrationPhase::Completed, true) => {
+                "Виконано команди платформи"
+            }
+            (PlatformCommandOperation::Execute, ToolNarrationPhase::Failed, true) => {
+                "Не вдалося виконати команди платформи"
+            }
+            (PlatformCommandOperation::Execute, _, true) => "Виконую команди платформи",
+        };
+        Some(text.to_string())
+    }
+
     fn name(&self) -> &str {
         match self.operation {
             PlatformCommandOperation::Discover => "discover",
@@ -270,6 +327,61 @@ mod tests {
                 .get("organization_id")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn tools_own_phase_aware_human_narration() {
+        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use crate::tool_types::ToolCall;
+
+        let cases = [
+            (
+                PlatformCommandTool::discover(),
+                "discover",
+                "Discovering operations",
+                "Discovered operations",
+            ),
+            (
+                PlatformCommandTool::query(),
+                "query",
+                "Querying platform",
+                "Queried platform",
+            ),
+            (
+                PlatformCommandTool::execute(),
+                "execute",
+                "Executing platform commands",
+                "Executed platform commands",
+            ),
+        ];
+
+        for (tool, name, started, completed) in cases {
+            let call = ToolCall {
+                id: format!("call_{name}"),
+                name: name.to_string(),
+                arguments: json!({}),
+            };
+            assert_eq!(
+                tool.narrate(
+                    &call,
+                    ToolNarrationPhase::Started,
+                    None,
+                    ToolNarrationContext::new(None),
+                )
+                .as_deref(),
+                Some(started)
+            );
+            assert_eq!(
+                tool.narrate(
+                    &call,
+                    ToolNarrationPhase::Completed,
+                    None,
+                    ToolNarrationContext::new(None),
+                )
+                .as_deref(),
+                Some(completed)
+            );
+        }
     }
 
     #[tokio::test]

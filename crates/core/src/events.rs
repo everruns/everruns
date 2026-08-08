@@ -1120,6 +1120,9 @@ pub struct ToolCallSummary {
     /// Human-readable narration for timeline rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
+    /// Human-readable narration after the call completes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_narration: Option<String>,
 }
 
 impl From<&ToolCall> for ToolCallSummary {
@@ -1129,6 +1132,7 @@ impl From<&ToolCall> for ToolCallSummary {
             name: tc.name.clone(),
             display_name: None,
             narration: None,
+            completed_narration: None,
         }
     }
 }
@@ -1230,6 +1234,12 @@ impl ActStartedData {
                             tool_def,
                             tc,
                             ToolNarrationPhase::Started,
+                            locale,
+                        )),
+                        completed_narration: Some(render_tool_narration_with_locale(
+                            tool_def,
+                            tc,
+                            ToolNarrationPhase::Completed,
                             locale,
                         )),
                     }
@@ -1532,6 +1542,9 @@ pub struct ToolCallRequestedData {
     /// Human-readable headline for the requested batch
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub headline: Option<String>,
+    /// Human-readable headline after the requested batch completes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_headline: Option<String>,
 }
 
 impl ToolCallRequestedData {
@@ -1568,6 +1581,12 @@ impl ToolCallRequestedData {
                         ToolNarrationPhase::Waiting,
                         locale,
                     )),
+                    completed_narration: Some(render_tool_narration_with_locale(
+                        tool_def,
+                        tool_call,
+                        ToolNarrationPhase::Completed,
+                        locale,
+                    )),
                 }
             })
             .collect();
@@ -1579,6 +1598,12 @@ impl ToolCallRequestedData {
                 tool_calls,
                 tool_defs,
                 ToolNarrationPhase::Waiting,
+                locale,
+            ),
+            completed_headline: render_group_headline_with_locale(
+                tool_calls,
+                tool_defs,
+                ToolNarrationPhase::Completed,
                 locale,
             ),
         }
@@ -4247,6 +4272,7 @@ mod contract_tests {
                 name: "get_weather".to_string(),
                 display_name: None,
                 narration: None,
+                completed_narration: None,
             }],
             headline: None,
         };
@@ -4469,6 +4495,7 @@ mod contract_tests {
             name: "get_weather".to_string(),
             display_name: Some("Get Weather".to_string()),
             narration: None,
+            completed_narration: None,
         };
         let json = serde_json::to_value(&summary).unwrap();
         assert_eq!(json["display_name"], "Get Weather");
@@ -4485,6 +4512,7 @@ mod contract_tests {
             name: "get_weather".to_string(),
             display_name: None,
             narration: None,
+            completed_narration: None,
         };
         let json = serde_json::to_string(&summary).unwrap();
         assert!(!json.contains("display_name"));
@@ -4528,6 +4556,14 @@ mod contract_tests {
         assert_eq!(
             data.tool_calls[0].display_name.as_deref(),
             Some("Get Weather")
+        );
+        assert_eq!(
+            data.tool_calls[0].narration.as_deref(),
+            Some("Running Get Weather")
+        );
+        assert_eq!(
+            data.tool_calls[0].completed_narration.as_deref(),
+            Some("Ran Get Weather")
         );
         assert_eq!(data.tool_calls[1].display_name, None);
     }

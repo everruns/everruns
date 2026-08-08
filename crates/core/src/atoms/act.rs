@@ -734,6 +734,13 @@ where
                     ToolNarrationPhase::Started,
                     locale.as_deref(),
                 ));
+                summary.completed_narration = Some(self.render_tool_narration(
+                    &context,
+                    tool_def,
+                    tool_call,
+                    ToolNarrationPhase::Completed,
+                    locale.as_deref(),
+                ));
             }
         }
         started_data.headline = self.render_group_headline(
@@ -1153,7 +1160,7 @@ where
                         let mut content = replayed_result
                             .result
                             .as_ref()
-                            .map(|r| vec![ContentPart::text(r.to_string())])
+                            .map(|r| vec![ContentPart::tool_result_text(r)])
                             .unwrap_or_default();
                         if let Some(ref images) = replayed_result.images {
                             for img in images {
@@ -1623,7 +1630,7 @@ where
                     let mut result_content = tool_result
                         .result
                         .as_ref()
-                        .map(|r| vec![ContentPart::text(r.to_string())])
+                        .map(|r| vec![ContentPart::tool_result_text(r)])
                         .unwrap_or_default();
                     // Append images as native Image content parts
                     if let Some(ref images) = tool_result.images {

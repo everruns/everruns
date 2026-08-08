@@ -35115,6 +35115,13 @@
           "tool_calls"
         ],
         "properties": {
+          "completed_headline": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable headline after the requested batch completes"
+          },
           "headline": {
             "type": [
               "string",
@@ -35146,6 +35153,13 @@
           "name"
         ],
         "properties": {
+          "completed_narration": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable narration after the call completes"
+          },
           "display_name": {
             "type": [
               "string",

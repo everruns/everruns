@@ -38,6 +38,10 @@ function uiLocale(locale: string): SupportedLocale {
   return getSupportedLocale(locale);
 }
 
+function truncatePreview(value: string): string {
+  return value.length > 120 ? `${value.slice(0, 120)}...` : value;
+}
+
 function formatLocation(value: unknown, locale: string): string {
   if (typeof value !== "string" || value.trim().length === 0)
     return formatMessage(uiLocale(locale), "current_directory");
@@ -199,11 +203,16 @@ export function summarizeToolCalls(toolCalls: ToolCallContent[], locale: string)
 
 function parseStructuredText(text: string): unknown | null {
   if (!text) return null;
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
+
+  let candidate: unknown = text;
+  for (let depth = 0; depth < 3 && typeof candidate === "string"; depth += 1) {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      return depth === 0 ? null : candidate;
+    }
   }
+  return candidate;
 }
 
 export interface ToolActivitySummaryChip {
@@ -212,15 +221,41 @@ export interface ToolActivitySummaryChip {
   schedule?: string;
 }
 
-function maskSensitiveFields(toolName: string, value: unknown): unknown {
-  if (toolName !== "secret_store" || !isRecord(value)) return value;
-  if (!("value" in value) || value.value == null) return value;
-  return { ...value, value: "[hidden]" };
+const SENSITIVE_FIELD_PATTERN =
+  /(^|_)(api_?key|access_?token|refresh_?token|auth(orization)?|bearer_?token|cookie|credentials?|password|private_?key|secret)($|_)/i;
+
+function maskSensitiveFields(toolName: string, value: unknown, key?: string): unknown {
+  if (key && SENSITIVE_FIELD_PATTERN.test(key)) return "[hidden]";
+  if (toolName === "secret_store" && key === "value" && value != null) return "[hidden]";
+  if (Array.isArray(value)) {
+    return value.map((item) => maskSensitiveFields(toolName, item));
+  }
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([childKey, childValue]) => [
+      childKey,
+      maskSensitiveFields(toolName, childValue, childKey),
+    ]),
+  );
 }
 
-function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): string | null {
+function summarizeStructuredResult(
+  toolCall: ToolCallContent,
+  parsed: unknown,
+  depth = 0,
+): string | null {
+  if (Array.isArray(parsed)) {
+    return `${parsed.length} result${parsed.length === 1 ? "" : "s"}`;
+  }
   if (!isRecord(parsed)) return null;
   const record = parsed;
+
+  if (depth < 2 && typeof record.distilled_output === "string") {
+    const distilled = parseStructuredText(record.distilled_output);
+    const summary = summarizeStructuredResult(toolCall, distilled, depth + 1);
+    if (summary) return summary;
+  }
+  if (record.distilled === true) return "Large result available in Details";
 
   if (toolCall.name === "secret_store") {
     const operation = record.operation;
@@ -246,19 +281,43 @@ function summarizeStructuredResult(toolCall: ToolCallContent, parsed: unknown): 
       return `${record.count} value${record.count === 1 ? "" : "s"}`;
   }
 
-  if (typeof record.message === "string" && record.message.trim().length > 0) return record.message;
+  for (const key of ["summary", "message"] as const) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) return truncatePreview(value.trim());
+  }
 
-  const scalarEntries = Object.entries(record).filter(
-    ([, value]) => ["string", "number", "boolean"].includes(typeof value) || value === null,
-  );
-  if (scalarEntries.length === 0) return null;
+  const collectionKeys = [
+    "operations",
+    "results",
+    "items",
+    "data",
+    "files",
+    "matches",
+    "agents",
+    "sessions",
+    "tasks",
+    "plugins",
+    "schedules",
+    "capabilities",
+  ];
+  for (const key of collectionKeys) {
+    const value = record[key];
+    if (!Array.isArray(value)) continue;
+    const count = typeof record.count === "number" ? record.count : value.length;
+    const baseNoun = key === "data" || key === "results" ? "results" : key;
+    const noun = count === 1 && baseNoun.endsWith("s") ? baseNoun.slice(0, -1) : baseNoun;
+    return `${count} ${noun}`;
+  }
 
-  const preview = scalarEntries
-    .slice(0, 2)
-    .map(([key, value]) => `${key}: ${value === null ? "null" : String(value)}`)
-    .join(" · ");
+  if (typeof record.count === "number") {
+    return `${record.count} result${record.count === 1 ? "" : "s"}`;
+  }
 
-  return preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
+  if (typeof record.title === "string" && record.title.trim().length > 0) {
+    return truncatePreview(record.title.trim());
+  }
+
+  return null;
 }
 
 function scheduleLabelFromRecord(record: Record<string, unknown>): string | undefined {
@@ -376,7 +435,10 @@ export function getResultPreview(
   const fullText = getFullText(result?.result);
   if (!fullText) return null;
 
-  const bashOutput = parseBashOutput(fullText);
+  const parsed = parseStructuredText(fullText);
+  const normalizedText =
+    typeof parsed === "string" ? parsed : parsed == null ? fullText : JSON.stringify(parsed);
+  const bashOutput = parseBashOutput(normalizedText);
   if (bashOutput) {
     const previewSource = bashOutput.stdout || bashOutput.stderr;
     const previewLine = previewSource
@@ -384,22 +446,23 @@ export function getResultPreview(
       .map((line) => line.trim())
       .find((line) => line.length > 0);
 
-    if (previewLine)
-      return previewLine.length > 120 ? `${previewLine.slice(0, 120)}...` : previewLine;
+    if (previewLine) return truncatePreview(previewLine);
     if (bashOutput.exit_code !== 0) return `exit code ${bashOutput.exit_code}`;
     return null;
   }
 
-  const structuredPreview = summarizeStructuredResult(toolCall, parseStructuredText(fullText));
+  const structuredPreview = summarizeStructuredResult(toolCall, parsed);
   if (structuredPreview) return structuredPreview;
 
-  const previewLine = fullText
+  if (parsed != null && typeof parsed !== "string") return null;
+
+  const previewLine = normalizedText
     .split("\n")
     .map((line) => line.trim())
     .find((line) => line.length > 0);
 
   if (!previewLine) return null;
-  return previewLine.length > 120 ? `${previewLine.slice(0, 120)}...` : previewLine;
+  return truncatePreview(previewLine);
 }
 
 export function buildActivitySegments(

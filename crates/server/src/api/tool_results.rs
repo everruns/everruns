@@ -178,7 +178,7 @@ pub async fn submit_tool_results(
             let result_content = client_result
                 .result
                 .as_ref()
-                .map(|r| vec![ContentPart::text(r.to_string())])
+                .map(|r| vec![ContentPart::tool_result_text(r)])
                 .unwrap_or_default();
             ToolCompletedData::success(
                 client_result.tool_call_id.clone(),

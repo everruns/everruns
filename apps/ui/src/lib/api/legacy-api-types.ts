@@ -2354,6 +2354,8 @@ export interface ToolCallSummary {
   display_name?: string;
   /** Human-readable narration for timeline rendering */
   narration?: string;
+  /** Human-readable narration after the call completes */
+  completed_narration?: string;
 }
 
 /** Data for act.started event */
@@ -2398,6 +2400,7 @@ export interface ToolCallRequestedData {
   }>;
   tool_summaries?: ToolCallSummary[];
   headline?: string;
+  completed_headline?: string;
 }
 
 /** Data for tool.progress event (interim status during execution) */

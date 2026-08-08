@@ -7,7 +7,14 @@ export function getKnownTurnId(event: Event): string | undefined {
 }
 
 export function isStructuralWorkLogEvent(event: Event): boolean {
-  return event.type === "act.started" || event.type === "tool.call_requested";
+  return (
+    event.type === "act.started" ||
+    event.type === "act.completed" ||
+    event.type === "tool.started" ||
+    event.type === "tool.progress" ||
+    event.type === "tool.completed" ||
+    event.type === "tool.call_requested"
+  );
 }
 
 export function hasReasoningWorkLogSummary(event: Event): boolean {
