@@ -1539,7 +1539,7 @@ mod high_risk_admin_gate_tests {
 
     fn capability_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::in_memory());
-        CapabilityService::with_registry(db, None, CapabilityRegistry::with_builtins())
+        CapabilityService::with_registry(db, None, everruns_platform::capabilities::hosted_capability_registry())
     }
 
     fn org_with_role(role: OrgRole) -> ResolvedOrg {

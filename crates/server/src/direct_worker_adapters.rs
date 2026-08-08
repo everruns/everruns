@@ -3589,7 +3589,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 mod tests {
     use super::*;
     use crate::storage::models::CreateHarnessRow;
-    use everruns_core::PlatformStore;
+    use everruns_platform::PlatformStore;
 
     #[test]
     fn string_to_provider_type_maps_gemini() {

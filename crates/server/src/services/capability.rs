@@ -45,7 +45,7 @@ pub struct CapabilityService {
 
 impl CapabilityService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self::with_registry(db, encryption, CapabilityRegistry::with_builtins())
+        Self::with_registry(db, encryption, everruns_platform::capabilities::hosted_capability_registry())
     }
 
     pub fn with_registry(
@@ -642,7 +642,7 @@ mod tests {
 
     fn make_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
-        CapabilityService::with_registry(db, None, CapabilityRegistry::with_builtins())
+        CapabilityService::with_registry(db, None, everruns_platform::capabilities::hosted_capability_registry())
     }
 
     async fn insert_skill(svc: &CapabilityService, org_id: i64, name: &str) {

@@ -3267,8 +3267,6 @@ mod tests {
             "noop",
             "current_time",
             "research",
-            "platform",
-            "platform_management",
             "session_file_system",
             "session_storage",
             "session",
@@ -3429,8 +3427,6 @@ mod tests {
         assert!(registry.has("bashkit_shell"));
 
         for platform_only in [
-            "platform",
-            "platform_management",
             "model_scout",
             "openrouter_workspace",
             "openrouter_server_tools",

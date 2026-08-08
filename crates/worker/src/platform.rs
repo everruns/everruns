@@ -19,7 +19,7 @@ pub fn default_platform_definition() -> PlatformDefinition {
 /// Build the default worker-side platform definition for an explicit grade.
 pub fn default_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefinition {
     PlatformDefinition::builder()
-        .capability_registry(CapabilityRegistry::with_builtins_for_grade(grade))
+        .capability_registry(everruns_platform::capabilities::hosted_capability_registry_for_grade(grade))
         .driver_registry(crate::create_driver_registry())
         // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime
         // egress (capabilities, MCP, integrations) in distributed workers too.

@@ -20,7 +20,7 @@ use everruns_core::{is_plugin_capability, parse_plugin_capability_id};
 
 /// Validate that all capability references in `capabilities` resolve.
 ///
-/// - Built-in IDs are checked against a static `CapabilityRegistry::with_builtins()`.
+/// - Built-in IDs are checked against a static `everruns_platform::capabilities::hosted_capability_registry()`.
 /// - `mcp:{uuid}` refs are resolved against the org's MCP servers.
 /// - `skill:{uuid}` refs are resolved against the org's skills.
 /// - `plugin:{install_id}` refs resolve only to that active org installation.
@@ -75,7 +75,7 @@ pub async fn validate_capability_refs(
             }
         } else {
             // Built-in capability — check registry
-            let reg = registry.get_or_insert_with(CapabilityRegistry::with_builtins);
+            let reg = registry.get_or_insert_with(everruns_platform::capabilities::hosted_capability_registry);
             let Some(capability) = reg.get(cap_id) else {
                 return Err(ResourceNotFoundError::new("Capability").into());
             };
@@ -99,7 +99,7 @@ pub async fn normalize_capability_refs(
     org_id: i64,
     capabilities: Vec<AgentCapabilityConfig>,
 ) -> Result<Vec<AgentCapabilityConfig>> {
-    let registry = CapabilityRegistry::with_builtins();
+    let registry = everruns_platform::capabilities::hosted_capability_registry();
     let mut normalized = Vec::with_capacity(capabilities.len());
 
     for cap in capabilities {

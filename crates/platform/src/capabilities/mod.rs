@@ -22,3 +22,34 @@ pub use platform_management::{
     PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
     ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
+
+/// Register the hosted platform-management capabilities on a registry (EVE-839).
+///
+/// Server/worker call this after building the portable `everruns-core` builtins
+/// so hosted deployments keep the `platform` and `platform_management`
+/// capabilities that were previously registered inside core.
+pub fn register_platform_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+    registry.register(PlatformCapability);
+    registry.register(PlatformManagementCapability);
+}
+
+/// Portable `everruns-core` builtins plus the hosted platform capabilities,
+/// grade-selected. The hosted registry server/worker use for catalog,
+/// validation, and execution (EVE-839).
+pub fn hosted_capability_registry_for_grade(
+    grade: everruns_core::capabilities::DeploymentGrade,
+) -> everruns_core::capabilities::CapabilityRegistry {
+    let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    register_platform_capabilities(&mut registry);
+    registry
+}
+
+/// [`hosted_capability_registry_for_grade`] with the grade taken from the
+/// environment (mirrors `CapabilityRegistry::with_builtins`).
+pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
+    let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins();
+    register_platform_capabilities(&mut registry);
+    registry
+}

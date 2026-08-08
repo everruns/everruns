@@ -125,7 +125,7 @@ impl SessionService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             principal_service: PrincipalService::new(db.clone()),
-            capability_registry: CapabilityRegistry::with_builtins(),
+            capability_registry: everruns_platform::capabilities::hosted_capability_registry(),
             session_file_service: WorkspaceFileService::new(db.clone()),
             db,
             session_sandbox_service: None,

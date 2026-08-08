@@ -3129,7 +3129,7 @@ mod tests {
     #[test]
     fn test_generic_harness_capabilities_are_registered() {
         // Verify all capability IDs referenced by Generic harness exist in the registry
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
@@ -3156,7 +3156,7 @@ mod tests {
         unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
@@ -3182,7 +3182,7 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
@@ -3214,7 +3214,7 @@ mod tests {
     async fn test_generic_harness_capabilities_produce_bash_tool() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
@@ -3259,7 +3259,7 @@ mod tests {
     async fn test_generic_harness_collected_tools_have_implementations() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
@@ -3305,7 +3305,7 @@ mod tests {
     async fn test_generic_harness_capabilities_produce_skills_tools() {
         use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 
-        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+        let registry = everruns_platform::capabilities::hosted_capability_registry_for_grade(
             everruns_core::DeploymentGrade::Dev,
         );
 
