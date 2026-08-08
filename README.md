@@ -121,6 +121,10 @@ Then open:
 
 See the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) for the full guide.
 
+Contributors and coding agents can instead run the PostgreSQL, Valkey, and NATS-backed development
+stack locally without Docker. The canonical per-worktree command, prerequisites, ports, and cleanup
+instructions live in [`AGENTS.md`](./AGENTS.md#local-dev).
+
 ## API example
 
 ```bash

@@ -463,6 +463,7 @@ case "$cmd" in
       done
       signal_recorded_pids KILL
       signal_port_bound_services KILL
+      "$PROJECT_ROOT/scripts/lib/infra.sh" stop 2>/dev/null || true
       clear_run_state_dir
 
       # Restore terminal state

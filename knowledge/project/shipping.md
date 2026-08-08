@@ -67,7 +67,7 @@ The command menu lives in the ship skill; it picks the smallest set that fits th
 rather than running every check mechanically. Whatever set is chosen, the evidence must show that:
 
 - the changed surface built, linted, and tested cleanly, including important negative paths
-- impacted flows were smoke tested against `just start-dev` or `just start-all` as risk dictates
+- impacted flows were smoke tested against the repository's canonical local startup contract
 - performance impact was considered where relevant: indexes, scans, N+1 patterns, pagination, and
   bounded result sets
 - UI changes were captured as screenshots in validation or PR comments — never committed to the repo
