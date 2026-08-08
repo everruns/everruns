@@ -136,6 +136,9 @@ jobs:
                   "everruns-a2ui",
                   "everruns-provider",
               ],
+              "crates/engine/Cargo.toml": [
+                  "everruns-core",
+              ],
               "crates/platform/Cargo.toml": [
                   "everruns-core",
               ],
@@ -144,10 +147,12 @@ jobs:
               ],
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
+                  "everruns-engine",
               ],
               "crates/everruns/Cargo.toml": [
                   "everruns-core",
                   "everruns-runtime",
+                  "everruns-macros",
               ],
               "crates/local/Cargo.toml": [
                   "everruns-core",
@@ -239,6 +244,9 @@ jobs:
             everruns-provider
             everruns-meta
             everruns-core
+            # The sans-IO turn planner sits between core and runtime: it depends
+            # on everruns-core, and everruns-runtime depends on it.
+            everruns-engine
             everruns-platform
             everruns-mcp
             everruns-openai
@@ -259,6 +267,9 @@ jobs:
             everruns-integrations-sprites
             everruns-runtime
             everruns-local
+            # `everruns` enables its `macros` feature by default, so the facade
+            # is only installable once everruns-macros is on crates.io.
+            everruns-macros
             everruns
           )
 
