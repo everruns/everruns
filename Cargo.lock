@@ -2565,6 +2565,7 @@ version = "0.17.23"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-openai",
  "everruns-runtime",
  "serde_json",
  "tokio",

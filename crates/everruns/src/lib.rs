@@ -63,6 +63,13 @@ pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use session::{RunError, Session, Turn};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
+// --- Real LLM provider configuration (feature-gated) --------------------
+// The default facade build stays offline; provider modules compile only when
+// their feature is enabled. `openai` adds `providers::openai::OpenAI`.
+pub mod providers;
+#[cfg(feature = "openai")]
+pub use providers::openai::{ModelError, OpenAI};
+
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the runtime
 // crate's low-level `AgentBuilder` at the facade root. The runtime builder
@@ -108,6 +115,8 @@ pub mod prelude {
         Agent, AgentBuilder, BuildError, FunctionTool, IntoTool, IntoToolResult, Model, RunError,
         Session, Tool, ToolResponse, Turn,
     };
+    #[cfg(feature = "openai")]
+    pub use crate::{ModelError, OpenAI};
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, MessageRole};
 }
