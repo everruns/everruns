@@ -2111,9 +2111,9 @@ impl Tool for FailingTool {
 mod tests {
     use super::*;
     use crate::capabilities::GetCurrentTimeTool;
-    use crate::subagent_delegation::SubagentSessionDelegate;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_task::SessionTaskRegistry;
+    use crate::subagent_delegation::SubagentSessionDelegate;
     use crate::traits::{SessionFileSystem, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{KeyInfo, SecretInfo};

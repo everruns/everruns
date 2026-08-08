@@ -17,7 +17,6 @@ use everruns_core::events::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_platform::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::tools::Tool;
 use everruns_core::traits::{
@@ -35,6 +34,7 @@ use everruns_core::{
     UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
 };
+use everruns_platform::PlatformStore;
 use std::sync::Arc;
 use tracing::warn;
 

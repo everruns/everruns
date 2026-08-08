@@ -5,6 +5,7 @@
 // Decision: Tool results include UI links via base_url()
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
+use async_trait::async_trait;
 use everruns_core::SessionContextReport;
 use everruns_core::agent::Agent;
 use everruns_core::app::{App, AppChannel, ChannelType};
@@ -12,8 +13,9 @@ use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::Result;
 use everruns_core::harness::Harness;
 use everruns_core::session::{Session, SessionParticipant, SessionSeedMode};
-use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
-use async_trait::async_trait;
+use everruns_core::typed_id::{
+    AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
+};
 use std::collections::HashSet;
 
 // The narrow session-delegation DTOs live in `everruns-core` (they are part of
@@ -354,9 +356,7 @@ pub struct PlatformStoreExt(pub std::sync::Arc<dyn PlatformStore>);
 pub struct PlatformStoreSubagentDelegate(pub std::sync::Arc<dyn PlatformStore>);
 
 #[async_trait]
-impl everruns_core::subagent_delegation::SubagentSessionDelegate
-    for PlatformStoreSubagentDelegate
-{
+impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformStoreSubagentDelegate {
     async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
         self.0.get_agent_by_id(id).await
     }
@@ -371,7 +371,9 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate
         session_id: SessionId,
         agent_id: AgentId,
     ) -> Result<SessionParticipant> {
-        self.0.add_agent_session_participant(session_id, agent_id).await
+        self.0
+            .add_agent_session_participant(session_id, agent_id)
+            .await
     }
     async fn create_session_with_options(
         &self,
@@ -665,7 +667,10 @@ pub mod tests {
         async fn list_agents(&self) -> Result<Vec<Agent>> {
             Ok(vec![self.agent.clone()])
         }
-        async fn get_agent_by_id(&self, _id: everruns_core::typed_id::AgentId) -> Result<Option<Agent>> {
+        async fn get_agent_by_id(
+            &self,
+            _id: everruns_core::typed_id::AgentId,
+        ) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
         }
         async fn create_agent(

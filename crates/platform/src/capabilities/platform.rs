@@ -1,10 +1,12 @@
 //! Catalog-backed platform management capability.
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
 use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{ToolContext, ToolContextService};
-use async_trait::async_trait;
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
@@ -396,8 +398,11 @@ mod tests {
     #[tokio::test]
     async fn tools_dispatch_to_platform_store() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new())
-            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store as Arc<dyn crate::platform_store::PlatformStore>)));
+        let context = ToolContext::new(SessionId::new()).with_extension(Arc::new(
+            crate::platform_store::PlatformStoreExt(
+                store as Arc<dyn crate::platform_store::PlatformStore>,
+            ),
+        ));
         let result = PlatformCommandTool::query()
             .execute_with_context(json!({ "commands": "list_models" }), &context)
             .await;
@@ -407,8 +412,11 @@ mod tests {
     #[tokio::test]
     async fn organization_override_is_rejected_even_if_injected() {
         let store = Arc::new(MockPlatformStore::new());
-        let context = ToolContext::new(SessionId::new())
-            .with_extension(Arc::new(crate::platform_store::PlatformStoreExt(store as Arc<dyn crate::platform_store::PlatformStore>)));
+        let context = ToolContext::new(SessionId::new()).with_extension(Arc::new(
+            crate::platform_store::PlatformStoreExt(
+                store as Arc<dyn crate::platform_store::PlatformStore>,
+            ),
+        ));
         let result = PlatformCommandTool::query()
             .execute_with_context(
                 json!({ "commands": "list_models", "organization_id": "org_other" }),

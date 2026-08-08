@@ -327,10 +327,7 @@ pub mod tests {
 
     #[async_trait]
     impl SubagentSessionDelegate for MockSubagentDelegate {
-        async fn get_agent_by_id(
-            &self,
-            _id: crate::typed_id::AgentId,
-        ) -> Result<Option<Agent>> {
+        async fn get_agent_by_id(&self, _id: crate::typed_id::AgentId) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
         }
 

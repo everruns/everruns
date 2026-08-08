@@ -2,10 +2,10 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_platform::{PlatformMessage, PlatformStore};
 use everruns_core::session::Session;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner};
+use everruns_platform::{PlatformMessage, PlatformStore};
 use std::sync::Arc;
 use std::sync::Mutex;
 

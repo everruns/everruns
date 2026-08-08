@@ -13,9 +13,9 @@ pub mod util;
 
 pub use platform::{
     DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,
-    EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID, PlatformCapability,
-    QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema, execute_input_schema,
-    query_input_schema,
+    EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID,
+    PlatformCapability, QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema,
+    execute_input_schema, query_input_schema,
 };
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
@@ -41,7 +41,8 @@ pub fn register_platform_capabilities(
 pub fn hosted_capability_registry_for_grade(
     grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
-    let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    let mut registry =
+        everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
     register_platform_capabilities(&mut registry);
     registry
 }

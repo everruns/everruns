@@ -2861,8 +2861,6 @@ mod tests {
         );
     }
 
-
-
     #[test]
     fn test_act_result_connection_required_serialization() {
         let result = ActResult {

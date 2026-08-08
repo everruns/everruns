@@ -16,7 +16,6 @@ use everruns_core::in_memory::{
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
-use everruns_platform::PlatformStore;
 use everruns_core::session::Session;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{
@@ -24,6 +23,7 @@ use everruns_core::traits::{
     SessionScheduleStore, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_platform::PlatformStore;
 use std::sync::Arc;
 
 /// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a

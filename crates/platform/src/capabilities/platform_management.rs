@@ -10,16 +10,16 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
+use async_trait::async_trait;
+use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
 };
-use everruns_core::app::{App, AppChannel, ChannelType};
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use everruns_core::capability_types::{MountAccess, MountSource, VirtualFileTree};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use async_trait::async_trait;
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use include_dir::{Dir, include_dir};
 use serde_json::{Value, json};
@@ -513,10 +513,9 @@ async fn manage_harnesses_impl(
             let system_prompt = get_str(&arguments, "system_prompt");
             let description = get_str(&arguments, "description");
             let parent_harness_id = match arguments.get("parent_harness_id") {
-                Some(Value::String(id_str)) => Some(parse_id::<everruns_core::typed_id::HarnessId>(
-                    id_str,
-                    "parent_harness_id",
-                )?),
+                Some(Value::String(id_str)) => Some(
+                    parse_id::<everruns_core::typed_id::HarnessId>(id_str, "parent_harness_id")?,
+                ),
                 Some(Value::Null) | None => None,
                 Some(_) => {
                     return Ok(ToolExecutionResult::tool_error(
@@ -566,9 +565,10 @@ async fn manage_harnesses_impl(
             let description = get_str(&arguments, "description");
             let system_prompt = get_str(&arguments, "system_prompt");
             let parent_harness_id = match arguments.get("parent_harness_id") {
-                Some(Value::String(id_str)) => Some(Some(parse_id::<everruns_core::typed_id::HarnessId>(
-                    id_str,
-                    "parent_harness_id",
+                Some(Value::String(id_str)) => Some(Some(parse_id::<
+                    everruns_core::typed_id::HarnessId,
+                >(
+                    id_str, "parent_harness_id"
                 )?)),
                 Some(Value::Null) => Some(None),
                 None => None,
@@ -1143,10 +1143,13 @@ async fn manage_apps_impl(
         "create" => {
             let name = require_str(&arguments, "name")?;
             let harness_id_str = require_str(&arguments, "harness_id")?;
-            let harness_id: everruns_core::typed_id::HarnessId = parse_id(harness_id_str, "harness_id")?;
+            let harness_id: everruns_core::typed_id::HarnessId =
+                parse_id(harness_id_str, "harness_id")?;
             let description = get_str(&arguments, "description");
             let agent_id = match get_str(&arguments, "agent_id") {
-                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(value, "agent_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(
+                    value, "agent_id",
+                )?),
                 None => None,
             };
             let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
@@ -1196,11 +1199,16 @@ async fn manage_apps_impl(
             let app_id_str = require_str(&arguments, "app_id")?;
             let app_id: everruns_core::typed_id::AppId = parse_id(app_id_str, "app_id")?;
             let harness_id = match get_str(&arguments, "harness_id") {
-                Some(value) => Some(parse_id::<everruns_core::typed_id::HarnessId>(value, "harness_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::HarnessId>(
+                    value,
+                    "harness_id",
+                )?),
                 None => None,
             };
             let agent_id = match get_str(&arguments, "agent_id") {
-                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(value, "agent_id")?),
+                Some(value) => Some(parse_id::<everruns_core::typed_id::AgentId>(
+                    value, "agent_id",
+                )?),
                 None => None,
             };
             let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
@@ -1413,7 +1421,8 @@ async fn manage_app_channels_impl(
 
         "update" => {
             let channel_id_str = require_str(&arguments, "channel_id")?;
-            let channel_id: everruns_core::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            let channel_id: everruns_core::typed_id::AppChannelId =
+                parse_id(channel_id_str, "channel_id")?;
             let channel_type = match get_str(&arguments, "channel_type") {
                 Some(value) => Some(parse_channel_type(value, "channel_type")?),
                 None => None,
@@ -1438,7 +1447,8 @@ async fn manage_app_channels_impl(
 
         "delete" => {
             let channel_id_str = require_str(&arguments, "channel_id")?;
-            let channel_id: everruns_core::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            let channel_id: everruns_core::typed_id::AppChannelId =
+                parse_id(channel_id_str, "channel_id")?;
             match store.delete_app_channel(app_id, channel_id).await {
                 Ok(()) => ToolExecutionResult::success(json!({
                     "app_id": app_id_str,
@@ -1558,8 +1568,8 @@ async fn read_sessions_impl(
         .and_then(|v| v.as_u64())
         .map(|v| v as usize);
     // Invalid agent_id is silently ignored here (filter is best-effort).
-    let agent_id =
-        get_str(&arguments, "agent_id").and_then(|s| s.parse::<everruns_core::typed_id::AgentId>().ok());
+    let agent_id = get_str(&arguments, "agent_id")
+        .and_then(|s| s.parse::<everruns_core::typed_id::AgentId>().ok());
     Ok(match store.list_sessions(limit, agent_id).await {
         Ok(sessions) => {
             let items: Vec<Value> = sessions

@@ -75,7 +75,8 @@ pub async fn validate_capability_refs(
             }
         } else {
             // Built-in capability — check registry
-            let reg = registry.get_or_insert_with(everruns_platform::capabilities::hosted_capability_registry);
+            let reg = registry
+                .get_or_insert_with(everruns_platform::capabilities::hosted_capability_registry);
             let Some(capability) = reg.get(cap_id) else {
                 return Err(ResourceNotFoundError::new("Capability").into());
             };

@@ -171,12 +171,12 @@ pub mod output_guardrail;
 pub mod path_identity;
 pub mod platform_definition;
 pub mod resource_ownership;
+pub mod runtime_agent;
+pub mod runtime_context;
 /// Narrow child-session delegation contract for portable subagent/handoff
 /// orchestration (EVE-839): core owns the interface, the platform crate
 /// implements it over `PlatformStore`.
 pub mod subagent_delegation;
-pub mod runtime_agent;
-pub mod runtime_context;
 pub use everruns_provider::stream_accumulator;
 pub use everruns_provider::stream_reconnect;
 pub mod tool_output_sanitizer;
@@ -269,14 +269,14 @@ pub use channel::{
 
 // Narrow subagent-session delegation contract (EVE-839). The full hosted
 // `PlatformStore` and its management capabilities live in `everruns-platform`.
-pub use subagent_delegation::{
-    PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
-};
 pub use resource_ownership::{
     LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
     LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
     ownership_tracking_unavailable_error, require_owned_external_resource,
     resource_not_owned_error, verify_owned_external_resource_if_available,
+};
+pub use subagent_delegation::{
+    PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
 };
 
 // Event listener re-exports
@@ -385,15 +385,14 @@ pub use capabilities::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, IntegrationPlugin,
     ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
     MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
-    NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
-    QueryHistoryTool, ReadFileTool, ResearchCapability,
-    ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
-    SessionCapabilityConfig, SessionSandboxCapability, SessionSqlDatabaseCapability,
-    SessionTitleMutation, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
-    StatelessTodoListCapability, SubtractTool, TestMathCapability, TestWeatherCapability,
-    ToolCallHook, ToolDefinitionHook, WriteFileTool, WriteSessionTitleTool, WriteTodosTool,
-    apply_capabilities, collect_capabilities, collect_capabilities_with_configs, compute_features,
-    declarative_capability_id, declarative_capability_info, get_dependencies,
+    NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability, QueryHistoryTool,
+    ReadFileTool, ResearchCapability, ResolvedCapabilities, RiskLevel, SampleDataCapability,
+    SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
+    SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
+    TestWeatherCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool, WriteSessionTitleTool,
+    WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
+    compute_features, declarative_capability_id, declarative_capability_info, get_dependencies,
     hydrate_declarative_capability_config, hydrate_plugin_capability_config,
     is_declarative_capability, is_mcp_capability, mcp_capability_id,
     parse_declarative_capability_id, parse_mcp_capability_id, plugin_capability_info,

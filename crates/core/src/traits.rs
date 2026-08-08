@@ -1900,8 +1900,7 @@ pub struct ToolContext {
     /// orchestration (EVE-839). The hosted `PlatformStore` seam itself is no
     /// longer named by core; the platform crate implements this delegate and,
     /// for its own management tools, is resolved via [`Self::extension`].
-    pub subagent_delegate:
-        Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
+    pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
     /// Type-erased, host-supplied extensions keyed by concrete type. Lets crates
     /// layered above core (e.g. `everruns-platform`) hang typed services on the
     /// tool context without core naming them (EVE-839).

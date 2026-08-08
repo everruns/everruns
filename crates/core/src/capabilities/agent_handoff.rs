@@ -15,13 +15,13 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
 };
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
-use crate::subagent_delegation::PlatformCreateSessionRequest;
 use crate::session::{SessionSeedMode, SubagentStatus};
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
     TASK_KIND_SESSION, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
     TaskWakePolicy, task_message_text,
 };
+use crate::subagent_delegation::PlatformCreateSessionRequest;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -1329,9 +1329,10 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         if task.state.is_terminal() {
             return Ok(());
         }
-        let (Some(store), Some(child_id)) =
-            (context.subagent_delegate.as_ref(), task.links.child_session_id)
-        else {
+        let (Some(store), Some(child_id)) = (
+            context.subagent_delegate.as_ref(),
+            task.links.child_session_id,
+        ) else {
             return Ok(());
         };
         let status = store.wait_for_idle(child_id, Some(0)).await?;
@@ -1357,8 +1358,8 @@ mod tests {
     use super::*;
     use crate::Result;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart};
+    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;

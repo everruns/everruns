@@ -26,13 +26,13 @@ use super::delegation_result::{
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode};
-use crate::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
     TaskMessage, TaskWakePolicy, task_message_text,
 };
+use crate::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
 use crate::tool_types::ToolHints;
 use crate::tools::{
     BackgroundRunPermit, Tool, ToolExecutionResult, try_acquire_background_run_permit,
@@ -1800,9 +1800,10 @@ impl TaskExecutor for SubagentTaskExecutor {
         if task.state.is_terminal() {
             return Ok(());
         }
-        let (Some(store), Some(child_id)) =
-            (context.subagent_delegate.as_ref(), task.links.child_session_id)
-        else {
+        let (Some(store), Some(child_id)) = (
+            context.subagent_delegate.as_ref(),
+            task.links.child_session_id,
+        ) else {
             return Ok(());
         };
         // Zero-timeout probe: returns the terminal turn status when the child
@@ -1855,7 +1856,10 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         // stop to the peer session first; only settle the tracking task once
         // the request is in flight, so a delivery failure surfaces to the
         // caller instead of silently claiming the peer was canceled.
-        let summary = match (context.subagent_delegate.as_ref(), task.links.child_session_id) {
+        let summary = match (
+            context.subagent_delegate.as_ref(),
+            task.links.child_session_id,
+        ) {
             (Some(store), Some(peer_id)) => {
                 store
                     .send_message(
@@ -2065,9 +2069,9 @@ mod tests {
     // =========================================================================
 
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::session_file::SessionFile;
     use crate::session_task::SessionTaskRegistry;
+    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::traits::SessionFileSystem;
     use chrono::Utc;
     use std::collections::HashMap;
