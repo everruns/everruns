@@ -18,6 +18,7 @@ llm-tests = []
 
 [dependencies]
 everruns-core = { path = "../core" }
+everruns-platform = { path = "../platform" }
 # Runtime + local host wiring for the live subagent end-to-end test.
 everruns-runtime = { path = "../runtime" }
 everruns-local = { path = "../local" }

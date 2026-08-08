@@ -446,7 +446,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    ) -> Arc<dyn everruns_platform::PlatformStore> {
         Arc::new(
             crate::grpc_adapters::GrpcPlatformStore::new_for_platform_session(
                 self.client.clone(),

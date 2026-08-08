@@ -3024,7 +3024,7 @@ impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
 // ============================================================================
 
 #[async_trait]
-impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
+impl everruns_platform::PlatformStore for GrpcOrgAdapter {
     async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
         self.invoke_platform_command_surface(
             proto::PlatformCommandSurfaceOperation::Discover,
@@ -3562,7 +3562,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
 
     async fn create_session_with_options(
         &self,
-        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+        request: everruns_platform::PlatformCreateSessionRequest,
     ) -> Result<Session> {
         self.execute_platform_command(
             "create_session",
@@ -3656,7 +3656,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         &self,
         session_id: SessionId,
         limit: Option<usize>,
-    ) -> Result<Vec<everruns_core::platform_store::PlatformMessage>> {
+    ) -> Result<Vec<everruns_platform::PlatformMessage>> {
         let mut messages: Vec<Message> = self
             .execute_platform_command(
                 "list_messages",
@@ -3688,7 +3688,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 if content.is_empty() {
                     return None;
                 }
-                Some(everruns_core::platform_store::PlatformMessage {
+                Some(everruns_platform::PlatformMessage {
                     role: match message.role {
                         everruns_core::MessageRole::User => "user".to_string(),
                         _ => "agent".to_string(),

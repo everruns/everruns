@@ -534,7 +534,7 @@ async fn start_grpc_test_server(
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
-    use everruns_core::platform_store::PlatformStore;
+    use everruns_platform::PlatformStore;
     use everruns_core::tools::{Tool, ToolExecutionResult};
 
     let service = test_worker_service_with_completing_runner().await;
@@ -593,7 +593,12 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         ),
     );
     let mut context = everruns_core::traits::ToolContext::new(parent_id);
-    context.platform_store = Some(adapter.clone());
+    context.subagent_delegate = Some(std::sync::Arc::new(
+        everruns_platform::PlatformStoreSubagentDelegate(adapter.clone()),
+    ));
+    context
+        .extensions
+        .insert(std::sync::Arc::new(everruns_platform::PlatformStoreExt(adapter.clone())));
     context.session_store = Some(adapter.clone());
     context.session_creation_authority = Some(Arc::new(
         everruns_worker::grpc_adapters::GrpcSessionCreationAuthority::new(

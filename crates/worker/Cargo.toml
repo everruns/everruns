@@ -22,6 +22,7 @@ anyhow.workspace = true
 tracing.workspace = true
 
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-platform = { path = "../platform", features = ["embedded-platform-docs"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-openai-image = { path = "../../integrations/openai-image" }

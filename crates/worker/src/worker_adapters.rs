@@ -287,7 +287,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Arc<dyn everruns_core::platform_store::PlatformStore>;
+    ) -> Arc<dyn everruns_platform::PlatformStore>;
 
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
