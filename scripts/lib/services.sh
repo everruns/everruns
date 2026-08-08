@@ -2,6 +2,7 @@
 # Service operations: server, worker, watch-*, start-dev, start-all, stop-all
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/local-development-secrets.sh"
 
 cmd="${1:-}"
 shift || true
@@ -302,9 +303,7 @@ case "$cmd" in
     export API_BASE_URL=${API_BASE_URL:-"http://127.0.0.1:${API_PORT}"}
     export RUST_LOG=${RUST_LOG:-info}
 
-    # Set encryption key if not provided (standard dev key from .env.example)
-    if [ -z "${SECRETS_ENCRYPTION_KEY:-}" ]; then
-      export SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY="
+    if configure_local_development_encryption_key; then
       echo "   ✅ Using default encryption key"
     fi
 

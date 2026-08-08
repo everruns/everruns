@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$PROJECT_ROOT/scripts/lib/local-development-secrets.sh"
 TEST_DIR="$(mktemp -d)"
 NEXT_BIN="$PROJECT_ROOT/apps/ui/node_modules/.bin/next"
 CREATED_NEXT_BIN=false
@@ -49,7 +50,7 @@ EOF
 cat > "$TEST_DIR/bin/just" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$PORT_PREFIX|$AUTH_MODE|${OPENAI_API_KEY:-}|${ANTHROPIC_API_KEY:-}|$*" > "$AGENT_START_CAPTURE"
+printf '%s\n' "$PORT_PREFIX|$AUTH_MODE|${OPENAI_API_KEY:-}|${ANTHROPIC_API_KEY:-}|${SECRETS_ENCRYPTION_KEY:-}|$*" > "$AGENT_START_CAPTURE"
 EOF
 
 for command_name in sqlx pnpm caddy nats-server pg_ctl valkey-server; do
@@ -75,10 +76,31 @@ PATH="$TEST_DIR/bin:$PATH" \
   AGENT_START_CAPTURE="$capture" \
   "$PROJECT_ROOT/scripts/start-agent-dev.sh"
 
-expected='271|none|injected-openai|injected-anthropic|start-all --no-watch'
+expected='271|none|injected-openai|injected-anthropic|test-only-not-a-secret|start-all --no-watch'
 actual="$(<"$capture")"
 [ "$actual" = "$expected" ] || {
   echo "FAIL: expected '$expected', got '$actual'" >&2
+  exit 1
+}
+
+env -u SECRETS_ENCRYPTION_KEY \
+  PATH="$TEST_DIR/bin:$PATH" \
+  PORT_PREFIX=272 \
+  AUTH_MODE=none \
+  AGENT_START_CAPTURE="$capture" \
+  "$PROJECT_ROOT/scripts/start-agent-dev.sh"
+
+expected="272|none|injected-openai|injected-anthropic|$DEFAULT_LOCAL_SECRETS_ENCRYPTION_KEY|start-all --no-watch"
+actual="$(<"$capture")"
+[ "$actual" = "$expected" ] || {
+  echo "FAIL: expected stable local encryption key, got '$actual'" >&2
+  exit 1
+}
+
+default_key_definitions="$(rg -lF "$DEFAULT_LOCAL_SECRETS_ENCRYPTION_KEY" \
+  "$PROJECT_ROOT/scripts" | wc -l | tr -d ' ')"
+[ "$default_key_definitions" = "1" ] || {
+  echo "FAIL: expected one local development encryption key definition, found $default_key_definitions" >&2
   exit 1
 }
 

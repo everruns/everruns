@@ -89,7 +89,7 @@ Field descriptions:
 
 ### Security Requirements
 
-1. **Key Storage**: KEKs must never be committed to source control
+1. **Key Storage**: Production KEKs must never be committed to source control; the public local-development default is not valid for production
 2. **Key Length**: Minimum 256 bits (32 bytes)
 3. **Nonce**: Must be unique per encryption operation (12 bytes, randomly generated)
 4. **DEK**: Fresh random DEK generated for each encryption operation
@@ -101,6 +101,15 @@ Field descriptions:
 2. **Thread Safety**: Safe for concurrent use across async tasks
 3. **Error Handling**: Clear errors for key mismatch, tampering, or corruption
 4. **Backwards Compatibility**: Supports legacy non-versioned ciphertext during migration
+
+### Local Development
+
+Local databases persist encrypted provider credentials across process and worktree restarts, so
+the default local-development KEK must remain stable. Local launchers share the public,
+non-production default defined in
+[`scripts/lib/local-development-secrets.sh`](../../scripts/lib/local-development-secrets.sh) when
+`SECRETS_ENCRYPTION_KEY` is absent. Changing the effective key requires migrating or resetting the
+corresponding local database; otherwise existing encrypted records cannot be unwrapped.
 
 ### Encrypted Fields
 

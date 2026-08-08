@@ -160,7 +160,7 @@ Display:   evr_pat_<first-8-chars>...      (prefix for identification)
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-CRYPTO-001 | KEK compromise | Critical | Stored in env var `SECRETS_ENCRYPTION_KEY`; never in source control | MITIGATED |
+| TM-CRYPTO-001 | KEK compromise | Critical | Production KEKs are stored in `SECRETS_ENCRYPTION_KEY` and never committed; the repository's public local-development KEK is explicitly non-production and stable for persisted local data | MITIGATED |
 | TM-CRYPTO-002 | Nonce reuse in AES-GCM | Critical | Fresh 12-byte random nonce per encryption; 2^96 space | MITIGATED |
 | TM-CRYPTO-003 | Ciphertext tampering | High | GCM authentication tag detects modification | MITIGATED |
 | TM-CRYPTO-004 | Known-plaintext attack | Medium | Unique DEK per encryption; same plaintext produces different ciphertext | MITIGATED |
