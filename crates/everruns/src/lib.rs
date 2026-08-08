@@ -57,9 +57,11 @@
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+mod events;
 mod session;
 mod tool;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
+pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
 pub use session::{RunError, Session, Turn};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
@@ -112,8 +114,9 @@ pub use everruns_runtime as runtime;
 /// ```
 pub mod prelude {
     pub use crate::{
-        Agent, AgentBuilder, BuildError, FunctionTool, IntoTool, IntoToolResult, Model, RunError,
-        Session, Tool, ToolResponse, Turn,
+        Agent, AgentBuilder, BuildError, CancellationToken, EventStream, FunctionTool, IntoTool,
+        IntoToolResult, Model, RunError, RunOptions, Session, SessionEvent, SessionEventKind, Tool,
+        ToolResponse, Turn,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};

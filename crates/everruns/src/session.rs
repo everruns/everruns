@@ -5,11 +5,15 @@
 //! lives for as long as the `Session`. Two sessions from the same agent are
 //! independent and never share history.
 
+use std::sync::Arc;
+
 use everruns_core::turn::TurnStopReason;
+use everruns_core::typed_id::TurnId;
 use everruns_core::{AgentLoopError, InputMessage, SessionId};
 use everruns_runtime::{InProcessRuntime, TurnResult};
 
 use crate::Agent;
+use crate::events::{EventStream, FacadeEventBus, RunOptions};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -43,6 +47,10 @@ pub struct Session {
     agent: Agent,
     session_id: SessionId,
     runtime: Option<InProcessRuntime>,
+    /// The session's event sink, created eagerly so [`events`](Session::events)
+    /// can subscribe before the first turn builds the runtime. Handed to the
+    /// runtime as its raw event bus on first [`run`](Session::run).
+    event_bus: Arc<FacadeEventBus>,
 }
 
 impl Session {
@@ -51,6 +59,7 @@ impl Session {
             agent,
             session_id,
             runtime: None,
+            event_bus: Arc::new(FacadeEventBus::new()),
         }
     }
 
@@ -60,6 +69,18 @@ impl Session {
     /// useful to line up a session's turns in logs.
     pub fn id(&self) -> String {
         self.session_id.to_string()
+    }
+
+    /// Subscribe to this session's live [`SessionEvent`](crate::SessionEvent)
+    /// feed.
+    ///
+    /// The returned [`EventStream`] observes every turn run *after* it is
+    /// created (subscribe before calling [`run`](Session::run)). Multiple streams
+    /// can observe the same session independently, and each session's events are
+    /// isolated — one session never sees another's. Dropping a stream, or letting
+    /// a consumer fall behind, never affects a running turn.
+    pub fn events(&self) -> EventStream {
+        self.event_bus.subscribe()
     }
 
     /// Run one turn and return its [`Turn`] outcome.
@@ -75,12 +96,56 @@ impl Session {
     /// max-iteration stop) is returned as an `Ok(Turn)` with `success == false`
     /// and the [`stop_reason`](Turn::stop_reason) preserved.
     pub async fn run(&mut self, input: impl Into<InputMessage>) -> Result<Turn, RunError> {
+        self.run_with(input, RunOptions::default()).await
+    }
+
+    /// Run one turn under the given [`RunOptions`], enabling cancellation.
+    ///
+    /// Identical to [`run`](Session::run) when the options carry no cancellation
+    /// token. When a [`CancellationToken`](crate::CancellationToken) is attached
+    /// and cancelled while the turn is in flight, the turn's future is dropped —
+    /// cooperatively tearing down any running tool work — and this returns an
+    /// `Ok(Turn)` with [`success == false`](Turn::success) and
+    /// [`stop_reason`](Turn::stop_reason) set to
+    /// [`TurnStopReason::Cancelled`]. A token already cancelled before the call
+    /// stops the turn before it starts.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`run`](Session::run): [`RunError`] if the runtime cannot be built
+    /// or the turn cannot be executed.
+    pub async fn run_with(
+        &mut self,
+        input: impl Into<InputMessage>,
+        options: RunOptions,
+    ) -> Result<Turn, RunError> {
         if self.runtime.is_none() {
-            self.runtime = Some(self.agent.build_runtime(self.session_id).await?);
+            self.runtime = Some(
+                self.agent
+                    .build_runtime_with_event_bus(self.session_id, self.event_bus.clone())
+                    .await?,
+            );
         }
         let runtime = self.runtime.as_ref().expect("runtime built above");
-        let result = runtime.run_turn(self.session_id, input).await?;
-        Ok(Turn::from(result))
+
+        match options.cancel {
+            None => {
+                let result = runtime.run_turn(self.session_id, input).await?;
+                Ok(Turn::from(result))
+            }
+            Some(token) => {
+                // Race the turn against cancellation. `biased` checks the token
+                // first, so a pre-cancelled token stops the turn before it runs.
+                // On cancellation the turn future is dropped, which is the
+                // runtime's own cooperative teardown path — no second stop
+                // mechanism is introduced.
+                tokio::select! {
+                    biased;
+                    () = token.cancelled() => Ok(Turn::cancelled()),
+                    result = runtime.run_turn(self.session_id, input) => Ok(Turn::from(result?)),
+                }
+            }
+        }
     }
 }
 
@@ -105,6 +170,27 @@ pub struct Turn {
     pub success: bool,
     /// Failure message when `success` is `false`.
     pub error: Option<String>,
+}
+
+impl Turn {
+    /// The stable outcome of a cancelled turn.
+    ///
+    /// Synthesized by [`Session::run_with`] when a turn is cancelled in flight:
+    /// its future is dropped before the runtime can report an outcome, so the
+    /// facade maps that to a non-success turn carrying
+    /// [`TurnStopReason::Cancelled`]. The `turn_id` is a fresh correlation id —
+    /// the dropped turn's own id is not recoverable.
+    fn cancelled() -> Self {
+        Self {
+            response: String::new(),
+            turn_id: TurnId::new().to_string(),
+            stop_reason: TurnStopReason::Cancelled,
+            iterations: 0,
+            tool_calls: 0,
+            success: false,
+            error: Some("turn cancelled".to_string()),
+        }
+    }
 }
 
 impl From<TurnResult> for Turn {
@@ -252,5 +338,144 @@ mod tests {
         assert!(!turn.success);
         assert_eq!(turn.stop_reason, TurnStopReason::MaxTurnRequests);
         assert_eq!(turn.error.as_deref(), Some("hit the ceiling"));
+    }
+
+    // --- Events and cancellation (EVE-833) -------------------------------
+    //
+    // These reach the crate-internal simulator helpers (`simulated_scripted`,
+    // `simulated_delayed`) that an external integration test cannot see. The
+    // public-surface event/cancellation behaviors live in
+    // `tests/session_events.rs`.
+
+    use std::time::Duration;
+
+    use everruns_core::ToolCall;
+    use serde_json::json;
+
+    use crate::{CancellationToken, RunOptions, SessionEvent, SessionEventKind};
+
+    async fn drain(mut stream: crate::EventStream) -> Vec<SessionEvent> {
+        let mut events = Vec::new();
+        while let Some(event) = stream.recv().await {
+            events.push(event);
+        }
+        events
+    }
+
+    #[tokio::test]
+    async fn tool_events_correlate_with_parent_turn() {
+        let tool = crate::FunctionTool::new(
+            "ping",
+            "Respond to a ping.",
+            json!({ "type": "object", "properties": {} }),
+            |_args: serde_json::Value| async move { Ok::<_, String>(json!({ "ok": true })) },
+        );
+        let agent = Agent::builder()
+            .instructions("Call ping when asked.")
+            .model(Model::simulated_scripted(
+                "done",
+                vec![
+                    vec![ToolCall {
+                        id: "call_ping_1".into(),
+                        name: "ping".into(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .build()
+            .expect("valid agent");
+
+        let mut session = agent.session();
+        let stream = session.events();
+        let turn = session.run("please ping").await.expect("turn runs");
+        assert!(turn.success, "turn should succeed: {:?}", turn.error);
+        assert_eq!(turn.tool_calls, 1);
+
+        drop(session);
+        let events = drain(stream).await;
+
+        let tool_started = events
+            .iter()
+            .find(|e| matches!(e.kind, SessionEventKind::ToolStarted { .. }))
+            .expect("a tool.started event");
+        let tool_completed = events
+            .iter()
+            .find(|e| matches!(e.kind, SessionEventKind::ToolCompleted { .. }))
+            .expect("a tool.completed event");
+
+        // Both tool events carry the parent turn's id.
+        assert_eq!(tool_started.turn_id.as_deref(), Some(turn.turn_id.as_str()));
+        assert_eq!(
+            tool_completed.turn_id.as_deref(),
+            Some(turn.turn_id.as_str())
+        );
+
+        let SessionEventKind::ToolStarted {
+            tool_call_id: started_id,
+            tool_name,
+        } = &tool_started.kind
+        else {
+            unreachable!("matched ToolStarted above")
+        };
+        assert_eq!(tool_name, "ping");
+        let SessionEventKind::ToolCompleted {
+            tool_call_id: completed_id,
+            success,
+            ..
+        } = &tool_completed.kind
+        else {
+            unreachable!("matched ToolCompleted above")
+        };
+        assert_eq!(started_id, completed_id, "same tool call across the pair");
+        assert!(success, "the ping tool succeeded");
+    }
+
+    #[tokio::test]
+    async fn cancellation_stops_a_running_turn_with_cancelled_stop_reason() {
+        // A long TTFT delay parks the turn so we can cancel it mid-flight.
+        let agent = Agent::builder()
+            .instructions("You are slow.")
+            .model(Model::simulated_delayed(
+                "eventually",
+                Duration::from_secs(30),
+            ))
+            .build()
+            .expect("valid agent");
+
+        let mut session = agent.session();
+        let token = CancellationToken::new();
+
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            canceller.cancel();
+        });
+
+        let turn = session
+            .run_with("hi", RunOptions::new().cancel_token(token))
+            .await
+            .expect("run_with resolves");
+
+        assert!(!turn.success, "a cancelled turn is not a success");
+        assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn an_uncancelled_run_with_matches_run() {
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .build()
+            .expect("valid agent");
+
+        let mut session = agent.session();
+        let turn = session
+            .run_with("hi", RunOptions::new())
+            .await
+            .expect("turn runs");
+        assert!(turn.success);
+        assert_eq!(turn.response, "ok");
     }
 }

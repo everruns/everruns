@@ -12,12 +12,13 @@
 
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::Arc;
 
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{AgentCapabilityConfig, DriverId, InitialFile, ResolvedModel, SessionId};
 use everruns_runtime::{
-    AgentBuilder as RuntimeAgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder,
-    SessionBuilder,
+    AgentBuilder as RuntimeAgentBuilder, EventBus, HarnessBuilder, InProcessRuntime,
+    InProcessRuntimeBuilder, RuntimeBackends, SessionBuilder,
 };
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
@@ -94,6 +95,26 @@ impl Model {
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);
         sim.message_capture = Some(capture);
+        Self {
+            resolved: ResolvedModel {
+                model: "llmsim-model".to_string(),
+                provider_type: DriverId::LlmSim,
+                api_key: Some("fake-key".to_string()),
+                base_url: None,
+                provider_metadata: None,
+            },
+            sim: Some(sim),
+        }
+    }
+
+    /// Test-only: a simulated model that waits `delay` (a TTFT delay) before
+    /// producing `response`. The open window lets a facade test cancel a turn
+    /// while it is parked, exercising the cancellation path deterministically.
+    pub(crate) fn simulated_delayed(
+        response: impl Into<String>,
+        delay: std::time::Duration,
+    ) -> Self {
+        let sim = LlmSimConfig::fixed(response).with_response_delay(delay);
         Self {
             resolved: ResolvedModel {
                 model: "llmsim-model".to_string(),
@@ -241,14 +262,27 @@ impl Agent {
     }
 
     /// Materialize a fresh in-process runtime for this agent, seeded with the
-    /// given session id.
+    /// given session id, routing the runtime's raw event bus through the supplied
+    /// facade sink so a [`Session`](crate::Session) can stream its events.
     ///
     /// Each call assembles a new `Harness`/`Agent`/`Session` composition, so
-    /// distinct session ids yield independent sessions. This is the private
-    /// seam [`Session`](crate::Session) builds on.
-    pub(crate) async fn build_runtime(
+    /// distinct session ids yield independent sessions. This is the private seam
+    /// [`Session`](crate::Session) builds on. The bus replaces the default
+    /// in-memory emitter; message persistence is unaffected because the bus
+    /// assigns event ids/sequences the same way.
+    pub(crate) async fn build_runtime_with_event_bus(
         &self,
         session_id: SessionId,
+        event_bus: Arc<dyn EventBus>,
+    ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
+        self.build_runtime_with_backends(session_id, Some(event_bus))
+            .await
+    }
+
+    async fn build_runtime_with_backends(
+        &self,
+        session_id: SessionId,
+        event_bus: Option<Arc<dyn EventBus>>,
     ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
         let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
             .capabilities(self.capabilities.clone());
@@ -287,6 +321,12 @@ impl Agent {
             .agent(agent)
             .session(session)
             .default_model(self.model.resolved.clone());
+        // Route the runtime's raw event bus through the facade sink when one was
+        // supplied, so the session can stream events. Everything else stays on
+        // the default in-memory backends.
+        if let Some(event_bus) = event_bus {
+            builder = builder.backends(RuntimeBackends::in_memory().with_event_bus(event_bus));
+        }
         // Register each function tool as a closure-backed, single-tool
         // capability so the runtime can execute the model's calls; the matching
         // capability ref was attached to the harness/agent/session above.
@@ -683,7 +723,7 @@ mod tests {
             .expect("valid agent");
 
         let runtime = agent
-            .build_runtime(SessionId::new())
+            .build_runtime_with_backends(SessionId::new(), None)
             .await
             .expect("openai runtime builds offline");
         let _ = runtime;
@@ -699,7 +739,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime(session_id)
+            .build_runtime_with_backends(session_id, None)
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn
