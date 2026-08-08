@@ -14,10 +14,11 @@ use axum::{
     routing::get,
 };
 use everruns_core::{
-    AuditEvent, BuiltInHarnessDefinition, DEFAULT_ORG_ID, ManagementAction, OrgRole, Organization,
+    AuditEvent, BuiltInHarnessDefinition, DEFAULT_ORG_ID, ManagementAction, OrgRole,
     generate_org_public_id, validate_org_public_id,
 };
 use everruns_durable::UpdateField;
+use everruns_platform::Organization;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,

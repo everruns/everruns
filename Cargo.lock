@@ -3201,6 +3201,18 @@ name = "everruns-openui"
 version = "0.17.23"
 
 [[package]]
+name = "everruns-platform"
+version = "0.17.23"
+dependencies = [
+ "chrono",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "utoipa",
+ "uuid 1.24.0",
+]
+
+[[package]]
 name = "everruns-provider"
 version = "0.17.23"
 dependencies = [
@@ -3311,6 +3323,7 @@ dependencies = [
  "everruns-internal-protocol",
  "everruns-mcp",
  "everruns-observability",
+ "everruns-platform",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-turbopuffer",

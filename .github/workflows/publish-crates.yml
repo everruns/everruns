@@ -136,6 +136,9 @@ jobs:
                   "everruns-a2ui",
                   "everruns-provider",
               ],
+              "crates/platform/Cargo.toml": [
+                  "everruns-core",
+              ],
               "crates/mcp/Cargo.toml": [
                   "everruns-core",
               ],
@@ -236,6 +239,7 @@ jobs:
             everruns-provider
             everruns-meta
             everruns-core
+            everruns-platform
             everruns-mcp
             everruns-openai
             everruns-anthropic

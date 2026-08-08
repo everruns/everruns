@@ -4,11 +4,15 @@
 // Decision: Hierarchical org roles (Owner > Admin > Member) using PartialOrd.
 // External auth providers map their roles to OrgRole via AuthBackend trait.
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
 use uuid::Uuid;
+
+// EVE-837: the `Organization` aggregate entity moved to the `everruns-platform`
+// crate. The role/membership value types and multitenancy constants below stay
+// in core because the permissions layer, auth-facing membership, and runtime
+// fixtures depend on them.
 
 /// Default organization ID (internal, for DB queries)
 pub const DEFAULT_ORG_ID: i64 = 1;
@@ -28,18 +32,6 @@ pub const ANONYMOUS_USER_EMAIL: &str = "anonymous@local";
 
 /// Anonymous user display name
 pub const ANONYMOUS_USER_NAME: &str = "Anonymous";
-
-/// Organization entity (domain type)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct Organization {
-    /// External identifier (org_<32-hex-chars>)
-    pub public_id: String,
-    /// Display name
-    pub name: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
 
 /// Organization-level role with hierarchical permissions.
 /// Owner > Admin > Member — checked via `has_permission()`.

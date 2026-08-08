@@ -511,16 +511,22 @@ pub use model_discovery::{
     normalize_and_enrich, rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
+// EVE-837: `Organization` moved to the `everruns-platform` crate. The role,
+// membership, and multitenancy constants stay here — the permissions/auth layer
+// and runtime fixtures depend on them.
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, Organization, generate_org_public_id,
+    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, generate_org_public_id,
     org_public_id_from_internal, validate_org_public_id,
 };
 pub use payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentAccount, PaymentAttempt, PaymentMethod,
     PaymentOwnerType, PaymentPolicy, PaymentRail, PaymentStatus,
 };
-pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
+// EVE-837: `Principal` moved to the `everruns-platform` crate. The value types
+// below stay here — they are embedded by `Session`/`App`/`SessionSchedule` and
+// the agent-identity lifecycle.
+pub use principal::{PrincipalKind, PrincipalStatus, PrincipalSummary};
 pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
 pub use session::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,
