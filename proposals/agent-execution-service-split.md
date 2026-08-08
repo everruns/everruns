@@ -25,7 +25,7 @@ The target split is different, and orthogonal to the existing one:
 | **`everruns-engine`** | running agents: turns, tool execution, session runtime state, the **Events** store. Accepts a distilled agent and executes it. | Engine APIs |
 | **`everruns-durable`** | workflow instances, task queue, retries, timers, signals, circuit breakers | used by the engine |
 
-Two load-bearing ideas:
+Two ideas carry the design:
 
 1. **Distillation.** `everruns` resolves harness chain + agent + session +
    capability registry + MCP catalog + model + provider into one self-contained

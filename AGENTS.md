@@ -21,6 +21,7 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 ### Norms
 
 - Telegraph. Drop filler. Keep updates short and factual.
+- Never write "load-bearing" or "seam" in prose you author. Name the actual thing instead.
 - Start from latest `origin/main` unless the task says otherwise.
 - Keep changes small, PR-sized, testable, and runnable locally.
 - For bug fixes, write or update a failing test before the fix when practical.
