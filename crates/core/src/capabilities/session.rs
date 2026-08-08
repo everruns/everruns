@@ -512,7 +512,7 @@ mod tests {
         };
         assert_eq!(
             WriteSessionTitleTool.narrate(&title_call, ToolNarrationPhase::Started, None, ctx),
-            Some("Update session title: Improve tool narration".to_string())
+            Some("Updating session title: Improve tool narration".to_string())
         );
         assert_eq!(
             WriteSessionTitleTool.narrate(&title_call, ToolNarrationPhase::Completed, None, ctx),
@@ -534,7 +534,7 @@ mod tests {
                 None,
                 ctx
             ),
-            Some("Update session title: Improve tool narration".to_string())
+            Some("Updating session title: Improve tool narration".to_string())
         );
 
         let info_call = ToolCall {

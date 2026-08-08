@@ -17,7 +17,6 @@ import type {
   OutputMessageCompletedData,
   SessionParticipant,
   TurnFailedData,
-  ToolCallSummary,
   ToolCompletedData,
   ToolProgressData,
 } from "@/lib/api/types";
@@ -42,10 +41,8 @@ import {
 } from "@/components/chat/chat-work-log-events";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
-import {
-  ToolActivityTimelineGroup,
-  type TimelineToolRow,
-} from "@/components/chat/tool-activity-timeline-group";
+import { ToolActivityTimelineGroup } from "@/components/chat/tool-activity-timeline-group";
+import { buildToolActivityGroups } from "@/components/chat/tool-activity-groups";
 import {
   formatWorkedDuration,
   getCompletedTurnIterationsByTurn,
@@ -92,13 +89,6 @@ interface ParticipantMarker {
   participant: SessionParticipant;
 }
 
-type ActGroup = {
-  startEventId: string;
-  headline: string;
-  completedHeadline?: string;
-  rows: TimelineToolRow[];
-};
-
 function ReasoningLogRow({ text }: { text: string }) {
   return (
     <div className="flex items-start gap-2 py-1 text-[15px] leading-6 text-muted-foreground">
@@ -122,86 +112,6 @@ function getMessageAnnotations(content: ContentPart[] | undefined): TextAnnotati
 
 function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
   return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), "");
-}
-
-function buildActGroups(chatEvents: Event[], workingLabel: string) {
-  const groupsByExecId = new Map<string, ActGroup>();
-
-  const ensureRow = (
-    group: ActGroup,
-    id: string,
-    fallbackLabel: string,
-    state: TimelineToolRow["state"],
-  ) => {
-    const existing = group.rows.find((row) => row.id === id);
-    if (existing) {
-      existing.label = existing.label || fallbackLabel;
-      existing.state = state;
-      return existing;
-    }
-
-    const row: TimelineToolRow = { id, label: fallbackLabel, state };
-    group.rows.push(row);
-    return row;
-  };
-
-  for (const event of chatEvents) {
-    const execId = event.context?.exec_id;
-    if (!execId) continue;
-
-    const actStarted = getEventData(event, "act.started");
-    if (actStarted) {
-      groupsByExecId.set(execId, {
-        startEventId: event.id,
-        headline: actStarted.headline ?? workingLabel,
-        rows: (actStarted.tool_calls ?? []).map((toolCall: ToolCallSummary) => ({
-          id: toolCall.id,
-          label: toolCall.narration ?? toolCall.display_name ?? toolCall.name,
-          state: "running",
-        })),
-      });
-      continue;
-    }
-
-    const group = groupsByExecId.get(execId);
-    if (!group) continue;
-
-    const toolStarted = getEventData(event, "tool.started");
-    if (toolStarted) {
-      const row = ensureRow(
-        group,
-        toolStarted.tool_call.id,
-        toolStarted.narration ?? toolStarted.display_name ?? toolStarted.tool_call.name,
-        "running",
-      );
-      row.label = toolStarted.narration ?? row.label;
-      continue;
-    }
-
-    const toolCompleted = getEventData(event, "tool.completed");
-    if (toolCompleted) {
-      const row = ensureRow(
-        group,
-        toolCompleted.tool_call_id,
-        toolCompleted.narration ??
-          toolCompleted.display_name ??
-          toolCompleted.tool_name ??
-          "Tool call",
-        toolCompleted.success ? "completed" : "error",
-      );
-      row.label = toolCompleted.narration ?? row.label;
-      row.result = toolCompleted;
-      row.state = toolCompleted.success ? "completed" : "error";
-      continue;
-    }
-
-    const actCompleted = getEventData(event, "act.completed");
-    if (actCompleted) {
-      group.completedHeadline = actCompleted.headline;
-    }
-  }
-
-  return new Map(Array.from(groupsByExecId.values()).map((group) => [group.startEventId, group]));
 }
 
 function renderTurnDivider(
@@ -326,12 +236,8 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return groups;
   }, [chatEvents, isWorkLogEvent]);
-  const hasNarratedActEvents = useMemo(
-    () => chatEvents.some((event) => event.type === "act.started"),
-    [chatEvents],
-  );
-  const actGroupsByStartEventId = useMemo(
-    () => buildActGroups(chatEvents, t("working")),
+  const activityGroups = useMemo(
+    () => buildToolActivityGroups(chatEvents, t("working")),
     [chatEvents, t],
   );
 
@@ -444,9 +350,11 @@ export const ChatMessageList = memo(function ChatMessageList({
       ) : null;
     }
 
-    if (event.type === "act.started") {
-      const group = actGroupsByStartEventId.get(event.id);
-      if (!group || group.rows.length === 0) return null;
+    const group = activityGroups.byAnchorEventId.get(event.id);
+    if (group) {
+      const requested = getEventData(event, "tool.call_requested");
+      const connectionCalls =
+        requested?.tool_calls.filter((toolCall) => toolCall.name === "setup_connection") ?? [];
       return (
         <div key={event.id} className="space-y-1">
           <ToolActivityTimelineGroup
@@ -454,39 +362,28 @@ export const ChatMessageList = memo(function ChatMessageList({
             completedHeadline={group.completedHeadline}
             rows={group.rows}
           />
+          {connectionCalls.map((toolCall) => (
+            <SetupConnectionToolCall
+              key={toolCall.id}
+              sessionId={sessionId}
+              toolCallId={toolCall.id}
+              provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+              toolResultsMap={toolResultsMap}
+            />
+          ))}
         </div>
       );
     }
+
+    if (activityGroups.groupedEventIds.has(event.id)) return null;
 
     if (event.type !== "tool.call_requested") return null;
 
     const reqData = getEventData(event, "tool.call_requested");
     if (!reqData?.tool_calls?.length) return null;
 
-    if (reqData.headline || reqData.tool_summaries?.length) {
-      const rows: TimelineToolRow[] = (reqData.tool_summaries ?? []).map((summary) => ({
-        id: summary.id,
-        label: summary.narration ?? summary.display_name ?? summary.name,
-        state: "waiting",
-      }));
-
-      if (rows.length > 0) {
-        return (
-          <div key={event.id} className="space-y-1">
-            <ToolActivityTimelineGroup
-              headline={reqData.headline ?? t("waiting_on_tools")}
-              rows={rows}
-            />
-          </div>
-        );
-      }
-    }
-
     const connectionCalls = reqData.tool_calls.filter(
       (toolCall) => toolCall.name === "setup_connection",
-    );
-    const otherCalls = reqData.tool_calls.filter(
-      (toolCall) => toolCall.name !== "setup_connection",
     );
 
     return (
@@ -500,15 +397,6 @@ export const ChatMessageList = memo(function ChatMessageList({
             toolResultsMap={toolResultsMap}
           />
         ))}
-        {otherCalls.length > 0 && (
-          <ToolActivityGroup
-            toolCalls={otherCalls}
-            toolResultsMap={toolResultsMap}
-            toolProgressMap={toolProgressMap}
-            toolOutputMap={toolOutputMap}
-            mode="client"
-          />
-        )}
       </div>
     );
   };
@@ -547,14 +435,6 @@ export const ChatMessageList = memo(function ChatMessageList({
       )}
       {chatEvents.map((event) => {
         const eventNode = ((): ReactNode => {
-          if (
-            event.type === "tool.started" ||
-            event.type === "tool.completed" ||
-            event.type === "act.completed"
-          ) {
-            return null;
-          }
-
           if (event.type === "context.compacted") {
             const compactedData = getEventData(event, "context.compacted");
             return compactedData ? <CompactionDivider key={event.id} data={compactedData} /> : null;
@@ -598,13 +478,12 @@ export const ChatMessageList = memo(function ChatMessageList({
           if (outputData && outputError) {
             return <ChatErrorAlert key={event.id} message={textContent} />;
           }
-          const toolCalls = isUser
-            ? []
-            : outputData
-              ? getToolCalls(outputData).filter(
-                  (toolCall) => !clientRequestedToolCallIds.has(toolCall.id),
-                )
-              : [];
+          const outputToolCalls = !isUser && outputData ? getToolCalls(outputData) : [];
+          const toolCalls = outputToolCalls.filter(
+            (toolCall) =>
+              !clientRequestedToolCallIds.has(toolCall.id) &&
+              !activityGroups.narratedToolCallIds.has(toolCall.id),
+          );
           const images = data.message?.content ? getMessageImages(data.message.content) : [];
           const annotations = isUser ? [] : getMessageAnnotations(data.message?.content);
           // Deep link to this generation's trace on the provider (assistant
@@ -617,10 +496,10 @@ export const ChatMessageList = memo(function ChatMessageList({
             : null;
           const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
           const isToolOnlyMessage =
-            !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
+            !isUser && outputToolCalls.length > 0 && !textContent && images.length === 0;
 
           if (isToolOnlyMessage) {
-            if (hasNarratedActEvents) return null;
+            if (toolCalls.length === 0) return null;
             return renderWorkLog(
               event,
               <div className="space-y-1">
@@ -700,7 +579,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 </div>
               )}
 
-              {toolCalls.length > 0 && !hasNarratedActEvents && (
+              {toolCalls.length > 0 && (
                 <div className="ml-9 space-y-1">
                   <ToolActivityGroup
                     toolCalls={toolCalls}

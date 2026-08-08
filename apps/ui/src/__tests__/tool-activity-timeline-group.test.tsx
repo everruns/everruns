@@ -23,7 +23,7 @@ describe("ToolActivityTimelineGroup", () => {
   });
 
   it("renders narrated group headline and child rows", () => {
-    renderWithLocale(
+    const { rerender } = renderWithLocale(
       <ToolActivityTimelineGroup
         headline="Reading AGENTS.md and searching files"
         completedHeadline="Read AGENTS.md and searched files"
@@ -39,6 +39,30 @@ describe("ToolActivityTimelineGroup", () => {
     expect(screen.queryByText("1/2")).not.toBeInTheDocument();
     expect(screen.getByText("Read AGENTS.md")).toBeInTheDocument();
     expect(screen.getByText("Searched files for Doppler")).toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", { name: /collapse activity group/i });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(toggle).toHaveAttribute("aria-controls");
+
+    rerender(
+      <LocaleProvider>
+        <ToolActivityTimelineGroup
+          headline="Reading AGENTS.md and searching files"
+          completedHeadline="Read AGENTS.md and searched files"
+          rows={[
+            { id: "tool-1", label: "Read AGENTS.md", state: "completed" },
+            { id: "tool-2", label: "Searched files for Doppler", state: "completed" },
+          ]}
+        />
+      </LocaleProvider>,
+    );
+    const completedToggle = screen.getByRole("button", { name: /expand activity group/i });
+    expect(completedToggle).toHaveAttribute("aria-expanded", "false");
+    const controlledGroup = document.getElementById(
+      completedToggle.getAttribute("aria-controls") ?? "missing",
+    );
+    expect(controlledGroup).toHaveAttribute("aria-hidden", "true");
+    expect(controlledGroup).toHaveAttribute("inert");
   });
 
   it("redacts secret_store values in preview and details", () => {
@@ -73,7 +97,10 @@ describe("ToolActivityTimelineGroup", () => {
     );
 
     expect(screen.getByText("OPENAI_API_KEY found")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /details/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /details/i })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     expect(screen.queryByText("sk-live-secret")).not.toBeInTheDocument();
     expect(screen.getByText(/value: \[hidden\]/)).toBeInTheDocument();
   });

@@ -2711,12 +2711,14 @@ mod tests {
                     name: "search".to_string(),
                     display_name: None,
                     narration: None,
+                    completed_narration: None,
                 },
                 ToolCallSummary {
                     id: "call_2".to_string(),
                     name: "fetch".to_string(),
                     display_name: None,
                     narration: None,
+                    completed_narration: None,
                 },
             ],
             headline: None,
@@ -2964,6 +2966,7 @@ mod tests {
                 name: "search".to_string(),
                 display_name: None,
                 narration: None,
+                completed_narration: None,
             }],
             headline: None,
         };
@@ -3173,6 +3176,7 @@ mod tests {
                 name: "search".to_string(),
                 display_name: None,
                 narration: None,
+                completed_narration: None,
             }],
             headline: None,
         };

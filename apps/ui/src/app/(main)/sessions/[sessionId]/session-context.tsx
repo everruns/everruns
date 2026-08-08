@@ -451,6 +451,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
             e.type === "act.started" ||
             e.type === "act.completed" ||
             e.type === "tool.started" ||
+            e.type === "tool.progress" ||
             e.type === "tool.completed" ||
             e.type === "tool.call_requested" ||
             e.type === "context.compacted",

@@ -247,6 +247,7 @@ fn test_tool_call_requested_data_serialization() {
         ],
         tool_summaries: vec![],
         headline: None,
+        completed_headline: None,
     };
 
     let json = serde_json::to_value(&data).unwrap();
@@ -272,6 +273,7 @@ fn test_tool_call_requested_data_roundtrip() {
         }],
         tool_summaries: vec![],
         headline: None,
+        completed_headline: None,
     };
 
     let json_str = serde_json::to_string(&original).unwrap();
@@ -291,6 +293,7 @@ fn test_tool_call_requested_data_empty_tool_calls() {
         tool_calls: vec![],
         tool_summaries: vec![],
         headline: None,
+        completed_headline: None,
     };
 
     let json = serde_json::to_value(&data).unwrap();
