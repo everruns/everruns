@@ -1,0 +1,5 @@
+error: `#[everruns::tool]` parameters must be plain identifiers (`name: Type`)
+ --> tests/ui/fail_tuple_param.rs:3:19
+  |
+3 | async fn add_pair((a, b): (i64, i64)) -> i64 {
+  |                   ^^^^^^

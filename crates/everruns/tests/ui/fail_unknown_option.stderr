@@ -1,0 +1,5 @@
+error: unknown `everruns::tool` option `title`; expected `name` or `description`
+ --> tests/ui/fail_unknown_option.rs:2:18
+  |
+2 | #[everruns::tool(title = "nope")]
+  |                  ^^^^^

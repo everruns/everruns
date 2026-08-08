@@ -1,0 +1,5 @@
+error: `#[everruns::tool]` requires an `async fn`
+ --> tests/ui/fail_not_async.rs:5:1
+  |
+5 | fn not_async(x: i64) -> i64 {
+  | ^^

@@ -5,6 +5,7 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/everruns",
+    "crates/everruns-macros",
     "crates/core",
     "crates/platform",
     "crates/provider",
@@ -83,6 +84,15 @@ tower-http = { version = "0.7", features = ["cors", "trace", "set-header"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# JSON Schema generation for the `#[everruns::tool]` argument structs (EVE-829).
+schemars = "1.0"
+
+# Procedural-macro toolchain (backs `everruns-macros`).
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0", features = ["full"] }
+# Compile-pass / compile-fail fixtures for the proc-macro crate.
+trybuild = "1.0"
 
 # Database
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls-ring", "postgres", "migrate", "uuid", "chrono", "macros"] }
@@ -165,6 +175,7 @@ everruns-ard = { path = "crates/ard", version = "0.17.23" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
 everruns-runtime = { path = "crates/runtime", version = "0.17.23" }
 everruns = { path = "crates/everruns", version = "0.17.23" }
+everruns-macros = { path = "crates/everruns-macros", version = "0.17.23" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

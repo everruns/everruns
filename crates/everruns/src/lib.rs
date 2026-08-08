@@ -55,6 +55,10 @@
 //! # }
 //! ```
 
+// Let code emitted by `#[everruns::tool]` resolve `::everruns::…` paths even
+// inside this crate's own tests and doctests.
+extern crate self as everruns;
+
 // --- Value-first agent description and execution -------------------------
 mod agent;
 mod events;
@@ -64,6 +68,48 @@ pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
 pub use session::{RunError, Session, Turn};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
+
+#[cfg(all(test, feature = "macros"))]
+mod tool_macro_tests;
+
+// --- Function-tool procedural macro (feature-gated) ---------------------
+/// Turn a typed async function into an agent tool.
+///
+/// `#[everruns::tool]` generates the argument JSON Schema and adapter for a
+/// plain async function so it can be handed to
+/// [`AgentBuilder::tool`](crate::AgentBuilder::tool) without writing either by
+/// hand. See the [`macro@tool`] documentation for supported signatures and
+/// options. Requires the default-enabled `macros` feature.
+#[cfg(feature = "macros")]
+pub use everruns_macros::tool;
+
+/// Runtime support for code emitted by [`macro@tool`]. Not a stable API — the
+/// expansion references these items by path so the calling crate needs no
+/// direct dependency on `serde`, `schemars`, or `serde_json`.
+#[cfg(feature = "macros")]
+#[doc(hidden)]
+pub mod __macro_support {
+    pub use schemars;
+    pub use serde;
+    pub use serde_json::{self, Value};
+
+    /// Serialize a type's JSON Schema to a `Value` for `FunctionTool::new`.
+    pub fn schema_for<T: schemars::JsonSchema>() -> Value {
+        serde_json::to_value(schemars::schema_for!(T)).unwrap_or(Value::Null)
+    }
+
+    /// Deserialize the model's call arguments into the generated struct.
+    pub fn from_value<T: serde::de::DeserializeOwned>(
+        value: Value,
+    ) -> Result<T, serde_json::Error> {
+        serde_json::from_value(value)
+    }
+
+    /// Serialize a handler's success value to a `Value`.
+    pub fn to_value<T: serde::Serialize + ?Sized>(value: &T) -> Result<Value, serde_json::Error> {
+        serde_json::to_value(value)
+    }
+}
 
 // --- Real LLM provider configuration (feature-gated) --------------------
 // The default facade build stays offline; provider modules compile only when
@@ -113,6 +159,8 @@ pub use everruns_runtime as runtime;
 /// assert!(agent.is_ok());
 /// ```
 pub mod prelude {
+    #[cfg(feature = "macros")]
+    pub use crate::tool;
     pub use crate::{
         Agent, AgentBuilder, BuildError, CancellationToken, EventStream, FunctionTool, IntoTool,
         IntoToolResult, Model, RunError, RunOptions, Session, SessionEvent, SessionEventKind, Tool,

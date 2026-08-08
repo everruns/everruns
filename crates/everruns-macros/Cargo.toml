@@ -1,0 +1,31 @@
+# Procedural macros for the application-facing `everruns` crate.
+#
+# Decision (EVE-829): the `#[everruns::tool]` attribute lives in its own
+# `proc-macro = true` crate because a crate cannot be both a proc-macro crate
+# and export ordinary items. `everruns` re-exports the attribute behind its
+# default-enabled `macros` feature; end users never depend on this crate
+# directly. The macro emits code that references `everruns` by path
+# (`::everruns::__macro_support::…`), so all runtime types stay in the facade.
+
+[package]
+name = "everruns-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-macros"
+description = "Procedural macros for the Everruns agentic framework (re-exported by `everruns`)"
+readme = "README.md"
+keywords = ["agent", "agentic", "llm", "ai", "macros"]
+categories = ["development-tools", "rust-patterns"]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn = { workspace = true, features = ["full"] }
