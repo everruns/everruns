@@ -26,8 +26,10 @@ use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_too
 ///
 /// A `Model` carries the driver selection and model configuration behind a
 /// value-first surface, so the public builder never exposes `ResolvedModel`,
-/// `DriverId`, or the simulator config. Today the only constructor is
-/// [`Model::simulated`]; real providers arrive in a later change.
+/// `DriverId`, or the simulator config. [`Model::simulated`] backs an offline
+/// simulator; with the `openai` feature, an
+/// [`OpenAI`](crate::providers::openai::OpenAI) configuration converts into a
+/// `Model` that targets the real provider.
 #[derive(Clone)]
 pub struct Model {
     resolved: ResolvedModel,
@@ -51,6 +53,33 @@ impl Model {
             },
             sim: Some(LlmSimConfig::fixed(response)),
         }
+    }
+
+    /// Build a `Model` that targets OpenAI's Responses API.
+    ///
+    /// Keeps `ResolvedModel`/`DriverId` off the public surface: the
+    /// [`OpenAI`](crate::providers::openai::OpenAI) config is the value-first
+    /// entry point, and `build_runtime` registers the OpenAI driver only for a
+    /// model produced here.
+    #[cfg(feature = "openai")]
+    pub(crate) fn openai(config: crate::providers::openai::OpenAI) -> Self {
+        let (model, api_key, base_url) = config.into_parts();
+        Self {
+            resolved: ResolvedModel {
+                model,
+                provider_type: DriverId::OpenAI,
+                api_key: Some(api_key),
+                base_url,
+                provider_metadata: None,
+            },
+            sim: None,
+        }
+    }
+
+    /// Whether this model needs the OpenAI driver registered on the runtime.
+    #[cfg(feature = "openai")]
+    fn is_openai(&self) -> bool {
+        self.resolved.provider_type == DriverId::OpenAI
     }
 }
 
@@ -267,6 +296,15 @@ impl Agent {
         if let Some(sim) = &self.model.sim {
             builder = builder.llm_sim(sim.clone());
         }
+        // A real OpenAI model needs its driver registered so a turn can reach the
+        // provider; setting `default_model` alone is not enough. Register only for
+        // an OpenAI model, so a simulated-model agent needs no provider wiring.
+        #[cfg(feature = "openai")]
+        if self.model.is_openai() {
+            let mut registry = everruns_core::DriverRegistry::new();
+            everruns_openai::register_driver(&mut registry);
+            builder = builder.driver_registry(registry);
+        }
         builder.build().await
     }
 }
@@ -295,8 +333,12 @@ impl AgentBuilder {
     }
 
     /// Select the model the agent talks to. Required.
-    pub fn model(mut self, model: Model) -> Self {
-        self.model = Some(model);
+    ///
+    /// Accepts a [`Model`] directly or anything convertible into one — for
+    /// example an [`OpenAI`](crate::providers::openai::OpenAI) configuration
+    /// under the `openai` feature.
+    pub fn model(mut self, model: impl Into<Model>) -> Self {
+        self.model = Some(model.into());
         self
     }
 
@@ -610,6 +652,41 @@ mod tests {
             .build()
             .expect("valid agent");
         assert_eq!(agent.name, "assistant");
+    }
+
+    #[cfg(feature = "openai")]
+    #[test]
+    fn openai_model_reports_provider_without_leaking_key() {
+        use crate::providers::openai::OpenAI;
+
+        let model = Model::openai(OpenAI::new("gpt-5-mini", "sk-super-secret"));
+        assert!(model.is_openai());
+        assert_eq!(model.resolved.model, "gpt-5-mini");
+        assert!(model.sim.is_none(), "an OpenAI model uses no simulator");
+        // The value-first `Debug` reports shape only, never the key.
+        let rendered = format!("{model:?}");
+        assert!(!rendered.contains("sk-super-secret"), "got {rendered}");
+    }
+
+    #[cfg(feature = "openai")]
+    #[tokio::test]
+    async fn openai_agent_builds_runtime_offline() {
+        use crate::providers::openai::OpenAI;
+
+        // Building the runtime registers the OpenAI driver and assembles the
+        // in-process composition without any network call — the provider is only
+        // contacted when a turn actually runs, which this test never does.
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(OpenAI::new("gpt-5-mini", "sk-test"))
+            .build()
+            .expect("valid agent");
+
+        let runtime = agent
+            .build_runtime(SessionId::new())
+            .await
+            .expect("openai runtime builds offline");
+        let _ = runtime;
     }
 
     #[tokio::test]
