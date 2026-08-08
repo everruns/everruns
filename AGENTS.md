@@ -64,11 +64,13 @@ variables per `docs/sre/runbooks/authentication.md`.
 `start-all` maps Doppler's `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` to
 `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY`. Analyze/Health additionally requires
 `UTILITY_OPENAI_API_KEY`; no extra setup is needed when Doppler already supplies it. If Doppler does
-not supply `SECRETS_ENCRYPTION_KEY`, the wrapper creates a mode-`0600`, per-prefix key under
-`.local/agent-dev/`; it never prints the value.
+not supply `SECRETS_ENCRYPTION_KEY`, startup uses the stable repository local-development key.
 
-PostgreSQL and NATS data persist under `.local/data/`, isolated by the derived ports. Valkey is
-started without snapshots. Stop the foreground stack with Ctrl+C, or from another shell with
+PostgreSQL and NATS data persist under `.local/data/`, isolated by the derived ports. Encrypted
+database records depend on the encryption key remaining stable: the default is the public,
+non-production key from `scripts/lib/local-development-secrets.sh`. Do not change that default
+without migrating or explicitly resetting affected local data. Valkey is started without
+snapshots. Stop the foreground stack with Ctrl+C, or from another shell with
 `PORT_PREFIX=271 just stop-all`; that command also stops the prefix's infrastructure processes.
 Delete persistent data only with the explicit, prefix-scoped `PORT_PREFIX=271 just reset` command.
 

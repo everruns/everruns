@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/local-development-secrets.sh"
 
 usage() {
   cat <<'EOF'
@@ -71,20 +72,8 @@ if [ ! -x "$PROJECT_ROOT/apps/ui/node_modules/.bin/next" ]; then
   exit 1
 fi
 
-if [ -z "${SECRETS_ENCRYPTION_KEY:-}" ]; then
-  key_dir="$PROJECT_ROOT/.local/agent-dev"
-  key_file="$key_dir/secrets-encryption-key-${PORT_PREFIX}"
-  umask 077
-  mkdir -p "$key_dir"
-  chmod 700 "$key_dir"
-  if [ ! -s "$key_file" ]; then
-    generated_key="$(head -c 32 /dev/urandom | base64 | tr -d '\n\r')"
-    printf 'kek-v1:%s\n' "$generated_key" > "$key_file"
-  fi
-  chmod 600 "$key_file"
-  SECRETS_ENCRYPTION_KEY="$(<"$key_file")"
-  export SECRETS_ENCRYPTION_KEY
-  echo "Using the private per-prefix encryption key in .local/agent-dev/."
+if configure_local_development_encryption_key; then
+  echo "Using the stable repository local-development encryption key."
 fi
 
 cd "$PROJECT_ROOT"
