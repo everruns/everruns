@@ -432,12 +432,19 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     // Serialize proto to JSON, then deserialize to schema type
     // This is simpler and more maintainable than field-by-field conversion
     let tags: Vec<String> = vec![];
-    // Convert capability IDs to AgentCapabilityConfig format with empty config
-    let capabilities: Vec<serde_json::Value> = value
-        .capability_ids
-        .iter()
-        .map(|id| serde_json::json!({"ref": id, "config": {}}))
-        .collect();
+    let capabilities: Vec<serde_json::Value> = if value.capabilities.is_empty() {
+        value
+            .capability_ids
+            .iter()
+            .map(|id| serde_json::json!({"ref": id, "config": {}}))
+            .collect()
+    } else {
+        value
+            .capabilities
+            .iter()
+            .map(|config| serde_json::from_str(config).map_err(ConversionError::from))
+            .collect::<Result<_, _>>()?
+    };
 
     // Convert UUID string to prefixed format for typed IDs.
     // EVE-652: a missing id previously became "" and failed later as an opaque
@@ -499,6 +506,11 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
+        capabilities: value
+            .capabilities
+            .iter()
+            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
+            .collect(),
     }
 }
 
@@ -527,6 +539,11 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         is_built_in: value.is_built_in,
         display_name: value.display_name.clone(),
+        capabilities: value
+            .capabilities
+            .iter()
+            .map(|config| serde_json::to_string(config).expect("capability config serializes"))
+            .collect(),
     }
 }
 
@@ -550,11 +567,19 @@ pub fn proto_harness_to_schema(
         .as_ref()
         .map(|u| prefixed_id("harness", u));
 
-    let capabilities: Vec<serde_json::Value> = value
-        .capability_ids
-        .iter()
-        .map(|id| serde_json::json!({"ref": id, "config": {}}))
-        .collect();
+    let capabilities: Vec<serde_json::Value> = if value.capabilities.is_empty() {
+        value
+            .capability_ids
+            .iter()
+            .map(|id| serde_json::json!({"ref": id, "config": {}}))
+            .collect()
+    } else {
+        value
+            .capabilities
+            .iter()
+            .map(|config| serde_json::from_str(config).map_err(ConversionError::from))
+            .collect::<Result<_, _>>()?
+    };
 
     let json = serde_json::json!({
         "id": id_str,
@@ -2268,6 +2293,56 @@ mod tests {
             matches!(err, ConversionError::MissingField("id")),
             "expected MissingField(\"id\"), got {err:?}"
         );
+    }
+
+    #[test]
+    fn agent_capability_config_survives_proto_round_trip() {
+        let definition = everruns_core::DeclarativeCapabilityDefinition {
+            name: "resend".to_string(),
+            description: "Send email".to_string(),
+            ..Default::default()
+        };
+        let config = serde_json::json!({
+            "ref": "plugin:plugin_019fda530ed27b4291c67d9f786961d9",
+            "config": serde_json::to_value(&definition).unwrap()
+        });
+        let proto_agent = proto::Agent {
+            id: Some(uuid_to_proto_uuid(uuid::Uuid::new_v4())),
+            harness_id: Some(uuid_to_proto_uuid(uuid::Uuid::new_v4())),
+            name: "mailer".to_string(),
+            status: "active".to_string(),
+            capabilities: vec![config.to_string()],
+            created_at: Some(datetime_to_proto_timestamp(chrono::Utc::now())),
+            updated_at: Some(datetime_to_proto_timestamp(chrono::Utc::now())),
+            ..Default::default()
+        };
+
+        let agent = proto_agent_to_schema(proto_agent).unwrap();
+
+        assert_eq!(agent.capabilities[0].config["name"], "resend");
+        serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
+            agent.capabilities[0].config.clone(),
+        )
+        .expect("plugin definition remains runtime-loadable");
+    }
+
+    #[test]
+    fn agent_proto_without_full_configs_falls_back_to_capability_ids() {
+        let proto_agent = proto::Agent {
+            id: Some(uuid_to_proto_uuid(uuid::Uuid::new_v4())),
+            harness_id: Some(uuid_to_proto_uuid(uuid::Uuid::new_v4())),
+            name: "legacy".to_string(),
+            status: "active".to_string(),
+            capability_ids: vec!["session".to_string()],
+            created_at: Some(datetime_to_proto_timestamp(chrono::Utc::now())),
+            updated_at: Some(datetime_to_proto_timestamp(chrono::Utc::now())),
+            ..Default::default()
+        };
+
+        let agent = proto_agent_to_schema(proto_agent).unwrap();
+
+        assert_eq!(agent.capabilities[0].capability_id(), "session");
+        assert_eq!(agent.capabilities[0].config, serde_json::json!({}));
     }
 
     #[test]

@@ -78,4 +78,19 @@ describe("runtime error localization", () => {
     expect(text).toContain("Деталі: OpenAI API error (429): insufficient_quota");
     expect(text).not.toContain("Details:");
   });
+
+  it("renders invalid tool schemas as an actionable integration error", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "invalid_tool_schema",
+        fields: { provider: "openai", schema_path: "$.properties.email.pattern" },
+      },
+      "generic processing error",
+    );
+
+    expect(text).toContain("connected tool");
+    expect(text).toContain("Update the integration");
+    expect(text).not.toContain("generic processing error");
+  });
 });

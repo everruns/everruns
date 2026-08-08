@@ -116,6 +116,8 @@ const messages = {
       "I encountered an error while processing your request. Please try again later.",
     runtime_error_dependency_unavailable:
       "Execution stopped because a required dependency is unavailable.",
+    runtime_error_invalid_tool_schema:
+      "A connected tool uses an input schema that this model provider does not support. Update the integration or choose a different model provider, then try again.",
     binary_file: "binary file{value}",
     image_count_one: "{count} image",
     image_count_few: "{count} images",
@@ -324,6 +326,8 @@ const messages = {
     runtime_error_processing_error:
       "Під час обробки вашого запиту сталася помилка. Спробуйте ще раз пізніше.",
     runtime_error_dependency_unavailable: "Виконання зупинено, бо потрібна залежність недоступна.",
+    runtime_error_invalid_tool_schema:
+      "Підключений інструмент використовує схему вводу, яку цей провайдер моделі не підтримує. Оновіть інтеграцію або виберіть іншого провайдера моделі й повторіть спробу.",
     binary_file: "бінарний файл{value}",
     image_count_one: "{count} зображення",
     image_count_few: "{count} зображення",

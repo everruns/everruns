@@ -359,6 +359,14 @@ The Responses drivers share the same base URL handling and can work with
 OpenAI-compatible endpoints while keeping provider-specific request features
 gated by the resolved provider type.
 
+Both OpenAI protocol variants adapt model-facing tool JSON Schemas at the
+provider boundary. Supported constraints pass through unchanged. Regex
+lookaround, which OpenAI rejects, is translated when an equivalent supported
+pattern is known (including the practical Zod email validator); otherwise only
+that unsupported model-facing pattern is omitted and the tool remains the
+authoritative validation boundary. This keeps third-party MCP discovery live
+without mutating or weakening unrelated schemas.
+
 ## Meta Model API Driver (`everruns-meta`)
 
 Meta Model API serves Muse models at `https://api.meta.ai/v1`. The dedicated

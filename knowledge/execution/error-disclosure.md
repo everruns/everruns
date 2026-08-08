@@ -23,6 +23,12 @@ OpenAI Responses, Anthropic, Gemini, Bedrock) attach a kind; `other` falls
 back to the legacy string classifier (`classify_runtime_error_message`), so
 untyped error paths keep working.
 
+Provider rejections that identify an invalid model-facing tool schema are
+classified separately as `invalid_tool_schema`. Standard disclosure gives the
+viewer an actionable integration/provider message and bounded schema path,
+without copying the provider response body or pattern into the transcript.
+Detailed disclosure retains the existing operator opt-in for raw driver text.
+
 Rationale: string classification conflated distinct operator problems. The
 motivating case: OpenAI `insufficient_quota` (out of credits, top up the
 account) classified as `provider_misconfigured` — the same code shown for a

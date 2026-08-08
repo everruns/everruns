@@ -315,6 +315,21 @@ mod tests {
         SessionStatus, generate_agent_public_id,
     };
 
+    struct MutableConnectionResolver {
+        token: tokio::sync::RwLock<Option<String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl UserConnectionResolver for MutableConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            _provider: &str,
+        ) -> everruns_core::error::Result<Option<String>> {
+            Ok(self.token.read().await.clone())
+        }
+    }
+
     fn scoped_server(url: &str) -> ScopedMcpServer {
         ScopedMcpServer {
             url: url.to_string(),
@@ -337,6 +352,43 @@ mod tests {
 
         headers.insert("authorization".to_string(), "Bearer token".to_string());
         assert!(has_authorization_header(&headers));
+    }
+
+    #[tokio::test]
+    async fn newly_connected_token_is_visible_on_next_turn_in_same_session() {
+        let session_id = SessionId::new();
+        let server = oauth_scoped_server("https://mcp.resend.com/mcp", "mcp_oauth_resend");
+        let resolver = Arc::new(MutableConnectionResolver {
+            token: tokio::sync::RwLock::new(None),
+        });
+        let resolver_trait: Arc<dyn UserConnectionResolver> = resolver.clone();
+
+        assert!(
+            resolve_scoped_mcp_discovery_token(
+                "resend",
+                &server,
+                Some(session_id),
+                Some(&resolver_trait),
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+
+        *resolver.token.write().await = Some("fresh-oauth-token".to_string());
+
+        assert_eq!(
+            resolve_scoped_mcp_discovery_token(
+                "resend",
+                &server,
+                Some(session_id),
+                Some(&resolver_trait),
+            )
+            .await
+            .unwrap()
+            .as_deref(),
+            Some("fresh-oauth-token")
+        );
     }
 
     fn test_harness() -> Harness {

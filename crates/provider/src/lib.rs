@@ -31,6 +31,7 @@ pub mod openresponses_types;
 pub mod provider;
 pub mod stream_accumulator;
 pub mod stream_reconnect;
+pub mod tool_schema_compat;
 pub mod tool_types;
 pub mod typed_id;
 pub mod url_validation;
