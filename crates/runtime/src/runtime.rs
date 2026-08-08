@@ -1392,7 +1392,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
+    ) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
         self.platform_store_factory
             .as_ref()
             .map(|factory| factory(org_id, session_id))

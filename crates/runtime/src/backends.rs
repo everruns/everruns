@@ -16,7 +16,7 @@ use everruns_core::in_memory::{
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
-use everruns_core::platform_store::PlatformStore;
+use everruns_platform::PlatformStore;
 use everruns_core::session::Session;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{
