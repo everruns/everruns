@@ -15134,6 +15134,8 @@ export interface components {
      *     The workflow pauses until the client submits results via the API.
      */
     ToolCallRequestedData: {
+      /** @description Human-readable headline after the requested batch completes */
+      completed_headline?: string | null;
       /** @description Human-readable headline for the requested batch */
       headline?: string | null;
       /** @description Tool calls that need to be executed by the client */
@@ -15143,6 +15145,8 @@ export interface components {
     };
     /** @description Summary of a tool call (compact form without arguments) */
     ToolCallSummary: {
+      /** @description Human-readable narration after the call completes */
+      completed_narration?: string | null;
       /** @description Human-readable display name for UI rendering */
       display_name?: string | null;
       id: string;
