@@ -18,7 +18,7 @@ use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{AgentCapabilityConfig, DriverId, InitialFile, ResolvedModel, SessionId};
 use everruns_runtime::{
     AgentBuilder as RuntimeAgentBuilder, EventBus, HarnessBuilder, InProcessRuntime,
-    InProcessRuntimeBuilder, RuntimeBackends, SessionBuilder,
+    InProcessRuntimeBuilder, RuntimeBackends, RuntimeMessageStore, SessionBuilder,
 };
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
@@ -261,6 +261,39 @@ impl Agent {
         crate::Session::new(self.clone(), SessionId::new())
     }
 
+    /// Open a new persisted session backed by `store` (EVE-836).
+    ///
+    /// Identical to [`session`](Self::session) but every turn's messages are
+    /// written to the store's JSONL file, so the conversation survives the
+    /// process. Resume it later with [`resume_session`](Self::resume_session)
+    /// using the id returned by [`Session::id`](crate::Session::id). Requires the
+    /// `jsonl` feature.
+    #[cfg(feature = "jsonl")]
+    pub fn session_with_store(
+        &self,
+        store: Arc<crate::persistence::JsonlSessionStore>,
+    ) -> crate::Session {
+        crate::Session::with_message_store(self.clone(), SessionId::new(), store)
+    }
+
+    /// Resume a persisted session by id, using history already loaded into
+    /// `store` (EVE-836).
+    ///
+    /// Pass a store opened over the same file and the `session_id` string from a
+    /// previous run (as returned by [`Session::id`](crate::Session::id)). The
+    /// next turn includes the reloaded history. Requires the `jsonl` feature.
+    #[cfg(feature = "jsonl")]
+    pub fn resume_session(
+        &self,
+        store: Arc<crate::persistence::JsonlSessionStore>,
+        session_id: &str,
+    ) -> Result<crate::Session, crate::persistence::JsonlError> {
+        let id: SessionId = session_id.parse().map_err(|_| {
+            crate::persistence::JsonlError::InvalidSessionId(session_id.to_string())
+        })?;
+        Ok(crate::Session::with_message_store(self.clone(), id, store))
+    }
+
     /// Materialize a fresh in-process runtime for this agent, seeded with the
     /// given session id, routing the runtime's raw event bus through the supplied
     /// facade sink so a [`Session`](crate::Session) can stream its events.
@@ -274,8 +307,9 @@ impl Agent {
         &self,
         session_id: SessionId,
         event_bus: Arc<dyn EventBus>,
+        message_store: Option<Arc<dyn RuntimeMessageStore>>,
     ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
-        self.build_runtime_with_backends(session_id, Some(event_bus))
+        self.build_runtime_with_backends(session_id, Some(event_bus), message_store)
             .await
     }
 
@@ -283,6 +317,7 @@ impl Agent {
         &self,
         session_id: SessionId,
         event_bus: Option<Arc<dyn EventBus>>,
+        message_store: Option<Arc<dyn RuntimeMessageStore>>,
     ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
         let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
             .capabilities(self.capabilities.clone());
@@ -321,11 +356,18 @@ impl Agent {
             .agent(agent)
             .session(session)
             .default_model(self.model.resolved.clone());
-        // Route the runtime's raw event bus through the facade sink when one was
-        // supplied, so the session can stream events. Everything else stays on
-        // the default in-memory backends.
-        if let Some(event_bus) = event_bus {
-            builder = builder.backends(RuntimeBackends::in_memory().with_event_bus(event_bus));
+        // Route the runtime's raw event bus through the facade sink, and swap in
+        // a persisting message store when one was supplied (EVE-836). Any store
+        // not overridden stays on the default in-memory backend.
+        if event_bus.is_some() || message_store.is_some() {
+            let mut backends = RuntimeBackends::in_memory();
+            if let Some(event_bus) = event_bus {
+                backends = backends.with_event_bus(event_bus);
+            }
+            if let Some(message_store) = message_store {
+                backends = backends.with_message_store(message_store);
+            }
+            builder = builder.backends(backends);
         }
         // Register each function tool as a closure-backed, single-tool
         // capability so the runtime can execute the model's calls; the matching
@@ -723,7 +765,7 @@ mod tests {
             .expect("valid agent");
 
         let runtime = agent
-            .build_runtime_with_backends(SessionId::new(), None)
+            .build_runtime_with_backends(SessionId::new(), None, None)
             .await
             .expect("openai runtime builds offline");
         let _ = runtime;
@@ -739,7 +781,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None)
+            .build_runtime_with_backends(session_id, None, None)
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn

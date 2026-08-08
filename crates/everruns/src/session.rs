@@ -10,7 +10,7 @@ use std::sync::Arc;
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::TurnId;
 use everruns_core::{AgentLoopError, InputMessage, SessionId};
-use everruns_runtime::{InProcessRuntime, TurnResult};
+use everruns_runtime::{InProcessRuntime, RuntimeMessageStore, TurnResult};
 
 use crate::Agent;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
@@ -51,6 +51,10 @@ pub struct Session {
     /// can subscribe before the first turn builds the runtime. Handed to the
     /// runtime as its raw event bus on first [`run`](Session::run).
     event_bus: Arc<FacadeEventBus>,
+    /// Optional persisting message store (EVE-836). When set, it replaces the
+    /// default in-memory message backend so the session's history is written to
+    /// disk and can be reloaded to resume the conversation in a fresh process.
+    message_store: Option<Arc<dyn RuntimeMessageStore>>,
 }
 
 impl Session {
@@ -60,6 +64,23 @@ impl Session {
             session_id,
             runtime: None,
             event_bus: Arc::new(FacadeEventBus::new()),
+            message_store: None,
+        }
+    }
+
+    /// Open a session whose messages are persisted through `store` (EVE-836).
+    #[cfg(feature = "jsonl")]
+    pub(crate) fn with_message_store(
+        agent: Agent,
+        session_id: SessionId,
+        store: Arc<dyn RuntimeMessageStore>,
+    ) -> Self {
+        Self {
+            agent,
+            session_id,
+            runtime: None,
+            event_bus: Arc::new(FacadeEventBus::new()),
+            message_store: Some(store),
         }
     }
 
@@ -122,7 +143,11 @@ impl Session {
         if self.runtime.is_none() {
             self.runtime = Some(
                 self.agent
-                    .build_runtime_with_event_bus(self.session_id, self.event_bus.clone())
+                    .build_runtime_with_event_bus(
+                        self.session_id,
+                        self.event_bus.clone(),
+                        self.message_store.clone(),
+                    )
                     .await?,
             );
         }
