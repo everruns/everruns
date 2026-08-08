@@ -84,6 +84,24 @@ pub enum Commands {
         command: Option<CapabilitiesCommand>,
     },
 
+    /// Discover plugins
+    Plugins {
+        #[command(subcommand)]
+        command: commands::plugins::PluginsCommands,
+    },
+
+    /// Manage skills
+    Skills {
+        #[command(subcommand)]
+        command: commands::skills::SkillsCommands,
+    },
+
+    /// Manage knowledge bases
+    KnowledgeBases {
+        #[command(subcommand)]
+        command: commands::knowledge_bases::KnowledgeBasesCommands,
+    },
+
     /// Manage sessions
     Sessions {
         #[command(subcommand)]
@@ -225,6 +243,36 @@ async fn main() -> anyhow::Result<()> {
                 None => status,
             };
             commands::capabilities::run(&client, output_format, &status).await
+        }
+        Commands::Plugins { command } => {
+            commands::plugins::run(
+                command,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+            )
+            .await
+        }
+        Commands::Skills { command } => {
+            commands::skills::run(
+                command,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+            )
+            .await
+        }
+        Commands::KnowledgeBases { command } => {
+            commands::knowledge_bases::run(
+                command,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+            )
+            .await
         }
         Commands::Sessions { command } => {
             commands::sessions::run(
@@ -1021,5 +1069,81 @@ mod tests {
     fn connections_set_requires_provider() {
         let result = Cli::try_parse_from(["everruns", "connections", "set"]);
         assert!(result.is_err(), "provider arg is required");
+    }
+    #[test]
+    fn parses_plugin_lifecycle_commands() {
+        use crate::commands::plugins::PluginsCommands;
+
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "plugins",
+            "install",
+            "marketplace-id",
+            "plugin-name",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Plugins {
+                command: PluginsCommands::Install { marketplace_id, plugin_name }
+            } if marketplace_id == "marketplace-id" && plugin_name == "plugin-name"
+        ));
+
+        let cli = Cli::try_parse_from(["everruns", "plugins", "uninstall", "plugin-id"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Plugins { command: PluginsCommands::Uninstall { id } } if id == "plugin-id"
+        ));
+    }
+
+    #[test]
+    fn parses_skill_lifecycle_commands() {
+        use crate::commands::skills::SkillsCommands;
+        let cli =
+            Cli::try_parse_from(["everruns", "skills", "create", "skills/demo/SKILL.md"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Skills { command: SkillsCommands::Create { path } }
+                if path == std::path::Path::new("skills/demo/SKILL.md")
+        ));
+
+        let cli = Cli::try_parse_from(["everruns", "skills", "delete", "skill-id"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Skills { command: SkillsCommands::Delete { id } } if id == "skill-id"
+        ));
+    }
+
+    #[test]
+    fn parses_knowledge_base_lifecycle_commands() {
+        use crate::commands::knowledge_bases::KnowledgeBasesCommands;
+
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "knowledge-bases",
+            "create",
+            "Runbooks",
+            "--description",
+            "Operations guides",
+            "--embedding-model-id",
+            "model-id",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::KnowledgeBases {
+                command: KnowledgeBasesCommands::Create {
+                    name,
+                    description: Some(description),
+                    embedding_model_id: Some(embedding_model_id),
+                }
+            } if name == "Runbooks" && description == "Operations guides" && embedding_model_id == "model-id"
+        ));
+
+        let cli = Cli::try_parse_from(["everruns", "knowledge-bases", "delete", "kb-id"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::KnowledgeBases { command: KnowledgeBasesCommands::Delete { id } } if id == "kb-id"
+        ));
     }
 }

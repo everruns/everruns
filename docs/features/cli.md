@@ -132,3 +132,31 @@ everruns agents list -o yaml
 - [Automate with the CLI](/how-to/automate-with-the-cli/) — `jq`, quiet mode, scripting patterns.
 - [Define agents as files](/how-to/define-agents-as-files/) — file formats for `-f`.
 - [SDK](/features/sdk/) — the programmatic equivalent.
+
+## Agent composition
+
+Discover and manage the plugins, skills, and knowledge bases available to agents:
+
+```bash
+# Plugins
+everruns plugins list
+everruns plugins get <plugin-id>
+everruns plugins install <marketplace-id> <plugin-name>
+everruns plugins uninstall <plugin-id>
+
+# Skills
+everruns skills list
+everruns skills get <skill-id>
+everruns skills create ./SKILL.md
+everruns skills delete <skill-id>
+
+# Knowledge bases
+everruns knowledge-bases list
+everruns knowledge-bases get <knowledge-base-id>
+everruns knowledge-bases create "Product docs" --description "Published product documentation"
+everruns knowledge-bases delete <knowledge-base-id>
+```
+
+Resource identifiers are URL-encoded before requests are sent. Use the global `--output json` or `--output yaml` option for machine-readable discovery output.
+
+Skill creation reads the supplied Markdown file and sends its contents to Everruns. Knowledge document ingestion and assigning composition resources to an agent are not yet exposed by the CLI.

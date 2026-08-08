@@ -1,0 +1,105 @@
+use std::path::PathBuf;
+
+use anyhow::{Context, Result};
+use clap::Subcommand;
+use serde_json::{Value, json};
+
+use crate::commands::api::ApiClient;
+use crate::commands::discovery::{DiscoveryCommands, Resource};
+use crate::output::OutputFormat;
+
+#[derive(Subcommand, Debug)]
+pub enum SkillsCommands {
+    /// List skills
+    List,
+    /// Get a skill by ID
+    Get { id: String },
+    /// Create a skill from a local SKILL.md file
+    Create { path: PathBuf },
+    /// Delete a skill by ID
+    Delete { id: String },
+}
+
+const SKILLS: Resource = Resource {
+    path: "/skills",
+    collection_key: "skills",
+    empty_message: "No skills found.",
+    columns: &[
+        ("ID", "id"),
+        ("NAME", "name"),
+        ("DESCRIPTION", "description"),
+    ],
+    detail_fields: &[
+        ("ID", "id"),
+        ("Name", "name"),
+        ("Description", "description"),
+        ("Version", "version"),
+    ],
+};
+
+pub async fn run(
+    command: SkillsCommands,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
+    format: OutputFormat,
+) -> Result<()> {
+    match command {
+        SkillsCommands::List => {
+            run_discovery(DiscoveryCommands::List, api_url, api_key, org_id, format).await
+        }
+        SkillsCommands::Get { id } => {
+            run_discovery(
+                DiscoveryCommands::Get { id },
+                api_url,
+                api_key,
+                org_id,
+                format,
+            )
+            .await
+        }
+        SkillsCommands::Create { path } => {
+            let skill_md = std::fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read SKILL.md at {}", path.display()))?;
+            let body = create_request(&skill_md);
+            let response = ApiClient::new(api_url, api_key, org_id)
+                .post("/skills", Some(&body))
+                .await?;
+            format.print_value(&response);
+            Ok(())
+        }
+        SkillsCommands::Delete { id } => {
+            let response = ApiClient::new(api_url, api_key, org_id)
+                .delete(&super::discovery::resource_path("/skills", &id))
+                .await?;
+            format.print_value(&response);
+            Ok(())
+        }
+    }
+}
+
+async fn run_discovery(
+    command: DiscoveryCommands,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
+    format: OutputFormat,
+) -> Result<()> {
+    super::discovery::run(command, api_url, api_key, org_id, format, SKILLS).await
+}
+
+fn create_request(skill_md: &str) -> Value {
+    json!({ "skill_md": skill_md })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::create_request;
+    use serde_json::json;
+
+    #[test]
+    fn create_request_preserves_exact_skill_md_content() {
+        let content = "---\nname: example\n---\n\n# Example\n";
+        assert_eq!(create_request(content), json!({ "skill_md": content }));
+    }
+}
