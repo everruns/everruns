@@ -201,8 +201,13 @@ impl Command for BatchSetSessionSecrets {
 inventory::submit! { CommandDescriptor::of::<BatchSetSessionSecrets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
+/// Delete one encrypted secret from a session's private storage.
 pub struct DeleteSessionSecret {
+    /// Session that owns the secret.
+    #[schema(example = "session_01933b5a000070008000000000000001")]
     pub session_id: String,
+    /// Exact secret name to delete.
+    #[schema(example = "SERVICE_TOKEN")]
     pub name: String,
 }
 

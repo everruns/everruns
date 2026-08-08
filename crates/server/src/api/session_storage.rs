@@ -114,8 +114,15 @@ pub fn routes(state: AppState) -> Router {
 #[utoipa::path(
     delete,
     path = "/v1/sessions/{session_id}/storage/secrets/{name}",
-    params(("session_id" = String, Path), ("name" = String, Path)),
-    responses((status = 204), (status = 404, body = ErrorResponse)),
+    description = "Delete a user-managed encrypted secret from one session.",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("name" = String, Path, description = "Secret name")
+    ),
+    responses(
+        (status = 204, description = "Session secret deleted"),
+        (status = 404, description = "Session secret not found", body = ErrorResponse)
+    ),
     tag = "session-storage"
 )]
 pub async fn delete_secret(

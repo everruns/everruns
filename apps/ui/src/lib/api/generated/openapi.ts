@@ -191,8 +191,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values. */
     get: operations["list_credentials"];
     put?: never;
+    /** @description Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately. */
     post: operations["create_credential_binding"];
     delete?: never;
     options?: never;
@@ -208,8 +210,10 @@ export interface paths {
       cookie?: never;
     };
     get?: never;
+    /** @description Encrypt and replace the write-only value for an agent credential binding. */
     put: operations["set_credential_value"];
     post?: never;
+    /** @description Revoke an agent credential binding and permanently remove its encrypted value. */
     delete: operations["delete_credential_binding"];
     options?: never;
     head?: never;
@@ -3335,6 +3339,7 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
+    /** @description Delete a user-managed encrypted secret from one session. */
     delete: operations["delete_secret"];
     options?: never;
     head?: never;
@@ -4228,19 +4233,68 @@ export interface components {
       /** @description Reference to the capability ID */
       ref: string;
     };
+    /** @description Metadata for a write-only credential bound to one agent and MCP tool parameter. */
     AgentCredentialBinding: {
+      /**
+       * @description Agent that exclusively owns and may use this credential.
+       * @example agent_01933b5a000070008000000000000001
+       */
       agent_id: string;
+      /**
+       * @description Whether an encrypted value has been provisioned.
+       * @example true
+       */
       configured: boolean;
+      /**
+       * @description RFC 3339 creation time.
+       * @example 2026-08-08T16:00:00Z
+       */
       created_at: string;
+      /**
+       * @description Optional explanation of why the credential is needed.
+       * @example Delivers scheduled status notifications
+       */
       description?: string | null;
-      /** Format: uuid */
+      /**
+       * Format: uuid
+       * @description Stable credential binding identifier.
+       * @example 01933b5a-0000-7000-8000-000000000001
+       */
       id: string;
+      /**
+       * @description Human-readable credential label.
+       * @example Visti channel key
+       */
       label: string;
+      /**
+       * @description Name of the attached MCP server.
+       * @example visti
+       */
       mcp_server_name: string;
+      /**
+       * @description Exact MCP endpoint authorized to receive the credential.
+       * @example https://visti.sh/mcp
+       */
       mcp_server_url: string;
+      /**
+       * @description Top-level tool argument injected by the server.
+       * @example channel_key
+       */
       parameter_name: string;
+      /**
+       * @description Relative UI route where the user can securely provision the value.
+       * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
+       */
       setup_url: string;
+      /**
+       * @description MCP tool whose outbound call receives the credential.
+       * @example visti_send
+       */
       tool_name: string;
+      /**
+       * @description RFC 3339 last-update time.
+       * @example 2026-08-08T16:05:00Z
+       */
       updated_at: string;
     };
     AgentMessage: {
@@ -5570,12 +5624,37 @@ export interface components {
        */
       output: number;
     };
+    /** @description Declare a credential requirement for an agent's attached MCP tool. */
     CreateAgentCredentialBinding: {
+      /**
+       * @description Agent ID, populated from the request path by the HTTP API.
+       * @example agent_01933b5a000070008000000000000001
+       */
       agent_id?: string;
+      /**
+       * @description Optional explanation of how the credential will be used.
+       * @example Delivers scheduled status notifications
+       */
       description?: string | null;
+      /**
+       * @description Human-readable label shown in the secure setup UI.
+       * @example Visti channel key
+       */
       label: string;
+      /**
+       * @description Name of an MCP server attached to the agent.
+       * @example visti
+       */
       mcp_server_name: string;
+      /**
+       * @description Top-level tool argument to inject outside model context.
+       * @example channel_key
+       */
       parameter_name: string;
+      /**
+       * @description MCP tool whose outbound call requires the credential.
+       * @example visti_send
+       */
       tool_name: string;
     };
     /** @description Request to create a new agent */
@@ -8918,18 +8997,66 @@ export interface components {
     ListResponse_AgentCredentialBinding: {
       /** @description Array of items returned by the list operation. */
       data: {
+        /**
+         * @description Agent that exclusively owns and may use this credential.
+         * @example agent_01933b5a000070008000000000000001
+         */
         agent_id: string;
+        /**
+         * @description Whether an encrypted value has been provisioned.
+         * @example true
+         */
         configured: boolean;
+        /**
+         * @description RFC 3339 creation time.
+         * @example 2026-08-08T16:00:00Z
+         */
         created_at: string;
+        /**
+         * @description Optional explanation of why the credential is needed.
+         * @example Delivers scheduled status notifications
+         */
         description?: string | null;
-        /** Format: uuid */
+        /**
+         * Format: uuid
+         * @description Stable credential binding identifier.
+         * @example 01933b5a-0000-7000-8000-000000000001
+         */
         id: string;
+        /**
+         * @description Human-readable credential label.
+         * @example Visti channel key
+         */
         label: string;
+        /**
+         * @description Name of the attached MCP server.
+         * @example visti
+         */
         mcp_server_name: string;
+        /**
+         * @description Exact MCP endpoint authorized to receive the credential.
+         * @example https://visti.sh/mcp
+         */
         mcp_server_url: string;
+        /**
+         * @description Top-level tool argument injected by the server.
+         * @example channel_key
+         */
         parameter_name: string;
+        /**
+         * @description Relative UI route where the user can securely provision the value.
+         * @example /agents/agent_01933b5a000070008000000000000001?tab=credentials
+         */
         setup_url: string;
+        /**
+         * @description MCP tool whose outbound call receives the credential.
+         * @example visti_send
+         */
         tool_name: string;
+        /**
+         * @description RFC 3339 last-update time.
+         * @example 2026-08-08T16:05:00Z
+         */
         updated_at: string;
       }[];
     };
@@ -14659,8 +14786,12 @@ export interface components {
       /** @description New session title. */
       title: string;
     };
+    /** @description Request to replace a credential binding's encrypted value. */
     SetAgentCredentialValueRequest: {
-      /** @description Write-only credential value. It is encrypted and never returned. */
+      /**
+       * @description Write-only credential value. It is encrypted and never returned.
+       * @example vsk_disposable_example
+       */
       value: string;
     };
     /** @description Request body for the `set_default_agent_version` operation. */
@@ -19000,12 +19131,14 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Agent ID */
         agent_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
+      /** @description Credential binding metadata */
       200: {
         headers: {
           [name: string]: unknown;
@@ -19021,6 +19154,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Agent ID */
         agent_id: string;
       };
       cookie?: never;
@@ -19031,6 +19165,7 @@ export interface operations {
       };
     };
     responses: {
+      /** @description Credential binding created or updated */
       200: {
         headers: {
           [name: string]: unknown;
@@ -19046,7 +19181,9 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Agent ID */
         agent_id: string;
+        /** @description Credential binding ID */
         binding_id: string;
       };
       cookie?: never;
@@ -19057,6 +19194,7 @@ export interface operations {
       };
     };
     responses: {
+      /** @description Credential value replaced */
       200: {
         headers: {
           [name: string]: unknown;
@@ -19072,19 +19210,23 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Agent ID */
         agent_id: string;
+        /** @description Credential binding ID */
         binding_id: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
+      /** @description Credential binding revoked */
       204: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
+      /** @description Credential binding not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -28921,19 +29063,23 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
+        /** @description Session ID */
         session_id: string;
+        /** @description Secret name */
         name: string;
       };
       cookie?: never;
     };
     requestBody?: never;
     responses: {
+      /** @description Session secret deleted */
       204: {
         headers: {
           [name: string]: unknown;
         };
         content?: never;
       };
+      /** @description Session secret not found */
       404: {
         headers: {
           [name: string]: unknown;

@@ -50,8 +50,10 @@ impl AppState {
 impl_auth_state!(AppState);
 
 #[derive(Deserialize, ToSchema)]
+/// Request to replace a credential binding's encrypted value.
 pub struct SetAgentCredentialValueRequest {
     /// Write-only credential value. It is encrypted and never returned.
+    #[schema(example = "vsk_disposable_example")]
     pub value: String,
 }
 
@@ -94,8 +96,9 @@ async fn resolve_agent(
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/credentials",
-    params(("agent_id" = String, Path)),
-    responses((status = 200, body = ListResponse<AgentCredentialBinding>)),
+    description = "List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.",
+    params(("agent_id" = String, Path, description = "Agent ID")),
+    responses((status = 200, description = "Credential binding metadata", body = ListResponse<AgentCredentialBinding>)),
     tag = "agents"
 )]
 pub async fn list_credentials(
@@ -119,9 +122,10 @@ pub async fn list_credentials(
 #[utoipa::path(
     post,
     path = "/v1/agents/{agent_id}/credentials",
-    params(("agent_id" = String, Path)),
+    description = "Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.",
+    params(("agent_id" = String, Path, description = "Agent ID")),
     request_body = CreateAgentCredentialBinding,
-    responses((status = 200, body = AgentCredentialBinding)),
+    responses((status = 200, description = "Credential binding created or updated", body = AgentCredentialBinding)),
     tag = "agents"
 )]
 pub async fn create_credential_binding(
@@ -137,9 +141,13 @@ pub async fn create_credential_binding(
 #[utoipa::path(
     put,
     path = "/v1/agents/{agent_id}/credentials/{binding_id}",
-    params(("agent_id" = String, Path), ("binding_id" = Uuid, Path)),
+    description = "Encrypt and replace the write-only value for an agent credential binding.",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID"),
+        ("binding_id" = Uuid, Path, description = "Credential binding ID")
+    ),
     request_body = SetAgentCredentialValueRequest,
-    responses((status = 200, body = AgentCredentialBinding)),
+    responses((status = 200, description = "Credential value replaced", body = AgentCredentialBinding)),
     tag = "agents"
 )]
 pub async fn set_credential_value(
@@ -174,8 +182,15 @@ pub async fn set_credential_value(
 #[utoipa::path(
     delete,
     path = "/v1/agents/{agent_id}/credentials/{binding_id}",
-    params(("agent_id" = String, Path), ("binding_id" = Uuid, Path)),
-    responses((status = 204), (status = 404, body = ErrorResponse)),
+    description = "Revoke an agent credential binding and permanently remove its encrypted value.",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID"),
+        ("binding_id" = Uuid, Path, description = "Credential binding ID")
+    ),
+    responses(
+        (status = 204, description = "Credential binding revoked"),
+        (status = 404, description = "Credential binding not found", body = ErrorResponse)
+    ),
     tag = "agents"
 )]
 pub async fn delete_credential_binding(

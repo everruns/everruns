@@ -11,19 +11,44 @@ use super::AGENT_MANAGE;
 const MAX_NAME_LEN: usize = 255;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+/// Metadata for a write-only credential bound to one agent and MCP tool parameter.
 pub struct AgentCredentialBinding {
+    /// Stable credential binding identifier.
+    #[schema(example = "01933b5a-0000-7000-8000-000000000001")]
     pub id: Uuid,
+    /// Agent that exclusively owns and may use this credential.
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
     pub agent_id: String,
+    /// Name of the attached MCP server.
+    #[schema(example = "visti")]
     pub mcp_server_name: String,
+    /// Exact MCP endpoint authorized to receive the credential.
+    #[schema(example = "https://visti.sh/mcp")]
     pub mcp_server_url: String,
+    /// MCP tool whose outbound call receives the credential.
+    #[schema(example = "visti_send")]
     pub tool_name: String,
+    /// Top-level tool argument injected by the server.
+    #[schema(example = "channel_key")]
     pub parameter_name: String,
+    /// Human-readable credential label.
+    #[schema(example = "Visti channel key")]
     pub label: String,
+    /// Optional explanation of why the credential is needed.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Delivers scheduled status notifications")]
     pub description: Option<String>,
+    /// Whether an encrypted value has been provisioned.
+    #[schema(example = true)]
     pub configured: bool,
+    /// RFC 3339 creation time.
+    #[schema(example = "2026-08-08T16:00:00Z")]
     pub created_at: String,
+    /// RFC 3339 last-update time.
+    #[schema(example = "2026-08-08T16:05:00Z")]
     pub updated_at: String,
+    /// Relative UI route where the user can securely provision the value.
+    #[schema(example = "/agents/agent_01933b5a000070008000000000000001?tab=credentials")]
     pub setup_url: String,
 }
 
@@ -47,14 +72,27 @@ impl AgentCredentialBinding {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+/// Declare a credential requirement for an agent's attached MCP tool.
 pub struct CreateAgentCredentialBinding {
+    /// Agent ID, populated from the request path by the HTTP API.
     #[serde(default)]
+    #[schema(example = "agent_01933b5a000070008000000000000001")]
     pub agent_id: String,
+    /// Name of an MCP server attached to the agent.
+    #[schema(example = "visti")]
     pub mcp_server_name: String,
+    /// MCP tool whose outbound call requires the credential.
+    #[schema(example = "visti_send")]
     pub tool_name: String,
+    /// Top-level tool argument to inject outside model context.
+    #[schema(example = "channel_key")]
     pub parameter_name: String,
+    /// Human-readable label shown in the secure setup UI.
+    #[schema(example = "Visti channel key")]
     pub label: String,
+    /// Optional explanation of how the credential will be used.
     #[serde(default)]
+    #[schema(example = "Delivers scheduled status notifications")]
     pub description: Option<String>,
 }
 
