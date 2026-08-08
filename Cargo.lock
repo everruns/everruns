@@ -2615,6 +2615,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-engine"
+version = "0.17.23"
+dependencies = [
+ "chrono",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "tracing",
+ "uuid 1.24.0",
+]
+
+[[package]]
 name = "everruns-fireworks"
 version = "0.17.23"
 dependencies = [
@@ -3088,6 +3100,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-engine",
  "everruns-mcp",
  "everruns-openai",
  "futures",

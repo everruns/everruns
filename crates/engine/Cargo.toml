@@ -1,0 +1,39 @@
+# The turn engine: the sans-IO turn planner for the Everruns agentic runtime.
+#
+# Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
+# brain lives here as pure, deterministic functions — no stores, sockets,
+# process execution, event emission, or `Utc::now()`. Hosts (in-process,
+# durable, custom) resolve facts and perform the returned lifecycle effects.
+#
+# Dependency direction is strictly `engine -> core`. The engine never depends on
+# runtime/server/worker/platform/durable (enforced by
+# crates/engine/tests/dependency_direction.rs).
+
+[package]
+name = "everruns-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-engine"
+description = "The sans-IO turn planner for the Everruns agentic runtime — pure, deterministic turn-state transitions"
+readme = "README.md"
+keywords = ["agent", "agentic", "llm", "ai", "state-machine"]
+categories = ["development-tools", "asynchronous"]
+
+[dependencies]
+# Domain value types the planner transitions over: turn state fields, the
+# reason/act atom I/O shapes, the event payloads returned as effects, the
+# user-facing error taxonomy, and the typed IDs. Direction is engine -> core.
+everruns-core = { workspace = true }
+
+chrono.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+uuid.workspace = true
