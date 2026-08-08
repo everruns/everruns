@@ -46,6 +46,7 @@ import {
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
 import { AgentPreview } from "@/components/agents/agent-preview";
+import { agentEditTabItems } from "@/components/agents/agent-tabs";
 import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
@@ -53,7 +54,7 @@ import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { HarnessSelect } from "@/components/harness/harness-select";
-import { Trash2, Eye, Edit2, Check, X, Loader2, Boxes, Pencil } from "lucide-react";
+import { Trash2, Check, X, Loader2, Boxes, Pencil } from "lucide-react";
 import {
   agentFormSchema,
   getFieldErrors,
@@ -310,10 +311,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         <SectionTabs
           value={activeTab}
           onValueChange={setActiveTab}
-          items={[
-            { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
-            { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
-          ]}
+          items={agentEditTabItems}
           className="border-b-0"
         />
         {activeTab === "edit" && (

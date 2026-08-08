@@ -1,7 +1,9 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentDetailPage from "@/app/(main)/agents/[agentId]/page";
 import type { Session, Agent, ModelWithProvider } from "@/lib/api/types";
+
+let mockSearchParams = new URLSearchParams();
 
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
@@ -10,7 +12,7 @@ jest.mock("next/navigation", () => ({
     replace: jest.fn(),
     back: jest.fn(),
   }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 // Mock next/link
@@ -52,6 +54,14 @@ jest.mock("@/components/chat/streamdown-message", () => ({
 
 jest.mock("@/components/agents/agent-preview", () => ({
   AgentPreview: () => <div data-testid="agent-preview">agent preview</div>,
+}));
+
+jest.mock("@/components/agents/agent-credentials-panel", () => ({
+  AgentCredentialsPanel: () => <div>agent credentials</div>,
+}));
+
+jest.mock("@/components/agents/agent-triggers-panel", () => ({
+  AgentTriggersPanel: () => <div>agent triggers</div>,
 }));
 
 // Mock data
@@ -185,7 +195,7 @@ jest.mock("@/hooks/use-organizations", () => ({
 }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => false,
+  useFeatureFlag: (flag: string) => flag === "agent_versions",
 }));
 
 // Helper to render with Suspense for React.use()
@@ -202,6 +212,66 @@ async function renderWithSuspense(params: { agentId: string }) {
     await paramsPromise;
   });
 }
+
+beforeEach(() => {
+  mockSearchParams = new URLSearchParams();
+});
+
+describe("AgentDetailPage - tab navigation", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSearchParams = new URLSearchParams();
+    mockUseAgent.mockReturnValue({ data: mockAgent, isLoading: false });
+    mockUseSessions.mockReturnValue({ data: [], isLoading: false });
+    mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseCapabilities.mockReturnValue({ data: [] });
+    mockUseModels.mockReturnValue({ data: mockModels });
+    mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
+    mockUseHarnesses.mockReturnValue({ data: [] });
+    mockUseOrganization.mockReturnValue({ data: null });
+    mockUseAgentStats.mockReturnValue({ data: undefined, isLoading: false, error: null });
+  });
+
+  it("renders the agent detail tabs in workflow order", async () => {
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Overview",
+      "Preview",
+      "Credentials",
+      "Triggers",
+      "Versions",
+      "Stats",
+      "Integrate",
+    ]);
+  });
+
+  it("selects the credentials tab from its deep link", async () => {
+    mockSearchParams = new URLSearchParams("tab=credentials");
+
+    await renderWithSuspense({ agentId: "agent-1" });
+
+    expect(screen.getByRole("tab", { name: "Credentials" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("agent credentials")).toBeInTheDocument();
+  });
+
+  it("keeps focus and active state aligned when selecting a tab", async () => {
+    await renderWithSuspense({ agentId: "agent-1" });
+    const triggersTab = screen.getByRole("tab", { name: "Triggers" });
+
+    triggersTab.focus();
+    expect(triggersTab).toHaveFocus();
+    fireEvent.click(triggersTab);
+
+    expect(triggersTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByText("agent triggers")).toBeInTheDocument();
+  });
+});
 
 describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
   beforeEach(() => {

@@ -32,16 +32,9 @@ import {
   Download,
   Copy,
   Zap,
-  Eye,
-  LayoutDashboard,
-  BarChart3,
-  GitBranch,
   Rocket,
   Telescope,
-  Terminal,
   Boxes,
-  Clock3,
-  LockKeyhole,
   MoreHorizontal,
 } from "lucide-react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
@@ -58,8 +51,8 @@ import {
   PageRail,
   PageFooter,
   BackLink,
-  type SectionTabItem,
 } from "@/components/layout";
+import { getAgentDetailTabItems } from "@/components/agents/agent-tabs";
 import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -257,17 +250,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   const defaultModelName = defaultModel?.display_name ?? defaultModel?.id;
 
-  const tabItems: SectionTabItem[] = [
-    { value: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
-    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
-    { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
-    { value: "triggers", label: "Triggers", icon: <Clock3 className="size-4" /> },
-    { value: "credentials", label: "Credentials", icon: <LockKeyhole className="size-4" /> },
-    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
-    ...(agentVersionsEnabled
-      ? [{ value: "versions", label: "Versions", icon: <GitBranch className="size-4" /> }]
-      : []),
-  ];
+  const tabItems = getAgentDetailTabItems(agentVersionsEnabled);
 
   return (
     <PageContainer>
