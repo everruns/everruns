@@ -41,6 +41,12 @@ reach without a separate integration via the
 |---|---|
 | <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18.0" height="18.0" aria-hidden="true" style="vertical-align: -0.3em; margin-right: 0.45em;"><path d="M9 3.5L7 20.5M17 3.5l-2 17M4 8.5h16M3.2 15.5h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>[Slack](/integrations/slack/) | Deploy an agent as a Slack bot via an [App](/features/apps/) |
 
+## Credentials
+
+| Guide | What it provides |
+|---|---|
+| [Secure MCP Credentials](/integrations/mcp-credentials/) | Write-only Agent credential bindings for secret MCP tool parameters |
+
 ## Discovery
 
 | Integration | What it provides |

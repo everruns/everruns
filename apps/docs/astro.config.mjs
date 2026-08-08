@@ -323,6 +323,12 @@ export default defineConfig({
                   items: [{ label: "Slack", slug: "integrations/slack" }],
                 },
                 {
+                  label: "Credentials",
+                  items: [
+                    { label: "Secure MCP Credentials", slug: "integrations/mcp-credentials" },
+                  ],
+                },
+                {
                   label: "Discovery",
                   items: [{ label: "ARD", slug: "integrations/ard" }],
                 },

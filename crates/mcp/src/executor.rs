@@ -105,12 +105,60 @@ impl McpExecutor {
             });
         }
 
+        let mut arguments = tool_call.arguments.clone();
+        if let Some(bindings) = connection.secret_bindings.get(&original_tool_name) {
+            let object = arguments
+                .as_object_mut()
+                .ok_or_else(|| anyhow!("MCP tool arguments must be an object"))?;
+            for binding in bindings {
+                if object.contains_key(&binding.parameter_name) {
+                    return Ok(ToolResult {
+                        tool_call_id: tool_call.id.clone(),
+                        result: Some(serde_json::json!({
+                            "code": "credential_override_rejected",
+                            "error": format!(
+                                "Credential parameter '{}' is securely bound and cannot be supplied by the model",
+                                binding.parameter_name
+                            ),
+                        })),
+                        images: None,
+                        error: Some("Secure credential override rejected".to_string()),
+                        connection_required: None,
+                        raw_output: None,
+                    });
+                }
+                let Some(value) = binding.value.as_ref() else {
+                    return Ok(ToolResult {
+                        tool_call_id: tool_call.id.clone(),
+                        result: Some(serde_json::json!({
+                            "code": "credential_required",
+                            "error": format!("{} is not configured", binding.label),
+                            "setup_url": binding.setup_url,
+                            "credential_label": binding.label,
+                        })),
+                        images: None,
+                        // Keep the structured setup payload intact through the
+                        // MCP proxy so clients can render a direct affordance.
+                        // This is an expected, user-actionable state rather
+                        // than a transport failure.
+                        error: None,
+                        connection_required: None,
+                        raw_output: None,
+                    });
+                };
+                object.insert(
+                    binding.parameter_name.clone(),
+                    serde_json::Value::String(value.clone()),
+                );
+            }
+        }
+
         self.client
             .call_as_tool_result(
                 &connection,
                 tool_call.id.clone(),
                 &original_tool_name,
-                tool_call.arguments.clone(),
+                arguments,
             )
             .await
     }

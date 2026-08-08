@@ -5,7 +5,7 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_storage::{
-    BatchSetSessionSecrets, ListSessionSecrets, ListSessionStorage,
+    BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
@@ -104,7 +104,40 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/storage/secrets",
             get(list_secrets).put(batch_set_secrets),
         )
+        .route(
+            "/v1/sessions/{session_id}/storage/secrets/{name}",
+            axum::routing::delete(delete_secret),
+        )
         .with_state(state)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/storage/secrets/{name}",
+    description = "Delete a user-managed encrypted secret from one session.",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("name" = String, Path, description = "Secret name")
+    ),
+    responses(
+        (status = 204, description = "Session secret deleted"),
+        (status = 404, description = "Session secret not found", body = ErrorResponse)
+    ),
+    tag = "session-storage"
+)]
+pub async fn delete_secret(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, name)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let deleted = DeleteSessionSecret { session_id, name }
+        .run(&state.ctx(&org))
+        .await?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ErrorResponse::not_found("Secret"))
+    }
 }
 
 /// GET /v1/sessions/{session_id}/storage/keys - List all key-value pairs

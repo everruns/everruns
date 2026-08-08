@@ -707,6 +707,173 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/credentials": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "description": "List write-only MCP credential bindings for an agent. Responses contain metadata and configuration status, never credential values.",
+        "operationId": "list_credentials",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credential binding metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "description": "Declare a write-only credential binding for one MCP tool parameter. The secret value is provisioned separately.",
+        "operationId": "create_credential_binding",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentCredentialBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Credential binding created or updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/credentials/{binding_id}": {
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "description": "Encrypt and replace the write-only value for an agent credential binding.",
+        "operationId": "set_credential_value",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "description": "Credential binding ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAgentCredentialValueRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Credential value replaced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCredentialBinding"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agents"
+        ],
+        "description": "Revoke an agent credential binding and permanently remove its encrypted value.",
+        "operationId": "delete_credential_binding",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "binding_id",
+            "in": "path",
+            "description": "Credential binding ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Credential binding revoked"
+          },
+          "404": {
+            "description": "Credential binding not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/export": {
       "get": {
         "tags": [
@@ -13029,6 +13196,50 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/storage/secrets/{name}": {
+      "delete": {
+        "tags": [
+          "session-storage"
+        ],
+        "description": "Delete a user-managed encrypted secret from one session.",
+        "operationId": "delete_secret",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Secret name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session secret deleted"
+          },
+          "404": {
+            "description": "Session secret not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tasks": {
       "get": {
         "tags": [
@@ -15829,6 +16040,89 @@
           }
         }
       },
+      "AgentCredentialBinding": {
+        "type": "object",
+        "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
+        "required": [
+          "id",
+          "agent_id",
+          "mcp_server_name",
+          "mcp_server_url",
+          "tool_name",
+          "parameter_name",
+          "label",
+          "configured",
+          "created_at",
+          "updated_at",
+          "setup_url"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent that exclusively owns and may use this credential.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "configured": {
+            "type": "boolean",
+            "description": "Whether an encrypted value has been provisioned.",
+            "example": true
+          },
+          "created_at": {
+            "type": "string",
+            "description": "RFC 3339 creation time.",
+            "example": "2026-08-08T16:00:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional explanation of why the credential is needed.",
+            "example": "Delivers scheduled status notifications"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Stable credential binding identifier.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable credential label.",
+            "example": "Visti channel key"
+          },
+          "mcp_server_name": {
+            "type": "string",
+            "description": "Name of the attached MCP server.",
+            "example": "visti"
+          },
+          "mcp_server_url": {
+            "type": "string",
+            "description": "Exact MCP endpoint authorized to receive the credential.",
+            "example": "https://visti.sh/mcp"
+          },
+          "parameter_name": {
+            "type": "string",
+            "description": "Top-level tool argument injected by the server.",
+            "example": "channel_key"
+          },
+          "setup_url": {
+            "type": "string",
+            "description": "Relative UI route where the user can securely provision the value.",
+            "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "MCP tool whose outbound call receives the credential.",
+            "example": "visti_send"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "RFC 3339 last-update time.",
+            "example": "2026-08-08T16:05:00Z"
+          }
+        }
+      },
       "AgentMessage": {
         "type": "object",
         "required": [
@@ -18313,6 +18607,51 @@
             "type": "number",
             "format": "double",
             "description": "Output cost per million tokens (USD) for this tier"
+          }
+        }
+      },
+      "CreateAgentCredentialBinding": {
+        "type": "object",
+        "description": "Declare a credential requirement for an agent's attached MCP tool.",
+        "required": [
+          "mcp_server_name",
+          "tool_name",
+          "parameter_name",
+          "label"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent ID, populated from the request path by the HTTP API.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional explanation of how the credential will be used.",
+            "example": "Delivers scheduled status notifications"
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label shown in the secure setup UI.",
+            "example": "Visti channel key"
+          },
+          "mcp_server_name": {
+            "type": "string",
+            "description": "Name of an MCP server attached to the agent.",
+            "example": "visti"
+          },
+          "parameter_name": {
+            "type": "string",
+            "description": "Top-level tool argument to inject outside model context.",
+            "example": "channel_key"
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "MCP tool whose outbound call requires the credential.",
+            "example": "visti_send"
           }
         }
       },
@@ -24075,6 +24414,102 @@
                       "description": "Cumulative token usage across all sessions for this agent."
                     }
                   ]
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_AgentCredentialBinding": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Metadata for a write-only credential bound to one agent and MCP tool parameter.",
+              "required": [
+                "id",
+                "agent_id",
+                "mcp_server_name",
+                "mcp_server_url",
+                "tool_name",
+                "parameter_name",
+                "label",
+                "configured",
+                "created_at",
+                "updated_at",
+                "setup_url"
+              ],
+              "properties": {
+                "agent_id": {
+                  "type": "string",
+                  "description": "Agent that exclusively owns and may use this credential.",
+                  "example": "agent_01933b5a000070008000000000000001"
+                },
+                "configured": {
+                  "type": "boolean",
+                  "description": "Whether an encrypted value has been provisioned.",
+                  "example": true
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "RFC 3339 creation time.",
+                  "example": "2026-08-08T16:00:00Z"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional explanation of why the credential is needed.",
+                  "example": "Delivers scheduled status notifications"
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "description": "Stable credential binding identifier.",
+                  "example": "01933b5a-0000-7000-8000-000000000001"
+                },
+                "label": {
+                  "type": "string",
+                  "description": "Human-readable credential label.",
+                  "example": "Visti channel key"
+                },
+                "mcp_server_name": {
+                  "type": "string",
+                  "description": "Name of the attached MCP server.",
+                  "example": "visti"
+                },
+                "mcp_server_url": {
+                  "type": "string",
+                  "description": "Exact MCP endpoint authorized to receive the credential.",
+                  "example": "https://visti.sh/mcp"
+                },
+                "parameter_name": {
+                  "type": "string",
+                  "description": "Top-level tool argument injected by the server.",
+                  "example": "channel_key"
+                },
+                "setup_url": {
+                  "type": "string",
+                  "description": "Relative UI route where the user can securely provision the value.",
+                  "example": "/agents/agent_01933b5a000070008000000000000001?tab=credentials"
+                },
+                "tool_name": {
+                  "type": "string",
+                  "description": "MCP tool whose outbound call receives the credential.",
+                  "example": "visti_send"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "description": "RFC 3339 last-update time.",
+                  "example": "2026-08-08T16:05:00Z"
                 }
               }
             },
@@ -34043,6 +34478,20 @@
           "title": {
             "type": "string",
             "description": "New session title."
+          }
+        }
+      },
+      "SetAgentCredentialValueRequest": {
+        "type": "object",
+        "description": "Request to replace a credential binding's encrypted value.",
+        "required": [
+          "value"
+        ],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "Write-only credential value. It is encrypted and never returned.",
+            "example": "vsk_disposable_example"
           }
         }
       },

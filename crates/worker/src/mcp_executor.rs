@@ -23,4 +23,5 @@ pub struct McpServerInfo {
     /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
+    pub secret_bindings: HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
 }

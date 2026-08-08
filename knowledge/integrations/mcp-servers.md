@@ -430,6 +430,28 @@ In the capability selector UI, MCP capabilities are displayed with:
 - Server description as the capability description
 - List of available tools
 
+### Agent-bound tool-parameter credentials
+
+Some MCP servers require a credential as a tool argument rather than an HTTP
+authorization header. Those values are Agent-scoped runtime bindings, not
+session secrets and not part of the Agent blueprint. A binding identifies one
+attached server endpoint, tool, and top-level parameter. Its value is accepted
+only by the write-only Agent Credentials API/UI, encrypted with the control
+plane encryption service, and never returned by an API.
+
+Before reason, the bound parameter is removed from the model-visible tool
+schema. After the original model tool call is persisted, the MCP executor
+rejects an attempted override and injects the decrypted value into a cloned
+outbound argument object. The model, events, narration, and worker logs retain
+only the original credential-free call. A missing value returns the structured
+`credential_required` result with the Agent setup URL.
+
+Bindings are scoped by organization and Agent and are resolved from the
+session's Agent identity. They therefore work for shared sessions and
+session-per-invocation triggers without granting the same credential to other
+Agents. Rotation applies to future calls immediately; deletion revokes the
+binding. An endpoint mismatch fails closed as unconfigured.
+
 ## Seed Data
 
 The following MCP server is seeded by default:

@@ -9,6 +9,67 @@ const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
 const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = crate::storage::repository::MESSAGE_SAFETY_LIMIT as i32;
 
+fn flatten_secret_bindings(
+    bindings: std::collections::HashMap<String, Vec<everruns_mcp::McpSecretBinding>>,
+) -> Vec<proto::McpSecretBinding> {
+    bindings
+        .into_iter()
+        .flat_map(|(tool_name, bindings)| {
+            bindings
+                .into_iter()
+                .map(move |binding| proto::McpSecretBinding {
+                    tool_name: tool_name.clone(),
+                    parameter_name: binding.parameter_name,
+                    value: binding.value,
+                    setup_url: binding.setup_url,
+                    label: binding.label,
+                })
+        })
+        .collect()
+}
+
+fn apply_proto_secret_binding_schemas(
+    definitions: &mut [McpToolDef],
+    bindings: &[everruns_core::McpSecretBindingMetadata],
+) {
+    for binding in bindings {
+        let tool_name = everruns_core::mcp_tool_name(&binding.server_name, &binding.tool_name);
+        let Some(definition) = definitions
+            .iter_mut()
+            .find(|definition| definition.name == tool_name)
+        else {
+            continue;
+        };
+        if let Some(parameters) = definition.parameters.as_mut() {
+            let mut json = everruns_internal_protocol::proto_struct_to_json(parameters);
+            if let Some(object) = json.as_object_mut() {
+                if let Some(properties) = object
+                    .get_mut("properties")
+                    .and_then(serde_json::Value::as_object_mut)
+                {
+                    properties.remove(&binding.parameter_name);
+                }
+                if let Some(required) = object
+                    .get_mut("required")
+                    .and_then(serde_json::Value::as_array_mut)
+                {
+                    required.retain(|value| value.as_str() != Some(&binding.parameter_name));
+                }
+            }
+            *parameters = everruns_internal_protocol::json_to_proto_struct(&json);
+        }
+        let status = if binding.configured {
+            "configured"
+        } else {
+            "setup required"
+        };
+        definition.description.push_str(&format!(
+            "\n\nCredential '{}' is securely bound ({status}); do not request or supply it. Setup: {}",
+            binding.parameter_name, binding.setup_url
+        ));
+    }
+}
+
 fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_limit: i32) -> i32 {
     let normalized_default = default_limit.clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT);
     requested_limit
@@ -290,6 +351,17 @@ impl WorkerService for WorkerServiceImpl {
             mcp_tool_definitions.extend(self.build_mcp_tool_definitions(req.org_id, a).await);
         }
         mcp_tool_definitions.extend(local_mcp_tool_definitions);
+        let binding_metadata = crate::domains::agents::credentials::list_secret_binding_metadata(
+            self.db.as_ref(),
+            req.org_id,
+            session.agent_id,
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to load MCP credential metadata");
+            Status::internal("Failed to load MCP credential metadata")
+        })?;
+        apply_proto_secret_binding_schemas(&mut mcp_tool_definitions, &binding_metadata);
 
         Ok(Response::new(GetTurnContextResponse {
             agent: proto_agent,
@@ -2309,6 +2381,7 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<GetMcpServerByPrefixRequest>,
     ) -> Result<Response<GetMcpServerByPrefixResponse>, Status> {
         let req = request.into_inner();
+        let mut runtime_agent_id = None;
 
         if let Some(session_id) = req.session_id.as_ref() {
             let session_id = parse_uuid(Some(session_id))?;
@@ -2333,6 +2406,7 @@ impl WorkerService for WorkerServiceImpl {
                     Status::internal("Failed to resolve scoped MCP server")
                 })?
             {
+                runtime_agent_id = session.agent_id;
                 let agent = if let Some(agent_id) = session.agent_id {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,
@@ -2355,6 +2429,19 @@ impl WorkerService for WorkerServiceImpl {
                     &req.server_prefix,
                     self.capability_service.registry(),
                 ) {
+                    let secret_bindings = crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                        self.db.as_ref(),
+                        self.encryption.as_deref(),
+                        req.org_id,
+                        runtime_agent_id,
+                        &r.name,
+                        &r.url,
+                    )
+                    .await
+                    .map_err(|error| {
+                        tracing::error!(%error, "Failed to resolve Agent MCP credentials");
+                        Status::internal("Failed to resolve MCP credentials")
+                    })?;
                     return Ok(Response::new(GetMcpServerByPrefixResponse {
                         server: Some(McpServerInfo {
                             id: Some(proto::Uuid {
@@ -2367,6 +2454,7 @@ impl WorkerService for WorkerServiceImpl {
                             auth_mode: r.auth_mode.to_string(),
                             protocol_mode: r.protocol_mode.to_string(),
                             oauth_provider_id: r.oauth_provider_id,
+                            secret_bindings: flatten_secret_bindings(secret_bindings),
                         }),
                     }));
                 }
@@ -2383,18 +2471,37 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to resolve MCP server")
             })?;
 
-        let server_info = resolved.map(|r| McpServerInfo {
-            id: Some(proto::Uuid {
-                value: r.id.to_string(),
-            }),
-            name: r.name,
-            url: r.url,
-            api_key: r.api_key,
-            headers: r.headers,
-            auth_mode: r.auth_mode.to_string(),
-            protocol_mode: r.protocol_mode.to_string(),
-            oauth_provider_id: r.oauth_provider_id,
-        });
+        let server_info = if let Some(r) = resolved {
+            let secret_bindings =
+                crate::domains::agents::credentials::resolve_runtime_secret_bindings(
+                    self.db.as_ref(),
+                    self.encryption.as_deref(),
+                    req.org_id,
+                    runtime_agent_id,
+                    &r.name,
+                    &r.url,
+                )
+                .await
+                .map_err(|error| {
+                    tracing::error!(%error, "Failed to resolve Agent MCP credentials");
+                    Status::internal("Failed to resolve MCP credentials")
+                })?;
+            Some(McpServerInfo {
+                id: Some(proto::Uuid {
+                    value: r.id.to_string(),
+                }),
+                name: r.name,
+                url: r.url,
+                api_key: r.api_key,
+                headers: r.headers,
+                auth_mode: r.auth_mode.to_string(),
+                protocol_mode: r.protocol_mode.to_string(),
+                oauth_provider_id: r.oauth_provider_id,
+                secret_bindings: flatten_secret_bindings(secret_bindings),
+            })
+        } else {
+            None
+        };
 
         Ok(Response::new(GetMcpServerByPrefixResponse {
             server: server_info,

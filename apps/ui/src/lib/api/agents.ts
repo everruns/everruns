@@ -20,6 +20,7 @@ import type {
   PaginatedResponse,
   SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
+  AgentCredentialBinding,
 } from "./types";
 
 export const agentsCrudApi = createCrudApi<Agent, CreateAgentRequest, UpdateAgentRequest>(
@@ -178,4 +179,49 @@ export async function diffAgentVersions(
     `/v1/agents/${agentId}/versions/${fromVersionId}/diff/${toVersionId}`,
   );
   return response.data;
+}
+
+export interface CreateAgentCredentialBindingRequest {
+  mcp_server_name: string;
+  tool_name: string;
+  parameter_name: string;
+  label: string;
+  description?: string;
+}
+
+export async function listAgentCredentials(agentId: string): Promise<AgentCredentialBinding[]> {
+  const response = await api.get<{ data: AgentCredentialBinding[] }>(
+    `/v1/agents/${agentId}/credentials`,
+  );
+  return response.data.data;
+}
+
+export async function createAgentCredentialBinding(
+  agentId: string,
+  request: CreateAgentCredentialBindingRequest,
+): Promise<AgentCredentialBinding> {
+  const response = await api.post<AgentCredentialBinding>(
+    `/v1/agents/${agentId}/credentials`,
+    request,
+  );
+  return response.data;
+}
+
+export async function setAgentCredentialValue(
+  agentId: string,
+  bindingId: string,
+  value: string,
+): Promise<AgentCredentialBinding> {
+  const response = await api.put<AgentCredentialBinding>(
+    `/v1/agents/${agentId}/credentials/${bindingId}`,
+    { value },
+  );
+  return response.data;
+}
+
+export async function deleteAgentCredentialBinding(
+  agentId: string,
+  bindingId: string,
+): Promise<void> {
+  await api.delete(`/v1/agents/${agentId}/credentials/${bindingId}`);
 }

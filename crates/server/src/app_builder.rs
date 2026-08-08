@@ -1089,6 +1089,11 @@ impl ServerAppBuilder {
             platform_definition.clone(),
         )
         .with_org_rate_limiter(org_rate_limiter.clone());
+        let agent_credentials_state = api::agent_credentials::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+        );
         let agent_identities_state = api::agent_identities::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -1469,6 +1474,7 @@ impl ServerAppBuilder {
         let mut api_routes = Router::new()
             .merge(api::agent_examples::routes(agent_examples_state))
             .merge(api::agents::routes(agents_state))
+            .merge(api::agent_credentials::routes(agent_credentials_state))
             .merge(api::agent_identities::routes(agent_identities_state))
             .merge(api::agent_identity_connections::routes(
                 agent_identity_connections_state,

@@ -1,9 +1,12 @@
 use super::queries as q;
 use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretInfo};
 use crate::domains::common::*;
-use everruns_core::capabilities::is_internal_session_kv_key;
+use everruns_core::capabilities::{is_internal_session_kv_key, is_internal_session_secret_name};
 use serde::Deserialize;
 use utoipa::ToSchema;
+
+const MAX_SECRET_COUNT_PER_REQUEST: usize = 100;
+const MAX_SECRET_VALUE_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionStorage {
@@ -101,6 +104,7 @@ impl Command for ListSessionSecrets {
 
         Ok(secrets
             .into_iter()
+            .filter(|row| !is_internal_session_secret_name(&row.name))
             .map(|row| SecretInfo {
                 name: row.name,
                 created_at: row.created_at.to_rfc3339(),
@@ -149,13 +153,28 @@ impl Command for BatchSetSessionSecrets {
         if self.secrets.is_empty() {
             return Ok(BatchSetSecretsResponse { count: 0 });
         }
+        if self.secrets.len() > MAX_SECRET_COUNT_PER_REQUEST {
+            return Err(CommandError::bad_request(format!(
+                "At most {MAX_SECRET_COUNT_PER_REQUEST} secrets can be stored per request"
+            )));
+        }
 
-        for name in self.secrets.keys() {
+        for (name, value) in &self.secrets {
             let trimmed = name.trim();
             if trimmed.is_empty() || trimmed.len() > 255 {
                 return Err(CommandError::bad_request(format!(
                     "Secret name must be between 1 and 255 non-whitespace characters: '{name}'"
                 )));
+            }
+            if is_internal_session_secret_name(name) {
+                return Err(CommandError::bad_request(
+                    "Secret name is reserved for internal use",
+                ));
+            }
+            if value.is_empty() || value.len() > MAX_SECRET_VALUE_BYTES {
+                return Err(CommandError::bad_request(
+                    "Secret values must be between 1 byte and 64 KiB",
+                ));
             }
         }
 
@@ -180,3 +199,46 @@ impl Command for BatchSetSessionSecrets {
 }
 
 inventory::submit! { CommandDescriptor::of::<BatchSetSessionSecrets>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+/// Delete one encrypted secret from a session's private storage.
+pub struct DeleteSessionSecret {
+    /// Session that owns the secret.
+    #[schema(example = "session_01933b5a000070008000000000000001")]
+    pub session_id: String,
+    /// Exact secret name to delete.
+    #[schema(example = "SERVICE_TOKEN")]
+    pub name: String,
+}
+
+impl Command for DeleteSessionSecret {
+    type Output = bool;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "delete_session_secret",
+            category: "session_storage",
+            description: "Delete a user-managed encrypted session secret by name.",
+            method: "DELETE",
+            path: "/v1/sessions/{session_id}/storage/secrets/{name}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        let session_id = q::parse_owned_session_id(&self.session_id)?;
+        q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
+        if is_internal_session_secret_name(&self.name) {
+            return Err(CommandError::not_found("Secret"));
+        }
+        ctx.db
+            .delete_session_secret(session_id.uuid(), &self.name)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<DeleteSessionSecret>() }

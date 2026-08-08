@@ -50,7 +50,7 @@ pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver}
 pub use http::{HttpTransport, http_call_tool, http_list_tools, http_send_rpc};
 pub use protocol::Negotiated;
 pub use result::{extract_json_from_response, map_tool_call_result};
-pub use transport::{McpConnection, McpEndpoint, McpTransport};
+pub use transport::{McpConnection, McpEndpoint, McpSecretBinding, McpTransport};
 
 #[cfg(feature = "stdio")]
 pub use stdio::StdioTransport;

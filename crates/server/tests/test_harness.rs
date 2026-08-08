@@ -431,7 +431,12 @@ impl TestServer {
             api::workspace_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
-            api::session_storage::AppState::new(db.clone(), None, auth_state.clone());
+            api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+        let agent_credentials_state = api::agent_credentials::AppState::new(
+            db.clone(),
+            encryption.clone(),
+            auth_state.clone(),
+        );
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),
@@ -606,6 +611,7 @@ impl TestServer {
         // Build API routes
         let mut api_routes = Router::new()
             .merge(api::agents::routes(agents_state))
+            .merge(api::agent_credentials::routes(agent_credentials_state))
             .merge(api::agent_identities::routes(agent_identities_state))
             .merge(api::agent_identity_connections::routes(
                 agent_identity_connections_state,

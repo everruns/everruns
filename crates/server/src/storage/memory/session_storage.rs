@@ -128,6 +128,14 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    pub async fn delete_session_secret(&self, session_id: Uuid, name: &str) -> Result<bool> {
+        Ok(self
+            .session_secrets
+            .write()
+            .remove(&(SessionId::from_uuid(session_id), name.to_string()))
+            .is_some())
+    }
+
     pub async fn get_mcp_oauth_session_credentials(
         &self,
         session_id: SessionId,

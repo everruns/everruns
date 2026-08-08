@@ -709,6 +709,68 @@ impl StorageBackend {
         dispatch!(self, prune_agent_auto_snapshots, org_id, agent_id, keep)
     }
 
+    pub async fn upsert_agent_mcp_secret_binding(
+        &self,
+        input: UpsertAgentMcpSecretBindingRow,
+    ) -> Result<AgentMcpSecretBindingRow> {
+        dispatch!(self, upsert_agent_mcp_secret_binding, input)
+    }
+
+    pub async fn list_agent_mcp_secret_bindings(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Vec<AgentMcpSecretBindingRow>> {
+        dispatch!(self, list_agent_mcp_secret_bindings, org_id, agent_id)
+    }
+
+    pub async fn get_agent_mcp_secret_binding(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        binding_id: Uuid,
+    ) -> Result<Option<AgentMcpSecretBindingRow>> {
+        dispatch!(
+            self,
+            get_agent_mcp_secret_binding,
+            org_id,
+            agent_id,
+            binding_id
+        )
+    }
+
+    pub async fn set_agent_mcp_secret_binding_value(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        binding_id: Uuid,
+        value_encrypted: Vec<u8>,
+    ) -> Result<Option<AgentMcpSecretBindingRow>> {
+        dispatch!(
+            self,
+            set_agent_mcp_secret_binding_value,
+            org_id,
+            agent_id,
+            binding_id,
+            value_encrypted
+        )
+    }
+
+    pub async fn delete_agent_mcp_secret_binding(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        binding_id: Uuid,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            delete_agent_mcp_secret_binding,
+            org_id,
+            agent_id,
+            binding_id
+        )
+    }
+
     // ============================================
     // Harnesses
     // ============================================
@@ -3258,6 +3320,10 @@ impl StorageBackend {
         input: UpsertSessionSecret,
     ) -> Result<SessionSecretRow> {
         dispatch!(self, upsert_session_secret, input)
+    }
+
+    pub async fn delete_session_secret(&self, session_id: Uuid, name: &str) -> Result<bool> {
+        dispatch!(self, delete_session_secret, session_id, name)
     }
 
     pub async fn get_mcp_oauth_session_credentials(

@@ -8,6 +8,7 @@ pub mod analysis;
 pub mod check_rules;
 pub mod checks;
 pub mod commands;
+pub mod credentials;
 pub mod health_check;
 pub mod queries;
 pub mod types;

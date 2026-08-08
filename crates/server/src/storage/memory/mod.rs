@@ -11,6 +11,7 @@ mod agent_check_rules;
 mod agent_health_checks;
 mod agent_identities;
 mod agent_identity_connections;
+mod agent_mcp_secret_bindings;
 mod agent_triggers;
 mod agents;
 mod app_channels;
@@ -108,6 +109,7 @@ pub struct InMemoryDatabase {
     cli_auth_sessions: RwLock<HashMap<Uuid, CliAuthSessionRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
     agents: RwLock<HashMap<AgentId, AgentRow>>,
+    agent_mcp_secret_bindings: RwLock<HashMap<Uuid, AgentMcpSecretBindingRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
     session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
@@ -276,6 +278,7 @@ impl Default for InMemoryDatabase {
             cli_auth_sessions: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),
             agents: RwLock::new(HashMap::new()),
+            agent_mcp_secret_bindings: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),

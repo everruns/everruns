@@ -1,6 +1,6 @@
 ---
 title: Session Storage for Agent State and Secrets
-description: Persist agent state with session-scoped key/value storage and encrypted secret storage for API keys, preferences, cached results, and multi-turn workflows.
+description: Persist agent state with session-scoped key/value storage and encrypted secret storage for multi-turn workflows.
 sidebar:
   label: Storage
 ---
@@ -45,6 +45,9 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 - `set` uses upsert semantics (overwrites existing keys)
 - Secret operations require `SECRETS_ENCRYPTION_KEY` to be configured
 - `list` returns keys/names only (not values) for secrets
+- The Storage tab can create, replace, and delete values, but never reads a value back
+- A session secret is available only to that session. It does not follow an Agent Trigger that creates a session per invocation.
+- `secret_store get` exposes the decrypted value to the running model. Do not use session secrets for MCP tool-parameter credentials that must stay out of model context; configure those on the Agent's **Credentials** tab instead.
 
 ## See Also
 

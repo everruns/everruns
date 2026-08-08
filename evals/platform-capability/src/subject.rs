@@ -192,6 +192,15 @@ impl EverrunsServerSubject {
             .get(&format!("/v1/mcp-servers?search={resource_name}-visti"))
             .await
             .unwrap_or_else(|error| json!({ "error": format!("read Visti MCP server: {error}") }));
+        let credentials = match agent_id {
+            Some(id) => self
+                .get(&format!("/v1/agents/{id}/credentials"))
+                .await
+                .unwrap_or_else(
+                    |error| json!({ "error": format!("read Agent credentials: {error}") }),
+                ),
+            None => json!({ "error": "created agent has no id" }),
+        };
 
         json!({
             "agent": agent,
@@ -199,6 +208,7 @@ impl EverrunsServerSubject {
             "triggers": triggers,
             "session_schedules": session_schedules,
             "mcp_servers": mcp_servers,
+            "credentials": credentials,
         })
     }
 

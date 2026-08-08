@@ -44,6 +44,29 @@ pub struct McpConnection {
     /// call into a `connection_required` tool result (rendering an inline
     /// connect prompt) instead of a raw 401.
     pub pending_oauth_provider: Option<String>,
+    /// Write-only Agent credentials bound to exact MCP tool parameters. Values
+    /// are resolved by the control plane and injected only inside the executor.
+    pub secret_bindings: HashMap<String, Vec<McpSecretBinding>>,
+}
+
+#[derive(Clone)]
+pub struct McpSecretBinding {
+    pub parameter_name: String,
+    pub value: Option<String>,
+    pub setup_url: String,
+    pub label: String,
+}
+
+impl std::fmt::Debug for McpSecretBinding {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("McpSecretBinding")
+            .field("parameter_name", &self.parameter_name)
+            .field("configured", &self.value.is_some())
+            .field("setup_url", &self.setup_url)
+            .field("label", &self.label)
+            .finish()
+    }
 }
 
 impl McpConnection {
@@ -59,6 +82,7 @@ impl McpConnection {
             protocol_mode: McpProtocolMode::Auto,
             oauth_provider_id: None,
             pending_oauth_provider: None,
+            secret_bindings: HashMap::new(),
         }
     }
 

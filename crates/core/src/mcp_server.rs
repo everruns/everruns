@@ -392,6 +392,59 @@ impl Default for ScopedMcpServer {
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
 
+#[derive(Debug, Clone)]
+pub struct McpSecretBindingMetadata {
+    pub server_name: String,
+    pub tool_name: String,
+    pub parameter_name: String,
+    pub configured: bool,
+    pub setup_url: String,
+}
+
+/// Hide server-injected credential parameters from the model-visible schema.
+/// The original call arguments are persisted before the MCP executor injects
+/// plaintext, so this rewrite and the executor's override rejection form the
+/// no-model-plaintext boundary.
+pub fn apply_mcp_secret_binding_schemas(
+    definitions: &mut [crate::ToolDefinition],
+    bindings: &[McpSecretBindingMetadata],
+) {
+    for binding in bindings {
+        let tool_name = crate::mcp_tool_name(&binding.server_name, &binding.tool_name);
+        let Some(crate::ToolDefinition::Builtin(definition)) = definitions
+            .iter_mut()
+            .find(|definition| definition.name() == tool_name)
+        else {
+            continue;
+        };
+        remove_bound_parameter(&mut definition.parameters, &binding.parameter_name);
+        if let Some(full) = definition.full_parameters.as_mut() {
+            remove_bound_parameter(full, &binding.parameter_name);
+        }
+        let status = if binding.configured {
+            "configured"
+        } else {
+            "setup required"
+        };
+        definition.description.push_str(&format!(
+            "\n\nCredential '{}' is securely bound ({status}); do not request or supply it. Setup: {}",
+            binding.parameter_name, binding.setup_url
+        ));
+    }
+}
+
+fn remove_bound_parameter(schema: &mut Value, parameter_name: &str) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    if let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) {
+        properties.remove(parameter_name);
+    }
+    if let Some(required) = object.get_mut("required").and_then(Value::as_array_mut) {
+        required.retain(|value| value.as_str() != Some(parameter_name));
+    }
+}
+
 fn default_scoped_transport_type() -> McpServerTransportType {
     McpServerTransportType::Http
 }
@@ -884,6 +937,24 @@ pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bound_parameter_is_removed_from_model_schema() {
+        let mut schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "message": { "type": "string" },
+                "channel_key": { "type": "string" }
+            },
+            "required": ["message", "channel_key"]
+        });
+
+        remove_bound_parameter(&mut schema, "channel_key");
+
+        assert!(schema["properties"].get("channel_key").is_none());
+        assert_eq!(schema["required"], serde_json::json!(["message"]));
+        assert_eq!(schema["properties"]["message"]["type"], "string");
+    }
 
     #[test]
     fn protocol_mode_defaults_to_auto() {

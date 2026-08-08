@@ -24,7 +24,7 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
     crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
 ];
-const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:"];
+const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
 
 pub fn is_internal_session_kv_key(key: &str) -> bool {
     INTERNAL_KV_PREFIXES
@@ -36,7 +36,7 @@ fn reserved_kv_key_error() -> ToolExecutionResult {
     ToolExecutionResult::tool_error("Key is reserved for internal system use")
 }
 
-fn is_internal_secret_name(name: &str) -> bool {
+pub fn is_internal_session_secret_name(name: &str) -> bool {
     INTERNAL_SECRET_PREFIXES
         .iter()
         .any(|prefix| name.starts_with(prefix))
@@ -435,7 +435,7 @@ impl Tool for SecretStoreTool {
                         "Secret name must be 255 characters or less",
                     );
                 }
-                if is_internal_secret_name(name) {
+                if is_internal_session_secret_name(name) {
                     return ToolExecutionResult::tool_error(
                         "Secret name is reserved for internal system use",
                     );
@@ -470,7 +470,7 @@ impl Tool for SecretStoreTool {
                         );
                     }
                 };
-                if is_internal_secret_name(name) {
+                if is_internal_session_secret_name(name) {
                     return ToolExecutionResult::tool_error("Secret not found");
                 }
                 match storage_store.get_secret(context.session_id, name).await {
@@ -507,7 +507,7 @@ impl Tool for SecretStoreTool {
                         );
                     }
                 };
-                if is_internal_secret_name(name) {
+                if is_internal_session_secret_name(name) {
                     return ToolExecutionResult::tool_error(
                         "Secret name is reserved for internal system use",
                     );
@@ -525,7 +525,7 @@ impl Tool for SecretStoreTool {
                 Ok(secrets) => {
                     let secret_list: Vec<Value> = secrets
                         .iter()
-                        .filter(|s| !is_internal_secret_name(&s.name))
+                        .filter(|s| !is_internal_session_secret_name(&s.name))
                         .map(|s| {
                             json!({
                                 "name": s.name,
@@ -640,8 +640,13 @@ mod tests {
 
     #[test]
     fn test_internal_secret_name_filtering() {
-        assert!(is_internal_secret_name("browserless_internal:cookies"));
-        assert!(!is_internal_secret_name("api_key"));
+        assert!(is_internal_session_secret_name(
+            "browserless_internal:cookies"
+        ));
+        assert!(is_internal_session_secret_name(
+            "mcp_oauth:server:access_token"
+        ));
+        assert!(!is_internal_session_secret_name("api_key"));
     }
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.

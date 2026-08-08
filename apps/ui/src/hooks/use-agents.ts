@@ -19,6 +19,10 @@ import {
   previewAgent,
   rollbackAgentVersion,
   setDefaultAgentVersion,
+  listAgentCredentials,
+  createAgentCredentialBinding,
+  setAgentCredentialValue,
+  deleteAgentCredentialBinding,
 } from "@/lib/api/agents";
 import type {
   CreateAgentRequest,
@@ -29,6 +33,7 @@ import type {
   SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
 } from "@/lib/api/types";
+import type { CreateAgentCredentialBindingRequest } from "@/lib/api/agents";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks } from "./create-crud-hooks";
 import { useOrg } from "@/providers/org-provider";
@@ -62,6 +67,40 @@ export function useAgentStats(agentId: string | undefined) {
     ...query,
     isLoading: orgLoading || query.isLoading,
   };
+}
+
+export function useAgentCredentials(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["agent", agentId, "credentials"],
+    queryFn: () => listAgentCredentials(agentId as string),
+    enabled: !!agentId,
+  });
+}
+
+export function useCreateAgentCredentialBinding(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateAgentCredentialBindingRequest) =>
+      createAgentCredentialBinding(agentId, request),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
+  });
+}
+
+export function useSetAgentCredentialValue(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ bindingId, value }: { bindingId: string; value: string }) =>
+      setAgentCredentialValue(agentId, bindingId, value),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
+  });
+}
+
+export function useDeleteAgentCredentialBinding(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (bindingId: string) => deleteAgentCredentialBinding(agentId, bindingId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agent", agentId, "credentials"] }),
+  });
 }
 
 export function useAgentVersions(agentId: string | undefined) {

@@ -2,6 +2,10 @@
 
 ## 2026-08-08
 
+* **Agent MCP credentials**: Added durable write-only Agent bindings for MCP
+  tool-parameter credentials, model-schema removal, runtime-only injection,
+  secure setup affordances, and tenant/non-disclosure threat controls.
+
 * **Platform resource grounding**: Distinguished operation discovery from
   authoritative entity reads, added user-scoped connection preflight, and
   required Platform Chat to report installed, available, attached, and connected
