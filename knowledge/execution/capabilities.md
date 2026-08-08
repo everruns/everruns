@@ -1112,14 +1112,35 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
   classification in `crates/server/src/services/platform_command_surface.rs`.
-  Registered domain commands remain the source of truth and execute through
-  `Command::run`.
-- **Mounts**: `/docs` — Everruns public documentation (virtual, readonly). The
-  stored/normalized mount path is `/docs`; agents/tools access it as
-  `/workspace/docs`. Markdown files (`.md`, `.mdx`) from the repository `docs/`
-  directory are embedded at compile time.
+  Multi-match searches omit schemas and return a refinement hint so catalog
+  browsing stays below model/tool-output limits. An exact command-name search
+  returns only that operation with `bash_usage`, rendered from the registered
+  input schema with exact flag names and JSON-text placeholders for array/object
+  values, plus bounded `output_fields` paths for `jq`. Expanded schemas remain
+  present while the operation fits the discovery response limit; beyond that
+  limit they are omitted with an explicit notice while the scripting summaries
+  remain authoritative. Builtins do not implement `--help`; callers use exact
+  discovery instead. Registered domain commands remain the source of truth and
+  execute through `Command::run`.
+- **Flag validation**: Before dispatch, scripting rejects every parameter not
+  declared by the command's composed input schema and reports the supported
+  flags. Unknown or guessed mutation flags cannot be silently ignored, which is
+  especially important for authentication and authorization configuration.
+- **Dependent resources**: Scripted MCP create/read results add a derived
+  `capability_ref` (`mcp:<uuid>`) beside the public MCP resource ID. The value is
+  non-secret and lets a single `execute` script attach the newly registered MCP
+  server to an Agent without guessing an ID conversion. The same recursive
+  decoration applies to list/paginated command results.
+- **Focused tool surface**: The capability has no mounts or capability
+  dependencies. Platform Chat receives only catalog-backed Platform tools and
+  its loop/error/compaction safeguards, so documentation browsing cannot
+  displace the requested management workflow.
 
-The built-in `platform-chat` harness uses `platform`. Its prompt tells the model
+The built-in `platform-chat` harness inherits from the empty Base harness and
+uses `platform` plus loop/error/compaction safeguards. It intentionally excludes
+Generic's Bash, web, session-secret, and session-schedule surfaces: those tools
+distracted catalog execution and allowed credentials or schedules to land in
+the management session instead of the worker Agent. Its prompt tells the model
 to discover unknown operations, inspect with `query`, mutate only when requested
 with `execute`, and validate afterward. Recurring autonomous work is represented
 by an Agent plus an Agent Trigger; Platform Chat must not schedule its own

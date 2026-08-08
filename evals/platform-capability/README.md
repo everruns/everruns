@@ -47,7 +47,7 @@ Each JSONL sample declares deterministic expectations in `metadata`:
 | `expect_tools` / `forbid_tools` | Required or forbidden Platform tools |
 | `expect_commands` / `forbid_commands` | Regexes over arguments on matching `tool.started` calls |
 | `expect_confirmation` | No `execute` before the second user turn, and the first response asks for confirmation |
-| `expect_scheduled_agent` | Cross-resource persisted-state assertion |
+| `expect_scheduled_agent` | Cross-resource persisted-state assertion, including semantic schedule cadence |
 | `max_tool_calls` / `max_iterations` | Per-case loop/cost ceilings; the subject cancels the live turn when exceeded |
 | `expect_regex` / `forbid_response_regex` | Final-answer constraints, including narration leakage |
 | `resource_name_prefix` | Generates a unique name and replaces `{{resource_name}}` in the prompt |

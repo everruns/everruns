@@ -548,6 +548,12 @@ fn discover_output_schema() -> Value {
             "description": { "type": "string" },
             "read_only": { "type": "boolean" },
             "positional_arg": { "type": "string" },
+            "bash_usage": { "type": "string" },
+            "output_fields": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "schemas_omitted": { "type": "string" },
             "input_schema": { "type": "object", "additionalProperties": true },
             "output_schema": { "type": "object", "additionalProperties": true },
             "output_shape": {
@@ -587,9 +593,14 @@ fn discover_output_schema() -> Value {
             "shape_hints": {
                 "type": "object",
                 "additionalProperties": { "type": "string" }
-            }
+            },
+            "script_guidance": {
+                "type": "array",
+                "items": { "type": "string" }
+            },
+            "refine_hint": { "type": "string" }
         },
-        "required": ["count", "include_schemas", "shape_hints"]
+        "required": ["count", "include_schemas", "shape_hints", "script_guidance"]
     })
 }
 

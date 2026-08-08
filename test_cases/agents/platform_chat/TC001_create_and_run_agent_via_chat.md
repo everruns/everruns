@@ -78,7 +78,7 @@ rendering, tool-call formatting, and error-banner suppression.
 
 ### Capability Wiring
 
-- Platform Chat session uses the `platform-chat` built-in harness (which inherits from `generic` and adds `platform`).
+- Platform Chat session uses the focused `platform-chat` built-in harness (which inherits from `base` and adds `platform` plus runtime safeguards).
 - The trace uses `discover` when command names or schemas are unknown, `query`
   for reads, and `execute` for the requested mutations.
 - Underlying agent/session commands succeed without authorization,

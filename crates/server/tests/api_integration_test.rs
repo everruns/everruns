@@ -3472,8 +3472,8 @@ async fn test_chat_harness_includes_platform_capability() {
     assert_eq!(harness.name, "platform-chat");
     assert_eq!(
         harness.parent_harness_id.as_ref().map(ToString::to_string),
-        Some(server.seed_generic_harness_id.to_string()),
-        "Platform Chat should inherit from Generic"
+        Some(server.seed_base_harness_id.to_string()),
+        "Platform Chat should inherit from Base to keep its tool surface focused"
     );
 
     let cap_ids: Vec<&str> = harness
@@ -3484,8 +3484,13 @@ async fn test_chat_harness_includes_platform_capability() {
 
     assert_eq!(
         cap_ids,
-        vec!["platform"],
-        "Platform Chat should keep the catalog-backed platform capability locally"
+        vec![
+            "platform",
+            "loop_detection",
+            "error_disclosure",
+            "compaction"
+        ],
+        "Platform Chat should keep only platform operations and runtime safeguards locally"
     );
 
     let preview: Value = server
@@ -3508,10 +3513,6 @@ async fn test_chat_harness_includes_platform_capability() {
         .filter_map(|tool| tool["name"].as_str())
         .collect();
 
-    assert!(
-        tool_names.contains(&"web_fetch"),
-        "Platform Chat preview should include inherited Generic tools"
-    );
     for expected in ["discover", "query", "execute"] {
         assert!(
             tool_names.contains(&expected),
@@ -3522,6 +3523,12 @@ async fn test_chat_harness_includes_platform_capability() {
         !tool_names.contains(&"manage_harnesses"),
         "Platform Chat should use the catalog surface, not legacy management tools"
     );
+    for excluded in ["bash", "web_fetch", "secret_store", "schedule_create"] {
+        assert!(
+            !tool_names.contains(&excluded),
+            "Platform Chat should not expose unrelated {excluded}"
+        );
+    }
 }
 
 // ============================================

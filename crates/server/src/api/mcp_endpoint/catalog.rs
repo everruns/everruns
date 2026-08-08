@@ -2,7 +2,7 @@
 
 use crate::domains::common::CommandError;
 use bashkit::{ScriptedTool, ToolArgs, ToolDef};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::LazyLock;
@@ -255,6 +255,52 @@ fn coerce_json_text_params(
     Ok(())
 }
 
+fn normalize_and_validate_params(
+    schema: &serde_json::Value,
+    params: &mut serde_json::Value,
+) -> Result<(), String> {
+    let Some(params) = params.as_object_mut() else {
+        return Ok(());
+    };
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(|value| value.as_object());
+    let mut properties = serde_json::Map::new();
+    collect_all_properties(schema, defs, &mut properties, 0);
+    for name in params.keys().cloned().collect::<Vec<_>>() {
+        if !name.contains('-') {
+            continue;
+        }
+        let canonical = name.replace('-', "_");
+        if properties.contains_key(&canonical)
+            && !params.contains_key(&canonical)
+            && let Some(value) = params.remove(&name)
+        {
+            params.insert(canonical, value);
+        }
+    }
+    let mut unknown = params
+        .keys()
+        .filter(|name| !properties.contains_key(*name))
+        .map(|name| format!("--{name}"))
+        .collect::<Vec<_>>();
+    if unknown.is_empty() {
+        return Ok(());
+    }
+    unknown.sort();
+    let mut supported = properties
+        .keys()
+        .map(|name| format!("--{name}"))
+        .collect::<Vec<_>>();
+    supported.sort();
+    Err(format!(
+        "unknown flag(s): {}. Use exactly the discovered flags: {}",
+        unknown.join(", "),
+        supported.join(", ")
+    ))
+}
+
 fn property_has_json_scalar_type(
     schema: &serde_json::Value,
     defs: Option<&serde_json::Map<String, serde_json::Value>>,
@@ -335,6 +381,182 @@ fn collect_all_properties(
             }
         }
     }
+}
+
+fn collect_required_properties(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    out: &mut BTreeSet<String>,
+    depth: u8,
+) {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return;
+    }
+    if let Some(required) = schema.get("required").and_then(|value| value.as_array()) {
+        out.extend(
+            required
+                .iter()
+                .filter_map(|value| value.as_str().map(ToOwned::to_owned)),
+        );
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+    {
+        collect_required_properties(resolved, Some(defs), out, depth + 1);
+    }
+    for key in ["allOf", "oneOf", "anyOf"] {
+        if let Some(branches) = schema.get(key).and_then(|value| value.as_array()) {
+            for branch in branches {
+                collect_required_properties(branch, defs, out, depth + 1);
+            }
+        }
+    }
+}
+
+fn property_has_type(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    expected: &str,
+    depth: u8,
+) -> bool {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return false;
+    }
+    if schema.get("type").is_some_and(|value| {
+        value.as_str() == Some(expected)
+            || value
+                .as_array()
+                .is_some_and(|types| types.iter().any(|value| value.as_str() == Some(expected)))
+    }) {
+        return true;
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+        && property_has_type(resolved, Some(defs), expected, depth + 1)
+    {
+        return true;
+    }
+    ["allOf", "oneOf", "anyOf"].iter().any(|key| {
+        schema
+            .get(key)
+            .and_then(|value| value.as_array())
+            .is_some_and(|branches| {
+                branches
+                    .iter()
+                    .any(|branch| property_has_type(branch, defs, expected, depth + 1))
+            })
+    })
+}
+
+/// Render copyable Bashkit syntax from the authoritative command schema.
+/// Aggregate flags stay JSON text because that is the scripting wire format.
+pub(crate) fn bash_usage(command_name: &str, schema: &serde_json::Value) -> String {
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(|value| value.as_object());
+    let mut properties = serde_json::Map::new();
+    collect_all_properties(schema, defs, &mut properties, 0);
+    let mut required = BTreeSet::new();
+    collect_required_properties(schema, defs, &mut required, 0);
+
+    let mut flags = properties
+        .iter()
+        .map(|(name, property)| {
+            let placeholder = if property_is_aggregate(property, defs, 0) {
+                property
+                    .get("example")
+                    .and_then(|example| serde_json::to_string(example).ok())
+                    .filter(|example| example.len() <= 160)
+                    .map(|example| format!("'{}'", example.replace('\'', "'\"'\"'")))
+                    .unwrap_or_else(|| "'<json>'".to_string())
+            } else if property_has_type(property, defs, "boolean", 0) {
+                "<true|false>".to_string()
+            } else if property_has_type(property, defs, "integer", 0)
+                || property_has_type(property, defs, "number", 0)
+            {
+                "<number>".to_string()
+            } else {
+                "'<string>'".to_string()
+            };
+            let flag = format!("--{name} {placeholder}");
+            (required.contains(name), name, flag)
+        })
+        .collect::<Vec<_>>();
+    flags.sort_by_key(|(is_required, name, _)| (!*is_required, *name));
+
+    std::iter::once(command_name.to_string())
+        .chain(flags.into_iter().map(|(is_required, _, flag)| {
+            if is_required {
+                flag
+            } else {
+                format!("[{flag}]")
+            }
+        }))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn collect_schema_field_paths(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    prefix: &str,
+    out: &mut BTreeSet<String>,
+    depth: u8,
+) {
+    if depth >= SCHEMA_WALK_MAX_DEPTH || out.len() >= 100 {
+        return;
+    }
+    if let Some(properties) = schema.get("properties").and_then(|value| value.as_object()) {
+        for (name, property) in properties {
+            let path = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}.{name}")
+            };
+            out.insert(path.clone());
+            collect_schema_field_paths(property, defs, &path, out, depth + 1);
+        }
+    }
+    if let Some(items) = schema.get("items") {
+        collect_schema_field_paths(items, defs, prefix, out, depth + 1);
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+    {
+        collect_schema_field_paths(resolved, Some(defs), prefix, out, depth + 1);
+    }
+    for key in ["allOf", "oneOf", "anyOf"] {
+        if let Some(branches) = schema.get(key).and_then(|value| value.as_array()) {
+            for branch in branches {
+                collect_schema_field_paths(branch, defs, prefix, out, depth + 1);
+            }
+        }
+    }
+}
+
+/// Return bounded dot paths that describe fields available to jq without
+/// forcing a model to retain a large expanded output schema.
+pub(crate) fn schema_field_paths(schema: &serde_json::Value) -> Vec<String> {
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(|value| value.as_object());
+    let mut fields = BTreeSet::new();
+    collect_schema_field_paths(schema, defs, "", &mut fields, 0);
+    fields.into_iter().collect()
 }
 
 /// Decide whether a property's declared schema represents an array or object
@@ -442,6 +664,7 @@ fn make_inventory_callback(
             // text on the command line. Translate them back here so the
             // domain dispatcher sees the structured value it expects.
             let original_schema = (desc.param_schema)();
+            normalize_and_validate_params(&original_schema, &mut params)?;
             coerce_json_text_params(&original_schema, &mut params)?;
             let result = (desc.dispatch)(params, &domain_ctx)
                 .await
@@ -460,7 +683,34 @@ fn decorate_command_output(
         Err(_) => return Ok(result.to_string()),
     };
     link_builder.decorate_value_links(&mut value);
+    decorate_mcp_capability_refs(&mut value);
     serde_json::to_string(&value).map_err(|error| format!("Internal error: {error}"))
+}
+
+fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            let capability_ref = object
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| value.parse::<everruns_core::McpServerId>().ok())
+                .map(|id| format!("mcp:{}", id.uuid()));
+            if let Some(capability_ref) = capability_ref {
+                object
+                    .entry("capability_ref".to_string())
+                    .or_insert_with(|| serde_json::Value::String(capability_ref));
+            }
+            for child in object.values_mut() {
+                decorate_mcp_capability_refs(child);
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                decorate_mcp_capability_refs(item);
+            }
+        }
+        _ => {}
+    }
 }
 
 #[cfg(test)]
@@ -507,6 +757,34 @@ mod tests {
         assert_eq!(
             value["ui_link"],
             "https://app.example/agents/agent_00000000000000000000000000000001"
+        );
+    }
+
+    #[test]
+    fn command_output_decoration_adds_mcp_capability_reference() {
+        let builder =
+            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+        let result = decorate_command_output(
+            r#"{"id":"mcp_00000000000000000000000000000001","name":"visti"}"#,
+            &builder,
+        )
+        .expect("decorated output");
+        let value: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(
+            value["capability_ref"],
+            "mcp:00000000-0000-0000-0000-000000000001"
+        );
+
+        let nested = decorate_command_output(
+            r#"{"data":[{"id":"mcp_00000000000000000000000000000002"}]}"#,
+            &builder,
+        )
+        .expect("nested decorated output");
+        let nested_value: serde_json::Value = serde_json::from_str(&nested).unwrap();
+        assert_eq!(
+            nested_value["data"][0]["capability_ref"],
+            "mcp:00000000-0000-0000-0000-000000000002"
         );
     }
 
@@ -575,6 +853,27 @@ mod tests {
             serde_json::json!([{"ref": "current_time"}]),
         );
         assert_eq!(params["tags"], serde_json::json!(["a", "b"]));
+    }
+
+    #[test]
+    fn unknown_flags_are_rejected_before_mutation_dispatch() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "api_key": { "type": "string" },
+                "auth_mode": { "type": "string" }
+            }
+        });
+        let mut params = serde_json::json!({
+            "api-key": "secret",
+            "auth-type": "api_key"
+        });
+
+        let error = normalize_and_validate_params(&schema, &mut params).expect_err("unknown flags");
+        assert!(error.contains("--auth-type"));
+        assert!(error.contains("--auth_mode"));
+        assert_eq!(params["api_key"], "secret");
+        assert!(params.get("api-key").is_none());
     }
 
     #[test]

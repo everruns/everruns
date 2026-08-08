@@ -588,18 +588,22 @@ mod tests {
             .iter()
             .find(|h| h.name == "platform-chat")
             .expect("chat harness");
-        let generic = provisioned_harnesses
-            .iter()
-            .find(|h| h.name == "generic")
-            .expect("generic harness");
-        assert_eq!(chat.parent_harness_id, Some(generic.id));
+        assert_eq!(chat.parent_harness_id, Some(base_id));
 
         let chat_caps = db.get_harness_capabilities(chat.id.uuid()).await.unwrap();
         let chat_cap_ids = chat_caps
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(chat_cap_ids, vec!["platform"]);
+        assert_eq!(
+            chat_cap_ids,
+            vec![
+                "platform",
+                "loop_detection",
+                "error_disclosure",
+                "compaction"
+            ]
+        );
     }
 
     #[tokio::test]

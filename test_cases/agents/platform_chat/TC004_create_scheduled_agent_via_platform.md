@@ -44,9 +44,15 @@ never paste a production credential into this manual test transcript.
 4. Inspect the tool trace after confirmation. Verify that Platform Chat:
    - uses `discover` to find model, Agent, and Agent Trigger operations rather
      than calling an invented tool such as `read_models`;
+   - discovers exact command names and follows their `bash_usage`; it does not
+     probe builtins with `--help`, shell inventory, or guessed flags such as
+     `--model_id` on `create_agent`;
    - uses `query` to resolve `gpt-5.6-terra` and inspect existing resources;
-   - uses `execute` for the requested creates;
+   - uses `execute` for the requested creates and chains dependent returned IDs
+     with `jq` rather than manually converting resource identifiers;
    - queries the final Agent and Trigger state before answering.
+   - does not call unrelated Generic tools such as Bash, web fetch, session
+     secrets, or Session Schedule tools.
 
 5. Open the returned Agent link and verify its `default_model_id` points to the
    model whose provider model ID is `gpt-5.6-terra`.
