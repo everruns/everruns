@@ -179,7 +179,24 @@ jest.mock("@/components/chat/image-attachments", () => ({
 }));
 
 jest.mock("@/components/chat/command-autocomplete", () => ({
-  CommandAutocomplete: () => null,
+  CommandAutocomplete: ({
+    commands,
+    visible,
+    onSelect,
+  }: {
+    commands: Array<{ name: string }>;
+    visible: boolean;
+    onSelect: (command: { name: string }) => void;
+  }) =>
+    visible ? (
+      <div>
+        {commands.map((command) => (
+          <button key={command.name} type="button" onClick={() => onSelect(command)}>
+            /{command.name}
+          </button>
+        ))}
+      </div>
+    ) : null,
   shouldShowCommandAutocomplete: (input: string) => /^\/\S*$/.test(input),
 }));
 
@@ -230,6 +247,7 @@ describe("ChatPanel compaction divider", () => {
     mockSessionContext.chatEvents = [];
     mockSessionContext.llmModel = null;
     mockSessionContext.reasoningEffort = "";
+    mockSessionContext.sessionId = "session-1";
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
   });
 
@@ -468,6 +486,28 @@ describe("ChatPanel placeholder", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("opens the command menu when discovery finishes after slash is typed", async () => {
+    let commandData: { data?: { commands: Array<Record<string, unknown>> } } = {};
+    mockUseSessionCommands.mockImplementation(() => commandData);
+    const { rerender } = render(<ChatPanel />);
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "/" } });
+
+    commandData = {
+      data: {
+        commands: [
+          {
+            name: "btw",
+            description: "Ask a side question",
+            source: "system",
+          },
+        ],
+      },
+    };
+    rerender(<ChatPanel />);
+
+    expect(await screen.findByRole("button", { name: "/btw" })).toBeInTheDocument();
+  });
+
   it("does not render a top border between messages and composer", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
 
@@ -557,6 +597,125 @@ describe("ChatPanel placeholder", () => {
     expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
     expect(await screen.findByText("Side answer")).toBeInTheDocument();
     expect(screen.getByText("/btw")).toBeInTheDocument();
+  });
+
+  it("contains command execution errors without breaking later messages", async () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: {
+        commands: [
+          {
+            name: "btw",
+            description: "Ask a side question",
+            source: "system",
+            args: [{ name: "question", description: "The side question", required: true }],
+          },
+        ],
+      },
+    });
+    mockExecuteSessionCommand.mockRejectedValue(new Error("private provider diagnostic"));
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+
+    render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "/btw question" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByText("Command execution failed. Try again.")).toBeInTheDocument();
+    expect(screen.queryByText("private provider diagnostic")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+
+    fireEvent.change(textarea, { target: { value: "ordinary message" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalled());
+  });
+
+  it("fills a required system command from the menu and waits for arguments", async () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: {
+        commands: [
+          {
+            name: "btw",
+            description: "Ask a side question",
+            source: "system",
+            args: [{ name: "question", description: "The side question", required: true }],
+          },
+        ],
+      },
+    });
+
+    render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "/" } });
+    fireEvent.click(await screen.findByRole("button", { name: "/btw" }));
+
+    expect(textarea).toHaveValue("/btw ");
+    expect(textarea).toHaveFocus();
+    expect(mockExecuteSessionCommand).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+    expect(textarea).toHaveValue("/btw ");
+    expect(mockExecuteSessionCommand).not.toHaveBeenCalled();
+  });
+
+  it("fills a skill command and sends it through ordinary message semantics", async () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: {
+        commands: [
+          {
+            name: "review",
+            description: "Review the current work",
+            source: "skill",
+          },
+        ],
+      },
+    });
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+
+    render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "/" } });
+    fireEvent.click(await screen.findByRole("button", { name: "/review" }));
+    expect(textarea).toHaveValue("/review ");
+
+    fireEvent.change(textarea, { target: { value: "/review inspect this" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+    await waitFor(() =>
+      expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        content: "/review inspect this",
+        controls: { locale: "en-US" },
+        addressedParticipantId: null,
+      }),
+    );
+    expect(mockExecuteSessionCommand).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary messages working when command discovery fails", async () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: undefined,
+      error: new Error("command discovery unavailable"),
+    });
+    mockSessionContext.sendMessage.mutateAsync.mockResolvedValue({ id: "message-1" });
+
+    render(<ChatPanel />);
+    const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() => expect(mockSessionContext.sendMessage.mutateAsync).toHaveBeenCalled());
+  });
+
+  it("clears composer state when the resolved session is replaced", async () => {
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
+    const { rerender } = render(<ChatPanel />);
+    const textarea = screen.getByRole("combobox");
+    fireEvent.change(textarea, { target: { value: "stale draft" } });
+
+    mockSessionContext.sessionId = "session-2";
+    rerender(<ChatPanel />);
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toHaveValue(""));
+    expect(mockUseSessionCommands).toHaveBeenLastCalledWith("session-2");
   });
 
   it("renders a chat error alert for failed turns", () => {

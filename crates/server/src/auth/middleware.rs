@@ -657,7 +657,7 @@ pub struct ResolvedOrg {
     pub public_id: String,
     /// Organization name
     pub name: String,
-    /// Authenticated user ID (for user-scoped operations like connections)
+    /// Authenticated principal's user ID (including the well-known local user in none mode)
     pub user_id: Option<Uuid>,
     /// User's role in this organization
     pub role: OrgRole,
@@ -811,7 +811,7 @@ pub(crate) async fn resolve_org_for_user(
                         org_id: org_row.org_id,
                         public_id: org_row.public_id,
                         name: org_row.name,
-                        user_id: None,
+                        user_id: Some(user.id),
                         role: OrgRole::Owner, // Anonymous user is owner of all orgs
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
@@ -829,7 +829,7 @@ pub(crate) async fn resolve_org_for_user(
                     org_id: org.org_id,
                     public_id: org.public_id.clone(),
                     name: org.name.clone(),
-                    user_id: None,
+                    user_id: Some(user.id),
                     role: org.role,
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
@@ -1109,6 +1109,62 @@ mod tests {
             },
             backend,
         )
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_none_mode_preserves_anonymous_user_identity() {
+        let backend = Arc::new(MockBackend::new());
+        let state = AuthState::new(
+            AuthConfig {
+                mode: AuthMode::None,
+                ..AuthConfig::default()
+            },
+            backend,
+        );
+        let (mut parts, _body) = Request::builder().body(()).unwrap().into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("none mode should resolve the default org");
+
+        assert_eq!(resolved.user_id, Some(ANONYMOUS_USER_ID));
+    }
+
+    #[tokio::test]
+    async fn test_resolved_org_none_mode_preserves_identity_after_org_switch() {
+        let backend = Arc::new(MockBackend::new());
+        let db = Arc::new(StorageBackend::in_memory());
+        let switched_org = db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000002".to_string(),
+                name: "Switched Org".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create switched org");
+        let state = AuthState::new(
+            AuthConfig {
+                mode: AuthMode::None,
+                ..AuthConfig::default()
+            },
+            backend,
+        )
+        .with_db(db);
+        let (mut parts, _body) = Request::builder()
+            .header(
+                header::COOKIE,
+                format!("{}=org_00000000000000000000000000000002", ORG_COOKIE_NAME),
+            )
+            .body(())
+            .unwrap()
+            .into_parts();
+
+        let resolved = ResolvedOrg::from_request_parts(&mut parts, &state)
+            .await
+            .expect("none mode should resolve the selected org");
+
+        assert_eq!(resolved.org_id, switched_org.org_id);
+        assert_eq!(resolved.user_id, Some(ANONYMOUS_USER_ID));
     }
 
     async fn call_extract(auth_header: &str) -> (u32, u32) {

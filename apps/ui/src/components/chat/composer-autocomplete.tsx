@@ -88,7 +88,9 @@ export function ComposerAutocomplete<T extends ComposerAutocompleteItem>({
       className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-[min(240px,40vh)] overflow-y-auto border border-border bg-card p-1 shadow-lg"
     >
       {items.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-muted-foreground">{emptyMessage}</div>
+        <div role="status" className="px-3 py-2 text-sm text-muted-foreground">
+          {emptyMessage}
+        </div>
       ) : (
         items.map((item, index) => (
           <button

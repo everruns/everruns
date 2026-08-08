@@ -24,24 +24,25 @@ export function CommandAutocomplete({
     (cmd) =>
       cmd.name.toLowerCase().includes(query) || cmd.description.toLowerCase().includes(query),
   );
+  const items = filtered.map((command) => ({ id: command.name, command }));
 
   return (
     <ComposerAutocomplete
       emptyMessage="No matching commands"
-      items={filtered.map((command) => ({ ...command, id: command.name }))}
-      label="Commands"
+      items={items}
+      label="Available commands"
       onDismiss={onDismiss}
-      onSelect={onSelect}
+      onSelect={(item) => onSelect(item.command)}
       visible={visible}
-      renderItem={(cmd) => (
+      renderItem={({ command }) => (
         <>
-          {cmd.source === "system" ? (
+          {command.source === "system" ? (
             <Terminal className="icon-sharp h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
           ) : (
             <Sparkles className="icon-sharp h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
           )}
-          <span className="font-mono text-xs text-foreground">/{cmd.name}</span>
-          <span className="text-xs text-muted-foreground truncate">{cmd.description}</span>
+          <span className="font-mono text-xs text-foreground">/{command.name}</span>
+          <span className="text-xs text-muted-foreground truncate">{command.description}</span>
         </>
       )}
     />

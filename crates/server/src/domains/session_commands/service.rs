@@ -78,6 +78,7 @@ impl SessionCommandService {
         let (harness_chain, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
+        authorize_platform_chat_owner(caller, &harness_chain, &session)?;
         let resolved = resolve_runtime_capabilities(
             &harness_chain,
             agent.as_ref(),
@@ -110,6 +111,7 @@ impl SessionCommandService {
         let (harness_chain, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
+        authorize_platform_chat_owner(caller, &harness_chain, &session)?;
         let resolved = resolve_runtime_capabilities(
             &harness_chain,
             agent.as_ref(),
@@ -214,4 +216,20 @@ impl SessionCommandService {
 
         Ok((harness_chain, agent, session))
     }
+}
+
+fn authorize_platform_chat_owner(
+    caller: &Caller,
+    harness_chain: &[Harness],
+    session: &everruns_core::Session,
+) -> Result<()> {
+    let is_platform_chat = harness_chain
+        .iter()
+        .any(|harness| harness.is_built_in && harness.name == "platform-chat");
+    if !crate::domains::sessions::platform_chat_owner_matches(caller, session, is_platform_chat) {
+        return Err(
+            everruns_core::PolicyError::denied("platform_chat_owner", "session owner").into(),
+        );
+    }
+    Ok(())
 }

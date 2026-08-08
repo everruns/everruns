@@ -477,7 +477,16 @@ impl FromRequestParts<AppState> for McpResolvedOrg {
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let McpAuthUser(user) = McpAuthUser::from_request_parts(parts, state).await?;
-        let org = crate::auth::middleware::resolve_org_for_user(user, parts, &state.auth).await?;
+        let is_anonymous = user.auth_method == AuthMethod::None;
+        let mut org =
+            crate::auth::middleware::resolve_org_for_user(user, parts, &state.auth).await?;
+        // THREAT[TM-MCP-006]: no-auth MCP may use the default org for local
+        // development, but it is not an authenticated user for user-scoped
+        // commands. Keep that boundary separate from the browser/API no-auth
+        // principal, whose stable ID is required for Platform Chat ownership.
+        if is_anonymous {
+            org.user_id = None;
+        }
         Ok(McpResolvedOrg(org))
     }
 }

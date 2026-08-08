@@ -133,10 +133,8 @@ export function ChatComposer({
   const inputPlaceholder = hasCommands ? t("type_message_or_commands") : t("type_message");
 
   useEffect(() => {
-    if (!hasCommands && showCommands) {
-      setShowCommands(false);
-    }
-  }, [hasCommands, showCommands]);
+    setShowCommands(hasCommands && shouldShowCommandAutocomplete(inputValue));
+  }, [hasCommands, inputValue]);
 
   const buildControls = (): Controls | undefined =>
     selectedModelId || reasoningEffort || verbosity
@@ -231,6 +229,7 @@ export function ChatComposer({
             onSelect={async (cmd) => {
               setShowCommands(false);
               await onCommandSelect(cmd, buildControls());
+              textareaRef.current?.focus();
             }}
             onDismiss={() => setShowCommands(false)}
           />
@@ -267,10 +266,11 @@ export function ChatComposer({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
+            role="combobox"
+            tabIndex={0}
             placeholder={inputPlaceholder}
             className={chatSurfaceStyles.composerTextarea}
-            role={mentionQuery || showCommands ? "combobox" : undefined}
-            aria-autocomplete={mentionQuery || showCommands ? "list" : undefined}
+            aria-autocomplete="list"
             aria-expanded={mentionQuery !== null || showCommands}
             aria-controls={
               mentionQuery || showCommands ? COMPOSER_AUTOCOMPLETE_LISTBOX_ID : undefined

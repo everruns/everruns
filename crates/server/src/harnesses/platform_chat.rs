@@ -17,6 +17,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_roles([BuiltInHarnessRole::Chat])
     .with_capabilities([
         BuiltInCapabilityDefinition::new("platform"),
+        BuiltInCapabilityDefinition::new("btw"),
         BuiltInCapabilityDefinition::new("loop_detection"),
         BuiltInCapabilityDefinition::with_config(
             "error_disclosure",
@@ -90,6 +91,7 @@ mod tests {
             capabilities,
             [
                 "platform",
+                "btw",
                 "loop_detection",
                 "error_disclosure",
                 "compaction"

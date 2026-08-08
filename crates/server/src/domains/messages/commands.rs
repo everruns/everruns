@@ -111,12 +111,11 @@ async fn require_platform_chat_owner(
         .as_ref()
         .is_some_and(|harness| harness.is_built_in && harness.name == "platform-chat");
 
-    // THREAT[TM-AGENT-017]: Platform commands run as the persisted session
-    // owner. Only that user may submit turns that can trigger those commands.
-    if is_platform_chat
-        && !ctx.caller.is_internal
-        && ctx.caller.user_id != session.resolved_owner_user_id
-    {
+    if !crate::domains::sessions::platform_chat_owner_matches(
+        &ctx.caller,
+        session,
+        is_platform_chat,
+    ) {
         return Err(CommandError::forbidden(
             "Only the Platform Chat session owner can create messages",
         ));
