@@ -26,7 +26,7 @@ use super::delegation_result::{
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode};
-use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
+use crate::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
@@ -630,7 +630,7 @@ async fn enforce_subagent_depth_cap(
 }
 
 /// Extract the last assistant/agent message content from a list of messages.
-fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Option<String> {
+fn last_agent_message(messages: &[crate::subagent_delegation::PlatformMessage]) -> Option<String> {
     messages
         .iter()
         .rfind(|m| m.role == "agent" || m.role == "assistant")
@@ -1149,7 +1149,7 @@ fn background_running_result(
 /// `spawn_handle_id` is used to call `register_child_session` after child creation.
 #[allow(clippy::too_many_arguments)]
 async fn spawn_create_and_wait(
-    store: &dyn PlatformStore,
+    store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
     parent_session: &crate::session::Session,
     name: &str,
@@ -1390,7 +1390,7 @@ async fn spawn_create_and_wait(
 /// registry, and settle the spawn handle (if a settle context is supplied).
 #[allow(clippy::too_many_arguments)]
 async fn run_subagent_wait_and_settle(
-    store: &dyn PlatformStore,
+    store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
     name: &str,
@@ -1457,7 +1457,7 @@ async fn run_subagent_wait_and_settle(
 /// statuses (paused, waiting_for_tool_results, timeout) only produce the
 /// result text — the child stays active and the spawn stays reattachable.
 async fn settle_subagent_outcome(
-    store: &dyn PlatformStore,
+    store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
     status: &str,
@@ -1547,7 +1547,7 @@ fn spawn_background_watcher(
     let name = name.to_string();
     tokio::spawn(async move {
         let _background_run_permit = background_run_permit;
-        let Some(store) = context.platform_store.clone() else {
+        let Some(store) = context.subagent_delegate.clone() else {
             // Callers only enter background mode with a platform store wired.
             return;
         };
@@ -1752,7 +1752,7 @@ impl TaskExecutor for SubagentTaskExecutor {
         message: &TaskMessage,
         context: &ToolContext,
     ) -> crate::error::Result<()> {
-        let Some(store) = context.platform_store.as_ref() else {
+        let Some(store) = context.subagent_delegate.as_ref() else {
             return Err(crate::error::AgentLoopError::tool(
                 "subagent task delivery requires platform_store context",
             ));
@@ -1768,7 +1768,7 @@ impl TaskExecutor for SubagentTaskExecutor {
     }
 
     async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
-        let Some(store) = context.platform_store.as_ref() else {
+        let Some(store) = context.subagent_delegate.as_ref() else {
             return Err(crate::error::AgentLoopError::tool(
                 "subagent task cancellation requires platform_store context",
             ));
@@ -1801,7 +1801,7 @@ impl TaskExecutor for SubagentTaskExecutor {
             return Ok(());
         }
         let (Some(store), Some(child_id)) =
-            (context.platform_store.as_ref(), task.links.child_session_id)
+            (context.subagent_delegate.as_ref(), task.links.child_session_id)
         else {
             return Ok(());
         };
@@ -1855,7 +1855,7 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         // stop to the peer session first; only settle the tracking task once
         // the request is in flight, so a delivery failure surfaces to the
         // caller instead of silently claiming the peer was canceled.
-        let summary = match (context.platform_store.as_ref(), task.links.child_session_id) {
+        let summary = match (context.subagent_delegate.as_ref(), task.links.child_session_id) {
             (Some(store), Some(peer_id)) => {
                 store
                     .send_message(
@@ -2065,7 +2065,7 @@ mod tests {
     // =========================================================================
 
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::platform_store::tests::MockPlatformStore;
+    use crate::subagent_delegation::tests::MockSubagentDelegate;
     use crate::session_file::SessionFile;
     use crate::session_task::SessionTaskRegistry;
     use crate::traits::SessionFileSystem;
@@ -2074,7 +2074,7 @@ mod tests {
     use std::sync::Mutex;
 
     /// SessionStore view over the mock platform store (depth-policy lookup).
-    struct MockSessionStore(Arc<MockPlatformStore>);
+    struct MockSessionStore(Arc<MockSubagentDelegate>);
 
     struct MockSessionCreationAuthority {
         root: crate::typed_id::SessionId,
@@ -2108,19 +2108,19 @@ mod tests {
     }
 
     fn spawn_context(
-        store: &Arc<MockPlatformStore>,
+        store: &Arc<MockSubagentDelegate>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
     ) -> ToolContext {
         spawn_context_for_session(store, registry, store.session.id)
     }
 
     fn spawn_context_for_session(
-        store: &Arc<MockPlatformStore>,
+        store: &Arc<MockSubagentDelegate>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
         session_id: crate::typed_id::SessionId,
     ) -> ToolContext {
         let mut context = ToolContext::new(session_id);
-        context.platform_store = Some(store.clone());
+        context.subagent_delegate = Some(store.clone());
         context.session_store = Some(Arc::new(MockSessionStore(store.clone())));
         context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
             root: store.session.id,
@@ -2336,7 +2336,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_creates_subagent_task() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2368,7 +2368,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_creates_peer_session_task_with_goal_and_lineage() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2426,7 +2426,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_requires_session_creation_authority_before_creation() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = spawn_context(&store, Some(registry));
         context.session_creation_authority = None;
@@ -2451,7 +2451,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_reports_permission_denial_before_creation() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = spawn_context(&store, Some(registry));
         context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
@@ -2480,7 +2480,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_bypasses_subagent_depth_guard() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
             crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
@@ -2534,7 +2534,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_task_counts_ignore_subagent_and_terminal_active() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let root = store.session.id;
 
@@ -2588,7 +2588,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_rejected_at_cap_and_allowed_under_cap() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
             crate::traits::SubagentNestingPolicy::default()
@@ -2626,7 +2626,7 @@ mod tests {
     async fn detached_cap_does_not_affect_linked_subagent_spawn() {
         // A root already at the detached ceiling must still allow linked
         // subagent spawns — the two budgets are independent (regression guard).
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
             crate::traits::SubagentNestingPolicy::default()
@@ -2668,7 +2668,7 @@ mod tests {
     async fn detached_session_task_cancel_requests_peer_cancellation() {
         // EVE-766: cancel_task on a detached-session task must cooperatively
         // cancel the peer session, not just detach the tracking chip.
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
         let child_id = crate::typed_id::SessionId::new();
@@ -2726,7 +2726,7 @@ mod tests {
     async fn detached_session_task_cancel_without_peer_link_still_settles() {
         // Defensive: a session-kind task with no peer link has nothing to
         // signal, but the cancel intent must still be honored.
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
         let task = registry
@@ -2804,7 +2804,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_allows_depth_two_and_rejects_depth_three_by_default() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let root_context = spawn_context(&store, Some(registry.clone()));
@@ -2856,7 +2856,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_depth_zero_restores_hard_block() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let mut context = spawn_context(&store, None).with_subagent_nesting_policy(
             crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
         );
@@ -2879,7 +2879,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_when_active_descendant_cap_is_full() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
@@ -2917,7 +2917,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_counts_grandchildren_for_active_descendant_cap() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let policy = crate::traits::SubagentNestingPolicy::default()
@@ -2975,7 +2975,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_total_descendant_cap_counts_terminal_tasks() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
@@ -3038,7 +3038,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_stores_result_schema_on_task() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3266,7 +3266,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_stores_message_schema_and_wakes_on_activity() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3500,7 +3500,7 @@ mod tests {
 
     #[tokio::test]
     async fn default_mode_without_registry_degrades_to_foreground() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let context = spawn_context(&store, None);
         let result = spawn(&context, json!({"name": "Runner", "instructions": "go"})).await;
         let ToolExecutionResult::Success(value) = result else {
@@ -3514,7 +3514,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_spawn_returns_immediately_and_settles_task() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3543,7 +3543,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_spawn_rejects_when_session_active_run_limit_reached() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "paused".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry));
@@ -3581,7 +3581,7 @@ mod tests {
     async fn background_settles_bare_idle_as_completed() {
         // Local/embedded hosts run the child's turn synchronously inside
         // send_message and report a bare `idle`; the watcher must settle it.
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
@@ -3601,7 +3601,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_failed_child_settles_task_failed() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "failed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3623,7 +3623,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_foreground_blocks_and_returns_result() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3651,7 +3651,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconcile_settles_finished_child() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3690,7 +3690,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconcile_is_noop_while_child_still_working() {
-        let store = Arc::new(MockPlatformStore::new());
+        let store = Arc::new(MockSubagentDelegate::new());
         *store.wait_for_idle_status.lock().unwrap() = "timeout (last status: Active)".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));

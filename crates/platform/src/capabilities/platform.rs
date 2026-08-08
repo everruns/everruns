@@ -1,9 +1,9 @@
 //! Catalog-backed platform management capability.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::tool_types::{DeferrablePolicy, ToolHints};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{ToolContext, ToolContextService};
+use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -102,12 +102,12 @@ impl PlatformCommandTool {
 impl Tool for PlatformCommandTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        use crate::tool_narration::ToolNarrationPhase;
+        use everruns_core::tool_narration::ToolNarrationPhase;
 
         let ukrainian = locale.is_some_and(|value| value.to_ascii_lowercase().starts_with("uk"));
         let text = match (self.operation, phase, ukrainian) {
@@ -307,7 +307,7 @@ fn script_input_schema(commands_description: &str) -> Value {
 mod tests {
     use super::*;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::typed_id::SessionId;
+    use everruns_core::typed_id::SessionId;
     use std::sync::Arc;
 
     #[test]
@@ -331,8 +331,8 @@ mod tests {
 
     #[test]
     fn tools_own_phase_aware_human_narration() {
-        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use everruns_core::tool_types::ToolCall;
 
         let cases = [
             (

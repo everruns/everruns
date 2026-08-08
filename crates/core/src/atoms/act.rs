@@ -407,7 +407,7 @@ where
     /// Set platform store for org-level management tools.
     pub fn with_platform_store(
         mut self,
-        store: Arc<dyn crate::platform_store::PlatformStore>,
+        store: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>,
     ) -> Self {
         self.context_services.platform_store = Some(store);
         self
@@ -2912,8 +2912,8 @@ mod tests {
         let event_emitter = NoopEventEmitter;
 
         // Build mock platform store
-        let mock_store = crate::platform_store::tests::MockPlatformStore::new();
-        let platform_store: Arc<dyn crate::platform_store::PlatformStore> = Arc::new(mock_store);
+        let mock_store = crate::subagent_delegation::tests::MockSubagentDelegate::new();
+        let platform_store: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate> = Arc::new(mock_store);
 
         let atom = ActAtom::new(executor, event_emitter).with_platform_store(platform_store);
 

@@ -170,8 +170,11 @@ pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
 pub mod platform_definition;
-pub mod platform_store;
 pub mod resource_ownership;
+/// Narrow child-session delegation contract for portable subagent/handoff
+/// orchestration (EVE-839): core owns the interface, the platform crate
+/// implements it over `PlatformStore`.
+pub mod subagent_delegation;
 pub mod runtime_agent;
 pub mod runtime_context;
 pub use everruns_provider::stream_accumulator;
@@ -264,8 +267,11 @@ pub use channel::{
     OutboundChannelMessage, Participant, SessionRoutingStrategy, ThreadContext,
 };
 
-// Platform store re-exports
-pub use platform_store::{PlatformMessage, PlatformStore};
+// Narrow subagent-session delegation contract (EVE-839). The full hosted
+// `PlatformStore` and its management capabilities live in `everruns-platform`.
+pub use subagent_delegation::{
+    PlatformCreateSessionRequest, PlatformMessage, SubagentSessionDelegate,
+};
 pub use resource_ownership::{
     LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
     LEASED_RESOURCE_TYPE_KEY, list_owned_external_resource_ids,
@@ -380,7 +386,7 @@ pub use capabilities::{
     ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
     MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
     NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
-    PlatformManagementCapability, QueryHistoryTool, ReadFileTool, ResearchCapability,
+    QueryHistoryTool, ReadFileTool, ResearchCapability,
     ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
     SessionCapabilityConfig, SessionSandboxCapability, SessionSqlDatabaseCapability,
     SessionTitleMutation, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,

@@ -5,44 +5,23 @@
 // Decision: Tool results include UI links via base_url()
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
-use crate::SessionContextReport;
-use crate::agent::Agent;
-use crate::app::{App, AppChannel, ChannelType};
-use crate::capability_dto::CapabilityInfo;
-use crate::error::Result;
-use crate::harness::Harness;
-use crate::session::{Session, SessionParticipant, SessionSeedMode};
-use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
+use everruns_core::SessionContextReport;
+use everruns_core::agent::Agent;
+use everruns_core::app::{App, AppChannel, ChannelType};
+use everruns_core::capability_dto::CapabilityInfo;
+use everruns_core::error::Result;
+use everruns_core::harness::Harness;
+use everruns_core::session::{Session, SessionParticipant, SessionSeedMode};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-/// Simplified message representation for platform management tools.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlatformMessage {
-    pub role: String,
-    pub content: String,
-    pub created_at: DateTime<Utc>,
-}
-
-/// Options for platform-backed session creation from model-facing tools.
-#[derive(Debug, Clone)]
-pub struct PlatformCreateSessionRequest {
-    pub harness_id: HarnessId,
-    pub agent_id: Option<AgentId>,
-    pub title: Option<String>,
-    pub goal: Option<String>,
-    pub locale: Option<String>,
-    pub blueprint_id: Option<String>,
-    pub blueprint_config: Option<serde_json::Value>,
-    pub parent_session_id: Option<SessionId>,
-    pub forked_from_session_id: Option<SessionId>,
-    /// Internal-only override for the budget/delegation root. Detached spawns
-    /// set this explicitly; ordinary forks must leave it unset.
-    pub budget_root_session_id: Option<SessionId>,
-    pub seed: SessionSeedMode,
-}
+// The narrow session-delegation DTOs live in `everruns-core` (they are part of
+// the `SubagentSessionDelegate` contract portable code depends on); the full
+// `PlatformStore` reuses them. See EVE-839.
+pub use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, PlatformMessage};
 
 /// Trait for platform-level management operations.
 ///
@@ -56,21 +35,21 @@ pub trait PlatformStore: Send + Sync {
 
     /// Search the authoritative domain-command catalog.
     async fn platform_discover(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(crate::error::AgentLoopError::config(
+        Err(everruns_core::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against read-only domain commands.
     async fn platform_query(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(crate::error::AgentLoopError::config(
+        Err(everruns_core::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against the full authorized command catalog.
     async fn platform_execute(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(crate::error::AgentLoopError::config(
+        Err(everruns_core::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
@@ -97,7 +76,7 @@ pub trait PlatformStore: Send + Sync {
 
         while let Some(harness_id) = current_id {
             if !seen.insert(harness_id) {
-                return Err(crate::error::AgentLoopError::tool(format!(
+                return Err(everruns_core::error::AgentLoopError::tool(format!(
                     "Harness inheritance cycle detected at {harness_id}"
                 )));
             }
@@ -285,7 +264,7 @@ pub trait PlatformStore: Send + Sync {
             || request.budget_root_session_id.is_some()
             || request.seed != SessionSeedMode::Fresh
         {
-            return Err(crate::error::AgentLoopError::tool(
+            return Err(everruns_core::error::AgentLoopError::tool(
                 "platform store does not support goal, lineage, budget-root override, or seeded session creation",
             ));
         }
@@ -363,14 +342,65 @@ pub trait PlatformStore: Send + Sync {
     fn base_url(&self) -> &str;
 }
 
+/// Typed [`ToolContext`](everruns_core::ToolContext) extension carrying the
+/// hosted `PlatformStore` (EVE-839). Replaces the former
+/// `ToolContext::platform_store` field; hosted capabilities resolve it via
+/// `context.extension::<PlatformStoreExt>()`.
+#[derive(Clone)]
+pub struct PlatformStoreExt(pub std::sync::Arc<dyn PlatformStore>);
+
+/// Adapter implementing core's narrow
+/// [`SubagentSessionDelegate`](everruns_core::subagent_delegation::SubagentSessionDelegate)
+/// over a full `PlatformStore`, so portable subagent/handoff orchestration can
+/// drive child sessions without depending on the hosted seam.
+pub struct PlatformStoreSubagentDelegate(pub std::sync::Arc<dyn PlatformStore>);
+
+#[async_trait]
+impl everruns_core::subagent_delegation::SubagentSessionDelegate
+    for PlatformStoreSubagentDelegate
+{
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>> {
+        self.0.get_agent_by_id(id).await
+    }
+    async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
+        self.0.get_harness(id).await
+    }
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        self.0.create_session_with_options(request).await
+    }
+    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
+        self.0.get_session_by_id(id).await
+    }
+    async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.0.send_message(session_id, content).await
+    }
+    async fn get_messages(
+        &self,
+        session_id: SessionId,
+        limit: Option<usize>,
+    ) -> Result<Vec<PlatformMessage>> {
+        self.0.get_messages(session_id, limit).await
+    }
+    async fn wait_for_idle(
+        &self,
+        session_id: SessionId,
+        timeout_secs: Option<u64>,
+    ) -> Result<String> {
+        self.0.wait_for_idle(session_id, timeout_secs).await
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::AgentCapabilityConfig;
-    use crate::agent::{Agent, AgentStatus};
-    use crate::app::{App, AppChannel, AppStatus, ChannelType};
-    use crate::harness::{Harness, HarnessStatus};
-    use crate::session::{Session, SessionStatus};
+    use everruns_core::AgentCapabilityConfig;
+    use everruns_core::agent::{Agent, AgentStatus};
+    use everruns_core::app::{App, AppChannel, AppStatus, ChannelType};
+    use everruns_core::harness::{Harness, HarnessStatus};
+    use everruns_core::session::{Session, SessionStatus};
 
     /// Mock PlatformStore for unit tests.
     ///
@@ -435,7 +465,7 @@ pub mod tests {
                 },
                 extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
-                    public_id: crate::typed_id::AgentId::new(),
+                    public_id: everruns_core::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
                     name: "test-agent".to_string(),
                     display_name: Some("Test Agent".to_string()),
@@ -443,7 +473,7 @@ pub mod tests {
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,
 
-                    harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+                    harness_id: everruns_core::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                     default_version_id: None,
                     forked_from_agent_id: None,
                     forked_from_version_id: None,
@@ -483,11 +513,11 @@ pub mod tests {
                     name: "test-app".to_string(),
                     description: Some("test app".to_string()),
                     harness_id: HarnessId::new(),
-                    agent_id: Some(crate::typed_id::AgentId::new()),
-                    agent_version_policy: crate::app::AgentVersionPolicy::Default,
+                    agent_id: Some(everruns_core::typed_id::AgentId::new()),
+                    agent_version_policy: everruns_core::app::AgentVersionPolicy::Default,
                     agent_version_id: None,
-                    agent_identity_id: Some(crate::typed_id::AgentIdentityId::new()),
-                    owner_principal_id: crate::PrincipalId::from_seed(1),
+                    agent_identity_id: Some(everruns_core::typed_id::AgentIdentityId::new()),
+                    owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                     resolved_owner_user_id: None,
                     owner: None,
                     effective_owner: None,
@@ -504,13 +534,13 @@ pub mod tests {
                     Session {
                         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
                         id: session_id,
-                        workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
+                        workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
                         organization_id: "org_00000000000000000000000000000001".to_string(),
                         harness_id: HarnessId::new(),
                         agent_id: None,
                         agent_version_id: None,
                         agent_identity_id: None,
-                        owner_principal_id: crate::PrincipalId::from_seed(1),
+                        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                         resolved_owner_user_id: None,
                         owner: None,
                         effective_owner: None,
@@ -627,7 +657,7 @@ pub mod tests {
         async fn list_agents(&self) -> Result<Vec<Agent>> {
             Ok(vec![self.agent.clone()])
         }
-        async fn get_agent_by_id(&self, _id: crate::typed_id::AgentId) -> Result<Option<Agent>> {
+        async fn get_agent_by_id(&self, _id: everruns_core::typed_id::AgentId) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
         }
         async fn create_agent(
@@ -645,7 +675,7 @@ pub mod tests {
         }
         async fn update_agent(
             &self,
-            _id: crate::typed_id::AgentId,
+            _id: everruns_core::typed_id::AgentId,
             name: Option<&str>,
             display_name: Option<&str>,
             _desc: Option<&str>,
@@ -660,7 +690,7 @@ pub mod tests {
             }
             Ok(a)
         }
-        async fn delete_agent(&self, _id: crate::typed_id::AgentId) -> Result<()> {
+        async fn delete_agent(&self, _id: everruns_core::typed_id::AgentId) -> Result<()> {
             Ok(())
         }
         async fn list_apps(
@@ -800,14 +830,14 @@ pub mod tests {
         async fn list_sessions(
             &self,
             _limit: Option<usize>,
-            _agent_id: Option<crate::typed_id::AgentId>,
+            _agent_id: Option<everruns_core::typed_id::AgentId>,
         ) -> Result<Vec<Session>> {
             Ok(vec![self.session.clone()])
         }
         async fn create_session(
             &self,
             hid: HarnessId,
-            aid: Option<crate::typed_id::AgentId>,
+            aid: Option<everruns_core::typed_id::AgentId>,
             title: Option<&str>,
             locale: Option<&str>,
             blueprint_id: Option<&str>,
@@ -877,14 +907,14 @@ pub mod tests {
             agent_id: AgentId,
         ) -> Result<SessionParticipant> {
             let participant = SessionParticipant {
-                id: crate::typed_id::SessionParticipantId::new(),
+                id: everruns_core::typed_id::SessionParticipantId::new(),
                 session_id,
-                kind: crate::session::SessionParticipantKind::Agent,
+                kind: everruns_core::session::SessionParticipantKind::Agent,
                 agent_id: Some(agent_id),
                 agent_version_id: self.agent.default_version_id,
                 principal_id: self.session.owner_principal_id,
                 display_name: None,
-                role: crate::session::SessionParticipantRole::Member,
+                role: everruns_core::session::SessionParticipantRole::Member,
                 joined_at: chrono::Utc::now(),
                 left_at: None,
             };
@@ -899,7 +929,7 @@ pub mod tests {
                 model: "llmsim".to_string(),
                 context_window_tokens: Some(128_000),
                 estimated_input_tokens: 42,
-                sections: vec![crate::ContextReportSection {
+                sections: vec![everruns_core::ContextReportSection {
                     key: "conversation".to_string(),
                     label: "Conversation".to_string(),
                     tokens: 42,
@@ -941,7 +971,7 @@ pub mod tests {
             Ok(self.wait_for_idle_status.lock().unwrap().clone())
         }
         async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>> {
-            let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+            let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins();
             let mut caps: Vec<CapabilityInfo> = registry
                 .list()
                 .iter()
