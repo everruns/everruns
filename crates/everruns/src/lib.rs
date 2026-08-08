@@ -55,9 +55,16 @@
 //! # }
 //! ```
 
+// --- Value-first agent description ---------------------------------------
+mod agent;
+pub use agent::{Agent, AgentBuilder, BuildError, Model};
+
 // --- Runtime construction and execution ---------------------------------
+// Note: the value-first `AgentBuilder` above intentionally replaces the runtime
+// crate's low-level `AgentBuilder` at the facade root. The runtime builder
+// remains reachable as `everruns::runtime::AgentBuilder`.
 pub use everruns_runtime::{
-    AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
+    HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     SingleSessionBuilder, TurnResult,
 };
 
