@@ -39,7 +39,7 @@ pub fn register_platform_capabilities(
 /// grade-selected. The hosted registry server/worker use for catalog,
 /// validation, and execution (EVE-839).
 pub fn hosted_capability_registry_for_grade(
-    grade: everruns_core::capabilities::DeploymentGrade,
+    grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
     register_platform_capabilities(&mut registry);
