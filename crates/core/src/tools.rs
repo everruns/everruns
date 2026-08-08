@@ -2491,13 +2491,13 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct TestPlatformStore {
+    struct TestSubagentDelegate {
         sent_messages: Mutex<Vec<String>>,
     }
 
     #[async_trait]
     #[async_trait]
-    impl SubagentSessionDelegate for TestPlatformStore {
+    impl SubagentSessionDelegate for TestSubagentDelegate {
         async fn get_agent_by_id(
             &self,
             _id: crate::typed_id::AgentId,
@@ -3029,7 +3029,7 @@ mod tests {
     async fn test_spawn_background_executes_and_signals_session() {
         let session_id = SessionId::new();
         let file_store = Arc::new(TestFileStore::default());
-        let platform_store = Arc::new(TestPlatformStore::default());
+        let platform_store = Arc::new(TestSubagentDelegate::default());
         let storage_store = Arc::new(NoopStorageStore);
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let tool_registry = ToolRegistry::builder()
