@@ -384,7 +384,11 @@ async fn run_sandbox_maintenance_command(
     let result = client
         .exec(sandbox_id, command, None, Some(EXEC_TIMEOUT_MS), |_| {})
         .await
-        .map_err(ToolExecutionResult::tool_error)?;
+        .map_err(|err| {
+            ToolExecutionResult::tool_error(format!(
+                "Failed to {operation} in Daytona sandbox: {err}"
+            ))
+        })?;
     if result.exit_code == 0 {
         return Ok(());
     }
@@ -468,10 +472,9 @@ find "$workspace" -mindepth 1 -maxdepth 1 -exec rm -rf -- {{}} +"#,
         )
         .await;
     };
-    let command = format!(
+    let verify_command = format!(
         r#"set -eu
 mount={mount}
-workspace={workspace}
 revision={revision}
 case "$revision" in
     rev-[0-9]*) ;;
@@ -480,7 +483,24 @@ esac
 revision_dir="$mount/revisions/$revision"
 test -f "$revision_dir/COMPLETE"
 test -f "$revision_dir/workspace.tar.gz"
-(cd "$revision_dir" && sha256sum -c workspace.tar.gz.sha256)
+(cd "$revision_dir" && sha256sum -c workspace.tar.gz.sha256)"#,
+        mount = shell_escape(&recovery.mount_path),
+        revision = shell_escape(revision),
+    );
+    run_sandbox_maintenance_command(
+        client,
+        sandbox_id,
+        &verify_command,
+        "verify the recovery revision",
+    )
+    .await?;
+
+    let restore_command = format!(
+        r#"set -eu
+mount={mount}
+workspace={workspace}
+revision={revision}
+revision_dir="$mount/revisions/$revision"
 mkdir -p -- "$workspace"
 find "$workspace" -mindepth 1 -maxdepth 1 -exec rm -rf -- {{}} +
 tar -xzf "$revision_dir/workspace.tar.gz" -C "$workspace""#,
@@ -488,7 +508,13 @@ tar -xzf "$revision_dir/workspace.tar.gz" -C "$workspace""#,
         workspace = shell_escape(workspace_path),
         revision = shell_escape(revision),
     );
-    run_sandbox_maintenance_command(client, sandbox_id, &command, "restore the workspace").await
+    run_sandbox_maintenance_command(
+        client,
+        sandbox_id,
+        &restore_command,
+        "restore the workspace",
+    )
+    .await
 }
 
 async fn clear_recovery_storage(
