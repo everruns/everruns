@@ -94,10 +94,19 @@ export default function SessionsPageClient() {
     [searchParams],
   );
 
-  // Search is typed locally and committed to the URL on submit. Pushing every
-  // keystroke into history would make Back walk letter by letter.
+  // Search is typed locally and committed to the URL on submit or blur. Pushing
+  // every keystroke into the URL would make Back walk letter by letter.
   const [searchDraft, setSearchDraft] = useState(filters.search);
+  const [committedSearch, setCommittedSearch] = useState(filters.search);
   const [exporting, setExporting] = useState(false);
+
+  // The URL can change without the field being touched — selecting a saved view,
+  // or clearing filters. Re-sync the draft when it does, so the box never shows
+  // a term the list is not filtered by.
+  if (filters.search !== committedSearch) {
+    setCommittedSearch(filters.search);
+    setSearchDraft(filters.search);
+  }
 
   const applyFilters = useCallback(
     (next: SessionFilters) => {
@@ -112,6 +121,7 @@ export default function SessionsPageClient() {
     data: sessionsResponse,
     isLoading: sessionsLoading,
     error: sessionsError,
+    refetch: refetchSessions,
   } = useFilteredSessions(filters);
   const { data: facets, error: facetsError } = useSessionFacets(filters);
   const views = useSessionViews();
@@ -293,7 +303,7 @@ export default function SessionsPageClient() {
               icon={<Activity />}
               title="Could not load runs"
               description="The sessions list failed to load. Check your connection and try again."
-              action={<Button onClick={() => router.refresh()}>Retry</Button>}
+              action={<Button onClick={() => void refetchSessions()}>Retry</Button>}
             />
           ) : sessions.length === 0 ? (
             <EmptyState
