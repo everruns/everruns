@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { Blocks, BookOpen, Plug } from "lucide-react";
 import { useGlobalSearch } from "@/hooks/use-global-search";
 import type { OrganizationMembership } from "@/lib/api/types";
 
@@ -195,6 +196,18 @@ describe("useGlobalSearch", () => {
 
     expect(result.current).toContainEqual(
       expect.objectContaining({ category: "navigation", href }),
+    );
+  });
+
+  it.each([
+    ["skills", "/skills", BookOpen],
+    ["capabilities", "/capabilities", Blocks],
+    ["plugins", "/plugins", Plug],
+  ])("uses the semantic %s icon in navigation search", (query, href, icon) => {
+    const { result } = renderHook(() => useGlobalSearch(query));
+
+    expect(result.current).toContainEqual(
+      expect.objectContaining({ category: "navigation", href, icon }),
     );
   });
 

@@ -13,11 +13,12 @@ import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Bot, Layers, Plus, Pencil, Puzzle } from "lucide-react";
+import { CircleOff, Bot, Layers, Plus, Pencil } from "lucide-react";
 import { EntityCard } from "@/components/ui/entity-card";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -43,6 +44,8 @@ import { cn } from "@/lib/utils";
 
 const UNCATEGORIZED = "Uncategorized";
 type StatusTab = "all" | CapabilityStatus;
+
+const CapabilitiesIcon = registryDomainIcons.capabilities;
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -258,7 +261,7 @@ export default function CapabilitiesPage() {
       <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Capabilities" }]} />
 
       <PageMasthead
-        icon={<Puzzle />}
+        icon={<CapabilitiesIcon />}
         title="Capabilities"
         badges={
           <Badge variant="outline" className="font-mono">

@@ -15,7 +15,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Pencil, Plus, Puzzle, Settings, Wrench, BookOpen, FileText } from "lucide-react";
+import { Pencil, Plus, Settings, Wrench, BookOpen, FileText } from "lucide-react";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import type { DeclarativeCapabilityDefinition } from "@/lib/api/types";
 import { useCreateDeclarativeCapability, useUpdateDeclarativeCapability } from "@/hooks";
 import { McpServersEditor } from "./mcp-servers-editor";
@@ -41,6 +42,7 @@ import {
 } from "@/components/layout";
 
 const FORM_ID = "capability-edit-form";
+const CapabilitiesIcon = registryDomainIcons.capabilities;
 
 function TabCount({ count }: { count: number }) {
   if (count === 0) return null;
@@ -141,7 +143,7 @@ export function DeclarativeCapabilityForm({
       />
 
       <PageMasthead
-        icon={<Puzzle />}
+        icon={<CapabilitiesIcon />}
         title={title}
         badges={
           <Badge variant="accent">

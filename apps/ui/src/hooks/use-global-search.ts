@@ -28,18 +28,15 @@ import {
   Shield,
   Boxes,
   UserRound,
-  BookOpen,
-  Puzzle,
   Rocket,
   Settings,
   Cog,
-  Server,
   Workflow,
   ListTodo,
   Calendar,
   MessageCircle,
   FlaskConical,
-  Cpu,
+  Server,
   HardDrive,
   Building2,
   ChartColumn,
@@ -48,7 +45,12 @@ import {
   WalletCards,
   CircuitBoard,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/lib/capability-icons";
+import {
+  registryDomainIcons,
+  registryNavigationByHref,
+  type RegistryNavigationItem,
+} from "@/lib/registry-navigation";
 import { useAgents } from "@/hooks/use-agents";
 import { useSessions } from "@/hooks/use-sessions";
 import { useHarnesses } from "@/hooks/use-harnesses";
@@ -91,7 +93,7 @@ export type SearchResultCategory =
 export interface SearchResult {
   id: string;
   category: SearchResultCategory;
-  icon: LucideIcon;
+  icon: IconComponent;
   title: string;
   /** Breadcrumb-style subtitle, e.g. "Agents > Daytona Coder" */
   subtitle?: string;
@@ -102,8 +104,17 @@ export interface SearchResult {
 interface NavigationPage {
   title: string;
   href: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   keywords?: string[];
+}
+
+function registryPage(item: RegistryNavigationItem): NavigationPage {
+  return {
+    title: item.name,
+    href: item.href,
+    icon: item.icon,
+    keywords: item.keywords,
+  };
 }
 
 const NAVIGATION_PAGES: NavigationPage[] = [
@@ -149,12 +160,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Shield,
     keywords: ["template", "config"],
   },
-  {
-    title: "Skills",
-    href: "/skills",
-    icon: BookOpen,
-    keywords: ["ability", "tool"],
-  },
+  registryPage(registryNavigationByHref["/skills"]),
   {
     title: "Memory",
     href: "/memory",
@@ -167,19 +173,9 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Library,
     keywords: ["knowledge", "index", "search", "retrieval"],
   },
-  {
-    title: "Models",
-    href: "/models",
-    icon: Cpu,
-    keywords: ["llm", "openai", "anthropic", "default model"],
-  },
-  { title: "Capabilities", href: "/capabilities", icon: Puzzle },
-  {
-    title: "Plugins",
-    href: "/plugins",
-    icon: Puzzle,
-    keywords: ["marketplace", "extension", "integration"],
-  },
+  registryPage(registryNavigationByHref["/models"]),
+  registryPage(registryNavigationByHref["/capabilities"]),
+  registryPage(registryNavigationByHref["/plugins"]),
   {
     title: "Apps",
     href: "/apps",
@@ -198,12 +194,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Telescope,
     keywords: ["monitor", "score", "production eval"],
   },
-  {
-    title: "MCP Servers",
-    href: "/mcp-servers",
-    icon: Server,
-    keywords: ["mcp", "tool", "integration"],
-  },
+  registryPage(registryNavigationByHref["/mcp-servers"]),
   {
     title: "Settings",
     href: "/settings",
@@ -571,7 +562,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `skill:${skill.id}`,
           category: "skill",
-          icon: BookOpen,
+          icon: registryDomainIcons.skills,
           title: skill.name,
           subtitle: `Skills > ${skill.name}`,
           href: `/skills/${skill.id}`,
@@ -588,7 +579,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `mcp:${server.id}`,
           category: "mcp_server",
-          icon: Server,
+          icon: registryDomainIcons.mcpServers,
           title: server.name,
           subtitle: `MCP Servers > ${server.name}`,
           href: `/mcp-servers`,
@@ -622,7 +613,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `capability:${capability.id}`,
           category: "capability",
-          icon: Puzzle,
+          icon: registryDomainIcons.capabilities,
           title: capabilityName,
           subtitle: `Capabilities > ${capabilityName}`,
           href: `/capabilities/${capability.id}`,
@@ -649,7 +640,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `declarative-capability:${capability.id}`,
           category: "capability",
-          icon: Puzzle,
+          icon: registryDomainIcons.capabilities,
           title,
           subtitle: `Capabilities > ${capability.capability_id}`,
           href: "/capabilities",
@@ -756,7 +747,7 @@ export function useGlobalSearch(query: string) {
         results.push({
           id: `plugin:${plugin.id}`,
           category: "plugin",
-          icon: Puzzle,
+          icon: registryDomainIcons.plugins,
           title,
           subtitle: `Plugins > ${title}`,
           href: "/plugins",

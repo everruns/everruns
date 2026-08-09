@@ -73,11 +73,11 @@ import {
   RailSection,
   PageFooter,
 } from "@/components/layout";
-import { capabilityIconMap } from "@/lib/capability-icons";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 
-const McpIcon = capabilityIconMap.mcp;
+const McpIcon = registryDomainIcons.mcpServers;
 
 /** Human-readable label for the protocol-era policy. Undefined means `auto`. */
 function protocolModeLabel(mode?: McpProtocolMode): string {
