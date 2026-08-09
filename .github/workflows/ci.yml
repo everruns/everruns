@@ -125,6 +125,7 @@ jobs:
               - 'crates/**'
               - 'integrations/**'
               - 'scripts/cli-e2e-test.sh'
+              - 'scripts/lib/check-everruns-examples.sh'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -469,6 +470,9 @@ jobs:
           # test and the lib doctest both build one session and run one llmsim turn
           # importing only `everruns`. Pure, no network/credentials.
           cargo test -p everruns
+          # Dynamically inventories every crates/everruns/examples/*.rs target,
+          # rejects internal-crate imports, and compiles the complete set offline.
+          bash scripts/lib/check-everruns-examples.sh
           cargo run -p everruns-runtime --features lua --example lua_code_mode_agent
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
           cargo run -p everruns-runtime --example mount_fs_workspace
