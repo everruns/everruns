@@ -104,18 +104,25 @@ jest.mock("@/components/layout/notification-bell", () => ({
 }));
 
 // Mock feature flags provider
+const mockFeatureFlags = {
+  global_chat: true,
+  notifications: true,
+  evals: true,
+  skills: true,
+  memory: true,
+  knowledge: true,
+  plugins: true,
+  app_budgets: true,
+  agent_versions: true,
+  voice: true,
+  agent_delegation: true,
+  observers: true,
+  public_chat: true,
+  webmcp: true,
+};
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlags: () => ({
-    global_chat: true,
-    notifications: true,
-    evals: true,
-    app_budgets: true,
-    agent_versions: true,
-    voice: true,
-    agent_delegation: true,
-    observers: true,
-  }),
-  useFeatureFlag: (flag: string) => flag === "notifications",
+  useFeatureFlags: () => mockFeatureFlags,
+  useFeatureFlag: (flag: string) => mockFeatureFlags[flag as keyof typeof mockFeatureFlags],
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
@@ -142,6 +149,22 @@ jest.mock("@/hooks/use-policies", () => ({
 describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
+    Object.assign(mockFeatureFlags, {
+      global_chat: true,
+      notifications: true,
+      evals: true,
+      skills: true,
+      memory: true,
+      knowledge: true,
+      plugins: true,
+      app_budgets: true,
+      agent_versions: true,
+      voice: true,
+      agent_delegation: true,
+      observers: true,
+      public_chat: true,
+      webmcp: true,
+    });
     mockPush.mockClear();
     mockPrefetch.mockClear();
     mockThreads.mockReturnValue([]);
@@ -323,6 +346,26 @@ describe("Sidebar", () => {
     expect(screen.getByText("Evals")).toBeInTheDocument();
     expect(screen.getByText("Observers")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("hides opt-in feature navigation when its flags are disabled", () => {
+    Object.assign(mockFeatureFlags, {
+      evals: false,
+      skills: false,
+      memory: false,
+      knowledge: false,
+      plugins: false,
+      observers: false,
+    });
+
+    render(<Sidebar />);
+
+    expect(screen.queryByText("Evals")).not.toBeInTheDocument();
+    expect(screen.queryByText("Skills")).not.toBeInTheDocument();
+    expect(screen.queryByText("Memory")).not.toBeInTheDocument();
+    expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quality")).not.toBeInTheDocument();
   });
 
   it("renders correct navigation links", () => {

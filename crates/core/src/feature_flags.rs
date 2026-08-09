@@ -35,6 +35,14 @@ pub struct FeatureFlags {
     pub notifications: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
+    /// Skills registry management UI. Experimental.
+    pub skills: bool,
+    /// Workspace memory management UI. Experimental.
+    pub memory: bool,
+    /// Knowledge index management UI. Experimental.
+    pub knowledge: bool,
+    /// Plugin marketplace and installed-plugin management UI. Experimental.
+    pub plugins: bool,
     /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
     pub app_budgets: bool,
@@ -124,6 +132,33 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
     },
     FeatureFlagDefinition {
+        name: "skills",
+        label: "Skills",
+        description: "Create and manage reusable instruction packages that teach agents \
+             specialized workflows.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "memory",
+        label: "Memory",
+        description: "Manage knowledge stores agents can read, including manual notes and \
+             synchronized files.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "knowledge",
+        label: "Knowledge indexes",
+        description: "Connect external document collections and make them searchable by agents.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "plugins",
+        label: "Plugins",
+        description: "Install and manage extensions that add integrations, skills, and other \
+             capabilities.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
         name: "app_budgets",
         label: "App budgets",
         description: "Adds spending limits scoped to individual apps and channels, with automatic \
@@ -182,6 +217,10 @@ impl FeatureFlags {
             global_chat: opt_in("global_chat", system.global_chat),
             notifications: opt_in("notifications", system.notifications),
             evals: opt_in("evals", system.evals),
+            skills: opt_in("skills", system.skills),
+            memory: opt_in("memory", system.memory),
+            knowledge: opt_in("knowledge", system.knowledge),
+            plugins: opt_in("plugins", system.plugins),
             app_budgets: opt_in("app_budgets", system.app_budgets),
             agent_versions: opt_in("agent_versions", system.agent_versions),
             voice: opt_in("voice", system.voice),
@@ -198,6 +237,10 @@ impl FeatureFlags {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
+            skills: experimental_flag("FEATURE_SKILLS", grade),
+            memory: experimental_flag("FEATURE_MEMORY", grade),
+            knowledge: experimental_flag("FEATURE_KNOWLEDGE", grade),
+            plugins: experimental_flag("FEATURE_PLUGINS", grade),
             app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
             agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
             voice: experimental_flag("FEATURE_VOICE", grade),
@@ -225,6 +268,10 @@ impl FeatureFlags {
             ("global_chat".to_string(), self.global_chat),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
+            ("skills".to_string(), self.skills),
+            ("memory".to_string(), self.memory),
+            ("knowledge".to_string(), self.knowledge),
+            ("plugins".to_string(), self.plugins),
             ("app_budgets".to_string(), self.app_budgets),
             ("agent_versions".to_string(), self.agent_versions),
             ("voice".to_string(), self.voice),
@@ -241,6 +288,10 @@ impl FeatureFlags {
             "global_chat" => self.global_chat,
             "notifications" => self.notifications,
             "evals" => self.evals,
+            "skills" => self.skills,
+            "memory" => self.memory,
+            "knowledge" => self.knowledge,
+            "plugins" => self.plugins,
             "app_budgets" => self.app_budgets,
             "agent_versions" => self.agent_versions,
             "voice" => self.voice,
@@ -259,6 +310,10 @@ impl FeatureFlags {
             global_chat: true,
             notifications: true,
             evals: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
             app_budgets: true,
             agent_versions: true,
             voice: true,
@@ -417,6 +472,10 @@ mod tests {
             global_chat: true,
             notifications: true,
             evals: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
             app_budgets: true,
             agent_versions: true,
             voice: true,
@@ -428,6 +487,10 @@ mod tests {
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("evals"));
+        assert!(flags.is_enabled("skills"));
+        assert!(flags.is_enabled("memory"));
+        assert!(flags.is_enabled("knowledge"));
+        assert!(flags.is_enabled("plugins"));
         assert!(flags.is_enabled("app_budgets"));
         assert!(flags.is_enabled("agent_versions"));
         assert!(flags.is_enabled("voice"));
@@ -448,6 +511,10 @@ mod tests {
             global_chat: true,
             notifications: true,
             evals: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
             app_budgets: true,
             agent_versions: true,
             voice: true,
@@ -565,6 +632,38 @@ mod tests {
 
         let effective_none = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
         assert!(!effective_none.global_chat);
+    }
+
+    #[test]
+    fn test_optional_ui_modules_require_org_opt_in() {
+        let system = FeatureFlags {
+            evals: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
+            ..FeatureFlags::default()
+        };
+        let disabled = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
+        assert!(!disabled.evals);
+        assert!(!disabled.skills);
+        assert!(!disabled.memory);
+        assert!(!disabled.knowledge);
+        assert!(!disabled.plugins);
+
+        let org = std::collections::HashMap::from([
+            ("evals".to_string(), true),
+            ("skills".to_string(), true),
+            ("memory".to_string(), true),
+            ("knowledge".to_string(), true),
+            ("plugins".to_string(), true),
+        ]);
+        let enabled = FeatureFlags::for_org(&system, &org);
+        assert!(enabled.evals);
+        assert!(enabled.skills);
+        assert!(enabled.memory);
+        assert!(enabled.knowledge);
+        assert!(enabled.plugins);
     }
 
     #[test]

@@ -29,6 +29,7 @@ async function mockAppApi(page: Page) {
         global_chat: false,
         notifications: false,
         evals: false,
+        knowledge: true,
         app_budgets: false,
         agent_versions: false,
         voice: false,

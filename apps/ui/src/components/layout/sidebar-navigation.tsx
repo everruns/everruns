@@ -117,25 +117,24 @@ export function SidebarNavigation({
    *  Chats section to hang the live thread list off the nav entry. */
   renderSectionExtra?: (section: NavigationSection) => ReactNode;
 }) {
-  let visibleIndex = 0;
+  const visibleSections = sections.filter(
+    (section) =>
+      (!section.devOnly || isDev) &&
+      section.items.some((item) => !item.flag || featureFlags[item.flag]),
+  );
 
   return (
     <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 bg-background py-2.5">
-      {sections.map((section, index) => {
-        if (section.devOnly && !isDev) return null;
-        const isFirst = visibleIndex === 0;
-        visibleIndex += 1;
-        return (
-          <NavSection
-            key={section.label ?? `section-${index}`}
-            section={section}
-            pathname={pathname}
-            featureFlags={featureFlags}
-            isFirst={isFirst}
-            renderExtra={renderSectionExtra}
-          />
-        );
-      })}
+      {visibleSections.map((section, index) => (
+        <NavSection
+          key={section.label ?? `section-${index}`}
+          section={section}
+          pathname={pathname}
+          featureFlags={featureFlags}
+          isFirst={index === 0}
+          renderExtra={renderSectionExtra}
+        />
+      ))}
     </nav>
   );
 }

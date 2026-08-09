@@ -13,8 +13,9 @@ jest.mock("@/hooks/use-sessions", () => ({
 jest.mock("@/hooks/use-harnesses", () => ({
   useHarnesses: () => ({ data: [] }),
 }));
+const mockUseSkills = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }));
 jest.mock("@/hooks/use-skills", () => ({
-  useSkills: () => ({ data: [] }),
+  useSkills: (options?: { enabled?: boolean }) => mockUseSkills(options),
 }));
 jest.mock("@/hooks/use-mcp-servers", () => ({
   useMcpServers: () => ({ data: [] }),
@@ -33,39 +34,42 @@ jest.mock("@/hooks/use-apps", () => ({
 jest.mock("@/hooks/use-agent-identities", () => ({
   useAgentIdentities: () => ({ data: [] }),
 }));
+const mockUseMemories = jest.fn((_options?: { enabled?: boolean }) => ({
+  data: [
+    {
+      id: "mem_product",
+      name: "Product Notes",
+      description: "Product decisions",
+    },
+  ],
+}));
 jest.mock("@/hooks/use-memory", () => ({
-  useMemories: () => ({
-    data: [
-      {
-        id: "mem_product",
-        name: "Product Notes",
-        description: "Product decisions",
-      },
-    ],
-  }),
+  useMemories: (options?: { enabled?: boolean }) => mockUseMemories(options),
+}));
+const mockUseKnowledgeIndexes = jest.fn((_options?: { enabled?: boolean }) => ({
+  data: [
+    {
+      id: "kidx_docs",
+      name: "Documentation Index",
+      description: "Published documentation",
+    },
+  ],
 }));
 jest.mock("@/hooks/use-knowledge-indexes", () => ({
-  useKnowledgeIndexes: () => ({
-    data: [
-      {
-        id: "kidx_docs",
-        name: "Documentation Index",
-        description: "Published documentation",
-      },
-    ],
-  }),
+  useKnowledgeIndexes: (options?: { enabled?: boolean }) => mockUseKnowledgeIndexes(options),
+}));
+const mockUseInstalledPlugins = jest.fn((_options?: { enabled?: boolean }) => ({
+  data: [
+    {
+      id: "plugin_email",
+      name: "email-service",
+      display_name: "Email Service",
+      description: "Transactional email",
+    },
+  ],
 }));
 jest.mock("@/hooks/use-plugins", () => ({
-  useInstalledPlugins: () => ({
-    data: [
-      {
-        id: "plugin_email",
-        name: "email-service",
-        display_name: "Email Service",
-        description: "Transactional email",
-      },
-    ],
-  }),
+  useInstalledPlugins: (options?: { enabled?: boolean }) => mockUseInstalledPlugins(options),
 }));
 jest.mock("@/hooks/use-observers", () => ({
   useObservers: () => ({
@@ -91,9 +95,17 @@ jest.mock("@/hooks/use-reporting", () => ({
   useSavedReports: (enabled?: boolean) => mockUseSavedReports(enabled),
 }));
 
-const mockFeatureFlags = { evals: false, observers: true };
+const mockFeatureFlags = {
+  global_chat: true,
+  evals: false,
+  skills: true,
+  memory: true,
+  knowledge: true,
+  plugins: true,
+  observers: true,
+};
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: (flag: keyof typeof mockFeatureFlags) => mockFeatureFlags[flag],
+  useFeatureFlags: () => mockFeatureFlags,
 }));
 
 const mockSetCurrentOrg = jest.fn();
@@ -122,10 +134,21 @@ describe("useGlobalSearch", () => {
   beforeEach(() => {
     mockSetCurrentOrg.mockClear();
     mockUseAgents.mockClear();
+    mockUseSkills.mockClear();
     mockUseEvals.mockClear();
+    mockUseMemories.mockClear();
+    mockUseKnowledgeIndexes.mockClear();
+    mockUseInstalledPlugins.mockClear();
     mockUseSavedReports.mockClear();
-    mockFeatureFlags.evals = false;
-    mockFeatureFlags.observers = true;
+    Object.assign(mockFeatureFlags, {
+      global_chat: true,
+      evals: false,
+      skills: true,
+      memory: true,
+      knowledge: true,
+      plugins: true,
+      observers: true,
+    });
   });
 
   it("defers the evals fetch when the feature flag is off", () => {
@@ -137,6 +160,28 @@ describe("useGlobalSearch", () => {
     mockFeatureFlags.evals = true;
     renderHook(() => useGlobalSearch("eval"));
     expect(mockUseEvals).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it("does not fetch or reveal opt-in features when their flags are off", () => {
+    Object.assign(mockFeatureFlags, {
+      evals: false,
+      skills: false,
+      memory: false,
+      knowledge: false,
+      plugins: false,
+    });
+
+    const { result } = renderHook(() => useGlobalSearch("memory"));
+
+    expect(mockUseSkills).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseMemories).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseKnowledgeIndexes).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseInstalledPlugins).toHaveBeenCalledWith({ enabled: false });
+    expect(result.current).not.toContainEqual(expect.objectContaining({ href: "/memory" }));
+    expect(result.current).not.toContainEqual(
+      expect.objectContaining({ href: "/memory/mem_product" }),
+    );
   });
 
   it("does not enable entity fetches before the user enters a query", () => {

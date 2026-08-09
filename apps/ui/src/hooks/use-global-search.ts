@@ -2,7 +2,7 @@
  * Aggregates search results from multiple sources for the command palette.
  *
  * Sources:
- * 1. Static navigation pages (always available, no fetch)
+ * 1. Static navigation pages (filtered by feature flags, no entity fetch)
  * 2. Organizations (client-side filter over authenticated user's memberships)
  * 3. Agents (client-side filter over cached list)
  * 4. Sessions (client-side filter over first page)
@@ -69,7 +69,8 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useFeatureFlags } from "@/providers/feature-flags-provider";
+import type { FeatureFlags } from "@/lib/api/types";
 
 export type SearchResultCategory =
   | "navigation"
@@ -106,14 +107,16 @@ interface NavigationPage {
   href: string;
   icon: IconComponent;
   keywords?: string[];
+  flag?: keyof FeatureFlags;
 }
 
-function registryPage(item: RegistryNavigationItem): NavigationPage {
+function registryPage(item: RegistryNavigationItem, flag?: keyof FeatureFlags): NavigationPage {
   return {
     title: item.name,
     href: item.href,
     icon: item.icon,
     keywords: item.keywords,
+    flag,
   };
 }
 
@@ -141,6 +144,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/chats",
     icon: MessageCircle,
     keywords: ["global chat", "thread"],
+    flag: "global_chat",
   },
   {
     title: "Agents",
@@ -160,22 +164,24 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: Shield,
     keywords: ["template", "config"],
   },
-  registryPage(registryNavigationByHref["/skills"]),
+  registryPage(registryNavigationByHref["/skills"], "skills"),
   {
     title: "Memory",
     href: "/memory",
     icon: HardDrive,
     keywords: ["workspace", "files", "storage"],
+    flag: "memory",
   },
   {
     title: "Knowledge Indexes",
     href: "/knowledge-indexes",
     icon: Library,
     keywords: ["knowledge", "index", "search", "retrieval"],
+    flag: "knowledge",
   },
   registryPage(registryNavigationByHref["/models"]),
   registryPage(registryNavigationByHref["/capabilities"]),
-  registryPage(registryNavigationByHref["/plugins"]),
+  registryPage(registryNavigationByHref["/plugins"], "plugins"),
   {
     title: "Apps",
     href: "/apps",
@@ -187,12 +193,14 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/evals",
     icon: FlaskConical,
     keywords: ["evaluation", "test", "benchmark", "score"],
+    flag: "evals",
   },
   {
     title: "Observers",
     href: "/observers",
     icon: Telescope,
     keywords: ["monitor", "score", "production eval"],
+    flag: "observers",
   },
   registryPage(registryNavigationByHref["/mcp-servers"]),
   {
@@ -279,12 +287,18 @@ const NAVIGATION_PAGES: NavigationPage[] = [
 /** Known ID prefixes and where they resolve. */
 const ID_PREFIX_MAP: Record<
   string,
-  { category: SearchResultCategory; label: string; path: string; listOnly?: boolean }
+  {
+    category: SearchResultCategory;
+    label: string;
+    path: string;
+    listOnly?: boolean;
+    flag?: keyof FeatureFlags;
+  }
 > = {
   agent_: { category: "agent", label: "Agent", path: "/agents" },
   session_: { category: "session", label: "Session", path: "/sessions" },
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
-  skill_: { category: "skill", label: "Skill", path: "/skills" },
+  skill_: { category: "skill", label: "Skill", path: "/skills", flag: "skills" },
   mcp_: {
     category: "mcp_server",
     label: "MCP Server",
@@ -297,12 +311,28 @@ const ID_PREFIX_MAP: Record<
     path: "/capabilities",
     listOnly: true,
   },
-  eval_: { category: "eval", label: "Eval", path: "/evals" },
+  eval_: { category: "eval", label: "Eval", path: "/evals", flag: "evals" },
   app_: { category: "app", label: "App", path: "/apps" },
-  mem_: { category: "id", label: "Memory", path: "/memory" },
-  kidx_: { category: "knowledge_index", label: "Knowledge Index", path: "/knowledge-indexes" },
-  plugin_: { category: "plugin", label: "Plugin", path: "/plugins", listOnly: true },
-  observer_: { category: "observer", label: "Observer", path: "/observers" },
+  mem_: { category: "id", label: "Memory", path: "/memory", flag: "memory" },
+  kidx_: {
+    category: "knowledge_index",
+    label: "Knowledge Index",
+    path: "/knowledge-indexes",
+    flag: "knowledge",
+  },
+  plugin_: {
+    category: "plugin",
+    label: "Plugin",
+    path: "/plugins",
+    listOnly: true,
+    flag: "plugins",
+  },
+  observer_: {
+    category: "observer",
+    label: "Observer",
+    path: "/observers",
+    flag: "observers",
+  },
   identity_: {
     category: "agent_identity",
     label: "Agent Identity",
@@ -329,7 +359,18 @@ const EMPTY_ARRAY: never[] = [];
 export function useGlobalSearch(query: string) {
   const { locale } = useLocale();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
+  const featureFlags = useFeatureFlags();
   const entitySearchEnabled = query.trim().length > 0;
+  const skillsEnabled = featureFlags.skills;
+  const evalsEnabled = featureFlags.evals;
+  const memoryEnabled = featureFlags.memory;
+  const knowledgeEnabled = featureFlags.knowledge;
+  const pluginsEnabled = featureFlags.plugins;
+  const observersEnabled = featureFlags.observers;
+  const navigationPages = useMemo(
+    () => NAVIGATION_PAGES.filter((page) => !page.flag || featureFlags[page.flag]),
+    [featureFlags],
+  );
   const { data: agentsData } = useAgents({ enabled: entitySearchEnabled });
   const { data: sessionsData } = useSessions(
     undefined,
@@ -337,22 +378,22 @@ export function useGlobalSearch(query: string) {
     { enabled: entitySearchEnabled },
   );
   const { data: harnessesData } = useHarnesses({ enabled: entitySearchEnabled });
-  const { data: skillsData } = useSkills({ enabled: entitySearchEnabled });
+  const { data: skillsData } = useSkills({ enabled: skillsEnabled && entitySearchEnabled });
   const { data: mcpServersData } = useMcpServers({ enabled: entitySearchEnabled });
   const { data: capabilitiesData } = useCapabilities({ enabled: entitySearchEnabled });
   const { data: declarativeCapabilitiesData } = useDeclarativeCapabilities({
     enabled: entitySearchEnabled,
   });
-  // Evals is an experimental, flag-gated feature; only fetch when enabled to
-  // avoid a 404 on every palette open for orgs without the flag.
-  const evalsEnabled = useFeatureFlag("evals");
   const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
   const { data: appsData } = useApps({ enabled: entitySearchEnabled });
   const { data: agentIdentitiesData } = useAgentIdentities({ enabled: entitySearchEnabled });
-  const { data: memoriesData } = useMemories({ enabled: entitySearchEnabled });
-  const { data: knowledgeIndexesData } = useKnowledgeIndexes({ enabled: entitySearchEnabled });
-  const { data: installedPluginsData } = useInstalledPlugins({ enabled: entitySearchEnabled });
-  const observersEnabled = useFeatureFlag("observers");
+  const { data: memoriesData } = useMemories({ enabled: memoryEnabled && entitySearchEnabled });
+  const { data: knowledgeIndexesData } = useKnowledgeIndexes({
+    enabled: knowledgeEnabled && entitySearchEnabled,
+  });
+  const { data: installedPluginsData } = useInstalledPlugins({
+    enabled: pluginsEnabled && entitySearchEnabled,
+  });
   const { data: observersData } = useObservers({
     enabled: observersEnabled && entitySearchEnabled,
   });
@@ -361,24 +402,24 @@ export function useGlobalSearch(query: string) {
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
   const harnesses = harnessesData ?? EMPTY_ARRAY;
-  const skills = skillsData ?? EMPTY_ARRAY;
+  const skills = skillsEnabled ? (skillsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const mcpServers = mcpServersData ?? EMPTY_ARRAY;
   const capabilities = capabilitiesData ?? EMPTY_ARRAY;
   const declarativeCapabilities = declarativeCapabilitiesData ?? EMPTY_ARRAY;
-  const evals = evalsData ?? EMPTY_ARRAY;
+  const evals = evalsEnabled ? (evalsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const apps = appsData ?? EMPTY_ARRAY;
   const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
-  const memories = memoriesData ?? EMPTY_ARRAY;
-  const knowledgeIndexes = knowledgeIndexesData ?? EMPTY_ARRAY;
-  const installedPlugins = installedPluginsData ?? EMPTY_ARRAY;
-  const observers = observersData ?? EMPTY_ARRAY;
+  const memories = memoryEnabled ? (memoriesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const knowledgeIndexes = knowledgeEnabled ? (knowledgeIndexesData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const installedPlugins = pluginsEnabled ? (installedPluginsData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
+  const observers = observersEnabled ? (observersData ?? EMPTY_ARRAY) : EMPTY_ARRAY;
   const savedReports = savedReportsData ?? EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) {
       // Show top navigation pages when empty
-      return NAVIGATION_PAGES.slice(0, 6).map(
+      return navigationPages.slice(0, 6).map(
         (page): SearchResult => ({
           id: `nav:${page.href}`,
           category: "navigation",
@@ -395,6 +436,7 @@ export function useGlobalSearch(query: string) {
 
     // 1. ID-based lookup — resolve entity name from cached data when possible
     for (const [prefix, meta] of Object.entries(ID_PREFIX_MAP)) {
+      if (meta.flag && !featureFlags[meta.flag]) continue;
       if (q.startsWith(prefix) || q.startsWith(prefix.replace("_", ""))) {
         // Normalize: allow "session3242" or "session_3242"
         const idValue = q.startsWith(prefix) ? q : `${prefix}${q.slice(prefix.length - 1)}`;
@@ -446,7 +488,7 @@ export function useGlobalSearch(query: string) {
 
     // 2. Navigation pages
     let navCount = 0;
-    for (const page of NAVIGATION_PAGES) {
+    for (const page of navigationPages) {
       if (navCount >= MAX_PER_CATEGORY) break;
       if (matchesTokens(tokens, page.title, ...(page.keywords ?? []))) {
         results.push({
@@ -794,6 +836,8 @@ export function useGlobalSearch(query: string) {
   }, [
     query,
     locale,
+    featureFlags,
+    navigationPages,
     currentOrg?.public_id,
     organizations,
     setCurrentOrg,
