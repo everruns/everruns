@@ -135,6 +135,7 @@ describe("Chats surface", () => {
 describe("Thread surface", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1" }),
       agent: { id: "agent_1", name: "scout", display_name: "Scout" },
@@ -191,6 +192,28 @@ describe("Thread surface", () => {
 
     expect(screen.getByText("Generic")).toBeInTheDocument();
     expect(screen.queryByText("No agent bound")).not.toBeInTheDocument();
+  });
+
+  it("titles an untitled thread from the list preview", async () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+    // The session endpoint carries no preview; the list does.
+    mockUseChatThreads.mockReturnValue({
+      threads: [thread({ id: "sess_1", title: null, preview: "what broke last night?" })],
+      isLoading: false,
+      error: null,
+    });
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "sess_1", title: null }),
+      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agentId: "agent_1",
+      sessionLoading: false,
+    });
+
+    await renderThread();
+
+    expect(screen.getByRole("button", { name: "Rename thread" })).toHaveTextContent(
+      "what broke last night?",
+    );
   });
 
   it("says so when the thread does not exist", async () => {

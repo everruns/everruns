@@ -24,6 +24,7 @@ import { ChatsDisabled } from "@/components/chat/chats-disabled";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHarnesses, usePageTitle } from "@/hooks";
+import { useChatThreads } from "@/hooks/use-chat-threads";
 import { threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -31,6 +32,15 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 function ThreadContent({ threadId }: { threadId: string }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
   const { data: harnesses } = useHarnesses();
+  // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
+  // an untitled thread takes its display title from the same list the sidebar
+  // reads. Both surfaces then name the thread identically.
+  const { threads } = useChatThreads();
+  const listEntry = threads.find((candidate) => candidate.id === threadId);
+  const title = threadTitle({
+    title: session?.title ?? null,
+    preview: session?.preview ?? listEntry?.preview ?? null,
+  });
 
   // A Platform Chat thread is bound to a harness rather than an agent; name that
   // harness so the binding still reads as a fact instead of a blank.
@@ -43,7 +53,7 @@ function ThreadContent({ threadId }: { threadId: string }) {
       ? getDisplayName(harness)
       : undefined;
 
-  usePageTitle(session ? threadTitle(session) : null, "Chats");
+  usePageTitle(session ? title : null, "Chats");
 
   if (sessionLoading) {
     return (
@@ -70,6 +80,7 @@ function ThreadContent({ threadId }: { threadId: string }) {
     <div className="flex h-full flex-col bg-background bg-brand-dots">
       <ChatThreadHeader
         session={session}
+        title={title}
         counterpart={counterpart}
         counterpartHref={
           agentId ? (

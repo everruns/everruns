@@ -20,9 +20,8 @@ import { AgentAvatar } from "@/components/chat/agent-avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
-import { threadTitle } from "@/lib/chat-threads";
 
-function ThreadTitle({ session }: { session: Session }) {
+function ThreadTitle({ session, title }: { session: Session; title: string }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(session.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -69,9 +68,7 @@ function ThreadTitle({ session }: { session: Session }) {
       }}
       aria-label="Rename thread"
     >
-      <span className="truncate text-base font-semibold tracking-tight">
-        {threadTitle(session)}
-      </span>
+      <span className="truncate text-base font-semibold tracking-tight">{title}</span>
       <Pencil className="size-3.5 flex-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </button>
   );
@@ -104,10 +101,13 @@ function ShareButton() {
 
 export function ChatThreadHeader({
   session,
+  title,
   counterpart,
   counterpartHref,
 }: {
   session: Session;
+  /** Display title, already resolved through the thread-title fallbacks. */
+  title: string;
   /** Display name of the agent (or harness) this thread is bound to. */
   counterpart?: string;
   /** Optional linked rendering of the counterpart, e.g. through to the agent. */
@@ -117,7 +117,7 @@ export function ChatThreadHeader({
     <div className="flex items-center gap-3 border-b border-border/70 bg-background/70 px-4 py-3 backdrop-blur-[1px] sm:px-6">
       <AgentAvatar name={counterpart} />
       <div className="flex min-w-0 flex-col">
-        <ThreadTitle session={session} />
+        <ThreadTitle session={session} title={title} />
         <span className="truncate text-xs text-muted-foreground">
           {counterpartHref ?? counterpart ?? "No agent bound"}
         </span>
