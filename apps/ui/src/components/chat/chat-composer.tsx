@@ -53,6 +53,7 @@ export function ChatComposer({
   isDraggingOver,
   dropZoneProps,
   handlePaste,
+  placeholder,
   selectedModelId,
   recentModels,
   onModelChange,
@@ -97,6 +98,8 @@ export function ChatComposer({
   isDraggingOver: boolean;
   dropZoneProps: React.HTMLAttributes<HTMLDivElement>;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
+  /** Overrides the generic prompt, e.g. to name the agent being replied to. */
+  placeholder?: string;
   selectedModelId: string;
   recentModels: Model[];
   onModelChange: (value: string) => void;
@@ -130,7 +133,8 @@ export function ChatComposer({
   const [showCommands, setShowCommands] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null);
   const hasCommands = commands.length > 0;
-  const inputPlaceholder = hasCommands ? t("type_message_or_commands") : t("type_message");
+  const inputPlaceholder =
+    placeholder ?? (hasCommands ? t("type_message_or_commands") : t("type_message"));
 
   useEffect(() => {
     setShowCommands(hasCommands && shouldShowCommandAutocomplete(inputValue));

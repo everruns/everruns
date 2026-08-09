@@ -52,6 +52,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
 import { SidebarNavigation } from "./sidebar-navigation";
+import { SidebarChatThreads } from "./sidebar-chat-threads";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
 import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
@@ -75,6 +76,8 @@ export type NavigationItem = {
 };
 
 export type NavigationSection = {
+  /** Stable identifier for sections the shell attaches extra chrome to. */
+  id?: string;
   label?: string;
   items: NavigationItem[];
   devOnly?: boolean;
@@ -98,7 +101,7 @@ export interface SidebarConfig {
  * consult it before adding an entity to a group.
  */
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chats", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
+  { name: "Chats", href: "/chats", icon: MessageCircle, flag: "global_chat", experimental: true },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [
@@ -157,7 +160,7 @@ export const defaultDevNavigation: NavigationItem[] = [
 ];
 
 export const defaultNavigationSections: NavigationSection[] = [
-  { items: defaultChatsNavigation },
+  { id: "chats", items: defaultChatsNavigation },
   { label: "Operational", items: defaultOperationalNavigation },
   { label: "Building", items: defaultBuildingNavigation },
   { label: "Registries", items: defaultRegistriesNavigation },
@@ -204,7 +207,7 @@ export function Sidebar({
     ? baseSections.map((section) => ({
         ...section,
         items: section.items.map((item) =>
-          item.href === "/chat"
+          item.href === "/chats"
             ? {
                 ...item,
                 warningTooltip:
@@ -250,7 +253,16 @@ export function Sidebar({
         </button>
       </div>
 
-      <SidebarNavigation sections={allSections} pathname={pathname} featureFlags={featureFlags} />
+      <SidebarNavigation
+        sections={allSections}
+        pathname={pathname}
+        featureFlags={featureFlags}
+        renderSectionExtra={(section) =>
+          section.id === "chats" && featureFlags.global_chat ? (
+            <SidebarChatThreads pathname={pathname} />
+          ) : null
+        }
+      />
 
       <div
         role="contentinfo"

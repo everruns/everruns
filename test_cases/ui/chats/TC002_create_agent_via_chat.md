@@ -19,7 +19,7 @@ Verify that the global chat agent can create a new agent when asked, using the `
 
 ## Steps
 
-1. Navigate to `/chat`
+1. Open a Platform Chat thread: go to `/chats/new`, pick **Platform Chat**, and start the chat
 2. Type: `Create an agent called "Weather Bot" with system prompt "You answer weather questions."`
 3. Send the message
 4. Wait for the agent to respond (may ask for confirmation, confirm if so)

@@ -22,7 +22,7 @@ Verify that global chat supports multi-turn conversation for agent management: c
 
 ## Steps
 
-1. Navigate to `/chat`
+1. Open a Platform Chat thread: go to `/chats/new`, pick **Platform Chat**, and start the chat
 2. Send turn 1 message, confirm creation if asked
 3. Wait for response, verify agent created with display name "Joke Bot" and slug `joke-bot`
 4. Send turn 2 message

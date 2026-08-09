@@ -19,8 +19,10 @@ import {
   useSessionParticipants,
   useTurnKeyboardNavigation,
 } from "@/hooks";
+import { useThreadRuns } from "@/hooks/use-thread-runs";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { assignRunsToEvents } from "@/components/chat/run-cards";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { StreamingMessage } from "@/components/streaming-message";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
@@ -29,8 +31,11 @@ import { useLocale } from "@/providers/locale-provider";
 export function SessionTranscript({
   /** Rendered inside the scroll container, below the transcript (e.g. composer errors). */
   footer,
+  /** Show inline run cards for work the turns started (Chats thread surface). */
+  showRunCards = false,
 }: {
   footer?: ReactNode;
+  showRunCards?: boolean;
 }) {
   const { t } = useLocale();
   const {
@@ -53,6 +58,14 @@ export function SessionTranscript({
   } = useSessionContext();
 
   const { data: participants } = useSessionParticipants(sessionId);
+
+  // Inert unless the surface asked for run cards: no task stream, no requests.
+  // See `run-cards.ts` for how a run is attributed back to the turn that started it.
+  const runs = useThreadRuns(showRunCards ? sessionId : undefined);
+  const runsByEventId = useMemo(
+    () => (showRunCards ? assignRunsToEvents(events ?? [], runs) : undefined),
+    [showRunCards, events, runs],
+  );
 
   const { scrollContainerRef, messagesEndRef, hasNewMessages, dismissNewMessages, handleScrollUp } =
     useScrollManager({
@@ -119,6 +132,7 @@ export function SessionTranscript({
           getMessageText={getMessageText}
           getToolCalls={getToolCalls}
           participants={participants}
+          runsByEventId={runsByEventId}
         />
 
         {(isThinking || streamingText) && (

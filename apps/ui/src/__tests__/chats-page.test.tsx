@@ -1,0 +1,186 @@
+import { Suspense } from "react";
+import { act, render, screen } from "@testing-library/react";
+import ChatsPageClient from "@/app/(main)/chats/chats-page-client";
+import ChatThreadPage from "@/app/(main)/chats/[threadId]/page";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useChatThreads } from "@/hooks/use-chat-threads";
+import type { Session } from "@/lib/api/types";
+
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a {...props}>{children}</a>
+  ),
+}));
+
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: jest.fn(),
+}));
+
+jest.mock("@/hooks/use-chat-threads", () => ({
+  useChatThreads: jest.fn(),
+}));
+
+jest.mock("@/hooks/use-sessions", () => ({
+  useUpdateSession: () => ({ mutate: jest.fn() }),
+}));
+
+jest.mock("@/hooks", () => ({
+  useAgents: () => ({ data: [{ id: "agent_1", name: "scout", display_name: "Scout" }] }),
+  useHarnesses: () => ({ data: [{ id: "harness_1", name: "generic", display_name: "Generic" }] }),
+  usePageTitle: jest.fn(),
+}));
+
+jest.mock("@/components/chat/new-chat-form", () => ({
+  NewChatForm: () => <div>new-chat-form</div>,
+}));
+
+jest.mock("@/components/chat/chat-panel", () => ({
+  ChatPanel: (props: { replyToLabel?: string }) => <div>chat-panel:{props.replyToLabel}</div>,
+}));
+
+const mockSessionContext = jest.fn();
+jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
+  SessionProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useSessionContext: () => mockSessionContext(),
+}));
+
+const mockUseFeatureFlag = jest.mocked(useFeatureFlag);
+const mockUseChatThreads = jest.mocked(useChatThreads);
+
+function thread(overrides: Partial<Session> & { id: string }): Session {
+  return {
+    organization_id: "org_1",
+    harness_id: "harness_1",
+    agent_id: "agent_1",
+    owner_principal_id: "principal_1",
+    title: "Standup",
+    tags: ["chat"],
+    model_id: null,
+    status: "idle",
+    created_at: "2026-08-09T10:00:00Z",
+    updated_at: "2026-08-09T10:00:00Z",
+    started_at: null,
+    finished_at: null,
+    ...overrides,
+  } as Session;
+}
+
+describe("Chats surface", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
+  });
+
+  it("explains itself instead of rendering blank when global_chat is off", () => {
+    mockUseFeatureFlag.mockReturnValue(false);
+
+    render(<ChatsPageClient />);
+
+    expect(screen.getByText("Chats is not enabled")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to Sessions" })).toHaveAttribute(
+      "href",
+      "/sessions",
+    );
+    expect(mockUseChatThreads).not.toHaveBeenCalled();
+  });
+
+  it("offers a way to start a chat when there are no threads yet", () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+
+    render(<ChatsPageClient />);
+
+    expect(screen.getByText("No chats yet")).toBeInTheDocument();
+    expect(screen.getByText("new-chat-form")).toBeInTheDocument();
+  });
+
+  it("lists threads, linking each to its thread route", () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockUseChatThreads.mockReturnValue({
+      threads: [thread({ id: "sess_1" }), thread({ id: "sess_2", title: "Latency" })],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<ChatsPageClient />);
+
+    expect(screen.getByRole("link", { name: /Standup/ })).toHaveAttribute("href", "/chats/sess_1");
+    expect(screen.getByRole("link", { name: /Latency/ })).toHaveAttribute("href", "/chats/sess_2");
+  });
+});
+
+describe("Thread surface", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "sess_1" }),
+      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agentId: "agent_1",
+      sessionLoading: false,
+    });
+  });
+
+  // `use(params)` suspends until the route params settle, so each render is
+  // flushed inside act() before the assertions look at the surface.
+  async function renderThread() {
+    await act(async () => {
+      render(
+        <Suspense fallback={null}>
+          <ChatThreadPage params={Promise.resolve({ threadId: "sess_1" })} />
+        </Suspense>,
+      );
+    });
+  }
+
+  it("does not load the thread when global_chat is off", async () => {
+    mockUseFeatureFlag.mockReturnValue(false);
+
+    await renderThread();
+
+    expect(screen.getByText("Chats is not enabled")).toBeInTheDocument();
+    expect(mockSessionContext).not.toHaveBeenCalled();
+  });
+
+  it("shows the bound agent in the header and names it in the composer", async () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+
+    await renderThread();
+
+    expect(screen.getByRole("button", { name: "Rename thread" })).toHaveTextContent("Standup");
+    expect(screen.getByRole("link", { name: "Scout" })).toHaveAttribute("href", "/agents/agent_1");
+    expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open session/ })).toHaveAttribute(
+      "href",
+      "/sessions/sess_1",
+    );
+  });
+
+  it("names the harness for a thread bound to one instead of an agent", async () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "sess_1", agent_id: null }),
+      agent: undefined,
+      agentId: undefined,
+      sessionLoading: false,
+    });
+
+    await renderThread();
+
+    expect(screen.getByText("Generic")).toBeInTheDocument();
+    expect(screen.queryByText("No agent bound")).not.toBeInTheDocument();
+  });
+
+  it("says so when the thread does not exist", async () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockSessionContext.mockReturnValue({
+      session: undefined,
+      agent: undefined,
+      agentId: undefined,
+      sessionLoading: false,
+    });
+
+    await renderThread();
+
+    expect(screen.getByText("Thread not found")).toBeInTheDocument();
+  });
+});

@@ -5,7 +5,7 @@
  */
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -60,11 +60,13 @@ function NavSection({
   pathname,
   featureFlags,
   isFirst,
+  renderExtra,
 }: {
   section: NavigationSection;
   pathname: string;
   featureFlags: FeatureFlags;
   isFirst: boolean;
+  renderExtra?: (section: NavigationSection) => ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(section.defaultCollapsed ?? false);
   if (section.devOnly && !isDev) return null;
@@ -97,6 +99,7 @@ function NavSection({
         section.items.map((item) => (
           <NavLink key={item.name} item={item} pathname={pathname} featureFlags={featureFlags} />
         ))}
+      {!collapsed && renderExtra?.(section)}
     </>
   );
 }
@@ -105,10 +108,14 @@ export function SidebarNavigation({
   sections,
   pathname,
   featureFlags,
+  renderSectionExtra,
 }: {
   sections: NavigationSection[];
   pathname: string;
   featureFlags: FeatureFlags;
+  /** Extra content appended inside a section, below its links. Used by the
+   *  Chats section to hang the live thread list off the nav entry. */
+  renderSectionExtra?: (section: NavigationSection) => ReactNode;
 }) {
   let visibleIndex = 0;
 
@@ -125,6 +132,7 @@ export function SidebarNavigation({
             pathname={pathname}
             featureFlags={featureFlags}
             isFirst={isFirst}
+            renderExtra={renderSectionExtra}
           />
         );
       })}

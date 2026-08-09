@@ -126,10 +126,10 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["analytics", "saved report"],
   },
   {
-    title: "Chat",
-    href: "/chat",
+    title: "Chats",
+    href: "/chats",
     icon: MessageCircle,
-    keywords: ["global chat"],
+    keywords: ["global chat", "thread"],
   },
   {
     title: "Agents",

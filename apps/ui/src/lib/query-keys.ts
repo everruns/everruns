@@ -219,6 +219,10 @@ export const queryKeys = {
   orgTasks: {
     all: ["org-tasks"] as const,
     list: () => ["org-tasks", "list"] as const,
+    /** One session's delegation tree. `signature` changes when the root's own
+     *  tasks change, which is what makes the tree refetch. */
+    tree: (rootSessionId: string, signature: string) =>
+      ["org-tasks", "tree", rootSessionId, signature] as const,
   },
 
   // Command queries

@@ -51,6 +51,12 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
 
 // SessionTaskChips pulls in org context + an SSE subscription; this suite
 // tests chat behavior, not the task strip.
+// Run cards are the Chats thread surface's concern and are covered by
+// run-cards.test.ts; this suite renders ChatPanel outside an OrgProvider.
+jest.mock("@/hooks/use-thread-runs", () => ({
+  useThreadRuns: () => [],
+}));
+
 jest.mock("@/components/session/session-task-chips", () => ({
   SessionTaskChips: () => null,
 }));
