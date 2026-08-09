@@ -36,6 +36,20 @@ def load(path: pathlib.Path) -> dict:
 workspace = load(REPO / "Cargo.toml")
 workspace_dependencies = workspace["workspace"].get("dependencies", {})
 
+# The published package remains `everruns-macros`, but its repository path is
+# intentionally the concise `crates/macros`. Guard both sides so a future edit
+# cannot quietly restore the legacy directory while the dynamic scan still
+# finds a valid package.
+legacy_macros_path = REPO / "crates/everruns-macros"
+expected_macros_manifest = REPO / "crates/macros/Cargo.toml"
+if legacy_macros_path.exists():
+    fail("legacy crates/everruns-macros path must not exist; use crates/macros")
+if not expected_macros_manifest.is_file():
+    fail("everruns-macros manifest must live at crates/macros/Cargo.toml")
+workspace_macros = workspace_dependencies.get("everruns-macros", {})
+if not isinstance(workspace_macros, dict) or workspace_macros.get("path") != "crates/macros":
+    fail("workspace dependency everruns-macros must use path crates/macros")
+
 # Every workspace member manifest, keyed by package name.
 manifests: dict[str, pathlib.Path] = {}
 for member_glob in ("crates/*/Cargo.toml", "integrations/*/Cargo.toml"):
@@ -43,6 +57,9 @@ for member_glob in ("crates/*/Cargo.toml", "integrations/*/Cargo.toml"):
         package = load(manifest_path).get("package")
         if package and "name" in package:
             manifests[package["name"]] = manifest_path
+
+if manifests.get("everruns-macros") != expected_macros_manifest:
+    fail("package everruns-macros must resolve to crates/macros/Cargo.toml")
 
 # The bash CRATES=( ... ) array the publish loop iterates.
 match = re.search(r"^\s*CRATES=\(\n(.*?)^\s*\)\s*$", workflow_text, re.MULTILINE | re.DOTALL)
