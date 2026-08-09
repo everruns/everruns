@@ -613,6 +613,8 @@ mod tests {
 
     fn child_session_with_parent(session_id: SessionId, parent_session_id: SessionId) -> Session {
         Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: session_id,
             workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),

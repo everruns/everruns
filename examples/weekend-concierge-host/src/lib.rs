@@ -281,6 +281,8 @@ fn session(
     agent_id: everruns_core::AgentId,
 ) -> Session {
     Session {
+        source: Default::default(),
+        activity: Default::default(),
         id: session_id,
         workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
