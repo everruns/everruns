@@ -391,7 +391,7 @@ impl Agent {
         }
         builder = builder.backends(backends);
 
-        let workspace_root = self.workspace_root.as_ref().or_else(|| {
+        let workspace_root = self.workspace_root.as_ref().or({
             #[cfg(feature = "local")]
             {
                 self.local.as_ref().map(|config| &config.workspace_root)
