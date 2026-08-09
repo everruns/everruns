@@ -72,6 +72,12 @@ macro_rules! bind_session_filters {
     }};
 }
 
+// THREAT[TM-API-001]: The only values interpolated into SQL text rather than
+// bound as parameters. The `&'static str` bound is the mitigation: callers can
+// only pass `SessionSource::as_str` / `SessionActivity::as_str`, which return
+// compile-time literals from closed enums, so no runtime string — and therefore
+// no request input — can reach the query text. Every other filter value is a
+// bound parameter. Do not relax this signature to `&str` or `String`.
 fn sql_string_list(values: impl Iterator<Item = &'static str>) -> String {
     values
         .map(|v| format!("'{v}'"))
