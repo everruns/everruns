@@ -92,6 +92,14 @@ impl Session {
         self.session_id.to_string()
     }
 
+    /// The typed Framework identity for this session.
+    ///
+    /// Use this value with typed session-resumption APIs. [`id`](Self::id)
+    /// remains available when a string is needed for display or serialization.
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
     /// Subscribe to this session's live [`SessionEvent`](crate::SessionEvent)
     /// feed.
     ///

@@ -131,7 +131,8 @@ pub use everruns_core::{
     AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, InitialFile,
     InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
     LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth,
-    ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, StaticHeaderAuth,
+    ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, SessionId,
+    StaticHeaderAuth,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------
@@ -167,7 +168,7 @@ pub mod prelude {
         Agent, AgentBuilder, BuildError, CancellationToken, CompactionConfig, CompactionStrategy,
         EventStream, FunctionTool, InitialFile, IntoTool, IntoToolResult, McpServer, Model,
         PluginError, RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind,
-        Tool, ToolInfo, ToolResponse, Turn,
+        SessionId, Tool, ToolInfo, ToolResponse, Turn,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};
