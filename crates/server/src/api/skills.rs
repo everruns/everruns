@@ -92,6 +92,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
     }
 }
 
@@ -114,14 +115,17 @@ impl_dispatchable!(AppState);
 pub async fn skill_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
-) -> Json<ResourceConfigResponse> {
+) -> Result<Json<ResourceConfigResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !org.feature_flags.skills {
+        return Err(ErrorResponse::feature_not_enabled("skills"));
+    }
     let caller = Caller::from(&org);
     let policies = evaluate_policies_with(
         auth.permission_resolver.as_ref(),
         &caller,
         &[&SKILL_VIEW, &SKILL_MANAGE, &SKILL_DANGEROUS],
     );
-    Json(ResourceConfigResponse { policies })
+    Ok(Json(ResourceConfigResponse { policies }))
 }
 
 // ============================================
@@ -191,6 +195,9 @@ pub async fn upload_skill(
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
+    if !org.feature_flags.skills {
+        return Err(ErrorResponse::feature_not_enabled("skills"));
+    }
     let mut file_data: Option<Vec<u8>> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
@@ -408,9 +415,12 @@ pub async fn destroy_skill(
     tag = "skills"
 )]
 pub async fn validate_skill(
-    _org: ResolvedOrg,
+    org: ResolvedOrg,
     State(_state): State<AppState>,
     Json(req): Json<ValidateSkillRequest>,
-) -> Json<SkillValidationResult> {
-    Json(validate_skill_md(&req.skill_md))
+) -> Result<Json<SkillValidationResult>, (StatusCode, Json<ErrorResponse>)> {
+    if !org.feature_flags.skills {
+        return Err(ErrorResponse::feature_not_enabled("skills"));
+    }
+    Ok(Json(validate_skill_md(&req.skill_md)))
 }

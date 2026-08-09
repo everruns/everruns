@@ -18,7 +18,7 @@ fn require_evals_enabled(ctx: &Ctx) -> Result<(), CommandError> {
     if ctx.feature_flags.evals {
         Ok(())
     } else {
-        Err(CommandError::not_found("Evals"))
+        Err(CommandError::feature_not_enabled("evals"))
     }
 }
 

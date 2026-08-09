@@ -18,6 +18,21 @@ use everruns_core::capabilities::{
 };
 use everruns_core::{is_plugin_capability, parse_plugin_capability_id};
 
+use crate::domains::common::CommandError;
+
+pub fn validate_feature_gated_capability_refs(
+    feature_flags: &everruns_core::FeatureFlags,
+    capabilities: &[AgentCapabilityConfig],
+) -> Result<(), CommandError> {
+    if let Some(flag) = capabilities.iter().find_map(|capability| {
+        everruns_core::FeatureFlags::required_for_capability(capability.capability_id())
+            .filter(|flag| !feature_flags.is_enabled(flag))
+    }) {
+        return Err(CommandError::feature_not_enabled(flag));
+    }
+    Ok(())
+}
+
 /// Validate that all capability references in `capabilities` resolve.
 ///
 /// - Built-in IDs are checked against a static `everruns_platform::capabilities::hosted_capability_registry()`.
@@ -142,6 +157,23 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, PluginInstallId, plugin_capability_id};
     use std::sync::Arc;
     use uuid::Uuid;
+
+    #[test]
+    fn feature_gated_capability_requires_effective_flag() {
+        let capabilities = vec![AgentCapabilityConfig::new("agent_handoff")];
+        let error = validate_feature_gated_capability_refs(
+            &everruns_core::FeatureFlags::default(),
+            &capabilities,
+        )
+        .unwrap_err();
+        assert_eq!(error.message(), "Feature 'agent_delegation' is not enabled");
+
+        let enabled = everruns_core::FeatureFlags {
+            agent_delegation: true,
+            ..everruns_core::FeatureFlags::default()
+        };
+        validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
+    }
 
     #[tokio::test]
     async fn valid_builtin_capability_passes() {

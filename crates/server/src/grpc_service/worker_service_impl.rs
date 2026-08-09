@@ -202,7 +202,7 @@ impl WorkerService for WorkerServiceImpl {
         }
 
         // Load effective harness, including inherited parent config.
-        let harness = crate::domains::harnesses::queries::resolve_effective(
+        let mut harness = crate::domains::harnesses::queries::resolve_effective(
             &self.db,
             req.org_id,
             session.harness_id,
@@ -212,6 +212,33 @@ impl WorkerService for WorkerServiceImpl {
             tracing::error!("Failed to get harness: {}", e);
             Status::internal("Failed to get harness")
         })?;
+
+        // Persisted configs may predate an org disabling a feature. Strip
+        // feature-gated capabilities at the server/worker boundary so they
+        // cannot reappear in the runtime tool surface.
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            req.org_id,
+            &everruns_core::FeatureFlags::current(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, org_id = req.org_id, "Failed to resolve runtime feature flags");
+            Status::internal("Failed to resolve organization feature flags")
+        })?;
+        session
+            .capabilities
+            .retain(|capability| feature_flags.is_capability_enabled(capability.capability_id()));
+        if let Some(agent) = agent.as_mut() {
+            agent.capabilities.retain(|capability| {
+                feature_flags.is_capability_enabled(capability.capability_id())
+            });
+        }
+        if let Some(harness) = harness.as_mut() {
+            harness.capabilities.retain(|capability| {
+                feature_flags.is_capability_enabled(capability.capability_id())
+            });
+        }
 
         // Convert to proto types
         use everruns_internal_protocol::schema_session_to_proto;
@@ -3743,8 +3770,20 @@ impl WorkerService for WorkerServiceImpl {
         let ui_base = std::env::var("PUBLIC_APP_URL")
             .or_else(|_| std::env::var("FRONTEND_URL"))
             .unwrap_or_else(|_| api_base.clone());
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            req.org_id,
+            &everruns_core::FeatureFlags::current(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, org_id = req.org_id, "Failed to resolve Platform command feature flags");
+            Status::internal("Failed to resolve organization feature flags")
+        })?;
         let context = crate::api::mcp_endpoint::catalog::CatalogContext {
-            domain_ctx: self.domain_ctx_for_caller(caller),
+            domain_ctx: self
+                .domain_ctx_for_caller(caller)
+                .with_feature_flags(feature_flags),
             link_builder: crate::api::common::UrlBuilder::new(&api_base, &ui_base),
         };
         let result =
@@ -4464,11 +4503,23 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformListCapabilitiesRequest>,
     ) -> Result<Response<PlatformListCapabilitiesResponse>, Status> {
         let req = request.into_inner();
-        let capabilities = self
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            req.org_id,
+            &everruns_core::FeatureFlags::current(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, org_id = req.org_id, "Failed to resolve Platform capability feature flags");
+            Status::internal("Failed to resolve organization feature flags")
+        })?;
+        let mut capabilities = self
             .capability_service
             .list_all(req.org_id)
             .await
             .map_err(|e| Status::internal(format!("Failed to list capabilities: {}", e)))?;
+        capabilities
+            .retain(|capability| feature_flags.is_capability_enabled(capability.id.as_str()));
 
         // Apply search filter if provided
         let filtered: Vec<_> = if let Some(ref q) = req.search {

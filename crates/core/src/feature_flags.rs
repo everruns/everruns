@@ -53,7 +53,8 @@ pub struct FeatureFlags {
     pub voice: bool,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`).
     /// Experimental: auto-enabled in dev, off in prod by default.
-    /// When off, these capabilities are not registered and cannot be assigned to agents.
+    /// When off, these capabilities are not exposed or assignable; deployment-level
+    /// disablement also prevents their registration.
     pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
@@ -187,6 +188,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
     },
     FeatureFlagDefinition {
+        name: "agent_delegation",
+        label: "Agent delegation",
+        description: "Enables outbound agent delegation capabilities, including agent handoffs \
+             and A2A delegation. When disabled, these capabilities are hidden and cannot be \
+             assigned.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
         name: "observers",
         label: "Observers",
         description: "Runs automatic online scoring on your production sessions. It continuously \
@@ -310,6 +319,24 @@ impl FeatureFlags {
             "webmcp" => self.webmcp,
             "machine_payments" => self.machine_payments,
             _ => false,
+        }
+    }
+
+    /// Whether a capability is available under these effective flags.
+    pub fn is_capability_enabled(&self, capability_id: &str) -> bool {
+        Self::required_for_capability(capability_id).is_none_or(|flag| self.is_enabled(flag))
+    }
+
+    /// Feature flag required by a capability, when one exists.
+    pub fn required_for_capability(capability_id: &str) -> Option<&'static str> {
+        match capability_id {
+            "skills" => Some("skills"),
+            "memory" => Some("memory"),
+            "knowledge_index" | "knowledge_base" => Some("knowledge"),
+            "a2a_agent_delegation" | "agent_handoff" => Some("agent_delegation"),
+            _ if capability_id.starts_with("skill:") => Some("skills"),
+            _ if capability_id.starts_with("plugin:") => Some("plugins"),
+            _ => None,
         }
     }
 
@@ -509,6 +536,37 @@ mod tests {
         assert!(flags.is_enabled("webmcp"));
         assert!(flags.is_enabled("machine_payments"));
         assert!(!flags.is_enabled("nonexistent"));
+    }
+
+    #[test]
+    fn agent_delegation_capabilities_follow_effective_flag() {
+        let disabled = FeatureFlags::default();
+        assert!(!disabled.is_capability_enabled("a2a_agent_delegation"));
+        assert!(!disabled.is_capability_enabled("agent_handoff"));
+        assert!(!disabled.is_capability_enabled("skills"));
+        assert!(!disabled.is_capability_enabled("skill:019abc"));
+        assert!(!disabled.is_capability_enabled("memory"));
+        assert!(!disabled.is_capability_enabled("knowledge_index"));
+        assert!(!disabled.is_capability_enabled("knowledge_base"));
+        assert!(!disabled.is_capability_enabled("plugin:019abc"));
+        assert!(disabled.is_capability_enabled("current_time"));
+
+        let enabled = FeatureFlags {
+            agent_delegation: true,
+            skills: true,
+            memory: true,
+            knowledge: true,
+            plugins: true,
+            ..FeatureFlags::default()
+        };
+        assert!(enabled.is_capability_enabled("a2a_agent_delegation"));
+        assert!(enabled.is_capability_enabled("agent_handoff"));
+        assert!(enabled.is_capability_enabled("skills"));
+        assert!(enabled.is_capability_enabled("skill:019abc"));
+        assert!(enabled.is_capability_enabled("memory"));
+        assert!(enabled.is_capability_enabled("knowledge_index"));
+        assert!(enabled.is_capability_enabled("knowledge_base"));
+        assert!(enabled.is_capability_enabled("plugin:019abc"));
     }
 
     #[test]

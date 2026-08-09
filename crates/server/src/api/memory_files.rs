@@ -210,6 +210,9 @@ fn authorize_memory_file_access(
     org: &ResolvedOrg,
     policy: &Policy,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if !org.feature_flags.memory {
+        return Err(ErrorResponse::feature_not_enabled("memory"));
+    }
     let caller = Caller::from(org);
     policy
         .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
@@ -340,11 +343,12 @@ pub async fn get_file(
 // documented in OpenAPI — clients must include a path. The handler exists
 // so the router method returns 400 rather than 405.
 pub async fn create_at_root(
-    _org: ResolvedOrg,
-    State(_state): State<AppState>,
+    org: ResolvedOrg,
+    State(state): State<AppState>,
     Path(_memory_id): Path<String>,
     Json(_req): Json<CreateMemoryFileRequest>,
 ) -> Result<(StatusCode, Json<MemoryFileInfo>), (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     Err((
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse::new(
@@ -625,9 +629,7 @@ fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, Json<ErrorResponse>) {
 mod tests {
     use super::*;
     use crate::auth::AuthConfig;
-    use everruns_core::{
-        DefaultPermissionResolver, FeatureFlags, OrgRole, Permission, PermissionResolver,
-    };
+    use everruns_core::{DefaultPermissionResolver, OrgRole, Permission, PermissionResolver};
 
     fn org_with_role(role: OrgRole) -> ResolvedOrg {
         ResolvedOrg {
@@ -637,7 +639,7 @@ mod tests {
             user_id: None,
             role,
             is_platform_user: false,
-            feature_flags: FeatureFlags::default(),
+            feature_flags: crate::domains::common::all_feature_flags_for_test(),
         }
     }
 

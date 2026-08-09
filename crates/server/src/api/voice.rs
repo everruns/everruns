@@ -694,7 +694,7 @@ fn ensure_voice_enabled(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<Error
     if org.feature_flags.voice {
         Ok(())
     } else {
-        Err(ErrorResponse::not_found("Voice"))
+        Err(ErrorResponse::feature_not_enabled("voice"))
     }
 }
 

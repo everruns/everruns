@@ -128,6 +128,11 @@ impl CommandError {
         CommandErrorKind::NotFound(message.into()).into()
     }
 
+    pub fn feature_not_enabled(flag: &str) -> Self {
+        Self::not_found_msg(format!("Feature '{flag}' is not enabled"))
+            .with_code("feature_not_enabled")
+    }
+
     pub fn bad_request(msg: impl Into<String>) -> Self {
         CommandErrorKind::BadRequest(msg.into()).into()
     }
@@ -303,12 +308,65 @@ pub struct CommandMeta {
     pub path: &'static str,
 }
 
+impl CommandMeta {
+    /// Feature flag required for this operation to exist in an organization's
+    /// API-derived command surfaces.
+    pub fn required_feature(&self) -> Option<&'static str> {
+        match self.category {
+            "evals" => Some("evals"),
+            "skills" => Some("skills"),
+            "memories" => Some("memory"),
+            "knowledge_indexes" | "knowledge_bases" => Some("knowledge"),
+            "plugins" => Some("plugins"),
+            "observers" => Some("observers"),
+            "notifications" => Some("notifications"),
+            "payments" => Some("machine_payments"),
+            _ => match self.name {
+                "list_app_budgets" => Some("app_budgets"),
+                "list_agent_versions"
+                | "create_agent_version"
+                | "set_default_agent_version"
+                | "rollback_agent_version"
+                | "diff_agent_versions"
+                | "fork_agent_version" => Some("agent_versions"),
+                _ => None,
+            },
+        }
+    }
+
+    pub fn is_enabled(&self, feature_flags: &FeatureFlags) -> bool {
+        self.required_feature()
+            .is_none_or(|flag| feature_flags.is_enabled(flag))
+    }
+}
+
 // ============================================================================
 // Ctx — shared execution context
 // ============================================================================
 
 static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
     LazyLock::new(|| Arc::new(everruns_worker::create_driver_registry()));
+
+#[cfg(test)]
+pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
+    FeatureFlags {
+        global_chat: true,
+        notifications: true,
+        evals: true,
+        skills: true,
+        memory: true,
+        knowledge: true,
+        plugins: true,
+        app_budgets: true,
+        agent_versions: true,
+        voice: true,
+        agent_delegation: true,
+        observers: true,
+        public_chat: true,
+        webmcp: true,
+        machine_payments: true,
+    }
+}
 
 #[derive(Clone)]
 pub struct Ctx {
@@ -442,7 +500,8 @@ impl Ctx {
     }
 
     /// Test-only convenience: construct a minimal Ctx with the OSS default
-    /// resolver. Production code must never use this — route
+    /// resolver and all API-visible features enabled. Tests for disabled
+    /// behavior must override `feature_flags` explicitly. Production code must never use this — route
     /// `AuthState.permission_resolver` through `Ctx::new` instead so SaaS
     /// overrides take effect.
     #[cfg(test)]
@@ -452,6 +511,7 @@ impl Ctx {
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     ) -> Self {
         Self::minimal(caller, db, encryption, Arc::new(DefaultPermissionResolver))
+            .with_feature_flags(all_feature_flags_for_test())
     }
 
     /// Override the permission resolver. Primarily for tests; production
@@ -732,6 +792,11 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
             let started_at = std::time::Instant::now();
 
             let result: Result<Self::Output, CommandError> = async {
+                if let Some(flag) = meta.required_feature()
+                    && !ctx.feature_flags.is_enabled(flag)
+                {
+                    return Err(CommandError::feature_not_enabled(flag));
+                }
                 if let Some(policy) = Self::policy() {
                     policy
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
@@ -1081,9 +1146,13 @@ pub struct CommandCatalogEntry {
     pub output_shape: &'static str,
 }
 
-pub fn catalog_entries_with_schemas(include_schemas: bool) -> Vec<CommandCatalogEntry> {
+pub fn catalog_entries_with_schemas(
+    include_schemas: bool,
+    feature_flags: &FeatureFlags,
+) -> Vec<CommandCatalogEntry> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
+        .filter(|desc| (desc.meta)().is_enabled(feature_flags))
         .map(|desc| {
             let meta = (desc.meta)();
             CommandCatalogEntry {
@@ -1267,6 +1336,40 @@ where
 #[cfg(test)]
 mod error_tests {
     use super::*;
+
+    #[test]
+    fn command_metadata_declares_feature_gated_surfaces() {
+        for (name, category, expected) in [
+            ("list_evals", "evals", Some("evals")),
+            ("list_skills", "skills", Some("skills")),
+            ("list_memories", "memories", Some("memory")),
+            (
+                "list_knowledge_indexes",
+                "knowledge_indexes",
+                Some("knowledge"),
+            ),
+            ("list_plugins", "plugins", Some("plugins")),
+            ("create_observer", "observers", Some("observers")),
+            ("list_notifications", "notifications", Some("notifications")),
+            (
+                "list_payment_accounts",
+                "payments",
+                Some("machine_payments"),
+            ),
+            ("list_app_budgets", "budgets", Some("app_budgets")),
+            ("create_agent_version", "agents", Some("agent_versions")),
+            ("list_agents", "agents", None),
+        ] {
+            let meta = CommandMeta {
+                name,
+                category,
+                description: "",
+                method: "GET",
+                path: "",
+            };
+            assert_eq!(meta.required_feature(), expected, "command {name}");
+        }
+    }
 
     #[tokio::test]
     async fn dispatch_accepts_empty_object_for_unit_commands() {

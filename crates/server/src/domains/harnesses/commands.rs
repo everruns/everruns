@@ -118,9 +118,18 @@ async fn normalize_capability_refs(
     ctx: &Ctx,
     caps: Vec<AgentCapabilityConfig>,
 ) -> Result<Vec<AgentCapabilityConfig>, CommandError> {
-    crate::domains::capabilities::validation::normalize_capability_refs(&ctx.db, ctx.org_id(), caps)
-        .await
-        .map_err(classify_anyhow)
+    let caps = crate::domains::capabilities::validation::normalize_capability_refs(
+        &ctx.db,
+        ctx.org_id(),
+        caps,
+    )
+    .await
+    .map_err(classify_anyhow)?;
+    crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
+        &ctx.feature_flags,
+        &caps,
+    )?;
+    Ok(caps)
 }
 
 // ============================================================================

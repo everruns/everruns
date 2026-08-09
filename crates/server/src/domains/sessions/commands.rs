@@ -226,6 +226,10 @@ impl Command for CreateSession {
             crate::api::validation::validate_initial_files(&req.initial_files)
                 .map_err(limit_validation_error)?;
         }
+        crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
+            &ctx.feature_flags,
+            &req.capabilities,
+        )?;
 
         // Attaching a session to an existing workspace grants the session (and
         // its agent) read/write access to that workspace's files, so require

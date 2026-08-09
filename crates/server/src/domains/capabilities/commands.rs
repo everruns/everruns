@@ -68,6 +68,11 @@ impl Command for ListCapabilities {
             .await
             .map_err(classify_anyhow)?;
 
+        capabilities.retain(|capability| {
+            ctx.feature_flags
+                .is_capability_enabled(capability.id.as_str())
+        });
+
         if let Some(ref search) = self.search {
             q::filter_by_search(&mut capabilities, search);
         }
@@ -123,6 +128,12 @@ impl Command for GetCapability {
 
     async fn execute(self, ctx: &Ctx) -> Result<CapabilityInfo, CommandError> {
         let cap_id = CapabilityId::new(&self.id);
+
+        if let Some(flag) = everruns_core::FeatureFlags::required_for_capability(cap_id.as_str())
+            && !ctx.feature_flags.is_enabled(flag)
+        {
+            return Err(CommandError::feature_not_enabled(flag));
+        }
 
         ctx.capability_service
             .get(ctx.org_id(), &cap_id)

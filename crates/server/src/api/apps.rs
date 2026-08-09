@@ -85,6 +85,7 @@ impl AppState {
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
         .with_workflow_store(self.workflow_store.clone());
         if let Some(session_service) = &self.session_service {
             ctx = ctx.with_session_service(session_service.clone());

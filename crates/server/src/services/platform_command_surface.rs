@@ -19,13 +19,16 @@ pub async fn invoke(
     context: catalog::CatalogContext,
 ) -> Result<String, String> {
     match operation {
-        Operation::Discover => discover(arguments),
+        Operation::Discover => discover(arguments, &context.domain_ctx.feature_flags),
         Operation::Query => script(arguments, context, catalog::ToolsetMode::ReadOnly).await,
         Operation::Execute => script(arguments, context, catalog::ToolsetMode::Full).await,
     }
 }
 
-fn discover(arguments: &Value) -> Result<String, String> {
+fn discover(
+    arguments: &Value,
+    feature_flags: &everruns_core::FeatureFlags,
+) -> Result<String, String> {
     let show_all = arguments
         .get("all")
         .and_then(Value::as_bool)
@@ -35,7 +38,8 @@ fn discover(arguments: &Value) -> Result<String, String> {
         .and_then(Value::as_bool)
         .unwrap_or(!show_all);
 
-    let mut entries = crate::domains::common::catalog_entries_with_schemas(requested_schemas);
+    let mut entries =
+        crate::domains::common::catalog_entries_with_schemas(requested_schemas, feature_flags);
     entries.sort_by_key(|entry| (entry.category, entry.name));
 
     if !show_all {
@@ -312,6 +316,29 @@ fn sanitize_script_error(message: &str) -> String {
 mod tests {
     use super::*;
 
+    fn discover_for_test(arguments: &Value) -> Result<String, String> {
+        discover(
+            arguments,
+            &everruns_core::FeatureFlags {
+                global_chat: true,
+                notifications: true,
+                evals: true,
+                skills: true,
+                memory: true,
+                knowledge: true,
+                plugins: true,
+                app_budgets: true,
+                agent_versions: true,
+                voice: true,
+                agent_delegation: true,
+                observers: true,
+                public_chat: true,
+                webmcp: true,
+                machine_payments: true,
+            },
+        )
+    }
+
     #[test]
     fn jq_errors_are_concise_and_omit_input() {
         let error = sanitize_script_error(
@@ -325,7 +352,7 @@ mod tests {
 
     #[test]
     fn exact_discovery_returns_one_operation_with_runnable_usage() {
-        let output = discover(&json!({
+        let output = discover_for_test(&json!({
             "query": "create_agent",
             "include_schemas": true
         }))
@@ -354,8 +381,8 @@ mod tests {
                 .any(|line| line.as_str().is_some_and(|line| line.contains("--help")))
         );
 
-        let mcp_output =
-            discover(&json!({ "query": "create_mcp_server" })).expect("discover create_mcp_server");
+        let mcp_output = discover_for_test(&json!({ "query": "create_mcp_server" }))
+            .expect("discover create_mcp_server");
         let mcp_value: Value = serde_json::from_str(&mcp_output).expect("MCP discover JSON");
         let mcp_usage = mcp_value["operations"][0]["bash_usage"]
             .as_str()
@@ -365,7 +392,7 @@ mod tests {
         assert!(!mcp_usage.contains("--authentication_type"));
         assert!(mcp_output.len() < 10_000, "MCP discovery must stay compact");
 
-        let trigger_output = discover(&json!({ "query": "create_agent_trigger" }))
+        let trigger_output = discover_for_test(&json!({ "query": "create_agent_trigger" }))
             .expect("discover create_agent_trigger");
         let trigger_value: Value =
             serde_json::from_str(&trigger_output).expect("trigger discover JSON");
@@ -377,7 +404,7 @@ mod tests {
         assert!(trigger_usage.contains("--message"));
 
         let models_output =
-            discover(&json!({ "query": "list_models" })).expect("discover list_models");
+            discover_for_test(&json!({ "query": "list_models" })).expect("discover list_models");
         let models_value: Value =
             serde_json::from_str(&models_output).expect("model discover JSON");
         let model_fields = models_value["operations"][0]["output_fields"]
@@ -396,7 +423,7 @@ mod tests {
             "exact discovery must stay compact"
         );
 
-        let natural_name_output = discover(&json!({
+        let natural_name_output = discover_for_test(&json!({
             "query": "create agent",
             "include_schemas": true
         }))
@@ -412,7 +439,7 @@ mod tests {
         );
         assert!(natural_name_value.get("refine_hint").is_none());
 
-        let broad_output = discover(&json!({
+        let broad_output = discover_for_test(&json!({
             "query": "agent",
             "include_schemas": true
         }))
@@ -443,7 +470,7 @@ mod tests {
                 ["list_user_connections", "list_connection_providers"],
             ),
         ] {
-            let output = discover(&json!({ "query": query, "include_schemas": false }))
+            let output = discover_for_test(&json!({ "query": query, "include_schemas": false }))
                 .expect("resource-oriented discovery");
             let value: Value = serde_json::from_str(&output).expect("discover JSON");
             let names = value["operations"]
@@ -463,7 +490,8 @@ mod tests {
 
     #[test]
     fn zero_matches_are_explicitly_not_resource_absence_evidence() {
-        let output = discover(&json!({ "query": "zzqxvbnm" })).expect("zero-match discovery");
+        let output =
+            discover_for_test(&json!({ "query": "zzqxvbnm" })).expect("zero-match discovery");
         let value: Value = serde_json::from_str(&output).expect("discover JSON");
 
         assert_eq!(value["count"], 0);
@@ -472,6 +500,25 @@ mod tests {
             value["resource_absence_warning"]
                 .as_str()
                 .is_some_and(|warning| warning.contains("does not establish"))
+        );
+    }
+
+    #[test]
+    fn feature_gated_discovery_omits_operations_for_disabled_features() {
+        let output = discover(
+            &json!({ "query": "list_evals" }),
+            &everruns_core::FeatureFlags::default(),
+        )
+        .expect("discover disabled eval operation");
+        let value: Value = serde_json::from_str(&output).expect("discover JSON");
+
+        assert!(
+            value["operations"]
+                .as_array()
+                .expect("operations")
+                .iter()
+                .all(|operation| operation["category"] != "evals"
+                    && operation["name"] != "list_evals")
         );
     }
 }

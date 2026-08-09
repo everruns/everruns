@@ -2922,6 +2922,7 @@ mod tests {
             None,
             Arc::new(everruns_core::DefaultPermissionResolver),
         )
+        .with_feature_flags(crate::domains::common::all_feature_flags_for_test())
     }
 
     fn external_caller(org_id: i64) -> Caller {

@@ -17,9 +17,7 @@ fn validate_subject_type(ctx: &Ctx, subject_type: &str) -> Result<(), CommandErr
         if ctx.feature_flags.app_budgets {
             return Ok(());
         }
-        return Err(CommandError::bad_request(
-            "App-scoped budgets are gated behind the app_budgets feature flag",
-        ));
+        return Err(CommandError::feature_not_enabled("app_budgets"));
     }
     Err(CommandError::bad_request("Invalid subject_type"))
 }
@@ -616,9 +614,7 @@ impl Command for ListAppBudgets {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         if !ctx.feature_flags.app_budgets {
-            return Err(CommandError::bad_request(
-                "App-scoped budgets are gated behind the app_budgets feature flag",
-            ));
+            return Err(CommandError::feature_not_enabled("app_budgets"));
         }
 
         // THREAT[TM-TENANT-001]: org-scoped lookup before reading any channel

@@ -17,7 +17,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::{get, post},
+    routing::{any, get, post},
 };
 use everruns_core::Caller;
 use everruns_platform::payment::{PaymentAccount, PaymentAttempt, PaymentPolicy};
@@ -48,12 +48,18 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        // This state is only reached through the enabled payment router. Machine
+        // payments are deployment-controlled rather than an org opt-in, so keep
+        // the command boundary aligned with the router's system-level gate.
+        let mut feature_flags = org.feature_flags.clone();
+        feature_flags.machine_payments = true;
         Ctx::minimal(
             Caller::from(org),
             self.db.clone(),
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(feature_flags)
     }
 }
 
@@ -63,7 +69,7 @@ pub fn routes(state: AppState, machine_payments_enabled: bool) -> Router {
     // THREAT[TM-CRYPTO-008]: Do not expose wallet-custody or spending-policy APIs when
     // machine payments are disabled, even though their handlers remain compiled in.
     if !machine_payments_enabled {
-        return Router::new();
+        return Router::new().route("/v1/payments/{*path}", any(machine_payments_disabled));
     }
 
     Router::new()
@@ -89,6 +95,10 @@ pub fn routes(state: AppState, machine_payments_enabled: bool) -> Router {
         )
         .route("/v1/payments/attempts", get(list_payment_attempts))
         .with_state(state)
+}
+
+async fn machine_payments_disabled() -> ApiError {
+    ErrorResponse::feature_not_enabled("machine_payments")
 }
 
 #[utoipa::path(
@@ -518,7 +528,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn payment_routes_are_not_mounted_when_machine_payments_are_disabled() {
+    async fn payment_routes_return_feature_error_when_machine_payments_are_disabled() {
         let app = test_app(false);
         let account_id = uuid::Uuid::now_v7();
         let policy_id = uuid::Uuid::now_v7();
@@ -546,6 +556,13 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+            let error: ErrorResponse = response_json(response).await;
+            assert_eq!(error.code.as_deref(), Some("feature_not_enabled"), "{uri}");
+            assert_eq!(
+                error.detail.as_deref(),
+                Some("Feature 'machine_payments' is not enabled"),
+                "{uri}"
+            );
         }
     }
 }
