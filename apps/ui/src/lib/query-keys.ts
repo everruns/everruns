@@ -57,6 +57,15 @@ export const queryKeys = {
     list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
       ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
+    /**
+     * The filtered operational list (EVE-853). `filters` is the serialized
+     * filter set, so it stays under `["sessions"]` and a create/update
+     * invalidation refreshes every filtered view at once.
+     */
+    filtered: (org?: string, filters?: string, offset?: number, limit?: number) =>
+      ["sessions", "filtered", org, filters ?? "", offset ?? 0, limit ?? 20] as const,
+    /** Facet counts and masthead metrics for a filter set. */
+    facets: (org?: string, filters?: string) => ["sessions", "facets", org, filters ?? ""] as const,
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,

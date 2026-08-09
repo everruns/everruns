@@ -10,6 +10,7 @@ import type {
   UpdateSessionRequest,
   SessionContextReport,
   SessionResolvedModelResponse,
+  SessionFacetsResponse,
   PaginatedResponse,
   PaginationParams,
 } from "./types";
@@ -32,19 +33,49 @@ export async function createSession(request: CreateSessionRequest): Promise<Sess
 }
 
 /**
+ * Filters `GET /v1/sessions` and `GET /v1/sessions/facets` share. Both
+ * endpoints resolve them into the same predicate server-side, which is what
+ * lets the facet counts annotate the very rows the list returns.
+ */
+export interface SessionListFilters {
+  /** Filter by agent public id. */
+  agentId?: string;
+  /** Case-insensitive title substring match. */
+  search?: string;
+  /** Comma-separated sources (`chat`, `slack`, `schedule`, …). */
+  source?: string;
+  /** Comma-separated derived activities (`running`, `failed`, …). */
+  status?: string;
+  /** Restrict to sessions owned by the calling user. */
+  mine?: boolean;
+  /** Inclusive lower bound on creation time (RFC 3339). */
+  createdAfter?: string;
+  /** Exclusive upper bound on creation time (RFC 3339). */
+  createdBefore?: string;
+  /** `created_at` (default) or `last_activity`. */
+  order?: "created_at" | "last_activity";
+}
+
+function sessionFilterParams(filters?: SessionListFilters): URLSearchParams {
+  const searchParams = new URLSearchParams();
+  if (filters?.agentId) searchParams.set("agent_id", filters.agentId);
+  if (filters?.search) searchParams.set("search", filters.search);
+  if (filters?.source) searchParams.set("source", filters.source);
+  if (filters?.status) searchParams.set("status", filters.status);
+  if (filters?.mine) searchParams.set("mine", "true");
+  if (filters?.createdAfter) searchParams.set("created_after", filters.createdAfter);
+  if (filters?.createdBefore) searchParams.set("created_before", filters.createdBefore);
+  if (filters?.order) searchParams.set("order", filters.order);
+  return searchParams;
+}
+
+/**
  * List sessions for an organization.
- * @param agentId - Optional filter by agent ID
  */
 export async function listSessions(
-  params?: PaginationParams & { agentId?: string; search?: string },
+  params?: PaginationParams & SessionListFilters,
 ): Promise<PaginatedResponse<Session>> {
-  const searchParams = new URLSearchParams();
-  if (params?.agentId) {
-    searchParams.set("agent_id", params.agentId);
-  }
-  if (params?.search) {
-    searchParams.set("search", params.search);
-  }
+  const searchParams = sessionFilterParams(params);
   if (params?.offset !== undefined) {
     searchParams.set("offset", String(params.offset));
   }
@@ -54,6 +85,21 @@ export async function listSessions(
   const query = searchParams.toString();
   const url = `/v1/sessions${query ? `?${query}` : ""}`;
   const response = await api.get<PaginatedResponse<Session>>(url);
+  return response.data;
+}
+
+/**
+ * Facet-rail counts and masthead metrics over the same filter predicate as
+ * {@link listSessions}. Counts are aggregated server-side — the page never
+ * derives them by walking pages, so they stay correct beyond the first 20 rows.
+ */
+export async function getSessionFacets(
+  filters?: SessionListFilters,
+): Promise<SessionFacetsResponse> {
+  const query = sessionFilterParams(filters).toString();
+  const response = await api.get<SessionFacetsResponse>(
+    `/v1/sessions/facets${query ? `?${query}` : ""}`,
+  );
   return response.data;
 }
 

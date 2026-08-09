@@ -15,15 +15,24 @@ import {
   serverGetList,
   serverGetPaginated,
 } from "@/lib/server-query";
-import type { Agent, Harness, ModelWithProvider, Organization, Session } from "@/lib/api/types";
+import type { Agent, Organization, Session, SessionFacetsResponse } from "@/lib/api/types";
+import { SESSIONS_PAGE_SIZE } from "@/lib/session-filters";
 import SessionsPageClient from "./sessions-page-client";
 
-const PAGE_SIZE = 20;
-
-export default async function SessionsPage() {
+/**
+ * Seeding is deliberately limited to the unfiltered first page: that is the
+ * only filter set whose cache key the server can know without duplicating the
+ * client's URL parsing. Any other filter set simply fetches on the client.
+ */
+export default async function SessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const queryClient = createServerQueryClient();
   const requestContext = await getServerRequestContext();
   const { currentOrgId } = await prefetchAuthBootstrap(queryClient, requestContext);
+  const isDefaultView = Object.keys(await searchParams).length === 0;
 
   if (currentOrgId) {
     await Promise.all([
@@ -33,18 +42,22 @@ export default async function SessionsPage() {
       seedQueryData(queryClient, queryKeys.organizations.detail(currentOrgId), () =>
         serverGet<Organization>(requestContext, `/v1/orgs/${currentOrgId}`),
       ),
-      seedQueryData(queryClient, [...queryKeys.harnesses.list(false), currentOrgId], () =>
-        serverGetList<Harness>(requestContext, "/v1/harnesses"),
-      ),
-      seedQueryData(
-        queryClient,
-        queryKeys.sessions.list(currentOrgId, undefined, 0, PAGE_SIZE),
-        () =>
-          serverGetPaginated<Session>(requestContext, `/v1/sessions?offset=0&limit=${PAGE_SIZE}`),
-      ),
-      seedQueryData(queryClient, [...queryKeys.models.list(), currentOrgId], () =>
-        serverGetList<ModelWithProvider>(requestContext, "/v1/models"),
-      ),
+      ...(isDefaultView
+        ? [
+            seedQueryData(
+              queryClient,
+              queryKeys.sessions.filtered(currentOrgId, "", 0, SESSIONS_PAGE_SIZE),
+              () =>
+                serverGetPaginated<Session>(
+                  requestContext,
+                  `/v1/sessions?offset=0&limit=${SESSIONS_PAGE_SIZE}`,
+                ),
+            ),
+            seedQueryData(queryClient, queryKeys.sessions.facets(currentOrgId, ""), () =>
+              serverGet<SessionFacetsResponse>(requestContext, "/v1/sessions/facets"),
+            ),
+          ]
+        : []),
     ]);
   }
 

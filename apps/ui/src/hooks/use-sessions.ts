@@ -10,6 +10,7 @@ import {
   getSession,
   getSessionResolvedModel,
   getSessionContextReport,
+  getSessionFacets,
   getSessionStats,
   listSessions,
   updateSession,
@@ -27,6 +28,12 @@ import type {
   Event,
   PaginationParams,
 } from "@/lib/api/types";
+import {
+  SESSIONS_PAGE_SIZE,
+  serializeSessionFilters,
+  toQueryParams,
+  type SessionFilters,
+} from "@/lib/session-filters";
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
@@ -53,6 +60,56 @@ export function useSessions(
   });
 
   // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+/**
+ * The filtered sessions list behind the operational Sessions page (EVE-853).
+ *
+ * Pairs with {@link useSessionFacets}: both take the same `SessionFilters`, so
+ * the rows and the counts beside them are always the same population.
+ */
+export function useFilteredSessions(filters: SessionFilters, options: { enabled?: boolean } = {}) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+  const serialized = serializeSessionFilters(filters);
+  const params = toQueryParams(filters);
+  const offset = filters.page * SESSIONS_PAGE_SIZE;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.filtered(org, serialized, offset, SESSIONS_PAGE_SIZE),
+    queryFn: () => listSessions({ ...params, offset, limit: SESSIONS_PAGE_SIZE }),
+    enabled: !!org && (options.enabled ?? true),
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+/**
+ * Facet counts and masthead metrics for a filter set.
+ *
+ * Deliberately keyed on the filters minus pagination: paging through a result
+ * set does not change what is counted, so turning the page must not refetch or
+ * flicker the rail.
+ */
+export function useSessionFacets(filters: SessionFilters, options: { enabled?: boolean } = {}) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+  const serialized = serializeSessionFilters({ ...filters, page: 0 });
+  const params = toQueryParams(filters);
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.facets(org, serialized),
+    queryFn: () => getSessionFacets(params),
+    enabled: !!org && (options.enabled ?? true),
+  });
+
   return {
     ...query,
     isLoading: orgLoading || query.isLoading,
