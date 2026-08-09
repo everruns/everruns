@@ -8,9 +8,10 @@
 //
 // EVE-837: the `Principal` aggregate entity moved to the `everruns-platform`
 // crate. The value types below stay in core because they are embedded by core
-// domain models: `PrincipalSummary` is a field of `Session`/`App`/
-// `SessionSchedule`, `PrincipalKind` backs that summary, and `PrincipalStatus`
-// is shared with the agent-identity lifecycle.
+// domain models: `PrincipalSummary` is a field of `Session`/`SessionSchedule`/
+// `AgentIdentity`, and `PrincipalKind` backs that summary. EVE-845: the
+// `PrincipalStatus` lifecycle enum, which no core type embeds, moved to
+// `everruns-platform` alongside the `Principal` aggregate it describes.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -48,35 +49,6 @@ impl From<&str> for PrincipalKind {
             "agent_identity" => Self::AgentIdentity,
             "system" => Self::System,
             _ => Self::User,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "lowercase")]
-pub enum PrincipalStatus {
-    Active,
-    Archived,
-    Deleted,
-}
-
-impl std::fmt::Display for PrincipalStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Active => write!(f, "active"),
-            Self::Archived => write!(f, "archived"),
-            Self::Deleted => write!(f, "deleted"),
-        }
-    }
-}
-
-impl From<&str> for PrincipalStatus {
-    fn from(value: &str) -> Self {
-        match value {
-            "archived" => Self::Archived,
-            "deleted" => Self::Deleted,
-            _ => Self::Active,
         }
     }
 }

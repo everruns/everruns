@@ -7,31 +7,21 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
-use uuid::Uuid;
 
 // EVE-837: the `Organization` aggregate entity moved to the `everruns-platform`
-// crate. The role/membership value types and multitenancy constants below stay
-// in core because the permissions layer, auth-facing membership, and runtime
-// fixtures depend on them.
+// crate. EVE-845 moved the remaining auth-facing identity values that no core
+// code names — `OrgMembership`, the `ANONYMOUS_USER_*` constants, and the
+// public-id generation/validation helpers (`generate_org_public_id`,
+// `validate_org_public_id`) — to `everruns-platform` as well. What stays here
+// does so because core's permissions layer and runtime name it: `OrgRole`
+// (portable turn authorization), the `DEFAULT_ORG_*` constants, and the
+// internal<->public id conversion helpers.
 
 /// Default organization ID (internal, for DB queries)
 pub const DEFAULT_ORG_ID: i64 = 1;
 
 /// Default organization public ID (external, for API)
 pub const DEFAULT_ORG_PUBLIC_ID: &str = "org_00000000000000000000000000000001";
-
-/// Well-known anonymous user UUID for auth=none mode.
-/// This is a real database user seeded at startup, so all code paths
-/// (org membership, API keys, etc.) work without special-casing.
-pub const ANONYMOUS_USER_ID: Uuid = Uuid::from_bytes([
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
-]);
-
-/// Anonymous user email
-pub const ANONYMOUS_USER_EMAIL: &str = "anonymous@local";
-
-/// Anonymous user display name
-pub const ANONYMOUS_USER_NAME: &str = "Anonymous";
 
 /// Organization-level role with hierarchical permissions.
 /// Owner > Admin > Member — checked via `has_permission()`.
@@ -88,22 +78,6 @@ impl FromStr for OrgRole {
     }
 }
 
-/// Organization membership info (for user context)
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-pub struct OrgMembership {
-    /// Internal org_id for DB queries (not serialized to API)
-    #[serde(skip_serializing)]
-    pub org_id: i64,
-    /// External identifier
-    pub public_id: String,
-    /// Display name
-    pub name: String,
-    /// User's role in this organization
-    #[serde(default)]
-    pub role: OrgRole,
-}
-
 /// Derive a deterministic public_id from an internal org_id.
 ///
 /// For `DEFAULT_ORG_ID` this returns `DEFAULT_ORG_PUBLIC_ID`.
@@ -128,76 +102,9 @@ pub fn org_internal_id_from_public(org_id: crate::typed_id::OrgId) -> i64 {
     org_id.uuid().as_u128() as i64
 }
 
-/// Generate a new organization public ID
-/// Format: org_<32-hex-chars> (UUIDv4 lowercase hex, no dashes)
-pub fn generate_org_public_id() -> String {
-    let uuid = Uuid::new_v4();
-    format!("org_{}", uuid.simple())
-}
-
-/// Validate organization public ID format
-/// Pattern: ^org_[0-9a-f]{32}$
-pub fn validate_org_public_id(public_id: &str) -> bool {
-    if !public_id.starts_with("org_") {
-        return false;
-    }
-    let suffix = &public_id[4..];
-    suffix.len() == 32
-        && suffix
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_generate_org_public_id() {
-        let id = generate_org_public_id();
-        assert!(id.starts_with("org_"));
-        assert_eq!(id.len(), 36); // "org_" + 32 hex chars
-        assert!(validate_org_public_id(&id));
-    }
-
-    #[test]
-    fn test_validate_org_public_id() {
-        // Valid
-        assert!(validate_org_public_id(
-            "org_00000000000000000000000000000001"
-        ));
-        assert!(validate_org_public_id(
-            "org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0"
-        ));
-
-        // Invalid - wrong prefix
-        assert!(!validate_org_public_id(
-            "organization_12345678901234567890123456789012"
-        ));
-
-        // Invalid - too short
-        assert!(!validate_org_public_id("org_123"));
-
-        // Invalid - too long
-        assert!(!validate_org_public_id(
-            "org_123456789012345678901234567890123"
-        ));
-
-        // Invalid - uppercase
-        assert!(!validate_org_public_id(
-            "org_2F3C1B3E6A9D4C6F8A1D4E9C9B7F21A0"
-        ));
-
-        // Invalid - non-hex characters
-        assert!(!validate_org_public_id(
-            "org_ghijklmnopqrstuvwxyz1234567890"
-        ));
-    }
-
-    #[test]
-    fn test_default_org_public_id_valid() {
-        assert!(validate_org_public_id(DEFAULT_ORG_PUBLIC_ID));
-    }
 
     #[test]
     fn test_org_internal_id_round_trips() {

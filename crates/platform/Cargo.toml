@@ -3,12 +3,13 @@
 # Decision (EVE-837): the platform crate owns the durable backend identity
 # aggregates that were historically defined in `everruns-core` — starting with
 # the `Organization` and `Principal` entity structs. EVE-838 extended it with
-# the payment accounting, reporting, and audit records. Cross-cutting value
-# types that core's runtime, permissions, and domain models embed (OrgRole,
-# OrgMembership, PrincipalKind, PrincipalStatus, PrincipalSummary, the
-# multitenancy constants, and the payment execution contract PaymentRail/
-# PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) remain in
-# `everruns-core` and are re-exported here for a unified consumer surface.
+# the payment accounting, reporting, and audit records. EVE-845 added the
+# auth-facing identity values no core code names (OrgMembership, ANONYMOUS_USER_*,
+# generate_org_public_id/validate_org_public_id, PrincipalStatus). Cross-cutting
+# value types that core's runtime, permissions, and domain models embed (OrgRole,
+# PrincipalKind, PrincipalSummary, the DEFAULT_ORG_* constants, and the payment
+# execution contract PaymentRail/PaymentMethod/MachinePaymentRequest/
+# MachinePaymentResponse) remain in `everruns-core` and are re-exported here.
 #
 # Dependency direction is strictly `platform -> core`. Core never depends on
 # platform (enforced by crates/core/tests/no_platform_dependency.rs).
@@ -44,10 +45,10 @@ embedded-platform-docs = ["dep:include_dir", "everruns-core/embedded-platform-do
 sqlx = ["everruns-core/sqlx"]
 
 [dependencies]
-# Cross-cutting value types (PrincipalKind/PrincipalStatus/PrincipalSummary,
-# Caller, the payment execution contract), typed IDs, domain aggregates
-# (Harness/Agent/Session), and multitenancy constants live in core; the platform
-# aggregates embed and re-export them. Direction is platform -> core.
+# Cross-cutting value types (OrgRole, PrincipalKind/PrincipalSummary, Caller, the
+# payment execution contract), typed IDs, domain aggregates
+# (Harness/Agent/Session), and the DEFAULT_ORG_* constants live in core; the
+# platform aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
 
 serde.workspace = true

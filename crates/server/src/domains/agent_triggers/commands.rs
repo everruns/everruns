@@ -1002,7 +1002,7 @@ async fn ensure_identity_for_agent(
     // is harmless: the orphan is an unreferenced, archivable row on a rare race.
     let _ = db.delete_agent_identity(org_id, new_id).await;
     let _ = principals
-        .sync_agent_identity_status(org_id, new_id, everruns_core::PrincipalStatus::Archived)
+        .sync_agent_identity_status(org_id, new_id, everruns_platform::PrincipalStatus::Archived)
         .await;
     let winner_principal = principals
         .default_owner_principal(&caller, Some(winner))

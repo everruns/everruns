@@ -11,7 +11,8 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use everruns_core::{FeatureFlagMap, FeatureFlags, validate_org_public_id};
+use everruns_core::{FeatureFlagMap, FeatureFlags};
+use everruns_platform::validate_org_public_id;
 
 use crate::auth::middleware::{AuthState, OrgAdmin};
 use crate::services::org_feature_flags::{

@@ -11,7 +11,8 @@ use super::types::{
 use super::{AGENT_IDENTITY_DANGEROUS, AGENT_IDENTITY_MANAGE, AGENT_IDENTITY_VIEW};
 use crate::domains::common::*;
 use crate::services::PrincipalService;
-use everruns_core::{AgentIdentity, AgentIdentityId, Policy, PrincipalStatus};
+use everruns_core::{AgentIdentity, AgentIdentityId, Policy};
+use everruns_platform::PrincipalStatus;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

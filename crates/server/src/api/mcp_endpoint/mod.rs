@@ -52,8 +52,9 @@ use axum::{
 };
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::session_sqldb::SessionSqlDbStore;
-use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
+use everruns_core::{Caller, OrgRole, PlatformDefinition};
 use everruns_durable::WorkflowEventStore;
+use everruns_platform::validate_org_public_id;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1858,7 +1859,7 @@ pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains
 #[cfg(test)]
 mod org_override_scope_tests {
     use super::*;
-    use everruns_core::OrgMembership;
+    use everruns_platform::OrgMembership;
     use uuid::Uuid;
 
     fn test_auth_user(auth_method: AuthMethod) -> AuthUser {

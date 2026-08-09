@@ -13,12 +13,11 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::get,
 };
-use everruns_core::{
-    BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole, generate_org_public_id,
-    validate_org_public_id,
-};
+use everruns_core::{BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole};
 use everruns_durable::UpdateField;
-use everruns_platform::{AuditEvent, ManagementAction, Organization};
+use everruns_platform::{
+    AuditEvent, ManagementAction, Organization, generate_org_public_id, validate_org_public_id,
+};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
@@ -1156,7 +1155,7 @@ mod tests {
     use crate::auth::routes::AuthConfigResponse;
     use axum::body::Body;
     use axum::http::Request;
-    use everruns_core::OrgMembership;
+    use everruns_platform::OrgMembership;
     use http_body_util::BodyExt;
     use tower::ServiceExt;
     use uuid::Uuid;

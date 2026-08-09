@@ -7,7 +7,8 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{OrgMembership, OrgRole, PlatformDefinition};
+use everruns_core::{OrgRole, PlatformDefinition};
+use everruns_platform::OrgMembership;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;

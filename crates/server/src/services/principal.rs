@@ -5,11 +5,11 @@
 
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    ANONYMOUS_USER_ID, Caller, ExternalActor, PrincipalId, PrincipalKind, PrincipalStatus,
-    PrincipalSummary, org_public_id_from_internal,
+    Caller, ExternalActor, PrincipalId, PrincipalKind, PrincipalSummary,
+    org_public_id_from_internal,
 };
 use everruns_durable::UpdateField;
-use everruns_platform::Principal;
+use everruns_platform::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -373,10 +373,8 @@ pub fn row_to_principal(row: PrincipalRow) -> Principal {
 mod tests {
     use super::*;
     use crate::storage::{CreateAgentIdentityRow, CreateUserRow, StorageBackend};
-    use everruns_core::{
-        ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, AgentIdentityId,
-        DEFAULT_ORG_ID,
-    };
+    use everruns_core::{AgentIdentityId, DEFAULT_ORG_ID};
+    use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
     async fn create_user_with_principal(
         db: &Arc<StorageBackend>,

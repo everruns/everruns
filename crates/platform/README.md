@@ -9,10 +9,14 @@ defined in `everruns-core`:
 - `Organization`
 - `Principal`
 
-Cross-cutting identity value types that core's runtime and permissions layer
-embed (`OrgRole`, `OrgMembership`, `PrincipalKind`, `PrincipalStatus`,
-`PrincipalSummary`) and the multitenancy constants remain in `everruns-core` and
-are re-exported here for a unified consumer surface.
+It also owns the auth-facing identity values that no core code names
+(`OrgMembership`, the `ANONYMOUS_USER_*` seed constants, the org public-id
+generation/validation helpers, and the `PrincipalStatus` lifecycle enum).
+
+Cross-cutting value types that core's runtime and permissions layer embed
+(`OrgRole`, `PrincipalKind`, `PrincipalSummary`) and the `DEFAULT_ORG_*`
+multitenancy constants remain in `everruns-core` and are re-exported here for a
+unified consumer surface.
 
 The dependency direction is strictly `platform -> core`; `everruns-core` never
 depends on `everruns-platform`.

@@ -768,7 +768,7 @@ mod tests {
     async fn seed_org(db: &StorageBackend) -> i64 {
         let org = db
             .create_organization(crate::storage::models::CreateOrganizationRow {
-                public_id: everruns_core::generate_org_public_id(),
+                public_id: everruns_platform::generate_org_public_id(),
                 name: "Acme".to_string(),
                 created_by: None,
             })
