@@ -11119,6 +11119,84 @@
             }
           },
           {
+            "name": "source",
+            "in": "query",
+            "description": "Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,\n`fcp`, `schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "chat"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Comma-separated derived statuses: `running`, `paused`, `failed`,\n`completed`, `idle`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "running,failed"
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "description": "Restrict to sessions owned by the calling user.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "example": true
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "description": "Inclusive lower bound on creation time (RFC 3339).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "2026-08-01T00:00:00Z"
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "description": "Exclusive upper bound on creation time (RFC 3339).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "2026-08-09T00:00:00Z"
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "`created_at` (default) or `last_activity`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "example": "last_activity"
+          },
+          {
             "name": "offset",
             "in": "query",
             "description": "Number of items to skip (for pagination).",
@@ -11318,6 +11396,100 @@
           },
           "404": {
             "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
+          }
+        }
+      }
+    },
+    "/v1/sessions/facets": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/facets - Facet counts and masthead metrics",
+        "operationId": "get_session_facets",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mine",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created_before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facet counts over the applied filters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFacetsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown filter value"
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -20241,6 +20413,14 @@
             ],
             "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to inherit\nthe agent/harness preference or the provider default.",
             "example": true
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "How this session was started. Clients may declare only `chat` (an\ninteractive thread) or `api` (the default); every other source is\nserver-owned so the sessions facet rail stays trustworthy.",
+            "example": "chat"
           },
           "system_prompt": {
             "type": [
@@ -29981,6 +30161,10 @@
                   "example": 2,
                   "minimum": 0
                 },
+                "activity": {
+                  "$ref": "#/components/schemas/SessionActivity",
+                  "description": "Outcome-oriented status derived from `status` and the last turn result.\nThis is the value the sessions list groups by and the facet rail counts."
+                },
                 "agent_id": {
                   "type": [
                     "string",
@@ -30224,6 +30408,10 @@
                   "format": "uuid",
                   "description": "Denormalized effective human owner of the owning principal lineage.",
                   "example": "550e8400-e29b-41d4-a716-446655440000"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/SessionSource",
+                  "description": "How this session was started. Server-owned for every ingress path."
                 },
                 "started_at": {
                   "type": [
@@ -30731,6 +30919,10 @@
                       "example": 2,
                       "minimum": 0
                     },
+                    "activity": {
+                      "$ref": "#/components/schemas/SessionActivity",
+                      "description": "Outcome-oriented status derived from `status` and the last turn result.\nThis is the value the sessions list groups by and the facet rail counts."
+                    },
                     "agent_id": {
                       "type": [
                         "string",
@@ -30974,6 +31166,10 @@
                       "format": "uuid",
                       "description": "Denormalized effective human owner of the owning principal lineage.",
                       "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "source": {
+                      "$ref": "#/components/schemas/SessionSource",
+                      "description": "How this session was started. Server-owned for every ingress path."
                     },
                     "started_at": {
                       "type": [
@@ -33362,6 +33558,10 @@
             "example": 2,
             "minimum": 0
           },
+          "activity": {
+            "$ref": "#/components/schemas/SessionActivity",
+            "description": "Outcome-oriented status derived from `status` and the last turn result.\nThis is the value the sessions list groups by and the facet rail counts."
+          },
           "agent_id": {
             "type": [
               "string",
@@ -33606,6 +33806,10 @@
             "description": "Denormalized effective human owner of the owning principal lineage.",
             "example": "550e8400-e29b-41d4-a716-446655440000"
           },
+          "source": {
+            "$ref": "#/components/schemas/SessionSource",
+            "description": "How this session was started. Server-owned for every ingress path."
+          },
           "started_at": {
             "type": [
               "string",
@@ -33697,6 +33901,17 @@
           }
         }
       },
+      "SessionActivity": {
+        "type": "string",
+        "description": "Outcome-oriented view of a session, as the sessions list and facet rail\npresent it. Derived from the session's execution status plus the outcome of\nits most recent turn — `SessionStatus` alone has no notion of failure.",
+        "enum": [
+          "running",
+          "paused",
+          "failed",
+          "completed",
+          "idle"
+        ]
+      },
       "SessionContextReport": {
         "type": "object",
         "description": "Token-budget report for a session — a model-aware breakdown of the\ncontext window into named sections plus per-source contributions, so\ncallers can answer \"what's filling the context?\" without reverse-\nengineering the prompt assembly.",
@@ -33755,6 +33970,93 @@
           "session_id": {
             "type": "string",
             "description": "Prefixed session identifier this report describes."
+          }
+        }
+      },
+      "SessionFacetCount": {
+        "type": "object",
+        "description": "One bucket of a sessions facet dimension.",
+        "required": [
+          "value",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "value": {
+            "type": "string",
+            "description": "The dimension value: an activity, a source, or an agent's public id.",
+            "example": "running"
+          }
+        }
+      },
+      "SessionFacetsResponse": {
+        "type": "object",
+        "description": "Facet-rail counts and masthead metrics for the sessions surface (EVE-852).\n\nEvery count is aggregated server-side over the same filter predicate as\n`GET /v1/sessions`, so a client never derives them by paging the list. Each\nfacet dimension is counted with the other filters applied but its own\nselection excluded, which is what lets the rail offer multi-select.",
+        "required": [
+          "total",
+          "by_activity",
+          "by_source",
+          "by_agent",
+          "active_now",
+          "failed_today",
+          "p95_duration_ms",
+          "tokens_today"
+        ],
+        "properties": {
+          "active_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions executing a turn or awaiting client tool results right now.",
+            "minimum": 0
+          },
+          "by_activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionFacetCount"
+            },
+            "description": "Counts per derived activity (`running`, `paused`, `failed`,\n`completed`, `idle`)."
+          },
+          "by_agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionFacetCount"
+            },
+            "description": "Counts per agent, keyed by the agent's public id. Sessions with no\nagent are omitted."
+          },
+          "by_source": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionFacetCount"
+            },
+            "description": "Counts per session source."
+          },
+          "failed_today": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions whose most recent turn failed or was cancelled today (UTC).",
+            "minimum": 0
+          },
+          "p95_duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "95th percentile session duration over the filtered set, milliseconds.",
+            "minimum": 0
+          },
+          "tokens_today": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tokens consumed by sessions created today (UTC).",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions matching every applied filter.",
+            "minimum": 0
           }
         }
       },
@@ -34050,6 +34352,23 @@
         "enum": [
           "running",
           "paused"
+        ]
+      },
+      "SessionSource": {
+        "type": "string",
+        "description": "How a session came into existence.\n\nClosed set: the sessions facet rail enumerates every variant, so the value\nis typed rather than a free-form string. Ingress paths set it server-side —\nclients may only declare the two variants they can legitimately be\n(`Chat` and `Api`), which keeps a facet like \"started by a schedule\"\ntrustworthy. Rows that predate the column, or whose origin could not be\ninferred at backfill time, carry `Unknown`.",
+        "enum": [
+          "chat",
+          "api",
+          "slack",
+          "ag_ui",
+          "fcp",
+          "schedule",
+          "webhook",
+          "a2a",
+          "eval",
+          "subagent",
+          "unknown"
         ]
       },
       "SessionStartedData": {
@@ -40054,6 +40373,10 @@
                 "example": 2,
                 "minimum": 0
               },
+              "activity": {
+                "$ref": "#/components/schemas/SessionActivity",
+                "description": "Outcome-oriented status derived from `status` and the last turn result.\nThis is the value the sessions list groups by and the facet rail counts."
+              },
               "agent_id": {
                 "type": [
                   "string",
@@ -40297,6 +40620,10 @@
                 "format": "uuid",
                 "description": "Denormalized effective human owner of the owning principal lineage.",
                 "example": "550e8400-e29b-41d4-a716-446655440000"
+              },
+              "source": {
+                "$ref": "#/components/schemas/SessionSource",
+                "description": "How this session was started. Server-owned for every ingress path."
               },
               "started_at": {
                 "type": [
