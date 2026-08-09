@@ -103,6 +103,7 @@ const mockFeatureFlags = {
   knowledge: true,
   plugins: true,
   observers: true,
+  machine_payments: true,
 };
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => mockFeatureFlags,
@@ -148,6 +149,7 @@ describe("useGlobalSearch", () => {
       knowledge: true,
       plugins: true,
       observers: true,
+      machine_payments: true,
     });
   });
 
@@ -242,6 +244,14 @@ describe("useGlobalSearch", () => {
     expect(result.current).toContainEqual(
       expect.objectContaining({ category: "navigation", href }),
     );
+  });
+
+  it("hides Payments navigation when machine payments are disabled", () => {
+    mockFeatureFlags.machine_payments = false;
+
+    const { result } = renderHook(() => useGlobalSearch("payments"));
+
+    expect(result.current.some((item) => item.href === "/settings/payments")).toBe(false);
   });
 
   it.each([

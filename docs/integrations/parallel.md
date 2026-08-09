@@ -25,3 +25,11 @@ To use Parallel's OAuth-compatible MCP endpoint, configure the capability with `
 | `mcp_parallel__web_fetch` | Fetch and extract focused content from known URLs. |
 
 Agents should reuse one stable `session_id` across Parallel tool calls in the same conversation.
+
+## Paid machine payments
+
+Operators can separately enable Parallel's paid search, extraction, and task tools with
+`FEATURE_MACHINE_PAYMENTS=true`. This deployment flag is off by default in every environment.
+When it is off, Everruns does not expose Settings > Payments or the payment account, policy, and
+attempt APIs, so the deployment does not ask organization owners to entrust wallet keys for a
+capability that cannot spend.

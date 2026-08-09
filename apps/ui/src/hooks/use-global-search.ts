@@ -264,6 +264,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/settings/payments",
     icon: WalletCards,
     keywords: ["wallet", "spend", "billing"],
+    flag: "machine_payments",
   },
   {
     title: "Durable Execution",

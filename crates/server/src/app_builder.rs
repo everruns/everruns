@@ -1540,7 +1540,10 @@ impl ServerAppBuilder {
             .merge(api::memory_files::routes(memory_files_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
             .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
-            .merge(api::payments::routes(payments_state))
+            .merge(api::payments::routes(
+                payments_state,
+                feature_flags.machine_payments,
+            ))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::user_preferences::routes(

@@ -167,7 +167,7 @@ Display:   evr_pat_<first-8-chars>...      (prefix for identification)
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | LLM API keys encrypted; system prompt encryption reverted (PII should not be in prompts) | **OPEN** |
-| TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | Wallet private keys are accepted only on payment account create/update, encrypted with the server envelope encryption service, never returned from API responses, decrypted only inside `ServerPaymentAuthority` immediately before native rail signing, and never sent to workers | MITIGATED |
+| TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | When machine payments are disabled, custody UI/navigation is hidden and payment account/policy/attempt routes return 404; when enabled, wallet private keys are accepted only on payment account create/update, encrypted with the server envelope encryption service, never returned from API responses, decrypted only inside `ServerPaymentAuthority` immediately before native rail signing, and never sent to workers | MITIGATED |
 
 ### Mitigation Details
 
@@ -195,7 +195,13 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 - Full UPDATE statements to write re-encrypted data back
 
 **TM-CRYPTO-008 — Machine-Payment Wallet Custody (MITIGATED):**
-Payment accounts store wallet signing material in `credential_encrypted`, protected by the same envelope encryption service used for other secrets. The public `PaymentAccount` model intentionally omits this field. Native x402 signing happens only in `ServerPaymentAuthority`; external workers call the control-plane `ExecuteMachinePayment` RPC and never receive private keys.
+`FEATURE_MACHINE_PAYMENTS` gates the entire custody surface. When it is false, the payment
+routes are not mounted and the UI removes Settings navigation, direct page access, and
+global-search discovery. When it is true, payment accounts store wallet signing material in
+`credential_encrypted`, protected by the same envelope encryption service used for other
+secrets. The public `PaymentAccount` model intentionally omits this field. Native x402 signing
+happens only in `ServerPaymentAuthority`; external workers call the control-plane
+`ExecuteMachinePayment` RPC and never receive private keys.
 
 ## 3. Tenant Isolation (TM-TENANT)
 
@@ -923,7 +929,8 @@ preference, and per-request maximum before creating any rail-specific signature.
 persisted with status, amount, target URL, and receipt/error. Registration of any money-spending
 capability is additionally gated by the `machine_payments` feature flag
 (`FEATURE_MACHINE_PAYMENTS`), off by default on every grade, so spend tools are never offered
-unless deliberately enabled.
+unless deliberately enabled. The same deployment gate removes wallet-management UI and leaves
+payment account, policy, and attempt API paths unmounted, preventing custody without spend.
 
 ## 14. Voice Sessions (TM-VOICE)
 

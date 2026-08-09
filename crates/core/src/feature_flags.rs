@@ -65,6 +65,10 @@ pub struct FeatureFlags {
     /// Experimental remote-control surface; requires deployment enablement and
     /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
+    /// Machine-payment custody, policy, audit, and paid capability surfaces.
+    /// Deployment-controlled and off by default on every grade because spend is
+    /// irreversible. Unlike experimental flags, this is not org-configurable.
+    pub machine_payments: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -103,7 +107,8 @@ pub struct FeatureFlagDefinition {
     pub experimental: bool,
 }
 
-/// All API-visible flags that organizations may opt into when the deployment allows them.
+/// API-visible flags that organizations may opt into when the deployment allows them.
+/// Deployment-only UI gates such as `machine_payments` intentionally stay out of this catalog.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "global_chat",
@@ -205,7 +210,8 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
 ];
 
 impl FeatureFlags {
-    /// Effective flags for an organization: deployment/system gates AND explicit org opt-in.
+    /// Effective flags for an organization: org-configurable deployment/system gates AND
+    /// explicit org opt-in, plus deployment-only UI gates unchanged.
     ///
     /// Org overrides default to disabled; a flag is on only when the deployment allows it
     /// and the org has opted in (`enabled: true` in storage).
@@ -228,6 +234,7 @@ impl FeatureFlags {
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
             webmcp: opt_in("webmcp", system.webmcp),
+            machine_payments: system.machine_payments,
         }
     }
 
@@ -248,6 +255,7 @@ impl FeatureFlags {
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             webmcp: experimental_flag("FEATURE_WEBMCP", grade),
+            machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
         }
     }
 
@@ -279,6 +287,7 @@ impl FeatureFlags {
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
             ("webmcp".to_string(), self.webmcp),
+            ("machine_payments".to_string(), self.machine_payments),
         ]))
     }
 
@@ -299,6 +308,7 @@ impl FeatureFlags {
             "observers" => self.observers,
             "public_chat" => self.public_chat,
             "webmcp" => self.webmcp,
+            "machine_payments" => self.machine_payments,
             _ => false,
         }
     }
@@ -321,6 +331,7 @@ impl FeatureFlags {
             observers: true,
             public_chat: true,
             webmcp: true,
+            machine_payments: true,
         }
     }
 }
@@ -342,11 +353,6 @@ pub struct InternalFeatureFlags {
     /// Managed session-owned sandbox capability and lifecycle orchestration.
     /// Experimental and disabled by default.
     pub session_sandbox: bool,
-    /// Machine-payment capabilities (e.g. the Parallel paid search/extract/task
-    /// capability). Gates registration of any capability that spends real money
-    /// through `PaymentAuthority`. Disabled by default on all envs, including dev,
-    /// because spend is irreversible. Enable via `FEATURE_MACHINE_PAYMENTS=true`.
-    pub machine_payments: bool,
     /// Experimental sandboxed Lua execution capability (`knowledge/execution/lua-execution.md`).
     /// Disabled by default; requires the `lua` cargo feature to be compiled in to
     /// actually run scripts. Enable via `FEATURE_LUA=true`.
@@ -362,7 +368,6 @@ impl InternalFeatureFlags {
             docker_capability,
             container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
             session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
-            machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
             lua: standard_flag("FEATURE_LUA", false),
         }
     }
@@ -373,7 +378,6 @@ impl InternalFeatureFlags {
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "session_sandbox" => self.session_sandbox,
-            "machine_payments" => self.machine_payments,
             "lua" => self.lua,
             _ => false,
         }
@@ -483,6 +487,7 @@ mod tests {
             observers: true,
             public_chat: true,
             webmcp: true,
+            machine_payments: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -502,6 +507,7 @@ mod tests {
             "MCP is a product surface, not a feature flag"
         );
         assert!(flags.is_enabled("webmcp"));
+        assert!(flags.is_enabled("machine_payments"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -522,6 +528,7 @@ mod tests {
             observers: true,
             public_chat: true,
             webmcp: true,
+            machine_payments: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
@@ -532,6 +539,7 @@ mod tests {
         assert!(json.contains("\"agent_delegation\":true"));
         assert!(json.contains("\"observers\":true"));
         assert!(json.contains("\"webmcp\":true"));
+        assert!(json.contains("\"machine_payments\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
@@ -622,6 +630,7 @@ mod tests {
         let system = FeatureFlags {
             global_chat: true,
             evals: true,
+            machine_payments: true,
             ..FeatureFlags::default()
         };
         let mut org = std::collections::HashMap::new();
@@ -629,9 +638,11 @@ mod tests {
         let effective = FeatureFlags::for_org(&system, &org);
         assert!(effective.global_chat);
         assert!(!effective.evals);
+        assert!(effective.machine_payments);
 
         let effective_none = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
         assert!(!effective_none.global_chat);
+        assert!(effective_none.machine_payments);
     }
 
     #[test]
@@ -684,6 +695,29 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
     }
 
+    #[test]
+    fn test_machine_payments_disabled_by_default() {
+        let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
+        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(
+            !flags.machine_payments,
+            "machine_payments should be disabled by default on all envs"
+        );
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
+    }
+
+    #[test]
+    fn test_machine_payments_enabled_by_env_override() {
+        let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
+        unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(flags.machine_payments);
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
+    }
+
     // =========================================================================
     // InternalFeatureFlags tests
     // =========================================================================
@@ -694,7 +728,6 @@ mod tests {
         assert!(!flags.docker_capability);
         assert!(!flags.container_sandbox);
         assert!(!flags.session_sandbox);
-        assert!(!flags.machine_payments);
     }
 
     #[test]
@@ -743,38 +776,13 @@ mod tests {
             docker_capability: true,
             container_sandbox: true,
             session_sandbox: true,
-            machine_payments: true,
             lua: true,
         };
         assert!(flags.is_enabled("docker_capability"));
         assert!(flags.is_enabled("container_sandbox"));
         assert!(flags.is_enabled("session_sandbox"));
-        assert!(flags.is_enabled("machine_payments"));
         assert!(flags.is_enabled("lua"));
         assert!(!flags.is_enabled("nonexistent"));
-    }
-
-    #[test]
-    fn test_machine_payments_disabled_by_default() {
-        let _lock = lock_env();
-        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
-        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(
-            !flags.machine_payments,
-            "machine_payments should be disabled by default on all envs"
-        );
-        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
-    }
-
-    #[test]
-    fn test_machine_payments_enabled_by_env_override() {
-        let _lock = lock_env();
-        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
-        unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.machine_payments);
-        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
     }
 
     #[test]

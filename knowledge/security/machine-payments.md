@@ -106,7 +106,7 @@ Unattended work must not silently spend a human user's wallet.
 The `parallel` capability is the first machine-payment consumer. Core owns only the
 trust-boundary primitive (`PaymentAuthority`, payment DTOs, `ToolContext`); the
 vendor-specific paid adapter lives in the `integrations/parallel` crate and is
-registered as an integration plugin gated by the `machine_payments` internal feature
+registered as an integration plugin gated by the deployment-controlled `machine_payments` feature
 flag. It contributes:
 - `parallel_search`
 - `parallel_extract`
@@ -144,17 +144,20 @@ Threat model entries:
 Current mitigations include no generic paid HTTP tool, capability and host
 allowlists, per-request caps, encrypted wallet custody, control-plane-only
 signing, no worker key exposure, and durable attempt records. Registration of any
-money-spending capability is itself gated by the `machine_payments` feature flag, so
-spend tools are never offered by default. Budget reservations, per-turn/day
+money-spending capability, wallet custody UI, and payment account/policy/attempt API is
+itself gated by the `machine_payments` feature flag. When disabled, the UI is hidden and
+the API routes are not mounted, so a deployment that cannot spend does not collect wallet
+keys. Budget reservations, per-turn/day
 enforcement, and idempotency-key settlement hardening remain follow-ups.
 
 ## Rollout
 
-Feature flag: `FEATURE_MACHINE_PAYMENTS` (the `machine_payments` `InternalFeatureFlags`
-field). It is a standard flag, off by default on every grade including dev because spend
-is irreversible; set `FEATURE_MACHINE_PAYMENTS=true` to deliberately enable. The flag
-gates registration of machine-payment capabilities (currently the `parallel` integration
-plugin).
+Feature flag: `FEATURE_MACHINE_PAYMENTS` (the deployment-only, API-visible
+`machine_payments` feature flag). It is off by default on every grade including dev because
+spend is irreversible; set `FEATURE_MACHINE_PAYMENTS=true` to deliberately enable. It is
+reported by the feature-flags API so the UI can remove the custody surface, but it is not an
+organization opt-in. The flag gates machine-payment capabilities (currently the `parallel`
+integration plugin), payment account/policy/attempt APIs, and Settings > Payments.
 
 Recommended sequence:
 1. Payment DTOs, account/policy/attempt APIs, and UI.

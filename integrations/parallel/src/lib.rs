@@ -46,7 +46,7 @@ inventory::submit! {
 }
 
 // Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
-// the `machine_payments` internal feature flag (off by default on all envs,
+// the deployment-controlled `machine_payments` feature flag (off by default on all envs,
 // including dev, because spend is irreversible) rather than the experimental
 // grade gate, so it can be enabled deliberately in any environment.
 inventory::submit! {
