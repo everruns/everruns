@@ -4297,6 +4297,18 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @enum {string} */
+    AgentHarnessSource: "explicit" | "organization_default";
+    /** @enum {string} */
+    AgentHarnessStatus: "active" | "archived" | "deleted" | "unresolved";
+    /** @description Harness that a newly created session for this agent will resolve to. */
+    AgentHarnessSummary: {
+      display_name?: string | null;
+      id?: string | null;
+      name?: string | null;
+      source: components["schemas"]["AgentHarnessSource"];
+      status: components["schemas"]["AgentHarnessStatus"];
+    };
     AgentMessage: {
       role: string;
       text: string;
@@ -4486,6 +4498,14 @@ export interface components {
      * @enum {string}
      */
     AgentVersionPolicy: "default" | "latest" | "pinned";
+    /** @description Agent list/detail payload with relationship counts and resolved harness metadata. */
+    AgentWithCounts: components["schemas"]["Agent"] & {
+      /** Format: int64 */
+      app_count: number;
+      effective_harness: components["schemas"]["AgentHarnessSummary"];
+      /** Format: int64 */
+      session_count: number;
+    };
     /**
      * @description Agent-actionable link describing a follow-up the caller can take. Used in
      *     two contexts:
@@ -12214,6 +12234,57 @@ export interface components {
      *     middleware after the handler returns, so handlers don't need to thread the
      *     request URL into every construction site.
      */
+    PaginatedResponse_WithUrls_AgentWithCounts: {
+      /** @description Array of items returned by the list operation. */
+      data: ((components["schemas"]["Agent"] & {
+        /** Format: int64 */
+        app_count: number;
+        effective_harness: components["schemas"]["AgentHarnessSummary"];
+        /** Format: int64 */
+        session_count: number;
+      }) & {
+        /**
+         * @description State-aware hypermedia actions the caller can take on this resource
+         *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+         *     shape when empty so resources that haven't opted into the
+         *     convention don't grow their payloads.
+         */
+        allowed_actions?: components["schemas"]["AllowedAction"][];
+        /** @description Full API endpoint URL for this resource. */
+        self_url: string;
+        /** @description Alias for `view_url`, used by command and MCP outputs. */
+        ui_link: string;
+        /** @description Full UI URL for viewing this resource. */
+        view_url: string;
+      })[];
+      /**
+       * Format: int32
+       * @description Maximum number of items per page.
+       */
+      limit: number;
+      /** @description Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page. */
+      next_url?: string | null;
+      /**
+       * Format: int32
+       * @description Current offset (starting position).
+       */
+      offset: number;
+      /** @description Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page. */
+      prev_url?: string | null;
+      /**
+       * Format: int32
+       * @description Total number of items matching the query (across all pages).
+       */
+      total: number;
+    };
+    /**
+     * @description Response wrapper for paginated list endpoints.
+     *     Includes pagination metadata along with the data array.
+     *
+     *     `next_url` and `prev_url` are populated by the [`decorate_pagination_links`]
+     *     middleware after the handler returns, so handlers don't need to thread the
+     *     request URL into every construction site.
+     */
     PaginatedResponse_WithUrls_CapabilityInfo: {
       /** @description Array of items returned by the list operation. */
       data: ({
@@ -12336,187 +12407,6 @@ export interface components {
          */
         tool_definitions?: Record<string, unknown>[];
       } & {
-        /**
-         * @description State-aware hypermedia actions the caller can take on this resource
-         *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
-         *     shape when empty so resources that haven't opted into the
-         *     convention don't grow their payloads.
-         */
-        allowed_actions?: components["schemas"]["AllowedAction"][];
-        /** @description Full API endpoint URL for this resource. */
-        self_url: string;
-        /** @description Alias for `view_url`, used by command and MCP outputs. */
-        ui_link: string;
-        /** @description Full UI URL for viewing this resource. */
-        view_url: string;
-      })[];
-      /**
-       * Format: int32
-       * @description Maximum number of items per page.
-       */
-      limit: number;
-      /** @description Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page. */
-      next_url?: string | null;
-      /**
-       * Format: int32
-       * @description Current offset (starting position).
-       */
-      offset: number;
-      /** @description Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page. */
-      prev_url?: string | null;
-      /**
-       * Format: int32
-       * @description Total number of items matching the query (across all pages).
-       */
-      total: number;
-    };
-    /**
-     * @description Response wrapper for paginated list endpoints.
-     *     Includes pagination metadata along with the data array.
-     *
-     *     `next_url` and `prev_url` are populated by the [`decorate_pagination_links`]
-     *     middleware after the handler returns, so handlers don't need to thread the
-     *     request URL into every construction site.
-     */
-    PaginatedResponse_WithUrls_ResourceWithCounts_Agent: {
-      /** @description Array of items returned by the list operation. */
-      data: (({
-        /**
-         * Format: date-time
-         * @description Timestamp when the agent was archived.
-         * @example 2026-05-26T00:00:00Z
-         */
-        archived_at?: string | null;
-        /**
-         * @description Capabilities enabled for this agent with per-agent configuration.
-         *     Capabilities add tools and system prompt modifications.
-         */
-        capabilities?: components["schemas"]["AgentCapabilityConfig"][];
-        /**
-         * Format: date-time
-         * @description Timestamp when the agent was created.
-         * @example 2026-04-01T10:00:00Z
-         */
-        created_at: string;
-        /**
-         * @description Default LLM model ID for this agent.
-         *     Can be overridden at the session level.
-         * @example model_01933b5a00007000800000000000001
-         */
-        default_model_id?: string | null;
-        /**
-         * @description Default immutable version used by deployments that choose the default policy.
-         * @example agentver_01933b5a00007000800000000000001
-         */
-        default_version_id?: string | null;
-        /**
-         * Format: date-time
-         * @description Timestamp when the agent was deleted.
-         * @example 2026-05-26T00:00:00Z
-         */
-        deleted_at?: string | null;
-        /**
-         * @description Human-readable description of what the agent does.
-         * @example Handles refund and shipping questions; escalates billing disputes.
-         */
-        description?: string | null;
-        /**
-         * @description Human-readable display name shown in UI (e.g. "Customer Support Agent").
-         *     Falls back to `name` when absent.
-         * @example Customer Support Agent
-         */
-        display_name?: string | null;
-        /**
-         * @description Source agent for a forked agent.
-         * @example agent_01933b5a00007000800000000000001
-         */
-        forked_from_agent_id?: string | null;
-        /**
-         * @description Source version for a forked agent.
-         * @example agentver_01933b5a00007000800000000000001
-         */
-        forked_from_version_id?: string | null;
-        /**
-         * @description Harness that supplies the base execution environment for this agent.
-         * @example harness_01933b5a00007000800000000000001
-         */
-        harness_id: string;
-        /**
-         * @description External identifier (agent_<32-hex>). Shown as "id" in API.
-         *     Client-supplied or auto-generated.
-         * @example agent_01933b5a000070008000000000000001
-         */
-        id: string;
-        /** @description Starter files copied into each new session for this agent. */
-        initial_files?: components["schemas"]["InitialFile"][];
-        /**
-         * @description Maximum number of LLM iterations per turn for this agent.
-         * @example 50
-         */
-        max_iterations?: number | null;
-        /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
-        mcpServers?: components["schemas"]["BTreeMap"];
-        /**
-         * @description Name, unique per org (e.g. "customer-support").
-         * @example customer-support
-         */
-        name: string;
-        network_access?: null | components["schemas"]["NetworkAccessList"];
-        /**
-         * @description Request-level parallel tool calling preference (EVE-598).
-         *
-         *     `None` (default) preserves provider defaults. `Some(true)` signals the
-         *     provider that parallel tool calls are wanted; `Some(false)` requests at
-         *     most one tool call per turn and forces serial execution. Merged across
-         *     harness/agent/session layers (overlay wins).
-         * @example true
-         */
-        parallel_tool_calls?: boolean | null;
-        /**
-         * @description Root agent lineage identifier for grouping fork families.
-         * @example agent_01933b5a00007000800000000000001
-         */
-        root_agent_id?: string | null;
-        /** @description Current lifecycle status of the agent. */
-        status: components["schemas"]["AgentStatus"];
-        /**
-         * @description System prompt that defines the agent's behavior.
-         *     Sent as the first message in every conversation.
-         * @example You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human.
-         */
-        system_prompt: string;
-        /**
-         * @description Tags for organizing and filtering agents.
-         * @example [
-         *       "support",
-         *       "production"
-         *     ]
-         */
-        tags?: string[];
-        /**
-         * @description Client-side tools registered for this agent.
-         *     These tools are executed by the client, not the server.
-         */
-        tools?: components["schemas"]["ToolDefinition"][];
-        /**
-         * Format: date-time
-         * @description Timestamp when the agent was last updated.
-         * @example 2026-05-20T14:00:00Z
-         */
-        updated_at: string;
-        usage?: null | components["schemas"]["TokenUsage"];
-      } & {
-        /**
-         * Format: int64
-         * @description Number of non-deleted apps using this resource.
-         */
-        app_count: number;
-        /**
-         * Format: int64
-         * @description Number of sessions using this resource.
-         */
-        session_count: number;
-      }) & {
         /**
          * @description State-aware hypermedia actions the caller can take on this resource
          *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
@@ -16956,6 +16846,36 @@ export interface components {
      *     (and omitted from the wire shape) until the underlying resource opts
      *     into the convention by overriding `ResourceUrlable::allowed_actions`.
      */
+    WithUrls_AgentWithCounts: (components["schemas"]["Agent"] & {
+      /** Format: int64 */
+      app_count: number;
+      effective_harness: components["schemas"]["AgentHarnessSummary"];
+      /** Format: int64 */
+      session_count: number;
+    }) & {
+      /**
+       * @description State-aware hypermedia actions the caller can take on this resource
+       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+       *     shape when empty so resources that haven't opted into the
+       *     convention don't grow their payloads.
+       */
+      allowed_actions?: components["schemas"]["AllowedAction"][];
+      /** @description Full API endpoint URL for this resource. */
+      self_url: string;
+      /** @description Alias for `view_url`, used by command and MCP outputs. */
+      ui_link: string;
+      /** @description Full UI URL for viewing this resource. */
+      view_url: string;
+    };
+    /**
+     * @description Wrapper that adds API and UI links to a serialized resource.
+     *
+     *     Uses `self_url` (not `url`) for the API link to avoid collision with
+     *     resources that already have a `url` field (e.g. McpServer). The
+     *     `allowed_actions` array carries state-aware hypermedia links — empty
+     *     (and omitted from the wire shape) until the underlying resource opts
+     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
+     */
     WithUrls_App: {
       /**
        * @description Optional ID of the agent to use (format: agent_{32-hex}).
@@ -17684,166 +17604,6 @@ export interface components {
        */
       updated_at: string;
     } & {
-      /**
-       * @description State-aware hypermedia actions the caller can take on this resource
-       *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
-       *     shape when empty so resources that haven't opted into the
-       *     convention don't grow their payloads.
-       */
-      allowed_actions?: components["schemas"]["AllowedAction"][];
-      /** @description Full API endpoint URL for this resource. */
-      self_url: string;
-      /** @description Alias for `view_url`, used by command and MCP outputs. */
-      ui_link: string;
-      /** @description Full UI URL for viewing this resource. */
-      view_url: string;
-    };
-    /**
-     * @description Wrapper that adds API and UI links to a serialized resource.
-     *
-     *     Uses `self_url` (not `url`) for the API link to avoid collision with
-     *     resources that already have a `url` field (e.g. McpServer). The
-     *     `allowed_actions` array carries state-aware hypermedia links — empty
-     *     (and omitted from the wire shape) until the underlying resource opts
-     *     into the convention by overriding `ResourceUrlable::allowed_actions`.
-     */
-    WithUrls_ResourceWithCounts_Agent: ({
-      /**
-       * Format: date-time
-       * @description Timestamp when the agent was archived.
-       * @example 2026-05-26T00:00:00Z
-       */
-      archived_at?: string | null;
-      /**
-       * @description Capabilities enabled for this agent with per-agent configuration.
-       *     Capabilities add tools and system prompt modifications.
-       */
-      capabilities?: components["schemas"]["AgentCapabilityConfig"][];
-      /**
-       * Format: date-time
-       * @description Timestamp when the agent was created.
-       * @example 2026-04-01T10:00:00Z
-       */
-      created_at: string;
-      /**
-       * @description Default LLM model ID for this agent.
-       *     Can be overridden at the session level.
-       * @example model_01933b5a00007000800000000000001
-       */
-      default_model_id?: string | null;
-      /**
-       * @description Default immutable version used by deployments that choose the default policy.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      default_version_id?: string | null;
-      /**
-       * Format: date-time
-       * @description Timestamp when the agent was deleted.
-       * @example 2026-05-26T00:00:00Z
-       */
-      deleted_at?: string | null;
-      /**
-       * @description Human-readable description of what the agent does.
-       * @example Handles refund and shipping questions; escalates billing disputes.
-       */
-      description?: string | null;
-      /**
-       * @description Human-readable display name shown in UI (e.g. "Customer Support Agent").
-       *     Falls back to `name` when absent.
-       * @example Customer Support Agent
-       */
-      display_name?: string | null;
-      /**
-       * @description Source agent for a forked agent.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      forked_from_agent_id?: string | null;
-      /**
-       * @description Source version for a forked agent.
-       * @example agentver_01933b5a00007000800000000000001
-       */
-      forked_from_version_id?: string | null;
-      /**
-       * @description Harness that supplies the base execution environment for this agent.
-       * @example harness_01933b5a00007000800000000000001
-       */
-      harness_id: string;
-      /**
-       * @description External identifier (agent_<32-hex>). Shown as "id" in API.
-       *     Client-supplied or auto-generated.
-       * @example agent_01933b5a000070008000000000000001
-       */
-      id: string;
-      /** @description Starter files copied into each new session for this agent. */
-      initial_files?: components["schemas"]["InitialFile"][];
-      /**
-       * @description Maximum number of LLM iterations per turn for this agent.
-       * @example 50
-       */
-      max_iterations?: number | null;
-      /** @description Remote MCP servers scoped to this agent and inherited by its sessions. */
-      mcpServers?: components["schemas"]["BTreeMap"];
-      /**
-       * @description Name, unique per org (e.g. "customer-support").
-       * @example customer-support
-       */
-      name: string;
-      network_access?: null | components["schemas"]["NetworkAccessList"];
-      /**
-       * @description Request-level parallel tool calling preference (EVE-598).
-       *
-       *     `None` (default) preserves provider defaults. `Some(true)` signals the
-       *     provider that parallel tool calls are wanted; `Some(false)` requests at
-       *     most one tool call per turn and forces serial execution. Merged across
-       *     harness/agent/session layers (overlay wins).
-       * @example true
-       */
-      parallel_tool_calls?: boolean | null;
-      /**
-       * @description Root agent lineage identifier for grouping fork families.
-       * @example agent_01933b5a00007000800000000000001
-       */
-      root_agent_id?: string | null;
-      /** @description Current lifecycle status of the agent. */
-      status: components["schemas"]["AgentStatus"];
-      /**
-       * @description System prompt that defines the agent's behavior.
-       *     Sent as the first message in every conversation.
-       * @example You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human.
-       */
-      system_prompt: string;
-      /**
-       * @description Tags for organizing and filtering agents.
-       * @example [
-       *       "support",
-       *       "production"
-       *     ]
-       */
-      tags?: string[];
-      /**
-       * @description Client-side tools registered for this agent.
-       *     These tools are executed by the client, not the server.
-       */
-      tools?: components["schemas"]["ToolDefinition"][];
-      /**
-       * Format: date-time
-       * @description Timestamp when the agent was last updated.
-       * @example 2026-05-20T14:00:00Z
-       */
-      updated_at: string;
-      usage?: null | components["schemas"]["TokenUsage"];
-    } & {
-      /**
-       * Format: int64
-       * @description Number of non-deleted apps using this resource.
-       */
-      app_count: number;
-      /**
-       * Format: int64
-       * @description Number of sessions using this resource.
-       */
-      session_count: number;
-    }) & {
       /**
        * @description State-aware hypermedia actions the caller can take on this resource
        *     next (e.g. `cancel`, `events`, `update`). Omitted from the wire
@@ -18606,7 +18366,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["PaginatedResponse_WithUrls_ResourceWithCounts_Agent"];
+          "application/json": components["schemas"]["PaginatedResponse_WithUrls_AgentWithCounts"];
         };
       };
       /** @description Internal server error */
@@ -18900,7 +18660,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WithUrls_ResourceWithCounts_Agent"];
+          "application/json": components["schemas"]["WithUrls_AgentWithCounts"];
         };
       };
       /** @description Invalid agent ID */

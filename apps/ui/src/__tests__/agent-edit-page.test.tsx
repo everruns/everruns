@@ -290,6 +290,43 @@ describe("EditAgentPage", () => {
     expect(mutateAsync.mock.calls[0][0].request).not.toHaveProperty("network_access");
   });
 
+  it("preserves an inherited harness when saving an unrelated edit", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...malformedAgent,
+        effective_harness: {
+          id: "harness_effective",
+          name: "base",
+          display_name: "Base",
+          source: "organization_default",
+          status: "active",
+        },
+      },
+      isLoading: false,
+    });
+    mockUseHarnesses.mockReturnValue({
+      data: [
+        { id: "harness_test", name: "generic", display_name: "Generic" },
+        { id: "harness_effective", name: "base", display_name: "Base" },
+      ],
+      isLoading: false,
+    });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    expect(screen.getByText("Base")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Updated description" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].request).not.toHaveProperty("harness_id");
+  });
+
   it("includes parsed network_access in the update when edited", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({});
     mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });

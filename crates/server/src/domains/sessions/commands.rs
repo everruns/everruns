@@ -144,7 +144,9 @@ impl Command for CreateSession {
                     .public_id
                     .parse()
                     .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+                let harness_id =
+                    (row.harness_source != "organization_default").then_some(row.harness_id);
+                (Some(row.id.uuid()), Some(public_id), harness_id)
             } else if let Some(name) = req.agent_name.as_deref() {
                 let row = ctx
                     .db
@@ -156,7 +158,9 @@ impl Command for CreateSession {
                     .public_id
                     .parse()
                     .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+                let harness_id =
+                    (row.harness_source != "organization_default").then_some(row.harness_id);
+                (Some(row.id.uuid()), Some(public_id), harness_id)
             } else {
                 (None, None, None)
             };

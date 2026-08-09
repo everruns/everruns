@@ -5,9 +5,9 @@
 
 use super::queries as q;
 use super::types::{
-    AgentVersionDiffResponse, CreateAgentRequest, CreateAgentRow, CreateAgentVersionRequest,
-    ForkAgentVersionRequest, RollbackAgentVersionRequest, SetDefaultAgentVersionRequest,
-    UpdateAgent, UpdateAgentRequest,
+    AgentRow, AgentVersionDiffResponse, CreateAgentRequest, CreateAgentRow,
+    CreateAgentVersionRequest, ForkAgentVersionRequest, RollbackAgentVersionRequest,
+    SetDefaultAgentVersionRequest, UpdateAgent, UpdateAgentRequest,
 };
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
@@ -131,6 +131,29 @@ async fn persist_capabilities(
     Ok(())
 }
 
+async fn persist_harness_source(
+    ctx: &Ctx,
+    row: AgentRow,
+    source: &str,
+) -> Result<AgentRow, CommandError> {
+    if row.harness_source == source {
+        return Ok(row);
+    }
+
+    ctx.db
+        .update_agent(
+            ctx.org_id(),
+            row.id,
+            UpdateAgent {
+                harness_source: Some(source.to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))
+}
+
 async fn resolve_create_harness_id(
     ctx: &Ctx,
     harness_id: Option<HarnessId>,
@@ -172,9 +195,15 @@ async fn resolve_harness_id(
             .await
             .map_err(classify_anyhow)?
     } else if default_when_omitted {
-        let id = crate::org_init::generic_harness_id(&ctx.db, ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &ctx.db,
+            ctx.org_id(),
+            None,
+            None,
+            ctx.fallback_harness_name.as_deref().or(Some("generic")),
+        )
+        .await
+        .map_err(classify_anyhow)?;
         ctx.db
             .get_harness(ctx.org_id(), id)
             .await
@@ -273,6 +302,11 @@ impl Command for CreateAgent {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
+            "explicit"
+        } else {
+            "organization_default"
+        };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
 
@@ -340,6 +374,7 @@ impl Command for CreateAgent {
             (row, internal_uuid)
         };
 
+        let row = persist_harness_source(ctx, row, harness_source).await?;
         persist_capabilities(&ctx.db, agent_uuid, &caps).await?;
         Ok(q::row_to_agent(row, caps))
     }
@@ -593,6 +628,7 @@ impl Command for UpdateAgentCmd {
             system_prompt: req.system_prompt,
             default_model_id,
             harness_id,
+            harness_source: harness_id.map(|_| "explicit".to_string()),
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
             initial_files: req
@@ -780,6 +816,11 @@ impl Command for UpsertAgent {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let harness_source = if req.harness_id.is_some() || req.harness_name.is_some() {
+            "explicit"
+        } else {
+            "organization_default"
+        };
         let harness_id =
             resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let previous_config_hash = if ctx.feature_flags.agent_versions {
@@ -825,6 +866,7 @@ impl Command for UpsertAgent {
             .upsert_agent(ctx.org_id(), input)
             .await
             .map_err(classify_anyhow)?;
+        let row = persist_harness_source(ctx, row, harness_source).await?;
         let agent_uuid = row.id.uuid();
 
         let final_caps = if !caps.is_empty() {

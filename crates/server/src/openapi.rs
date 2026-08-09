@@ -29,11 +29,11 @@ use utoipa::{Modify, OpenApi};
 
 const SDK_RESPONSE_WRAPPERS: &[(&str, &str, &str)] = &[
     ("WithUrls_Agent", "resource", "Agent"),
-    ("WithUrls_ResourceWithCounts_Agent", "resource", "Agent"),
+    ("WithUrls_AgentWithCounts", "resource", "Agent"),
     ("WithUrls_Session", "resource", "Session"),
     ("WithUrls_CapabilityInfo", "resource", "CapabilityInfo"),
     (
-        "PaginatedResponse_WithUrls_ResourceWithCounts_Agent",
+        "PaginatedResponse_WithUrls_AgentWithCounts",
         "list",
         "Agent",
     ),

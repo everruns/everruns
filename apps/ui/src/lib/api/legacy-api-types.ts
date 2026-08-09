@@ -41,6 +41,14 @@ export interface UpdateAgentIdentityRequest {
 // ============================================
 export type AgentStatus = "active" | "archived" | "deleted";
 
+export interface AgentHarnessSummary {
+  id: string | null;
+  name: string | null;
+  display_name: string | null;
+  source: "explicit" | "organization_default";
+  status: "active" | "archived" | "deleted" | "unresolved";
+}
+
 export interface Agent {
   id: string;
   /** Addressable name (slug): lowercase alphanumeric and hyphens (e.g. "customer-support") */
@@ -76,6 +84,8 @@ export interface Agent {
   session_count?: number;
   /** Number of non-deleted apps using this agent. Present on list/detail API responses. */
   app_count?: number;
+  /** Harness a newly created session for this agent will resolve to. */
+  effective_harness?: AgentHarnessSummary;
 }
 
 export type AgentVersionChangeKind =

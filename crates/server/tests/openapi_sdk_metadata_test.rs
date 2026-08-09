@@ -31,11 +31,11 @@ fn sdk_response_wrapper_metadata_is_valid() {
         .expect("components.schemas exists");
     let expected = BTreeMap::from([
         ("WithUrls_Agent", ("resource", "Agent")),
-        ("WithUrls_ResourceWithCounts_Agent", ("resource", "Agent")),
+        ("WithUrls_AgentWithCounts", ("resource", "Agent")),
         ("WithUrls_Session", ("resource", "Session")),
         ("WithUrls_CapabilityInfo", ("resource", "CapabilityInfo")),
         (
-            "PaginatedResponse_WithUrls_ResourceWithCounts_Agent",
+            "PaginatedResponse_WithUrls_AgentWithCounts",
             ("list", "Agent"),
         ),
         ("PaginatedResponse_WithUrls_Session", ("list", "Session")),
