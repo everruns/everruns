@@ -464,7 +464,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         idle_pause_after_seconds: 180,
         provider_config: json!({
             "snapshot": "daytona-small",
-            "workspace_path": "/workspace",
+            "workspace_path": "/home/daytona",
             "title": "live-session-sandbox-recovery",
             "recovery": {
                 "enabled": true,
@@ -485,7 +485,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
             &context,
             &config,
             &instance,
-            "/workspace/recovery-marker.txt",
+            "/home/daytona/recovery-marker.txt",
             "survived\n",
         )
         .await
@@ -526,7 +526,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
             &context,
             &config,
             &replacement,
-            "/workspace/recovery-marker.txt",
+            "/home/daytona/recovery-marker.txt",
         )
         .await
         .expect("restored recovery marker read failed");

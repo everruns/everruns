@@ -49,7 +49,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
                 "idle_pause_after_seconds": 180,
                 "provider_config": {
                     "size": "small",
-                    "workspace_path": "/workspace",
+                    "workspace_path": "/home/daytona",
                     "recovery": {
                         "enabled": true,
                         "volume_name": "everruns-recovery"

@@ -40,7 +40,7 @@ Configured through normal capability config on harness, agent, or session:
     "idle_pause_after_seconds": 180,
     "provider_config": {
       "size": "small",
-      "workspace_path": "/workspace",
+      "workspace_path": "/home/daytona",
       "recovery": {
         "enabled": true,
         "volume_name": "everruns-recovery",
@@ -111,8 +111,8 @@ Daytona is the first implementation and lives in:
 
 ### Daytona recovery
 
-The coding harness keeps the live worktree on Daytona's local filesystem at
-`/workspace`. A Daytona Volume is mounted separately at
+The coding harness keeps the live worktree on Daytona's writable local filesystem at
+`/home/daytona`. A Daytona Volume is mounted separately at
 `/mnt/everruns-recovery`; it is a recovery journal, not the live worktree.
 
 Everruns uses one shared volume per Daytona connection and isolates each

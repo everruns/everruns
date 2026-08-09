@@ -556,8 +556,8 @@ durable state.
 ### Daytona
 
 - Provision: one provider sandbox from the pinned profile.
-- Filesystem: Daytona API rooted at `/workspace` (provider path translation is
-  internal).
+- Filesystem: Daytona API rooted at the configured provider worktree (currently
+  `/home/daytona`; logical path translation is internal).
 - Compute: streaming Daytona exec.
 - Stop: preserve filesystem; pause/memory preservation only when the selected
   Daytona class advertises it.
@@ -569,13 +569,13 @@ durable state.
 
 #### Daytona recovery volume
 
-Do not use a Daytona Volume as the live `/workspace` by default. Daytona
+Do not use a Daytona Volume as the live worktree by default. Daytona
 Volumes are FUSE mounts backed by object storage: they are durable across
 sandbox deletion, but are slower than the sandbox-local filesystem and use
 last-writer-wins rather than transactional writes. The default layout is:
 
 ```text
-/workspace                 fast, disposable Daytona-local worktree
+/home/daytona              fast, disposable Daytona-local worktree
 /mnt/everruns-recovery     durable volume mount used for checkpoints
 ```
 
@@ -613,7 +613,7 @@ Provision and recovery are therefore:
 1. Resolve or create the shared recovery volume and allocate the stable
    Sandbox subpath.
 2. Create a Daytona sandbox with that volume binding.
-3. Restore `head_revision` from the mount into the new local `/workspace`.
+3. Restore `head_revision` from the mount into the new local worktree.
 4. Run the versioned, idempotent bootstrap.
 5. Publish the new SandboxInstance generation as ready.
 
