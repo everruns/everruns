@@ -88,9 +88,9 @@ fn recovery_settings(
         return Ok(None);
     };
 
-    if workspace_path == "/" {
+    if !is_safe_absolute_path(workspace_path) {
         return Err(ToolExecutionResult::tool_error(
-            "session_sandbox Daytona recovery cannot checkpoint '/' as the workspace",
+            "session_sandbox Daytona recovery workspace_path must be a normalized absolute non-root path",
         ));
     }
     if workspace_path == DAYTONA_WORKSPACE_PATH {
@@ -1184,6 +1184,10 @@ mod tests {
         };
 
         assert!(recovery_settings(&config, DAYTONA_WORKSPACE_PATH).is_err());
+        assert!(
+            recovery_settings(&config, "/home/daytona/workspace/../control").is_err(),
+            "a destructive restore target must not contain traversal"
+        );
         assert!(
             recovery_settings(&config, "/home/daytona/workspace").is_ok(),
             "a dedicated child worktree should be recoverable"
