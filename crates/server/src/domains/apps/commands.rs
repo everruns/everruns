@@ -303,9 +303,7 @@ pub(crate) fn cron_min_interval_seconds(
 /// organizations with the `public_chat` feature flag enabled.
 fn ensure_channel_type_enabled(ctx: &Ctx, channel_type: &ChannelType) -> Result<(), CommandError> {
     if *channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
-        return Err(CommandError::bad_request(
-            "Public Chat is not enabled for this organization",
-        ));
+        return Err(CommandError::feature_not_enabled("public_chat"));
     }
     Ok(())
 }

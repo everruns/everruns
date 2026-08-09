@@ -338,7 +338,7 @@ async fn resolve_published_channel(
 ) -> Result<(App, PublicChatChannelConfig), Response> {
     // Feature-gated: when the deployment flag is off, the surface does not exist.
     if !*PUBLIC_CHAT_ENABLED {
-        return Err(not_found());
+        return Err(ErrorResponse::feature_not_enabled("public_chat").into_response());
     }
     let app = crate::domains::apps::queries::get_by_public_id_unscoped(
         &state.db,

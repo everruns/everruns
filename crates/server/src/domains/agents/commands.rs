@@ -112,9 +112,18 @@ async fn normalize_capability_refs(
     ctx: &Ctx,
     caps: Vec<AgentCapabilityConfig>,
 ) -> Result<Vec<AgentCapabilityConfig>, CommandError> {
-    crate::domains::capabilities::validation::normalize_capability_refs(&ctx.db, ctx.org_id(), caps)
-        .await
-        .map_err(classify_anyhow)
+    let caps = crate::domains::capabilities::validation::normalize_capability_refs(
+        &ctx.db,
+        ctx.org_id(),
+        caps,
+    )
+    .await
+    .map_err(classify_anyhow)?;
+    crate::domains::capabilities::validation::validate_feature_gated_capability_refs(
+        &ctx.feature_flags,
+        &caps,
+    )?;
+    Ok(caps)
 }
 
 // ============================================================================
@@ -2314,7 +2323,7 @@ mod tests {
     #[tokio::test]
     async fn update_agent_skips_auto_snapshot_when_versions_disabled() {
         let db = Arc::new(StorageBackend::in_memory());
-        let ctx = ctx_with_role_and_flags(db, OrgRole::Owner, FeatureFlags::default());
+        let ctx = ctx_with_role_and_flags(db.clone(), OrgRole::Owner, FeatureFlags::default());
         let agent = CreateAgent(basic_agent_request("auto-snapshot-disabled-agent"))
             .run(&ctx)
             .await
@@ -2328,12 +2337,10 @@ mod tests {
         .await
         .expect("agent is updated");
 
-        let snapshots = ListAgentVersions {
-            agent_id: agent.public_id.to_string(),
-        }
-        .run(&ctx)
-        .await
-        .expect("versions are listed");
+        let snapshots = db
+            .list_agent_versions(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
+            .await
+            .expect("stored versions are listed");
         assert!(snapshots.is_empty());
     }
 

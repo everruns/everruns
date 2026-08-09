@@ -547,7 +547,11 @@ async fn eval_run_creation_requires_session_permission() {
     let ctx = make_ctx(
         caller_with_role(OrgRole::Owner),
         Arc::new(AgentsOnlyResolver),
-    );
+    )
+    .with_feature_flags(FeatureFlags {
+        evals: true,
+        ..Default::default()
+    });
     let err = CreateEvalRun {
         eval_id: "eval_nonexistent".to_string(),
         req: CreateEvalRunRequest {

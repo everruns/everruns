@@ -84,6 +84,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
         .with_egress_service(self.egress_service.clone())
     }
 }

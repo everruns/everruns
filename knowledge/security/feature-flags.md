@@ -60,10 +60,10 @@ Planned flag:
 Current API-visible experimental flags include:
 
 - `skills`, `memory`, `knowledge`, and `plugins`: gate their management pages, sidebar entries,
-  and global-search results. These visibility flags do not disable the underlying APIs or runtime
-  capabilities, which continue to enforce their normal org scope and permissions.
+  global-search results, management APIs, Platform/MCP command discovery, and corresponding runtime
+  capabilities. Direct calls return `feature_not_enabled` while the org-effective flag is off.
 - `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `knowledge/runtime-resources/agent-versions.md`.
-- `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). When off, these capabilities are not registered in the backend and are absent from the capability picker. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
+- `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
 - `public_chat`: gates the Public Chat feature — the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
@@ -79,6 +79,10 @@ Current API-visible experimental flags include:
 - **Storage**: `org_feature_flags` table (migration `046_org_feature_flags.sql`)
 
 Deployment flags are computed once at server startup. Org-effective flags are resolved per request from system flags + `org_feature_flags` rows (`ResolvedOrg::feature_flags`, `Ctx::feature_flags`).
+Domain command metadata maps feature-owned command categories to those effective flags, keeping HTTP,
+Platform, and MCP execution/discovery aligned. Capability listing, assignment, and turn-context
+assembly apply the same effective flags so persisted configurations cannot re-expose a disabled
+capability.
 
 ### Frontend
 
@@ -90,8 +94,8 @@ Deployment flags are computed once at server startup. Org-effective flags are re
 
 ### Workers
 
-Workers currently do not need direct flag access. If needed in future, flags can be
-passed via gRPC turn context.
+Server/worker boundaries resolve the org-effective flags before Platform command dispatch and turn
+context assembly. Disabled feature-owned capabilities are removed before runtime tool construction.
 
 ## Adding a New Flag
 
@@ -104,6 +108,8 @@ passed via gRPC turn context.
 5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/legacy-api-types.ts`
 6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
 7. Use `useFeatureFlag("flag_name")` in UI components
+8. If the feature owns API commands or capabilities, add its command-category/capability mapping to
+   `crates/server/src/domains/common.rs` and `crates/core/src/feature_flags.rs`
 
 ### Backend-only flag (gates internal behavior, not exposed to API/UI)
 

@@ -112,6 +112,110 @@ async fn test_mcp_is_available_when_obsolete_org_flag_is_disabled() {
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
+#[tokio::test]
+async fn test_disabled_feature_is_hidden_from_api_platform_and_mcp_catalog() {
+    let server = TestServer::in_memory().await;
+    let enabled_flags = std::collections::HashMap::from([
+        ("evals".to_string(), false),
+        ("skills".to_string(), false),
+        ("memory".to_string(), false),
+        ("knowledge".to_string(), false),
+        ("plugins".to_string(), false),
+        ("agent_delegation".to_string(), false),
+    ]);
+    server
+        .db
+        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &enabled_flags)
+        .await
+        .expect("disable gated surfaces while leaving MCP available");
+
+    let api_body: Value = server
+        .get("/v1/evals")
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(api_body["detail"], "Feature 'evals' is not enabled");
+    assert_eq!(api_body["code"], "feature_not_enabled");
+
+    for (path, flag) in [
+        ("/v1/skills", "skills"),
+        ("/v1/skills/config", "skills"),
+        ("/v1/memories", "memory"),
+        ("/v1/memories/memory_missing/fs", "memory"),
+        ("/v1/knowledge-indexes", "knowledge"),
+        ("/v1/knowledge-bases", "knowledge"),
+        ("/v1/plugins", "plugins"),
+    ] {
+        let response = server.get(path).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "unexpected response for {path}: {}",
+            response.text()
+        );
+        assert!(!response.text().is_empty(), "empty response for {path}");
+        let body: Value = response.json();
+        assert_eq!(body["detail"], format!("Feature '{flag}' is not enabled"));
+        assert_eq!(body["code"], "feature_not_enabled");
+    }
+
+    let capabilities: Value = server
+        .get("/v1/capabilities?limit=200")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(
+        capabilities["data"]
+            .as_array()
+            .expect("capability list")
+            .iter()
+            .all(|capability| capability["id"] != "agent_handoff"
+                && capability["id"] != "a2a_agent_delegation")
+    );
+    let capability_error: Value = server
+        .get("/v1/capabilities/agent_handoff")
+        .await
+        .assert_status(StatusCode::NOT_FOUND)
+        .json();
+    assert_eq!(
+        capability_error["detail"],
+        "Feature 'agent_delegation' is not enabled"
+    );
+
+    let discovered = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "all": true, "include_schemas": false }),
+    )
+    .await;
+    let discovery: Value = serde_json::from_str(&tool_text(&discovered)).expect("discovery JSON");
+    assert!(
+        discovery["categories"]
+            .as_array()
+            .expect("categories")
+            .iter()
+            .all(|category| !matches!(
+                category["category"].as_str(),
+                Some(
+                    "evals"
+                        | "skills"
+                        | "memories"
+                        | "knowledge_indexes"
+                        | "knowledge_bases"
+                        | "plugins"
+                )
+            ))
+    );
+
+    let invoked = mcp_tool_call(&server, "query", json!({ "commands": "list_evals" })).await;
+    assert!(tool_is_error(&invoked));
+    assert!(
+        tool_text(&invoked).contains("Feature 'evals' is not enabled"),
+        "expected feature-gate failure: {}",
+        tool_text(&invoked)
+    );
+}
+
 /// Call tools/call with a given tool name and arguments.
 async fn mcp_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
     mcp_call(

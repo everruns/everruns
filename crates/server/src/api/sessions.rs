@@ -477,6 +477,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_feature_flags(org.feature_flags.clone())
         .with_session_service(self.session_service.clone())
         .with_event_service(Arc::new(self.event_service.clone()))
         .with_runner(self.runner.clone())
@@ -736,7 +737,7 @@ pub(crate) fn ensure_global_chat_enabled(
     if org.feature_flags.global_chat {
         Ok(())
     } else {
-        Err(ErrorResponse::not_found("Chat"))
+        Err(ErrorResponse::feature_not_enabled("global_chat"))
     }
 }
 

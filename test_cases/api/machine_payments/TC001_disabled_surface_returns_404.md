@@ -28,5 +28,6 @@ Verify that payment account, policy, and attempt APIs are unavailable when machi
 ## Expected Result
 
 - The feature-flags response contains `"machine_payments": false`.
-- Every payment endpoint returns HTTP 404, including syntactically valid create requests.
+- Every payment endpoint returns HTTP 404 with code `feature_not_enabled` and detail
+  `Feature 'machine_payments' is not enabled`, including syntactically valid create requests.
 - No payment account, policy, or attempt record is created.

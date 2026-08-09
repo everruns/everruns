@@ -146,8 +146,8 @@ allowlists, per-request caps, encrypted wallet custody, control-plane-only
 signing, no worker key exposure, and durable attempt records. Registration of any
 money-spending capability, wallet custody UI, and payment account/policy/attempt API is
 itself gated by the `machine_payments` feature flag. When disabled, the UI is hidden and
-the API routes are not mounted, so a deployment that cannot spend does not collect wallet
-keys. Budget reservations, per-turn/day
+the API routes return a structured `feature_not_enabled` 404, so a deployment that cannot
+spend does not collect wallet keys. Budget reservations, per-turn/day
 enforcement, and idempotency-key settlement hardening remain follow-ups.
 
 ## Rollout

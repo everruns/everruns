@@ -315,6 +315,16 @@ impl ErrorResponse {
         .into_response(StatusCode::NOT_FOUND)
     }
 
+    /// Hide a disabled feature's surface while explaining why a direct call failed.
+    pub fn feature_not_enabled(flag: &str) -> (StatusCode, Json<Self>) {
+        Self {
+            detail: Some(format!("Feature '{flag}' is not enabled")),
+            code: Some("feature_not_enabled".to_string()),
+            ..Self::default()
+        }
+        .into_response(StatusCode::NOT_FOUND)
+    }
+
     /// Create a conflict error response (409).
     pub fn conflict(message: &str) -> (StatusCode, Json<Self>) {
         Self {

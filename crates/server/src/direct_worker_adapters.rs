@@ -2739,6 +2739,15 @@ impl DirectPlatformStore {
 
     async fn command_ctx(&self) -> everruns_core::error::Result<crate::domains::common::Ctx> {
         let caller = self.resolve_caller().await?;
+        let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+            &self.db,
+            self.org_id,
+            &everruns_core::FeatureFlags::current(),
+        )
+        .await
+        .map_err(|error| {
+            store_error(format!("Failed to resolve platform feature flags: {error}"))
+        })?;
         let mut ctx = crate::domains::common::Ctx::new(
             caller,
             self.db.clone(),
@@ -2746,6 +2755,7 @@ impl DirectPlatformStore {
             self.encryption.clone(),
             self.permission_resolver.clone(),
         )
+        .with_feature_flags(feature_flags)
         .with_connector_registry(self.connector_registry.clone())
         .with_workflow_store(self.workflow_store.clone())
         .with_session_service(self.session_service.clone())

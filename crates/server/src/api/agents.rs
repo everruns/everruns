@@ -199,7 +199,7 @@ fn require_agent_versions_enabled(
     if org.feature_flags.agent_versions {
         Ok(())
     } else {
-        Err(ErrorResponse::not_found("Agent versions"))
+        Err(ErrorResponse::feature_not_enabled("agent_versions"))
     }
 }
 

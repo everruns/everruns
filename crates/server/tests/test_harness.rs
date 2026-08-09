@@ -280,17 +280,27 @@ impl TestServer {
         feature_flags.agent_versions = true;
         feature_flags.app_budgets = true;
         feature_flags.global_chat = true;
+        feature_flags.skills = true;
+        feature_flags.memory = true;
+        feature_flags.knowledge = true;
+        feature_flags.plugins = true;
+        feature_flags.agent_delegation = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
-        // the org-effective flags (evals, voice, agent_versions,
-        // app_budgets, global_chat). Without this those gates reject requests in tests even
-        // though the system flags are on. Deliberately scoped to these flags —
+        // the org-effective flags used by integration tests. Without this those gates reject requests in tests
+        // even though the system flags are on. Deliberately scoped to these flags —
         // e.g. `notifications` is left off so tests asserting its default-off
         // org state still hold.
         let org_flag_overrides: std::collections::HashMap<String, bool> = [
             "evals",
+            "skills",
+            "memory",
+            "knowledge",
+            "plugins",
+            "observers",
             "voice",
+            "agent_delegation",
             "agent_versions",
             "app_budgets",
             "global_chat",
@@ -355,6 +365,10 @@ impl TestServer {
             auth_state.clone(),
             driver_registry.clone(),
         );
+        let knowledge_bases_state =
+            api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
+        let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
+        let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let virtual_registry = Arc::new(
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
@@ -622,6 +636,9 @@ impl TestServer {
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
             .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
+            .merge(api::knowledge_bases::routes(knowledge_bases_state))
+            .merge(api::memory::routes(memory_state))
+            .merge(api::memory_files::routes(memory_files_state))
             .merge(api::providers::routes(providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
