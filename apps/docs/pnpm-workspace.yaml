@@ -5,6 +5,7 @@ overrides:
   fast-uri: 3.1.5
   form-data: 4.0.6
   lodash: 4.17.23
+  nanoid: 3.3.17
   postcss: 8.5.23
   yaml: 2.8.4
 onlyBuiltDependencies:
@@ -17,10 +18,13 @@ minimumReleaseAgeStrict: true
 # Security patches adopted before the maturity window (Dependabot GHSA fixes):
 # form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
 # fast-uri 3.1.5 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6; only
-# patched release, still inside the 7-day window). Exact-pinned via overrides.
+# patched release, still inside the 7-day window), nanoid 3.3.17 (custom
+# generators loop indefinitely at size 0; reached via postcss, still inside the
+# window). Exact-pinned via overrides.
 minimumReleaseAgeExclude:
   - form-data
   - esbuild
   - fast-uri
+  - nanoid
 allowBuilds:
   esbuild: true

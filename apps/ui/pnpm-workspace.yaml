@@ -3,9 +3,11 @@ overrides:
   '@babel/core': 7.29.6
   brace-expansion@1: 1.1.18
   brace-expansion@2: 2.1.4
-  dompurify: 3.4.12
+  dompurify: 3.4.13
   fast-uri: 3.1.5
-  js-yaml: 4.3.0
+  js-yaml: 4.3.1
+  mermaid: 11.16.1
+  nanoid: 3.3.17
   postcss: 8.5.23
   prismjs: 1.30.0
   sharp: 0.35.3
@@ -19,18 +21,29 @@ onlyBuiltDependencies:
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security fixes for GHSA advisories, pinned to exact patched versions via the
-# overrides above: dompurify 3.4.12 (GHSA-c2j3-45gr-mqc4), postcss 8.5.23
-# (GHSA-r28c-9q8g-f849), sharp 0.35.3 — all matured past the 7-day window.
+# overrides above: postcss 8.5.23 (GHSA-r28c-9q8g-f849), sharp 0.35.3, js-yaml
+# 4.3.1 (CVE-2026-59870 — quadratic CPU in !!omap resolution, transitive dev-dep
+# via jest) — all matured past the 7-day window.
 # fast-uri 3.1.5 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6) is the
 # only patched release for that advisory and is still inside the 7-day window,
 # so it needs an exemption. brace-expansion 1.1.18 / 2.1.4 (GHSA-mh99-v99m-4gvg
 # — DoS via unbounded expansion, transitive dev-dep via jest/openapi-typescript)
 # are the patched releases and are likewise still inside the maturity window.
+# Same for the current advisory batch, all reached transitively and all still
+# inside the window: dompurify 3.4.13 (IN_PLACE hook removal leaves a detached
+# executable subtree — XSS, via @streamdown/mermaid > mermaid), mermaid 11.16.1
+# (prototype pollution in the config APIs and in architecture diagrams, CSS
+# injection into sibling elements, and XY-chart/radar DoS — one release fixes
+# all five), and nanoid 3.3.17 (custom generators loop indefinitely at size 0,
+# via @tailwindcss/postcss > postcss).
 # All exact-pinned via the overrides above, so an exemption cannot pull any other
 # freshly published version; it only lets the security fix land before maturity.
 minimumReleaseAgeExclude:
   - fast-uri
   - brace-expansion
+  - dompurify
+  - mermaid
+  - nanoid
 allowBuilds:
   sharp: true
   unrs-resolver: true
