@@ -84,6 +84,20 @@ jest.mock("@/components/layout/mcp-connect-button", () => ({
   ),
 }));
 
+// Mock the live thread list: it queries sessions, which this suite does not stub.
+const mockThreads = jest.fn<{ id: string; title: string }[], []>(() => []);
+jest.mock("@/components/layout/sidebar-chat-threads", () => ({
+  SidebarChatThreads: () => (
+    <div data-testid="sidebar-chat-threads">
+      {mockThreads().map((thread) => (
+        <a key={thread.id} href={`/chats/${thread.id}`}>
+          {thread.title}
+        </a>
+      ))}
+    </div>
+  ),
+}));
+
 jest.mock("@/components/layout/notification-bell", () => ({
   NotificationBell: () => <button type="button" aria-label="Notifications" />,
   NotificationIndicator: () => <span aria-label="Unread notifications" />,
@@ -133,6 +147,7 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
     mockPrefetch.mockClear();
+    mockThreads.mockReturnValue([]);
     mockMcpEndpointEnabled.mockReturnValue(true);
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": true } },
@@ -329,7 +344,7 @@ describe("Sidebar", () => {
     const mcpServersLink = screen.getByRole("link", { name: "MCP servers" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
 
-    expect(chatsLink).toHaveAttribute("href", "/chat");
+    expect(chatsLink).toHaveAttribute("href", "/chats");
     expect(identitiesLink).toHaveAttribute("href", "/agent-identities");
     expect(knowledgeLink).toHaveAttribute("href", "/knowledge-indexes");
     expect(mcpServersLink).toHaveAttribute("href", "/mcp-servers");
@@ -443,7 +458,18 @@ describe("Sidebar", () => {
 
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    expect(links[0]).toHaveAttribute("href", "/chat");
+    expect(links[0]).toHaveAttribute("href", "/chats");
+  });
+
+  it("hangs the thread list directly under the Chats entry", () => {
+    mockThreads.mockReturnValue([{ id: "sess_1", title: "Standup" }]);
+
+    render(<Sidebar />);
+
+    const navigation = screen.getByRole("navigation");
+    const links = within(navigation).getAllByRole("link");
+    expect(links[0]).toHaveAttribute("href", "/chats");
+    expect(links[1]).toHaveAttribute("href", "/chats/sess_1");
   });
 
   it("hides Durable Execution navigation items by default (collapsed)", () => {

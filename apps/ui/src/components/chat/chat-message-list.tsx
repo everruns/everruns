@@ -50,6 +50,8 @@ import {
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
 import { TurnWorkLog } from "@/components/chat/turn-work-log";
+import { RunCards } from "@/components/chat/run-card";
+import type { ChatRun } from "@/components/chat/run-cards";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
@@ -79,6 +81,12 @@ interface ChatMessageListProps {
    * guarded so single-host sessions render exactly as before.
    */
   participants?: SessionParticipant[];
+  /**
+   * Runs a turn started, keyed by the transcript row the turn ends on (see
+   * `run-cards.ts`). Only the Chats thread surface passes this; session detail
+   * keeps its transcript free of run chrome.
+   */
+  runsByEventId?: Map<string, ChatRun[]>;
 }
 
 /** A derived join/leave marker interleaved into the transcript by timestamp. */
@@ -149,6 +157,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   getMessageText,
   getToolCalls,
   participants,
+  runsByEventId,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
   const { data: providers } = useProviders();
@@ -589,6 +598,11 @@ export const ChatMessageList = memo(function ChatMessageList({
                   />
                 </div>
               )}
+
+              {(() => {
+                const runs = runsByEventId?.get(event.id);
+                return runs ? <RunCards runs={runs} /> : null;
+              })()}
 
               {(() => {
                 const turnId = getKnownTurnId(event);

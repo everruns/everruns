@@ -71,6 +71,10 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 * **A thread is bound to exactly one agent.** Switching agents starts a new thread rather
   than re-pointing an existing one; the thread's transcript is only meaningful against
   the agent that produced it.
+* **The nav's thread list is bounded.** Live threads in the nav mean the nav is never the
+  same twice, so the Chats entry lists only the few most recently active threads and hands
+  the rest to the all-threads page. It also holds its order steady while the pointer is
+  inside it, so an arriving turn cannot re-sort a row out from under a click.
 * **A session is a read-only recording.** Session detail inspects, it does not edit. The
   inspector pattern lives inside session detail rather than in the shell. It carries five
   views — Timeline, Work, Events, Workspace, Cost — each showing something a recording

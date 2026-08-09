@@ -20,7 +20,7 @@ Verify that the global chat agent can run all 10 previously created agents seque
 
 ## Steps
 
-1. Navigate to `/chat`
+1. Open a Platform Chat thread: go to `/chats/new`, pick **Platform Chat**, and start the chat
 2. Send the message from test data above
 3. Wait for the chat agent to create sessions and run each agent (may take 2-5 minutes)
 4. Observe the response

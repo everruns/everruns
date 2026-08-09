@@ -1,32 +1,59 @@
+/**
+ * The thread surface: header, transcript, composer.
+ *
+ * A thread is an ordinary session, so `SessionProvider` + `ChatPanel` carry the
+ * transcript unchanged. Keying the provider on the thread id is what keeps
+ * transcript state from leaking between threads — switching threads remounts the
+ * whole subtree rather than re-pointing a live one at new events.
+ *
+ * Session detail is a read-only recording (EVE-854); this is where its "Fork
+ * into chat" escape hatch lands.
+ */
 "use client";
-
-// A chat thread is an ordinary session rendered with a composer.
-//
-// Session detail is a read-only recording (EVE-854), so "Fork into chat" needs
-// somewhere to land: this route. It is deliberately the thinnest possible
-// thread surface — header plus `ChatPanel`. The sidebar thread list, the
-// `/chats` index and the landing-route move are EVE-851's work and are not
-// started here.
 
 import { use } from "react";
 import Link from "next/link";
-import { Bot, MonitorPlay } from "lucide-react";
-import { ChatPanel } from "@/components/chat/chat-panel";
+import { Bot } from "lucide-react";
 import {
   SessionProvider,
   useSessionContext,
 } from "@/app/(main)/sessions/[sessionId]/session-context";
+import { ChatPanel } from "@/components/chat/chat-panel";
+import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
+import { ChatsDisabled } from "@/components/chat/chats-disabled";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Skeleton } from "@/components/ui/skeleton";
-import { buttonVariants } from "@/components/ui/button";
-import { usePageTitle } from "@/hooks";
+import { useHarnesses, usePageTitle } from "@/hooks";
+import { useChatThreads } from "@/hooks/use-chat-threads";
+import { threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { cn, shortenId } from "@/lib/utils";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function ThreadContent({ threadId }: { threadId: string }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
+  const { data: harnesses } = useHarnesses();
+  // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
+  // an untitled thread takes its display title from the same list the sidebar
+  // reads. Both surfaces then name the thread identically.
+  const { threads } = useChatThreads();
+  const listEntry = threads.find((candidate) => candidate.id === threadId);
+  const title = threadTitle({
+    title: session?.title ?? null,
+    preview: session?.preview ?? listEntry?.preview ?? null,
+  });
 
-  usePageTitle(session?.title ?? "Thread", "Chats");
+  // A Platform Chat thread is bound to a harness rather than an agent; name that
+  // harness so the binding still reads as a fact instead of a blank.
+  const harness = session?.harness_id
+    ? harnesses?.find((candidate) => candidate.id === session.harness_id)
+    : undefined;
+  const counterpart = agentId
+    ? getDisplayName(agent)
+    : harness
+      ? getDisplayName(harness)
+      : undefined;
+
+  usePageTitle(session ? title : null, "Chats");
 
   if (sessionLoading) {
     return (
@@ -42,8 +69,8 @@ function ThreadContent({ threadId }: { threadId: string }) {
       <ResourceNotFound
         title="Thread not found"
         description="This thread may have been deleted, moved to another organization, or the URL may be wrong."
-        backHref="/sessions"
-        backLabel="Back to sessions"
+        backHref="/chats"
+        backLabel="Back to chats"
         resourceId={threadId}
       />
     );
@@ -51,42 +78,42 @@ function ThreadContent({ threadId }: { threadId: string }) {
 
   return (
     <div className="flex h-full flex-col bg-background bg-brand-dots">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 bg-background/70 px-6 py-3.5 backdrop-blur-[1px]">
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold tracking-tight">
-            {session.title || `Thread ${shortenId(session.id)}`}
-          </h1>
-          {agentId && (
+      <ChatThreadHeader
+        session={session}
+        title={title}
+        counterpart={counterpart}
+        counterpartHref={
+          agentId ? (
             <Link
               href={`/agents/${agentId}`}
-              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              <Bot className="icon-sharp h-3 w-3" />
-              {getDisplayName(agent)}
+              <Bot className="icon-sharp size-3" />
+              {counterpart}
             </Link>
-          )}
-        </div>
-
-        <Link
-          href={`/sessions/${threadId}`}
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
-        >
-          <MonitorPlay className="icon-sharp h-4 w-4" />
-          Open session
-        </Link>
-      </div>
-
-      <ChatPanel />
+          ) : undefined
+        }
+      />
+      <ChatPanel replyToLabel={counterpart} showRunCards />
     </div>
   );
 }
 
-export default function ChatThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
+function ThreadRoute({ params }: { params: Promise<{ threadId: string }> }) {
   const { threadId } = use(params);
 
   return (
-    <SessionProvider sessionId={threadId}>
+    <SessionProvider key={threadId} sessionId={threadId}>
       <ThreadContent threadId={threadId} />
     </SessionProvider>
   );
+}
+
+export default function ChatThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
+  // The flag gate answers before the route params are awaited: a disabled Chats
+  // must not depend on resolving anything.
+  const chatsEnabled = useFeatureFlag("global_chat");
+  if (!chatsEnabled) return <ChatsDisabled />;
+
+  return <ThreadRoute params={params} />;
 }

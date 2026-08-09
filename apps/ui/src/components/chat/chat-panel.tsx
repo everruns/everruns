@@ -97,7 +97,20 @@ function parseSystemCommandInvocation(
   };
 }
 
-export function ChatPanel() {
+export interface ChatPanelProps {
+  /**
+   * Who the composer is replying to. The Chats thread surface names the bound
+   * agent here; other surfaces leave it unset and keep the generic prompt.
+   */
+  replyToLabel?: string;
+  /**
+   * Render inline run cards for work the turns started. Off by default: it costs
+   * a task subscription, and only the Chats thread surface wants it.
+   */
+  showRunCards?: boolean;
+}
+
+export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps = {}) {
   const { t } = useLocale();
   const voiceFeatureEnabled = useFeatureFlag("voice");
   const {
@@ -525,6 +538,7 @@ export function ChatPanel() {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-h-0 flex-1 flex-col">
           <SessionTranscript
+            showRunCards={showRunCards}
             footer={
               <>
                 {submitError && (
@@ -568,6 +582,7 @@ export function ChatPanel() {
             isDraggingOver={isDraggingOver}
             dropZoneProps={dropZoneProps}
             handlePaste={handlePaste}
+            placeholder={replyToLabel ? t("reply_to", { name: replyToLabel }) : undefined}
             selectedModelId={selectedModelId}
             recentModels={recentModels}
             onModelChange={handleModelChange}

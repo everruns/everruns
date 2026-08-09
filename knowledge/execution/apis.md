@@ -244,6 +244,10 @@ Gated by the org-effective `global_chat` feature flag (the same gate applies to 
 
 **Response:** `200 OK` with the `Session` object, or `404 Not Found` when `global_chat` is disabled.
 
+The UI no longer calls this endpoint. A chat thread is an ordinary session created with
+`POST /v1/sessions` bound to an agent (EVE-851), so the singleton has no surface left in the
+product; it remains only for API clients that still depend on it.
+
 #### List Sessions
 
 Supports optional filtering by agent:

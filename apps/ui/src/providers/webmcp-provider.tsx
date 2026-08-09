@@ -29,7 +29,7 @@ const PAGE_ROUTES = {
   dashboard: "/dashboard",
   agents: "/agents",
   sessions: "/sessions",
-  chat: "/chat",
+  chat: "/chats",
 } as const;
 
 type PageName = keyof typeof PAGE_ROUTES;

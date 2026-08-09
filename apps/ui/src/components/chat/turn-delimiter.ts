@@ -79,12 +79,13 @@ function getEventTurnId(
   return data.message?.id ? inputMessageTurnIds.get(data.message.id) : undefined;
 }
 
-export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, number> {
+/** Last transcript row each turn rendered, keyed by turn id. Turn dividers and
+ *  inline run cards both hang off this row so they land at the end of the turn
+ *  they describe. */
+export function getLastVisibleEventIdByTurn(events: Event[]): Map<string, string> {
   const clientRequestedToolCallIds = getClientRequestedToolCallIds(events);
   const inputMessageTurnIds = getInputMessageTurnIds(events);
   const lastVisibleEventIdByTurn = new Map<string, string>();
-  const durationMsByTurn = getCompletedTurnDurationsByTurn(events);
-  const iterationsByTurn = getCompletedTurnIterationsByTurn(events);
 
   for (const event of events) {
     if (isVisibleChatEvent(event, clientRequestedToolCallIds)) {
@@ -94,6 +95,14 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
       }
     }
   }
+
+  return lastVisibleEventIdByTurn;
+}
+
+export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, number> {
+  const lastVisibleEventIdByTurn = getLastVisibleEventIdByTurn(events);
+  const durationMsByTurn = getCompletedTurnDurationsByTurn(events);
+  const iterationsByTurn = getCompletedTurnIterationsByTurn(events);
 
   const durationsByEvent = new Map<string, number>();
 
