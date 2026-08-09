@@ -6,6 +6,7 @@
 // to the session filesystem. Session capabilities are applied after agent capabilities
 // (additive behavior).
 
+use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::api::common::Pagination;
 use crate::auth::rate_limit::OrgRateLimiter;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
@@ -17,7 +18,6 @@ use crate::max_iterations;
 use crate::org_init;
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};
-use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::storage::{
     StorageBackend,
     models::{
@@ -4050,7 +4050,14 @@ mod tests {
         });
 
         let err = session_service
-            .create(&caller, harness.id.uuid(), None, None, SessionSource::Api, req)
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                SessionSource::Api,
+                req,
+            )
             .await
             .unwrap_err();
         assert!(

@@ -5,9 +5,9 @@ use super::types::{
     UpdateSessionRequest,
 };
 use crate::domains::common::*;
-use chrono::{DateTime, Utc};
 use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
+use chrono::{DateTime, Utc};
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
     TurnCancelledData, deserialize_event_data,
