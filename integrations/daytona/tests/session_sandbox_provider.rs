@@ -172,10 +172,314 @@ fn managed_instance(external_id: &str) -> SessionSandboxInstance {
     }
 }
 
+fn recovery_instance(external_id: &str, session_id: SessionId) -> SessionSandboxInstance {
+    SessionSandboxInstance {
+        external_id: external_id.to_string(),
+        display_name: Some("Managed Sandbox".to_string()),
+        workspace_path: Some("/workspace".to_string()),
+        provider_state: json!({
+            "recovery": {
+                "volume_id": "vol_recovery",
+                "volume_name": "everruns-recovery",
+                "mount_path": "/mnt/everruns-recovery",
+                "subpath": format!("sessions/{session_id}"),
+                "retained_revisions": 10,
+                "head_revision": "rev-1"
+            }
+        }),
+        metadata: json!({}),
+    }
+}
+
 #[test]
 fn daytona_session_sandbox_provider_is_registered() {
     let provider = create_session_sandbox_provider("daytona");
     assert!(provider.is_some());
+}
+
+#[tokio::test]
+async fn daytona_provider_mounts_recovery_volume_for_logical_session() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/workspace");
+    config.provider_config["recovery"] = json!({
+        "enabled": true,
+        "volume_name": "everruns-recovery"
+    });
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+
+    Mock::given(method("GET"))
+        .and(path("/volumes/by-name/everruns-recovery"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "vol_recovery",
+            "name": "everruns-recovery",
+            "state": "ready"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_recovery",
+            "name": "Recovery Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_recovery"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_recovery",
+            "name": "Recovery Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_recovery", 0, "").await;
+
+    let instance = provider.create(&context, &config).await.unwrap();
+
+    assert_eq!(
+        instance.provider_state["recovery"]["volume_id"],
+        "vol_recovery"
+    );
+    assert_eq!(
+        instance.provider_state["recovery"]["subpath"],
+        format!("sessions/{}", context.session_id)
+    );
+    let requests = mock_server.received_requests().await.unwrap();
+    let create = requests
+        .iter()
+        .find(|request| request.url.path() == "/sandbox" && request.method.as_str() == "POST")
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&create.body).unwrap();
+    assert_eq!(body["volumes"][0]["volumeId"], "vol_recovery");
+    assert_eq!(body["volumes"][0]["mountPath"], "/mnt/everruns-recovery");
+    assert_eq!(
+        body["volumes"][0]["subpath"],
+        format!("sessions/{}", context.session_id)
+    );
+}
+
+#[tokio::test]
+async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/workspace");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = recovery_instance("sb_lost", context.session_id);
+
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_lost"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("sandbox not found"))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_replacement",
+            "name": "Replacement Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_replacement"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_replacement",
+            "name": "Replacement Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_replacement", 0, "").await;
+
+    let lost_status = provider
+        .status(
+            &context,
+            &config,
+            &everruns_core::SessionSandboxState {
+                provider: "daytona".to_string(),
+                status: everruns_core::SessionSandboxStatus::Running,
+                instance: instance.clone(),
+                init_completed_at: Some(chrono::Utc::now().to_rfc3339()),
+                last_init_error: None,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        lost_status.session_status,
+        everruns_core::SessionSandboxStatus::Lost
+    );
+
+    let replacement = provider.resume(&context, &config, &instance).await.unwrap();
+
+    assert_eq!(replacement.external_id, "sb_replacement");
+    assert_eq!(replacement.metadata["recovered"], true);
+    assert_eq!(
+        replacement.provider_state["recovery"],
+        instance.provider_state["recovery"]
+    );
+    let requests = mock_server.received_requests().await.unwrap();
+    let create = requests
+        .iter()
+        .find(|request| request.url.path() == "/sandbox" && request.method.as_str() == "POST")
+        .unwrap();
+    let create_body: serde_json::Value = serde_json::from_slice(&create.body).unwrap();
+    assert_eq!(create_body["volumes"][0]["volumeId"], "vol_recovery");
+    assert!(requests.iter().any(|request| {
+        request.url.path() == "/sb_replacement/process/session/everruns-exec/exec"
+            && String::from_utf8_lossy(&request.body).contains("workspace.tar.gz.sha256")
+    }));
+}
+
+#[tokio::test]
+async fn daytona_provider_checkpoints_after_completed_exec() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let config = test_config(&mock_server);
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = recovery_instance("sb_checkpoint", context.session_id);
+    setup_exec_mocks(&mock_server, "sb_checkpoint", 0, "done\n").await;
+
+    provider
+        .exec(
+            &context,
+            &config,
+            &instance,
+            &SessionSandboxExecRequest {
+                command: "printf done".to_string(),
+                cwd: Some("/workspace".to_string()),
+                timeout_ms: Some(5_000),
+                output_mode: "normal".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    let checkpointed = provider
+        .checkpoint(&context, &config, &instance)
+        .await
+        .unwrap();
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(requests.iter().any(|request| {
+        request.url.path() == "/sb_checkpoint/process/session/everruns-exec/exec"
+            && String::from_utf8_lossy(&request.body).contains("workspace.tar.gz")
+            && String::from_utf8_lossy(&request.body).contains("$mount/HEAD")
+            && !String::from_utf8_lossy(&request.body).contains("mv -f")
+            && String::from_utf8_lossy(&request.body).contains("protected_revision='rev-1'")
+    }));
+    assert_ne!(
+        checkpointed.provider_state["recovery"]["head_revision"],
+        "rev-1"
+    );
+}
+
+#[tokio::test]
+async fn daytona_provider_clears_recovery_storage_when_deleting_lost_instance() {
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/workspace");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = recovery_instance("sb_lost_delete", context.session_id);
+
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_lost_delete"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("sandbox not found"))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_cleanup",
+            "name": "Cleanup Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_cleanup"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "id": "sb_cleanup",
+            "name": "Cleanup Sandbox",
+            "state": "started"
+        })))
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/sandbox/sb_cleanup"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_cleanup", 0, "").await;
+
+    provider.delete(&context, &config, &instance).await.unwrap();
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(requests.iter().any(|request| {
+        request.url.path() == "/sb_cleanup/process/session/everruns-exec/exec"
+            && String::from_utf8_lossy(&request.body).contains("-mindepth 1 -maxdepth 1")
+    }));
+    assert!(requests.iter().any(|request| {
+        request.url.path() == "/sandbox/sb_cleanup" && request.method.as_str() == "DELETE"
+    }));
+}
+
+#[tokio::test]
+async fn daytona_provider_starts_paused_instance_before_clearing_recovery_storage() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let mock_server = MockServer::start().await;
+    let context = test_context();
+    let mut config = test_config(&mock_server);
+    config.provider_config["workspace_path"] = json!("/workspace");
+    let provider = create_session_sandbox_provider("daytona").unwrap();
+    let instance = recovery_instance("sb_paused_delete", context.session_id);
+
+    let get_count = Arc::new(AtomicUsize::new(0));
+    let get_count_clone = get_count.clone();
+    Mock::given(method("GET"))
+        .and(path("/sandbox/sb_paused_delete"))
+        .respond_with(move |_: &wiremock::Request| {
+            let state = if get_count_clone.fetch_add(1, Ordering::SeqCst) < 2 {
+                "stopped"
+            } else {
+                "started"
+            };
+            ResponseTemplate::new(200).set_body_json(json!({
+                "id": "sb_paused_delete",
+                "name": "Paused Sandbox",
+                "state": state
+            }))
+        })
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/sandbox/sb_paused_delete/start"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(1)
+        .mount(&mock_server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/sandbox/sb_paused_delete"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock_server)
+        .await;
+    setup_exec_mocks(&mock_server, "sb_paused_delete", 0, "").await;
+
+    provider.delete(&context, &config, &instance).await.unwrap();
+
+    let requests = mock_server.received_requests().await.unwrap();
+    assert!(requests.iter().any(|request| {
+        request.url.path() == "/sb_paused_delete/process/session/everruns-exec/exec"
+            && String::from_utf8_lossy(&request.body).contains("-mindepth 1 -maxdepth 1")
+    }));
 }
 
 #[tokio::test]

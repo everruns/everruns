@@ -28,6 +28,7 @@ use super::common::{ApiResult, impl_auth_state};
 pub enum SessionSandboxStatusValue {
     Running,
     Paused,
+    Lost,
 }
 
 impl From<everruns_core::SessionSandboxStatus> for SessionSandboxStatusValue {
@@ -35,6 +36,7 @@ impl From<everruns_core::SessionSandboxStatus> for SessionSandboxStatusValue {
         match status {
             everruns_core::SessionSandboxStatus::Running => Self::Running,
             everruns_core::SessionSandboxStatus::Paused => Self::Paused,
+            everruns_core::SessionSandboxStatus::Lost => Self::Lost,
         }
     }
 }

@@ -25,6 +25,14 @@ pub struct SandboxInfo {
     pub state: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VolumeInfo {
+    pub id: String,
+    pub name: String,
+    pub state: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExecResult {

@@ -366,7 +366,7 @@ async fn test_live_session_sandbox_provider_flow() {
         idle_pause_after_seconds: 180,
         provider_config: json!({
             "snapshot": "daytona-small",
-            "workspace_path": "/home/daytona",
+            "workspace_path": "/home/daytona/workspace",
             "title": "live-session-sandbox-provider"
         }),
         init: Default::default(),
@@ -449,6 +449,107 @@ async fn test_live_session_sandbox_provider_flow() {
         .await
         .expect("managed session sandbox delete failed");
     std::mem::forget(guard);
+}
+
+#[tokio::test]
+async fn test_live_session_sandbox_recovers_after_physical_loss() {
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key.clone());
+    let context = live_provider_context(api_key);
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        provider_config: json!({
+            "snapshot": "daytona-small",
+            "workspace_path": "/home/daytona/workspace",
+            "title": "live-session-sandbox-recovery",
+            "recovery": {
+                "enabled": true,
+                "volume_name": "everruns-recovery"
+            }
+        }),
+        init: Default::default(),
+    };
+
+    let instance = provider
+        .create(&context, &config)
+        .await
+        .expect("recoverable session sandbox create failed");
+    let original_guard = SandboxGuard::new(instance.external_id.clone());
+
+    provider
+        .write_file(
+            &context,
+            &config,
+            &instance,
+            "/home/daytona/workspace/recovery-marker.txt",
+            "survived\n",
+        )
+        .await
+        .expect("recovery marker write failed");
+    let checkpointed = provider
+        .checkpoint(&context, &config, &instance)
+        .await
+        .expect("workspace checkpoint failed");
+
+    client
+        .delete_sandbox(&instance.external_id)
+        .await
+        .expect("physical sandbox deletion failed");
+    let mut sandbox_is_absent = false;
+    for _ in 0..60 {
+        match client.get_sandbox(&instance.external_id).await {
+            Err(err) if err.contains("404 Not Found") || err.contains("(404)") => {
+                sandbox_is_absent = true;
+                break;
+            }
+            Ok(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+            Err(err) => panic!("failed while waiting for physical sandbox deletion: {err}"),
+        }
+    }
+    assert!(sandbox_is_absent, "physical sandbox deletion timed out");
+    let state = SessionSandboxState {
+        provider: "daytona".to_string(),
+        status: SessionSandboxStatus::Running,
+        instance: checkpointed.clone(),
+        init_completed_at: None,
+        last_init_error: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let lost = provider
+        .status(&context, &config, &state)
+        .await
+        .expect("lost sandbox status failed");
+    assert_eq!(lost.session_status, SessionSandboxStatus::Lost);
+
+    let replacement = provider
+        .resume(&context, &config, &checkpointed)
+        .await
+        .expect("lost sandbox replacement failed");
+    let replacement_guard = SandboxGuard::new(replacement.external_id.clone());
+    assert_ne!(replacement.external_id, instance.external_id);
+
+    let restored = provider
+        .read_file(
+            &context,
+            &config,
+            &replacement,
+            "/home/daytona/workspace/recovery-marker.txt",
+        )
+        .await
+        .expect("restored recovery marker read failed");
+    assert_eq!(restored.content, "survived\n");
+
+    provider
+        .delete(&context, &config, &replacement)
+        .await
+        .expect("recovered session sandbox delete failed");
+    std::mem::forget(original_guard);
+    std::mem::forget(replacement_guard);
 }
 
 /// Folder creation and file listing.

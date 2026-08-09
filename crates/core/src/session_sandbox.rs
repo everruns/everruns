@@ -65,6 +65,8 @@ pub struct SessionSandboxInitConfig {
 pub enum SessionSandboxStatus {
     Running,
     Paused,
+    /// The provider resource disappeared and must be replaced before use.
+    Lost,
 }
 
 /// Provider-owned sandbox instance record persisted in session secrets.
@@ -213,6 +215,17 @@ pub trait SessionSandboxProvider: Send + Sync {
         content: &str,
     ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult>;
 
+    /// Persist the current workspace after a completed mutating operation.
+    /// Providers without disposable local filesystems may keep the default.
+    async fn checkpoint(
+        &self,
+        _context: &ToolContext,
+        _config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+    ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+        Ok(instance.clone())
+    }
+
     async fn status(
         &self,
         context: &ToolContext,
@@ -346,7 +359,7 @@ pub async fn ensure_session_sandbox_running(
 
             let mut state = existing;
             let needs_resume = match state.status {
-                SessionSandboxStatus::Paused => true,
+                SessionSandboxStatus::Paused | SessionSandboxStatus::Lost => true,
                 SessionSandboxStatus::Running => {
                     let status = provider.status(context, config, &state).await?;
                     status.session_status != SessionSandboxStatus::Running
@@ -471,6 +484,8 @@ pub async fn run_session_sandbox_init_if_needed(
             )
             .await?;
 
+        checkpoint_session_sandbox(context, provider, config, state).await?;
+
         if response.exit_code != 0 {
             state.last_init_error = Some(format!(
                 "Init command failed with exit code {}: {}",
@@ -496,6 +511,25 @@ pub async fn run_session_sandbox_init_if_needed(
     state.last_init_error = None;
     state.updated_at = now_rfc3339();
     save_session_sandbox_state(context, state).await?;
+    Ok(())
+}
+
+/// Persist the provider checkpoint binding before the mutating tool result is
+/// returned to the runtime.
+pub async fn checkpoint_session_sandbox(
+    context: &ToolContext,
+    provider: &dyn SessionSandboxProvider,
+    config: &SessionSandboxConfig,
+    state: &mut SessionSandboxState,
+) -> Result<(), ToolExecutionResult> {
+    let checkpointed = provider
+        .checkpoint(context, config, &state.instance)
+        .await?;
+    if checkpointed != state.instance {
+        state.instance = checkpointed;
+        state.updated_at = now_rfc3339();
+        save_session_sandbox_state(context, state).await?;
+    }
     Ok(())
 }
 
@@ -905,6 +939,34 @@ mod tests {
     async fn ensure_running_resumes_when_remote_status_drifted_to_paused() {
         let external_id = "sb_drifted";
         reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
+
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);
+        let state = SessionSandboxState {
+            provider: "core-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance(external_id),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        save_session_sandbox_state(&context, &state).await.unwrap();
+
+        let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
+            .await
+            .unwrap();
+
+        let provider_state = test_provider_state(external_id);
+        assert_eq!(provider_state.resume_calls, 1);
+        assert_eq!(resolved.status, SessionSandboxStatus::Running);
+        assert_eq!(resolved.instance.metadata, json!({ "resumed": true }));
+    }
+
+    #[tokio::test]
+    async fn ensure_running_replaces_provider_instance_when_remote_status_is_lost() {
+        let external_id = "sb_lost";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Lost);
 
         let storage = Arc::new(MemorySecrets::default());
         let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);

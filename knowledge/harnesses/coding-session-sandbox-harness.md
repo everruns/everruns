@@ -22,6 +22,7 @@ sandbox flow. It demonstrates the intended user experience:
 - one sandbox per session
 - provider-neutral `sandbox_*` tools
 - auto-start and auto-resume handled by the system
+- Daytona volume checkpoints and replacement after physical sandbox loss
 - idle pause after 3 minutes
 - no local shell escape hatch; command execution goes through `sandbox_exec`
 
