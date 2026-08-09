@@ -16,13 +16,13 @@ let agent = Agent::builder()
     .model(Model::simulated("Acknowledged."))
     .build()?;
 
-let mut session = agent.session();
+let session = agent.session();
 let session_id: SessionId = session.session_id();
-session.run("My project is Atlas.").await?;
+session.send_and_wait("My project is Atlas.").await?;
 
 drop(session);
-let mut resumed = agent.resume(session_id).await?;
-resumed.run("Continue with that project.").await?;
+let resumed = agent.resume(session_id).await?;
+resumed.send_and_wait("Continue with that project.").await?;
 # Ok(())
 # }
 ```

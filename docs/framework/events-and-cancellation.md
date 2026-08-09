@@ -3,7 +3,7 @@ title: Events and Cancellation
 description: Subscribe to live Framework session events and cancel a turn cooperatively.
 ---
 
-Subscribe before running a turn to observe its live event projection:
+Subscribe before sending a message to observe its live event projection:
 
 ```rust
 use everruns::{Agent, Model};
@@ -14,13 +14,17 @@ let agent = Agent::builder()
     .instructions("Be concise.")
     .model(Model::simulated("Done."))
     .build()?;
-let mut session = agent.session();
+let session = agent.session();
 let mut events = session.events();
 
-let turn = session.run("Start.").await?;
-while let Some(event) = events.try_recv()? {
+let pending = session.send("Start.").await?;
+while let Some(event) = events.recv().await? {
     println!("{}", event.event_type());
+    if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+        break;
+    }
 }
+let turn = pending.wait().await?;
 assert!(turn.success);
 # Ok(())
 # }
@@ -28,8 +32,9 @@ assert!(turn.success);
 
 Known events have typed `SessionEventKind` values. Unknown canonical event types
 are preserved as `Other` with their payload, so the projection does not silently
-drop information. The feed is live and non-blocking: a slow or dropped consumer
-does not stop the turn, and it is not a durable replay API.
+drop information. The feed is live and non-blocking: `send` starts execution in
+the session's background actor, a slow or dropped consumer does not stop the
+turn, and the feed is not a durable replay API.
 
 Use [lifecycle hooks](/framework/lifecycle-hooks/) instead when application work
 must be awaited at an execution boundary or its failure must affect the run.
@@ -40,6 +45,27 @@ Use [Session History and Resume](/framework/session-history/) to rebuild a
 bounded persisted transcript after live lag or a process restart.
 
 ## Cancel a turn
+
+A message receipt exposes the specific accepting turn, so live applications
+can cancel without racing against whichever turn is active later:
+
+```rust
+# use everruns::{Agent, LlmSimConfig, Model};
+# use std::time::Duration;
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+# let model = Model::simulated_with_config(LlmSimConfig::fixed("Done.").with_response_delay(Duration::from_millis(100)));
+# let agent = Agent::builder().instructions("Be concise.").model(model).build()?;
+# let session = agent.session();
+let pending = session.send("Start.").await?;
+pending.turn().cancel().await?;
+let cancelled = pending.wait().await?;
+assert!(!cancelled.success);
+# Ok(())
+# }
+```
+
+`run_with` retains cancellation-token convenience for request/response calls:
 
 ```rust
 use everruns::{CancellationToken, RunOptions};

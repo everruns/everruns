@@ -26,8 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Everruns is ready."))
         .build()?;
 
-    let mut session = agent.session();
-    let turn = session.run("Are you ready?").await?;
+    let session = agent.session();
+    let turn = session.send_and_wait("Are you ready?").await?;
     println!("{}", turn.response);
     Ok(())
 }
@@ -36,6 +36,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 `Model::simulated` follows the same model/provider path as a live provider, but
 returns the configured response deterministically. This makes the smallest
 Framework program useful in tests, examples, and disconnected development.
+`send_and_wait` is the request/response convenience; use `send` when the
+application needs to stream output or add steering input while a turn runs.
 
 ## Use OpenAI
 

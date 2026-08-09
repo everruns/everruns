@@ -942,7 +942,7 @@ mod tests {
             .advanced_capability(lookup_capability())
             .build()
             .expect("valid agent");
-        let mut session = agent.session();
+        let session = agent.session();
         let mut events = session.events();
 
         let turn = session.run("Weather?").await.expect("turn runs");

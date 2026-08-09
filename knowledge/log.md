@@ -2,6 +2,10 @@
 
 ## 2026-08-09
 
+* **Live Framework sessions**: Made asynchronous message acceptance the primary
+  session contract, with atomic active-turn steering, authoritative routing
+  receipts, optional waiting, and request/response as convenience.
+
 * **Framework knowledge ownership**: Defined the application-facing purpose,
   canonical Framework/Runtime/SDKs/Platform terminology, open provider
   boundary, library-experience success bars, and documentation/example contract;

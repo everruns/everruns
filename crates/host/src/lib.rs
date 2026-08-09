@@ -64,7 +64,7 @@ pub use in_memory::{
 };
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
-    CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
-    in_process_internal_org_id,
+    AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
+    TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

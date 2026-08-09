@@ -76,7 +76,7 @@ base64.workspace = true
 serde_json.workspace = true
 # Session event streaming (broadcast channel) and cancellation (select). Only
 # the `sync` surface of tokio is needed on the non-dev build.
-tokio = { workspace = true, features = ["sync", "macros"] }
+tokio = { workspace = true, features = ["sync", "macros", "rt"] }
 # `CancellationToken` backs the facade's public cancellation handle without
 # leaking the tokio-util type onto the public surface. Matches the pin used by
 # everruns-core.

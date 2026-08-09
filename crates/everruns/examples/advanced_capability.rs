@@ -91,22 +91,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .advanced_capability(catalog)
         .build()?;
 
-    let mut session = agent.session();
+    let session = agent.session();
     let mut events = session.events();
-    let observer = tokio::spawn(async move {
-        while let Some(event) = events.recv().await? {
-            if let SessionEventKind::ToolProgress { message, .. } = &event.kind {
-                eprintln!("progress: {message}");
-            }
-            if matches!(event.kind, SessionEventKind::TurnCompleted) {
-                break;
-            }
+    let pending = session.send("What is product EVR-42?").await?;
+    while let Some(event) = events.recv().await? {
+        if let SessionEventKind::ToolProgress { message, .. } = &event.kind {
+            eprintln!("progress: {message}");
         }
-        Ok::<_, everruns::EventStreamError>(())
-    });
+        if event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal() {
+            break;
+        }
+    }
 
-    let turn = session.run("What is product EVR-42?").await?;
+    let turn = pending.wait().await?;
     println!("{}", turn.response);
-    observer.await??;
     Ok(())
 }

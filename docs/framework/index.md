@@ -15,7 +15,7 @@ let agent = Agent::builder()
     .model(Model::simulated("Hello from Everruns."))
     .build()?;
 
-let turn = agent.session().run("Say hello.").await?;
+let turn = agent.session().send_and_wait("Say hello.").await?;
 assert_eq!(turn.response, "Hello from Everruns.");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```

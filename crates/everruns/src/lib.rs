@@ -25,7 +25,7 @@
 //!     .model(Model::simulated("4"))
 //!     .build()
 //!     .expect("valid agent");
-//! let result = agent.session().run("What is 2 + 2?").await?;
+//! let result = agent.session().send_and_wait("What is 2 + 2?").await?;
 //! assert!(result.success);
 //! assert_eq!(result.response, "4");
 //! # Ok(())
@@ -68,7 +68,7 @@ pub use hooks::{
 };
 pub use mcp::McpServer;
 pub use plugin::PluginError;
-pub use session::{RunError, Session, Turn};
+pub use session::{CancelError, RunError, SendDisposition, SentMessage, Session, Turn, TurnHandle};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
@@ -182,14 +182,15 @@ pub mod prelude {
         TaskOutcome, TaskRequest, WakePolicy, WakeRequest, WorkQueue, WorkSchedule,
     };
     pub use crate::{
-        Agent, AgentBuilder, AgentStartContext, BuildError, CancellationToken, CompactionConfig,
-        CompactionStrategy, CompletionContext, EventStream, EventStreamError, FunctionTool,
-        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
-        HistoryQuery, HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool,
-        IntoToolResult, McpServer, Model, PluginError, ResumeError, RunError, RunOptions, Session,
-        SessionContext, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnStartContext,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
+        CompactionConfig, CompactionStrategy, CompletionContext, EventStream, EventStreamError,
+        FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
+        HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool,
+        IntoToolResult, LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError,
+        RunOptions, SendDisposition, SentMessage, Session, SessionContext, SessionEvent,
+        SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
+        ToolStartContext, Turn, TurnHandle, TurnStartContext, WorkspacePolicy,
+        WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};

@@ -16,8 +16,8 @@ let agent = Agent::builder()
     .model(Model::simulated("approved"))
     .build()?;
 
-let mut session = agent.session();
-let turn = session.run("Review this.").await?;
+let session = agent.session();
+let turn = session.send_and_wait("Review this.").await?;
 assert!(turn.success);
 assert_eq!(turn.response, "approved");
 # Ok(())

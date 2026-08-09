@@ -39,7 +39,7 @@ async fn workspace_files_and_context_are_application_values() {
         .build()
         .expect("agent builds");
 
-    let mut session = agent.session();
+    let session = agent.session();
     let before = session.inspect().await.expect("context before a turn");
     assert!(before.messages.is_empty());
     assert_eq!(before.model.model.as_str(), "llmsim-model");
@@ -91,7 +91,7 @@ async fn local_plugin_and_http_mcp_config_use_the_framework() {
         .mcp_server(McpServer::http("remote", "https://mcp.invalid/example").tool_discovery(false))
         .build()
         .expect("agent builds");
-    let mut session = agent.session();
+    let session = agent.session();
     let context = session.inspect().await.expect("plugin context");
     assert!(context.instructions.contains("PLUGIN_CONTEXT_SENTINEL"));
 }
@@ -127,7 +127,7 @@ async fn local_profile_supplies_workspace_and_schedule_state() {
         .build()
         .expect("agent builds");
 
-    let mut session = agent.session();
+    let session = agent.session();
     let context = session.inspect().await.expect("local context");
     assert!(
         context

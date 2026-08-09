@@ -21,36 +21,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------
-    let mut session = agent.session();
+    let session = agent.session();
     let mut events = session.events();
 
-    // Read the event stream on a background task while the turn runs.
-    let observer = tokio::spawn(async move {
-        let mut rendered = String::new();
-        while let Some(event) = events.recv().await? {
-            match event.kind {
-                SessionEventKind::TurnStarted => println!("[turn started]"),
-                SessionEventKind::TextDelta { delta } => {
-                    rendered.push_str(&delta);
-                    print!("{delta}");
-                }
-                SessionEventKind::TurnCompleted => println!("\n[turn completed]"),
-                _ => {}
+    let pending = session.send("hi").await?;
+    let mut rendered = String::new();
+    while let Some(event) = events.recv().await? {
+        let terminal =
+            event.turn_id.as_deref() == Some(&pending.turn_id) && event.kind.is_terminal();
+        match event.kind {
+            SessionEventKind::TurnStarted => println!("[turn started]"),
+            SessionEventKind::TextDelta { delta } => {
+                rendered.push_str(&delta);
+                print!("{delta}");
             }
+            SessionEventKind::TurnCompleted => println!("\n[turn completed]"),
+            _ => {}
         }
-        Ok::<_, EventStreamError>(rendered)
-    });
-
-    let turn = session.run("hi").await?;
+        if terminal {
+            break;
+        }
+    }
+    let turn = pending.wait().await?;
     println!("final response: {}", turn.response);
-
-    // Drop the session so the stream closes and the observer finishes.
-    drop(session);
-    let rendered = observer.await??;
     assert_eq!(rendered, turn.response);
 
     // --- Cancel a turn ---------------------------------------------------
-    let mut session = agent.session();
+    let session = agent.session();
     let token = CancellationToken::new();
     token.cancel(); // cancel up front for a deterministic example
 

@@ -182,6 +182,16 @@ pub enum SessionEventKind {
     },
 }
 
+impl SessionEventKind {
+    /// Whether this event ends its associated turn.
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self,
+            Self::TurnCompleted | Self::TurnFailed { .. } | Self::TurnCancelled
+        )
+    }
+}
+
 impl SessionEvent {
     /// The stable dot-notation type string for this event (e.g.
     /// `"turn.started"`), matching the canonical event protocol.
@@ -549,17 +559,28 @@ impl FacadeEventBus {
 
     /// Build a correlated terminal request after the facade drops a cancelled
     /// turn future. The host emitter commits it before live delivery.
+    #[cfg(test)]
     pub(crate) fn cancellation_request(&self, session_id: SessionId) -> (TurnId, EventRequest) {
+        self.cancellation_request_for_turn(session_id, TurnId::new())
+    }
+
+    /// Build a cancellation request with a caller-assigned turn id when the
+    /// runtime has not emitted `turn.started` yet.
+    pub(crate) fn cancellation_request_for_turn(
+        &self,
+        session_id: SessionId,
+        fallback_turn_id: TurnId,
+    ) -> (TurnId, EventRequest) {
         let context = self
             .active_turn
             .lock()
             .expect("active-turn lock poisoned")
             .take()
             .unwrap_or_else(|| EventContext {
-                turn_id: Some(TurnId::new()),
+                turn_id: Some(fallback_turn_id),
                 ..EventContext::default()
             });
-        let turn_id = context.turn_id.unwrap_or_default();
+        let turn_id = context.turn_id.unwrap_or(fallback_turn_id);
         let request = EventRequest::new(
             session_id,
             EventContext {
@@ -917,7 +938,7 @@ mod tests {
             .model(Model::simulated_error("provider unavailable"))
             .build()
             .expect("valid agent");
-        let mut session = agent.session();
+        let session = agent.session();
         let mut stream = session.events();
         let result = session
             .run("hello")
@@ -988,7 +1009,7 @@ mod tests {
             .tool(tool)
             .build()
             .expect("valid agent");
-        let mut session = agent.session();
+        let session = agent.session();
         let mut stream = session.events();
         let result = session.run("look it up").await.expect("tool turn runs");
         assert!(result.success);

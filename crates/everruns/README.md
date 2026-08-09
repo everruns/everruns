@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Hello from Everruns."))
         .build()?;
 
-    let turn = agent.session().run("Say hello.").await?;
+    let turn = agent.session().send_and_wait("Say hello.").await?;
     assert_eq!(turn.response, "Hello from Everruns.");
     Ok(())
 }
@@ -95,23 +95,27 @@ The default-enabled macro generates the argument schema and adapter. The
 
 ## Sessions, Events, and Cancellation
 
-An agent opens independent sessions. Reuse one session for multi-turn history;
-open another for isolation. Subscribe before a turn to observe its live event
-projection, or pass a cancellation token through `RunOptions`.
+An agent opens independent live sessions. `send` accepts a message immediately,
+automatically steering an active turn or starting the next turn after
+completion. `send_and_wait` is the request/response convenience. Subscribe
+before sending to observe live events, or pass a cancellation token through
+`RunOptions`.
 
 ```rust
 use everruns::{CancellationToken, RunOptions};
 
-let mut session = agent.session();
+let session = agent.session();
 let mut events = session.events();
-let first = session.run("Remember this turn.").await?;
+let first = session.send("Remember this turn.").await?;
+
+let turn = first.wait().await?;
 
 let cancel = CancellationToken::new();
 let options = RunOptions::new().cancel_token(cancel.clone());
 cancel.cancel();
 let stopped = session.run_with("Do not start.", options).await?;
 
-assert!(first.success);
+assert!(turn.success);
 assert!(!stopped.success);
 while let Some(event) = events.try_recv()? {
     println!("{}", event.event_type());

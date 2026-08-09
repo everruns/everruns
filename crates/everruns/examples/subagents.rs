@@ -212,7 +212,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Delegate each of these five independent reviews, then wait for every task ID:\n- {}",
         task_descriptions.join("\n- ")
     );
-    let result = parent.session().run(prompt).await?;
+    let result = parent.session().send_and_wait(prompt).await?;
     for (task_id, response) in child_tasks
         .completed
         .lock()
