@@ -52,7 +52,7 @@ An invocation channel is stored as a normal `app_channels` row:
 - `channel_config = typed JSON config`
 - `enabled = channel-local gate`
 
-See `crates/core/src/app.rs` for canonical domain types.
+See `crates/platform/src/app.rs` for canonical domain types.
 
 ## Session Routing
 

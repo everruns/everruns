@@ -27,7 +27,7 @@ use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;
 
-use everruns_core::App;
+use everruns_platform::App;
 
 type HmacSha256 = Hmac<Sha256>;
 

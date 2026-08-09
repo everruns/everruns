@@ -129,7 +129,7 @@ pub async fn invoke_webhook(
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    if app.status != everruns_core::AppStatus::Published {
+    if app.status != everruns_platform::AppStatus::Published {
         tracing::debug!(app_id = %app.public_id, status = ?app.status, "Webhook request rejected: app not published");
         return Err(not_found());
     }
@@ -141,7 +141,7 @@ pub async fn invoke_webhook(
                 .into_response(StatusCode::BAD_REQUEST)
         })?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
-    if channel.channel_type != everruns_core::ChannelType::Webhook {
+    if channel.channel_type != everruns_platform::ChannelType::Webhook {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous webhook ingress must never reach draft

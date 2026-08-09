@@ -1338,10 +1338,10 @@ impl ResourceUrlable for everruns_core::Harness {
 /// Hypermedia actions for an `App`. See `knowledge/execution/api-conventions.md`.
 pub fn app_allowed_actions(
     id: &str,
-    status: &everruns_core::AppStatus,
+    status: &everruns_platform::AppStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::AppStatus;
+    use everruns_platform::AppStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1387,7 +1387,7 @@ pub fn app_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::App {
+impl ResourceUrlable for everruns_platform::App {
     fn api_path() -> &'static str {
         "v1/apps"
     }
@@ -2382,7 +2382,7 @@ mod tests {
 
     #[test]
     fn app_actions_flip_publish_unpublish_on_status() {
-        use everruns_core::AppStatus;
+        use everruns_platform::AppStatus;
         let draft = app_allowed_actions("app_01", &AppStatus::Draft, "https://api.example");
         let published = app_allowed_actions("app_01", &AppStatus::Published, "https://api.example");
         let archived = app_allowed_actions("app_01", &AppStatus::Archived, "https://api.example");

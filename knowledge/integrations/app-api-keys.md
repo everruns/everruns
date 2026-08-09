@@ -67,7 +67,7 @@ uniform with `a2a` / `ag_ui` (own enabled flag, own config, own lifecycle,
 published-app gate) and lets one App expose several keys with independent
 settings.
 
-Channel config (`ApiEndpointChannelConfig`, see `crates/core/src/app.rs`)
+Channel config (`ApiEndpointChannelConfig`, see `crates/platform/src/app.rs`)
 carries:
 
 - The generated key material — `api_key_hash` (SHA-256 hex) and non-secret

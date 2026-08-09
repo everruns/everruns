@@ -5,10 +5,10 @@
 // Decision: Tool results include UI links via base_url()
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
+use crate::app::{App, AppChannel, ChannelType};
 use async_trait::async_trait;
 use everruns_core::SessionContextReport;
 use everruns_core::agent::Agent;
-use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::Result;
 use everruns_core::harness::Harness;
@@ -406,9 +406,9 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::app::{App, AppChannel, AppStatus, ChannelType};
     use everruns_core::AgentCapabilityConfig;
     use everruns_core::agent::{Agent, AgentStatus};
-    use everruns_core::app::{App, AppChannel, AppStatus, ChannelType};
     use everruns_core::harness::{Harness, HarnessStatus};
     use everruns_core::session::{Session, SessionStatus};
 
@@ -524,7 +524,7 @@ pub mod tests {
                     description: Some("test app".to_string()),
                     harness_id: HarnessId::new(),
                     agent_id: Some(everruns_core::typed_id::AgentId::new()),
-                    agent_version_policy: everruns_core::app::AgentVersionPolicy::Default,
+                    agent_version_policy: crate::app::AgentVersionPolicy::Default,
                     agent_version_id: None,
                     agent_identity_id: Some(everruns_core::typed_id::AgentIdentityId::new()),
                     owner_principal_id: everruns_core::PrincipalId::from_seed(1),

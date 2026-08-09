@@ -25,8 +25,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{AgentTrigger, Caller};
+use everruns_core::Caller;
 use everruns_durable::WorkflowEventStore;
+use everruns_platform::AgentTrigger;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::IntoParams;

@@ -13,7 +13,6 @@
 // to support concurrent turns in the same session.
 
 use async_trait::async_trait;
-use everruns_core::SlackReplyMode;
 use everruns_core::channel::{
     ChannelDeliveryAdapter, DeliveryContext as ChannelDeliveryContext,
     DeliveryResult as ChannelDeliveryResult, OutboundChannelMessage,
@@ -22,6 +21,7 @@ use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
 use everruns_core::typed_id::{EventId, SessionId};
+use everruns_platform::SlackReplyMode;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};

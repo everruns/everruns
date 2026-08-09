@@ -341,7 +341,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: everruns_core::typed_id::AppChannelId,
-    session_mode: everruns_core::app::InvocationSessionMode,
+    session_mode: everruns_platform::app::InvocationSessionMode,
 }
 
 async fn authenticate_request(
@@ -362,7 +362,7 @@ async fn authenticate_request(
     // channel is disabled / misconfigured". Every such case collapses to a
     // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
     // reason is logged server-side only.
-    if app.status != everruns_core::AppStatus::Published {
+    if app.status != everruns_platform::AppStatus::Published {
         tracing::debug!(app_id = %app.public_id, status = ?app.status, "A2A request rejected: app not published");
         return Err(not_found());
     }
@@ -371,7 +371,7 @@ async fn authenticate_request(
         .parse::<everruns_core::typed_id::AppChannelId>()
         .map_err(|e| bad_request(format!("Invalid channel ID: {e}")))?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
-    if channel.channel_type != everruns_core::ChannelType::A2a {
+    if channel.channel_type != everruns_platform::ChannelType::A2a {
         return Err(not_found());
     }
     // THREAT[TM-AUTHZ-006]: Anonymous A2A ingress must never reach draft or
@@ -388,7 +388,7 @@ async fn authenticate_request(
     };
 
     if let Some(auth) = config.auth.as_ref() {
-        if auth.mode == everruns_core::AppEndpointAuthMode::ApiKey {
+        if auth.mode == everruns_platform::AppEndpointAuthMode::ApiKey {
             verify_a2a_api_key(headers, &config.api_key_hash)?;
         } else {
             state
@@ -950,7 +950,7 @@ async fn handle_message_stream(
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
 ) -> Response {
-    if auth.session_mode != everruns_core::app::InvocationSessionMode::SessionPerInvocation {
+    if auth.session_mode != everruns_platform::app::InvocationSessionMode::SessionPerInvocation {
         return (
             StatusCode::OK,
             rpc_error(
@@ -1270,14 +1270,14 @@ pub async fn agent_card(
         .map_err(internal_error)?
         .ok_or_else(not_found)?;
     // Agent Card is only published when the app is live and the channel is on.
-    if app.status != everruns_core::AppStatus::Published {
+    if app.status != everruns_platform::AppStatus::Published {
         return Err(not_found());
     }
     let channel_id_typed = channel_id
         .parse::<everruns_core::typed_id::AppChannelId>()
         .map_err(|_| not_found())?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
-    if channel.channel_type != everruns_core::ChannelType::A2a || !channel.enabled {
+    if channel.channel_type != everruns_platform::ChannelType::A2a || !channel.enabled {
         return Err(not_found());
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;
@@ -1327,7 +1327,7 @@ pub async fn agent_card(
             // Streaming is only supported on session_per_invocation channels.
             // Shared-session channels reject message/stream because events
             // cannot be safely correlated across concurrent callers.
-            "streaming": config.session_mode == everruns_core::app::InvocationSessionMode::SessionPerInvocation,
+            "streaming": config.session_mode == everruns_platform::app::InvocationSessionMode::SessionPerInvocation,
             "pushNotifications": false,
             "stateTransitionHistory": false,
         },
@@ -1347,7 +1347,7 @@ pub async fn agent_card(
     Ok(Json(card))
 }
 
-fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
+fn a2a_security_for_config(config: &everruns_platform::A2aChannelConfig) -> (Value, Value) {
     let (mut schemes, mut requirements) = base_a2a_security(config);
     // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
     // a vendor `everrunsHmacSignature` scheme alongside whichever primary
@@ -1381,7 +1381,7 @@ fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, 
     (schemes, requirements)
 }
 
-fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
+fn base_a2a_security(config: &everruns_platform::A2aChannelConfig) -> (Value, Value) {
     let Some(auth) = config.auth.as_ref() else {
         return (
             json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
@@ -1389,13 +1389,13 @@ fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value)
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
-        (everruns_core::AppEndpointAuthMode::HttpBasic, _) => (
+        (everruns_platform::AppEndpointAuthMode::HttpBasic, _) => (
             json!({ "httpBasic": { "httpAuthSecurityScheme": { "scheme": "basic" } } }),
             json!([{ "httpBasic": [] }]),
         ),
         (
-            everruns_core::AppEndpointAuthMode::GoogleOidc,
-            Some(everruns_core::AppEndpointAuthProviderConfig::GoogleOidc { .. }),
+            everruns_platform::AppEndpointAuthMode::GoogleOidc,
+            Some(everruns_platform::AppEndpointAuthProviderConfig::GoogleOidc { .. }),
         ) => (
             json!({
                 "googleOidc": {
@@ -1407,8 +1407,8 @@ fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value)
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
         ),
         (
-            everruns_core::AppEndpointAuthMode::Oidc,
-            Some(everruns_core::AppEndpointAuthProviderConfig::Oidc { issuer, .. }),
+            everruns_platform::AppEndpointAuthMode::Oidc,
+            Some(everruns_platform::AppEndpointAuthProviderConfig::Oidc { issuer, .. }),
         ) => {
             let discovery = format!(
                 "{}/.well-known/openid-configuration",
@@ -1428,15 +1428,15 @@ fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value)
         // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
         // introspection-only channel has no token URL to publish, so advertise
         // generic bearer auth rather than fabricating an unusable OAuth flow.
-        (everruns_core::AppEndpointAuthMode::OAuth2Introspection, _) => (
+        (everruns_platform::AppEndpointAuthMode::OAuth2Introspection, _) => (
             json!({ "oauth2Bearer": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
-        (everruns_core::AppEndpointAuthMode::Mtls, _) => (
+        (everruns_platform::AppEndpointAuthMode::Mtls, _) => (
             json!({ "mtls": { "mtlsSecurityScheme": {} } }),
             json!([{ "mtls": [] }]),
         ),
-        (everruns_core::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
+        (everruns_platform::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
         _ => (
             json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "apiKey": [] }]),
@@ -1515,24 +1515,24 @@ mod tests {
 
     #[test]
     fn oauth2_introspection_security_advertises_bearer_auth() {
-        let config = everruns_core::A2aChannelConfig {
+        let config = everruns_platform::A2aChannelConfig {
             api_key_hash: "hash".to_string(),
             api_key_prefix: "evra2a_abcd...".to_string(),
-            session_mode: everruns_core::app::InvocationSessionMode::SharedSession,
+            session_mode: everruns_platform::app::InvocationSessionMode::SharedSession,
             message: "{{a2a.text}}".to_string(),
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
-            auth: Some(everruns_core::AppEndpointAuthConfig {
-                mode: everruns_core::AppEndpointAuthMode::OAuth2Introspection,
+            auth: Some(everruns_platform::AppEndpointAuthConfig {
+                mode: everruns_platform::AppEndpointAuthMode::OAuth2Introspection,
                 provider: Some(
-                    everruns_core::AppEndpointAuthProviderConfig::OAuth2Introspection {
+                    everruns_platform::AppEndpointAuthProviderConfig::OAuth2Introspection {
                         introspection_url: "https://auth.example.test/introspect".to_string(),
                         client_id: None,
                         client_secret: None,
                     },
                 ),
-                requirements: everruns_core::AppEndpointAuthRequirements {
+                requirements: everruns_platform::AppEndpointAuthRequirements {
                     audiences: vec![],
                     scopes: vec!["app:invoke".to_string()],
                     claims: serde_json::Map::new(),

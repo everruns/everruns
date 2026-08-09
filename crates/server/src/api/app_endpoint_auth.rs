@@ -12,9 +12,10 @@ use std::time::Duration;
 
 use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
-use everruns_core::{
+use everruns_core::{is_blocked_ip, validate_safe_url};
+use everruns_platform::{
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, is_blocked_ip, validate_safe_url,
+    AppEndpointAuthRequirements,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use moka::future::Cache;

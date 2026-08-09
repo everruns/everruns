@@ -87,7 +87,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
 ## Implementation status
 
 - **Phase 1 (backend) — landed.** The `public_chat` channel type and typed
-  config are in `crates/core/src/app.rs` (`PublicChatChannelConfig`,
+  config are in `crates/platform/src/app.rs` (`PublicChatChannelConfig`,
   `PublicChatBranding`, `PublicChatCaptchaConfig`, `CaptchaProvider`), with
   create/update validation, secret redaction (`token`, Turnstile `secret_key`),
   PATCH secret-preservation, and migration `092_app_channel_type_public_chat.sql`.

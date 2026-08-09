@@ -22,8 +22,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{App, AppChannel, Caller, ResourceConfigResponse, evaluate_policies_with};
+use everruns_core::{Caller, ResourceConfigResponse, evaluate_policies_with};
 use everruns_durable::WorkflowEventStore;
+use everruns_platform::{App, AppChannel};
 
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
@@ -473,7 +474,7 @@ pub async fn delete_channel(
 pub struct AddA2aChannelHttpRequest {
     /// How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`.
     #[serde(default)]
-    pub session_mode: everruns_core::app::InvocationSessionMode,
+    pub session_mode: everruns_platform::app::InvocationSessionMode,
     /// First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.
     #[schema(example = "Process incoming A2A request and return a structured response.")]
     pub message: String,
@@ -485,7 +486,7 @@ pub struct AddA2aChannelHttpRequest {
     pub agent_card_description: Option<String>,
     /// Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`.
     #[serde(default)]
-    pub auth: Option<everruns_core::AppEndpointAuthConfig>,
+    pub auth: Option<everruns_platform::AppEndpointAuthConfig>,
     /// Whether this resource is enabled.
     #[schema(example = true)]
     pub enabled: Option<bool>,
@@ -562,10 +563,10 @@ pub struct AddApiEndpointChannelHttpRequest {
     /// How invocations route into sessions (`shared_session` to reuse one
     /// durable session, or `session_per_invocation` for a fresh session).
     #[serde(default)]
-    pub session_mode: everruns_core::app::InvocationSessionMode,
+    pub session_mode: everruns_platform::app::InvocationSessionMode,
     /// Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`.
     #[serde(default)]
-    pub auth: Option<everruns_core::AppEndpointAuthConfig>,
+    pub auth: Option<everruns_platform::AppEndpointAuthConfig>,
     /// Whether this resource is enabled.
     #[schema(example = true)]
     pub enabled: Option<bool>,

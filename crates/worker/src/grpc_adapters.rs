@@ -3295,7 +3295,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         &self,
         search: Option<&str>,
         include_archived: bool,
-    ) -> Result<Vec<everruns_core::App>> {
+    ) -> Result<Vec<everruns_platform::App>> {
         let mut params = serde_json::Map::new();
         if let Some(search) = search {
             params.insert(
@@ -3313,7 +3313,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
             .await
     }
 
-    async fn get_app(&self, id: everruns_core::AppId) -> Result<Option<everruns_core::App>> {
+    async fn get_app(&self, id: everruns_core::AppId) -> Result<Option<everruns_platform::App>> {
         self.execute_platform_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3325,9 +3325,9 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         harness_id: everruns_core::HarnessId,
         agent_id: Option<everruns_core::AgentId>,
         agent_identity_id: Option<everruns_core::AgentIdentityId>,
-        channel_type: Option<everruns_core::ChannelType>,
+        channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
-    ) -> Result<everruns_core::App> {
+    ) -> Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([
             (
                 "name".to_string(),
@@ -3377,7 +3377,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         harness_id: Option<everruns_core::HarnessId>,
         agent_id: Option<everruns_core::AgentId>,
         agent_identity_id: Option<Option<everruns_core::AgentIdentityId>>,
-    ) -> Result<everruns_core::App> {
+    ) -> Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([(
             "id".to_string(),
             serde_json::Value::String(id.to_string()),
@@ -3436,12 +3436,12 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         Ok(())
     }
 
-    async fn publish_app(&self, id: everruns_core::AppId) -> Result<everruns_core::App> {
+    async fn publish_app(&self, id: everruns_core::AppId) -> Result<everruns_platform::App> {
         self.execute_platform_command("publish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
 
-    async fn unpublish_app(&self, id: everruns_core::AppId) -> Result<everruns_core::App> {
+    async fn unpublish_app(&self, id: everruns_core::AppId) -> Result<everruns_platform::App> {
         self.execute_platform_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3449,10 +3449,10 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
     async fn add_app_channel(
         &self,
         app_id: everruns_core::AppId,
-        channel_type: everruns_core::ChannelType,
+        channel_type: everruns_platform::ChannelType,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> Result<everruns_core::AppChannel> {
+    ) -> Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),
@@ -3477,10 +3477,10 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
         &self,
         app_id: everruns_core::AppId,
         channel_id: everruns_core::AppChannelId,
-        channel_type: Option<everruns_core::ChannelType>,
+        channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> Result<everruns_core::AppChannel> {
+    ) -> Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),

@@ -12,7 +12,6 @@
 // `session_uses_report_progress()` checks both prefixes.
 
 use crate::RuntimeAgent;
-use crate::app::SlackReplyMode;
 use crate::channel::ChannelReplyMode;
 use crate::tool_types::ToolDefinition;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -100,13 +99,16 @@ pub fn sync_channel_reply_mode_tags(tags: &mut Vec<String>, reply_mode: ChannelR
 
 /// Sync Slack-specific reply mode tags (legacy — delegates to channel-agnostic version
 /// and also sets the `slack:reply_mode:*` tag for backward compat with existing sessions).
-pub fn sync_slack_reply_mode_tags(tags: &mut Vec<String>, reply_mode: SlackReplyMode) {
+///
+/// Takes the neutral [`ChannelReplyMode`]; callers holding the Slack-specific
+/// `SlackReplyMode` (now owned by `everruns-platform`) convert with `.into()`.
+pub fn sync_slack_reply_mode_tags(tags: &mut Vec<String>, reply_mode: ChannelReplyMode) {
     tags.retain(|tag| !tag.starts_with(SLACK_REPLY_MODE_TAG_PREFIX));
-    if reply_mode == SlackReplyMode::ReportProgressOnly {
+    if reply_mode == ChannelReplyMode::ReportProgressOnly {
         tags.push(SLACK_REPORT_PROGRESS_ONLY_TAG.to_string());
     }
     // Also set the generic tag so new code paths work
-    sync_channel_reply_mode_tags(tags, reply_mode.into());
+    sync_channel_reply_mode_tags(tags, reply_mode);
 }
 
 pub fn report_progress_tool_definition() -> ToolDefinition {
@@ -284,7 +286,7 @@ mod tests {
             "slack:reply_mode:all_messages".to_string(),
         ];
 
-        sync_slack_reply_mode_tags(&mut tags, SlackReplyMode::ReportProgressOnly);
+        sync_slack_reply_mode_tags(&mut tags, ChannelReplyMode::ReportProgressOnly);
 
         // Should have both legacy slack: and generic channel: tags
         assert!(tags.iter().any(|tag| tag == SLACK_REPORT_PROGRESS_ONLY_TAG));

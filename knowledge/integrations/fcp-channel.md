@@ -177,7 +177,7 @@ Coverage in `crates/server/src/api/fcp.rs::tests` includes:
    leak no provider/internal vocabulary; 401 names the right headers and
    points at the handshake; 429 includes the configured limit.
 
-Core coverage in `crates/core/src/app.rs::tests` ensures `ChannelType`
+Core coverage in `crates/platform/src/app.rs::tests` ensures `ChannelType`
 serde/display round-trips include `fcp` and that `App::fcp_channel()` /
 `AppChannel::fcp_config()` work end-to-end.
 

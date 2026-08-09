@@ -10,8 +10,8 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
+use crate::app::{App, AppChannel, ChannelType};
 use async_trait::async_trait;
-use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
 };

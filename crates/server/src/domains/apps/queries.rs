@@ -7,8 +7,9 @@ use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
+use everruns_core::AppId;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AgentVersionId, AppChannelId, HarnessId};
-use everruns_core::{AgentVersionPolicy, App, AppChannel, AppId, AppStatus, ChannelType};
+use everruns_platform::{AgentVersionPolicy, App, AppChannel, AppStatus, ChannelType};
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -53,9 +53,9 @@ use everruns_core::events::{
 use everruns_core::message::ExecutionPhase;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
-    AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, Caller, ContentPart, ExternalActor,
-    MessageId, MessageRole, typed_id::ImageId,
+    Caller, ContentPart, ExternalActor, MessageId, MessageRole, typed_id::ImageId,
 };
+use everruns_platform::{AgUiChannelConfig, AgUiToolVisibility, App, AppStatus};
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -1058,7 +1058,7 @@ impl AgUiStreamState {
     fn safe_public_tool_text(&self) -> String {
         let trimmed = self.generic_tool_text.trim();
         if trimmed.is_empty() {
-            everruns_core::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
+            everruns_platform::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
         } else {
             trimmed.to_string()
         }
@@ -1605,7 +1605,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_seed(2),
             agent_id: None,
-            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
             agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(3),

@@ -3105,7 +3105,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         search: Option<&str>,
         include_archived: bool,
-    ) -> everruns_core::error::Result<Vec<everruns_core::App>> {
+    ) -> everruns_core::error::Result<Vec<everruns_platform::App>> {
         let mut params = serde_json::Map::new();
         if let Some(search) = search {
             params.insert(
@@ -3126,7 +3126,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn get_app(
         &self,
         id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<Option<everruns_core::App>> {
+    ) -> everruns_core::error::Result<Option<everruns_platform::App>> {
         self.execute_domain_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3138,9 +3138,9 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         agent_identity_id: Option<everruns_core::AgentIdentityId>,
-        channel_type: Option<everruns_core::ChannelType>,
+        channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
-    ) -> everruns_core::error::Result<everruns_core::App> {
+    ) -> everruns_core::error::Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([
             (
                 "name".to_string(),
@@ -3190,7 +3190,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         harness_id: Option<HarnessId>,
         agent_id: Option<AgentId>,
         agent_identity_id: Option<Option<everruns_core::AgentIdentityId>>,
-    ) -> everruns_core::error::Result<everruns_core::App> {
+    ) -> everruns_core::error::Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([(
             "id".to_string(),
             serde_json::Value::String(id.to_string()),
@@ -3252,7 +3252,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn publish_app(
         &self,
         id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<everruns_core::App> {
+    ) -> everruns_core::error::Result<everruns_platform::App> {
         self.execute_domain_command("publish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3260,7 +3260,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn unpublish_app(
         &self,
         id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<everruns_core::App> {
+    ) -> everruns_core::error::Result<everruns_platform::App> {
         self.execute_domain_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3268,10 +3268,10 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn add_app_channel(
         &self,
         app_id: everruns_core::AppId,
-        channel_type: everruns_core::ChannelType,
+        channel_type: everruns_platform::ChannelType,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> everruns_core::error::Result<everruns_core::AppChannel> {
+    ) -> everruns_core::error::Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),
@@ -3296,10 +3296,10 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         app_id: everruns_core::AppId,
         channel_id: everruns_core::AppChannelId,
-        channel_type: Option<everruns_core::ChannelType>,
+        channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> everruns_core::error::Result<everruns_core::AppChannel> {
+    ) -> everruns_core::error::Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),

@@ -120,22 +120,18 @@ pub mod tests {
     use super::*;
     use crate::AgentCapabilityConfig;
     use crate::agent::AgentStatus;
-    use crate::app::{App, AppChannel, AppStatus, ChannelType};
     use crate::harness::HarnessStatus;
     use crate::session::{SessionParticipant, SessionStatus};
-    use crate::typed_id::{AgentIdentityId, AppChannelId, AppId};
 
     /// Mock [`SubagentSessionDelegate`] for portable subagent/handoff tests.
     ///
-    /// Carries the same simulated harness/agent/app/session state the former
+    /// Carries the same simulated harness/agent/session state the former
     /// `MockPlatformStore` provided, restricted to the narrow delegate surface
     /// (EVE-839). The full hosted mock still lives in `everruns-platform`.
     pub struct MockSubagentDelegate {
         pub harness: Harness,
         pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
         pub agent: Agent,
-        pub app: App,
-        pub app_channel: AppChannel,
         pub session: Session,
         pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
         pub joined_participants: std::sync::Mutex<Vec<SessionParticipant>>,
@@ -204,42 +200,6 @@ pub mod tests {
                     archived_at: None,
                     deleted_at: None,
                     usage: None,
-                },
-                app_channel: AppChannel {
-                    public_id: AppChannelId::new(),
-                    internal_id: uuid::Uuid::now_v7(),
-                    channel_type: ChannelType::Webhook,
-                    channel_config: serde_json::json!({
-                        "token": "secret-1",
-                        "session_mode": "shared_session",
-                        "message": "Run checks for {{payload.repo.name}}"
-                    }),
-                    enabled: true,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                app: App {
-                    public_id: AppId::new(),
-                    internal_id: uuid::Uuid::now_v7(),
-                    org_id: 1,
-                    name: "test-app".to_string(),
-                    description: Some("test app".to_string()),
-                    harness_id: HarnessId::new(),
-                    agent_id: Some(crate::typed_id::AgentId::new()),
-                    agent_version_policy: crate::app::AgentVersionPolicy::Default,
-                    agent_version_id: None,
-                    agent_identity_id: Some(AgentIdentityId::new()),
-                    owner_principal_id: crate::PrincipalId::from_seed(1),
-                    resolved_owner_user_id: None,
-                    owner: None,
-                    effective_owner: None,
-                    channels: vec![],
-                    status: AppStatus::Draft,
-                    published_at: None,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                    archived_at: None,
-                    deleted_at: None,
                 },
                 session: {
                     let session_id = SessionId::new();

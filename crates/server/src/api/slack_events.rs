@@ -31,10 +31,8 @@ use everruns_core::channel::{
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
-use everruns_core::{
-    App, AppStatus, Caller, SessionParticipantKind, SessionParticipantRole, SessionStrategy,
-    SlackChannelConfig, SlackReplyMode,
-};
+use everruns_core::{Caller, SessionParticipantKind, SessionParticipantRole};
+use everruns_platform::{App, AppStatus, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
@@ -619,7 +617,7 @@ async fn process_slack_message(
             };
             let session = SessionService::row_to_session(row, &org_public_id, fallback);
             let mut synced_tags = session.tags.clone();
-            sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode);
+            sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode.into());
             if synced_tags != session.tags
                 && let Err(error) = state
                     .db
@@ -1078,7 +1076,7 @@ fn build_session_tags(
 
 fn desired_session_tags(routing_tags: &[String], reply_mode: SlackReplyMode) -> Vec<String> {
     let mut tags = routing_tags.to_vec();
-    sync_slack_reply_mode_tags(&mut tags, reply_mode);
+    sync_slack_reply_mode_tags(&mut tags, reply_mode.into());
     tags
 }
 
@@ -2068,7 +2066,7 @@ mod tests {
     // Test helpers
     fn test_app() -> App {
         use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId};
-        use everruns_core::{AppChannel, ChannelType};
+        use everruns_platform::{AppChannel, ChannelType};
 
         let now = chrono::Utc::now();
         App {
@@ -2079,7 +2077,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
-            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
             agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
