@@ -12,8 +12,10 @@ WORKDIR /app
 # Version pinned to match `packageManager` in apps/ui/package.json.
 RUN npm install -g pnpm@10.33.0
 
-# Install dependencies (fail if pnpm-lock.yaml is out of sync with package.json)
-COPY package.json pnpm-lock.yaml ./
+# Install dependencies (fail if pnpm-lock.yaml is out of sync with package.json).
+# pnpm-workspace.yaml carries `overrides`/`onlyBuiltDependencies` (moved here from
+# package.json); without it a frozen install fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy source and build
