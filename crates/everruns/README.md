@@ -146,17 +146,17 @@ let agent = Agent::builder()
 
 ## Persistence
 
-Conversation history is in memory for the lifetime of a `Session`. The `local`
-feature supplies a real-disk workspace plus local task/schedule state; it does
-not imply durable conversation history. Writable JSONL message-store APIs remain
-available only for existing 0.17.x compatibility and are not the persistence
-model for new Framework applications.
+By default, conversation history is offline, database-free, and retained for
+the lifetime of an `Agent` and its clones. Keep a typed `SessionId` and call
+`Agent::resume`; use `Session::history().page()` for bounded event-derived
+reads. The `local` feature adds a crash-durable canonical event log and session
+catalog alongside its real workspace and task/schedule state.
 
 ## What It Provides
 
 - Value-first `Agent`, open `ModelSpec`/`Provider`, and deterministic simulation
 - Typed and dynamic function tools
-- Independent multi-turn `Session`s and next-turn context inspection
+- Independent multi-turn `Session`s, typed resume, bounded history, and next-turn context inspection
 - Live typed events, lossless unknown-event projection, and cancellation
 - Session-owned immediate and scheduled work with leased, at-least-once delivery
 - Awaited, typed lifecycle hooks with explicit failure isolation
@@ -174,6 +174,7 @@ The [example catalog](./examples/README.md) includes:
 - `session_work` — offline background work and completion wakes
 - `subagents` — public-facade delegation
 - `observe_and_cancel` — events and cancellation
+- `session_history` — offline durable resume and bounded history pages
 - `lifecycle_hooks` — agent, turn, tool, and completion handlers
 
 Examples are compiled in CI and import only `everruns`.
@@ -196,6 +197,8 @@ Examples are compiled in CI and import only `everruns`.
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Tools and macros](https://docs.everruns.com/framework/tools-and-macros/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
+- [Session history and resume](https://docs.everruns.com/framework/session-history/)
+- [Persistence](https://docs.everruns.com/framework/persistence/)
 - [Session work and wakes](https://docs.everruns.com/framework/background-work/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [Lifecycle hooks](https://docs.everruns.com/framework/lifecycle-hooks/)

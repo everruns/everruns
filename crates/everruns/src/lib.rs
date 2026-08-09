@@ -1,9 +1,10 @@
 //! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
 //! Build agents, attach open model/provider configuration and typed tools, run
-//! isolated multi-turn sessions, observe events, cancel work, and inspect the
-//! next model context without constructing an execution host. Default features
-//! stay offline; the deterministic simulator needs no credentials or network.
+//! isolated multi-turn sessions, read bounded history, resume typed session
+//! identities, observe events, cancel work, and inspect the next model context
+//! without constructing an execution host. Default features stay offline; the
+//! deterministic simulator needs no credentials or network.
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Existing low-level and 0.17.x
@@ -42,6 +43,7 @@ pub mod capability;
 mod compaction;
 mod context;
 mod events;
+mod history;
 mod hooks;
 mod mcp;
 mod plugin;
@@ -53,6 +55,10 @@ pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
+pub use history::{
+    HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
+    ResumeError, SessionMessage,
+};
 pub use hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
     ToolStartContext, TurnStartContext,
@@ -174,11 +180,13 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancellationToken, CompactionConfig,
-        CompactionStrategy, CompletionContext, EventStream, FunctionTool, HookFailure, HookPoint,
-        InitialFile, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, PluginError,
-        RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind, SessionId,
-        Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnStartContext,
-        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        CompactionStrategy, CompletionContext, EventStream, FunctionTool, HistoryCursor,
+        HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
+        HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool, IntoToolResult, McpServer,
+        Model, PluginError, ResumeError, RunError, RunOptions, Session, SessionContext,
+        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
+        ToolResponse, ToolStartContext, Turn, TurnStartContext, WorkspacePolicy,
+        WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};

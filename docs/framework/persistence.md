@@ -1,14 +1,31 @@
 ---
 title: Persistence
-description: Understand the current Framework persistence boundary and local application state.
+description: Choose volatile or crash-durable Framework session and local application state.
 ---
 
-Framework sessions keep conversation history in memory by default. Reusing the
-same `Session` preserves context across turns; dropping it ends that live
-conversation.
+Framework history is a read-only projection of canonical events. Normal
+execution has one write path—the Agent's event log—so a resumed session and a
+running session cannot disagree about the conversation.
 
-For local applications, the feature-gated `LocalConfig` supplies a trusted
-real-disk workspace plus SQLite-backed task and schedule state:
+## Default: Agent-lifetime memory
+
+By default, each built `Agent` owns a volatile in-memory event log. It is fully
+offline and requires no database, server, network connection, credential, or
+filesystem access.
+
+Dropping a `Session` does not immediately discard its committed history. Reopen
+it by passing its typed `SessionId` to the Agent that issued it, or to a clone of
+that Agent. A separately built Agent has a separate in-memory store, and process
+exit loses volatile history.
+
+This default fits tests, command-line tools, short-lived workers, and
+applications that deliberately own a higher-level record elsewhere.
+
+## Local: crash-durable events
+
+For local applications, the feature-gated `LocalConfig` adds a crash-durable
+event log under the configured application data directory. It also supplies a
+trusted real-disk workspace plus SQLite-backed task and schedule state:
 
 ```rust
 use everruns::{Agent, LocalConfig, Model};
@@ -23,17 +40,21 @@ let agent = Agent::builder()
 ```
 
 Enable it with `cargo add everruns --features local`. Select both directories
-from trusted application configuration. `LocalConfig` does not claim to make
-conversation history durable.
+from trusted application configuration. Another Agent—or a later process—can
+open the same data directory and resume a committed session by ID.
 
-## Compatibility persistence
+The local profile is designed for one embedded process at a time. Coordinate
+process ownership before handing the directory to another Agent process.
 
-The `jsonl` feature and its writable message-store APIs remain available only
-for source compatibility with existing 0.17.x applications. They are not the
-recommended persistence model for new Framework applications. Durable
-conversation truth belongs to canonical events; history and context are
-projections of that record.
+The event-log file format and host backends are not Framework APIs. Do not edit
+the log or build application writes around its representation. Use
+`Session::history` for bounded reads and `Agent::resume` to continue a session;
+see [Session History and Resume](/framework/session-history/) for the complete
+lifecycle.
 
-For existing JSONL code and low-level storage hosts, see [Runtime
-compatibility](/framework/runtime-compatibility/). Do not design new application
-persistence around a writable message store or its file format.
+Applications remain responsible for filesystem permissions, backups, retention,
+and selecting a data directory that is not controlled by model or request
+input. New local state files are created owner-only on Unix, but applications
+must still protect copied files and backups. Message content is application data
+and may be sensitive even though provider credentials are not written there by
+Framework configuration.

@@ -52,9 +52,10 @@ jsonl = []
 lua = ["everruns-host/lua"]
 # Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
 mcp-stdio = ["everruns-host/mcp-stdio"]
-# Enable SQLite-backed local task/schedule state and real workspaces through
-# `LocalConfig`. Conversation history is derived from canonical events rather
-# than selecting a writable message store here.
+# Enable a crash-durable canonical event log, SQLite-backed session catalog and
+# task/schedule state, and real workspaces through `LocalConfig`. Conversation
+# history is derived from canonical events rather than selecting a writable
+# message store here.
 local = ["dep:everruns-local"]
 # Configure real OpenAI-backed models via `everruns::providers::openai`. Off by
 # default so the standard facade build pulls in no provider or Reqwest edge; the
@@ -71,6 +72,7 @@ everruns-local = { workspace = true, optional = true }
 # everruns-core/everruns-host, which track the workspace version exactly).
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
+base64.workspace = true
 serde_json.workspace = true
 # Session event streaming (broadcast channel) and cancellation (select). Only
 # the `sync` surface of tokio is needed on the non-dev build.
@@ -112,6 +114,10 @@ required-features = ["openai"]
 [[example]]
 name = "observe_and_cancel"
 required-features = ["openai"]
+
+[[example]]
+name = "session_history"
+required-features = ["local"]
 
 [[example]]
 name = "subagents"
