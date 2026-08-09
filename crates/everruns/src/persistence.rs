@@ -1,7 +1,7 @@
 //! File-backed session persistence for standalone library processes (EVE-836).
 //!
 //! The facade's default backends keep a session's conversation in memory, so a
-//! process that exits loses the history. [`jsonl::JsonlSessionStore`] persists
+//! process that exits loses the history. [`JsonlSessionStore`] persists
 //! that history as an append-only JSONL file and reloads it, letting a fresh
 //! process resume a multi-turn session with only `everruns` and the `jsonl`
 //! feature — no database, no platform store.

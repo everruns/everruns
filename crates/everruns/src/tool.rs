@@ -258,7 +258,7 @@ impl Capability for FunctionCapability {
 /// An agent tool: either a reference to an existing capability id, or a
 /// closure-backed [`FunctionTool`].
 ///
-/// This is the application-facing adapter that [`AgentBuilder::tool`] accepts
+/// This is the application-facing adapter that [`AgentBuilder::tool`](crate::AgentBuilder::tool) accepts
 /// via [`IntoTool`]. A `&str`/`String` names a capability-referenced tool; a
 /// [`FunctionTool`] carries its own handler.
 #[derive(Clone, Debug)]
