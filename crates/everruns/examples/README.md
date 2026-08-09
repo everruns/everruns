@@ -13,6 +13,7 @@ entirely offline.
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |
+| [`lifecycle_hooks.rs`](lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 
 The GitHub monitor's default `--simulate` mode skips GitHub access but still
 uses the configured model. Its explicit live mode requires an authenticated

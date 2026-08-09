@@ -8,8 +8,8 @@
 
 `everruns` provides value-first agents, open model/provider configuration,
 typed tools, isolated multi-turn sessions, live events, cancellation, files,
-MCP, plugins, and context inspection without requiring a server, worker, or
-database.
+typed lifecycle hooks, MCP, plugins, and context inspection without requiring
+a server, worker, or database.
 
 It is the primary library crate in the [Everruns](https://everruns.com)
 ecosystem. Normal Rust applications should start here; focused core, engine,
@@ -121,6 +121,29 @@ while let Some(event) = events.try_recv() {
 `Session::inspect` exposes the application-facing context assembled for the
 next model call without exposing backend records.
 
+## Lifecycle Hooks
+
+Register async handlers on `Agent::builder()` when application work must be
+awaited at an agent, turn, tool, or completion boundary. Handlers receive owned,
+typed Framework contexts and never require persisted hook records or runtime
+imports. Use session events instead for non-blocking observation.
+
+```rust
+use everruns::{Agent, Model};
+
+let agent = Agent::builder()
+    .instructions("You are concise.")
+    .model(Model::simulated("Ready."))
+    .on_agent_start(|context| async move {
+        println!("started {}", context.session_id);
+    })
+    .on_completion(|context| async move {
+        println!("completed {}", context.turn.turn_id);
+    })
+    .build()?;
+# Ok::<(), everruns::BuildError>(())
+```
+
 ## Persistence
 
 Conversation history is in memory for the lifetime of a `Session`. The `local`
@@ -136,6 +159,7 @@ model for new Framework applications.
 - Independent multi-turn `Session`s and next-turn context inspection
 - Live typed events, lossless unknown-event projection, and cancellation
 - Session-owned immediate and scheduled work with leased, at-least-once delivery
+- Awaited, typed lifecycle hooks with explicit failure isolation
 - Editable/read-only files, one trusted workspace, scoped MCP, and plugins
 - Optional OpenAI and local profiles without enlarging the offline default
 
@@ -149,6 +173,7 @@ The [example catalog](./examples/README.md) includes:
 - `session_work` — offline background work and completion wakes
 - `subagents` — public-facade delegation
 - `observe_and_cancel` — events and cancellation
+- `lifecycle_hooks` — agent, turn, tool, and completion handlers
 
 Examples are compiled in CI and import only `everruns`.
 
@@ -171,6 +196,7 @@ Examples are compiled in CI and import only `everruns`.
 - [Sessions](https://docs.everruns.com/framework/sessions/)
 - [Session work and wakes](https://docs.everruns.com/framework/background-work/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
+- [Lifecycle hooks](https://docs.everruns.com/framework/lifecycle-hooks/)
 - [API reference](https://docs.rs/everruns)
 
 ## Extend agents

@@ -31,6 +31,9 @@ are preserved as `Other` with their payload, so the projection does not silently
 drop information. The feed is live and non-blocking: a slow or dropped consumer
 does not stop the turn, and it is not a durable replay API.
 
+Use [lifecycle hooks](/framework/lifecycle-hooks/) instead when application work
+must be awaited at an execution boundary or its failure must affect the run.
+
 ## Cancel a turn
 
 ```rust

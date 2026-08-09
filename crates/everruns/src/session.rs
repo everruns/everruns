@@ -5,6 +5,7 @@
 //! lives for as long as the `Session`. Two sessions from the same agent are
 //! independent and never share history.
 
+use std::future::Future;
 use std::sync::Arc;
 
 use everruns_core::turn::TurnStopReason;
@@ -14,13 +15,17 @@ use everruns_runtime::{InProcessRuntime, RuntimeMessageStore, TurnResult};
 
 use crate::Agent;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
+use crate::hooks::{
+    AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
+};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
 /// Open one with [`Agent::session`](crate::Agent::session). The first
-/// [`run`](Self::run) materializes an isolated in-process runtime; later runs
-/// reuse it, so history accumulates across turns. Move the `Session` to keep its
-/// history; drop it to discard the conversation.
+/// [`run`](Self::run) or [`inspect`](Self::inspect) materializes an isolated
+/// in-process runtime; later operations reuse it, so history accumulates across
+/// turns. Move the `Session` to keep its history; drop it to discard the
+/// conversation.
 ///
 /// # Example
 ///
@@ -55,16 +60,25 @@ pub struct Session {
     /// default in-memory message backend so the session's history is written to
     /// disk and can be reloaded to resume the conversation in a fresh process.
     message_store: Option<Arc<dyn RuntimeMessageStore>>,
+    /// Per-session lifecycle state. Handler definitions come from the agent;
+    /// tool-hook failures are accumulated here by the runtime adapters.
+    hook_state: Arc<HookRunState>,
+    /// Set after the complete agent-start chain succeeds. A failed chain is
+    /// retried on the next run so a session never enters a half-started state.
+    agent_started: bool,
 }
 
 impl Session {
     pub(crate) fn new(agent: Agent, session_id: SessionId) -> Self {
+        let hook_state = HookRunState::new(agent.lifecycle_hooks());
         Self {
             agent,
             session_id,
             runtime: None,
             event_bus: Arc::new(FacadeEventBus::new()),
             message_store: None,
+            hook_state,
+            agent_started: false,
         }
     }
 
@@ -75,12 +89,15 @@ impl Session {
         session_id: SessionId,
         store: Arc<dyn RuntimeMessageStore>,
     ) -> Self {
+        let hook_state = HookRunState::new(agent.lifecycle_hooks());
         Self {
             agent,
             session_id,
             runtime: None,
             event_bus: Arc::new(FacadeEventBus::new()),
             message_store: Some(store),
+            hook_state,
+            agent_started: false,
         }
     }
 
@@ -118,22 +135,28 @@ impl Session {
     /// can observe the same session independently, and each session's events are
     /// isolated — one session never sees another's. Dropping a stream, or letting
     /// a consumer fall behind, never affects a running turn.
+    ///
+    /// Events are non-blocking observation. For application work that must be
+    /// awaited at a lifecycle boundary, register an
+    /// [`AgentBuilder::on_turn_start`](crate::AgentBuilder::on_turn_start) or
+    /// another typed lifecycle handler instead.
     pub fn events(&self) -> EventStream {
         self.event_bus.subscribe()
     }
 
     /// Run one turn and return its [`Turn`] outcome.
     ///
-    /// The first call materializes an isolated in-process runtime for this
-    /// session; later calls reuse it, so conversation history from earlier turns
-    /// is included in the next request.
+    /// The first run materializes an isolated in-process runtime unless
+    /// [`inspect`](Self::inspect) already did so. Later calls reuse it, so
+    /// conversation history from earlier turns is included in the next request.
     ///
     /// # Errors
     ///
-    /// Returns [`RunError`] if the runtime cannot be built or the turn cannot be
-    /// executed. A turn that runs but ends unsuccessfully (e.g. a refusal or a
-    /// max-iteration stop) is returned as an `Ok(Turn)` with `success == false`
-    /// and the [`stop_reason`](Turn::stop_reason) preserved.
+    /// Returns [`RunError`] if an agent/turn-start handler fails, the runtime
+    /// cannot be built, or the turn cannot be executed. A turn that runs but
+    /// ends unsuccessfully (e.g. a refusal or a max-iteration stop) is returned
+    /// as an `Ok(Turn)` with `success == false` and the
+    /// [`stop_reason`](Turn::stop_reason) preserved.
     pub async fn run(&mut self, input: impl Into<InputMessage>) -> Result<Turn, RunError> {
         self.run_with(input, RunOptions::default()).await
     }
@@ -147,24 +170,61 @@ impl Session {
     /// `Ok(Turn)` with [`success == false`](Turn::success) and
     /// [`stop_reason`](Turn::stop_reason) set to
     /// [`TurnStopReason::Cancelled`]. A token already cancelled before the call
-    /// stops the turn before it starts.
+    /// stops the turn before it starts. Once the runtime commits an outcome,
+    /// completion handlers finish and are no longer interrupted by this token.
     ///
     /// # Errors
     ///
-    /// Same as [`run`](Session::run): [`RunError`] if the runtime cannot be built
-    /// or the turn cannot be executed.
+    /// Same as [`run`](Session::run): [`RunError`] if a pre-effect handler fails,
+    /// the runtime cannot be built, or the turn cannot be executed.
     pub async fn run_with(
         &mut self,
         input: impl Into<InputMessage>,
         options: RunOptions,
     ) -> Result<Turn, RunError> {
+        let input = input.into();
+        self.hook_state.begin_turn();
+
+        if !self.agent_started {
+            let context = AgentStartContext {
+                agent_name: self.agent.name().to_string(),
+                session_id: self.session_id,
+            };
+            match cancellable(
+                options.cancel.as_ref(),
+                self.hook_state.hooks().run_agent_start(context),
+            )
+            .await
+            {
+                HookRun::Cancelled => return Ok(Turn::cancelled()),
+                HookRun::Completed(Err(failure)) => return Err(RunError::Hook(failure)),
+                HookRun::Completed(Ok(())) => self.agent_started = true,
+            }
+        }
+
+        let context = TurnStartContext {
+            agent_name: self.agent.name().to_string(),
+            session_id: self.session_id,
+            input: input.clone(),
+        };
+        match cancellable(
+            options.cancel.as_ref(),
+            self.hook_state.hooks().run_turn_start(context),
+        )
+        .await
+        {
+            HookRun::Cancelled => return Ok(Turn::cancelled()),
+            HookRun::Completed(Err(failure)) => return Err(RunError::Hook(failure)),
+            HookRun::Completed(Ok(())) => {}
+        }
+
         self.ensure_runtime().await?;
         let runtime = self.runtime.as_ref().expect("runtime built above");
 
-        match options.cancel {
+        let mut turn = match options.cancel {
             None => {
                 let result = runtime.run_turn(self.session_id, input).await?;
-                Ok(Turn::from(result))
+                Turn::from(result)
             }
             Some(token) => {
                 // Race the turn against cancellation. `biased` checks the token
@@ -174,18 +234,35 @@ impl Session {
                 // mechanism is introduced.
                 tokio::select! {
                     biased;
-                    () = token.cancelled() => Ok(Turn::cancelled()),
-                    result = runtime.run_turn(self.session_id, input) => Ok(Turn::from(result?)),
+                    () = token.cancelled() => {
+                        self.hook_state.take_failures();
+                        return Ok(Turn::cancelled());
+                    },
+                    result = runtime.run_turn(self.session_id, input) => Turn::from(result?),
                 }
             }
-        }
+        };
+
+        turn.hook_failures.extend(self.hook_state.take_failures());
+        let completion = CompletionContext {
+            agent_name: self.agent.name().to_string(),
+            session_id: self.session_id,
+            turn: turn.clone(),
+        };
+        // Once the runtime has settled, cancellation cannot roll the committed
+        // turn back. Completion handlers therefore finish in order and report
+        // failures on the returned turn instead of racing the run token.
+        turn.hook_failures
+            .extend(self.hook_state.hooks().run_completion(completion).await);
+        Ok(turn)
     }
 
     /// Inspect the exact application-facing context for the next model call.
     ///
     /// This is valid before the first turn and after any later turn. MCP tool
     /// discovery, plugin prompt contributions, message filters, and model
-    /// selection use the same runtime assembly path as execution.
+    /// selection use the same runtime assembly path as execution. Inspection
+    /// materializes the runtime but does not run any lifecycle handler.
     pub async fn inspect(&mut self) -> Result<crate::SessionContext, RunError> {
         self.ensure_runtime().await?;
         let context = self
@@ -208,11 +285,33 @@ impl Session {
                         self.session_id,
                         self.event_bus.clone(),
                         self.message_store.clone(),
+                        self.hook_state.clone(),
                     )
                     .await?,
             );
         }
         Ok(())
+    }
+}
+
+enum HookRun<T> {
+    Completed(T),
+    Cancelled,
+}
+
+async fn cancellable<T>(
+    token: Option<&crate::CancellationToken>,
+    future: impl Future<Output = T>,
+) -> HookRun<T> {
+    match token {
+        None => HookRun::Completed(future.await),
+        Some(token) => {
+            tokio::select! {
+                biased;
+                () = token.cancelled() => HookRun::Cancelled,
+                output = future => HookRun::Completed(output),
+            }
+        }
     }
 }
 
@@ -237,6 +336,13 @@ pub struct Turn {
     pub success: bool,
     /// Failure message when `success` is `false`.
     pub error: Option<String>,
+    /// Non-fatal lifecycle handler failures observed during this turn.
+    ///
+    /// These failures never change `success` or rewrite the committed outcome.
+    /// Pre-effect agent/turn failures are returned as [`RunError::Hook`]
+    /// instead. Tool-start failures block only their call and appear here;
+    /// tool-end and completion failures are isolated and also appear here.
+    pub hook_failures: Vec<HookFailure>,
 }
 
 impl Turn {
@@ -247,7 +353,7 @@ impl Turn {
     /// facade maps that to a non-success turn carrying
     /// [`TurnStopReason::Cancelled`]. The `turn_id` is a fresh correlation id —
     /// the dropped turn's own id is not recoverable.
-    fn cancelled() -> Self {
+    pub(crate) fn cancelled() -> Self {
         Self {
             response: String::new(),
             turn_id: TurnId::new().to_string(),
@@ -256,6 +362,7 @@ impl Turn {
             tool_calls: 0,
             success: false,
             error: Some("turn cancelled".to_string()),
+            hook_failures: Vec::new(),
         }
     }
 }
@@ -270,6 +377,7 @@ impl From<TurnResult> for Turn {
             tool_calls: result.tool_calls_count,
             success: result.success,
             error: result.error,
+            hook_failures: Vec::new(),
         }
     }
 }
@@ -280,12 +388,15 @@ impl From<TurnResult> for Turn {
 pub enum RunError {
     /// The in-process runtime failed to build or execute the turn.
     Runtime(AgentLoopError),
+    /// A pre-effect lifecycle handler failed before the operation could run.
+    Hook(HookFailure),
 }
 
 impl std::fmt::Display for RunError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RunError::Runtime(err) => write!(f, "session run failed: {err}"),
+            RunError::Hook(err) => write!(f, "session hook failed: {err}"),
         }
     }
 }
@@ -294,6 +405,7 @@ impl std::error::Error for RunError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             RunError::Runtime(err) => Some(err),
+            RunError::Hook(err) => Some(err),
         }
     }
 }
@@ -544,5 +656,360 @@ mod tests {
             .expect("turn runs");
         assert!(turn.success);
         assert_eq!(turn.response, "ok");
+        assert!(turn.hook_failures.is_empty());
+    }
+
+    #[tokio::test]
+    async fn lifecycle_hooks_wrap_a_tool_call_in_registration_order() {
+        let order = Arc::new(Mutex::new(Vec::new()));
+        let tool_order = order.clone();
+        let tool = crate::FunctionTool::new(
+            "ping",
+            "Respond to a ping.",
+            json!({ "type": "object", "properties": {} }),
+            move |_args: serde_json::Value| {
+                let tool_order = tool_order.clone();
+                async move {
+                    tool_order.lock().unwrap().push("tool");
+                    Ok::<_, String>(json!({ "ok": true }))
+                }
+            },
+        );
+        let start_one = order.clone();
+        let start_two = order.clone();
+        let end_one = order.clone();
+        let end_two = order.clone();
+        let completion = order.clone();
+        let agent = Agent::builder()
+            .instructions("Call ping when asked.")
+            .model(Model::simulated_scripted(
+                "done",
+                vec![
+                    vec![ToolCall {
+                        id: "call_ping_hooks".into(),
+                        name: "ping".into(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .on_tool_start(move |context| {
+                let start_one = start_one.clone();
+                async move {
+                    assert_eq!(context.tool_name, "ping");
+                    assert!(context.turn_id.is_some());
+                    start_one.lock().unwrap().push("start-1");
+                }
+            })
+            .on_tool_start(move |_context| {
+                let start_two = start_two.clone();
+                async move { start_two.lock().unwrap().push("start-2") }
+            })
+            .on_tool_end(move |context| {
+                let end_one = end_one.clone();
+                async move {
+                    assert!(context.success());
+                    end_one.lock().unwrap().push("end-1");
+                }
+            })
+            .on_tool_end(move |_context| {
+                let end_two = end_two.clone();
+                async move { end_two.lock().unwrap().push("end-2") }
+            })
+            .on_completion(move |context| {
+                let completion = completion.clone();
+                async move {
+                    assert!(context.turn.success);
+                    completion.lock().unwrap().push("completion");
+                }
+            })
+            .build()
+            .expect("valid agent");
+
+        let turn = agent.session().run("please ping").await.expect("turn runs");
+
+        assert!(turn.hook_failures.is_empty());
+        assert_eq!(
+            *order.lock().unwrap(),
+            ["start-1", "start-2", "tool", "end-1", "end-2", "completion"]
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_start_error_blocks_call_and_skips_later_start_hooks() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let tool_ran = Arc::new(AtomicBool::new(false));
+        let tool_ran_in_handler = tool_ran.clone();
+        let later_ran = Arc::new(AtomicBool::new(false));
+        let later = later_ran.clone();
+        let end_context = Arc::new(Mutex::new(None));
+        let end_context_in_hook = end_context.clone();
+        let tool = crate::FunctionTool::new(
+            "ping",
+            "Respond to a ping.",
+            json!({ "type": "object", "properties": {} }),
+            move |_args: serde_json::Value| {
+                let tool_ran_in_handler = tool_ran_in_handler.clone();
+                async move {
+                    tool_ran_in_handler.store(true, Ordering::SeqCst);
+                    Ok::<_, String>(json!({ "ok": true }))
+                }
+            },
+        );
+        let agent = Agent::builder()
+            .instructions("Call ping when asked.")
+            .model(Model::simulated_scripted(
+                "recovered",
+                vec![
+                    vec![ToolCall {
+                        id: "call_blocked_by_framework_hook".into(),
+                        name: "ping".into(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .on_tool_start(
+                |_context| async move { Err::<(), _>("policy backend diagnostic: secret") },
+            )
+            .on_tool_start(move |_context| {
+                let later = later.clone();
+                async move { later.store(true, Ordering::SeqCst) }
+            })
+            .on_tool_end(move |context| {
+                let end_context_in_hook = end_context_in_hook.clone();
+                async move {
+                    *end_context_in_hook.lock().unwrap() = Some(context);
+                }
+            })
+            .build()
+            .expect("valid agent");
+
+        let turn = agent.session().run("ping").await.expect("turn settles");
+
+        assert!(turn.success, "model can recover from a blocked tool call");
+        assert!(!tool_ran.load(Ordering::SeqCst));
+        assert!(!later_ran.load(Ordering::SeqCst));
+        let end_context = end_context.lock().unwrap();
+        let end_context = end_context.as_ref().expect("blocked call still ends");
+        assert!(!end_context.success());
+        let model_visible_error = end_context.error.as_deref().expect("blocked call error");
+        assert!(model_visible_error.contains("tool call blocked by tool_start hook #0"));
+        assert!(!model_visible_error.contains("secret"));
+        assert_eq!(turn.hook_failures.len(), 1);
+        assert_eq!(turn.hook_failures[0].point, crate::HookPoint::ToolStart);
+        assert_eq!(
+            turn.hook_failures[0].message,
+            "policy backend diagnostic: secret"
+        );
+        assert_eq!(
+            turn.hook_failures[0].tool_call_id.as_deref(),
+            Some("call_blocked_by_framework_hook")
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_end_error_is_isolated_and_later_handlers_run() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let later_ran = Arc::new(AtomicBool::new(false));
+        let later = later_ran.clone();
+        let tool = crate::FunctionTool::new(
+            "ping",
+            "Respond to a ping.",
+            json!({ "type": "object", "properties": {} }),
+            |_args: serde_json::Value| async move { Ok::<_, String>(json!({ "ok": true })) },
+        );
+        let agent = Agent::builder()
+            .instructions("Call ping when asked.")
+            .model(Model::simulated_scripted(
+                "done",
+                vec![
+                    vec![ToolCall {
+                        id: "call_post_hook_error".into(),
+                        name: "ping".into(),
+                        arguments: json!({}),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .on_tool_end(|_context| async move { Err::<(), _>("audit sink offline") })
+            .on_tool_end(move |_context| {
+                let later = later.clone();
+                async move { later.store(true, Ordering::SeqCst) }
+            })
+            .build()
+            .expect("valid agent");
+
+        let turn = agent.session().run("ping").await.expect("turn runs");
+
+        assert!(turn.success);
+        assert!(later_ran.load(Ordering::SeqCst));
+        assert_eq!(turn.hook_failures.len(), 1);
+        assert_eq!(turn.hook_failures[0].point, crate::HookPoint::ToolEnd);
+    }
+
+    #[tokio::test]
+    async fn cancellation_drops_an_in_flight_hook_and_skips_remaining_hooks() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let started = Arc::new(tokio::sync::Notify::new());
+        let started_in_hook = started.clone();
+        let later_ran = Arc::new(AtomicBool::new(false));
+        let later = later_ran.clone();
+        let completion_ran = Arc::new(AtomicBool::new(false));
+        let completion = completion_ran.clone();
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("unreachable"))
+            .on_turn_start(move |_context| {
+                let started_in_hook = started_in_hook.clone();
+                async move {
+                    started_in_hook.notify_one();
+                    std::future::pending::<()>().await;
+                }
+            })
+            .on_turn_start(move |_context| {
+                let later = later.clone();
+                async move { later.store(true, Ordering::SeqCst) }
+            })
+            .on_completion(move |_context| {
+                let completion = completion.clone();
+                async move { completion.store(true, Ordering::SeqCst) }
+            })
+            .build()
+            .expect("valid agent");
+
+        let token = CancellationToken::new();
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            started.notified().await;
+            canceller.cancel();
+        });
+        let turn = tokio::time::timeout(
+            Duration::from_secs(2),
+            agent
+                .session()
+                .run_with("hello", RunOptions::new().cancel_token(token)),
+        )
+        .await
+        .expect("cancellation is prompt")
+        .expect("run resolves");
+
+        assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+        assert!(!later_ran.load(Ordering::SeqCst));
+        assert!(!completion_ran.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn cancellation_drops_an_in_flight_tool_hook() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let hook_started = Arc::new(tokio::sync::Notify::new());
+        let hook_started_inside = hook_started.clone();
+        let tool_ran = Arc::new(AtomicBool::new(false));
+        let tool_ran_inside = tool_ran.clone();
+        let completion_ran = Arc::new(AtomicBool::new(false));
+        let completion = completion_ran.clone();
+        let tool = crate::FunctionTool::new(
+            "ping",
+            "Respond to a ping.",
+            json!({ "type": "object", "properties": {} }),
+            move |_args: serde_json::Value| {
+                let tool_ran_inside = tool_ran_inside.clone();
+                async move {
+                    tool_ran_inside.store(true, Ordering::SeqCst);
+                    Ok::<_, String>(json!({ "ok": true }))
+                }
+            },
+        );
+        let agent = Agent::builder()
+            .instructions("Call ping when asked.")
+            .model(Model::simulated_scripted(
+                "unreachable",
+                vec![vec![ToolCall {
+                    id: "call_cancelled_hook".into(),
+                    name: "ping".into(),
+                    arguments: json!({}),
+                }]],
+            ))
+            .tool(tool)
+            .on_tool_start(move |_context| {
+                let hook_started_inside = hook_started_inside.clone();
+                async move {
+                    hook_started_inside.notify_one();
+                    std::future::pending::<()>().await;
+                }
+            })
+            .on_completion(move |_context| {
+                let completion = completion.clone();
+                async move { completion.store(true, Ordering::SeqCst) }
+            })
+            .build()
+            .expect("valid agent");
+
+        let token = CancellationToken::new();
+        let canceller = token.clone();
+        tokio::spawn(async move {
+            hook_started.notified().await;
+            canceller.cancel();
+        });
+        let turn = tokio::time::timeout(
+            Duration::from_secs(2),
+            agent
+                .session()
+                .run_with("ping", RunOptions::new().cancel_token(token)),
+        )
+        .await
+        .expect("cancellation is prompt")
+        .expect("run resolves");
+
+        assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+        assert!(!tool_ran.load(Ordering::SeqCst));
+        assert!(!completion_ran.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn completion_finishes_after_the_runtime_commits_even_if_token_is_cancelled() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let token = CancellationToken::new();
+        let cancel_inside = token.clone();
+        let completions = Arc::new(AtomicUsize::new(0));
+        let first = completions.clone();
+        let second = completions.clone();
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .on_completion(move |_context| {
+                let cancel_inside = cancel_inside.clone();
+                let first = first.clone();
+                async move {
+                    cancel_inside.cancel();
+                    tokio::task::yield_now().await;
+                    first.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+            .on_completion(move |_context| {
+                let second = second.clone();
+                async move {
+                    second.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+            .build()
+            .expect("valid agent");
+
+        let turn = agent
+            .session()
+            .run_with("hello", RunOptions::new().cancel_token(token))
+            .await
+            .expect("committed turn completes its hooks");
+
+        assert!(turn.success);
+        assert_eq!(completions.load(Ordering::SeqCst), 2);
     }
 }

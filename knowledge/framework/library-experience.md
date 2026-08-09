@@ -27,6 +27,8 @@ Application-facing behavior should have these qualities:
   access;
 - live observation and cancellation never require ownership of the host event
   bus or task runner;
+- awaited lifecycle extensions are explicit and distinct from non-blocking
+  observation events;
 - credentials, tenant records, and host lifecycle entities do not leak through
   model or agent values;
 - optional integrations remain feature-gated and do not enlarge the default
