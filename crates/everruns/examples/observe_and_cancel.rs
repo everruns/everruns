@@ -3,7 +3,7 @@
 //! Run with:
 //!
 //! ```text
-//! cargo run -p everruns --example observe_and_cancel
+//! cargo run -p everruns --features openai --example observe_and_cancel
 //! ```
 //!
 //! This example imports nothing but `everruns::prelude::*`: it renders streaming
@@ -16,7 +16,7 @@ use everruns::prelude::*;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are concise.")
-        .model(Model::simulated("Hello from Everruns!"))
+        .model(OpenAI::from_env("gpt-5.6-terra")?)
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------

@@ -74,8 +74,28 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
 serde = { workspace = true }
 trybuild = { workspace = true }
 # Backing files for the `jsonl` persistence tests.
 tempfile = { workspace = true }
+
+[[example]]
+name = "production_agent"
+required-features = ["jsonl", "openai"]
+
+[[example]]
+name = "github_monitor"
+required-features = ["openai"]
+
+[[example]]
+name = "hello"
+required-features = ["openai"]
+
+[[example]]
+name = "observe_and_cancel"
+required-features = ["openai"]
+
+[[example]]
+name = "subagents"
+required-features = ["openai"]
