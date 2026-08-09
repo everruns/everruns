@@ -17,7 +17,7 @@ users should depend on `everruns` and use the Framework.
 | Existing runtime concern | Framework path |
 | --- | --- |
 | Build a harness/agent/session graph for one application | `Agent::builder()` and `Agent::session()` |
-| Construct provider-specific model records | credential-free `ModelSpec` plus an attached `Provider` or provider convenience |
+| Construct provider-specific model records | attach one `Provider`, then select its model with a plain string id |
 | Register an application function tool | `#[everruns::tool]` or `FunctionTool` |
 | Seed application files | `AgentBuilder::file` and `readonly_file` |
 | Use one real workspace | `AgentBuilder::workspace` or feature-gated `LocalConfig` |

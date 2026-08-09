@@ -1,8 +1,8 @@
 //! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
-//! Build agents, attach open model/provider configuration and typed tools, run
-//! isolated multi-turn sessions, read bounded history, resume typed session
-//! identities, observe events, cancel work, and inspect the next model context
+//! Build agents, attach provider configuration, select model ids, add typed
+//! tools, run isolated multi-turn sessions, read bounded history, resume typed
+//! session identities, observe events, cancel work, and inspect the next model context
 //! without constructing an execution host. Default features stay offline; the
 //! deterministic simulator needs no credentials or network.
 //!
@@ -123,7 +123,7 @@ pub mod __macro_support {
 // their feature is enabled. `openai` adds `providers::openai::OpenAI`.
 pub mod providers;
 #[cfg(feature = "openai")]
-pub use providers::openai::{ModelError, OpenAI};
+pub use providers::openai::{OpenAI, OpenAIError};
 
 // --- Runtime construction and execution ---------------------------------
 // Note: the value-first `AgentBuilder` above intentionally replaces the runtime
@@ -192,7 +192,7 @@ pub mod prelude {
         WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
-    pub use crate::{ModelError, OpenAI};
+    pub use crate::{OpenAI, OpenAIError};
     pub use everruns_core::turn::TurnStopReason;
     pub use everruns_core::{ContentPart, InputMessage, MessageRole};
 }

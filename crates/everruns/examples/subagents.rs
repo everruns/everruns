@@ -76,7 +76,8 @@ fn spawn_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
                         let child = Agent::builder()
                             .name(format!("worker-{}", index + 1))
                             .instructions("Complete the assigned independent task.")
-                            .model(OpenAI::from_env(MODEL_ID).map_err(|error| error.to_string())?)
+                            .provider(OpenAI::from_env().map_err(|error| error.to_string())?)
+                            .model(MODEL_ID)
                             .build()
                             .map_err(|error| error.to_string())?;
                         let result = child
@@ -201,7 +202,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let parent = Agent::builder()
         .name("coordinator")
         .instructions("Delegate five independent reviews, then wait for and summarize all results.")
-        .model(OpenAI::from_env(MODEL_ID)?)
+        .provider(OpenAI::from_env()?)
+        .model(MODEL_ID)
         .tool(spawn_tool(child_tasks.clone()))
         .tool(wait_tool(child_tasks.clone()))
         .build()?;

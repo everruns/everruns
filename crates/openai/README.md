@@ -29,7 +29,8 @@ use everruns::{Agent, OpenAI};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Answer clearly and concisely.")
-        .model(OpenAI::from_env("gpt-5.6-terra")?)
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
         .build()?;
     let result = agent
         .session()

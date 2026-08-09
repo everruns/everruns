@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use everruns::{
     Agent, AgentLoopError, ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream,
-    LlmStreamEvent, ModelSpec, Provider, ProviderEndpoint,
+    LlmStreamEvent, Provider, ProviderEndpoint,
 };
 
 #[derive(Clone)]
@@ -26,12 +26,12 @@ impl ChatDriver for DownstreamProtocol {
 async fn downstream_provider_needs_only_the_everruns_api() {
     let agent = Agent::builder()
         .instructions("Reply through the configured provider.")
-        .model(ModelSpec::on("my-gateway", "custom-model"))
         .provider(
             Provider::new("my-gateway", DownstreamProtocol)
                 .base_url("https://gateway.example/v1")
                 .header("x-tenant", "tenant-a"),
         )
+        .model("custom-model")
         .build()
         .unwrap();
 

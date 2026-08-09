@@ -14,7 +14,7 @@
 use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 
-use everruns::{Agent, BuildError, Model};
+use everruns::{Agent, AgentBuilder};
 
 /// System prompt describing the agent and the tools it can call.
 pub const SYSTEM_PROMPT: &str = "\
@@ -124,18 +124,13 @@ async fn list_dir(path: Option<String>) -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({ "path": rel, "entries": entries }))
 }
 
-/// Build the coding [`Agent`] wired with the file tools and the given model.
-///
-/// `model` is anything convertible into a [`Model`] — a [`Model::simulated`] for
-/// offline runs, or an `everruns::OpenAI` config with the `openai` feature.
-pub fn build_agent(model: impl Into<Model>) -> Result<Agent, BuildError> {
+/// Start a coding [`Agent`] builder wired with the file tools.
+pub fn agent_builder() -> AgentBuilder {
     Agent::builder()
         .instructions(SYSTEM_PROMPT)
-        .model(model)
         .tool(read_file())
         .tool(write_file())
         .tool(list_dir())
-        .build()
 }
 
 #[cfg(test)]

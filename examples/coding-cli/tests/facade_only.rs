@@ -7,11 +7,14 @@
 use std::path::Path;
 
 use everruns::Model;
-use everruns_coding_cli::build_agent;
+use everruns_coding_cli::agent_builder;
 
 #[tokio::test]
 async fn offline_smoke_runs_a_turn() {
-    let agent = build_agent(Model::simulated("Done.")).expect("agent builds via the facade");
+    let agent = agent_builder()
+        .model(Model::simulated("Done."))
+        .build()
+        .expect("agent builds via the facade");
     let mut session = agent.session();
     let turn = session
         .run("list the files")
@@ -29,7 +32,10 @@ async fn offline_smoke_runs_a_turn() {
 async fn session_history_persists_across_two_prompts() {
     // One session, two prompts — the second reuses the first's runtime and
     // accumulated history. Both must run cleanly through the public API.
-    let agent = build_agent(Model::simulated("ack")).expect("agent builds");
+    let agent = agent_builder()
+        .model(Model::simulated("ack"))
+        .build()
+        .expect("agent builds");
     let mut session = agent.session();
 
     let first = session.run("first prompt").await.expect("first turn");

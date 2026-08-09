@@ -6,7 +6,7 @@
 [![Documentation](https://docs.rs/everruns/badge.svg)](https://docs.rs/everruns)
 [![License](https://img.shields.io/crates/l/everruns.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns` provides value-first agents, open model/provider configuration,
+`everruns` provides value-first agents, plain model ids, open provider configuration,
 typed tools, isolated multi-turn sessions, live events, cancellation, files,
 typed lifecycle hooks, MCP, plugins, and context inspection without requiring
 a server, worker, or database.
@@ -60,14 +60,15 @@ use everruns::{Agent, OpenAI};
 
 let agent = Agent::builder()
     .instructions("You are concise.")
-    .model(OpenAI::from_env("gpt-5.6-terra")?)
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-Custom services use the same open boundary: pair a credential-free `ModelSpec`
-with a `Provider` backed by your `ChatDriver`. No closed model enum or
-provider-specific application branch is required.
+Custom services use the same open boundary: attach a `Provider` backed by your
+`ChatDriver`, then select its model with a plain string id. No `ModelSpec`,
+closed model enum, or provider-specific application branch is required.
 
 ## Typed Tools
 
@@ -154,7 +155,7 @@ catalog alongside its real workspace and task/schedule state.
 
 ## What It Provides
 
-- Value-first `Agent`, open `ModelSpec`/`Provider`, and deterministic simulation
+- Value-first `Agent`, plain model ids, open `Provider`, and deterministic simulation
 - Typed and dynamic function tools
 - Independent multi-turn `Session`s, typed resume, bounded history, and next-turn context inspection
 - Live typed events, lossless canonical envelopes, and cancellation

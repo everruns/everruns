@@ -16,7 +16,8 @@ use everruns::prelude::*;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("You are concise.")
-        .model(OpenAI::from_env("gpt-5.6-terra")?)
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------

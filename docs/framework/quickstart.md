@@ -53,14 +53,14 @@ use everruns::{Agent, OpenAI};
 
 let agent = Agent::builder()
     .instructions("You are a concise assistant.")
-    .model(OpenAI::from_env("gpt-5.6-terra")?)
+    .provider(OpenAI::from_env()?)
+    .model("gpt-5.6-terra")
     .build()?;
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
 
-The model identity stays credential-free. `OpenAI::from_env` attaches the
-provider configuration at the application boundary and redacts the key from
-debug output.
+The model id stays credential-free. `OpenAI::from_env` configures the separate
+provider at the application boundary and redacts the key from debug output.
 
 Continue with [Agents](/framework/agents/), [Tools and macros](/framework/tools-and-macros/),
 and [Sessions](/framework/sessions/).

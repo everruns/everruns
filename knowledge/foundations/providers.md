@@ -83,7 +83,8 @@ published `everruns-runtime` and hosted provider-management integration. They
 are a compatibility/catalog adapter: descriptor factories compose the same
 runtime `Provider`, and execution checks direct runtime providers first. They
 must not acquire an independent resolution or execution algorithm. The
-high-level `everruns` facade accepts only `ModelSpec` and runtime `Provider`.
+high-level `everruns` facade accepts a plain model id and one runtime `Provider`,
+then constructs the canonical `ModelSpec` internally.
 
 The `mai` integration is a first-party example layered on a generic protocol:
 Microsoft MAI uses the OpenAI-compatible Chat Completions driver while its

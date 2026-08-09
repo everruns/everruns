@@ -2,7 +2,7 @@
 //! server, no HTTP, no database. Each sample gets a fresh [`Agent`] and
 //! [`Session`] built from the matrix case:
 //!
-//! - target → Framework `Model` + provider (`anthropic`, `openai`, `openrouter`)
+//! - target → Framework model id + provider (`anthropic`, `openai`, `openrouter`)
 //! - `harness` axis → a [`HarnessProfile`](crate::profiles::HarnessProfile)
 //!   (system prompt + capability set)
 //! - `config` axis → a [`ConfigProfile`](crate::profiles::ConfigProfile)
@@ -23,8 +23,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use everruns::{
-    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InputMessage, Model,
-    ModelSpec, ReasoningConfig, Session, SessionEvent, SessionEventKind,
+    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InputMessage, Provider,
+    ReasoningConfig, Session, SessionEvent, SessionEventKind,
 };
 
 use mira::subject::summarize_events;
@@ -293,7 +293,8 @@ fn build_session(
     let mut builder = Agent::builder()
         .name(format!("generic-eval-{}", sample.id))
         .instructions(harness.system_prompt)
-        .model(model(target)?)
+        .provider(provider(target)?)
+        .model(target.model.clone())
         .max_iterations(config.max_iterations);
 
     for capability in harness.capabilities {
@@ -337,9 +338,9 @@ fn workspace_path(root: &Path, model_path: &str) -> Result<PathBuf, String> {
     Ok(root.join(path))
 }
 
-/// Map the matrix target onto a Framework model/provider pair. Keys are read
-/// here (study side); Mira targets stay key-free labels.
-fn model(target: &Target) -> Result<Model, String> {
+/// Map the matrix target onto a Framework provider. Keys are read here (study
+/// side); Mira targets stay key-free labels.
+fn provider(target: &Target) -> Result<Provider, String> {
     let provider = match target.provider.as_str() {
         "anthropic" => {
             let key_name = "ANTHROPIC_API_KEY";
@@ -362,10 +363,7 @@ fn model(target: &Target) -> Result<Model, String> {
             ));
         }
     };
-    Ok(Model::with_provider(
-        ModelSpec::on(target.provider.clone(), target.model.clone()),
-        provider,
-    ))
+    Ok(provider)
 }
 
 /// True when a provider error says the selected route cannot accept the
@@ -465,7 +463,7 @@ mod tests {
 
     #[test]
     fn unsupported_provider_is_rejected() {
-        let err = model(&Target::new("x", "acme", "m")).unwrap_err();
+        let err = provider(&Target::new("x", "acme", "m")).unwrap_err();
         assert!(err.contains("unsupported provider"));
     }
 
