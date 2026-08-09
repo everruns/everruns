@@ -75,7 +75,7 @@ async fn run_prompt(session: &mut Session, prompt: &str) -> Result<()> {
     let turn = session.run(prompt).await.context("run turn")?;
 
     // Events emitted during the turn are buffered on the stream; drain them.
-    while let Some(event) = events.try_recv() {
+    while let Some(event) = events.try_recv().context("read turn events")? {
         match event.kind {
             SessionEventKind::ToolStarted { tool_name, .. } => eprintln!("  → {tool_name}"),
             SessionEventKind::ToolCompleted {

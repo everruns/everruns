@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read the event stream on a background task while the turn runs.
     let observer = tokio::spawn(async move {
         let mut rendered = String::new();
-        while let Some(event) = events.recv().await {
+        while let Some(event) = events.recv().await? {
             match event.kind {
                 SessionEventKind::TurnStarted => println!("[turn started]"),
                 SessionEventKind::TextDelta { delta } => {
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
         }
-        rendered
+        Ok::<_, EventStreamError>(rendered)
     });
 
     let turn = session.run("hi").await?;
@@ -45,7 +45,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Drop the session so the stream closes and the observer finishes.
     drop(session);
-    let rendered = observer.await?;
+    let rendered = observer.await??;
     assert_eq!(rendered, turn.response);
 
     // --- Cancel a turn ---------------------------------------------------

@@ -1,0 +1,154 @@
+---
+title: Canonical Framework events
+description: Observe a complete agent turn through a lossless typed/raw bridge while keeping durability, live delivery, and derived history distinct.
+sidebar:
+  order: 2
+---
+
+`Session::events()` installs an in-process subscriber without exposing runtime
+event buses or core event types. Subscribe before `Session::run()` so the stream
+sees the turn from its first event.
+
+```rust
+use everruns::prelude::*;
+
+let agent = Agent::builder()
+    .instructions("Answer concisely.")
+    .model(Model::simulated("Hello!"))
+    .build()?;
+let mut session = agent.session();
+let mut events = session.events();
+
+let observer = tokio::spawn(async move {
+    let mut canonical_events = Vec::new();
+    while let Some(event) = events.recv().await? {
+        // Lossless recording: the complete public event envelope.
+        canonical_events.push(event.as_json().clone());
+
+        // Typed rendering for common terminal/service UI concerns.
+        match event.kind {
+            SessionEventKind::TextDelta { delta } => print!("{delta}"),
+            SessionEventKind::ToolStarted { tool_name, .. } => {
+                eprintln!("starting {tool_name}");
+            }
+            SessionEventKind::ToolCompleted {
+                tool_name,
+                success,
+                ..
+            } => eprintln!("{tool_name}: {success}"),
+            SessionEventKind::TurnFailed { error } => eprintln!("failed: {error}"),
+            SessionEventKind::TurnCancelled => eprintln!("cancelled"),
+            _ => {}
+        }
+    }
+    Ok::<_, EventStreamError>(canonical_events)
+});
+
+let turn = session.run("hello").await?;
+drop(session); // closes the subscriber once buffered events are drained
+let recorded = observer.await??;
+assert!(!recorded.is_empty());
+```
+
+## One protocol, two views
+
+`SessionEventKind` is a convenience projection for application renderers. It
+promotes assistant output lifecycle and deltas, model reasoning/generation,
+tool lifecycle/progress/output, and turn terminal states. It is non-exhaustive,
+so match it with a fallback arm.
+
+`SessionEvent::as_json()` is the lossless side of the bridge. It returns the
+same canonical envelope used by the public Everruns event protocol, including
+the event id and type, timestamp, optional persisted sequence, correlation
+context, full typed payload, metadata, and tags. `SessionEvent::data()` accesses
+its complete payload directly. Use it for details intentionally not duplicated
+into the convenience projection, such as:
+
+- tool arguments, results, status, narration, and duration;
+- complete structured assistant messages, phases, model metadata, and usage;
+- stable failure codes and localization fields;
+- newly added event types unknown to this version of the Framework.
+
+This bridge does not define a second wire schema. The canonical event contract,
+compatibility rules, and lifecycle semantics remain documented in
+[Events](/explanation/events/).
+
+## Durability, observation, and derived history
+
+These roles are deliberately separate:
+
+- `EventLog` is the host's sole durable conversation write authority. It stores
+  complete canonical event envelopes and provides bounded cursor replay.
+- `EventSink` is the host's post-commit, nonblocking live-delivery seam.
+  `Session::events()` exposes that observation path as an ergonomic
+  `EventStream` subscriber. Neither sink nor subscriber is durable or
+  authoritative.
+- `EventHistory` is one read-only message projection rebuilt from `EventLog`
+  replay. It is an index/view, never a second writable message store.
+
+Framework applications read that bounded projection through
+[`Session::history()`](/framework/session-history/). It pages messages from a
+stable event-log snapshot; it does not maintain or write an independent
+transcript.
+
+Rebuild a transcript in persisted sequence order from `input.message`,
+`output.message.completed`, and relevant `tool.completed` events. An
+`output.message.replaced` event alone creates no history message; the subsequent
+completed message contains the safe replacement. If a crash leaves a
+replacement without completion, replay correctly omits that incomplete output.
+The Framework stream exposes the complete payloads and introduces no independent
+writable message history.
+
+Canonical recordings can contain user messages, agent instructions, model
+inputs, tool arguments, and tool results. Treat them as application data with
+the same access controls and retention policy as the session itself; do not log
+them indiscriminately. Model and tool text is untrusted: terminal renderers
+should strip or escape control sequences, and web renderers should escape it as
+content rather than interpreting it as markup or commands. Provider credentials
+are not part of the event protocol.
+
+## Ordering and bounded delivery
+
+A subscriber receives events in channel arrival order and each session has its
+own stream. The canonical `sequence` field is a replay position, not a live
+delivery counter: durable events carry `Some(sequence)` and live-only ephemeral
+events such as streaming deltas carry no sequence. Persisted sequences increase
+monotonically per session and may have gaps. Ephemeral events do not consume
+replay positions.
+
+The live stream has a bounded buffer and never applies backpressure to the agent
+turn. A dropped or slow subscriber cannot stall model or tool execution. If a
+subscriber falls behind, `recv()` and `try_recv()` return
+`EventStreamError::Lagged { missed }`; loss is never hidden. The next receive can
+continue from the oldest retained event, but the renderer must treat its live
+projection as incomplete.
+
+Streaming deltas are provisional and sink-only. Completed assistant/tool events
+are authoritative, and an output-replacement event means accumulated text for
+that message must be discarded. Durable events reach the live sink only after
+their log append commits; ephemeral events go directly to the sink and never
+enter history. After live lag, a Framework application can rebuild its
+persisted transcript with bounded
+[`Session::history()` pages](/framework/session-history/). That projection
+excludes ephemeral deltas by design. Applications that need raw durable
+envelopes rather than derived messages can provide and read an `EventLog`
+through the advanced `everruns-host` SPI; neither recovery path relies on the
+in-process subscriber.
+
+## Cancellation and failure
+
+Pass a `CancellationToken` through `RunOptions` to stop a turn. Cancellation
+produces both a `Turn` with `TurnStopReason::Cancelled` and a correlated
+`turn.cancelled` event carrying the same `turn_id`.
+
+Runtime failures remain available through `Session::run()`'s outcome/error
+semantics and the event stream. Subscribe before running and continue draining
+the stream after the run resolves to retain the terminal failure event and its
+full structured payload.
+
+The complete runnable example is
+[`canonical_events.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs):
+
+```bash
+cargo run -p everruns --example canonical_events
+```

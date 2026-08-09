@@ -588,7 +588,7 @@ mod tests {
             .run_completion(CompletionContext {
                 agent_name: "agent".into(),
                 session_id: crate::SessionId::new(),
-                turn: crate::Turn::cancelled(),
+                turn: crate::Turn::cancelled(everruns_core::typed_id::TurnId::new()),
             })
             .await;
 

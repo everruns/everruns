@@ -47,6 +47,7 @@ before importing `everruns-runtime` directly.
 - [Session History and Resume](/framework/session-history/) — bounded transcript pages and typed continuation.
 - [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
 - [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
+- [Canonical events](/framework/canonical-events/) — render or record the lossless event protocol.
 - [Persistence](/framework/persistence/) — Agent-lifetime memory and crash-durable local state.
 
 ## Extend and operate

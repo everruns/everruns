@@ -953,7 +953,7 @@ mod tests {
         assert_eq!(turn.tool_calls, 1);
 
         let mut saw_progress = false;
-        while let Ok(Some(event)) = timeout(Duration::from_millis(50), events.recv()).await {
+        while let Ok(Ok(Some(event))) = timeout(Duration::from_millis(50), events.recv()).await {
             if matches!(
                 event.kind,
                 SessionEventKind::ToolProgress {

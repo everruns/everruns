@@ -1,46 +1,62 @@
-//! Observable and cancellable turns (EVE-833).
+//! Observable and cancellable turns.
 //!
 //! This module promotes two capabilities onto the [`Session`](crate::Session)
-//! surface without leaking the runtime's event bus or the core event/store
-//! types:
+//! surface without leaking host/runtime internals or core event/store types:
 //!
 //! - **Observation.** [`Session::events`](crate::Session::events) returns an
 //!   [`EventStream`] — a live feed of [`SessionEvent`]s projected from the
-//!   runtime's in-process event bus. The stream is backed by a broadcast
-//!   channel, so a slow or dropped consumer can never stall the turn that
-//!   produces the events; it only lags and skips.
+//!   host's canonical event emitter. Every event retains the canonical event
+//!   protocol as JSON and also exposes a typed convenience projection. The
+//!   stream is bounded, so a slow or dropped consumer can never stall the turn
+//!   that produces the events; lag is reported explicitly to the consumer.
 //! - **Cancellation.** [`Session::run_with`](crate::Session::run_with) accepts a
 //!   [`RunOptions`] carrying an optional [`CancellationToken`]. Cancelling the
 //!   token stops the in-flight turn by dropping its future — the same
 //!   cooperative, drop-based cancellation the runtime already uses to tear down
 //!   tool work — and the turn resolves to a stable [`Turn`](crate::Turn) with
-//!   [`TurnStopReason::Cancelled`](everruns_core::turn::TurnStopReason::Cancelled).
+//!   [`TurnStopReason::Cancelled`](crate::TurnStopReason::Cancelled).
 //!
 //! Only facade types appear on the public surface: no `EventBus`,
 //! `EventEmitter`, `EventRequest`, or core event/store types.
+//!
+//! The live subscriber is not persistence. Everruns' host `EventLog` commits
+//! durable canonical events; its `EventHistory` is a read-only projection built
+//! by replay. The host `EventSink` and this facade's [`EventStream`] observe
+//! post-commit durable events plus live-only ephemeral events. Sink absence,
+//! lag, or failure cannot create, roll back, or replace conversation history.
+
+use std::sync::Mutex;
 
 use everruns_core::events::{
-    self, Event, EventData, OutputMessageDeltaData, ToolCompletedData, ToolProgressData,
-    ToolStartedData, TurnFailedData,
+    self, Event, EventContext, EventData, EventRequest, InputMessageData,
+    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageReplacedData,
+    OutputMessageStartedData, ReasonCompletedData, ToolCompletedData, ToolOutputDeltaData,
+    ToolProgressData, ToolStartedData, TurnCancelledData, TurnFailedData,
 };
+use everruns_core::typed_id::{SessionId, TurnId};
 use everruns_host::{EventSink, EventSinkError};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
 /// Capacity of the per-session broadcast channel that backs [`EventStream`].
 ///
-/// A turn emits well under this many events, so a consumer that keeps up never
-/// lags. A consumer that falls behind by more than this drops the oldest events
-/// (reported as a skip) rather than applying back-pressure to the turn — the
-/// runner must never block on an observer.
-const EVENT_CHANNEL_CAPACITY: usize = 4096;
+/// A turn normally emits well under this many events. If a consumer falls
+/// behind, the channel evicts its oldest unread events and reports the exact
+/// gap through [`EventStreamError::Lagged`] rather than applying backpressure to
+/// the turn — the runner must never block on an observer.
+pub const EVENT_STREAM_CAPACITY: usize = 4096;
 
 /// A single observed event from a running [`Session`](crate::Session).
 ///
-/// A small, stable projection of one runtime event. The correlation ids
-/// (`event_id`, `session_id`, and the optional `turn_id`) are preserved on every
-/// event so a consumer can line events up with a [`Turn`](crate::Turn); the
-/// [`kind`](SessionEvent::kind) carries the event-specific payload.
+/// This is an explicitly lossless typed/raw bridge to Everruns' canonical event
+/// protocol. [`kind`](SessionEvent::kind) is the ergonomic typed projection used
+/// by renderers, while [`as_json`](SessionEvent::as_json) returns the complete
+/// canonical event envelope without translation or omitted fields. The JSON
+/// form includes the event timestamp, optional persisted sequence, correlation
+/// context, full event-specific data, metadata, and tags.
+///
+/// The correlation ids (`event_id`, `session_id`, and the optional `turn_id`)
+/// are also promoted as strings for common logging and matching tasks.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub struct SessionEvent {
@@ -52,17 +68,29 @@ pub struct SessionEvent {
     pub turn_id: Option<String>,
     /// The event-specific projection.
     pub kind: SessionEventKind,
+    raw: Value,
 }
 
 /// The event-specific payload of a [`SessionEvent`].
 ///
-/// Non-exhaustive on purpose: new hosted event types are surfaced through the
-/// [`Other`](SessionEventKind::Other) fallback, which carries the stable event
-/// type string and the raw JSON payload, so promoting a new event to a typed
-/// variant later never breaks a consumer that already matches with a wildcard.
+/// Non-exhaustive on purpose: event kinds useful to an application renderer are
+/// promoted here, while every other event is surfaced through
+/// [`Other`](SessionEventKind::Other). The full event remains available through
+/// [`SessionEvent::as_json`] for every variant, including newly added event
+/// types that this version of the crate does not recognize.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum SessionEventKind {
+    /// A user input message was committed to the canonical event history.
+    InputMessage {
+        /// Stable id of the user message.
+        message_id: String,
+    },
+    /// Assistant output began streaming.
+    OutputStarted {
+        /// Stable id shared by the output's deltas and completion.
+        message_id: String,
+    },
     /// A turn began executing.
     TurnStarted,
     /// A turn finished successfully.
@@ -78,6 +106,18 @@ pub enum SessionEventKind {
     TextDelta {
         /// The new text appended by this delta.
         delta: String,
+    },
+    /// Streaming output was replaced, for example by an output guardrail.
+    OutputReplaced {
+        /// Stable id of the assistant message being replaced.
+        message_id: String,
+        /// Replacement text that is safe to render.
+        replacement: String,
+    },
+    /// An assistant output message completed.
+    OutputCompleted {
+        /// Stable id shared by the output's start and deltas.
+        message_id: String,
     },
     /// A tool call started executing.
     ToolStarted {
@@ -95,19 +135,44 @@ pub enum SessionEventKind {
         /// Whether the tool call succeeded.
         success: bool,
     },
-    /// A best-effort progress update emitted by an in-flight tool.
+    /// A running tool reported human-readable progress.
     ToolProgress {
         /// Opaque id of the tool call.
         tool_call_id: String,
-        /// Name of the tool emitting progress.
+        /// Name of the tool being invoked.
         tool_name: String,
-        /// Human-readable interim status.
+        /// Progress message suitable for a timeline or terminal.
         message: String,
     },
-    /// Any other runtime event, carried through unprojected.
+    /// A running tool produced an incremental output chunk.
+    ToolOutputDelta {
+        /// Opaque id of the tool call.
+        tool_call_id: String,
+        /// Name of the tool being invoked.
+        tool_name: String,
+        /// Output stream identifier, such as `"stdout"` or `"stderr"`.
+        stream: String,
+        /// New output appended to that stream.
+        delta: String,
+    },
+    /// A model reasoning step began.
+    ReasonStarted,
+    /// A model reasoning step completed.
+    ReasonCompleted {
+        /// Whether the model call succeeded.
+        success: bool,
+        /// Provider/model failure detail, when the step failed.
+        error: Option<String>,
+    },
+    /// A complete model-generation record was emitted.
+    ///
+    /// The model input, output, tool requests, usage, and timing remain in the
+    /// canonical payload returned by [`SessionEvent::data`].
+    ModelGeneration,
+    /// Any other canonical event, carried through unprojected.
     ///
     /// `event_type` is the stable dot-notation type string (e.g.
-    /// `"reason.started"`); `payload` is the raw event data as JSON. This is the
+    /// `"act.started"`); `payload` is the raw event data as JSON. This is the
     /// forward-compatibility fallback — match it with a wildcard arm.
     Other {
         /// Stable dot-notation event type string.
@@ -119,19 +184,64 @@ pub enum SessionEventKind {
 
 impl SessionEvent {
     /// The stable dot-notation type string for this event (e.g.
-    /// `"turn.started"`), matching the runtime event protocol.
+    /// `"turn.started"`), matching the canonical event protocol.
     pub fn event_type(&self) -> &str {
-        match &self.kind {
-            SessionEventKind::TurnStarted => events::TURN_STARTED,
-            SessionEventKind::TurnCompleted => events::TURN_COMPLETED,
-            SessionEventKind::TurnFailed { .. } => events::TURN_FAILED,
-            SessionEventKind::TurnCancelled => events::TURN_CANCELLED,
-            SessionEventKind::TextDelta { .. } => events::OUTPUT_MESSAGE_DELTA,
-            SessionEventKind::ToolStarted { .. } => events::TOOL_STARTED,
-            SessionEventKind::ToolCompleted { .. } => events::TOOL_COMPLETED,
-            SessionEventKind::ToolProgress { .. } => events::TOOL_PROGRESS,
-            SessionEventKind::Other { event_type, .. } => event_type,
-        }
+        self.raw
+            .get("type")
+            .and_then(Value::as_str)
+            .expect("canonical events always carry a string type")
+    }
+
+    /// Persisted replay sequence within this session.
+    ///
+    /// Durable events return `Some(sequence)` with a monotonically increasing
+    /// per-session position. Ephemeral live-only events such as output deltas
+    /// return `None`. [`EventStream`] preserves live channel arrival order; this
+    /// canonical field must not be treated as a delivery counter.
+    pub fn sequence(&self) -> Option<i32> {
+        self.raw
+            .get("sequence")
+            .and_then(Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok())
+    }
+
+    /// RFC 3339 timestamp from the canonical event envelope.
+    pub fn timestamp(&self) -> &str {
+        self.raw
+            .get("ts")
+            .and_then(Value::as_str)
+            .expect("canonical events always carry a string timestamp")
+    }
+
+    /// The complete canonical event envelope as JSON.
+    ///
+    /// This is the same serialized representation used by Everruns' public
+    /// event protocol. It is the lossless side of the typed/raw bridge: no
+    /// event fields are omitted even when [`kind`](Self::kind) is a compact
+    /// renderer-oriented projection or [`SessionEventKind::Other`].
+    pub fn as_json(&self) -> &Value {
+        &self.raw
+    }
+
+    /// Consume the event and return its complete canonical JSON envelope.
+    pub fn into_json(self) -> Value {
+        self.raw
+    }
+
+    /// The canonical event-specific `data` payload.
+    ///
+    /// Use this when a renderer needs a field not promoted onto
+    /// [`SessionEventKind`], such as tool narration, a completed message's
+    /// structured content, model token usage, or failure classification.
+    pub fn data(&self) -> &Value {
+        self.raw
+            .get("data")
+            .expect("canonical events always carry data")
+    }
+
+    /// Human-readable tool narration, when the event carries it.
+    pub fn narration(&self) -> Option<&str> {
+        self.data().get("narration").and_then(Value::as_str)
     }
 
     /// Project a core [`Event`] into a facade [`SessionEvent`].
@@ -140,27 +250,63 @@ impl SessionEvent {
     /// type is carried through the [`Other`](SessionEventKind::Other) fallback,
     /// so no event is ever dropped.
     fn from_core_event(event: &Event) -> Self {
+        let raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
+            events::INPUT_MESSAGE => match &event.data {
+                EventData::InputMessage(InputMessageData { message }) => {
+                    SessionEventKind::InputMessage {
+                        message_id: message.id.to_string(),
+                    }
+                }
+                _ => Self::other_kind(event),
+            },
+            events::OUTPUT_MESSAGE_STARTED => match &event.data {
+                EventData::OutputMessageStarted(OutputMessageStartedData {
+                    message_id, ..
+                }) => SessionEventKind::OutputStarted {
+                    message_id: message_id.to_string(),
+                },
+                _ => Self::other_kind(event),
+            },
             events::TURN_STARTED => SessionEventKind::TurnStarted,
             events::TURN_COMPLETED => SessionEventKind::TurnCompleted,
             events::TURN_CANCELLED => SessionEventKind::TurnCancelled,
-            events::TURN_FAILED => {
-                let error = match &event.data {
-                    EventData::TurnFailed(TurnFailedData { error, .. }) => error.clone(),
-                    _ => String::new(),
-                };
-                SessionEventKind::TurnFailed { error }
-            }
-            events::OUTPUT_MESSAGE_DELTA => {
-                let delta = match &event.data {
-                    EventData::OutputMessageDelta(OutputMessageDeltaData { delta, .. }) => {
-                        delta.clone()
+            events::TURN_FAILED => match &event.data {
+                EventData::TurnFailed(TurnFailedData { error, .. }) => {
+                    SessionEventKind::TurnFailed {
+                        error: error.clone(),
                     }
-                    _ => String::new(),
-                };
-                SessionEventKind::TextDelta { delta }
-            }
+                }
+                _ => Self::other_kind(event),
+            },
+            events::OUTPUT_MESSAGE_DELTA => match &event.data {
+                EventData::OutputMessageDelta(OutputMessageDeltaData { delta, .. }) => {
+                    SessionEventKind::TextDelta {
+                        delta: delta.clone(),
+                    }
+                }
+                _ => Self::other_kind(event),
+            },
+            events::OUTPUT_MESSAGE_REPLACED => match &event.data {
+                EventData::OutputMessageReplaced(OutputMessageReplacedData {
+                    message_id,
+                    replacement,
+                    ..
+                }) => SessionEventKind::OutputReplaced {
+                    message_id: message_id.to_string(),
+                    replacement: replacement.clone(),
+                },
+                _ => Self::other_kind(event),
+            },
+            events::OUTPUT_MESSAGE_COMPLETED => match &event.data {
+                EventData::OutputMessageCompleted(OutputMessageCompletedData {
+                    message, ..
+                }) => SessionEventKind::OutputCompleted {
+                    message_id: message.id.to_string(),
+                },
+                _ => Self::other_kind(event),
+            },
             events::TOOL_STARTED => match &event.data {
                 EventData::ToolStarted(ToolStartedData { tool_call, .. }) => {
                     SessionEventKind::ToolStarted {
@@ -196,6 +342,31 @@ impl SessionEvent {
                 },
                 _ => Self::other_kind(event),
             },
+            events::TOOL_OUTPUT_DELTA => match &event.data {
+                EventData::ToolOutputDelta(ToolOutputDeltaData {
+                    tool_call_id,
+                    tool_name,
+                    stream,
+                    delta,
+                }) => SessionEventKind::ToolOutputDelta {
+                    tool_call_id: tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                    stream: stream.clone(),
+                    delta: delta.clone(),
+                },
+                _ => Self::other_kind(event),
+            },
+            events::REASON_STARTED => SessionEventKind::ReasonStarted,
+            events::REASON_COMPLETED => match &event.data {
+                EventData::ReasonCompleted(ReasonCompletedData { success, error, .. }) => {
+                    SessionEventKind::ReasonCompleted {
+                        success: *success,
+                        error: error.clone(),
+                    }
+                }
+                _ => Self::other_kind(event),
+            },
+            events::LLM_GENERATION => SessionEventKind::ModelGeneration,
             _ => Self::other_kind(event),
         };
         Self {
@@ -203,13 +374,15 @@ impl SessionEvent {
             session_id: event.session_id.to_string(),
             turn_id,
             kind,
+            raw,
         }
     }
 
     fn other_kind(event: &Event) -> SessionEventKind {
         SessionEventKind::Other {
             event_type: event.event_type.clone(),
-            payload: serde_json::to_value(&event.data).unwrap_or(Value::Null),
+            payload: serde_json::to_value(&event.data)
+                .expect("canonical event data is JSON serializable"),
         }
     }
 }
@@ -217,12 +390,39 @@ impl SessionEvent {
 /// A live feed of [`SessionEvent`]s for one [`Session`](crate::Session).
 ///
 /// Obtain one from [`Session::events`](crate::Session::events) before running a
-/// turn. Consume it with [`recv`](Self::recv) in a loop. Backed by a broadcast
-/// channel: dropping the stream never affects a running turn, and a consumer
-/// that falls behind skips old events rather than blocking the runner.
+/// turn. Consume it with [`recv`](Self::recv) in a loop. Backed by a bounded
+/// broadcast channel: dropping the stream never affects a running turn, and a
+/// consumer that falls behind receives [`EventStreamError::Lagged`] rather than
+/// blocking the runner or silently losing events.
 pub struct EventStream {
     rx: broadcast::Receiver<SessionEvent>,
 }
+
+/// Why an [`EventStream`] could not deliver the next event losslessly.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum EventStreamError {
+    /// The consumer fell behind the bounded stream buffer.
+    ///
+    /// The next call can continue from the oldest retained event, but the
+    /// consumer must treat its live projection as incomplete. Durable terminal
+    /// events remain authoritative, and services that require replay should use
+    /// a durable event transport rather than this in-process live stream.
+    Lagged {
+        /// Number of events evicted before this consumer could read them.
+        missed: u64,
+    },
+}
+
+impl std::fmt::Display for EventStreamError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lagged { missed } => write!(f, "event stream lagged by {missed} events"),
+        }
+    }
+}
+
+impl std::error::Error for EventStreamError {}
 
 impl EventStream {
     fn new(rx: broadcast::Receiver<SessionEvent>) -> Self {
@@ -231,32 +431,32 @@ impl EventStream {
 
     /// Await the next event.
     ///
-    /// Returns `None` once the session is dropped and no further events can
-    /// arrive. If the consumer fell behind and the channel dropped events, those
-    /// events are skipped silently and the next available event is returned.
-    pub async fn recv(&mut self) -> Option<SessionEvent> {
-        loop {
-            match self.rx.recv().await {
-                Ok(event) => return Some(event),
-                // The consumer lagged; skip the dropped events and keep reading.
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                Err(broadcast::error::RecvError::Closed) => return None,
+    /// Returns `Ok(None)` once the session is dropped and no further events can
+    /// arrive. Returns [`EventStreamError::Lagged`] if the consumer fell behind
+    /// and events were evicted from the bounded buffer; no loss is hidden.
+    pub async fn recv(&mut self) -> Result<Option<SessionEvent>, EventStreamError> {
+        match self.rx.recv().await {
+            Ok(event) => Ok(Some(event)),
+            Err(broadcast::error::RecvError::Lagged(missed)) => {
+                Err(EventStreamError::Lagged { missed })
             }
+            Err(broadcast::error::RecvError::Closed) => Ok(None),
         }
     }
 
     /// Return the next already-available event without waiting.
     ///
-    /// Returns `None` when no event is currently buffered (or the session has
-    /// ended). Skips past a lagged gap the same way [`recv`](Self::recv) does.
-    pub fn try_recv(&mut self) -> Option<SessionEvent> {
-        loop {
-            match self.rx.try_recv() {
-                Ok(event) => return Some(event),
-                Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
-                Err(broadcast::error::TryRecvError::Empty)
-                | Err(broadcast::error::TryRecvError::Closed) => return None,
+    /// Returns `Ok(None)` when no event is currently buffered (or the session
+    /// has ended). Returns [`EventStreamError::Lagged`] rather than hiding a
+    /// gap.
+    pub fn try_recv(&mut self) -> Result<Option<SessionEvent>, EventStreamError> {
+        match self.rx.try_recv() {
+            Ok(event) => Ok(Some(event)),
+            Err(broadcast::error::TryRecvError::Lagged(missed)) => {
+                Err(EventStreamError::Lagged { missed })
             }
+            Err(broadcast::error::TryRecvError::Empty)
+            | Err(broadcast::error::TryRecvError::Closed) => Ok(None),
         }
     }
 }
@@ -326,27 +526,495 @@ impl CancellationToken {
 /// observer can never stall or fail a turn.
 pub(crate) struct FacadeEventBus {
     sender: broadcast::Sender<SessionEvent>,
+    active_turn: Mutex<Option<EventContext>>,
 }
 
 impl FacadeEventBus {
     pub(crate) fn new() -> Self {
-        let (sender, _rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
-        Self { sender }
+        Self::with_capacity(EVENT_STREAM_CAPACITY)
+    }
+
+    fn with_capacity(capacity: usize) -> Self {
+        let (sender, _rx) = broadcast::channel(capacity);
+        Self {
+            sender,
+            active_turn: Mutex::new(None),
+        }
     }
 
     /// Subscribe a new [`EventStream`] to this bus.
     pub(crate) fn subscribe(&self) -> EventStream {
         EventStream::new(self.sender.subscribe())
     }
+
+    /// Build a correlated terminal request after the facade drops a cancelled
+    /// turn future. The host emitter commits it before live delivery.
+    pub(crate) fn cancellation_request(&self, session_id: SessionId) -> (TurnId, EventRequest) {
+        let context = self
+            .active_turn
+            .lock()
+            .expect("active-turn lock poisoned")
+            .take()
+            .unwrap_or_else(|| EventContext {
+                turn_id: Some(TurnId::new()),
+                ..EventContext::default()
+            });
+        let turn_id = context.turn_id.unwrap_or_default();
+        let request = EventRequest::new(
+            session_id,
+            EventContext {
+                turn_id: Some(turn_id),
+                ..context
+            },
+            TurnCancelledData {
+                turn_id,
+                reason: Some("cancelled by application".to_string()),
+                usage: None,
+            },
+        );
+        (turn_id, request)
+    }
+
+    fn observe(&self, event: &Event) -> Result<(), EventSinkError> {
+        match event.event_type.as_str() {
+            events::TURN_STARTED => {
+                *self.active_turn.lock().expect("active-turn lock poisoned") =
+                    Some(event.context.clone());
+            }
+            events::TURN_COMPLETED
+            | events::TURN_FAILED
+            | events::TURN_CANCELLED
+            | events::TURN_SEALED => {
+                self.active_turn
+                    .lock()
+                    .expect("active-turn lock poisoned")
+                    .take();
+            }
+            _ => {}
+        }
+        // A broadcast sender with no current receiver is still open: callers
+        // can subscribe before the next turn. Observation is best-effort and
+        // absence is equivalent to the host's no-op sink, not a delivery
+        // failure worth counting on every canonical append.
+        let _ = self.sender.send(SessionEvent::from_core_event(event));
+        Ok(())
+    }
 }
 
 impl EventSink for FacadeEventBus {
     fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
-        // Ignore the send result: an error means there are simply no live
-        // subscribers, which must not affect the turn.
-        self.sender
-            .send(SessionEvent::from_core_event(&event))
-            .map(|_| ())
-            .map_err(|_| EventSinkError::Closed)
+        self.observe(&event)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use everruns_core::events::{
+        ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ToolStartedData,
+        TurnCancelledData, TurnStartedData,
+    };
+    use everruns_core::traits::EventEmitter;
+    use everruns_core::{MessageId, SessionId, ToolCall, TurnId};
+    use everruns_host::{HostEventEmitter, InMemoryEventLog};
+    use serde_json::json;
+
+    use super::{EventStreamError, FacadeEventBus, SessionEventKind};
+    use crate::{Agent, Model};
+
+    fn host(bus: Arc<FacadeEventBus>) -> HostEventEmitter {
+        HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus)
+    }
+
+    fn turn_started(session_id: SessionId, turn_id: TurnId) -> everruns_core::EventRequest {
+        let input_message_id = MessageId::new();
+        everruns_core::EventRequest::new(
+            session_id,
+            everruns_core::EventContext::turn(turn_id, input_message_id),
+            TurnStartedData {
+                turn_id,
+                input_message_id,
+                input_content: Some("hello".to_string()),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn public_event_json_is_the_exact_canonical_envelope() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+
+        let request = turn_started(session_id, turn_id)
+            .with_metadata(json!({"provider": "simulated"}))
+            .with_tags(vec!["terminal".to_string()]);
+        let canonical = emitter.emit(request).await.expect("event emits");
+        let observed = stream
+            .recv()
+            .await
+            .expect("stream remains lossless")
+            .expect("event is delivered");
+
+        assert!(matches!(observed.kind, SessionEventKind::TurnStarted));
+        assert_eq!(
+            observed.as_json(),
+            &serde_json::to_value(canonical).expect("canonical event serializes")
+        );
+        assert_eq!(observed.event_type(), "turn.started");
+        assert_eq!(
+            observed.turn_id.as_deref(),
+            Some(turn_id.to_string().as_str())
+        );
+        assert_eq!(observed.as_json()["sequence"], 1);
+        assert_eq!(observed.sequence(), Some(1));
+        assert!(!observed.timestamp().is_empty());
+        assert_eq!(observed.data()["input_content"], "hello");
+        assert_eq!(observed.as_json()["metadata"]["provider"], "simulated");
+        assert_eq!(observed.as_json()["tags"], json!(["terminal"]));
+    }
+
+    #[tokio::test]
+    async fn bounded_stream_reports_lag_instead_of_hiding_loss() {
+        let session_id = SessionId::new();
+        let bus = Arc::new(FacadeEventBus::with_capacity(2));
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+
+        for _ in 0..3 {
+            emitter
+                .emit(turn_started(session_id, TurnId::new()))
+                .await
+                .expect("event emits without observer backpressure");
+        }
+
+        assert!(matches!(
+            stream.recv().await,
+            Err(EventStreamError::Lagged { missed: 1 })
+        ));
+        assert!(stream.recv().await.expect("gap reported").is_some());
+    }
+
+    #[tokio::test]
+    async fn no_subscriber_is_a_noop_not_a_closed_sink_failure() {
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus);
+
+        emitter
+            .emit(turn_started(SessionId::new(), TurnId::new()))
+            .await
+            .expect("observation absence cannot reverse the append");
+
+        assert_eq!(emitter.delivery_stats().closed, 0);
+    }
+
+    #[tokio::test]
+    async fn live_arrival_interleaves_durable_and_sequence_less_ephemeral_events() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+
+        emitter
+            .emit(turn_started(session_id, turn_id))
+            .await
+            .unwrap();
+        emitter
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::EventContext::turn(turn_id, message_id),
+                OutputMessageDeltaData {
+                    turn_id,
+                    message_id,
+                    delta: "hi".to_string(),
+                    accumulated: "hi".to_string(),
+                    phase: None,
+                },
+            ))
+            .await
+            .unwrap();
+        emitter
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::EventContext::turn(turn_id, message_id),
+                TurnCancelledData {
+                    turn_id,
+                    reason: Some("test".to_string()),
+                    usage: None,
+                },
+            ))
+            .await
+            .unwrap();
+
+        let started = stream.recv().await.unwrap().unwrap();
+        let delta = stream.recv().await.unwrap().unwrap();
+        let cancelled = stream.recv().await.unwrap().unwrap();
+
+        assert_eq!(started.event_type(), "turn.started");
+        assert_eq!(delta.event_type(), "output.message.delta");
+        assert_eq!(cancelled.event_type(), "turn.cancelled");
+        assert_eq!(started.sequence(), Some(1));
+        assert_eq!(delta.sequence(), None);
+        assert!(delta.as_json().get("sequence").is_none());
+        assert_eq!(cancelled.sequence(), Some(2));
+    }
+
+    #[tokio::test]
+    async fn cancellation_uses_the_active_turn_and_canonical_sequence() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+        emitter
+            .emit(turn_started(session_id, turn_id))
+            .await
+            .expect("turn starts");
+
+        let (cancelled_turn_id, request) = bus.cancellation_request(session_id);
+        emitter.emit(request).await.expect("cancellation commits");
+        assert_eq!(cancelled_turn_id, turn_id);
+
+        let started = stream.recv().await.expect("no lag").expect("start event");
+        let cancelled = stream.recv().await.expect("no lag").expect("cancel event");
+        assert!(matches!(started.kind, SessionEventKind::TurnStarted));
+        assert!(matches!(cancelled.kind, SessionEventKind::TurnCancelled));
+        assert_eq!(
+            cancelled.turn_id.as_deref(),
+            Some(turn_id.to_string().as_str())
+        );
+        assert_eq!(cancelled.as_json()["sequence"], 2);
+        assert_eq!(
+            cancelled.data(),
+            &serde_json::to_value(TurnCancelledData {
+                turn_id,
+                reason: Some("cancelled by application".to_string()),
+                usage: None,
+            })
+            .expect("cancel data serializes")
+        );
+    }
+
+    #[tokio::test]
+    async fn output_replacement_retains_rebuildable_message_identity_and_text() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+        emitter
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::EventContext {
+                    turn_id: Some(turn_id),
+                    ..everruns_core::EventContext::default()
+                },
+                OutputMessageReplacedData {
+                    turn_id,
+                    message_id,
+                    guardrail_capability_id: "guardrails".to_string(),
+                    guardrail_id: "output-policy".to_string(),
+                    reason_code: "blocked".to_string(),
+                    replacement: "Response withheld.".to_string(),
+                },
+            ))
+            .await
+            .expect("replacement emits");
+
+        let replacement = stream
+            .recv()
+            .await
+            .expect("no lag")
+            .expect("replacement delivered");
+        assert!(matches!(
+            &replacement.kind,
+            SessionEventKind::OutputReplaced {
+                message_id: observed_id,
+                replacement,
+            } if observed_id == &message_id.to_string() && replacement == "Response withheld."
+        ));
+        assert_eq!(replacement.data()["message_id"], message_id.to_string());
+        assert_eq!(replacement.data()["replacement"], "Response withheld.");
+    }
+
+    #[tokio::test]
+    async fn tool_narration_is_preserved_for_renderers() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+
+        emitter
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::EventContext {
+                    turn_id: Some(turn_id),
+                    ..everruns_core::EventContext::default()
+                },
+                ToolStartedData {
+                    tool_call: ToolCall {
+                        id: "call_1".to_string(),
+                        name: "lookup".to_string(),
+                        arguments: json!({"key": "answer"}),
+                    },
+                    tool_call_fingerprint: None,
+                    display_name: Some("Knowledge lookup".to_string()),
+                    narration: Some("Looking up the answer".to_string()),
+                },
+            ))
+            .await
+            .expect("tool start emits");
+
+        let observed = stream.recv().await.unwrap().unwrap();
+        assert_eq!(observed.narration(), Some("Looking up the answer"));
+        assert_eq!(observed.data()["display_name"], "Knowledge lookup");
+    }
+
+    #[tokio::test]
+    async fn unpromoted_event_kind_retains_its_complete_canonical_payload() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let bus = Arc::new(FacadeEventBus::new());
+        let emitter = host(bus.clone());
+        let mut stream = bus.subscribe();
+        let canonical = emitter
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::EventContext {
+                    turn_id: Some(turn_id),
+                    ..everruns_core::EventContext::default()
+                },
+                ActStartedData {
+                    tool_calls: Vec::new(),
+                    headline: Some("running tools".to_string()),
+                },
+            ))
+            .await
+            .expect("event emits");
+
+        let observed = stream.recv().await.unwrap().unwrap();
+        assert!(matches!(
+            &observed.kind,
+            SessionEventKind::Other { event_type, payload }
+                if event_type == "act.started" && payload["headline"] == "running tools"
+        ));
+        assert_eq!(
+            observed.as_json(),
+            &serde_json::to_value(canonical).expect("canonical event serializes")
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_failure_retains_reason_and_turn_terminal_payloads() {
+        let agent = Agent::builder()
+            .instructions("Answer concisely.")
+            .model(Model::simulated_error("provider unavailable"))
+            .build()
+            .expect("valid agent");
+        let mut session = agent.session();
+        let mut stream = session.events();
+        let result = session
+            .run("hello")
+            .await
+            .expect("provider failure resolves to a failed turn");
+        assert!(!result.success);
+        drop(session);
+
+        let mut observed = Vec::new();
+        while let Some(event) = stream.recv().await.expect("failure stream does not lag") {
+            observed.push(event);
+        }
+
+        let reason_failure = observed
+            .iter()
+            .find(|event| {
+                matches!(
+                    event.kind,
+                    SessionEventKind::ReasonCompleted { success: false, .. }
+                )
+            })
+            .expect("reason.completed preserves the provider failure");
+        assert!(
+            reason_failure.data()["error"]
+                .as_str()
+                .is_some_and(|error| error.contains("provider unavailable"))
+        );
+
+        let turn_failure = observed
+            .iter()
+            .find(|event| matches!(event.kind, SessionEventKind::TurnFailed { .. }))
+            .expect("turn.failed is the terminal event");
+        assert_eq!(turn_failure.event_type(), "turn.failed");
+        assert_eq!(
+            turn_failure.turn_id.as_deref(),
+            Some(result.turn_id.as_str())
+        );
+        assert!(turn_failure.data()["error"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn tool_lifecycle_retains_arguments_result_and_order() {
+        let tool = crate::FunctionTool::new(
+            "lookup",
+            "Look up a value.",
+            json!({
+                "type": "object",
+                "properties": { "key": { "type": "string" } },
+                "required": ["key"]
+            }),
+            |arguments: serde_json::Value| async move {
+                Ok::<_, String>(json!({ "value": arguments["key"] }))
+            },
+        );
+        let agent = Agent::builder()
+            .instructions("Use the lookup tool.")
+            .model(Model::simulated_scripted(
+                "done",
+                vec![
+                    vec![ToolCall {
+                        id: "call_lookup_1".to_string(),
+                        name: "lookup".to_string(),
+                        arguments: json!({ "key": "answer" }),
+                    }],
+                    vec![],
+                ],
+            ))
+            .tool(tool)
+            .build()
+            .expect("valid agent");
+        let mut session = agent.session();
+        let mut stream = session.events();
+        let result = session.run("look it up").await.expect("tool turn runs");
+        assert!(result.success);
+        drop(session);
+
+        let mut observed = Vec::new();
+        while let Some(event) = stream.recv().await.expect("tool stream does not lag") {
+            observed.push(event);
+        }
+        let started = observed
+            .iter()
+            .find(|event| matches!(event.kind, SessionEventKind::ToolStarted { .. }))
+            .expect("tool.started");
+        let completed = observed
+            .iter()
+            .find(|event| matches!(event.kind, SessionEventKind::ToolCompleted { .. }))
+            .expect("tool.completed");
+
+        assert!(
+            started.sequence().expect("tool start is durable")
+                < completed.sequence().expect("tool completion is durable")
+        );
+        assert_eq!(started.data()["tool_call"]["id"], "call_lookup_1");
+        assert_eq!(started.data()["tool_call"]["arguments"]["key"], "answer");
+        assert_eq!(completed.data()["tool_call_id"], "call_lookup_1");
+        assert_eq!(completed.data()["status"], "success");
+        assert!(completed.data()["result"].is_array());
     }
 }

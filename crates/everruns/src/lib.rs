@@ -54,7 +54,10 @@ pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
-pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
+pub use events::{
+    CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
+    SessionEvent, SessionEventKind,
+};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -180,13 +183,13 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancellationToken, CompactionConfig,
-        CompactionStrategy, CompletionContext, EventStream, FunctionTool, HistoryCursor,
-        HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
-        HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool, IntoToolResult, McpServer,
-        Model, PluginError, ResumeError, RunError, RunOptions, Session, SessionContext,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
-        ToolResponse, ToolStartContext, Turn, TurnStartContext, WorkspacePolicy,
-        WorkspacePolicyBuilder, WorkspacePolicyError,
+        CompactionStrategy, CompletionContext, EventStream, EventStreamError, FunctionTool,
+        HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages,
+        HistoryQuery, HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool,
+        IntoToolResult, McpServer, Model, PluginError, ResumeError, RunError, RunOptions, Session,
+        SessionContext, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnStartContext,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};
