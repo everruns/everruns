@@ -1,6 +1,8 @@
-# everruns-runtime domain language
+# Framework and host domain language
 
-The vocabulary you need to read and write code against `everruns-runtime`.
+The vocabulary used by the `everruns` Framework and advanced `everruns-host`
+composition. For legacy name mappings, use the authoritative
+[runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
 These concepts are shared with the worker- and server-backed runtime, so they
 transfer to the rest of Everruns.
 
@@ -50,7 +52,7 @@ transfer to the rest of Everruns.
   construction lives host-side so improvements flow to both embedded and durable
   hosts.
 
-- **TurnStateMachine** — the shared `everruns-core` state machine the runtime
+- **TurnStateMachine** — the shared `everruns-core` state machine the host
   executes; keeps embedded turns behaviorally aligned with worker turns.
 
 - **Assembled turn context** — the merged context the reason phase uses: harness
@@ -63,16 +65,27 @@ transfer to the rest of Everruns.
 - **RuntimeAgent** — the fully-resolved agent the LLM step runs against: final
   system prompt, model, and tool set.
 
-## In-process runtime API surface
+## Framework application surface
 
-- **InProcessRuntimeBuilder** — the public entrypoint. Set the
+- **Agent / AgentBuilder** — value-first application configuration for
+  instructions, models, tools, files, workspaces, MCP, plugins, and policies.
+
+- **Session** — isolated multi-turn execution with events, cancellation,
+  context inspection, work, wakes, and schedules.
+
+- **Model / ModelSpec / Provider** — credential-free model identity paired
+  with a provider implementation or convenience.
+
+## Advanced host surface
+
+- **InProcessRuntimeBuilder** — the `everruns-host` low-level entrypoint. Set the
   `PlatformDefinition`, register extra capabilities/drivers, seed
   harnesses/agents/sessions, configure the default model, optionally register
-  `llmsim`, and swap stores via `RuntimeBackends`.
+  `llmsim`, and swap stores via `HostBackends`.
 
 - **HarnessBuilder / AgentBuilder / SessionBuilder** — supported construction
   path for seed models. Prefer these over raw struct literals so new optional
-  core fields can be defaulted inside the runtime crate.
+  core fields can be defaulted inside the host crate.
 
 - **single_session(...)** — compact path for the common one-harness, one-agent,
   one-session shape. Records the generated id for `default_session_id()`.
@@ -81,14 +94,14 @@ transfer to the rest of Everruns.
   `run_text_turn`, `default_session_id`, `load_context`, `messages`,
   `read_file`, `events`.
 
-- **RuntimeBackends** — the bundle of overridable stores. Start from
-  `RuntimeBackends::in_memory()` and chain `.with_message_store(...)`,
-  `.with_event_bus(...)`, `.with_connection_resolver(...)`, etc.
+- **HostBackends** — the bundle of overridable stores. Start from
+  `HostBackends::in_memory()` and add canonical event, provider, filesystem,
+  task, schedule, platform, or connection-resolver contracts as needed.
 
 ## Host execution (for durable / server-backed embedders)
 
-The runtime also owns a reusable host contract so durable or server-backed hosts
-reuse runtime phase orchestration instead of duplicating atom wiring:
+`everruns-host` owns a reusable contract so durable or server-backed hosts reuse
+phase orchestration instead of duplicating atom wiring:
 
 - **RuntimeHostAdapter** / **RuntimeSessionLifecycle** — host seams.
 - **execute_input_activity / execute_reason_activity / execute_act_activity** —
@@ -99,4 +112,4 @@ reuse runtime phase orchestration instead of duplicating atom wiring:
   persistence, and resumption.
 
 `InProcessRuntime` itself implements `RuntimeHostAdapter` and drives its own turn
-loop by calling these activity functions directly.
+loop by calling these canonical host activity functions directly.

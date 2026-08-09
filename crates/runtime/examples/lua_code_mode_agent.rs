@@ -1,4 +1,6 @@
 //! Lua code-mode agent: non-essential tool calls routed through the Lua sandbox.
+//! This is 0.17 advanced-host compatibility coverage. New hosts use
+//! `everruns-host`; see <https://docs.everruns.com/framework/runtime-compatibility/>.
 //!
 //! This example builds an agent whose action tools (`add`, `subtract`,
 //! `multiply`, `divide` from `test_math`) are **hidden** from the model's direct

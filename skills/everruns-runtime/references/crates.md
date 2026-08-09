@@ -1,13 +1,13 @@
-# Optional crates for everruns-runtime
+# Focused crates for Framework applications and advanced hosts
 
-`everruns-runtime` is provider- and tool-neutral: you add only the crates you
-use. This catalog lists the optional crates that extend an in-process runtime,
-how to register them, and what they contribute.
+Start with `everruns`, then add only the provider, integration, or host crates
+you use. This catalog lists focused crates, how to register them, and what they
+contribute.
 
-The two required crates are always:
+The primary and advanced-host entrypoints are:
 
-- `everruns-runtime` — the agentic runtime; the in-process agentic-framework entrypoint ([docs.rs](https://docs.rs/everruns-runtime))
-- `everruns-core` — shared types (capabilities, drivers, models, `PlatformDefinition`)
+- `everruns` — application-facing Framework entrypoint ([docs.rs](https://docs.rs/everruns))
+- `everruns-host` — low-level host composition for advanced integrators ([docs.rs](https://docs.rs/everruns-host))
 
 ## LLM provider crates (drivers)
 
@@ -88,11 +88,11 @@ let platform = PlatformDefinition::new(capabilities, drivers);
 ## Connection-aware integrations (credentials)
 
 Some integrations — Daytona is the canonical example — need a per-user
-credential resolved at tool-execution time. Supply a credential source through
-`RuntimeBackends`:
+credential resolved at tool-execution time. Advanced hosts supply a credential
+source through `HostBackends`:
 
 ```rust,ignore
-let backends = RuntimeBackends::in_memory()
+let backends = HostBackends::in_memory()
     .with_connection_resolver(my_connection_resolver); // Arc<dyn UserConnectionResolver>
 ```
 
@@ -108,29 +108,29 @@ owns. When unset, connection-aware tools fall back to their own guidance
 |---|---|
 | `everruns-local` | SQLite-backed, restart-survivable stores for single-process hosts: `LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, a `LocalProfile`, a composable `LocalBackends`, and an optional `LocalRuntimeBuilder` |
 
-`everruns-local` populates the runtime's optional host-backend slots
+`everruns-local` populates optional `everruns-host` backend slots
 (`session_task_registry`, `schedule_store_factory`, `platform_store_factory`),
 which otherwise default to in-memory. Use it when background tasks, schedules, or
 session state must survive a process restart.
 
-## Runtime crate features
+## Framework and host features
 
 | Feature | Effect | Default |
 |---|---|---|
 | `mcp-stdio` | Enables local-process (stdio) MCP servers | off |
-| `lua` | Compiles the experimental sandboxed Lua execution engine (`lua` / `lua_code_mode` capabilities) | off |
+| `lua` on `everruns-host` | Compiles the experimental sandboxed Lua execution engine for advanced hosts | off |
 
 ```bash
-cargo add everruns-runtime --features mcp-stdio
+cargo add everruns --features mcp-stdio
 ```
 
-## Backend store override traits (in `everruns-runtime`)
+## Backend store override traits (in `everruns-host`)
 
-Supply your own implementation of any of these via `RuntimeBackends`; anything
+Supply your own implementation through `HostBackends`; anything
 not overridden stays in-memory:
 
 `RuntimeHarnessStore`, `RuntimeAgentStore`, `RuntimeSessionStore`,
-`RuntimeMessageStore`, `RuntimeProviderStore`, `EventBus`. Session files come
+`RuntimeProviderStore`, `EventLog`, `EventSink`, and `EventReader`. Session files come
 from the platform's `SessionFileSystemFactory`
 (`InMemorySessionFileSystemFactory`, `RealDiskSessionFileSystemFactory`, or a
 custom factory such as S3).

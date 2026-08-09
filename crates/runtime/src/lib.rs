@@ -1,13 +1,21 @@
-//! Everruns 0.17 compatibility adapter.
+//! # Warning: 0.17.x compatibility only
 //!
-//! All maintained host execution lives in [`everruns_host`]. This crate keeps
-//! established `everruns-runtime` paths source-compatible where practical by
-//! re-exporting that one canonical implementation. New ordinary applications
-//! should use [`everruns`](https://docs.rs/everruns); advanced host integrators
-//! may depend on [`everruns-host`](https://docs.rs/everruns-host) directly. Both
-//! are part of the [Everruns](https://everruns.com) ecosystem.
+//! `everruns-runtime` is a transitional compatibility API for existing Everruns
+//! 0.17.x applications. It will be removed in Everruns 0.18. It remains usable
+//! and source-compatible throughout 0.17.x; no execution implementation lives
+//! here.
 //!
-//! # Example
+//! New ordinary applications use the [`everruns`](https://docs.rs/everruns)
+//! Framework crate, beginning with `use everruns::{Agent, Model};`. Advanced
+//! system integrators use `everruns` plus [`everruns-host`](https://docs.rs/everruns-host)
+//! and focused sibling crates, beginning with
+//! `use everruns_host::{HostBackends, InProcessRuntimeBuilder};`.
+//!
+//! See the authoritative [runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/)
+//! for exact old-to-new mappings. All crates are part of the
+//! [Everruns](https://everruns.com) ecosystem.
+//!
+//! # 0.17 compatibility example
 //!
 //! ```
 //! use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};

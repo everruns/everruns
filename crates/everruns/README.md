@@ -13,7 +13,7 @@ a server, worker, or database.
 
 It is the primary library crate in the [Everruns](https://everruns.com)
 ecosystem. Normal Rust applications should start here; focused core, engine,
-runtime, provider, and platform crates support the implementation and advanced
+host, provider, and platform crates support the implementation and advanced
 execution hosts.
 
 ## Installation
@@ -157,6 +157,10 @@ the lifetime of an `Agent` and its clones. Keep a typed `SessionId` and call
 reads. The `local` feature adds a crash-durable canonical event log and session
 catalog alongside its real workspace and task/schedule state.
 
+Existing 0.17.x runtime persistence users should follow the
+[runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/)
+to these event-derived APIs.
+
 ## What It Provides
 
 - Value-first `Agent`, plain model ids, open `Provider`, and deterministic simulation
@@ -192,7 +196,8 @@ Examples are compiled in CI and import only `everruns`.
 | Build and run agents in a Rust application | `everruns` |
 | Implement or configure a focused model provider | `everruns` plus the provider crate |
 | Call a remote Everruns deployment | an Everruns SDK |
-| Compose low-level execution backends or preserve 0.17.x code | `everruns-runtime` and focused host crates |
+| Compose low-level execution backends | `everruns` plus `everruns-host` and focused sibling crates |
+| Migrate an existing 0.17.x runtime application | the [runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/) |
 | Operate durable server/worker/UI infrastructure | the Everruns Platform |
 
 ## Documentation
@@ -209,6 +214,7 @@ Examples are compiled in CI and import only `everruns`.
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [Lifecycle hooks](https://docs.everruns.com/framework/lifecycle-hooks/)
 - [Canonical events](https://docs.everruns.com/framework/canonical-events/)
+- [Runtime migration](https://docs.everruns.com/framework/runtime-compatibility/)
 - [API reference](https://docs.rs/everruns)
 
 ## Extend agents

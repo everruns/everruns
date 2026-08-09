@@ -28,12 +28,13 @@ connection, and provider credential are not required.
 | Surface | Use it for |
 | --- | --- |
 | **Framework** | Rust applications that build and run agents in process through `everruns` |
-| **Runtime** | Low-level execution-host composition and existing `everruns-runtime` 0.17.x applications |
+| **Advanced host crates** | Low-level execution-host composition through `everruns-host` and focused siblings |
+| **Runtime compatibility** | Migration of existing `everruns-runtime` 0.17.x applications only |
 | **SDKs** | Remote clients that call a running Everruns server |
 | **Platform** | The control plane, server, workers, UI, and durable deployment |
 
-Normal library users should start with the Framework. See [Runtime compatibility](/framework/runtime-compatibility/)
-before importing `everruns-runtime` directly.
+Normal library users should start with the Framework. Existing 0.17 runtime
+users should follow the [runtime migration guide](/framework/runtime-compatibility/).
 
 ## Start here
 
