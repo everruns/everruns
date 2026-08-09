@@ -173,3 +173,27 @@ export function EntityCardFooter({
     </div>
   );
 }
+
+/** Compact, reusable relationship/detail row for entity card bodies. */
+export function EntityCardDetail({
+  icon,
+  label,
+  children,
+  className,
+}: {
+  icon?: React.ReactNode;
+  label: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      data-slot="entity-card-detail"
+      className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", className)}
+    >
+      {icon && <span className="inline-flex shrink-0 items-center">{icon}</span>}
+      <span className="shrink-0">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5">{children}</span>
+    </div>
+  );
+}

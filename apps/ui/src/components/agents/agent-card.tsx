@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
+import { EntityCard, EntityCardDetail, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Boxes } from "lucide-react";
+import { Pencil, Boxes, Shield } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
@@ -46,6 +46,16 @@ export function AgentCard({
   const tags = normalizeTags(agent.tags);
   const sessionCount = agent.session_count ?? 0;
   const appCount = agent.app_count ?? 0;
+  const harness = agent.effective_harness;
+  const harnessName = harness?.display_name || harness?.name;
+  const harnessSourceLabel =
+    harness?.source === "organization_default" ? "organization default" : "explicit";
+  const harnessStatusLabel = harness?.status === "unresolved" ? "unavailable" : harness?.status;
+  const harnessTooltip = harnessName
+    ? `Harness: ${harnessName} (${harnessSourceLabel}${harnessStatusLabel && harnessStatusLabel !== "active" ? `, ${harnessStatusLabel}` : ""})`
+    : `Harness: unavailable (${harnessSourceLabel})`;
+  const harnessIsLinked =
+    harness?.id && harness.status !== "deleted" && harness.status !== "unresolved";
 
   return (
     <EntityCard
@@ -89,6 +99,45 @@ export function AgentCard({
       ) : (
         <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
       )}
+
+      <EntityCardDetail
+        className="mb-3"
+        label="Harness"
+        icon={
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                aria-label={harnessTooltip}
+                className="inline-flex cursor-help items-center"
+              >
+                <Shield className="icon-sharp size-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>{harnessTooltip}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        }
+      >
+        {harnessIsLinked ? (
+          <Link
+            href={`/harnesses/${harness.id}`}
+            className="min-w-0 truncate font-medium text-foreground hover:underline"
+            title={harnessName ?? undefined}
+            aria-label={harnessTooltip}
+          >
+            {harnessName}
+          </Link>
+        ) : (
+          <span
+            className="min-w-0 truncate italic"
+            title={harness?.id ?? "Harness could not be resolved"}
+          >
+            {harnessName ? `${harnessName} (${harnessStatusLabel})` : "unavailable harness"}
+          </span>
+        )}
+        <Badge variant="outline" className="shrink-0 text-[10px]">
+          {harness?.source === "organization_default" ? "Org default" : "Explicit"}
+        </Badge>
+      </EntityCardDetail>
 
       {/* Capabilities display */}
       {agentCapabilities.length > 0 && (

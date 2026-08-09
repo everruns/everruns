@@ -117,7 +117,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       description: agent.description || "",
       system_prompt: agent.system_prompt,
       tags: joinTags(agent.tags),
-      harness_id: agent.harness_id || "",
+      harness_id: agent.effective_harness?.id || agent.harness_id || "",
       default_model_id: agent.default_model_id || "",
     };
   }, [agent]);
@@ -191,7 +191,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           description: parsed.data.description,
           system_prompt: parsed.data.system_prompt,
           tags,
-          harness_id: parsed.data.harness_id,
+          ...(formChanges.harness_id !== undefined && {
+            harness_id: parsed.data.harness_id,
+          }),
           default_model_id: parsed.data.default_model_id,
           // Only include capabilities if they changed
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),

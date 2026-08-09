@@ -26,6 +26,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
+            harness_source: "explicit".to_string(),
             agent_identity_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
@@ -109,6 +110,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
+            harness_source: "explicit".to_string(),
             agent_identity_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
@@ -266,6 +268,9 @@ impl InMemoryDatabase {
             if let Some(harness_id) = input.harness_id {
                 agent.harness_id = harness_id;
             }
+            if let Some(harness_source) = input.harness_source {
+                agent.harness_source = harness_source;
+            }
             if let Some(default_version_id) = input.default_version_id {
                 agent.default_version_id = Some(default_version_id);
             }
@@ -411,6 +416,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
+                harness_source: "explicit".to_string(),
                 agent_identity_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,
@@ -483,6 +489,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
+                harness_source: "explicit".to_string(),
                 agent_identity_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,

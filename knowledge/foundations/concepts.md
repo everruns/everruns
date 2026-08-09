@@ -58,7 +58,7 @@ Top-level entity that represents a setup for agent execution. Defines infrastruc
 Domain-specific or task-specific configuration for the agentic loop. Defines system prompt, default LLM model, and enabled capabilities.
 
 - Many agents in the system
-- Each agent has exactly one assigned harness (`harness_id`), defaulting to the org's built-in `generic` harness at creation when omitted
+- Each agent either pins an assigned harness or inherits the organization's current default and platform fallback
 - A session may or may not have an agent assigned; creating a session from an agent runs it on the agent's harness (agent-first creation)
 - Agents can be assigned or changed during a session's lifetime
 - Agent has capabilities with position ordering
@@ -116,7 +116,7 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. An Agent stores the leaf harness it uses by default; `HarnessStore::get_harness_chain()` returns that harness's full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session; `HarnessStore::get_harness_chain()` returns that harness's full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
 
 ```
  harness_root   harness_child   harness_leaf     agent       session

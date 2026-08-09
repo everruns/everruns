@@ -15,14 +15,14 @@ use axum::{
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole,
-    PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
+    Agent, AgentCapabilityConfig, BuiltInHarnessRole, Caller, DeploymentGrade, InitialFile,
+    OrgRole, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
 };
 use futures::future::try_join_all;
 
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceStatsResponse,
-    ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
+    ResourceUrlable, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
 use super::validation::{
@@ -36,7 +36,9 @@ use crate::domains::agents::types::{
 };
 use crate::domains::common::Command;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
+use utoipa::ToSchema;
 
 /// Capability entry in agent file - supports both string and object formats
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -178,6 +180,11 @@ impl AppState {
             self.auth.permission_resolver.clone(),
         )
         .with_feature_flags(org.feature_flags.clone())
+        .with_fallback_harness_name(
+            self.platform_definition
+                .harness_for_role(BuiltInHarnessRole::Default)
+                .map(|harness| harness.name.clone()),
+        )
         .with_utility_llm_service(self.platform_definition.utility_llm_service());
         if let Some(service) = &self.health_check_service {
             ctx = ctx.with_health_check_service(service.clone());
@@ -199,11 +206,167 @@ fn require_agent_versions_enabled(
 impl_auth_state!(AppState);
 impl_dispatchable!(AppState);
 
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentHarnessSource {
+    Explicit,
+    OrganizationDefault,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentHarnessStatus {
+    Active,
+    Archived,
+    Deleted,
+    Unresolved,
+}
+
+/// Harness that a newly created session for this agent will resolve to.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentHarnessSummary {
+    #[schema(value_type = Option<String>)]
+    pub id: Option<HarnessId>,
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub source: AgentHarnessSource,
+    pub status: AgentHarnessStatus,
+}
+
+/// Agent list/detail payload with relationship counts and resolved harness metadata.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentWithCounts {
+    pub session_count: u64,
+    pub app_count: u64,
+    pub effective_harness: AgentHarnessSummary,
+    #[serde(flatten)]
+    pub inner: Agent,
+}
+
+impl ResourceUrlable for AgentWithCounts {
+    fn api_path() -> &'static str {
+        Agent::api_path()
+    }
+
+    fn ui_path() -> &'static str {
+        Agent::ui_path()
+    }
+
+    fn resource_id(&self) -> String {
+        self.inner.resource_id()
+    }
+
+    fn allowed_actions(&self, api_base: &str) -> Vec<super::common::AllowedAction> {
+        self.inner.allowed_actions(api_base)
+    }
+}
+
+fn harness_source(value: &str) -> AgentHarnessSource {
+    if value == "organization_default" {
+        AgentHarnessSource::OrganizationDefault
+    } else {
+        AgentHarnessSource::Explicit
+    }
+}
+
+fn harness_status(value: &str) -> AgentHarnessStatus {
+    match value {
+        "active" => AgentHarnessStatus::Active,
+        "archived" => AgentHarnessStatus::Archived,
+        "deleted" => AgentHarnessStatus::Deleted,
+        _ => AgentHarnessStatus::Unresolved,
+    }
+}
+
+async fn resolve_agent_harnesses(
+    db: &StorageBackend,
+    org_id: i64,
+    agents: &[Agent],
+    fallback_harness_name: Option<&str>,
+) -> Result<HashMap<uuid::Uuid, AgentHarnessSummary>, (StatusCode, Json<ErrorResponse>)> {
+    let agent_ids: Vec<AgentId> = agents
+        .iter()
+        .map(|agent| AgentId::from_uuid(agent.internal_id))
+        .collect();
+    let rows = db
+        .get_agents_by_ids(org_id, &agent_ids)
+        .await
+        .log_internal_error_json("load agent harness bindings")?;
+
+    let inherited_harness_id = if rows
+        .iter()
+        .any(|row| row.harness_source == "organization_default")
+    {
+        crate::domains::sessions::queries::resolve_session_harness_id(
+            db,
+            org_id,
+            None,
+            None,
+            fallback_harness_name,
+        )
+        .await
+        .ok()
+    } else {
+        None
+    };
+
+    let effective_ids: Vec<HarnessId> = rows
+        .iter()
+        .filter_map(|row| {
+            if row.harness_source == "organization_default" {
+                inherited_harness_id
+            } else {
+                Some(row.harness_id)
+            }
+        })
+        .collect();
+    let harnesses = if effective_ids.is_empty() {
+        Vec::new()
+    } else {
+        db.get_harness_ancestry_by_ids(org_id, &effective_ids)
+            .await
+            .log_internal_error_json("load effective agent harnesses")?
+    };
+    let harnesses_by_id: HashMap<HarnessId, _> = harnesses
+        .into_iter()
+        .map(|harness| (harness.id, harness))
+        .collect();
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let source = harness_source(&row.harness_source);
+            let effective_id = match source {
+                AgentHarnessSource::Explicit => Some(row.harness_id),
+                AgentHarnessSource::OrganizationDefault => inherited_harness_id,
+            };
+            let summary = effective_id
+                .and_then(|id| harnesses_by_id.get(&id).map(|harness| (id, harness)))
+                .map(|(id, harness)| AgentHarnessSummary {
+                    id: Some(id),
+                    name: Some(harness.name.clone()),
+                    display_name: harness.display_name.clone(),
+                    source,
+                    status: harness_status(&harness.status),
+                })
+                .unwrap_or(AgentHarnessSummary {
+                    id: effective_id,
+                    name: None,
+                    display_name: None,
+                    source,
+                    status: AgentHarnessStatus::Unresolved,
+                });
+            (row.id.uuid(), summary)
+        })
+        .collect())
+}
+
 async fn add_agent_counts(
     db: &StorageBackend,
     org_id: i64,
     agent: Agent,
-) -> Result<ResourceWithCounts<Agent>, (StatusCode, Json<ErrorResponse>)> {
+    effective_harness: AgentHarnessSummary,
+) -> Result<AgentWithCounts, (StatusCode, Json<ErrorResponse>)> {
     let agent_id = AgentId::from_uuid(agent.internal_id);
     let session_count = async {
         db.count_sessions_for_agent(org_id, agent_id)
@@ -217,9 +380,10 @@ async fn add_agent_counts(
     };
     let (session_count, app_count) = tokio::try_join!(session_count, app_count)?;
 
-    Ok(ResourceWithCounts {
+    Ok(AgentWithCounts {
         session_count,
         app_count,
+        effective_harness,
         inner: agent,
     })
 }
@@ -228,12 +392,22 @@ async fn add_agents_counts(
     db: &StorageBackend,
     org_id: i64,
     agents: Vec<Agent>,
-) -> Result<Vec<ResourceWithCounts<Agent>>, (StatusCode, Json<ErrorResponse>)> {
-    try_join_all(
-        agents
-            .into_iter()
-            .map(|agent| add_agent_counts(db, org_id, agent)),
-    )
+    fallback_harness_name: Option<&str>,
+) -> Result<Vec<AgentWithCounts>, (StatusCode, Json<ErrorResponse>)> {
+    let mut harnesses = resolve_agent_harnesses(db, org_id, &agents, fallback_harness_name).await?;
+    try_join_all(agents.into_iter().map(|agent| {
+        let effective_harness =
+            harnesses
+                .remove(&agent.internal_id)
+                .unwrap_or(AgentHarnessSummary {
+                    id: None,
+                    name: None,
+                    display_name: None,
+                    source: AgentHarnessSource::Explicit,
+                    status: AgentHarnessStatus::Unresolved,
+                });
+        add_agent_counts(db, org_id, agent, effective_harness)
+    }))
     .await
 }
 
@@ -396,7 +570,7 @@ pub async fn create_agent(
     path = "/v1/agents",
     params(ListAgentsQuery),
     responses(
-        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<ResourceWithCounts<Agent>>>),
+        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<AgentWithCounts>>),
         (status = 500, description = "Internal server error")
     ),
     tag = "agents"
@@ -405,7 +579,7 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> ApiResult<PaginatedResponse<WithUrls<ResourceWithCounts<Agent>>>> {
+) -> ApiResult<PaginatedResponse<WithUrls<AgentWithCounts>>> {
     let result = crate::domains::agents::ListAgents {
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
@@ -415,7 +589,11 @@ pub async fn list_agents(
     .run(&state.ctx(&org))
     .await?;
 
-    let data = add_agents_counts(&state.db, org.org_id, result.data).await?;
+    let fallback_harness_name = state
+        .platform_definition
+        .harness_for_role(BuiltInHarnessRole::Default)
+        .map(|harness| harness.name.as_str());
+    let data = add_agents_counts(&state.db, org.org_id, result.data, fallback_harness_name).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
         PaginatedResponse::new(data, result.total, result.offset, result.limit).with_urls(&builder),
@@ -433,7 +611,7 @@ pub async fn list_agents(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Agent found", body = WithUrls<ResourceWithCounts<Agent>>),
+        (status = 200, description = "Agent found", body = WithUrls<AgentWithCounts>),
         (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
@@ -444,13 +622,20 @@ pub async fn get_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id_or_name): Path<String>,
-) -> ApiResult<WithUrls<ResourceWithCounts<Agent>>> {
+) -> ApiResult<WithUrls<AgentWithCounts>> {
     let agent = crate::domains::agents::GetAgent {
         id: agent_id_or_name,
     }
     .run(&state.ctx(&org))
     .await?;
-    let agent = add_agent_counts(&state.db, org.org_id, agent).await?;
+    let fallback_harness_name = state
+        .platform_definition
+        .harness_for_role(BuiltInHarnessRole::Default)
+        .map(|harness| harness.name.as_str());
+    let agent = add_agents_counts(&state.db, org.org_id, vec![agent], fallback_harness_name)
+        .await?
+        .pop()
+        .expect("single agent decoration must return one item");
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
 }

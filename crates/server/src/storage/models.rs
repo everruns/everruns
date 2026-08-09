@@ -456,6 +456,10 @@ pub struct AgentRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub harness_id: HarnessId,
+    /// Whether `harness_id` was explicitly selected or materialized from the
+    /// organization default for backward-compatible API responses.
+    #[sqlx(default)]
+    pub harness_source: String,
     /// Lazily-created identity principal subject for this agent (EVE-758).
     /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
     /// at which point an `agent_identities` row is created and linked so the
@@ -624,6 +628,7 @@ pub struct UpdateAgent {
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
     pub harness_id: Option<HarnessId>,
+    pub harness_source: Option<String>,
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
     pub forked_from_version_id: Option<everruns_core::AgentVersionId>,

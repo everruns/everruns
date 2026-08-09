@@ -1051,9 +1051,18 @@ async fn resolve_trigger_execution_context(
     let (agent_identity_id, owner) = ensure_identity_for_agent(db, org_id, agent)
         .await
         .map_err(classify_anyhow)?;
+    let harness_id = if agent.harness_source == "organization_default" {
+        db.get_organization_settings(org_id)
+            .await
+            .map_err(classify_anyhow)?
+            .and_then(|settings| settings.default_harness_id)
+            .unwrap_or(agent.harness_id)
+    } else {
+        agent.harness_id
+    };
 
     Ok(TriggerExecutionContext {
-        harness_id: agent.harness_id,
+        harness_id,
         owner_principal_id: owner.id,
         resolved_owner_user_id: owner.resolved_user_id,
         agent_identity_id: Some(agent_identity_id),

@@ -25,7 +25,8 @@ use everruns_core::{
 };
 use everruns_durable::UpdateField;
 use everruns_server::storage::models::{
-    CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings, UpdateSession,
+    CreateAgentRow, CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
+    UpdateSession,
 };
 use uuid::Uuid;
 
@@ -485,6 +486,153 @@ async fn test_list_agents() {
 
     let agents = data["data"].as_array().expect("Expected array");
     assert!(!agents.is_empty(), "Should have at least one agent");
+}
+
+#[tokio::test]
+async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
+    let server = TestServer::in_memory().await;
+    let generic_id: everruns_core::HarnessId = server.seed_generic_harness_id.parse().unwrap();
+    let base_id: everruns_core::HarnessId = server.seed_base_harness_id.parse().unwrap();
+
+    let explicit: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "explicit-harness-card",
+                "system_prompt": "Test",
+                "harness_id": generic_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let inherited: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "inherited-harness-card",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    // Change the default after creation so the assertion proves list/session
+    // resolution is dynamic rather than a read of the materialized harness_id.
+    server
+        .db
+        .patch_organization_settings(
+            everruns_core::DEFAULT_ORG_ID,
+            UpdateOrganizationSettings {
+                default_harness_id: everruns_durable::UpdateField::Set(base_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let missing_harness_id = everruns_core::HarnessId::new();
+    let missing_agent = server
+        .db
+        .create_agent(
+            everruns_core::DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: "missing-harness-card".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+                harness_id: missing_harness_id,
+                tags: vec![],
+                initial_files: json!([]),
+                tools: json!([]),
+                mcp_servers: json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let listed: Value = server
+        .get("/v1/agents?limit=200")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let find = |id: &str| {
+        listed["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|agent| agent["id"] == id)
+            .unwrap()
+    };
+
+    let explicit_item = find(explicit["id"].as_str().unwrap());
+    assert_eq!(
+        explicit_item["effective_harness"]["id"],
+        generic_id.to_string()
+    );
+    assert_eq!(
+        explicit_item["effective_harness"]["display_name"],
+        "Generic"
+    );
+    assert_eq!(explicit_item["effective_harness"]["source"], "explicit");
+    assert_eq!(explicit_item["effective_harness"]["status"], "active");
+
+    let inherited_item = find(inherited["id"].as_str().unwrap());
+    assert_eq!(
+        inherited_item["effective_harness"]["id"],
+        base_id.to_string()
+    );
+    assert_eq!(
+        inherited_item["effective_harness"]["source"],
+        "organization_default"
+    );
+
+    let missing_item = find(&missing_agent.public_id);
+    assert_eq!(
+        missing_item["effective_harness"]["id"],
+        missing_harness_id.to_string()
+    );
+    assert!(missing_item["effective_harness"]["name"].is_null());
+    assert_eq!(missing_item["effective_harness"]["status"], "unresolved");
+
+    server
+        .db
+        .delete_harness(everruns_core::DEFAULT_ORG_ID, generic_id)
+        .await
+        .unwrap();
+    server
+        .db
+        .destroy_harness(everruns_core::DEFAULT_ORG_ID, generic_id)
+        .await
+        .unwrap();
+    let relisted: Value = server
+        .get("/v1/agents?limit=200")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let deleted_item = relisted["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|agent| agent["id"] == explicit["id"])
+        .unwrap();
+    assert_eq!(deleted_item["effective_harness"]["status"], "deleted");
+
+    let session: everruns_core::Session = server
+        .post(
+            "/v1/sessions",
+            json!({ "agent_id": inherited["id"], "title": "Inherited harness proof" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(session.harness_id, base_id);
 }
 
 #[tokio::test]

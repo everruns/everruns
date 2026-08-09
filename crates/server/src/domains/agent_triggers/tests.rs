@@ -140,6 +140,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         system_prompt: String::new(),
         default_model_id: None,
         harness_id: agent_harness_id,
+        harness_source: "explicit".to_string(),
         agent_identity_id: None,
         default_version_id: None,
         forked_from_agent_id: None,
