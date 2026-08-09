@@ -14,13 +14,13 @@
 //!   unsupported errors for platform-management-only operations.
 //! - [`LocalProfile`] — named local env config (data dir, workspace, base URL,
 //!   org/principal identity).
-//! - [`LocalBackends`] — composable construction of `RuntimeBackends` + the
-//!   local stores, accepting a caller-provided event bus (via `RuntimeBackends`)
+//! - [`LocalBackends`] — composable construction of `HostBackends` + the
+//!   local stores, accepting a caller-provided event bus (via `HostBackends`)
 //!   and file system factory (via the embedder's `PlatformDefinition`).
 //! - [`LocalRuntimeBuilder`] — optional sugar over `InProcessRuntimeBuilder`.
 //!
 //! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
-//! [`everruns-runtime`](https://crates.io/crates/everruns-runtime), which owns
+//! [`everruns-host`](https://crates.io/crates/everruns-host), which owns
 //! the optional host-backend slots these stores populate.
 //!
 //! Framework applications normally select local behavior through the

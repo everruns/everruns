@@ -1,7 +1,7 @@
 // Live end-to-end test for background spawn_agent subagent delegation against a real LLM
 // through the runtime: InProcessRuntime + the local-host PlatformStore
 // (`everruns-local` owns the embeddable PlatformStore implementation the
-// subagent tools require; `everruns-runtime` deliberately has none) + the
+// subagent tools require; `everruns-host` deliberately has none) + the
 // SQLite LocalSessionTaskRegistry.
 //
 // No mocks anywhere in the loop:
@@ -25,12 +25,12 @@ use everruns_core::session::Session;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{CapabilityRegistry, MessageRole, PlatformDefinition};
-use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
-use everruns_platform::{PlatformMessage, PlatformStore};
-use everruns_runtime::{
-    AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, RuntimeBackends,
+use everruns_host::{
+    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
 };
+use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_platform::{PlatformMessage, PlatformStore};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -158,7 +158,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         .title("live parent")
         .build();
 
-    let backends = RuntimeBackends::in_memory();
+    let backends = HostBackends::in_memory();
     let sessions = backends.session_store.clone();
     let registry: Arc<dyn SessionTaskRegistry> = Arc::new(
         LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().expect("sqlite"))

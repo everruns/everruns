@@ -344,7 +344,7 @@ impl ResolvedMount {
 ///
 /// This is the single, shared way the reason path
 /// ([`crate::runtime_context::assemble_turn_context`]) and the executor path
-/// (`everruns_runtime`'s `load_execution_capabilities`) build their prompt
+/// (`everruns_host`'s `load_execution_capabilities`) build their prompt
 /// file store. Both used to inline `MountFs::wrap(WorkspaceScopedFileSystem::…)`
 /// separately; they drifted from the tool-execution (`act`) path — which wraps
 /// with [`MountFs::wrap_if_needed`] — so a local embedder's real host paths

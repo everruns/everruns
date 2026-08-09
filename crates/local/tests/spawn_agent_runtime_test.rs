@@ -4,10 +4,10 @@
 //
 // This is the "Runtime proof" the EVE-677 spec asked for — spawning a subagent
 // AND a handoff via `InProcessRuntimeBuilder`, asserting the returned task and
-// the child result. It lives in `everruns-local`, not `everruns-runtime`,
+// the child result. It lives in `everruns-local`, not `everruns-host`,
 // because the embeddable `PlatformStore` the delegation tools require lives here
-// (`everruns-runtime` deliberately has none — see `LocalPlatformStore`). Adding
-// `everruns-local` as a dev-dependency of `everruns-runtime` would form a
+// (`everruns-host` deliberately has none — see `LocalPlatformStore`). Adding
+// `everruns-local` as a dev-dependency of `everruns-host` would form a
 // publish-hostile crate cycle, so the proof sits on this side of the seam, the
 // same reason the live sibling test lives in `everruns-llm-tests`.
 //
@@ -43,12 +43,12 @@ use everruns_core::{
     AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, PlatformDefinition,
     ResolvedModel, ToolCall,
 };
-use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
-use everruns_platform::{PlatformMessage, PlatformStore};
-use everruns_runtime::{
-    AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, RuntimeBackends,
+use everruns_host::{
+    AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
 };
+use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_platform::{PlatformMessage, PlatformStore};
 
 /// Substrings that steer the content-keyed llmsim: a parent prompt containing
 /// one of these makes the model emit the matching `spawn_agent` call. Child
@@ -293,7 +293,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .max_iterations(4)
         .build();
 
-    let backends = RuntimeBackends::in_memory();
+    let backends = HostBackends::in_memory();
     let sessions = backends.session_store.clone();
     let registry: Arc<dyn SessionTaskRegistry> = Arc::new(
         LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().expect("sqlite"))

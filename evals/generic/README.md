@@ -2,11 +2,12 @@
 
 A [Mira](https://github.com/everruns/mira) eval **study** of generic agent
 behavior — instruction following, structured output, reasoning, extraction,
-multi-turn state, file/shell/time tool use, and tool safety — run **directly on
-the local `everruns-runtime`**, in-process. No server, no HTTP, no database.
+multi-turn state, file/shell/time tool use, and tool safety — run **directly
+through the local `everruns` Framework**, in-process. No server, no HTTP, no
+database.
 
 Its main uses are **regression testing** (the crate path-depends on the working
-tree's `crates/runtime` and `crates/core`, so a run always evaluates your local
+tree's Framework and provider crates, so a run always evaluates your local
 changes, not a published snapshot) and **evaluating new features and
 capabilities** (add a config or harness profile, run the same dataset, compare).
 
@@ -17,7 +18,7 @@ reporting (JSON / JUnit / Markdown / self-contained HTML). This crate is the
 ```text
 dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──► scorers
  (portable       target × effort ×    builds a fresh           expected_tools / forbidden_tools
-  Mira samples)  harness × config     InProcessRuntime         response_matches / response_avoids
+  Mira samples)  harness × config     Agent + Session          response_matches / response_avoids
                  matrix               per case, in-process     file_expectations / tool_call_budget
 ```
 
@@ -25,12 +26,11 @@ dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──►
 
 The [`platform-capability`](../platform-capability) study drives a live server
 because its capability needs DB-backed platform stores. This study measures
-*generic* agent behavior, which the runtime alone provides — so it embeds
-[`everruns-runtime`](../../crates/runtime) directly ([`src/subject.rs`](src/subject.rs)):
-each case builds a fresh `InProcessRuntime` (in-memory backends, code-built
-harness), runs the sample's turns, and normalizes the runtime's event stream
-into a Mira `Transcript`. Faster, hermetic, and it exercises exactly the code
-in your working tree.
+*generic* agent behavior, which the Framework provides in-process — so it uses
+[`everruns`](../../crates/everruns) directly ([`src/subject.rs`](src/subject.rs)).
+Each case builds a fresh `Agent` and `Session`, runs the sample's turns, and
+normalizes the session event stream into a Mira `Transcript`. It is fast,
+hermetic, and exercises exactly the code in your working tree.
 
 ## The matrix
 
@@ -157,7 +157,7 @@ subject error; infra faults score N/A and are retried). Skipped cases
   expect sub-100% scores from good models. Track the trend, not the absolute.
 - **Effort × model support varies.** e.g. `xhigh` is not available on every
   model; such cases fail with a provider error rather than being skipped.
-- **`bashkit_shell` is the runtime's virtual shell** over the in-memory session
+- **`bashkit_shell` is the Framework's virtual shell** over the session
   filesystem — behavior can differ from a real sandbox shell.
 
 ## Development

@@ -1,6 +1,6 @@
 # Standalone workspace: this crate is intentionally detached from the everruns
 # workspace so it does not pull mira-eval into the main build. It path-depends
-# on the LOCAL runtime/core/driver crates so a run always evaluates the working
+# on the local Framework/provider crates so a run always evaluates the working
 # tree (regression testing), not a published snapshot. Build it in place
 # (`cargo build`) or run it via the `mira` host CLI.
 [workspace]
@@ -10,7 +10,7 @@ name = "everruns-generic-evals"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.94.0"
-description = "Mira eval study: generic agent cases run directly on everruns-runtime (no server)"
+description = "Mira eval study: generic agent cases run through the Everruns Framework (no server)"
 publish = false
 
 [[bin]]
@@ -19,8 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 mira-eval = "0.4"
-everruns-core = { path = "../../crates/core" }
-everruns-runtime = { path = "../../crates/runtime" }
+everruns = { path = "../../crates/everruns" }
 everruns-anthropic = { path = "../../crates/anthropic" }
 everruns-openai = { path = "../../crates/openai" }
 everruns-openrouter = { path = "../../crates/openrouter" }
@@ -28,3 +27,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"
 serde_json = "1"
 regex = "1"
 async-trait = "0.1"
+tempfile = "3"

@@ -25,7 +25,7 @@ impl LocalSessionRunner for FakeRunner {
         parent_session_id: Option<SessionId>,
     ) -> Result<Session> {
         let id = SessionId::new();
-        let mut s = everruns_runtime::SessionBuilder::new(harness_id)
+        let mut s = everruns_host::SessionBuilder::new(harness_id)
             .id(id)
             .title(title.unwrap_or("child"))
             .build();

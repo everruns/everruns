@@ -19,7 +19,7 @@ use everruns_durable::{
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
     record_activity_started,
 };
-use everruns_runtime::{
+use everruns_host::{
     RuntimeActPlan, RuntimeTurnPlan, execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity, plan_next_host_turn,

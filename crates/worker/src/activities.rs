@@ -14,7 +14,7 @@
 
 use anyhow::{Context, Result};
 use everruns_core::PlatformDefinition;
-use everruns_runtime::{
+use everruns_host::{
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
