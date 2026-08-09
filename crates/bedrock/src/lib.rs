@@ -2,6 +2,8 @@
 //!
 //! `everruns-bedrock` implements the [`ChatDriver`] contract from `everruns-core`
 //! using the AWS Bedrock Runtime `ConverseStream` API.
+//! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
+//! the application-facing `everruns` crate.
 //!
 //! Credentials are encoded as JSON in the `api_key` field:
 //! ```json

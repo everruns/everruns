@@ -1,11 +1,16 @@
-//! Brave Search Integration (Experimental)
+//! Brave Search web search for Everruns agents.
 //!
-//! Web search via Brave Search REST API.
-//! Provides `brave_web_search` tool for agents to search the web.
+//! This integration contributes a `brave_web_search` tool and its connection
+//! provider to the [Everruns](https://everruns.com) ecosystem.
 //!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: API key resolved via user connections (provider: "brave_search"), fallback to session secrets
-//! Decision: Stateless — no per-resource state management needed
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_brave_search::BraveSearchCapability;
+//!
+//! let capability = BraveSearchCapability;
+//! # let _ = capability;
+//! ```
 
 pub mod client;
 pub mod connection;

@@ -16,43 +16,24 @@ onto the OpenAI wire format.
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
-models, or run with no key at all using the built-in LLM simulator in
-[`everruns-runtime`](https://crates.io/crates/everruns-runtime).
+models. Framework applications use the application-facing
+[`everruns`](https://crates.io/crates/everruns) crate; its simulator runs
+offline without a key.
 
 ## Quick Example: Agent With OpenAI
 
 ```rust,no_run
-use everruns_core::{
-    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
-};
-use everruns_runtime::InProcessRuntimeBuilder;
+use everruns::{Agent, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut drivers = DriverRegistry::new();
-    everruns_openai::register_driver(&mut drivers);
-
-    let platform = PlatformDefinition::new(CapabilityRegistry::new(), drivers);
-    let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
-        .default_model(ResolvedModel {
-            model: "gpt-5.4-mini".into(),
-            provider_type: DriverId::OpenAI,
-            api_key: Some(std::env::var("OPENAI_API_KEY")?),
-            base_url: None,
-            provider_metadata: None,
-        })
-        .single_session(|s| {
-            s.harness("assistant", "You are a helpful assistant.")
-                .agent("openai-agent", "Answer clearly and concisely.")
-                .session_title("OpenAI example")
-        })
-        .build()
-        .await?;
-
-    let session_id = runtime.default_session_id().expect("single_session id");
-    let result = runtime
-        .run_text_turn(session_id, "Write one sentence about reliable agents.")
+    let agent = Agent::builder()
+        .instructions("Answer clearly and concisely.")
+        .model(OpenAI::from_env("gpt-5.6-terra")?)
+        .build()?;
+    let result = agent
+        .session()
+        .run("Write one sentence about reliable agents.")
         .await?;
 
     println!("{}", result.response);
@@ -80,6 +61,7 @@ assert!(!driver.uses_custom_url());
 
 - [API reference (docs.rs)](https://docs.rs/everruns-openai)
 - [OpenAI provider guide](https://docs.everruns.com/providers/openai/)
+- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

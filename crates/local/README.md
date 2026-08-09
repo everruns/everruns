@@ -6,11 +6,10 @@
 [![Documentation](https://docs.rs/everruns-local/badge.svg)](https://docs.rs/everruns-local)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-local` populates the optional host-backend slots of
-[`everruns-runtime`](https://crates.io/crates/everruns-runtime) with local,
-file-backed implementations. The runtime ships in-memory by default; this crate
-swaps in durable, SQLite-backed stores so a freshly-spawned process can read,
-continue, and inspect work an earlier process started.
+`everruns-local` supplies local filesystem configuration and SQLite-backed task
+and schedule state. Framework applications access the high-level profile
+through the `everruns` crate's `local` feature; advanced hosts can compose the
+focused backends directly with `everruns-runtime`.
 
 The runtime stays generic and owns only the seams — durable local storage
 choices live here, behind an opt-in crate, so embedders (terminal coding agents,
@@ -41,15 +40,15 @@ harness engine for building unstoppable agents.
   factory.
 - **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`.
 
-Task and message state persists to a SQLite file, so process restarts survive:
-the next process picks up exactly where the last one left off.
+Task and schedule state persists to SQLite. Conversation history is a separate
+concern and is not made durable merely by selecting this crate.
 
 ## Install
 
 Requires Rust 1.94+ (edition 2024).
 
 ```bash
-cargo add everruns-runtime everruns-local
+cargo add everruns --features local
 ```
 
 ## Quick Example
@@ -104,7 +103,8 @@ embedded turns.
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-local)
-- [Runtime — embed Everruns in your process](https://docs.everruns.com/features/runtime/#local-backends)
+- [Framework persistence](https://docs.everruns.com/framework/persistence/)
+- [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

@@ -20,7 +20,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
 //! use everruns_core::capabilities::TestMathCapability;
 //!

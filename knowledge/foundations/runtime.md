@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Runtime Specification"
-description: "The agentic runtime: in-process agentic-framework entrypoint and embedded-execution contract."
+description: "The low-level execution host and 0.17.x embedded-runtime compatibility contract."
 tags:
   - everruns
   - foundations
@@ -10,8 +10,10 @@ tags:
 
 ## Abstract
 
-`everruns-runtime` is the agentic runtime for Everruns — the public entrypoint
-to the Everruns agentic framework.
+`everruns-runtime` is the low-level execution host and supported 0.17.x
+compatibility crate. The application-facing entrypoint is the `everruns` crate
+and the Everruns Framework; its purpose and terminology are owned by
+[knowledge/framework/](../framework/).
 
 It lets embedders run sessions inside their own process without the durable
 execution engine, gRPC worker boundary, or control-plane server. It also owns
@@ -23,7 +25,8 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Goals
 
-1. Provide a supported public crate for in-process execution.
+1. Preserve a supported low-level public crate for in-process execution and
+   existing 0.17.x applications.
 2. Let embedders supply their own `PlatformDefinition` with custom capabilities,
    LLM drivers, and built-in harness templates.
 3. Run without PostgreSQL, NATS, or the durable engine.
@@ -36,7 +39,8 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Position in the Stack
 
-`everruns-runtime` sits above `everruns-core` and below any host application.
+`everruns-runtime` sits above `everruns-core` and below Framework adaptation or
+any host application.
 
 - `everruns-core` owns atoms, traits, capabilities, event types, and shared
   domain/runtime types.

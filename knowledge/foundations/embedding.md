@@ -17,7 +17,8 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 ## Goals
 
 1. Let downstream Rust services start from `ServerAppBuilder` and `WorkerAppBuilder` instead of forking Everruns binaries.
-2. Let downstream Rust services run Everruns harnesses directly in-process through `everruns-runtime`.
+2. Let downstream Rust services run application-facing agents through the
+   Framework, while specialized hosts retain low-level in-process composition.
 3. Let embedders add or remove built-in runtime components without patching internal call sites.
 4. Keep server startup, worker execution, org initialization, and seeding consistent by reading from the same definition.
 5. Preserve the existing OSS experience through default presets.
@@ -44,15 +45,17 @@ live filesystem.
 
 ## In-process Runtime
 
-Embedders that want to execute harnesses in their own process, without the
-durable engine or control-plane server, should use `everruns-runtime` — the
-agentic runtime and in-process entrypoint to the agentic framework.
+Applications that want to run agents in their own process, without the durable
+engine or control-plane server, should use the application-facing `everruns`
+crate and the Everruns Framework. This document owns the lower-level
+`PlatformDefinition` composition contract, not the normal application path.
 
-`everruns-runtime` consumes the same `PlatformDefinition` type and uses the
-shared core atoms and turn state machine. This keeps embedded execution aligned
-with the worker/runtime behavior while exposing a simpler embedder-facing API.
+Advanced hosts and existing 0.17.x applications may use `everruns-runtime`. It
+consumes the same `PlatformDefinition` type and shared core turn execution,
+keeping low-level in-process hosts aligned with worker behavior.
 
-See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runtime contract.
+See [knowledge/framework/](../framework/) for application-facing ownership and
+[the runtime specification](runtime.md) for the low-level compatibility contract.
 
 ### Built-in Harness Templates
 

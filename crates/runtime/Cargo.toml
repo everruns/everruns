@@ -1,6 +1,5 @@
-# The agentic runtime: the in-process entrypoint to the Everruns agentic framework.
-# Decision: first public runtime is in-memory by default so embedders can run
-# harnesses in-process without the durable engine or control-plane services.
+# Low-level in-process execution host and 0.17.x compatibility crate.
+# In-memory defaults let host implementers run without durable/control-plane services.
 
 [package]
 name = "everruns-runtime"
@@ -12,7 +11,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-runtime"
-description = "The agentic runtime for Rust — the in-process entrypoint to the Everruns agentic framework, for building coding agents, personal agents, and more"
+description = "Low-level in-process execution host and 0.17.x compatibility crate for Everruns"
 readme = "README.md"
 keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]

@@ -1,14 +1,16 @@
-//! Deno Sandbox Integration.
+//! Deno cloud sandboxes for Everruns agents.
 //!
-//! Cloud-based sandboxed code execution via Deno Sandboxes.
-//! Supports multiple sandboxes per session, each identified by `sandbox_id`.
+//! This integration contributes tools for creating, managing, and using Deno
+//! sandboxes to the [Everruns](https://everruns.com) ecosystem.
 //!
-//! Decision: model the public tool surface after Daytona so agents can switch
-//! between cloud sandboxes with minimal prompt changes.
-//! Decision: BYO connection model — credentials resolve from user connection only;
-//!   no env-var fallback. Fail with ConnectionRequired if not configured.
-//! Decision: create sandboxes with a fixed timeout instead of Deno's default
-//! `session` lifetime because Everruns closes the creator websocket after each tool.
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_deno::DenoCapability;
+//!
+//! let capability = DenoCapability;
+//! # let _ = capability;
+//! ```
 
 pub mod client;
 pub mod connection;

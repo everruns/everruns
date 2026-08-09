@@ -123,4 +123,4 @@ Workers do not require coordination — add as many as you need, in as many regi
 - [Architecture (Getting Started)](/getting-started/architecture/) — the logical model
 - [Environment Variables](/sre/environment-variables/) — every knob and its default
 - [Docker Compose](/getting-started/docker-compose/) — a production-shaped local setup
-- [Embedding Everruns](/advanced/embedding-everruns/) — running the same components in-process
+- [Custom backends](/framework/custom-backends/) — low-level execution-host composition

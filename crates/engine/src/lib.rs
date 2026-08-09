@@ -1,11 +1,10 @@
-//! The turn engine: the sans-IO turn planner for the Everruns agentic runtime.
+//! Deterministic, sans-I/O turn planning for Everruns execution hosts.
 //!
-//! `everruns-engine` owns the authoritative, deterministic turn-planning brain
-//! for the Sans-IO Turn State epic
-//! (`knowledge/foundations/sans-io-turn-state.md`). Given a serializable
-//! [`TurnState`], a parsed [`ActivityOutcome`], and any host-resolved
-//! [`HostFacts`], its pure functions return the next [`TurnPlan`] together with
-//! the [`TurnLifecycleEffect`]s the host must perform.
+//! Given a serializable [`TurnState`], parsed [`ActivityOutcome`], and
+//! host-resolved [`HostFacts`], its pure functions return the next [`TurnPlan`]
+//! and [`TurnLifecycleEffect`]s. Framework applications use `everruns`; this
+//! focused crate lets runtime, worker, durable, and custom hosts in the
+//! [Everruns](https://everruns.com) ecosystem share one turn model.
 //!
 //! The engine performs no I/O: no stores, sockets, process execution, event
 //! emission, or `Utc::now()`. Hosts resolve those facts, pass `now` in, call the
@@ -13,8 +12,14 @@
 //! table tests over values, and lets an in-process host and a durable host share
 //! one implementation of turn semantics.
 //!
-//! The dependency direction is strictly `engine -> core`; the engine never
-//! depends on runtime/server/worker/platform/durable.
+//! # Example
+//!
+//! ```
+//! use everruns_engine::{TurnPlan, TurnState};
+//!
+//! fn accepts_plan(_state: &TurnState, _plan: &TurnPlan) {}
+//! # let _ = accepts_plan;
+//! ```
 
 mod turn;
 

@@ -103,7 +103,9 @@ Production event routing therefore prefers:
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, egress service, internal system services, shared types). Depends on and re-exports `everruns-provider`.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
-   - `runtime/` → `everruns-runtime` - The agentic runtime: in-process entrypoint to the agentic framework, plus reusable host-phase execution for embedded and durable/server-backed execution
+   - `everruns/` → `everruns` - The application-facing Everruns Framework crate
+   - `runtime/` → `everruns-runtime` - Low-level in-process execution host, reusable host-phase execution, and 0.17.x compatibility crate
+   - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
@@ -129,7 +131,9 @@ everruns/
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Shared abstractions and types
 │   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
-│   ├── runtime/          # Public in-process embedded runtime
+│   ├── everruns/         # Application-facing Framework crate
+│   ├── runtime/          # Low-level execution host and 0.17.x compatibility
+│   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
 │   ├── openai/           # OpenAI provider

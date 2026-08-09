@@ -1,21 +1,18 @@
-//! The application-facing entrypoint to the [Everruns](https://everruns.com)
-//! agentic framework.
+//! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
-//! `everruns` is a thin, publishable facade over the existing in-process
-//! runtime. It re-exports the minimum needed to construct and run a session
-//! without depending on `everruns-core` or `everruns-runtime` directly, so an
-//! application can add a single dependency and run an agent turn.
+//! Build agents, attach open model/provider configuration and typed tools, run
+//! isolated multi-turn sessions, observe events, cancel work, and inspect the
+//! next model context without constructing an execution host. Default features
+//! stay offline; the deterministic simulator needs no credentials or network.
 //!
-//! This first release is a **compatibility facade**: it moves no engine code.
-//! Default features stay offline — no provider, MCP, filesystem, SQLx, server,
-//! or worker integrations are activated. Anything not yet promoted onto the
-//! facade is reachable through the escape-hatch [`core`] and [`runtime`]
-//! modules.
+//! `everruns` is the primary Rust library in the
+//! [Everruns](https://everruns.com) ecosystem. Existing low-level and 0.17.x
+//! applications may continue using `everruns-runtime`; new ordinary
+//! applications should begin here.
 //!
 //! # Example
 //!
-//! Build one in-process session and run one simulated turn, importing only
-//! `everruns`:
+//! Run one simulated turn, importing only `everruns`:
 //!
 //! ```
 //! # #[tokio::main]

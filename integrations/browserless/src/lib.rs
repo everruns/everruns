@@ -1,19 +1,17 @@
-//! Browserless Integration
+//! Browserless cloud browser automation for Everruns agents.
 //!
-//! Cloud browser automation via Browserless REST API and CDP (WebSocket) sessions.
-//! Supports screenshots, DOM reading, structured scraping, and multi-step
-//! interactions (click, type, keyboard, mouse, touch).
+//! This integration contributes REST and CDP tools for screenshots, DOM reads,
+//! scraping, and multi-step browser interaction to the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
-//! Two modes:
-//! - **REST** (default): Each tool call uses a fresh ephemeral browser. No state, no cleanup.
-//! - **CDP sessions**: `browserless_open_browser` opens a persistent browser via WebSocket.
-//!   Subsequent tool calls reuse it (preserving login, cookies, navigation history).
-//!   `browserless_close_browser` releases the browser.
+//! # Example
 //!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: REST for one-shot operations, CDP WebSocket for persistent browser sessions
-//! Decision: /function endpoint for multi-step interactions (click, type, navigate)
-//! Decision: CDP sessions use Browserless.reconnect to keep browser alive between tool calls
+//! ```
+//! use everruns_integrations_browserless::BrowserlessCapability;
+//!
+//! let capability = BrowserlessCapability;
+//! # let _ = capability;
+//! ```
 
 pub mod cdp;
 pub mod client;

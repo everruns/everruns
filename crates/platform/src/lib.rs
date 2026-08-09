@@ -1,40 +1,25 @@
-//! Backend platform entities for Everruns.
+//! Backend control-plane entities and store contracts for the Everruns Platform.
 //!
-//! `everruns-platform` owns the durable backend aggregates and
-//! accounting/observability records that were historically defined in
-//! [`everruns-core`](https://docs.rs/everruns-core). It was carved out in
-//! EVE-837 (identity: [`Organization`], [`Principal`]) and extended in EVE-838
-//! (payment/reporting/audit records) to give the backend platform family its
-//! own crate without disturbing the runtime-facing contract in `everruns-core`.
+//! This crate owns organization, principal, app/channel, trigger, payment,
+//! reporting, audit, and hosted-management values used by server and platform
+//! backends. It is part of the [Everruns](https://everruns.com) ecosystem;
+//! normal Framework applications use `everruns` rather than platform records.
 //!
-//! # Dependency direction
+//! # Example
 //!
-//! The dependency edge is strictly `platform -> core`. `everruns-core` never
-//! depends on `everruns-platform`; that invariant is enforced by
-//! `crates/core/tests/no_platform_dependency.rs`.
+//! ```
+//! use everruns_platform::{Organization, Principal};
 //!
-//! # Types that stay in core
+//! fn accepts_platform_values(_organization: &Organization, _principal: &Principal) {}
+//! # let _ = accepts_platform_values;
+//! ```
 //!
-//! Cross-cutting value types that core's runtime, permissions layer, and domain
-//! models embed remain in `everruns-core` and are re-exported here so consumers
-//! can reach the whole surface through `everruns_platform`:
+//! # Layer boundary
 //!
-//! - [`OrgRole`] and the `DEFAULT_ORG_*` constants plus the internal<->public id
-//!   conversion helper — used by core's permissions/auth layer during a turn.
-//! - [`PrincipalKind`], [`PrincipalSummary`] — embedded in
-//!   `Session`/`SessionSchedule`/`AgentIdentity`.
-//! - The capability-internal payment execution contract (`PaymentRail`,
-//!   `PaymentMethod`, `MachinePaymentRequest`, `MachinePaymentResponse`) — bound
-//!   to core's `PaymentAuthority` trait and `ToolContext`. Re-exported from
-//!   [`payment`].
-//!
-//! # Identity values owned here (EVE-845)
-//!
-//! [`OrgMembership`], the `ANONYMOUS_USER_*` seed constants, the org public-id
-//! generation/validation helpers ([`generate_org_public_id`],
-//! [`validate_org_public_id`]), and the [`PrincipalStatus`] lifecycle enum are
-//! defined in this crate: no core code names them, so they moved out of the
-//! runtime-facing contract in `everruns-core`.
+//! Backend/API-only records live here. Cross-cutting identity and payment
+//! values needed during a turn remain in `everruns-core` and are re-exported
+//! where a unified platform-facing import is useful. The dependency direction
+//! remains `platform -> core`.
 
 pub mod audit;
 pub mod organization;

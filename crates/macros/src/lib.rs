@@ -7,6 +7,19 @@
 //! this crate. All code the macro emits is resolved through
 //! `::everruns::__macro_support::…`, so no direct dependency on `serde`,
 //! `schemars`, or `serde_json` is required in the calling crate.
+//! It is part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! Applications use the re-export from `everruns`; this implementation crate
+//! exposes the same attribute symbol:
+//!
+//! ```
+//! use everruns_macros::tool;
+//!
+//! let macro_name = stringify!(tool);
+//! assert_eq!(macro_name, "tool");
+//! ```
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -29,7 +42,7 @@ use syn::{
 /// [`FunctionTool`](../everruns/struct.FunctionTool.html); the original body
 /// runs when the model calls the tool.
 ///
-/// ```ignore
+/// ```text
 /// use everruns::{Agent, Model};
 /// use serde::{Deserialize, Serialize};
 ///

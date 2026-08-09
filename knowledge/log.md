@@ -2,6 +2,12 @@
 
 ## 2026-08-09
 
+* **Framework knowledge ownership**: Defined the application-facing purpose,
+  canonical Framework/Runtime/SDKs/Platform terminology, open provider
+  boundary, library-experience success bars, and documentation/example contract;
+  reframed the foundations runtime specification as low-level 0.17.x host
+  compatibility.
+
 * **Framework application boundary**: Established the Framework knowledge
   collection and classified workspace, MCP, plugins, context inspection,
   event-derived history/resume, and schedules as application concerns while

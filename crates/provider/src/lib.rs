@@ -1,20 +1,22 @@
-//! `everruns-provider` — the provider/LLM abstraction foundation.
+//! Lean provider and LLM abstractions shared by the
+//! [Everruns Framework](https://docs.everruns.com/framework/) and provider crates.
 //!
-//! This crate holds the driver-facing types and traits shared by
-//! `everruns-core` and the individual provider crates (OpenAI, Anthropic,
-//! Gemini, …): the `ChatDriver` interface, the shared OpenAI/OpenResponses
-//! protocol drivers, model profiles, retry/stream helpers, typed IDs, the
-//! credential form schema, and the LLM error taxonomy.
+//! This crate owns credential-free model identity, the [`ChatDriver`] boundary,
+//! provider assembly, shared protocol drivers, stream/retry helpers, model
+//! profiles, typed IDs, credential schemas, and the LLM error taxonomy. It is a
+//! focused implementation crate in the [Everruns](https://everruns.com)
+//! ecosystem; application authors normally use its re-exports through
+//! `everruns`.
 //!
-//! The goal is that provider crates depend on this crate instead of on
-//! `everruns-core`, so a provider is a pure `ChatDriver` implementation with no
-//! dependency on core's agent-loop runtime.
+//! # Example
 //!
-//! `everruns-core` depends on this crate and re-exports these modules at their
-//! original paths, so existing `everruns_core::…` imports keep working. The
-//! adapters that convert core's agent-loop domain types (`Message`,
-//! `RuntimeAgent`, `ResolvedModel`) into these driver types live in
-//! `everruns-core` (`llm_conversions`), keeping the dependency one-directional.
+//! ```
+//! use everruns_provider::ModelSpec;
+//!
+//! let model = ModelSpec::on("company-gateway", "assistant-v2");
+//! assert_eq!(model.provider.as_str(), "company-gateway");
+//! assert_eq!(model.model, "assistant-v2");
+//! ```
 
 pub mod credential_schema;
 pub mod driver_helpers;

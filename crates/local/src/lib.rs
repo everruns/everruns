@@ -22,6 +22,20 @@
 //! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
 //! [`everruns-runtime`](https://crates.io/crates/everruns-runtime), which owns
 //! the optional host-backend slots these stores populate.
+//!
+//! Framework applications normally select local behavior through the
+//! application-facing `everruns` crate. Advanced hosts use these focused types
+//! directly. Both are part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_local::LocalProfile;
+//!
+//! let profile = LocalProfile::new("/var/lib/everruns")
+//!     .with_workspace_root("/var/lib/everruns/workspace");
+//! assert_eq!(profile.data_dir(), std::path::Path::new("/var/lib/everruns"));
+//! ```
 
 mod backends;
 mod db;

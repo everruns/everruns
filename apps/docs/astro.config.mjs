@@ -29,6 +29,10 @@ export default defineConfig({
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
     // generic-tool-search page renamed to tool-search
     "/capabilities/generic-tool-search/": "/capabilities/tool-search/",
+    // Application users now enter through the Framework section. Keep the
+    // former runtime and embedding routes durable for inbound links.
+    "/features/runtime/": "/framework/runtime-compatibility/",
+    "/advanced/embedding-everruns/": "/framework/custom-backends/",
   },
   vite: {
     resolve: {
@@ -55,7 +59,7 @@ export default defineConfig({
       },
       title: "Everruns",
       description:
-        "Documentation for Everruns, a durable agentic harness engine for AI agents. Guides for deploying, configuring, and building agent applications with the API.",
+        "Build in-process agents with the Everruns Framework or deploy and operate the durable Everruns Platform.",
       routeMiddleware: "./src/routeData.ts",
       logo: {
         src: "./src/assets/logo.svg",
@@ -149,6 +153,46 @@ export default defineConfig({
                 {
                   label: "Advanced",
                   items: [{ autogenerate: { directory: "advanced" } }],
+                },
+              ],
+            },
+            {
+              label: "Framework",
+              link: "/framework/",
+              icon: "rocket",
+              items: [
+                {
+                  label: "Start",
+                  items: [
+                    { label: "Overview", slug: "framework" },
+                    { label: "Quickstart", slug: "framework/quickstart" },
+                  ],
+                },
+                {
+                  label: "Core APIs",
+                  items: [
+                    { label: "Agents", slug: "framework/agents" },
+                    { label: "Models and Providers", slug: "framework/models-and-providers" },
+                    { label: "Tools and Macros", slug: "framework/tools-and-macros" },
+                    { label: "Sessions", slug: "framework/sessions" },
+                    { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
+                    { label: "Persistence", slug: "framework/persistence" },
+                  ],
+                },
+                {
+                  label: "Extend",
+                  items: [
+                    { label: "Custom Providers", slug: "framework/custom-providers" },
+                    { label: "Custom Backends", slug: "framework/custom-backends" },
+                    { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
+                    { label: "Runnable Examples", slug: "framework/examples" },
+                  ],
+                },
+                {
+                  label: "Compatibility",
+                  items: [
+                    { label: "Runtime Compatibility", slug: "framework/runtime-compatibility" },
+                  ],
                 },
               ],
             },
