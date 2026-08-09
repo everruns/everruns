@@ -108,6 +108,9 @@ for crate in published:
 # drops a crate from the list fails loudly rather than silently passing.
 for earlier, later in (
     ("everruns-core", "everruns-engine"),
+    ("everruns-core", "everruns-host"),
+    ("everruns-mcp", "everruns-host"),
+    ("everruns-host", "everruns-runtime"),
     ("everruns-engine", "everruns-runtime"),
     ("everruns-macros", "everruns"),
 ):
@@ -121,6 +124,9 @@ for earlier, later in (
 # The workflow's own version verification must cover the same edges.
 for manifest_rel, dependency in (
     ("crates/engine/Cargo.toml", "everruns-core"),
+    ("crates/host/Cargo.toml", "everruns-core"),
+    ("crates/host/Cargo.toml", "everruns-mcp"),
+    ("crates/runtime/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
 ):
     entry = re.search(

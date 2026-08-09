@@ -62,7 +62,15 @@ mod backends;
 mod builders;
 mod file_store_decorators;
 mod grep_limits;
-mod host;
+mod host {
+    // 0.17 compatibility: the implementation lives in `everruns-host`, while
+    // runtime-internal imports and old public paths keep resolving here.
+    pub use everruns_host::{
+        RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
+        detect_dependency_blocker, execute_act_activity, execute_input_activity,
+        execute_reason_activity, execute_reason_activity_with_prompt_messages,
+    };
+}
 mod in_memory;
 mod mcp;
 mod mcp_cache;
