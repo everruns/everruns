@@ -12,6 +12,7 @@
 
 use std::collections::HashSet;
 use std::fmt;
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -254,6 +255,7 @@ pub struct Agent {
     plugin_warnings: Vec<String>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
+    lifecycle_hooks: crate::hooks::LifecycleHooks,
 }
 
 impl Agent {
@@ -281,11 +283,20 @@ impl Agent {
     /// agent.
     ///
     /// The session is lazy: the in-process runtime is assembled on the first
-    /// [`Session::run`](crate::Session::run). Each session gets a fresh id and
-    /// its own history, so two sessions from the same agent never share
+    /// [`Session::run`](crate::Session::run) or
+    /// [`Session::inspect`](crate::Session::inspect). Each session gets a fresh
+    /// id and its own history, so two sessions from the same agent never share
     /// conversation state, and cloning an `Agent` never shares history.
     pub fn session(&self) -> crate::Session {
         crate::Session::new(self.clone(), SessionId::new())
+    }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub(crate) fn lifecycle_hooks(&self) -> crate::hooks::LifecycleHooks {
+        self.lifecycle_hooks.clone()
     }
 
     /// Open a new persisted session backed by `store` (EVE-836).
@@ -335,9 +346,15 @@ impl Agent {
         session_id: SessionId,
         event_bus: Arc<dyn EventBus>,
         message_store: Option<Arc<dyn RuntimeMessageStore>>,
+        hook_state: Arc<crate::hooks::HookRunState>,
     ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
-        self.build_runtime_with_backends(session_id, Some(event_bus), message_store)
-            .await
+        self.build_runtime_with_backends(
+            session_id,
+            Some(event_bus),
+            message_store,
+            Some(hook_state),
+        )
+        .await
     }
 
     pub(crate) fn plugin_warnings(&self) -> Vec<String> {
@@ -349,9 +366,20 @@ impl Agent {
         session_id: SessionId,
         event_bus: Option<Arc<dyn EventBus>>,
         message_store: Option<Arc<dyn RuntimeMessageStore>>,
+        hook_state: Option<Arc<crate::hooks::HookRunState>>,
     ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
-        let mut harness = HarnessBuilder::new(&self.name, &self.instructions)
-            .capabilities(self.capabilities.clone());
+        let hook_capability = hook_state.and_then(|state| state.capability());
+        let mut capabilities = self.capabilities.clone();
+        if hook_capability.is_some() {
+            capabilities.retain(|capability| {
+                capability.capability_id() != crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID
+            });
+            capabilities.push(AgentCapabilityConfig::new(
+                crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
+            ));
+        }
+        let mut harness =
+            HarnessBuilder::new(&self.name, &self.instructions).capabilities(capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             harness = harness.parallel_tool_calls(parallel);
         }
@@ -363,7 +391,7 @@ impl Agent {
 
         let mut agent = RuntimeAgentBuilder::new(&self.name, &self.instructions)
             .harness_id(harness_id)
-            .capabilities(self.capabilities.clone());
+            .capabilities(capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             agent = agent.parallel_tool_calls(parallel);
         }
@@ -373,7 +401,7 @@ impl Agent {
         let mut session = SessionBuilder::new(harness_id)
             .id(session_id)
             .agent(agent_id)
-            .capabilities(self.capabilities.clone())
+            .capabilities(capabilities)
             .mcp_servers(self.mcp_servers.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             session = session.parallel_tool_calls(parallel);
@@ -457,6 +485,9 @@ impl Agent {
         for capability in &self.advanced_capabilities {
             builder = builder.capability(capability.runtime_adapter());
         }
+        if let Some(capability) = hook_capability {
+            builder = builder.capability(capability);
+        }
         for provider in &self.providers {
             builder = builder.provider(provider.clone());
         }
@@ -469,6 +500,14 @@ impl Agent {
 /// Instructions and a model are required; everything else is optional. Blank
 /// instructions or a missing model fail [`build`](Self::build) with a typed
 /// [`BuildError`].
+///
+/// Lifecycle methods such as [`on_turn_start`](Self::on_turn_start) accept
+/// async `Fn` handlers. The Framework awaits each per-point chain in builder
+/// registration order. Handler contexts are owned snapshots and cannot mutate
+/// execution. The same handlers are shared by every session, so different
+/// sessions—and parallel tool calls—may invoke them concurrently. Returned
+/// errors follow each lifecycle method's contract; handler panics are not
+/// caught.
 #[derive(Clone, Debug, Default)]
 pub struct AgentBuilder {
     name: Option<String>,
@@ -487,6 +526,7 @@ pub struct AgentBuilder {
     compaction: Option<crate::CompactionConfig>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
+    lifecycle_hooks: crate::hooks::LifecycleHooks,
 }
 
 impl AgentBuilder {
@@ -548,6 +588,91 @@ impl AgentBuilder {
     /// ```
     pub fn tool(mut self, tool: impl IntoTool) -> Self {
         self.tools.push(tool.into_tool());
+        self
+    }
+
+    /// Run an async handler before the first turn attempted by each session.
+    ///
+    /// Handlers run sequentially in registration order and are awaited. An
+    /// error stops the turn before execution; the next call retries the full
+    /// agent-start chain. Infallible handlers may return `()`. Run cancellation
+    /// drops the active handler future and skips the rest. Inspecting a session
+    /// neither starts the agent nor invokes this handler.
+    pub fn on_agent_start<F, Fut, O>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::AgentStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_agent_start(handler);
+        self
+    }
+
+    /// Run an async handler before every turn enters the runtime.
+    ///
+    /// Handlers see the exact input but cannot mutate it. They run sequentially
+    /// in registration order; the first error prevents the turn. Run
+    /// cancellation drops the active handler future and skips the rest.
+    pub fn on_turn_start<F, Fut, O>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::TurnStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_turn_start(handler);
+        self
+    }
+
+    /// Run an async handler before every model-requested tool call.
+    ///
+    /// Multiple handlers run sequentially for one call. Tool calls in a
+    /// parallel batch may run their independent hook chains concurrently. A
+    /// handler error blocks only that tool call and becomes a model-visible
+    /// generic tool error; application error details stay on
+    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Later start
+    /// handlers for that call are skipped. Run cancellation drops an active
+    /// handler future.
+    pub fn on_tool_start<F, Fut, O>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::ToolStartContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_tool_start(handler);
+        self
+    }
+
+    /// Run an async handler after every tool call reaches a terminal result.
+    ///
+    /// This includes calls blocked by another pre-tool hook; their context
+    /// carries the resulting error. The call has already settled, so handler
+    /// errors cannot undo it. All handlers still run; failures are returned on
+    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Run cancellation
+    /// may drop the active chain with the rest of the in-flight turn.
+    pub fn on_tool_end<F, Fut, O>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::ToolEndContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_tool_end(handler);
+        self
+    }
+
+    /// Run an async handler after a non-cancelled turn reaches an outcome.
+    ///
+    /// Completion handlers run sequentially after the runtime settles. Their
+    /// errors are isolated because the turn is already committed; all handlers
+    /// run, and failures are appended to
+    /// [`Turn::hook_failures`](crate::Turn::hook_failures). Once completion
+    /// begins, cancelling that turn's run token does not interrupt the chain.
+    pub fn on_completion<F, Fut, O>(mut self, handler: F) -> Self
+    where
+        F: Fn(crate::CompletionContext) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = O> + Send + 'static,
+        O: crate::IntoHookResult + 'static,
+    {
+        self.lifecycle_hooks.on_completion(handler);
         self
     }
 
@@ -822,6 +947,7 @@ impl AgentBuilder {
             plugin_warnings: self.plugin_warnings,
             #[cfg(feature = "local")]
             local: self.local,
+            lifecycle_hooks: self.lifecycle_hooks,
         })
     }
 }
@@ -1048,7 +1174,7 @@ mod tests {
             .expect("valid agent");
 
         let runtime = agent
-            .build_runtime_with_backends(SessionId::new(), None, None)
+            .build_runtime_with_backends(SessionId::new(), None, None, None)
             .await
             .expect("openai runtime builds offline");
         let _ = runtime;
@@ -1064,7 +1190,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None, None)
+            .build_runtime_with_backends(session_id, None, None, None)
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn

@@ -24,6 +24,10 @@ readme = "README.md"
 keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]
 
+[[example]]
+name = "lifecycle_hooks"
+required-features = ["macros", "openai"]
+
 [features]
 # Default features stay offline: the facade activates no provider, MCP,
 # filesystem, SQLx, server, or worker integrations. The `macros` surface is the

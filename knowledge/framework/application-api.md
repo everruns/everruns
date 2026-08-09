@@ -188,6 +188,7 @@ dependency while allowing focused host and sibling crates.
 ## Source index
 
 - `crates/everruns/src/agent.rs`
+- `crates/everruns/src/hooks.rs`
 - `crates/everruns/src/compaction.rs`
 - `crates/everruns/src/session.rs`
 - `crates/everruns/src/context.rs`
@@ -197,6 +198,7 @@ dependency while allowing focused host and sibling crates.
 - `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`
 - `crates/everruns/tests/session_work.rs`
+- `crates/everruns/tests/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
 - `crates/runtime/src/runtime.rs`
 - `crates/local/`

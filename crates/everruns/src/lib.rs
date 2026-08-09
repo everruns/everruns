@@ -42,6 +42,7 @@ pub mod capability;
 mod compaction;
 mod context;
 mod events;
+mod hooks;
 mod mcp;
 mod plugin;
 mod session;
@@ -52,6 +53,10 @@ pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
+pub use hooks::{
+    AgentStartContext, CompletionContext, HookFailure, HookPoint, IntoHookResult, ToolEndContext,
+    ToolStartContext, TurnStartContext,
+};
 pub use mcp::McpServer;
 pub use plugin::PluginError;
 pub use session::{RunError, Session, Turn};
@@ -174,10 +179,11 @@ pub mod prelude {
         TaskOutcome, TaskRequest, WakePolicy, WakeRequest, WorkQueue, WorkSchedule,
     };
     pub use crate::{
-        Agent, AgentBuilder, BuildError, CancellationToken, CompactionConfig, CompactionStrategy,
-        EventStream, FunctionTool, InitialFile, IntoTool, IntoToolResult, McpServer, Model,
-        PluginError, RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind,
-        SessionId, Tool, ToolInfo, ToolResponse, Turn,
+        Agent, AgentBuilder, AgentStartContext, BuildError, CancellationToken, CompactionConfig,
+        CompactionStrategy, CompletionContext, EventStream, FunctionTool, HookFailure, HookPoint,
+        InitialFile, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, PluginError,
+        RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind, SessionId,
+        Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnStartContext,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};

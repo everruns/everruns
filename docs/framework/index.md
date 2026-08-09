@@ -44,6 +44,7 @@ before importing `everruns-runtime` directly.
 - [Sessions](/framework/sessions/) — independent, multi-turn conversations.
 - [Session work and wakes](/framework/background-work/) — immediate and scheduled work with explicit delivery and restart semantics.
 - [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
+- [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
 - [Persistence](/framework/persistence/) — current in-memory and local-state behavior.
 
 ## Extend and operate
