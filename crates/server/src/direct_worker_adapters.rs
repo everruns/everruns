@@ -758,9 +758,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
-            api_key: r.api_key,
-            base_url: r.base_url,
-            provider_metadata: None,
+            api_key: None,
+            base_url: None,
+            provider_metadata: Some(everruns_core::ProviderMetadata {
+                extra: Some(serde_json::json!({ "provider_id": r.provider_id })),
+                ..Default::default()
+            }),
         }))
     }
 
@@ -777,9 +780,34 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
-            api_key: r.api_key,
-            base_url: r.base_url,
-            provider_metadata: None,
+            api_key: None,
+            base_url: None,
+            provider_metadata: Some(everruns_core::ProviderMetadata {
+                extra: Some(serde_json::json!({ "provider_id": r.provider_id })),
+                ..Default::default()
+            }),
+        }))
+    }
+
+    async fn get_provider_config(
+        &self,
+        org_id: i64,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        let resolved = self
+            .provider_resolver
+            .resolve_runtime_provider(org_id, provider.as_str())
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to resolve provider");
+                store_error("Failed to resolve provider")
+            })?;
+        Ok(resolved.map(|value| everruns_core::ProviderConfig {
+            provider: provider.clone(),
+            provider_type: string_to_provider_type(&value.provider_type),
+            api_key: Some(value.credentials.api_key),
+            base_url: value.credentials.base_url,
+            metadata: everruns_core::ProviderMetadata::default(),
         }))
     }
 

@@ -9,7 +9,7 @@
 // exponential backoff. Retry metadata is included in the response for observability.
 
 use async_trait::async_trait;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -22,10 +22,9 @@ use everruns_provider::driver_helpers::{
     parse_data_url,
 };
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
-    fold_system_messages,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::is_provider_quota_message;
@@ -38,6 +37,19 @@ use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
+/// Ready-to-use Gemini provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    api_key: impl Into<String>,
+) -> everruns_provider::Provider {
+    everruns_provider::Provider::new(id, GeminiChatDriver::new())
+        .base_url(DEFAULT_BASE_URL)
+        .auth(everruns_provider::StaticHeaderAuth::new(
+            "x-goog-api-key",
+            api_key,
+        ))
+}
+
 /// Google Gemini Chat Driver
 ///
 /// Implements `ChatDriver` for Google's Gemini API.
@@ -45,31 +57,14 @@ const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta
 #[derive(Clone)]
 pub struct GeminiChatDriver {
     client: Client,
-    api_key: String,
-    base_url: String,
-    uses_custom_url: bool,
     retry_config: LlmRetryConfig,
 }
 
 impl GeminiChatDriver {
     /// Create a new driver with the given API key
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
             client: everruns_provider::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            base_url: DEFAULT_BASE_URL.to_string(),
-            uses_custom_url: false,
-            retry_config: LlmRetryConfig::default(),
-        }
-    }
-
-    /// Create a new driver with a custom base URL
-    pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
-        Self {
-            client: everruns_provider::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            base_url: base_url.into(),
-            uses_custom_url: true,
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -282,18 +277,11 @@ impl GeminiChatDriver {
     }
 
     /// Build the streaming URL for a model
-    fn stream_url(&self, model: &str) -> String {
-        format!(
-            "{}/models/{}:streamGenerateContent?alt=sse",
-            self.base_url, model
-        )
+    fn stream_path(model: &str) -> String {
+        format!("models/{model}:streamGenerateContent?alt=sse")
     }
 
     /// Build the models list URL
-    fn models_url(&self) -> String {
-        format!("{}/models", self.base_url)
-    }
-
     /// Send one streaming `streamGenerateContent` request, applying the shared
     /// header-phase retry loop (transient send failures, 429, and 5xx), and
     /// return the raw response plus its retry metadata.
@@ -304,6 +292,7 @@ impl GeminiChatDriver {
     /// exactly.
     async fn send_generate_content_request(
         &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
         request: &GeminiRequest,
         url: &str,
         model: &str,
@@ -313,14 +302,24 @@ impl GeminiChatDriver {
         retry_request(
             &self.retry_config,
             "GeminiDriver",
-            || {
-                self.client
-                    .post(url)
-                    .header("Content-Type", "application/json")
-                    .header("x-goog-api-key", &self.api_key)
-                    .json(request)
-                    .send()
-                    .map(|r| r.map_err(SendOutcome::Send))
+            || async {
+                let body = serde_json::to_vec(request).map_err(|error| {
+                    SendOutcome::Fatal(AgentLoopError::llm(format!(
+                        "Failed to serialize Gemini request: {error}"
+                    )))
+                })?;
+                let resolved = endpoint
+                    .resolve("POST", url, &body)
+                    .await
+                    .map_err(SendOutcome::Fatal)?;
+                let mut builder = self
+                    .client
+                    .post(&resolved.url)
+                    .header("Content-Type", "application/json");
+                for (name, value) in resolved.headers {
+                    builder = builder.header(name, value);
+                }
+                builder.body(body).send().await.map_err(SendOutcome::Send)
             },
             |response, attempts, can_retry| {
                 let model = model.to_string();
@@ -391,6 +390,7 @@ impl GeminiChatDriver {
 impl ChatDriver for GeminiChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -438,10 +438,12 @@ impl ChatDriver for GeminiChatDriver {
         // response body" flake). Header-phase retries (429/5xx and transient
         // send failures) are handled inside the per-attempt send. Gemini parses
         // SSE by hand, so this uses the raw byte-stream reconnect variant.
-        let url = self.stream_url(&config.model);
+        let url = endpoint
+            .url(&Self::stream_path(&config.model))
+            .ok_or_else(|| AgentLoopError::config("Gemini provider has no base URL"))?;
         let (byte_stream, retry_metadata) =
             connect_bytes_with_reconnect(&self.retry_config, "GeminiDriver", |_attempt| {
-                self.send_generate_content_request(&request, &url, &config.model)
+                self.send_generate_content_request(endpoint, &request, &url, &config.model)
             })
             .await?;
 
@@ -778,15 +780,23 @@ impl ChatDriver for GeminiChatDriver {
         Ok(converted_stream)
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        if self.uses_custom_url {
+    async fn list_models(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        if endpoint.base_url() != Some(DEFAULT_BASE_URL) {
             return Ok(None);
         }
 
-        let response = self
-            .client
-            .get(self.models_url())
-            .header("x-goog-api-key", &self.api_key)
+        let url = endpoint
+            .url("models")
+            .ok_or_else(|| AgentLoopError::config("Gemini provider has no base URL"))?;
+        let resolved = endpoint.resolve("GET", url, &[]).await?;
+        let mut request = self.client.get(&resolved.url);
+        for (name, value) in resolved.headers {
+            request = request.header(name, value);
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
@@ -839,10 +849,7 @@ impl ChatDriver for GeminiChatDriver {
 
 impl std::fmt::Debug for GeminiChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GeminiChatDriver")
-            .field("base_url", &self.base_url)
-            .field("api_key", &"[REDACTED]")
-            .finish()
+        f.debug_struct("GeminiChatDriver").finish_non_exhaustive()
     }
 }
 
@@ -853,18 +860,27 @@ impl std::fmt::Debug for GeminiChatDriver {
 /// Register the Gemini driver with the driver registry
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "Google Gemini".into(),
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).",
         ),
         ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
-            let api_key = config.api_key.as_deref().unwrap_or("");
-            let driver = match config.base_url.as_deref() {
-                Some(url) => GeminiChatDriver::with_base_url(api_key, url),
-                None => GeminiChatDriver::new(api_key),
-            };
-            Box::new(driver) as BoxedChatDriver
+            let provider =
+                everruns_provider::Provider::new(config.provider.clone(), GeminiChatDriver::new())
+                    .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
+                    .auth(everruns_provider::StaticHeaderAuth::new(
+                        "x-goog-api-key",
+                        config.api_key.as_deref().unwrap_or(""),
+                    ));
+            provider.into_boxed_driver()
         })
     });
+}
+
+impl Default for GeminiChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ============================================================================
@@ -1104,7 +1120,7 @@ mod tests {
     fn supports_parallel_tool_calls_is_false() {
         // Gemini has no request control; the preference is honored only by the
         // local tool scheduler.
-        let driver = GeminiChatDriver::new("test-key");
+        let driver = GeminiChatDriver::new();
         assert!(!driver.supports_parallel_tool_calls("gemini-2.5-pro"));
     }
 
@@ -1423,15 +1439,6 @@ mod tests {
         let mut buffer = "data: {\"cand".to_string();
         let event = extract_sse_event(&mut buffer);
         assert!(event.is_none());
-    }
-
-    #[test]
-    fn test_stream_url() {
-        let driver = GeminiChatDriver::new("test-key");
-        let url = driver.stream_url("gemini-2.5-pro");
-        assert!(url.contains("gemini-2.5-pro:streamGenerateContent"));
-        assert!(url.contains("alt=sse"));
-        assert!(!url.contains("key="));
     }
 
     #[test]

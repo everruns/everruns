@@ -4,8 +4,8 @@
 //! ignored by default and require `MODEL_API_KEY`:
 //!   `doppler run -- cargo test -p everruns-meta --test model_api_live -- --ignored --nocapture`
 
-use everruns_meta::MetaChatDriver;
-use everruns_provider::driver_registry::{ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_meta::provider;
+use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
 use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
@@ -60,13 +60,13 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
 #[tokio::test]
 #[ignore = "live network + MODEL_API_KEY"]
 async fn contributor_completes_text_response() {
-    let driver = MetaChatDriver::new(api_key());
+    let provider = provider("meta", api_key());
     let messages = vec![LlmMessage::text(
         LlmMessageRole::User,
         "Reply with exactly: muse-live-ok",
     )];
 
-    let response = driver
+    let response = provider
         .chat_completion(messages, &config(vec![], None))
         .await
         .expect("Meta Model API should complete a text response");
@@ -82,7 +82,7 @@ async fn contributor_completes_text_response() {
 #[tokio::test]
 #[ignore = "live network + MODEL_API_KEY"]
 async fn contributor_accepts_parallel_tool_calls() {
-    let driver = MetaChatDriver::new(api_key());
+    let provider = provider("meta", api_key());
     let messages = vec![
         LlmMessage::text(
             LlmMessageRole::System,
@@ -98,7 +98,7 @@ async fn contributor_accepts_parallel_tool_calls() {
         tool("get_local_time", "Get the current local time for a city."),
     ];
 
-    let response = driver
+    let response = provider
         .chat_completion(messages, &config(tools, Some(true)))
         .await
         .expect("Meta Model API should accept parallel tool calls");

@@ -267,6 +267,20 @@ Key design points:
 - Organization default model: stored in `organization_settings.default_model_id` (not on the model itself). Auto-elects a new default from enabled models if the current default is disabled or deleted.
 - Stale model detection: `last_seen_at < provider.last_synced_at` means model no longer returned by provider API. Stale models kept (not deleted) to preserve customizations.
 
+### Execution Model Specification
+
+`ModelSpec` is the canonical execution-facing model configuration. It contains
+an open normalized provider key, the provider-visible model name, and optional
+non-secret metadata. It never contains credentials, a base URL, authentication
+metadata, or a protocol/vendor enum, so it is safe to serialize, persist, emit,
+and print with derived `Debug`.
+
+Persisted model rows resolve to a `ModelSpec`; the exact provider record resolves
+independently into a non-serializable runtime `Provider`. For the `0.17.x`
+patch, the public `everruns-runtime::ResolvedModel` input remains available as a
+transitional adapter and is converted immediately into these canonical parts.
+The high-level `everruns` facade accepts only `ModelSpec` plus runtime providers.
+
 ### LLM Model Profile
 
 Read-only metadata describing model capabilities, costs, and limits. Computed at runtime (not stored in database).

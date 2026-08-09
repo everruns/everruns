@@ -303,7 +303,10 @@ impl KnowledgeIndexSyncService {
                     async move {
                         let expected = texts.len();
                         let response = driver
-                            .embed(EmbedRequest { texts, model })
+                            .embed(
+                                &everruns_core::ProviderEndpoint::default(),
+                                EmbedRequest { texts, model },
+                            )
                             .await
                             .map_err(|e| anyhow!("embedding request failed: {e}"))?;
                         if response.embeddings.len() != expected {

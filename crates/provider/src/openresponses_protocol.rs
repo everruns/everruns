@@ -21,10 +21,7 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::{
-    Client,
-    header::{HeaderMap, HeaderName, HeaderValue},
-};
+use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -41,17 +38,12 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
-use crate::openai_protocol::{
-    AuthHeaderProvider, is_openai_model_not_found, is_openai_request_too_large,
-    openai_auth_header_pair,
-};
+use crate::openai_protocol::{is_openai_model_not_found, is_openai_request_too_large};
 use crate::openresponses_types::{self as types, StreamingEvent};
-use crate::provider::DriverId;
 use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
 
-const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
 const OPENAI_PROMPT_CACHE_KEY_MAX_LEN: usize = 64;
 const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 
@@ -74,11 +66,9 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// ```ignore
 /// use everruns_core::OpenResponsesProtocolChatDriver;
 ///
-/// let driver = OpenResponsesProtocolChatDriver::new("your-api-key");
-/// // or with custom endpoint
-/// let driver = OpenResponsesProtocolChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
-/// // or with custom retry config
-/// let driver = OpenResponsesProtocolChatDriver::new("your-api-key")
+/// let driver = OpenResponsesProtocolChatDriver::new();
+/// // Endpoint and authentication are configured on a runtime Provider.
+/// let driver = OpenResponsesProtocolChatDriver::new()
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 /// Hook for provider-specific augmentation of an Open Responses request.
@@ -95,11 +85,9 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
     /// Add provider-specific **non-auth** request headers (routing, attribution,
     /// `session_id`, `OpenAI-Beta`, `originator`, account ids, …).
     ///
-    /// Authentication is a separate seam ([`AuthHeaderProvider`], set via
-    /// [`OpenResponsesProtocolChatDriver::with_auth_provider`]). The driver
-    /// applies these decoration headers first, then applies the resolved auth
-    /// header, so **the auth header always wins on a name conflict**. Do not set
-    /// `Authorization` / `api-key` here; use an auth provider instead.
+    /// Authentication is owned by the runtime provider. The driver applies
+    /// these decoration headers first, then the provider-resolved auth headers,
+    /// so authentication wins on a name conflict. Do not set auth here.
     fn decorate_headers(&self, _headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
         Ok(())
     }
@@ -117,60 +105,38 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
 #[derive(Clone)]
 pub struct OpenResponsesProtocolChatDriver {
     client: Client,
-    api_key: String,
-    api_url: String,
-    provider_type: DriverId,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
     /// Optional provider-specific request-body decorator (see
     /// [`OpenResponsesRequestExtension`]). `None` for vanilla OpenAI/Azure.
     request_extension: Option<Arc<dyn OpenResponsesRequestExtension>>,
-    /// Optional pluggable auth-header provider (see [`AuthHeaderProvider`]). When
-    /// set it overrides the default host-keyed `api-key` / bearer auth and is
-    /// awaited once per HTTP attempt so refreshable (OAuth) providers can mint or
-    /// refresh tokens per retry. `None` falls back to the static `api_key`.
-    auth_provider: Option<Arc<dyn AuthHeaderProvider>>,
-    /// Explicit stateful-continuation support for compatible custom endpoints.
-    /// `None` uses the conservative host allowlist.
+    /// Explicit stateful-continuation support supplied by the service provider.
     stateful_responses: Option<bool>,
+    native_phases: bool,
+    hosted_tool_search: bool,
 }
 
 impl OpenResponsesProtocolChatDriver {
-    /// Create a new driver with the given API key
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// Create a wire-only Open Responses protocol driver.
+    pub fn new() -> Self {
         Self {
             // SSRF-hardened shared client (redirects disabled + DNS-pinned
             // resolver). The api_url is org-configurable, so a bare
             // `Client::new()` would leave this provider open to DNS-rebind /
             // redirect SSRF (TM-API-013, EVE-623).
             client: crate::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: DEFAULT_API_URL.to_string(),
-            provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
-            auth_provider: None,
             stateful_responses: None,
+            native_phases: false,
+            hosted_tool_search: false,
         }
     }
 
-    /// Create a new driver with a custom API URL
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        Self {
-            client: crate::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: api_url.into(),
-            provider_type: DriverId::OpenAI,
-            retry_config: LlmRetryConfig::default(),
-            request_extension: None,
-            auth_provider: None,
-            stateful_responses: None,
-        }
-    }
-
-    /// Set the model provider used for provider-specific request features.
-    pub fn with_provider_type(mut self, provider_type: DriverId) -> Self {
-        self.provider_type = provider_type;
+    /// Enable optional protocol extensions implemented by this endpoint.
+    pub fn with_native_features(mut self, phases: bool, hosted_tool_search: bool) -> Self {
+        self.native_phases = phases;
+        self.hosted_tool_search = hosted_tool_search;
         self
     }
 
@@ -185,48 +151,10 @@ impl OpenResponsesProtocolChatDriver {
         self
     }
 
-    /// Set a pluggable [`AuthHeaderProvider`] that overrides the default
-    /// host-keyed `api-key` / bearer auth. The provider is awaited once per HTTP
-    /// attempt (including retries), so refreshable OAuth providers (ChatGPT/Codex,
-    /// Entra ID, workload identity, …) can mint or refresh tokens per request
-    /// without the driver knowing the scheme. The resolved auth header takes
-    /// precedence over any header set by an
-    /// [`OpenResponsesRequestExtension::decorate_headers`].
-    pub fn with_auth_provider(mut self, provider: Arc<dyn AuthHeaderProvider>) -> Self {
-        self.auth_provider = Some(provider);
-        self
-    }
-
     /// Override whether this endpoint persists Responses continuation state.
     pub fn with_stateful_responses(mut self, supported: bool) -> Self {
         self.stateful_responses = Some(supported);
         self
-    }
-
-    fn persists_responses(&self) -> bool {
-        self.stateful_responses
-            .unwrap_or_else(|| endpoint_persists_responses(&self.api_url))
-    }
-
-    /// Resolve the auth header `(name, value)` for one HTTP attempt against
-    /// `url`. Uses the pluggable [`AuthHeaderProvider`] when set (awaited each
-    /// attempt so tokens can refresh), otherwise the default static-key behavior
-    /// shared with the Chat Completions driver.
-    async fn resolve_auth_header(&self, url: &str) -> Result<(HeaderName, HeaderValue)> {
-        let (name, value) = match &self.auth_provider {
-            Some(provider) => provider.auth_header().await?,
-            None => {
-                let (name, value) = openai_auth_header_pair(url, &self.api_key);
-                (name.to_string(), value.into_owned())
-            }
-        };
-        let name = HeaderName::from_bytes(name.as_bytes())
-            .map_err(|e| AgentLoopError::llm(format!("invalid auth header name {name:?}: {e}")))?;
-        let mut value = HeaderValue::from_str(&value)
-            .map_err(|e| AgentLoopError::llm(format!("invalid auth header value: {e}")))?;
-        // Auth material must never leak into debug logs of the request builder.
-        value.set_sensitive(true);
-        Ok((name, value))
     }
 
     /// Configure retry behavior for rate limit errors
@@ -245,6 +173,8 @@ impl OpenResponsesProtocolChatDriver {
     /// classification and error messages exactly.
     async fn send_responses_request(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        api_url: &str,
         request_body: &Value,
         extension_headers: &HeaderMap,
         model: &str,
@@ -254,6 +184,8 @@ impl OpenResponsesProtocolChatDriver {
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
+        let body = serde_json::to_vec(request_body)
+            .map_err(|e| AgentLoopError::llm(format!("failed to serialize request: {e}")))?;
         retry_request(
             &retry_config,
             "OpenResponsesProtocolDriver",
@@ -264,17 +196,41 @@ impl OpenResponsesProtocolChatDriver {
                 // decoration header, so auth always wins on conflict. An auth
                 // failure is fatal (no retry).
                 let mut headers = extension_headers.clone();
-                let (auth_name, auth_value) = self
-                    .resolve_auth_header(&self.api_url)
+                let service_headers = headers
+                    .iter()
+                    .filter_map(|(name, value)| {
+                        value
+                            .to_str()
+                            .ok()
+                            .map(|value| (name.to_string(), value.to_string()))
+                    })
+                    .collect::<Vec<_>>();
+                let resolved = endpoint
+                    .resolve("POST", api_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                headers.insert(auth_name, auth_value);
+                for (name, value) in service_headers.into_iter().chain(resolved.headers) {
+                    let name =
+                        reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                            SendOutcome::Fatal(AgentLoopError::llm(format!(
+                                "invalid header name: {e}"
+                            )))
+                        })?;
+                    let mut value =
+                        reqwest::header::HeaderValue::from_str(&value).map_err(|e| {
+                            SendOutcome::Fatal(AgentLoopError::llm(format!(
+                                "invalid header value: {e}"
+                            )))
+                        })?;
+                    value.set_sensitive(true);
+                    headers.insert(name, value);
+                }
 
                 self.client
-                    .post(&self.api_url)
+                    .post(&resolved.url)
                     .headers(headers)
                     .header("Content-Type", "application/json")
-                    .json(request_body)
+                    .body(body.clone())
                     .send()
                     .await
                     .map_err(SendOutcome::Send)
@@ -364,24 +320,9 @@ impl OpenResponsesProtocolChatDriver {
         .await
     }
 
-    /// Get the API URL
-    pub fn api_url(&self) -> &str {
-        &self.api_url
-    }
-
-    /// Get the API key (for subclass access)
-    pub fn api_key(&self) -> &str {
-        &self.api_key
-    }
-
     /// Get the HTTP client (for subclass access)
     pub fn client(&self) -> &Client {
         &self.client
-    }
-
-    /// Get the provider type used for model profile lookup.
-    pub fn provider_type(&self) -> &DriverId {
-        &self.provider_type
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -619,7 +560,7 @@ impl OpenResponsesProtocolChatDriver {
     /// ```ignore
     /// use everruns_core::{OpenResponsesProtocolChatDriver, CompactRequest, CompactInputItem, CompactContent};
     ///
-    /// let driver = OpenResponsesProtocolChatDriver::new("your-api-key");
+    /// let driver = OpenResponsesProtocolChatDriver::new();
     ///
     /// let request = CompactRequest {
     ///     model: "gpt-4o".to_string(),
@@ -636,17 +577,27 @@ impl OpenResponsesProtocolChatDriver {
     /// let response = driver.compact(request).await?;
     /// // Use response.output as input for the next /v1/responses call
     /// ```
-    pub async fn compact(&self, request: CompactRequest) -> Result<CompactResponse> {
+    pub async fn compact(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        request: CompactRequest,
+    ) -> Result<CompactResponse> {
         // Build the compact endpoint URL
         // Replace /v1/responses with /v1/responses/compact
-        let compact_url = if self.api_url.ends_with("/responses") {
-            format!("{}/compact", self.api_url)
-        } else if self.api_url.ends_with("/responses/") {
-            format!("{}compact", self.api_url)
+        let responses_url = endpoint.url("responses").ok_or_else(|| {
+            AgentLoopError::Configuration("Open Responses provider has no base URL".to_string())
+        })?;
+        let compact_url = if responses_url.ends_with("/responses") {
+            format!("{responses_url}/compact")
+        } else if responses_url.ends_with("/responses/") {
+            format!("{responses_url}compact")
         } else {
             // Custom URL - just append /compact
-            format!("{}/compact", self.api_url.trim_end_matches('/'))
+            format!("{}/compact", responses_url.trim_end_matches('/'))
         };
+        let body = serde_json::to_vec(&request).map_err(|e| {
+            AgentLoopError::llm(format!("failed to serialize compact request: {e}"))
+        })?;
 
         // Retry loop for rate limit (429) and transient errors. Shared executor
         // owns the loop/backoff/send-error retry/exhaustion logging; the
@@ -660,15 +611,17 @@ impl OpenResponsesProtocolChatDriver {
             || async {
                 // Auth is resolved per attempt so refreshable providers can
                 // rotate tokens across retries (same seam as the streaming path).
-                let (auth_name, auth_value) = self
-                    .resolve_auth_header(&compact_url)
+                let resolved = endpoint
+                    .resolve("POST", &compact_url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                self.client
-                    .post(&compact_url)
-                    .header(auth_name, auth_value)
+                let mut builder = self.client.post(&resolved.url);
+                for (name, value) in resolved.headers {
+                    builder = builder.header(name, value);
+                }
+                builder
                     .header("Content-Type", "application/json")
-                    .json(&request)
+                    .body(body.clone())
                     .send()
                     .await
                     .map_err(SendOutcome::Send)
@@ -765,9 +718,7 @@ impl OpenResponsesProtocolChatDriver {
     /// Returns true for OpenAI's Responses API. Custom endpoints may or may not
     /// support compaction.
     pub fn supports_compact(&self) -> bool {
-        // We assume compact is supported for the default OpenAI endpoint
-        // For custom endpoints, callers should try and handle errors gracefully
-        self.api_url.starts_with("https://api.openai.com/")
+        true
     }
 
     /// Build input items from messages, extracting system/developer instructions
@@ -846,6 +797,12 @@ impl OpenResponsesProtocolChatDriver {
         }
 
         (instructions, input_items)
+    }
+}
+
+impl Default for OpenResponsesProtocolChatDriver {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -996,44 +953,27 @@ fn is_missing_tool_output_continuation_error(error: &AgentLoopError) -> bool {
         || message.contains("no tool call found for function call output")
 }
 
-/// Whether the endpoint at `api_url` persists responses server-side and honors
-/// `previous_response_id` for stateful continuation.
-///
-/// Only OpenAI's hosted API and Azure OpenAI are known to store responses.
-/// OpenAI-compatible gateways that expose a stateless `/responses` shim — e.g.
-/// OpenRouter and Google Gemini's compat endpoint — *accept* `previous_response_id`
-/// but silently ignore it (`store: false`). Chaining against those drops the
-/// conversation from turn 2 onward, so they must get the full transcript replayed
-/// in `input` each turn instead (EVE-523).
-fn endpoint_persists_responses(api_url: &str) -> bool {
-    crate::openai_protocol::is_openai_api_url(api_url)
-        || crate::openai_protocol::is_azure_openai_api_url(api_url)
-        || crate::openai_protocol::url_host_eq(api_url, "api.meta.ai")
-}
-
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
     fn supports_stateful_responses(&self) -> bool {
-        self.persists_responses()
+        self.stateful_responses.unwrap_or(false)
     }
 
     async fn chat_completion_stream(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        let api_url = endpoint.url("responses").ok_or_else(|| {
+            AgentLoopError::Configuration("Open Responses provider has no base URL".to_string())
+        })?;
         // Check the provider-specific model profile before sending native
         // Responses features. OpenAI-compatible gateways may share base model
         // metadata without supporting OpenAI-only extensions such as phases or
         // hosted tool_search.
-        let model_profile =
-            crate::model_profiles::get_model_profile(&self.provider_type, &config.model);
-        let supports_phases = model_profile
-            .as_ref()
-            .is_some_and(|profile| profile.supports_phases);
-        let supports_tool_search = model_profile
-            .as_ref()
-            .is_some_and(|profile| profile.tool_search);
+        let supports_phases = self.native_phases;
+        let supports_tool_search = self.hosted_tool_search;
 
         let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
         let full_replay_input_items = transcript_input_items.clone();
@@ -1043,7 +983,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // Gemini compat, …) accept the field but ignore it, so chaining there drops
         // the conversation from turn 2 onward (EVE-523). For those we send no
         // continuation handle and replay the full transcript in `input` below.
-        let mut previous_response_id = if self.persists_responses() {
+        let mut previous_response_id = if self.stateful_responses.unwrap_or(false) {
             config.previous_response_id.clone()
         } else {
             None
@@ -1135,7 +1075,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 has_instructions = has_instructions,
                 has_reasoning = has_reasoning,
                 has_previous_response = has_previous_response,
-                api_url = %self.api_url,
+                api_url = %api_url,
                 "OpenResponsesDriver: sending request"
             );
         }
@@ -1161,6 +1101,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             "OpenResponsesProtocolDriver",
             |attempts| {
                 self.send_responses_request(
+                    endpoint,
+                    &api_url,
                     &request_body,
                     &extension_headers,
                     &config.model,
@@ -1204,6 +1146,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     "OpenResponsesProtocolDriver",
                     |attempts| {
                         self.send_responses_request(
+                            endpoint,
+                            &api_url,
                             &request_body,
                             &extension_headers,
                             &config.model,
@@ -1579,11 +1523,12 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
     async fn compact(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         request: crate::openresponses_protocol::CompactRequest,
     ) -> Result<Option<crate::openresponses_protocol::CompactResponse>> {
         // Delegate to the inherent method and wrap in Some
         Ok(Some(
-            OpenResponsesProtocolChatDriver::compact(self, request).await?,
+            OpenResponsesProtocolChatDriver::compact(self, endpoint, request).await?,
         ))
     }
 }
@@ -1591,10 +1536,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 impl std::fmt::Debug for OpenResponsesProtocolChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenResponsesProtocolChatDriver")
-            .field("api_url", &self.api_url)
-            .field("provider_type", &self.provider_type)
-            .field("api_key", &"[REDACTED]")
-            .finish()
+            .field("stateful_responses", &self.stateful_responses)
+            .field("native_phases", &self.native_phases)
+            .field("hosted_tool_search", &self.hosted_tool_search)
+            .finish_non_exhaustive()
     }
 }
 
@@ -2304,19 +2249,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_driver_with_api_key() {
-        let driver = OpenResponsesProtocolChatDriver::new("test-key");
+    fn test_driver_is_wire_only() {
+        let driver = OpenResponsesProtocolChatDriver::new();
         assert!(format!("{:?}", driver).contains("OpenResponsesProtocolChatDriver"));
-    }
-
-    #[test]
-    fn test_driver_with_base_url() {
-        let driver = OpenResponsesProtocolChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.com/v1/responses",
-        );
-        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolChatDriver"));
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
     }
 
     #[test]
@@ -3413,50 +3348,21 @@ mod tests {
     }
 
     // ========================================================================
-    // Stateless-gateway detection (EVE-523)
+    // Provider-declared statefulness (EVE-523)
     // ========================================================================
 
     #[test]
-    fn endpoint_persists_responses_for_openai_and_azure() {
-        // OpenAI hosted API — stateful.
-        assert!(endpoint_persists_responses(
-            "https://api.openai.com/v1/responses"
-        ));
-        assert!(endpoint_persists_responses(
-            "https://api.openai.com:443/v1/responses"
-        ));
-        // Azure OpenAI — stateful.
-        assert!(endpoint_persists_responses(
-            "https://my-resource.openai.azure.com/openai/v1/responses"
-        ));
-        assert!(endpoint_persists_responses(
-            "https://my-resource.services.ai.azure.com/openai/v1/responses"
-        ));
-        assert!(OpenResponsesProtocolChatDriver::new("test").supports_stateful_responses());
+    fn provider_can_enable_stateful_responses() {
+        assert!(
+            OpenResponsesProtocolChatDriver::new()
+                .with_stateful_responses(true)
+                .supports_stateful_responses()
+        );
     }
 
     #[test]
-    fn endpoint_does_not_persist_for_stateless_gateways() {
-        // OpenRouter and Gemini's compat shim accept `previous_response_id` but
-        // ignore it — they must be treated as stateless so we replay the full
-        // transcript each turn (EVE-523).
-        assert!(!endpoint_persists_responses(
-            "https://openrouter.ai/api/v1/responses"
-        ));
-        assert!(!endpoint_persists_responses(
-            "https://generativelanguage.googleapis.com/v1beta/openai/responses"
-        ));
-        // A host that merely contains "openai" in its name must not be trusted.
-        assert!(!endpoint_persists_responses(
-            "https://api.openai.example.com/v1/responses"
-        ));
-        assert!(
-            !OpenResponsesProtocolChatDriver::with_base_url(
-                "test",
-                "https://openrouter.ai/api/v1/responses"
-            )
-            .supports_stateful_responses()
-        );
+    fn wire_protocol_defaults_to_stateless() {
+        assert!(!OpenResponsesProtocolChatDriver::new().supports_stateful_responses());
     }
 
     /// End-to-end shape of the call path: against a stateless gateway, a request
@@ -3465,11 +3371,10 @@ mod tests {
     /// the prior response. This is the core EVE-523 regression guard.
     #[test]
     fn stateless_gateway_replays_full_transcript_despite_previous_response_id() {
-        let api_url = "https://openrouter.ai/api/v1/responses";
         let prev_id: Option<String> = Some("gen-turn-1".to_string());
 
-        // Mirror the gating the call path performs.
-        let effective_prev_id = if endpoint_persists_responses(api_url) {
+        let driver = OpenResponsesProtocolChatDriver::new();
+        let effective_prev_id = if driver.supports_stateful_responses() {
             prev_id.clone()
         } else {
             None
@@ -3494,10 +3399,10 @@ mod tests {
     /// for genuinely stateful endpoints.
     #[test]
     fn stateful_endpoint_still_trims_and_chains() {
-        let api_url = "https://api.openai.com/v1/responses";
         let prev_id: Option<String> = Some("resp_turn_1".to_string());
 
-        let effective_prev_id = if endpoint_persists_responses(api_url) {
+        let driver = OpenResponsesProtocolChatDriver::new().with_stateful_responses(true);
+        let effective_prev_id = if driver.supports_stateful_responses() {
             prev_id.clone()
         } else {
             None
@@ -3531,10 +3436,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        // server.uri() is a 127.0.0.1 host — not OpenAI/Azure — so it is treated
-        // as a stateless gateway.
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "stateless-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
 
         let messages = vec![
             LlmMessage::text(LlmMessageRole::System, "You are helpful"),
@@ -3584,7 +3492,9 @@ mod tests {
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
-        let _ = driver.chat_completion_stream(messages, &config).await;
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
 
         let requests = server
             .received_requests()
@@ -3659,12 +3569,15 @@ mod tests {
             .mount(&server)
             .await;
 
-        let driver = OpenResponsesProtocolChatDriver::with_base_url(
-            "test-key",
-            format!("{}/v1/responses", server.uri()),
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "stateful-test",
+            OpenResponsesProtocolChatDriver::new(),
         )
-        .with_stateful_responses(true)
-        .with_retry_config(LlmRetryConfig::no_retry());
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new()
+            .with_stateful_responses(true)
+            .with_retry_config(LlmRetryConfig::no_retry());
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "inspect the project"),
             LlmMessage {
@@ -3709,7 +3622,7 @@ mod tests {
         };
 
         let mut stream = driver
-            .chat_completion_stream(messages, &config)
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
             .await
             .expect("continuation should recover");
         while let Some(event) = stream.next().await {
@@ -3744,9 +3657,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(DriverId::OpenRouter);
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "openrouter-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
 
         let tools: Vec<ToolDefinition> = (0..16)
             .map(|i| {
@@ -3780,7 +3697,9 @@ mod tests {
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
-        let _ = driver.chat_completion_stream(messages, &config).await;
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
 
         let requests = server
             .received_requests()
@@ -3816,8 +3735,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "openai-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
 
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
@@ -3845,7 +3769,9 @@ mod tests {
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
-        let _ = driver.chat_completion_stream(messages, &config).await;
+        let _ = driver
+            .chat_completion_stream(endpoint.endpoint(), messages, &config)
+            .await;
 
         let requests = server
             .received_requests()
@@ -3887,8 +3813,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "stream-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
         let config = LlmCallConfig {
             speed: None,
             verbosity: None,
@@ -3908,7 +3839,11 @@ mod tests {
         };
 
         let stream = driver
-            .chat_completion_stream(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
+            .chat_completion_stream(
+                endpoint.endpoint(),
+                vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+                &config,
+            )
             .await
             .expect("stream should start");
         let events: Vec<_> = stream.collect().await;
@@ -4073,20 +4008,9 @@ mod tests {
     }
 
     #[test]
-    fn test_supports_compact_default_url() {
-        let driver = OpenResponsesProtocolChatDriver::new("test-key");
-        // Default URL is OpenAI, should support compact
+    fn test_wire_protocol_supports_compact() {
+        let driver = OpenResponsesProtocolChatDriver::new();
         assert!(driver.supports_compact());
-    }
-
-    #[test]
-    fn test_supports_compact_custom_url() {
-        let driver = OpenResponsesProtocolChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.com/v1/responses",
-        );
-        // Custom URL, compact support unknown
-        assert!(!driver.supports_compact());
     }
 
     // ========================================================================
@@ -5293,7 +5217,7 @@ mod tests {
     }
 
     // ========================================================================
-    // Pluggable request auth (EVE-618)
+    // Provider-owned request auth (EVE-618 / EVE-856)
     // ========================================================================
 
     /// Minimal `LlmCallConfig` for wire tests.
@@ -5325,10 +5249,17 @@ mod tests {
     }
 
     #[async_trait::async_trait]
-    impl AuthHeaderProvider for CountingAuth {
-        async fn auth_header(&self) -> Result<(String, String)> {
+    impl crate::runtime_provider::ProviderAuth for CountingAuth {
+        async fn headers(
+            &self,
+            _request: crate::runtime_provider::ProviderAuthRequest<'_>,
+        ) -> Result<Vec<(String, String)>> {
             self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            Ok(self.header.clone())
+            Ok(vec![self.header.clone()])
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 
@@ -5342,57 +5273,88 @@ mod tests {
         }
 
         fn decorate_headers(&self, headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
-            headers.insert("x-openrouter-route", HeaderValue::from_static("fallback"));
+            headers.insert(
+                "x-openrouter-route",
+                reqwest::header::HeaderValue::from_static("fallback"),
+            );
             // Decoration must never override auth — the driver applies auth last.
             headers.insert(
                 "authorization",
-                HeaderValue::from_static("Bearer decoration"),
+                reqwest::header::HeaderValue::from_static("Bearer decoration"),
             );
             Ok(())
         }
     }
 
     #[tokio::test]
-    async fn resolve_auth_header_defaults_to_bearer_on_non_azure() {
-        let driver = OpenResponsesProtocolChatDriver::new("secret-key");
-        let (name, value) = driver
-            .resolve_auth_header("https://api.openai.com/v1/responses")
+    async fn provider_resolves_bearer_auth() {
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "openai-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url("https://api.openai.com/v1")
+        .auth(crate::runtime_provider::BearerAuth::new("secret-key"));
+        let resolved = provider
+            .endpoint()
+            .resolve("POST", "https://api.openai.com/v1/responses", b"{}")
             .await
             .expect("auth resolves");
-        assert_eq!(name.as_str(), "authorization");
-        assert_eq!(value.to_str().unwrap(), "Bearer secret-key");
-    }
-
-    #[tokio::test]
-    async fn resolve_auth_header_uses_api_key_header_on_azure() {
-        let driver = OpenResponsesProtocolChatDriver::new("secret-key");
-        let (name, value) = driver
-            .resolve_auth_header("https://my-resource.openai.azure.com/openai/v1/responses")
-            .await
-            .expect("auth resolves");
-        assert_eq!(name.as_str(), "api-key");
-        assert_eq!(value.to_str().unwrap(), "secret-key");
-    }
-
-    #[tokio::test]
-    async fn resolve_auth_header_prefers_provider_over_static_key() {
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let driver = OpenResponsesProtocolChatDriver::new("ignored-key").with_auth_provider(
-            std::sync::Arc::new(CountingAuth {
-                header: (
-                    "Authorization".to_string(),
-                    "Bearer minted-token".to_string(),
-                ),
-                calls: calls.clone(),
-            }),
+        assert_eq!(
+            resolved.headers,
+            vec![("authorization".into(), "Bearer secret-key".into())]
         );
-        // Azure URL: the static path would emit `api-key`, but the provider wins.
-        let (name, value) = driver
-            .resolve_auth_header("https://my-resource.openai.azure.com/openai/v1/responses")
+    }
+
+    #[tokio::test]
+    async fn provider_selects_auth_independently_of_host() {
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "azure-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url("https://my-resource.openai.azure.com/openai/v1")
+        .auth(crate::runtime_provider::StaticHeaderAuth::new(
+            "api-key",
+            "secret-key",
+        ));
+        let resolved = provider
+            .endpoint()
+            .resolve(
+                "POST",
+                "https://my-resource.openai.azure.com/openai/v1/responses",
+                b"{}",
+            )
             .await
             .expect("auth resolves");
-        assert_eq!(name.as_str(), "authorization");
-        assert_eq!(value.to_str().unwrap(), "Bearer minted-token");
+        assert_eq!(
+            resolved.headers,
+            vec![("api-key".into(), "secret-key".into())]
+        );
+    }
+
+    #[tokio::test]
+    async fn refreshable_provider_auth_is_resolved() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let provider = crate::runtime_provider::RuntimeProvider::new(
+            "refreshable-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url("https://service.example/v1")
+        .auth_arc(std::sync::Arc::new(CountingAuth {
+            header: (
+                "Authorization".to_string(),
+                "Bearer minted-token".to_string(),
+            ),
+            calls: calls.clone(),
+        }));
+        let resolved = provider
+            .endpoint()
+            .resolve("POST", "https://service.example/v1/responses", b"{}")
+            .await
+            .expect("auth resolves");
+        assert_eq!(
+            resolved.headers,
+            vec![("authorization".into(), "Bearer minted-token".into())]
+        );
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
@@ -5408,11 +5370,16 @@ mod tests {
             .mount(&server)
             .await;
 
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("wire-key", api_url);
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "wire-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("wire-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
         let _ = driver
-            .chat_completion_stream(messages, &auth_test_config())
+            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
             .await;
 
         let requests = server.received_requests().await.unwrap();
@@ -5439,20 +5406,24 @@ mod tests {
             .await;
 
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("ignored", api_url)
-            .with_request_extension(std::sync::Arc::new(HeaderInjectingExtension))
-            .with_auth_provider(std::sync::Arc::new(CountingAuth {
-                header: (
-                    "Authorization".to_string(),
-                    "Bearer minted-token".to_string(),
-                ),
-                calls: calls.clone(),
-            }));
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "auth-wins-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth_arc(std::sync::Arc::new(CountingAuth {
+            header: (
+                "Authorization".to_string(),
+                "Bearer minted-token".to_string(),
+            ),
+            calls: calls.clone(),
+        }));
+        let driver = OpenResponsesProtocolChatDriver::new()
+            .with_request_extension(std::sync::Arc::new(HeaderInjectingExtension));
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
         let _ = driver
-            .chat_completion_stream(messages, &auth_test_config())
+            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
             .await;
 
         let requests = server.received_requests().await.unwrap();
@@ -5478,7 +5449,6 @@ mod tests {
             .await;
 
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let api_url = format!("{}/v1/responses", server.uri());
         let fast_retry = LlmRetryConfig {
             max_retries: 1,
             initial_backoff: std::time::Duration::from_millis(1),
@@ -5487,19 +5457,23 @@ mod tests {
             jitter_factor: 0.0,
             ..Default::default()
         };
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("ignored", api_url)
-            .with_retry_config(fast_retry)
-            .with_auth_provider(std::sync::Arc::new(CountingAuth {
-                header: (
-                    "Authorization".to_string(),
-                    "Bearer minted-token".to_string(),
-                ),
-                calls: calls.clone(),
-            }));
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "retry-auth-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth_arc(std::sync::Arc::new(CountingAuth {
+            header: (
+                "Authorization".to_string(),
+                "Bearer minted-token".to_string(),
+            ),
+            calls: calls.clone(),
+        }));
+        let driver = OpenResponsesProtocolChatDriver::new().with_retry_config(fast_retry);
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
         let _ = driver
-            .chat_completion_stream(messages, &auth_test_config())
+            .chat_completion_stream(endpoint.endpoint(), messages, &auth_test_config())
             .await;
 
         // Initial attempt + one retry = two auth resolutions.

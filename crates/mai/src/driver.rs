@@ -2,13 +2,8 @@
 //
 // Microsoft MAI models (e.g. MAI-Code-1-Flash) are served via Azure AI Foundry
 // behind an OpenAI-compatible Chat Completions API. This driver wraps the core
-// `OpenAIProtocolChatDriver` and supplies a pluggable, OAuth-capable auth layer
-// (see `auth.rs`) through the driver's `AuthHeaderProvider` hook.
-//
-// Because authentication is handled by the auth provider, the underlying
-// protocol driver's own `api_key` field is unused (constructed empty).
-
-use std::sync::Arc;
+// `OpenAIProtocolChatDriver`; the runtime provider owns the OAuth-capable auth
+// layer from `auth.rs`.
 
 use async_trait::async_trait;
 use chrono::TimeZone;
@@ -18,105 +13,64 @@ use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
-    DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmMessage, LlmResponseStream,
 };
-use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::openai_protocol::{
-    AuthHeaderProvider, is_azure_openai_api_url, models_url_for_api_url,
-};
+use everruns_provider::error::Result;
+use everruns_provider::openai_protocol::{is_azure_openai_api_url, models_url_for_api_url};
+use everruns_provider::{Provider, ProviderEndpoint};
 
-use crate::auth::{DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, MaiAuth};
+use crate::auth::{DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, MaiAuth, failing_provider};
+
+/// Ready-to-use Microsoft MAI provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    base_url: impl Into<String>,
+    auth: MaiAuth,
+) -> Provider {
+    Provider::new(id, MaiChatDriver::new())
+        .base_url(mai_api_base_url(base_url.into()))
+        .auth_arc(auth.into_provider())
+}
+
+fn mai_api_base_url(base_url: String) -> String {
+    let base_url = base_url.trim_end_matches('/');
+    if base_url.ends_with("/openai/v1") {
+        base_url.to_string()
+    } else {
+        format!("{base_url}/openai/v1")
+    }
+}
 
 /// Microsoft MAI chat driver (Azure AI Foundry, OpenAI-compatible).
 ///
 /// Construct directly for programmatic use, or let [`register_driver`] build
-/// instances from a [`DriverConfig`].
+/// instances from the transitional descriptor catalog.
 ///
 /// # Example
 ///
 /// ```
-/// use everruns_mai::{MaiAuth, MaiChatDriver};
+/// use everruns_mai::{MaiAuth, provider};
 ///
-/// let driver = MaiChatDriver::new(
+/// let service = provider(
+///     "mai-prod",
+///     "https://my-resource.services.ai.azure.com/openai/v1",
 ///     MaiAuth::ApiKey("foundry-key".into()),
-///     "https://my-resource.services.ai.azure.com",
 /// );
 /// assert_eq!(
-///     driver.api_url(),
+///     service.endpoint().url("chat/completions").unwrap(),
 ///     "https://my-resource.services.ai.azure.com/openai/v1/chat/completions",
 /// );
 /// ```
 pub struct MaiChatDriver {
-    /// Ready driver, or a captured configuration error surfaced at call time.
-    state: DriverState,
-}
-
-enum DriverState {
-    Ready {
-        inner: OpenAIProtocolChatDriver,
-        api_url: String,
-        /// Retained so model discovery can authenticate the `/models` request
-        /// with the same scheme (api-key or OAuth bearer) as chat requests.
-        auth: Arc<dyn AuthHeaderProvider>,
-    },
-    Misconfigured(String),
+    inner: OpenAIProtocolChatDriver,
 }
 
 impl MaiChatDriver {
-    /// Create a driver from an explicit auth strategy and Azure AI Foundry
-    /// endpoint. The endpoint is normalized to the chat-completions URL.
-    pub fn new(auth: MaiAuth, endpoint: impl Into<String>) -> Self {
-        let api_url = normalize_mai_url(&endpoint.into());
-        let auth = auth.into_provider();
-        let inner =
-            OpenAIProtocolChatDriver::with_base_url("", &api_url).with_auth_provider(auth.clone());
+    /// Create an Azure AI Foundry Chat Completions wire driver.
+    pub fn new() -> Self {
         Self {
-            state: DriverState::Ready {
-                inner,
-                api_url,
-                auth,
-            },
-        }
-    }
-
-    /// Build a driver from a registry [`DriverConfig`], resolving auth from the
-    /// api key / OAuth metadata and the endpoint from `base_url`.
-    ///
-    /// Configuration errors (no endpoint, no auth) are captured and surfaced
-    /// when the driver is first called, so the infallible factory contract is
-    /// preserved while still producing a clear error.
-    fn from_driver_config(config: &DriverConfig) -> Self {
-        let Some(endpoint) = config.base_url.as_deref().filter(|u| !u.is_empty()) else {
-            return Self {
-                state: DriverState::Misconfigured(
-                    "Microsoft MAI provider requires a base URL: set it to your Azure AI \
-                     Foundry resource endpoint (e.g. https://<resource>.services.ai.azure.com)."
-                        .to_string(),
-                ),
-            };
-        };
-
-        match MaiAuth::from_driver_config(config) {
-            Ok(auth) => Self::new(auth, endpoint),
-            Err(err) => Self {
-                state: DriverState::Misconfigured(err.to_string()),
-            },
-        }
-    }
-
-    /// The resolved chat-completions API URL, or `None` when misconfigured.
-    pub fn api_url(&self) -> &str {
-        match &self.state {
-            DriverState::Ready { api_url, .. } => api_url,
-            DriverState::Misconfigured(_) => "",
-        }
-    }
-
-    fn ready(&self) -> Result<&OpenAIProtocolChatDriver> {
-        match &self.state {
-            DriverState::Ready { inner, .. } => Ok(inner),
-            DriverState::Misconfigured(err) => Err(AgentLoopError::llm(err.clone())),
+            inner: OpenAIProtocolChatDriver::new(),
         }
     }
 }
@@ -125,43 +79,40 @@ impl MaiChatDriver {
 impl ChatDriver for MaiChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        self.ready()?.chat_completion_stream(messages, config).await
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         // MAI is OpenAI-compatible Chat Completions; the inner protocol driver
         // maps the preference onto the wire when the provider is configured.
-        match self.ready() {
-            Ok(inner) => inner.supports_parallel_tool_calls(model),
-            Err(_) => false,
-        }
+        self.inner.supports_parallel_tool_calls(model)
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        let DriverState::Ready {
-            inner,
-            api_url,
-            auth,
-        } = &self.state
-        else {
-            // Misconfigured providers have nothing to discover.
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        let Some(api_url) = endpoint.url("chat/completions") else {
             return Ok(None);
         };
 
         // Only run discovery against recognized Azure AI Foundry hosts. Custom
         // proxy URLs may resolve to private infrastructure, so they are skipped
         // (mirrors the OpenAI/Azure OpenAI driver gating).
-        if !is_azure_openai_api_url(api_url) {
+        if !is_azure_openai_api_url(&api_url) {
             return Ok(None);
         }
 
         list_foundry_models(
-            inner.client(),
-            auth.as_ref(),
-            &models_url_for_api_url(api_url),
+            self.inner.client(),
+            endpoint,
+            &models_url_for_api_url(&api_url),
         )
         .await
     }
@@ -177,14 +128,18 @@ impl ChatDriver for MaiChatDriver {
 /// not match a known profile falls back to a minimal profile — the same caveat
 /// as Azure OpenAI.)
 ///
-/// The request is authenticated with the same `AuthHeaderProvider` used for chat
+/// The request is authenticated with the same runtime `ProviderAuth` used for chat
 /// (`api-key` or an Entra ID OAuth bearer), so discovery works for both schemes.
 async fn list_foundry_models(
     client: &reqwest::Client,
-    auth: &dyn AuthHeaderProvider,
+    endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
-    let (header_name, header_value) = auth.auth_header().await?;
+    let resolved = endpoint.resolve("GET", models_url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
     // Project-scoped Azure AI Foundry endpoints expose chat completions but not a
     // `/models` catalog: such an endpoint returns 404 for `/openai/v1/models`
     // while `/openai/v1/chat/completions` works. Treat a missing/unimplemented
@@ -192,7 +147,7 @@ async fn list_foundry_models(
     // error, so model sync degrades gracefully instead of reporting a spurious
     // failure. (Verified live against a project endpoint.)
     fetch_models::<FoundryModelsResponse, _>(
-        client.get(models_url).header(header_name, header_value),
+        request,
         "Failed to fetch MAI models",
         "Failed to parse MAI models response",
         &[
@@ -260,29 +215,8 @@ impl FoundryModelInfo {
 impl std::fmt::Debug for MaiChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MaiChatDriver")
-            .field("api_url", &self.api_url())
             .field("api", &"Azure AI Foundry (Chat Completions)")
             .finish()
-    }
-}
-
-/// Normalize an Azure AI Foundry endpoint to its chat-completions URL.
-///
-/// Accepts a bare resource host, a `/openai/v1` or `/models` base, or a full
-/// `/chat/completions` URL, and always returns a `/chat/completions` endpoint.
-/// A bare host gets Foundry's v1 OpenAI-compatible path appended.
-fn normalize_mai_url(endpoint: &str) -> String {
-    let trimmed = endpoint.trim_end_matches('/');
-    if trimmed.ends_with("/chat/completions") {
-        trimmed.to_string()
-    } else if let Some(base) = trimmed.strip_suffix("/models") {
-        // A models-listing URL was pasted as the endpoint; derive the sibling
-        // chat endpoint by replacing `/models` rather than appending to it.
-        format!("{base}/chat/completions")
-    } else if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
-        format!("{trimmed}/chat/completions")
-    } else {
-        format!("{trimmed}/openai/v1/chat/completions")
     }
 }
 
@@ -347,11 +281,26 @@ fn mai_credential_schema() -> CredentialFormSchema {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "Microsoft MAI".into(),
         credential_schema: mai_credential_schema(),
         ..DriverDescriptor::chat_only(DriverId::Mai, |config| {
-            Box::new(MaiChatDriver::from_driver_config(config)) as BoxedChatDriver
+            let provider = Provider::new(config.provider.clone(), MaiChatDriver::new()).base_url(
+                mai_api_base_url(config.base_url.clone().unwrap_or_default()),
+            );
+            match MaiAuth::from_driver_config(config) {
+                Ok(auth) => provider.auth_arc(auth.into_provider()).into_boxed_driver(),
+                Err(error) => provider
+                    .auth_arc(failing_provider(error))
+                    .into_boxed_driver(),
+            }
         })
     });
+}
+
+impl Default for MaiChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -381,8 +330,19 @@ mod tests {
     #[tokio::test]
     async fn list_models_skips_non_azure_hosts() {
         // A custom/proxy (non-Foundry) host must not be probed for discovery.
-        let driver = MaiChatDriver::new(MaiAuth::ApiKey("k".into()), "https://proxy.example.com");
-        assert!(driver.list_models().await.unwrap().is_none());
+        let service = provider(
+            "proxy",
+            "https://proxy.example.com",
+            MaiAuth::ApiKey("k".into()),
+        );
+        let driver = MaiChatDriver::new();
+        assert!(
+            driver
+                .list_models(service.endpoint())
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -403,12 +363,17 @@ mod tests {
             .mount(&server)
             .await;
 
-        let auth = MaiAuth::ApiKey("foundry-secret".into()).into_provider();
+        let service = provider(
+            "mai-test",
+            format!("{}/openai/v1", server.uri()),
+            MaiAuth::ApiKey("foundry-secret".into()),
+        );
         let models_url = format!("{}/openai/v1/models", server.uri());
-        let discovered = list_foundry_models(&reqwest::Client::new(), auth.as_ref(), &models_url)
-            .await
-            .expect("discovery request should succeed")
-            .expect("discovery should return a model list");
+        let discovered =
+            list_foundry_models(&reqwest::Client::new(), service.endpoint(), &models_url)
+                .await
+                .expect("discovery request should succeed")
+                .expect("discovery should return a model list");
 
         // Embedding model filtered out; chat model retained with bare metadata
         // (no discovered_profile — profiles come from the registry by id).
@@ -431,9 +396,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let auth = MaiAuth::ApiKey("k".into()).into_provider();
+        let service = provider(
+            "mai-test",
+            format!("{}/openai/v1", server.uri()),
+            MaiAuth::ApiKey("k".into()),
+        );
         let models_url = format!("{}/openai/v1/models", server.uri());
-        let result = list_foundry_models(&reqwest::Client::new(), auth.as_ref(), &models_url)
+        let result = list_foundry_models(&reqwest::Client::new(), service.endpoint(), &models_url)
             .await
             .expect("404 on /models should not be a hard error");
         assert!(
@@ -443,85 +412,16 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_bare_foundry_host() {
-        assert_eq!(
-            normalize_mai_url("https://res.services.ai.azure.com"),
-            "https://res.services.ai.azure.com/openai/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn normalizes_trailing_slash_and_v1() {
-        assert_eq!(
-            normalize_mai_url("https://res.services.ai.azure.com/openai/v1/"),
-            "https://res.services.ai.azure.com/openai/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn preserves_full_chat_completions_url() {
-        let url = "https://res.services.ai.azure.com/openai/v1/chat/completions";
-        assert_eq!(normalize_mai_url(url), url);
-    }
-
-    #[test]
-    fn models_url_is_rewritten_to_chat_completions() {
-        // A pasted models-listing URL must derive the sibling chat endpoint,
-        // not append to `/models`.
-        assert_eq!(
-            normalize_mai_url("https://res.services.ai.azure.com/openai/v1/models"),
-            "https://res.services.ai.azure.com/openai/v1/chat/completions"
-        );
-        assert_eq!(
-            normalize_mai_url("https://res.services.ai.azure.com/api/projects/p/openai/v1/models/"),
-            "https://res.services.ai.azure.com/api/projects/p/openai/v1/chat/completions"
-        );
-    }
-
-    #[test]
-    fn ready_driver_exposes_normalized_url() {
-        let driver = MaiChatDriver::new(
+    fn ready_provider_exposes_protocol_url() {
+        let service = provider(
+            "mai",
+            "https://res.services.ai.azure.com/openai/v1",
             MaiAuth::ApiKey("k".into()),
-            "https://res.services.ai.azure.com",
         );
         assert_eq!(
-            driver.api_url(),
-            "https://res.services.ai.azure.com/openai/v1/chat/completions"
+            service.endpoint().url("chat/completions").as_deref(),
+            Some("https://res.services.ai.azure.com/openai/v1/chat/completions")
         );
-    }
-
-    #[tokio::test]
-    async fn misconfigured_without_base_url_errors_at_call_time() {
-        let config = DriverConfig {
-            provider_type: DriverId::Mai,
-            credentials: [("api_key".to_string(), "k".to_string())].into(),
-            api_key: Some("k".into()),
-            base_url: None,
-            metadata: ProviderMetadata::default(),
-        };
-        let driver = MaiChatDriver::from_driver_config(&config);
-        let err = match driver.chat_completion_stream(vec![], &dummy_config()).await {
-            Ok(_) => panic!("expected configuration error"),
-            Err(e) => e,
-        };
-        assert!(err.to_string().contains("requires a base URL"));
-    }
-
-    #[tokio::test]
-    async fn misconfigured_without_auth_errors_at_call_time() {
-        let config = DriverConfig {
-            provider_type: DriverId::Mai,
-            credentials: Default::default(),
-            api_key: None,
-            base_url: Some("https://res.services.ai.azure.com".into()),
-            metadata: ProviderMetadata::default(),
-        };
-        let driver = MaiChatDriver::from_driver_config(&config);
-        let err = match driver.chat_completion_stream(vec![], &dummy_config()).await {
-            Ok(_) => panic!("expected configuration error"),
-            Err(e) => e,
-        };
-        assert!(err.to_string().contains("not authenticated"));
     }
 
     #[test]
@@ -561,25 +461,5 @@ mod tests {
             });
         // No api_key, but OAuth metadata present — must construct successfully.
         assert!(registry.create_chat_driver(&config).is_ok());
-    }
-
-    fn dummy_config() -> LlmCallConfig {
-        LlmCallConfig {
-            speed: None,
-            verbosity: None,
-            model: "mai-code-1-flash".into(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: Default::default(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-        }
     }
 }

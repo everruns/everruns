@@ -473,75 +473,63 @@ mod tests {
     #[test]
     fn test_provider_type_deserialization() {
         // Verify all provider types deserialize correctly
-        assert!(matches!(
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"openai\"").unwrap(),
             DriverId::OpenAI
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"openrouter\"").unwrap(),
             DriverId::OpenRouter
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"openai_completions\"").unwrap(),
             DriverId::OpenAICompletions
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"azure_openai\"").unwrap(),
             DriverId::AzureOpenAI
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"anthropic\"").unwrap(),
             DriverId::Anthropic
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"gemini\"").unwrap(),
             DriverId::Gemini
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"llmsim\"").unwrap(),
             DriverId::LlmSim
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             serde_json::from_str::<DriverId>("\"meta\"").unwrap(),
             DriverId::Meta
-        ));
+        );
     }
 
     #[test]
     fn test_provider_type_from_str() {
         // Verify FromStr works correctly
-        assert!(matches!(
-            "openai".parse::<DriverId>().unwrap(),
-            DriverId::OpenAI
-        ));
-        assert!(matches!(
+        assert_eq!("openai".parse::<DriverId>().unwrap(), DriverId::OpenAI);
+        assert_eq!(
             "openrouter".parse::<DriverId>().unwrap(),
             DriverId::OpenRouter
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             "openai_completions".parse::<DriverId>().unwrap(),
             DriverId::OpenAICompletions
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             "azure_openai".parse::<DriverId>().unwrap(),
             DriverId::AzureOpenAI
-        ));
-        assert!(matches!(
+        );
+        assert_eq!(
             "anthropic".parse::<DriverId>().unwrap(),
             DriverId::Anthropic
-        ));
-        assert!(matches!(
-            "gemini".parse::<DriverId>().unwrap(),
-            DriverId::Gemini
-        ));
-        assert!(matches!(
-            "llmsim".parse::<DriverId>().unwrap(),
-            DriverId::LlmSim
-        ));
-        assert!(matches!(
-            "meta".parse::<DriverId>().unwrap(),
-            DriverId::Meta
-        ));
+        );
+        assert_eq!("gemini".parse::<DriverId>().unwrap(), DriverId::Gemini);
+        assert_eq!("llmsim".parse::<DriverId>().unwrap(), DriverId::LlmSim);
+        assert_eq!("meta".parse::<DriverId>().unwrap(), DriverId::Meta);
     }
 
     #[test]

@@ -11,15 +11,17 @@
 //! # Example
 //!
 //! ```
-//! use everruns_anthropic::{AnthropicChatDriver, register_driver};
+//! use everruns_anthropic::{AnthropicChatDriver, provider, register_driver};
 //! use everruns_provider::DriverRegistry;
 //!
-//! let driver = AnthropicChatDriver::new("your-api-key");
+//! let driver = AnthropicChatDriver::new();
+//! let service = provider("anthropic", "your-api-key");
 //!
 //! let mut registry = DriverRegistry::new();
 //! register_driver(&mut registry);
 //!
 //! assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
+//! assert_eq!(service.id().as_str(), "anthropic");
 //! ```
 
 mod driver;
@@ -27,7 +29,7 @@ mod driver;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{AnthropicChatDriver, register_driver};
+pub use driver::{AnthropicChatDriver, provider, register_driver};
 
 // Re-export core types for convenience
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

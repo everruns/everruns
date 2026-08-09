@@ -19,25 +19,19 @@ Two schemes are supported:
   metadata. Bearer tokens are minted with the client-credentials grant and
   cached, refreshed before expiry.
 
-The auth layer is built on the pluggable `AuthHeaderProvider` hook in
-`everruns-provider`, so additional schemes (managed identity, workload identity
-federation, ...) can be added by implementing the trait without changing the
-driver.
+The provider owns authentication through the pluggable `ProviderAuth` contract
+in `everruns-provider`. Additional schemes (managed identity, workload identity
+federation, ...) can be added without changing the Chat Completions wire driver.
 
 ## Usage
 
 ```rust
-use everruns_provider::DriverRegistry;
-use everruns_mai::{register_driver, MaiAuth, MaiChatDriver};
+use everruns_mai::{provider, MaiAuth};
 
-// Register into a driver registry (the usual integration path):
-let mut registry = DriverRegistry::new();
-register_driver(&mut registry);
-
-// Or construct a driver directly:
-let driver = MaiChatDriver::new(
+let provider = provider(
+    "mai-prod",
+    "https://my-resource.services.ai.azure.com/openai/v1",
     MaiAuth::ApiKey("foundry-key".into()),
-    "https://my-resource.services.ai.azure.com",
 );
 ```
 

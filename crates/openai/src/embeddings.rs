@@ -6,24 +6,12 @@ use serde::{Deserialize, Serialize};
 
 /// Embeddings driver for OpenAI's `/v1/embeddings` endpoint.
 pub struct OpenAIEmbeddingsDriver {
-    api_key: String,
-    base_url: String,
     client: reqwest::Client,
 }
 
 impl OpenAIEmbeddingsDriver {
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
-            api_key: api_key.into(),
-            base_url: "https://api.openai.com/v1".to_string(),
-            client: shared_request_http_client(),
-        }
-    }
-
-    pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
-        Self {
-            api_key: api_key.into(),
-            base_url: base_url.into().trim_end_matches('/').to_string(),
             client: shared_request_http_client(),
         }
     }
@@ -55,8 +43,14 @@ struct EmbeddingsUsage {
 
 #[async_trait]
 impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
-    async fn embed(&self, request: EmbedRequest) -> Result<EmbedResponse, EmbeddingsDriverError> {
-        let url = format!("{}/embeddings", self.base_url);
+    async fn embed(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+        request: EmbedRequest,
+    ) -> Result<EmbedResponse, EmbeddingsDriverError> {
+        let url = endpoint
+            .url("embeddings")
+            .ok_or_else(|| EmbeddingsDriverError::Provider("provider has no base URL".into()))?;
         let body = EmbeddingsApiRequest {
             input: request.texts,
             model: request.model,
@@ -68,13 +62,20 @@ impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
         let retry = LlmRetryConfig::default();
         let mut attempt: u32 = 0;
         loop {
-            let send_result = self
+            let bytes = serde_json::to_vec(&body)
+                .map_err(|error| EmbeddingsDriverError::Transport(error.to_string()))?;
+            let resolved = endpoint
+                .resolve("POST", &url, &bytes)
+                .await
+                .map_err(|error| EmbeddingsDriverError::Provider(error.to_string()))?;
+            let mut builder = self
                 .client
-                .post(&url)
-                .bearer_auth(&self.api_key)
-                .json(&body)
-                .send()
-                .await;
+                .post(&resolved.url)
+                .header("content-type", "application/json");
+            for (name, value) in resolved.headers {
+                builder = builder.header(name, value);
+            }
+            let send_result = builder.body(bytes).send().await;
 
             let transient_err: EmbeddingsDriverError = match send_result {
                 Ok(response) => {
@@ -117,5 +118,11 @@ impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
             tokio::time::sleep(backoff).await;
             attempt += 1;
         }
+    }
+}
+
+impl Default for OpenAIEmbeddingsDriver {
+    fn default() -> Self {
+        Self::new()
     }
 }

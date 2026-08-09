@@ -657,12 +657,15 @@ async fn try_apply_native_compaction(
     let (input, compact_previous_response_id) = (standalone_input, None);
 
     let compact_response = match chat_driver
-        .compact(CompactRequest {
-            model: model.to_string(),
-            input,
-            previous_response_id: compact_previous_response_id,
-            instructions: system_prompt.map(str::to_string),
-        })
+        .compact(
+            &crate::ProviderEndpoint::default(),
+            CompactRequest {
+                model: model.to_string(),
+                input,
+                previous_response_id: compact_previous_response_id,
+                instructions: system_prompt.map(str::to_string),
+            },
+        )
         .await
     {
         Ok(Some(response)) => response,
@@ -1647,7 +1650,7 @@ impl ReasonAtom {
             .collect();
 
         // 7. Create LLM driver using factory
-        let chat_driver = self.create_chat_driver(&model_with_provider)?;
+        let chat_driver = self.create_chat_driver(&model_with_provider).await?;
         let stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
@@ -2408,7 +2411,11 @@ impl ReasonAtom {
             {
                 match tokio::time::timeout(
                     remaining,
-                    chat_driver.chat_completion_stream(llm_messages_for_call.clone(), &llm_config),
+                    chat_driver.chat_completion_stream(
+                        &crate::ProviderEndpoint::default(),
+                        llm_messages_for_call.clone(),
+                        &llm_config,
+                    ),
                 )
                 .await
                 {
@@ -2427,7 +2434,11 @@ impl ReasonAtom {
                 }
             } else {
                 chat_driver
-                    .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                    .chat_completion_stream(
+                        &crate::ProviderEndpoint::default(),
+                        llm_messages_for_call.clone(),
+                        &llm_config,
+                    )
                     .await
             };
             let mut stream = match stream_result {
@@ -2646,7 +2657,11 @@ impl ReasonAtom {
                             };
 
                             match chat_driver
-                                .chat_completion(summary_messages, &summary_config)
+                                .chat_completion(
+                                    &crate::ProviderEndpoint::default(),
+                                    summary_messages,
+                                    &summary_config,
+                                )
                                 .await
                             {
                                 Ok(response) => {
@@ -2776,7 +2791,11 @@ impl ReasonAtom {
                     );
 
                     chat_driver
-                        .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                        .chat_completion_stream(
+                            &crate::ProviderEndpoint::default(),
+                            llm_messages_for_call.clone(),
+                            &llm_config,
+                        )
                         .await?
                 }
                 Err(e)
@@ -3810,12 +3829,17 @@ impl ReasonAtom {
 
     /// Resolve model using priority chain: controls > session > agent > harness > system default
     /// Create LLM driver using the driver registry
-    fn create_chat_driver(
+    async fn create_chat_driver(
         &self,
         model: &ResolvedModel,
     ) -> Result<crate::driver_registry::BoxedChatDriver> {
-        self.driver_registry
-            .create_chat_driver(&crate::llm_conversions::provider_config_from_resolved_model(model))
+        let (_, compatibility_config) = model.canonical_parts();
+        let config = self
+            .provider_store
+            .get_provider_config(&compatibility_config.provider)
+            .await?
+            .unwrap_or(compatibility_config);
+        self.driver_registry.create_chat_driver(&config)
     }
 
     /// Resolve image_file references to actual image data

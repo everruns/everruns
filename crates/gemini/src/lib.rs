@@ -20,7 +20,7 @@
 
 mod driver;
 
-pub use driver::{GeminiChatDriver, register_driver};
+pub use driver::{GeminiChatDriver, provider, register_driver};
 
 // Re-export core types for convenience
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

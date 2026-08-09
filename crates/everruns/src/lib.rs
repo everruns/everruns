@@ -19,36 +19,15 @@
 //!
 //! ```
 //! # #[tokio::main]
-//! # async fn main() -> Result<(), everruns::AgentLoopError> {
-//! use everruns::{
-//!     DriverId, InProcessRuntimeBuilder, InputMessage, LlmSimConfig, ResolvedModel,
-//! };
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! use everruns::{Agent, Model};
 //!
-//! let runtime = InProcessRuntimeBuilder::new()
-//!     .single_session(|s| {
-//!         s.harness("assistant", "You are a helpful assistant.")
-//!             .harness_display_name("Assistant")
-//!             .agent("assistant-agent", "Answer the user.")
-//!             .agent_display_name("Assistant Agent")
-//!             .agent_max_iterations(4)
-//!             .session_title("Facade Smoke")
-//!     })
-//!     .llm_sim(LlmSimConfig::fixed("4"))
-//!     .default_model(ResolvedModel {
-//!         model: "llmsim-model".into(),
-//!         provider_type: DriverId::LlmSim,
-//!         api_key: Some("fake-key".into()),
-//!         base_url: None,
-//!         provider_metadata: None,
-//!     })
+//! let agent = Agent::builder()
+//!     .instructions("You are a helpful assistant.")
+//!     .model(Model::simulated("4"))
 //!     .build()
-//!     .await?;
-//!
-//! let session_id = runtime.default_session_id().expect("single_session id");
-//! let result = runtime
-//!     .run_turn(session_id, InputMessage::user("What is 2 + 2?"))
-//!     .await?;
-//!
+//!     .expect("valid agent");
+//! let result = agent.session().run("What is 2 + 2?").await?;
 //! assert!(result.success);
 //! assert_eq!(result.response, "4");
 //! # Ok(())
@@ -139,8 +118,10 @@ pub use everruns_runtime::{
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentLoopError, CapabilityRegistry, ContentPart, DriverId, DriverRegistry, InputMessage,
-    MessageRole, PlatformDefinition, ResolvedModel,
+    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, InputMessage,
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
+    MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth, ProviderAuthRequest,
+    ProviderEndpoint, ProviderKey, ProviderRegistry, StaticHeaderAuth,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------

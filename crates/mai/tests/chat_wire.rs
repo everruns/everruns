@@ -15,7 +15,8 @@ use everruns_core::DriverRegistry;
 use everruns_core::driver_registry::{
     ChatDriver, DriverId, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
-use everruns_mai::{EntraOAuthConfig, MaiAuth, MaiChatDriver, register_driver};
+use everruns_mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
+use everruns_provider::ProviderEndpoint;
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -78,9 +79,13 @@ async fn api_key_auth_sends_api_key_header_and_streams() {
         .mount(&server)
         .await;
 
-    let driver = MaiChatDriver::new(MaiAuth::ApiKey("foundry-secret".into()), server.uri());
+    let provider = provider(
+        "mai-test",
+        server.uri(),
+        MaiAuth::ApiKey("foundry-secret".into()),
+    );
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
-    let stream = driver
+    let stream = provider
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
         .await
         .expect("MAI should accept the api-key authed request");
@@ -124,9 +129,9 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
         authority: server.uri(),
     });
 
-    let driver = MaiChatDriver::new(auth, server.uri());
+    let provider = provider("mai-test", server.uri(), auth);
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
-    let stream = driver
+    let stream = provider
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
         .await
         .expect("MAI should accept the OAuth bearer authed request");
@@ -163,7 +168,11 @@ async fn registry_built_driver_rejects_unsafe_oauth_json_authority() {
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
     let result = driver
-        .chat_completion_stream(messages, &config("mai-code-1-flash"))
+        .chat_completion_stream(
+            &ProviderEndpoint::default(),
+            messages,
+            &config("mai-code-1-flash"),
+        )
         .await;
     let Err(err) = result else {
         panic!("unsafe OAuth authority should be rejected before token minting");

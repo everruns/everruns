@@ -1,7 +1,8 @@
-// LLM Resolver service for resolving models with decrypted provider credentials
+// Model and provider resolver service.
 //
-// This service handles the resolution of LLM models with their provider credentials,
-// including API key decryption. Used by gRPC service for worker communication.
+// Model resolution returns credential-free identity. Provider configuration,
+// including decrypted credentials, is resolved independently by exact public
+// provider id for worker communication and non-chat services.
 //
 // Decision: In-process moka cache keyed on (org_id, model_id) with 1-hour TTL.
 // Providers/models change rarely but resolution is called per LLM request.
@@ -119,20 +120,15 @@ pub fn resolve_provider_api_key(
     Ok(None)
 }
 
-/// Resolved model with provider credentials (decrypted API key)
-///
-/// This is the service-layer representation of a model with its provider details.
-/// Used for internal communication (gRPC) where decrypted credentials are needed.
+/// Credential-free resolved model identity.
 #[derive(Debug, Clone)]
 pub struct ResolvedModel {
     /// The model identifier (e.g., "gpt-4", "claude-3-opus")
     pub model_id: String,
     /// Provider type (e.g., "openai", "anthropic")
     pub provider_type: String,
-    /// Decrypted API key (if available)
-    pub api_key: Option<String>,
-    /// Provider base URL override (if set)
-    pub base_url: Option<String>,
+    /// Public persisted provider identity; credentials resolve independently.
+    pub provider_id: String,
 }
 
 /// Resolved provider credentials for tool-side API clients.
@@ -189,7 +185,7 @@ impl ProviderResolverService {
         self
     }
 
-    /// Resolve a model by ID with decrypted provider credentials.
+    /// Resolve a model by ID without provider credentials or endpoint details.
     /// Results are cached per (org_id, model_id) with 1-hour TTL.
     pub async fn resolve_model(
         &self,
@@ -207,7 +203,7 @@ impl ProviderResolverService {
         Ok(result)
     }
 
-    /// Resolve the default model with decrypted provider credentials.
+    /// Resolve the default model without provider credentials or endpoint details.
     /// Cached under sentinel key (org_id, nil UUID).
     pub async fn resolve_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
         let key = (org_id, DEFAULT_MODEL_SENTINEL);
@@ -427,13 +423,10 @@ impl ProviderResolverService {
             None => return Ok(None),
         };
 
-        let api_key = self.resolve_api_key(&provider_row)?;
-
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
             provider_type: provider_row.provider_type.clone(),
-            api_key,
-            base_url: provider_row.base_url.clone(),
+            provider_id: provider_row.id.to_string(),
         }))
     }
 
@@ -456,13 +449,35 @@ impl ProviderResolverService {
             None => return Ok(None),
         };
 
-        let api_key = self.resolve_api_key(&provider_row)?;
-
         Ok(Some(ResolvedModel {
             model_id: model_row.model_id,
             provider_type: provider_row.provider_type.clone(),
-            api_key,
-            base_url: provider_row.base_url.clone(),
+            provider_id: provider_row.id.to_string(),
+        }))
+    }
+
+    /// Resolve one exact persisted provider for model execution.
+    pub async fn resolve_runtime_provider(
+        &self,
+        org_id: i64,
+        provider_id: &str,
+    ) -> Result<Option<ResolvedServiceProvider>> {
+        let id: ProviderId = provider_id
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
+        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+            return Ok(None);
+        };
+        let Some(api_key) = self.resolve_api_key(&provider)? else {
+            return Ok(None);
+        };
+        Ok(Some(ResolvedServiceProvider {
+            provider_type: provider.provider_type,
+            provider_id: provider.id.to_string(),
+            credentials: ResolvedProviderCredentials {
+                api_key,
+                base_url: provider.base_url,
+            },
         }))
     }
 
@@ -1171,6 +1186,29 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    #[tokio::test]
+    async fn exact_runtime_provider_resolution_is_org_scoped() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let provider = seed_active_provider(&db, &encryption, "openai").await;
+        let resolver = ProviderResolverService::new(db, Some(encryption));
+
+        let own = resolver
+            .resolve_runtime_provider(DEFAULT_ORG_ID, &provider.to_string())
+            .await
+            .unwrap();
+        assert!(own.is_some());
+
+        let cross_org = resolver
+            .resolve_runtime_provider(999, &provider.to_string())
+            .await
+            .unwrap();
+        assert!(
+            cross_org.is_none(),
+            "provider must not cross org boundaries"
+        );
     }
 
     #[tokio::test]

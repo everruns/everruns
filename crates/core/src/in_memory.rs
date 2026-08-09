@@ -674,6 +674,7 @@ impl MockProvider {
 impl ChatDriver for MockProvider {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &crate::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {

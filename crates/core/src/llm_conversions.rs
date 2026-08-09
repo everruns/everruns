@@ -195,14 +195,11 @@ pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCa
     LlmCallConfigBuilder::from_config(llm_call_config_from_agent(runtime_agent))
 }
 
-/// Build a [`ProviderConfig`] from a resolved model (credentials + endpoint).
+/// Build the default provider lookup config for an application-registered
+/// provider. Hosted stores override it with their independently resolved
+/// endpoint and authentication material.
 pub fn provider_config_from_resolved_model(model: &ResolvedModel) -> ProviderConfig {
-    ProviderConfig {
-        provider_type: model.provider_type.clone(),
-        api_key: model.api_key.clone(),
-        base_url: model.base_url.clone(),
-        metadata: model.provider_metadata.clone().unwrap_or_default(),
-    }
+    model.canonical_parts().1
 }
 
 #[cfg(test)]

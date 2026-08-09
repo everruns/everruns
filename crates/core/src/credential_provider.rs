@@ -57,17 +57,9 @@ pub trait CredentialProvider: Send + Sync {
 /// org-scoped server execution paths — doing so would reopen the env fallback the
 /// Key Resolution Contract forbids.
 ///
-/// Recognized variables (per driver):
-///
-/// | Driver | API key | Base URL |
-/// |--------|---------|----------|
-/// | `openai`, `openai_completions` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
-/// | `openrouter` | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
-/// | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
-/// | `gemini` | `GEMINI_API_KEY` | `GEMINI_BASE_URL` |
-///
-/// Other drivers (Azure OpenAI, Bedrock, MAI, external) return `None`; their
-/// dev/standalone credentials are supplied explicitly by the caller.
+/// Variables follow the open driver id: `<UPPERCASE_ID>_API_KEY` and
+/// `<UPPERCASE_ID>_BASE_URL`, with punctuation normalized to `_`.
+/// `openai_completions` also falls back to the historical `OPENAI_*` names.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct EnvCredentialProvider;
 
@@ -83,17 +75,27 @@ impl EnvCredentialProvider {
     where
         F: Fn(&str) -> Option<String>,
     {
-        let (key_var, url_var) = match driver {
-            DriverId::OpenAI | DriverId::OpenAICompletions => ("OPENAI_API_KEY", "OPENAI_BASE_URL"),
-            DriverId::OpenRouter => ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"),
-            DriverId::Anthropic => ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
-            DriverId::Gemini => ("GEMINI_API_KEY", "GEMINI_BASE_URL"),
-            _ => return None,
-        };
+        let stem = driver
+            .as_str()
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() {
+                    c.to_ascii_uppercase()
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+        let key_var = format!("{stem}_API_KEY");
+        let url_var = format!("{stem}_BASE_URL");
 
         let non_empty = |s: String| (!s.is_empty()).then_some(s);
-        let api_key = lookup(key_var).and_then(non_empty);
-        let base_url = lookup(url_var).and_then(non_empty);
+        let mut api_key = lookup(&key_var).and_then(non_empty);
+        let mut base_url = lookup(&url_var).and_then(non_empty);
+        if driver == &DriverId::OpenAICompletions {
+            api_key = api_key.or_else(|| lookup("OPENAI_API_KEY").and_then(non_empty));
+            base_url = base_url.or_else(|| lookup("OPENAI_BASE_URL").and_then(non_empty));
+        }
 
         let creds = ProviderCredentials { api_key, base_url };
         (!creds.is_empty()).then_some(creds)

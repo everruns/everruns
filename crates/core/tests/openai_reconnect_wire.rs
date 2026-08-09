@@ -14,9 +14,10 @@ use std::time::Duration;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::llm_retry::LlmRetryConfig;
+use everruns_core::{BearerAuth, Provider};
 use futures::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -141,8 +142,12 @@ async fn drain(mut stream: LlmResponseStream) -> (Vec<String>, bool) {
 #[tokio::test]
 async fn driver_reconnects_on_truncated_first_response() {
     let (url, count) = spawn_flaky_openai_server(1).await;
-    let driver =
-        OpenAIProtocolChatDriver::with_base_url("test-key", url).with_retry_config(fast_retry());
+    let driver = Provider::new(
+        "openai-reconnect-test",
+        OpenAIProtocolChatDriver::new().with_retry_config(fast_retry()),
+    )
+    .base_url(url)
+    .auth(BearerAuth::new("test-key"));
 
     let stream = driver
         .chat_completion_stream(
@@ -169,8 +174,12 @@ async fn driver_reconnects_on_truncated_first_response() {
 async fn driver_surfaces_error_after_exhausting_reconnects() {
     // Always truncate. With max_retries = 2 that is 1 + 2 = 3 attempts.
     let (url, count) = spawn_flaky_openai_server(u32::MAX).await;
-    let driver =
-        OpenAIProtocolChatDriver::with_base_url("test-key", url).with_retry_config(fast_retry());
+    let driver = Provider::new(
+        "openai-reconnect-test",
+        OpenAIProtocolChatDriver::new().with_retry_config(fast_retry()),
+    )
+    .base_url(url)
+    .auth(BearerAuth::new("test-key"));
 
     let result = driver
         .chat_completion_stream(

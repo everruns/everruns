@@ -12,9 +12,10 @@
 
 use everruns_anthropic::AnthropicChatDriver;
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
+    LlmStreamEvent,
 };
+use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -122,8 +123,10 @@ async fn mount_sse(server: &MockServer, body: String) {
         .await;
 }
 
-fn driver(server: &MockServer) -> AnthropicChatDriver {
-    AnthropicChatDriver::with_base_url("test-key", format!("{}/v1/messages", server.uri()))
+fn driver(server: &MockServer) -> Provider {
+    Provider::new("anthropic-test", AnthropicChatDriver::new())
+        .base_url(format!("{}/v1/messages", server.uri()))
+        .auth(StaticHeaderAuth::new("x-api-key", "test-key"))
 }
 
 /// Text streaming: `message_start` carries input/cache usage, two text deltas

@@ -73,6 +73,7 @@ schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+futures.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 serde = { workspace = true }
 trybuild = { workspace = true }

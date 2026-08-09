@@ -74,16 +74,6 @@ impl ModelSyncService {
             .parse()
             .map_err(|e| anyhow::anyhow!("Invalid provider type: {}", e))?;
 
-        // Skip sync for providers with custom base URLs unless the provider
-        // needs a tenant-specific endpoint for discovery.
-        if provider_row.base_url.is_some() && !supports_sync_with_base_url(&provider_type) {
-            tracing::debug!(
-                provider_id = %provider_id,
-                "Skipping sync for provider with custom base URL"
-            );
-            return Ok(SyncResult::NotSupported);
-        }
-
         // Get API key from DB (fail closed — no env fallback in tenant path).
         let api_key = self.resolve_api_key(&provider_row)?;
         let Some(api_key) = api_key else {
@@ -101,6 +91,7 @@ impl ModelSyncService {
         }
 
         let config = ProviderConfig {
+            provider: everruns_core::ProviderKey::new(provider_id.to_string()),
             provider_type: driver_type,
             api_key: Some(api_key),
             base_url: provider_row.base_url.clone(),
@@ -113,7 +104,10 @@ impl ModelSyncService {
             .map_err(|e| anyhow::anyhow!("Failed to create driver: {}", e))?;
 
         // Call list_models on the driver
-        let discovered = match driver.list_models().await {
+        let discovered = match driver
+            .list_models(&everruns_core::ProviderEndpoint::default())
+            .await
+        {
             Ok(Some(models)) => models,
             Ok(None) => {
                 tracing::debug!(
@@ -183,7 +177,10 @@ impl ModelSyncService {
         let mut updated = 0;
 
         // Parse provider type for profile lookup
-        let provider_type: DriverId = provider.provider_type.parse().unwrap_or(DriverId::OpenAI);
+        let provider_type: DriverId = provider
+            .provider_type
+            .parse()
+            .unwrap_or_else(|_| unreachable!());
 
         // Get existing models for this provider
         let existing = self
@@ -268,26 +265,6 @@ impl ModelSyncService {
     }
 }
 
-fn supports_sync_with_base_url(provider_type: &DriverId) -> bool {
-    matches!(
-        provider_type,
-        DriverId::OpenAI
-            | DriverId::OpenRouter
-            | DriverId::AzureOpenAI
-            | DriverId::OpenAICompletions
-            // MAI providers always carry a base URL (the Azure AI Foundry
-            // resource endpoint); the driver gates discovery to recognized
-            // Foundry hosts internally.
-            | DriverId::Mai
-            // Fireworks providers may carry a custom base URL (proxy); the
-            // driver gates discovery to the recognized Fireworks host internally.
-            | DriverId::Fireworks
-            // External providers are custom by nature: a configured base URL is
-            // the embedder's endpoint, so do not skip discovery for them.
-            | DriverId::External(_)
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,16 +308,6 @@ mod tests {
 
         let deserialized: SyncResult = serde_json::from_str(&json).unwrap();
         assert!(matches!(deserialized, SyncResult::NotSupported));
-    }
-
-    #[test]
-    fn test_azure_openai_supports_sync_with_base_url() {
-        assert!(supports_sync_with_base_url(&DriverId::AzureOpenAI));
-        assert!(supports_sync_with_base_url(&DriverId::OpenAI));
-        assert!(supports_sync_with_base_url(&DriverId::OpenRouter));
-        assert!(supports_sync_with_base_url(&DriverId::OpenAICompletions));
-        assert!(supports_sync_with_base_url(&DriverId::Mai));
-        assert!(!supports_sync_with_base_url(&DriverId::Anthropic));
     }
 
     #[test]

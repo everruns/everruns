@@ -13,10 +13,10 @@
 
 use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, ProviderOpaqueContext,
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
+    LlmStreamEvent, ProviderOpaqueContext,
 };
-use everruns_core::{CompactContent, CompactOutputItem};
+use everruns_core::{BearerAuth, CompactContent, CompactOutputItem, Provider};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -110,11 +110,10 @@ async fn mount_sse(server: &MockServer, body: String) {
         .await;
 }
 
-fn driver(server: &MockServer) -> OpenResponsesProtocolChatDriver {
-    OpenResponsesProtocolChatDriver::with_base_url(
-        "test-key",
-        format!("{}/v1/responses", server.uri()),
-    )
+fn driver(server: &MockServer) -> Provider {
+    Provider::new("openresponses-test", OpenResponsesProtocolChatDriver::new())
+        .base_url(format!("{}/v1/responses", server.uri()))
+        .auth(BearerAuth::new("test-key"))
 }
 
 /// Text streaming: two output-text deltas then a `response.completed` carrying

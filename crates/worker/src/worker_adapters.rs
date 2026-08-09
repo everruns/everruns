@@ -116,6 +116,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get default model configuration
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>>;
 
+    async fn get_provider_config(
+        &self,
+        org_id: i64,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>>;
+
     // =========================================================================
     // Image Resolution Operations
     // =========================================================================
@@ -610,6 +616,15 @@ impl<A: WorkerAdapters> everruns_core::traits::ProviderStore for OrgAdapter<A> {
 
     async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         self.adapters.get_default_model(self.org_id).await
+    }
+
+    async fn get_provider_config(
+        &self,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        self.adapters
+            .get_provider_config(self.org_id, provider)
+            .await
     }
 }
 

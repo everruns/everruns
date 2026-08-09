@@ -12,10 +12,11 @@
 // finish handling collapses into a single terminal `Done` event.
 
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
+    LlmStreamEvent,
 };
 use everruns_gemini::GeminiChatDriver;
+use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -38,6 +39,12 @@ fn config(model: &str) -> LlmCallConfig {
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
     }
+}
+
+fn provider(server: &MockServer) -> Provider {
+    Provider::new("gemini-test", GeminiChatDriver::new())
+        .base_url(server.uri())
+        .auth(StaticHeaderAuth::new("x-goog-api-key", "test-key"))
 }
 
 /// Normalized, comparable form of an `LlmStreamEvent` for golden assertions.
@@ -136,7 +143,7 @@ async fn text_stream_golden_events() {
     .join("\n");
     mount_sse(&server, body).await;
 
-    let driver = GeminiChatDriver::with_base_url("test-key", server.uri());
+    let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
@@ -181,7 +188,7 @@ async fn function_call_stream_golden_events() {
     .join("\n");
     mount_sse(&server, body).await;
 
-    let driver = GeminiChatDriver::with_base_url("test-key", server.uri());
+    let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "weather?")],
@@ -223,7 +230,7 @@ async fn eos_without_finish_reason_emits_done() {
     .join("\n");
     mount_sse(&server, body).await;
 
-    let driver = GeminiChatDriver::with_base_url("test-key", server.uri());
+    let driver = provider(&server);
     let stream = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],

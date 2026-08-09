@@ -15,19 +15,28 @@ use everruns_provider::OpenAIProtocolChatDriver;
 use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
-    DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmMessage, LlmResponseStream,
 };
 use everruns_provider::error::Result;
 use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
-use everruns_provider::openai_protocol::{
-    apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
-};
+use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
 
 /// Fireworks AI serverless inference endpoint (OpenAI-compatible Chat
 /// Completions). The chat URL is the normalized `…/chat/completions` form.
 pub const FIREWORKS_DEFAULT_API_URL: &str =
     "https://api.fireworks.ai/inference/v1/chat/completions";
+
+/// Ready-to-use Fireworks provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    api_key: impl Into<String>,
+) -> Provider {
+    Provider::new(id, FireworksChatDriver::new())
+        .base_url("https://api.fireworks.ai/inference/v1")
+        .auth(BearerAuth::new(api_key))
+}
 
 /// Canonical Fireworks API host. Discovery only runs against this host.
 const FIREWORKS_HOST: &str = "api.fireworks.ai";
@@ -46,65 +55,30 @@ pub fn is_fireworks_api_url(api_url: &str) -> bool {
 /// Fireworks AI chat driver.
 ///
 /// Construct directly for programmatic use, or let [`register_driver`] build
-/// instances from a [`DriverConfig`].
+/// instances from the transitional descriptor catalog.
 ///
 /// # Example
 ///
 /// ```
-/// use everruns_fireworks::FireworksChatDriver;
+/// use everruns_fireworks::provider;
 ///
-/// let driver = FireworksChatDriver::new("fw-key");
+/// let service = provider("fireworks", "fw-key");
 /// assert_eq!(
-///     driver.api_url(),
+///     service.endpoint().url("chat/completions").unwrap(),
 ///     "https://api.fireworks.ai/inference/v1/chat/completions",
 /// );
 /// ```
 #[derive(Clone)]
 pub struct FireworksChatDriver {
     inner: OpenAIProtocolChatDriver,
-    api_url: String,
-    /// Whether constructed with an explicit base URL override via
-    /// [`with_base_url`]. Discovery is skipped for custom (non-Fireworks) hosts.
-    uses_custom_url: bool,
 }
 
 impl FireworksChatDriver {
-    /// Create a driver with the default Fireworks serverless endpoint.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// Create the Fireworks-compatible Chat Completions wire driver.
+    pub fn new() -> Self {
         Self {
-            inner: OpenAIProtocolChatDriver::with_base_url(api_key, FIREWORKS_DEFAULT_API_URL),
-            api_url: FIREWORKS_DEFAULT_API_URL.to_string(),
-            uses_custom_url: false,
+            inner: OpenAIProtocolChatDriver::new(),
         }
-    }
-
-    /// Create a driver with an explicit API URL override (self-hosted proxy or a
-    /// custom Fireworks endpoint). The URL is normalized to a
-    /// `…/chat/completions` endpoint.
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        let api_url = normalize_api_url(&api_url.into(), "/chat/completions");
-        Self {
-            inner: OpenAIProtocolChatDriver::with_base_url(api_key, &api_url),
-            api_url,
-            uses_custom_url: true,
-        }
-    }
-
-    /// Build a driver from a registry [`DriverConfig`]. The API key is required
-    /// (enforced by the registry); `base_url` overrides the default endpoint.
-    fn from_driver_config(config: &DriverConfig) -> Self {
-        // The registry guarantees an api_key for Fireworks before calling the
-        // factory; default to empty so the infallible factory contract holds.
-        let api_key = config.api_key.clone().unwrap_or_default();
-        match config.base_url.as_deref().filter(|u| !u.is_empty()) {
-            Some(base_url) => Self::with_base_url(api_key, base_url),
-            None => Self::new(api_key),
-        }
-    }
-
-    /// The resolved chat-completions API URL.
-    pub fn api_url(&self) -> &str {
-        &self.api_url
     }
 }
 
@@ -112,35 +86,42 @@ impl FireworksChatDriver {
 impl ChatDriver for FireworksChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        self.inner.chat_completion_stream(messages, config).await
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.inner.supports_parallel_tool_calls(model)
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        let Some(api_url) = endpoint.url("chat/completions") else {
+            return Ok(None);
+        };
         // Discovery only runs against Fireworks' own host. A custom proxy URL may
         // resolve to private infrastructure at request time (mirrors the
         // OpenRouter/MAI host gating).
-        if self.uses_custom_url && !is_fireworks_api_url(&self.api_url) {
+        if !is_fireworks_api_url(&api_url) {
             return Ok(None);
         }
 
-        let models_url = models_url_for_api_url(&self.api_url);
-        list_fireworks_models(self.inner.client(), self.inner.api_key(), &models_url).await
+        let models_url = models_url_for_api_url(&api_url);
+        list_fireworks_models(self.inner.client(), endpoint, &models_url).await
     }
 }
 
 impl std::fmt::Debug for FireworksChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FireworksChatDriver")
-            .field("api_url", &self.api_url)
             .field("api", &"Fireworks AI (Chat Completions)")
-            .field("api_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -155,11 +136,16 @@ impl std::fmt::Debug for FireworksChatDriver {
 /// `supports_image_input`, `context_length`).
 async fn list_fireworks_models(
     client: &reqwest::Client,
-    api_key: &str,
+    endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    let resolved = endpoint.resolve("GET", models_url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
     fetch_models::<FireworksModelsResponse, _>(
-        apply_models_api_auth(client.get(models_url), models_url, api_key),
+        request,
         "Failed to fetch Fireworks models",
         "Failed to parse Fireworks models response",
         &[],
@@ -343,11 +329,26 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "Fireworks AI".into(),
         credential_schema: fireworks_credential_schema(),
         ..DriverDescriptor::chat_only(DriverId::Fireworks, |config| {
-            Box::new(FireworksChatDriver::from_driver_config(config)) as BoxedChatDriver
+            Provider::new(config.provider.clone(), FireworksChatDriver::new())
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://api.fireworks.ai/inference/v1"),
+                )
+                .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
+                .into_boxed_driver()
         })
     });
+}
+
+impl Default for FireworksChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -359,23 +360,30 @@ mod tests {
 
     #[test]
     fn default_driver_uses_fireworks_endpoint() {
-        let driver = FireworksChatDriver::new("fw-key");
-        assert_eq!(driver.api_url(), FIREWORKS_DEFAULT_API_URL);
-        assert!(!driver.uses_custom_url);
+        let service = provider("fireworks", "fw-key");
+        assert_eq!(
+            service.endpoint().url("chat/completions").as_deref(),
+            Some(FIREWORKS_DEFAULT_API_URL)
+        );
     }
 
     #[test]
     fn with_base_url_normalizes_to_chat_completions() {
-        let driver =
-            FireworksChatDriver::with_base_url("fw-key", "https://api.fireworks.ai/inference/v1");
-        assert_eq!(driver.api_url(), FIREWORKS_DEFAULT_API_URL);
-        assert!(driver.uses_custom_url);
+        let service =
+            provider("fireworks", "fw-key").base_url("https://api.fireworks.ai/inference/v1");
+        assert_eq!(
+            service.endpoint().url("chat/completions").as_deref(),
+            Some(FIREWORKS_DEFAULT_API_URL)
+        );
     }
 
     #[test]
     fn with_base_url_preserves_full_chat_completions_url() {
-        let driver = FireworksChatDriver::with_base_url("fw-key", FIREWORKS_DEFAULT_API_URL);
-        assert_eq!(driver.api_url(), FIREWORKS_DEFAULT_API_URL);
+        let service = provider("fireworks", "fw-key").base_url(FIREWORKS_DEFAULT_API_URL);
+        assert_eq!(
+            service.endpoint().url("chat/completions").as_deref(),
+            Some(FIREWORKS_DEFAULT_API_URL)
+        );
     }
 
     #[test]
@@ -465,8 +473,16 @@ mod tests {
 
     #[tokio::test]
     async fn list_models_skips_custom_non_fireworks_host() {
-        let driver = FireworksChatDriver::with_base_url("fw-key", "https://proxy.example.com/v1");
-        assert!(driver.list_models().await.unwrap().is_none());
+        let service = Provider::new("proxy", FireworksChatDriver::new())
+            .base_url("https://proxy.example.com/v1");
+        let driver = FireworksChatDriver::new();
+        assert!(
+            driver
+                .list_models(service.endpoint())
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -502,10 +518,14 @@ mod tests {
             .await;
 
         let models_url = format!("{}/inference/v1/models", server.uri());
-        let discovered = list_fireworks_models(&reqwest::Client::new(), "fw-secret", &models_url)
-            .await
-            .expect("discovery request should succeed")
-            .expect("discovery should return a model list");
+        let service = Provider::new("fireworks-test", FireworksChatDriver::new())
+            .base_url(format!("{}/inference/v1", server.uri()))
+            .auth(BearerAuth::new("fw-secret"));
+        let discovered =
+            list_fireworks_models(&reqwest::Client::new(), service.endpoint(), &models_url)
+                .await
+                .expect("discovery request should succeed")
+                .expect("discovery should return a model list");
 
         // Image model filtered out; chat model retained with a discovered profile.
         assert_eq!(discovered.len(), 1);

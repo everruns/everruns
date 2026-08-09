@@ -105,7 +105,9 @@ pub mod observer;
 pub mod organization;
 pub mod payment;
 pub mod principal;
+pub use everruns_provider::model_spec;
 pub use everruns_provider::provider;
+pub use everruns_provider::runtime_provider;
 pub mod session;
 pub mod session_file;
 pub mod session_path;
@@ -315,7 +317,7 @@ pub use driver_registry::{
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
     LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
-    ProviderOpaqueContext, ServiceKind, fold_system_messages,
+    ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 
 // LLM retry types re-exports
@@ -323,10 +325,6 @@ pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata}
 
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
 pub use openai_protocol::OpenAIProtocolChatDriver;
-
-// Pluggable request authentication, shared by the Chat Completions and Open
-// Responses protocol drivers (e.g. static API key vs. refreshable OAuth bearer).
-pub use openai_protocol::AuthHeaderProvider;
 
 // Open Responses Protocol driver (https://www.openresponses.org/)
 // Vendor-neutral API standard, recommended for new projects
@@ -523,8 +521,14 @@ pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, 
 // the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
 // `AgentIdentity`.
+pub use model_spec::{ModelSpec, UnknownProvider};
 pub use principal::{PrincipalKind, PrincipalSummary};
-pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
+pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
+pub use runtime_provider::{
+    BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
+    ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,
+    StaticHeaderAuth,
+};
 pub use session::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,
     SessionStatus, SubagentStatus,

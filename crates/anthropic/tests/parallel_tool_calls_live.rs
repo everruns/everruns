@@ -10,8 +10,8 @@
 //! Ignored by default (requires network + `ANTHROPIC_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-anthropic --test parallel_tool_calls_live -- --ignored --nocapture`
 
-use everruns_anthropic::AnthropicChatDriver;
-use everruns_core::driver_registry::{ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_anthropic::provider;
+use everruns_core::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
@@ -64,7 +64,7 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
 }
 
 async fn tool_call_count(parallel: Option<bool>) -> usize {
-    let driver = AnthropicChatDriver::new(api_key());
+    let provider = provider("anthropic", api_key());
     let messages = vec![
         LlmMessage::text(
             LlmMessageRole::System,
@@ -75,7 +75,7 @@ async fn tool_call_count(parallel: Option<bool>) -> usize {
             "Get both the current weather and the current local time in Paris.",
         ),
     ];
-    let response = driver
+    let response = provider
         .chat_completion(messages, &config_with(parallel))
         .await
         .expect("Anthropic should accept the request");

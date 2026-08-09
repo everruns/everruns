@@ -59,10 +59,10 @@ The builder must allow an embedder to:
 
 - Replace the `PlatformDefinition`
 - Register extra capabilities
-- Register or replace LLM drivers
+- Register or replace runtime providers over protocol drivers
 - Seed harnesses, agents, and sessions
 - Seed workspace files
-- Configure a default model
+- Configure a credential-free default `ModelSpec`
 - Optionally register `llmsim` for deterministic local examples and tests
 - Swap the default in-memory stores for custom backends via `RuntimeBackends`
 
@@ -384,10 +384,26 @@ backends.
 
 ## Model Resolution
 
-The runtime requires a default model. It may come from:
+The runtime requires a default model and resolves it through the canonical
+`ModelSpec` + runtime `Provider` path. New embedders use:
+
+- `InProcessRuntimeBuilder::provider(...)`
+- `InProcessRuntimeBuilder::model_spec(...)`
+
+Provider identity is an open string. The provider owns endpoint, headers,
+async authentication, and its protocol driver; the model remains
+credential-free.
+
+For the next `0.17.x` patch, these existing entry points remain compatibility
+inputs:
 
 - explicit `InProcessRuntimeBuilder::default_model(...)`
 - helper configuration like `InProcessRuntimeBuilder::llm_sim(...)`
+
+They convert into the same direct provider registry and execution path before a
+turn runs. They do not retain a separate provider resolution algorithm or
+driver semantics. This compatibility surface is transitional; removing
+`everruns-runtime` or preparing the `0.18.0` cutover is outside this contract.
 
 If no default model is available at build time, `build()` must fail with a
 configuration error.

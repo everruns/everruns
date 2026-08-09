@@ -614,7 +614,7 @@ never treated as permission to bypass the egress boundary.
 | TM-LLM-001 | API key at rest exposure | Critical | Encrypted via envelope encryption (AES-256-GCM); stored in `llm_providers.api_key_encrypted` | MITIGATED |
 | TM-LLM-002 | API key in logs | High | Never logged; tracing filters sensitive fields; generic error messages only | MITIGATED |
 | TM-LLM-003 | API key in error messages | High | Provider errors are sanitized before returning to users; full errors remain server-side. Agent Analyze responses and persisted health-check terminal errors use the shared user-facing provider taxonomy, which preserves actionable failure categories without copying raw provider bodies. Invalid tool-schema rejections expose only a stable category and bounded schema path in standard mode; raw provider text remains restricted to operator-enabled detailed disclosure. | MITIGATED |
-| TM-LLM-004 | API key lifetime in memory | Medium | Decrypted per-request; key dropped after LLM call completes | MITIGATED |
+| TM-LLM-004 | API key lifetime in memory | Medium | Decrypted only at the org-scoped provider composition boundary and held in a non-serializable runtime provider for its bounded execution lifetime; model DTOs/events never carry it; provider/request `Debug` redacts values | MITIGATED |
 | TM-LLM-005 | Provider failure retry amplifies cost or hides permanent account errors | Medium | Provider-boundary semantic classification separates transient transport/stall/overload/rate-limit/server failures from credentials, billing quota, unavailable models, invalid requests, and long-horizon usage limits. Automatic recovery is allowed only before assistant output commits, uses jittered exponential backoff, and is bounded by shared attempt and elapsed-time budgets; lower layers report consumed retries so nested loops cannot multiply attempts. Permanent classes fail fast. | MITIGATED |
 | TM-LLM-006 | Provider MITM | High | HTTPS required for all LLM provider communication | MITIGATED |
 | TM-LLM-007 | Indirect prompt injection | High | Tool results and user messages are role-separated; no complete mitigation exists for LLM-level prompt injection | **ACCEPTED** |
@@ -636,17 +636,19 @@ never treated as permission to bypass the egress boundary.
 
 **TM-LLM-001 — Key Retrieval Flow:**
 ```
-Worker needs LLM key
-    → gRPC GetTurnContext (no key material in worker config)
-    → Control plane fetches llm_providers row
-    → EncryptionService.decrypt(api_key_encrypted)
-    → Key returned in gRPC response (in-memory only)
-    → Worker creates ChatDriver with key
+Worker resolves model and provider
+    → gRPC GetTurnContext returns credential-free model + provider identity
+    → authenticated provider RPC resolves that exact provider under the turn org
+    → control plane decrypts the provider credential
+    → worker composes non-serializable runtime Provider over protocol driver
+    → ProviderAuth resolves headers/signing per request attempt
     → LLM API call over HTTPS
-    → Key dropped when driver goes out of scope
+    → provider dropped with the bounded execution context
 ```
 
-Workers never have direct database access or encryption keys. Key material exists in worker memory only during the LLM call.
+Workers never have direct database access or encryption keys. Credentials do
+not enter model records, internal model DTOs, events, logs, or serializable
+runtime values.
 
 **TM-LLM-007 — Prompt Injection (ACCEPTED):**
 Indirect prompt injection via tool results or user messages is an inherent LLM limitation. Mitigations:

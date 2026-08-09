@@ -398,11 +398,19 @@ impl StoreCommandHost {
         }
         let llm_config = llm_config_builder.build();
 
+        let (_, compatibility_config) = model.canonical_parts();
+        let provider_config = self
+            .provider_store
+            .get_provider_config(&compatibility_config.provider)
+            .await
+            .map_err(|error| SessionCompletionError::Completion {
+                error: error.to_string(),
+                context: context.clone(),
+            })?
+            .unwrap_or(compatibility_config);
         let driver = self
             .driver_registry
-            .create_chat_driver(
-                &crate::llm_conversions::provider_config_from_resolved_model(&model),
-            )
+            .create_chat_driver(&provider_config)
             .map_err(|error| SessionCompletionError::Completion {
                 error: error.to_string(),
                 context: context.clone(),
@@ -452,7 +460,11 @@ impl CommandHost for StoreCommandHost {
 
         let response = prepared
             .driver
-            .chat_completion(prepared.llm_messages, &prepared.llm_config)
+            .chat_completion(
+                &crate::ProviderEndpoint::default(),
+                prepared.llm_messages,
+                &prepared.llm_config,
+            )
             .await
             .map_err(|error| completion_error(error.to_string()))?;
 
@@ -472,7 +484,11 @@ impl CommandHost for StoreCommandHost {
         let prepared = self.prepare_completion(request).await?;
         let events = prepared
             .driver
-            .chat_completion_stream(prepared.llm_messages, &prepared.llm_config)
+            .chat_completion_stream(
+                &crate::ProviderEndpoint::default(),
+                prepared.llm_messages,
+                &prepared.llm_config,
+            )
             .await
             .map_err(|error| SessionCompletionError::Completion {
                 error: error.to_string(),

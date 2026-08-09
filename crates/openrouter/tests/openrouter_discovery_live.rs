@@ -7,8 +7,7 @@
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openrouter --test openrouter_discovery_live -- --ignored --nocapture`
 
-use everruns_core::driver_registry::ChatDriver;
-use everruns_openrouter::OpenRouterChatDriver;
+use everruns_openrouter::provider;
 
 #[tokio::test]
 #[ignore = "live network + OPENROUTER_API_KEY"]
@@ -16,9 +15,9 @@ async fn openrouter_discovers_nemotron_reasoning_profile() {
     let api_key = std::env::var("OPENROUTER_API_KEY")
         .expect("OPENROUTER_API_KEY must be set for the live smoke test");
 
-    let driver = OpenRouterChatDriver::with_base_url(api_key, "https://openrouter.ai/api/v1");
+    let provider = provider("openrouter", api_key);
 
-    let models = driver
+    let models = provider
         .list_models()
         .await
         .expect("list_models should succeed")

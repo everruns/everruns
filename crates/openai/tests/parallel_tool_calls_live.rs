@@ -9,11 +9,11 @@
 //! Ignored by default (requires network + `OPENAI_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openai --test parallel_tool_calls_live -- --ignored --nocapture`
 
-use everruns_core::driver_registry::{ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_core::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
-use everruns_openai::OpenAIChatDriver;
+use everruns_openai::provider;
 
 const LIVE_MODEL: &str = "gpt-4o-mini";
 
@@ -63,7 +63,7 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
 }
 
 async fn tool_call_count(parallel: Option<bool>) -> usize {
-    let driver = OpenAIChatDriver::new(api_key());
+    let provider = provider("openai", api_key());
     let messages = vec![
         LlmMessage::text(
             LlmMessageRole::System,
@@ -74,7 +74,7 @@ async fn tool_call_count(parallel: Option<bool>) -> usize {
             "Get both the current weather and the current local time in Paris.",
         ),
     ];
-    let response = driver
+    let response = provider
         .chat_completion(messages, &config_with(parallel))
         .await
         .expect("OpenAI should accept the request");

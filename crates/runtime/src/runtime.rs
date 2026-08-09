@@ -192,7 +192,9 @@ fn finish_turn(
 pub struct InProcessRuntimeBuilder {
     platform_definition: PlatformDefinition,
     llm_sim_config: Option<LlmSimConfig>,
-    default_model: Option<ResolvedModel>,
+    providers: Vec<everruns_core::Provider>,
+    model_spec: Option<everruns_core::ModelSpec>,
+    legacy_provider_config: Option<everruns_core::ProviderConfig>,
     backends: Option<RuntimeBackends>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
@@ -235,7 +237,9 @@ impl InProcessRuntimeBuilder {
                 .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
                 .build(),
             llm_sim_config: None,
-            default_model: None,
+            providers: Vec::new(),
+            model_spec: None,
+            legacy_provider_config: None,
             backends: None,
             session_file_system_factory_context: SessionFileSystemFactoryContext::new(),
             harnesses: Vec::new(),
@@ -279,6 +283,12 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Register a canonical runtime provider selected by [`ModelSpec`](everruns_core::ModelSpec).
+    pub fn provider(mut self, provider: everruns_core::Provider) -> Self {
+        self.providers.push(provider);
+        self
+    }
+
     /// Register the built-in `llmsim` driver for deterministic local execution.
     pub fn llm_sim(mut self, config: LlmSimConfig) -> Self {
         self.llm_sim_config = Some(config);
@@ -287,7 +297,16 @@ impl InProcessRuntimeBuilder {
 
     /// Set the runtime default model used when sessions/agents do not override it.
     pub fn default_model(mut self, model: ResolvedModel) -> Self {
-        self.default_model = Some(model);
+        let (spec, provider_config) = model.canonical_parts();
+        self.model_spec = Some(spec);
+        self.legacy_provider_config = Some(provider_config);
+        self
+    }
+
+    /// Select a credential-free model served by a provider registered on this builder.
+    pub fn model_spec(mut self, model: everruns_core::ModelSpec) -> Self {
+        self.model_spec = Some(model);
+        self.legacy_provider_config = None;
         self
     }
 
@@ -488,30 +507,74 @@ impl InProcessRuntimeBuilder {
 
         if let Some(config) = self.llm_sim_config.take() {
             let driver = LlmSimDriver::new(config);
-            // Replace intentionally: the platform may already register a
-            // built-in LlmSim driver, and the builder's config takes precedence.
+            // This legacy convenience adapts into the canonical provider path.
             self.platform_definition
                 .driver_registry_mut()
-                .register_or_replace(DriverId::LlmSim, move |_config| Box::new(driver.clone()));
+                .replace_provider(everruns_core::Provider::new("llmsim", driver));
 
-            if self.default_model.is_none() {
-                self.default_model = Some(ResolvedModel {
-                    model: "llmsim-model".to_string(),
-                    provider_type: DriverId::LlmSim,
-                    api_key: Some("fake-key".to_string()),
-                    base_url: None,
-                    provider_metadata: None,
-                });
+            if self.model_spec.is_none() {
+                self.model_spec = Some(everruns_core::ModelSpec::on("llmsim", "llmsim-model"));
             }
         }
 
-        let default_model = self.default_model.ok_or_else(|| {
+        for provider in self.providers {
+            self.platform_definition
+                .driver_registry_mut()
+                .register_provider(provider)?;
+        }
+
+        let model_spec = self.model_spec.ok_or_else(|| {
             AgentLoopError::config(
                 "in-process runtime requires a default model; call \
                  InProcessRuntimeBuilder::default_model(...) or \
                  InProcessRuntimeBuilder::llm_sim(...)",
             )
         })?;
+
+        // `ResolvedModel` is a 0.17 compatibility input. Adapt it once into a
+        // canonical registered provider; no credential-bearing model state is
+        // retained by the runtime execution path.
+        let legacy_config = self.legacy_provider_config.take();
+        let provider_type = legacy_config
+            .as_ref()
+            .map(|config| config.provider_type.clone())
+            .unwrap_or_else(|| DriverId::external(model_spec.provider.as_str()));
+        if let Some(config) = legacy_config
+            && self
+                .platform_definition
+                .driver_registry()
+                .provider(&model_spec.provider)
+                .is_none()
+        {
+            let driver = self
+                .platform_definition
+                .driver_registry()
+                .create_chat_driver(&config)?;
+            self.platform_definition
+                .driver_registry_mut()
+                .register_provider(everruns_core::Provider::new(
+                    model_spec.provider.clone(),
+                    driver,
+                ))?;
+        }
+
+        let provider_metadata = if provider_type.as_str() == model_spec.provider.as_str() {
+            None
+        } else {
+            Some(everruns_core::ProviderMetadata {
+                extra: Some(serde_json::json!({
+                    "provider_id": model_spec.provider.as_str(),
+                })),
+                ..Default::default()
+            })
+        };
+        let default_model = ResolvedModel {
+            model: model_spec.model,
+            provider_type,
+            api_key: None,
+            base_url: None,
+            provider_metadata,
+        };
 
         backends
             .provider_store

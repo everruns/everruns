@@ -68,7 +68,10 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
+pub use driver::{
+    OpenAIChatDriver, OpenAICompletionsChatDriver, azure_provider, completions_provider, provider,
+    register_driver,
+};
 pub use embeddings::OpenAIEmbeddingsDriver;
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
