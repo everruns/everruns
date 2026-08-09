@@ -156,3 +156,31 @@ fn fixture_sources_import_only_the_framework() {
         );
     }
 }
+
+#[test]
+fn facade_has_no_runtime_dependency_or_source_import() {
+    let crate_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let runtime_package = ["everruns", "runtime"].join("-");
+    let runtime_module = ["everruns", "runtime"].join("_");
+    let manifest = fs::read_to_string(crate_root.join("Cargo.toml")).expect("facade manifest");
+    assert!(
+        !manifest.lines().any(|line| {
+            let line = line.trim_start();
+            line.starts_with(&format!("{runtime_package}."))
+                || line.starts_with(&format!("{runtime_package} ="))
+        }),
+        "everruns must depend directly on the canonical host, not runtime compatibility"
+    );
+
+    for entry in fs::read_dir(crate_root.join("src")).expect("facade source directory") {
+        let path = entry.expect("facade source entry").path();
+        if path.extension().is_some_and(|extension| extension == "rs") {
+            let contents = fs::read_to_string(&path).expect("facade source file");
+            assert!(
+                !contents.contains(&runtime_module),
+                "{} imports runtime compatibility instead of the canonical host",
+                path.display()
+            );
+        }
+    }
+}

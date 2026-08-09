@@ -20,4 +20,42 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
             "everruns-host must not depend on {forbidden}; adapters and facades depend on host"
         );
     }
+
+    let engine_manifest = manifest_path
+        .parent()
+        .expect("host crate directory")
+        .parent()
+        .expect("crates directory")
+        .join("engine/Cargo.toml");
+    let engine = std::fs::read_to_string(&engine_manifest)
+        .unwrap_or_else(|error| panic!("read {}: {error}", engine_manifest.display()));
+    assert!(
+        !engine.contains("everruns-host"),
+        "the sans-I/O engine must not depend on the effectful host"
+    );
+}
+
+#[test]
+fn host_exposes_no_writable_message_store_contract() {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    for forbidden in ["RuntimeMessageStore", "PersistingEventEmitter"] {
+        for entry in std::fs::read_dir(&source).expect("read host source") {
+            let path = entry.expect("host source entry").path();
+            if path.extension().is_some_and(|extension| extension == "rs") {
+                let contents = std::fs::read_to_string(&path).expect("read host source file");
+                assert!(
+                    !contents.contains(forbidden),
+                    "{} must not define legacy writable history marker {forbidden}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    let backends =
+        std::fs::read_to_string(source.join("backends.rs")).expect("read canonical backend bundle");
+    assert!(
+        !backends.contains("message_store"),
+        "HostBackends must use EventLog, never a writable message store"
+    );
 }

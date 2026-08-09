@@ -4,6 +4,7 @@ use everruns_core::capabilities::{
     InfinityContextCapability, SessionTasksCapability, TestMathCapability,
 };
 use everruns_core::driver_registry::DriverRegistry;
+use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
@@ -330,11 +331,12 @@ async fn query_history_reads_seeded_resumed_session_messages() {
     let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
     let backends = RuntimeBackends::in_memory();
     backends
-        .message_store
-        .store_message(
+        .event_log
+        .append(EventRequest::new(
             session_id,
-            Message::user("The seeded deployment code is amber."),
-        )
+            EventContext::empty(),
+            InputMessageData::new(Message::user("The seeded deployment code is amber.")),
+        ))
         .await
         .unwrap();
 

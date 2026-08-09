@@ -19,17 +19,11 @@
 //! Only facade types appear on the public surface: no `EventBus`,
 //! `EventEmitter`, `EventRequest`, or core event/store types.
 
-use std::sync::atomic::{AtomicI32, Ordering};
-
-use async_trait::async_trait;
-use everruns_core::error::Result as CoreResult;
 use everruns_core::events::{
-    self, Event, EventData, EventRequest, OutputMessageDeltaData, ToolCompletedData,
-    ToolProgressData, ToolStartedData, TurnFailedData,
+    self, Event, EventData, OutputMessageDeltaData, ToolCompletedData, ToolProgressData,
+    ToolStartedData, TurnFailedData,
 };
-use everruns_core::traits::EventEmitter;
-use everruns_core::typed_id::EventId;
-use everruns_runtime::EventBus;
+use everruns_host::{EventSink, EventSinkError};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
@@ -324,27 +318,20 @@ impl CancellationToken {
     }
 }
 
-/// Facade event bus: the raw in-process event sink handed to the runtime.
+/// Facade event bus: the post-commit event sink handed to the host.
 ///
-/// Implements the runtime's [`EventBus`] contract (and thus core's
-/// [`EventEmitter`]). It assigns each event an id and sequence exactly as the
-/// runtime's built-in in-memory emitter does — so downstream message
-/// persistence still works — then fans the event out to every live
-/// [`EventStream`] as a projected [`SessionEvent`]. Sending never blocks and
-/// never errors on a full or subscriber-less channel, so an observer can never
-/// stall or fail a turn.
+/// The host assigns ids and persisted sequence numbers, commits durable events,
+/// then calls this sink. It fans each finalized event out to every live
+/// [`EventStream`] as a projected [`SessionEvent`]. Sending never blocks, so an
+/// observer can never stall or fail a turn.
 pub(crate) struct FacadeEventBus {
     sender: broadcast::Sender<SessionEvent>,
-    sequence: AtomicI32,
 }
 
 impl FacadeEventBus {
     pub(crate) fn new() -> Self {
         let (sender, _rx) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
-        Self {
-            sender,
-            sequence: AtomicI32::new(0),
-        }
+        Self { sender }
     }
 
     /// Subscribe a new [`EventStream`] to this bus.
@@ -353,18 +340,13 @@ impl FacadeEventBus {
     }
 }
 
-#[async_trait]
-impl EventEmitter for FacadeEventBus {
-    async fn emit(&self, request: EventRequest) -> CoreResult<Event> {
-        let seq = self.sequence.fetch_add(1, Ordering::Relaxed) + 1;
-        let event = request.into_event(EventId::new(), seq);
+impl EventSink for FacadeEventBus {
+    fn try_send(&self, event: Event) -> Result<(), EventSinkError> {
         // Ignore the send result: an error means there are simply no live
         // subscribers, which must not affect the turn.
-        let _ = self.sender.send(SessionEvent::from_core_event(&event));
-        Ok(event)
+        self.sender
+            .send(SessionEvent::from_core_event(&event))
+            .map(|_| ())
+            .map_err(|_| EventSinkError::Closed)
     }
 }
-
-// The default `collected_events` (empty) is correct: this bus streams rather
-// than retaining. Observers read the live `EventStream`, not a post-hoc buffer.
-impl EventBus for FacadeEventBus {}

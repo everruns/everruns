@@ -321,9 +321,11 @@ async fn direct_real_disk_write_reports_workspace_alias_target() {
     };
 
     let reported = output["path"].as_str().expect("path is a string");
+    let expected = std::fs::canonicalize(root.path().join("matrix/out.txt")).unwrap();
     assert_eq!(
         reported,
-        root.path().join("matrix/out.txt").to_str().unwrap()
+        expected.to_str().unwrap(),
+        "real-disk output uses the canonical host path on platforms where the temp root is a symlink"
     );
     assert!(std::path::Path::new(reported).is_file());
 }

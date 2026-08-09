@@ -1,4 +1,4 @@
-// Composable `SessionFileSystem` decorators for policy enforcement.
+// Composable host `SessionFileSystem` decorators for policy enforcement.
 //
 // EVE-478: promoted from `examples/coding-cli` so any non-server embedder can
 // compose them on top of `RealDiskFileStore`. Two concerns are layered here:

@@ -1,26 +1,20 @@
-// Public backend contract for the embedded runtime.
-// Decision: runtime extends core's read-only traits with the minimal write
-// operations needed for seeding and message persistence. Trait upcasting +
-// blanket `Arc<T>: T` impls in core let the runtime forward to atoms without
-// shim wrappers.
+// Public backend contract for the embedded host.
+// Seeding stores remain writable host configuration. Conversation history is
+// different: canonical events are the only write path and EventHistory is the
+// rebuildable read projection.
 
+use crate::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
 use crate::in_memory::{InMemorySessionStorageStore, InMemorySessionStore};
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::error::Result;
-use everruns_core::events::Event;
 use everruns_core::harness::Harness;
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
-    InMemoryProviderStore,
-};
-use everruns_core::message::Message;
-use everruns_core::message_retriever::{InputMessage, MessageRetriever};
+use everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore};
 use everruns_core::session::Session;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
-    SessionScheduleStore, SessionStorageStore, SessionStore, UserConnectionResolver,
+    AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionMutator, SessionScheduleStore,
+    SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::SessionId;
 use everruns_platform::PlatformStore;
@@ -57,20 +51,6 @@ pub trait RuntimeSessionStore: SessionStore + SessionMutator + Send + Sync {
     async fn add_session(&self, session: Session) -> Result<()>;
 }
 
-/// Message store contract for runtime persistence and lookup.
-#[async_trait]
-pub trait RuntimeMessageStore: MessageRetriever + Send + Sync {
-    /// Store a new input message and return the generated message record.
-    async fn add_input_message(
-        &self,
-        session_id: SessionId,
-        input: InputMessage,
-    ) -> Result<Message>;
-
-    /// Persist an existing message record.
-    async fn store_message(&self, session_id: SessionId, message: Message) -> Result<()>;
-}
-
 /// Provider store contract for runtime lookup and default-model configuration.
 #[async_trait]
 pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
@@ -78,48 +58,27 @@ pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
     async fn set_default_model(&self, model: ResolvedModel) -> Result<()>;
 }
 
-/// Event sink that supports emission and optional collection.
-///
-/// Every `EventBus` is an `EventEmitter`. Embedders that want to inspect
-/// emitted events override `collected_events`; production hosts inherit the
-/// no-op default.
-#[async_trait]
-pub trait EventBus: EventEmitter {
-    /// Return all collected events. Defaults to an empty `Vec` for buses
-    /// that do not retain events.
-    async fn collected_events(&self) -> Vec<Event> {
-        Vec::new()
-    }
-}
-
-#[async_trait]
-impl<T: EventBus + ?Sized> EventBus for Arc<T> {
-    async fn collected_events(&self) -> Vec<Event> {
-        (**self).collected_events().await
-    }
-}
-
-/// Non-filesystem backend bundle supplied to the embedded runtime.
+/// Non-filesystem backend bundle supplied to an execution host.
 ///
 /// Use this when you want the public runtime orchestration but your own store
 /// implementations instead of the built-in in-memory ones. Session filesystem
 /// selection is always resolved from `PlatformDefinition`.
 #[derive(Clone)]
-pub struct RuntimeBackends {
+pub struct HostBackends {
     /// Harness definitions available to the runtime.
     pub harness_store: Arc<dyn RuntimeHarnessStore>,
     /// Agent definitions available to the runtime.
     pub agent_store: Arc<dyn RuntimeAgentStore>,
     /// Session records and mutable session metadata.
     pub session_store: Arc<dyn RuntimeSessionStore>,
-    /// Conversation message persistence and retrieval.
-    pub message_store: Arc<dyn RuntimeMessageStore>,
+    /// Coherent canonical event log. This is the sole conversation write path.
+    pub event_log: Arc<dyn EventLog>,
     /// Durable replacement context used to reconstruct compacted model input.
     pub compaction_checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     /// Model/provider resolution and default-model configuration.
     pub provider_store: Arc<dyn RuntimeProviderStore>,
-    /// Event sink (emit + optional collection).
-    pub event_bus: Arc<dyn EventBus>,
+    /// Optional, non-blocking live observation sink notified after commit.
+    pub event_sink: Arc<dyn EventSink>,
     /// Session key/value + secret storage backend.
     pub storage_store: Arc<dyn SessionStorageStore>,
     /// Optional resolver for user connection tokens (e.g. GitHub, Daytona).
@@ -143,23 +102,22 @@ pub struct RuntimeBackends {
     pub platform_store_factory: Option<PlatformStoreFactory>,
 }
 
-impl RuntimeBackends {
+impl HostBackends {
     /// Backend bundle with in-memory implementations for every store.
     ///
     /// Suitable for tests, examples, and the default runtime configuration.
     /// Use the chainable `with_*` setters to override individual stores.
     pub fn in_memory() -> Self {
-        let event_bus = Arc::new(InMemoryEventEmitter::new());
         Self {
             harness_store: Arc::new(InMemoryHarnessStore::new()),
             agent_store: Arc::new(InMemoryAgentStore::new()),
             session_store: Arc::new(InMemorySessionStore::new()),
-            message_store: Arc::new(InMemoryMessageRetriever::new()),
+            event_log: Arc::new(InMemoryEventLog::new()),
             compaction_checkpoint_store: Arc::new(
                 everruns_core::InMemoryCompactionCheckpointStore::default(),
             ),
             provider_store: Arc::new(InMemoryProviderStore::new()),
-            event_bus,
+            event_sink: Arc::new(NoopEventSink),
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
             connection_resolver: None,
             session_task_registry: None,
@@ -183,8 +141,9 @@ impl RuntimeBackends {
         self
     }
 
-    pub fn with_message_store(mut self, store: Arc<dyn RuntimeMessageStore>) -> Self {
-        self.message_store = store;
+    /// Replace the coherent canonical event log.
+    pub fn with_event_log(mut self, log: Arc<dyn EventLog>) -> Self {
+        self.event_log = log;
         self
     }
 
@@ -201,8 +160,9 @@ impl RuntimeBackends {
         self
     }
 
-    pub fn with_event_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
-        self.event_bus = bus;
+    /// Install a non-blocking post-commit observation sink.
+    pub fn with_event_sink(mut self, sink: Arc<dyn EventSink>) -> Self {
+        self.event_sink = sink;
         self
     }
 
@@ -268,31 +228,9 @@ impl RuntimeSessionStore for InMemorySessionStore {
 }
 
 #[async_trait]
-impl RuntimeMessageStore for InMemoryMessageRetriever {
-    async fn add_input_message(
-        &self,
-        session_id: SessionId,
-        input: InputMessage,
-    ) -> Result<Message> {
-        self.add(session_id, input).await
-    }
-
-    async fn store_message(&self, session_id: SessionId, message: Message) -> Result<()> {
-        self.store(session_id, message).await
-    }
-}
-
-#[async_trait]
 impl RuntimeProviderStore for InMemoryProviderStore {
     async fn set_default_model(&self, model: ResolvedModel) -> Result<()> {
         InMemoryProviderStore::set_default_model(self, model).await;
         Ok(())
-    }
-}
-
-#[async_trait]
-impl EventBus for InMemoryEventEmitter {
-    async fn collected_events(&self) -> Vec<Event> {
-        InMemoryEventEmitter::events(self).await
     }
 }
