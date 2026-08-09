@@ -499,6 +499,18 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         .delete_sandbox(&instance.external_id)
         .await
         .expect("physical sandbox deletion failed");
+    let mut sandbox_is_absent = false;
+    for _ in 0..60 {
+        match client.get_sandbox(&instance.external_id).await {
+            Err(err) if err.contains("404 Not Found") || err.contains("(404)") => {
+                sandbox_is_absent = true;
+                break;
+            }
+            Ok(_) => tokio::time::sleep(std::time::Duration::from_secs(1)).await,
+            Err(err) => panic!("failed while waiting for physical sandbox deletion: {err}"),
+        }
+    }
+    assert!(sandbox_is_absent, "physical sandbox deletion timed out");
     let state = SessionSandboxState {
         provider: "daytona".to_string(),
         status: SessionSandboxStatus::Running,
