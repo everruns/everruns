@@ -1,7 +1,7 @@
 //! Named harness and runtime-configuration profiles — two of the matrix axes.
 //!
 //! A **harness profile** is a code-built harness (system prompt + capability
-//! set) constructed via the runtime builders — no server, no DB. Cases declare
+//! set) constructed via the Framework builder — no server, no DB. Cases declare
 //! the capabilities they need in `metadata.requires`; the subject skips a case
 //! (all scorers N/A) when the active profile doesn't provide them, so crossing
 //! the full dataset with every profile stays meaningful.
@@ -11,7 +11,7 @@
 //! run the matrix, compare).
 
 /// A code-built harness: prompt + capability ids (see
-/// `everruns_core::capabilities`).
+/// the Framework's built-in capability catalog).
 pub struct HarnessProfile {
     pub name: &'static str,
     pub system_prompt: &'static str,
@@ -96,7 +96,7 @@ pub fn config_profile(name: &str) -> Option<&'static ConfigProfile> {
 
 /// Reasoning-effort axis values the subject accepts. `default` sends no
 /// override; the rest map onto `Controls.reasoning.effort` (see
-/// `everruns_core::ReasoningEffort` for the canonical enum).
+/// the provider's supported reasoning-effort values).
 pub const EFFORT_VALUES: &[&str] = &[
     "default", "none", "minimal", "low", "medium", "high", "xhigh",
 ];

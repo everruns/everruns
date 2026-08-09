@@ -9,7 +9,7 @@
 `everruns-local` supplies local filesystem configuration and SQLite-backed task
 and schedule state. Framework applications access the high-level profile
 through the `everruns` crate's `local` feature; advanced hosts can compose the
-focused backends directly with `everruns-runtime`.
+focused backends directly with `everruns-host`.
 
 The runtime stays generic and owns only the seams — durable local storage
 choices live here, behind an opt-in crate, so embedders (terminal coding agents,
@@ -35,7 +35,7 @@ harness engine for building unstoppable agents.
   platform-management-only operations.
 - **`LocalProfile`** — named local environment config (data dir, workspace, base
   URL, org/principal identity defaults).
-- **`LocalBackends`** — composable construction of `RuntimeBackends` plus the
+- **`LocalBackends`** — composable construction of `HostBackends` plus the
   local stores, preserving a caller-supplied event bus and session file-system
   factory.
 - **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`.
@@ -55,7 +55,7 @@ cargo add everruns --features local
 
 ```rust
 use everruns_local::{LocalBackends, LocalProfile};
-use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
+use everruns_host::{HostBackends, InProcessRuntimeBuilder};
 
 # fn example() -> Result<(), Box<dyn std::error::Error>> {
 // LocalProfile stores plain filesystem paths and does not expand a leading
@@ -64,9 +64,9 @@ use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
 let profile = LocalProfile::new("/var/lib/everruns")
     .with_workspace_root("/var/lib/everruns/workspace");
 
-// Layer the local, SQLite-backed stores over a set of runtime backends. The
-// event bus (and any other store) you pass on `RuntimeBackends` is preserved.
-let local = LocalBackends::new(profile, RuntimeBackends::in_memory())?;
+// Layer the local, SQLite-backed stores over a set of host backends. The event
+// bus (and any other store) you pass on `HostBackends` is preserved.
+let local = LocalBackends::new(profile, HostBackends::in_memory())?;
 
 // Plug the assembled backends into the in-process runtime builder.
 let _builder = InProcessRuntimeBuilder::new().backends(local.runtime_backends.clone());

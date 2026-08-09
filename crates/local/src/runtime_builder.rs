@@ -14,9 +14,7 @@ use std::sync::Arc;
 use everruns_core::error::Result;
 use everruns_core::traits::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use everruns_core::{PlatformDefinition, ResolvedModel};
-use everruns_runtime::{
-    InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory,
-};
+use everruns_host::{InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 
 use crate::backends::LocalBackends;
 use crate::profile::LocalProfile;
@@ -110,7 +108,7 @@ impl LocalRuntimeBuilder {
 
         let local = LocalBackends::new(
             self.profile.clone(),
-            everruns_runtime::RuntimeBackends::in_memory(),
+            everruns_host::HostBackends::in_memory(),
         )?;
 
         // Respect a caller-supplied platform definition; otherwise build the

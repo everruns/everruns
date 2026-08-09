@@ -18,7 +18,7 @@ use everruns_core::{
     AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, PlatformDefinition,
     ResolvedModel, SessionId,
 };
-use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
 const HARNESS_PROMPT: &str = "You are a data-processing assistant. You have exactly one \
 code-execution tool. To complete a task you MUST use that tool to read and write files in \

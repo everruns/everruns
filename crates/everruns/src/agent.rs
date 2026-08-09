@@ -48,6 +48,18 @@ impl Model {
         )
     }
 
+    /// A deterministic in-process model configured with a scripted simulator.
+    ///
+    /// This keeps examples and evaluations offline while allowing multiple
+    /// responses, tool-call sequences, and the other controls exposed by
+    /// [`LlmSimConfig`].
+    pub fn simulated_with_config(config: LlmSimConfig) -> Self {
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(config)),
+        )
+    }
+
     /// Build a `Model` that targets OpenAI's Responses API.
     ///
     /// The convenience produces the same public model/provider pair callers can
@@ -249,6 +261,7 @@ pub struct Agent {
     #[cfg(feature = "capabilities")]
     advanced_capabilities: Vec<crate::capability::Definition>,
     initial_files: Vec<InitialFile>,
+    max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
@@ -354,6 +367,9 @@ impl Agent {
             .capabilities(capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             agent = agent.parallel_tool_calls(parallel);
+        }
+        if let Some(max_iterations) = self.max_iterations {
+            agent = agent.max_iterations(max_iterations);
         }
         let agent_id = agent.agent_id();
         let agent = agent.build();
@@ -476,6 +492,7 @@ pub struct AgentBuilder {
     #[cfg(feature = "capabilities")]
     advanced_capabilities: Vec<crate::capability::Definition>,
     initial_files: Vec<InitialFile>,
+    max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
@@ -637,6 +654,12 @@ impl AgentBuilder {
     /// Add a capability the agent can use.
     pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
         self.capabilities.push(capability.into());
+        self
+    }
+
+    /// Limit the number of model/tool iterations allowed in one turn.
+    pub fn max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = Some(max_iterations);
         self
     }
 
@@ -911,6 +934,7 @@ impl AgentBuilder {
             #[cfg(feature = "capabilities")]
             advanced_capabilities,
             initial_files: self.initial_files,
+            max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             workspace_root: self.workspace_root,
             workspace_policy: self.workspace_policy,

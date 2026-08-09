@@ -25,11 +25,11 @@ use everruns_core::traits::{
 use everruns_core::{
     CapabilityRegistry, DriverId, InputMessage, PlatformDefinition, ResolvedModel, ToolCall,
 };
-use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
-use everruns_runtime::{
-    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, InProcessRuntimeBuilder,
-    RealDiskFileStore, RuntimeBackends, RuntimeHostAdapter, SessionBuilder,
+use everruns_host::{
+    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeHostAdapter, SessionBuilder,
 };
+use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
 
 // ---- Caller-supplied event bus decorator ----------------------------------
 
@@ -95,7 +95,7 @@ async fn embedder_bus_and_fs_factory_are_used() {
 
     // Composable: pass our own bus on the runtime backends, our own FS factory
     // on the platform definition. LocalBackends only adds the local stores.
-    let runtime_backends = RuntimeBackends::in_memory().with_event_sink(sink);
+    let runtime_backends = HostBackends::in_memory().with_event_sink(sink);
     let profile = LocalProfile::new(data.path()).with_workspace_root(workspace.path());
     let local = LocalBackends::with_db(
         profile,
@@ -175,7 +175,7 @@ async fn embedder_bus_and_fs_factory_are_used() {
 async fn seam_task_lifecycle_round_trips_through_injected_registry() {
     // Build the runtime via LocalBackends and exercise the registry returned by
     // the adapter — proving the same store the act path receives is reachable.
-    let runtime_backends = RuntimeBackends::in_memory();
+    let runtime_backends = HostBackends::in_memory();
     let local = LocalBackends::with_db(
         LocalProfile::default(),
         runtime_backends,

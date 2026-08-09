@@ -1,6 +1,6 @@
 // Runtime-host adapter bridge for durable/server-backed workers.
 // Decision: everruns-worker exposes first-party adapters from WorkerAdapters to
-// the public everruns-runtime host contract.
+// the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
@@ -14,10 +14,10 @@ use everruns_core::{
     Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
     UtilityLlmService,
 };
+use everruns_host::{RuntimeHostAdapter, RuntimeHostTurnContext};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
-use everruns_runtime::{RuntimeHostAdapter, RuntimeHostTurnContext};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -111,13 +111,13 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
     }
 }
 
-/// First-party adapter from worker backends into `everruns-runtime` host execution.
+/// First-party adapter from worker backends into `everruns-host` execution.
 ///
 /// This is the bridge that lets durable workers execute the shared runtime
 /// host phases without depending on in-process-only stores.
 ///
 /// ```ignore
-/// use everruns_runtime::execute_reason_activity;
+/// use everruns_host::execute_reason_activity;
 /// use everruns_worker::{GrpcWorkerAdapters, WorkerRuntimeHost};
 ///
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;

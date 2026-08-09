@@ -1086,8 +1086,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns"
+version = "0.17.25"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "everruns-host",
+ "everruns-macros",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "everruns-core"
-version = "0.17.23"
+version = "0.17.25"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -1134,7 +1149,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.17.23"
+version = "0.17.25"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -1143,8 +1158,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-host"
+version = "0.17.25"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "everruns-engine",
+ "everruns-mcp",
+ "everruns-platform",
+ "futures",
+ "ignore",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "everruns-macros"
+version = "0.17.25"
+dependencies = [
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "everruns-mcp"
-version = "0.17.23"
+version = "0.17.25"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1158,8 +1204,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-platform"
+version = "0.17.25"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "everruns-provider"
-version = "0.17.23"
+version = "0.17.25"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1180,26 +1241,6 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
- "uuid",
-]
-
-[[package]]
-name = "everruns-runtime"
-version = "0.17.23"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "everruns-engine",
- "everruns-mcp",
- "futures",
- "ignore",
- "regex",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -4902,14 +4943,10 @@ dependencies = [
 name = "weekend-concierge-host"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "everruns-runtime",
+ "everruns",
  "serde",
  "serde_json",
  "tokio",
- "uuid",
 ]
 
 [[package]]

@@ -1,17 +1,16 @@
 # Weekend Concierge Host
 
-A standalone embedder example for `everruns-runtime`.
+A standalone application example for the `everruns` Framework API.
 
 This example lives in the root `examples/` folder on purpose: it behaves like a
 small external host application, not like an internal crate-local demo.
 
 ## What It Shows
 
-- a host-defined capability with proprietary local data
-- a custom `PlatformDefinition`
-- seeded workspace files available inside the runtime
+- an application-defined function tool with proprietary local data
+- seeded workspace files available inside a Framework session
 - a deterministic in-process turn driven by `llmsim`
-- how to inspect the resulting messages and emitted events
+- how to inspect the resulting context and observe session events
 
 ## Run
 
@@ -30,9 +29,8 @@ cargo test --manifest-path examples/weekend-concierge-host/Cargo.toml
 The example hosts a tiny "weekend concierge" app:
 
 - the host provides a `lookup_neighborhood_spot` tool
-- the harness gets a seeded `/workspace/welcome-note.md`
-- the session gets a seeded `/workspace/weekend-brief.md`
-- the in-process runtime handles the full `input -> reason -> act` loop
+- the agent gets seeded `/workspace/welcome-note.md` and `/workspace/weekend-brief.md` files
+- the Framework session handles the full `input -> reason -> act` loop
 
 The console output prints:
 

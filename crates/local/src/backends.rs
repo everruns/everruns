@@ -12,8 +12,8 @@ use std::sync::Arc;
 use everruns_core::error::Result;
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, SessionId};
+use everruns_host::{HostBackends, PlatformStoreFactory, ScheduleStoreFactory};
 use everruns_platform::PlatformStore;
-use everruns_runtime::{PlatformStoreFactory, RuntimeBackends, ScheduleStoreFactory};
 
 use crate::db::SqliteDb;
 use crate::platform_store::{LocalPlatformStore, LocalSessionRunner};
@@ -24,7 +24,7 @@ use crate::schedule_runner::{
 use crate::schedule_store::LocalScheduleStore;
 use crate::task_registry::LocalSessionTaskRegistry;
 
-/// The local stores plus a ready-to-use `RuntimeBackends`.
+/// The local stores plus ready-to-use `HostBackends`.
 ///
 /// `runtime_backends` carries whatever store set / event bus the caller passed
 /// in, plus the local SQLite-backed task registry and schedule store factory
@@ -34,7 +34,7 @@ use crate::task_registry::LocalSessionTaskRegistry;
 /// backends, hence the two-step wiring).
 pub struct LocalBackends {
     /// Composable runtime backend bundle (caller bus preserved).
-    pub runtime_backends: RuntimeBackends,
+    pub runtime_backends: HostBackends,
     /// Shared SQLite handle backing the local stores.
     pub db: SqliteDb,
     /// SQLite-backed task registry (also installed on `runtime_backends`).
@@ -52,7 +52,7 @@ impl LocalBackends {
     ///
     /// The SQLite database is opened at `profile.db_path()`; the data directory
     /// is created if needed.
-    pub fn new(profile: LocalProfile, runtime_backends: RuntimeBackends) -> Result<Self> {
+    pub fn new(profile: LocalProfile, runtime_backends: HostBackends) -> Result<Self> {
         profile
             .ensure_dirs()
             .map_err(|e| everruns_core::AgentLoopError::config(e.to_string()))?;
@@ -64,10 +64,10 @@ impl LocalBackends {
     /// in-memory DB for tests).
     pub fn with_db(
         profile: LocalProfile,
-        runtime_backends: RuntimeBackends,
+        runtime_backends: HostBackends,
         db: SqliteDb,
     ) -> Result<Self> {
-        let org_id = everruns_runtime::in_process_internal_org_id(&profile.org_public_id);
+        let org_id = everruns_host::in_process_internal_org_id(&profile.org_public_id);
         let task_registry = Arc::new(LocalSessionTaskRegistry::new(db.clone())?);
 
         // Ensure the schedule schema exists once up front (propagating any

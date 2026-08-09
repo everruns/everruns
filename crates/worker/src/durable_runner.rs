@@ -1,6 +1,6 @@
 // Durable execution engine runner adapters.
 // Decision: everruns-worker owns durable orchestration and maps runtime turn state onto the durable engine.
-// Decision: everruns-runtime remains durable-agnostic and only exports generic turn strategy/state.
+// Decision: everruns-host remains durable-agnostic and only exports generic turn strategy/state.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -11,7 +11,7 @@ use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,
     WorkflowSignal, WorkflowStatus,
 };
-pub use everruns_runtime::RuntimeTurnState as DurableTurnInput;
+pub use everruns_host::RuntimeTurnState as DurableTurnInput;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;

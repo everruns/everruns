@@ -22,12 +22,11 @@ dirs.workspace = true
 libc = "0.2"
 
 # Everruns crates
-# NOTE: core defaults are intentionally NOT disabled here. everruns-local pulls
-# in everruns-runtime (and via it everruns-mcp), which depend on core with full
-# defaults, so feature unification re-enables the heavy subtrees regardless —
-# default-features = false would be a no-op. This is not a thin provider crate.
+# NOTE: core defaults are intentionally NOT disabled here. everruns-local is a
+# full host integration rather than a thin provider crate, so it uses the same
+# core feature surface as everruns-host.
 everruns-core.workspace = true
-everruns-runtime.workspace = true
+everruns-host.workspace = true
 everruns-platform.workspace = true
 
 # Async

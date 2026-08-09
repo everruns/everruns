@@ -6,7 +6,7 @@
 // carry no host-filesystem knowledge. Mapping the virtual namespace onto a real
 // host directory (containment, symlink rejection, worktree-root switches) is a
 // backend concern and lives with the host-backed store
-// (`everruns_runtime::RealDiskFileStore`), not here — `/workspace` is just the
+// (`everruns_host::RealDiskFileStore`), not here — `/workspace` is just the
 // model-facing view, resolved into mounts by `MountFs`.
 
 /// The display alias shown to models and UIs for the workspace root.

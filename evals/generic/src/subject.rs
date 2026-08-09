@@ -1,16 +1,15 @@
-//! A Mira `Subject` that drives the **local** `everruns-runtime` in-process —
-//! no server, no HTTP, no database. Each sample gets a fresh
-//! `InProcessRuntime` built from the matrix case:
+//! A Mira `Subject` that drives an in-process Everruns Framework session — no
+//! server, no HTTP, no database. Each sample gets a fresh [`Agent`] and
+//! [`Session`] built from the matrix case:
 //!
-//! - target → provider driver + `ResolvedModel` (`anthropic`, `openai`,
-//!   `openrouter`)
+//! - target → Framework `Model` + provider (`anthropic`, `openai`, `openrouter`)
 //! - `harness` axis → a [`HarnessProfile`](crate::profiles::HarnessProfile)
 //!   (system prompt + capability set)
 //! - `config` axis → a [`ConfigProfile`](crate::profiles::ConfigProfile)
 //!   (iteration budget, parallel tool calls)
 //! - `effort` axis → `Controls.reasoning.effort` on every input turn
 //!
-//! Sample `files` are seeded into the in-memory session workspace before the
+//! Sample `files` are seeded into an isolated temporary workspace before the
 //! run; paths named by `metadata.expect_files` are read back into
 //! `Transcript.files` afterwards so scorers can grade workspace state. Image
 //! `attachments` are sent with the sample's first turn (vision cases).
@@ -20,16 +19,13 @@
 //! `skipped` metadata key and every scorer returns N/A (see `scorers.rs`), so
 //! crossing the full dataset with the `minimal` profile stays green.
 
+use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
-use everruns_core::capabilities::AgentCapabilityConfig;
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::typed_id::SessionId;
-use everruns_core::{
-    CapabilityRegistry, ContentPart, Controls, DriverId, ImageContentPart, InputMessage,
-    PlatformDefinition, ReasoningConfig, ResolvedModel,
+use everruns::{
+    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InputMessage, Model,
+    ModelSpec, ReasoningConfig, Session, SessionEvent, SessionEventKind,
 };
-use everruns_runtime::{InProcessRuntime, InProcessRuntimeBuilder};
 
 use mira::subject::summarize_events;
 use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
@@ -90,12 +86,13 @@ impl Subject for GenericRuntimeSubject {
             Err(e) => return Transcript::infra_error(e),
         };
 
-        let (runtime, session_id) = match build_runtime(sample, &cx.target, harness, config).await {
+        let mut handle = match build_session(sample, &cx.target, harness, config) {
             Ok(handle) => handle,
             // The runtime failed to build before the model ran — scaffolding,
             // so attribute to infra (scored N/A, retried).
-            Err(e) => return Transcript::infra_error(format!("runtime build failed: {e}")),
+            Err(e) => return Transcript::infra_error(format!("Framework build failed: {e}")),
         };
+        let mut events = handle.session.events();
 
         for (index, turn) in sample.input.iter().enumerate() {
             let mut input = InputMessage::user(turn.clone());
@@ -110,7 +107,7 @@ impl Subject for GenericRuntimeSubject {
                     ..Default::default()
                 });
             }
-            let error = match runtime.run_turn(session_id, input).await {
+            let error = match handle.session.run(input).await {
                 Ok(result) => {
                     transcript.final_response = result.response;
                     transcript.iterations += result.iterations;
@@ -140,17 +137,13 @@ impl Subject for GenericRuntimeSubject {
             }
         }
 
-        // Normalize the event stream: usage + ordered tool-call names.
-        if let Ok(events) = runtime.events().await {
-            for event in &events {
-                if let Ok(value) = serde_json::to_value(event) {
-                    transcript.events.push(value);
-                }
-            }
+        // Normalize the Framework event stream: usage + ordered tool-call names.
+        while let Some(event) = events.try_recv() {
+            transcript.events.push(event_value(event));
         }
         let (usage, _) = summarize_events(&transcript.events);
         transcript.usage = usage;
-        // Tool names come from the runtime's `tool.completed` events —
+        // Tool names come from the Framework's `tool.completed` events —
         // mira's generic walk looks for `{name, input}` objects, which the
         // everruns event shape (`data.tool_name`) doesn't match.
         transcript.tool_calls = extract_tool_calls(&transcript.events);
@@ -159,7 +152,7 @@ impl Subject for GenericRuntimeSubject {
         // Read back the workspace files the sample's expectations name, so
         // the `file_expectations` scorer grades real post-run state.
         for path in expected_file_paths(sample) {
-            if let Some(content) = read_workspace_file(&runtime, session_id, &path).await {
+            if let Some(content) = read_workspace_file(handle.workspace.path(), &path) {
                 transcript.files.insert(path, content);
             }
         }
@@ -167,6 +160,50 @@ impl Subject for GenericRuntimeSubject {
         transcript.timing.duration_ms = started.elapsed().as_millis() as u64;
         transcript
     }
+}
+
+fn event_value(event: SessionEvent) -> serde_json::Value {
+    let event_type = event.event_type().to_string();
+    let event_id = event.event_id;
+    let session_id = event.session_id;
+    let turn_id = event.turn_id;
+    let data = match event.kind {
+        SessionEventKind::TurnStarted | SessionEventKind::TurnCompleted => serde_json::json!({}),
+        SessionEventKind::TurnFailed { error } => serde_json::json!({ "error": error }),
+        SessionEventKind::TurnCancelled => serde_json::json!({ "cancelled": true }),
+        SessionEventKind::TextDelta { delta } => serde_json::json!({ "delta": delta }),
+        SessionEventKind::ToolStarted {
+            tool_call_id,
+            tool_name,
+        } => serde_json::json!({ "tool_call_id": tool_call_id, "tool_name": tool_name }),
+        SessionEventKind::ToolCompleted {
+            tool_call_id,
+            tool_name,
+            success,
+        } => serde_json::json!({
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "success": success
+        }),
+        SessionEventKind::ToolProgress {
+            tool_call_id,
+            tool_name,
+            message,
+        } => serde_json::json!({
+            "tool_call_id": tool_call_id,
+            "tool_name": tool_name,
+            "message": message
+        }),
+        SessionEventKind::Other { payload, .. } => payload,
+        _ => serde_json::json!({}),
+    };
+    serde_json::json!({
+        "type": event_type,
+        "event_id": event_id,
+        "session_id": session_id,
+        "turn_id": turn_id,
+        "data": data
+    })
 }
 
 /// First capability in `metadata.requires` the harness profile does not
@@ -180,7 +217,7 @@ fn missing_capability(sample: &Sample, harness: &HarnessProfile) -> Option<Strin
         .map(String::from)
 }
 
-/// Tool names, in call order, from the runtime's `tool.completed` events.
+/// Tool names, in call order, from the Framework's `tool.completed` events.
 fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
     events
         .iter()
@@ -230,96 +267,105 @@ fn expected_file_paths(sample: &Sample) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Read a text file from the in-memory session workspace, tolerating the
-/// leading-`/` normalization the file store applies to paths.
-async fn read_workspace_file(
-    runtime: &InProcessRuntime,
-    session_id: SessionId,
-    path: &str,
-) -> Option<String> {
-    for candidate in [
-        path.to_string(),
-        format!("/{}", path.trim_start_matches('/')),
-    ] {
-        if let Ok(Some(file)) = runtime.read_file(session_id, &candidate).await
-            && let Some(content) = file.content
-        {
-            return Some(content);
-        }
-    }
-    None
+/// Read a text file from the Framework workspace.
+fn read_workspace_file(root: &Path, path: &str) -> Option<String> {
+    let root = std::fs::canonicalize(root).ok()?;
+    let path = std::fs::canonicalize(workspace_path(&root, path).ok()?).ok()?;
+    path.starts_with(&root)
+        .then(|| std::fs::read_to_string(path).ok())
+        .flatten()
 }
 
-/// Build a fresh in-process runtime for one matrix case. Fresh per sample so
-/// no state leaks across cases.
-async fn build_runtime(
+struct EvalSession {
+    session: Session,
+    workspace: tempfile::TempDir,
+}
+
+/// Build a fresh Framework session for one matrix case. Fresh per sample so no
+/// state leaks across cases.
+fn build_session(
     sample: &Sample,
     target: &Target,
     harness: &'static HarnessProfile,
     config: &'static ConfigProfile,
-) -> Result<(InProcessRuntime, SessionId), String> {
-    let mut drivers = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut drivers);
-    everruns_openai::register_driver(&mut drivers);
-    everruns_openrouter::register_driver(&mut drivers);
-    let platform = PlatformDefinition::new(CapabilityRegistry::with_builtins(), drivers);
+) -> Result<EvalSession, String> {
+    let workspace = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let mut builder = Agent::builder()
+        .name(format!("generic-eval-{}", sample.id))
+        .instructions(harness.system_prompt)
+        .model(model(target)?)
+        .max_iterations(config.max_iterations);
 
-    let session_id = SessionId::new();
-    let sample_id = sample.id.clone();
-    let mut builder = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
-        .default_model(resolved_model(target)?)
-        .single_session(move |s| {
-            let mut s = s
-                .session_id(session_id)
-                .harness(harness.name, harness.system_prompt)
-                .agent("generic-eval-agent", "")
-                .agent_max_iterations(config.max_iterations)
-                .session_title(format!("generic eval: {sample_id}"))
-                .tag("generic-evals");
-            for cap in harness.capabilities {
-                s = s.with_capability(*cap);
-            }
-            if let Some(mode) = config.parallel_tool_calls_mode {
-                s = s.with_capability(AgentCapabilityConfig::with_config(
-                    "parallel_tool_calls",
-                    serde_json::json!({ "mode": mode }),
-                ));
-            }
-            s
-        });
-
-    for (path, content) in &sample.files {
-        builder = builder.seed_text_file(session_id, path.clone(), content.clone());
+    for capability in harness.capabilities {
+        builder = builder.capability(AgentCapabilityConfig::new(*capability));
+    }
+    if harness.capabilities.contains(&"session_file_system") {
+        builder = builder.workspace(workspace.path());
+    }
+    if let Some(mode) = config.parallel_tool_calls_mode {
+        builder = builder.capability(AgentCapabilityConfig::with_config(
+            "parallel_tool_calls",
+            serde_json::json!({ "mode": mode }),
+        ));
     }
 
-    let runtime = builder.build().await.map_err(|e| e.to_string())?;
-    Ok((runtime, session_id))
+    for (path, content) in &sample.files {
+        workspace_path(workspace.path(), path)?;
+        builder = builder.file(path.clone(), content.clone());
+    }
+
+    let agent = builder.build().map_err(|error| error.to_string())?;
+    Ok(EvalSession {
+        session: agent.session(),
+        workspace,
+    })
 }
 
-/// Map the matrix target onto an everruns `ResolvedModel`. Keys are read here
-/// (study side); Mira targets stay key-free labels.
-fn resolved_model(target: &Target) -> Result<ResolvedModel, String> {
-    let (provider_type, api_key) = match target.provider.as_str() {
-        "anthropic" => (DriverId::Anthropic, std::env::var("ANTHROPIC_API_KEY").ok()),
-        "openai" => (DriverId::OpenAI, std::env::var("OPENAI_API_KEY").ok()),
-        "openrouter" => (
-            DriverId::OpenRouter,
-            std::env::var("OPENROUTER_API_KEY").ok(),
-        ),
+fn workspace_path(root: &Path, model_path: &str) -> Result<PathBuf, String> {
+    let relative = model_path
+        .strip_prefix("/workspace/")
+        .or_else(|| model_path.strip_prefix("workspace/"))
+        .unwrap_or(model_path.trim_start_matches('/'));
+    let path = Path::new(relative);
+    if path.as_os_str().is_empty()
+        || path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(format!("invalid workspace path {model_path:?}"));
+    }
+    Ok(root.join(path))
+}
+
+/// Map the matrix target onto a Framework model/provider pair. Keys are read
+/// here (study side); Mira targets stay key-free labels.
+fn model(target: &Target) -> Result<Model, String> {
+    let provider = match target.provider.as_str() {
+        "anthropic" => {
+            let key_name = "ANTHROPIC_API_KEY";
+            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            everruns_anthropic::provider("anthropic", key)
+        }
+        "openai" => {
+            let key_name = "OPENAI_API_KEY";
+            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            everruns_openai::provider("openai", key)
+        }
+        "openrouter" => {
+            let key_name = "OPENROUTER_API_KEY";
+            let key = std::env::var(key_name).map_err(|_| format!("missing API key: {key_name}"))?;
+            everruns_openrouter::provider("openrouter", key)
+        }
         other => {
             return Err(format!(
                 "unsupported provider '{other}' (supported: anthropic, openai, openrouter)"
             ));
         }
     };
-    Ok(ResolvedModel {
-        model: target.model.clone(),
-        provider_type,
-        api_key,
-        base_url: None,
-        provider_metadata: None,
-    })
+    Ok(Model::with_provider(
+        ModelSpec::on(target.provider.clone(), target.model.clone()),
+        provider,
+    ))
 }
 
 /// True when a provider error says the selected route cannot accept the
@@ -419,8 +465,36 @@ mod tests {
 
     #[test]
     fn unsupported_provider_is_rejected() {
-        let err = resolved_model(&Target::new("x", "acme", "m")).unwrap_err();
+        let err = model(&Target::new("x", "acme", "m")).unwrap_err();
         assert!(err.contains("unsupported provider"));
+    }
+
+    #[test]
+    fn workspace_paths_cannot_escape_the_sample_root() {
+        let root = Path::new("/tmp/eval-root");
+        assert_eq!(
+            workspace_path(root, "/workspace/report.md").unwrap(),
+            root.join("report.md")
+        );
+        for path in ["../secret", "/workspace/../secret", "/", ""] {
+            assert!(workspace_path(root, path).is_err(), "accepted {path:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workspace_reads_reject_symlink_escapes() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), "secret").unwrap();
+        symlink(outside.path(), workspace.path().join("result.txt")).unwrap();
+
+        assert_eq!(
+            read_workspace_file(workspace.path(), "/workspace/result.txt"),
+            None
+        );
     }
 
     #[test]

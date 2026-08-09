@@ -128,11 +128,12 @@ pub use everruns_host::{
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, InitialFile,
-    InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
-    LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth,
-    ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, SessionId,
-    StaticHeaderAuth, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+    AgentCapabilityConfig, AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart,
+    Controls, ImageContentPart, InitialFile, InputMessage, LlmCallConfig, LlmCompletionMetadata,
+    LlmMessage, LlmResponseStream, LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition,
+    Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry,
+    ReasoningConfig, SessionId, StaticHeaderAuth, ToolCall, WorkspacePolicy,
+    WorkspacePolicyBuilder, WorkspacePolicyError,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------

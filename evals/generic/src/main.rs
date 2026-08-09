@@ -2,7 +2,7 @@
 //!
 //! Generic agent cases — instruction following, structured output, reasoning,
 //! extraction, multi-turn state, file/shell/time tool use, and tool safety —
-//! run **directly on the local `everruns-runtime`** (in-process; no server, no
+//! run **directly through the local Everruns Framework** (in-process; no server, no
 //! HTTP, no database). Built for regression testing the working tree and for
 //! comparing models, reasoning efforts, harness profiles, and runtime
 //! configurations on the same dataset.
@@ -93,7 +93,7 @@ fn axis_values(env: &str, default: &str) -> Vec<String> {
 fn generic() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
     Eval::new("generic")
-        .describe("Generic agent cases run in-process on the local everruns-runtime")
+        .describe("Generic agent cases run in-process through the local Everruns Framework")
         .dataset(dataset)
         .targets(targets())
         .axis(
