@@ -65,17 +65,6 @@ impl CompactionConfig {
         self.budget_percent = budget_percent;
         self
     }
-
-    pub(crate) fn capability_config(self) -> everruns_core::AgentCapabilityConfig {
-        everruns_core::AgentCapabilityConfig::with_config(
-            "compaction",
-            serde_json::json!({
-                "strategy": self.strategy.as_str(),
-                "proactive": self.proactive,
-                "budget_percent": self.budget_percent,
-            }),
-        )
-    }
 }
 
 impl Default for CompactionConfig {
@@ -85,5 +74,17 @@ impl Default for CompactionConfig {
             proactive: true,
             budget_percent: 0.85,
         }
+    }
+}
+
+impl crate::IntoCapability for CompactionConfig {
+    fn into_capability(self) -> crate::CapabilitySpec {
+        crate::CapabilityRef::new("compaction")
+            .config(serde_json::json!({
+                "strategy": self.strategy.as_str(),
+                "proactive": self.proactive,
+                "budget_percent": self.budget_percent,
+            }))
+            .into()
     }
 }

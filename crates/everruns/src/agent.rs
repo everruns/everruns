@@ -181,14 +181,14 @@ pub enum BuildError {
         /// The colliding tool name.
         name: String,
     },
-    /// An advanced capability's public descriptor is invalid.
+    /// A capability identifier, configuration, or public descriptor is invalid.
     InvalidCapability {
         /// The rejected capability id.
         id: String,
         /// Why the descriptor was rejected.
         reason: String,
     },
-    /// Two advanced capability registrations used the same stable id.
+    /// Two capability inputs resolve to the same stable implementation id.
     DuplicateCapability {
         /// The colliding capability id.
         id: String,
@@ -199,8 +199,6 @@ pub enum BuildError {
     MultipleProviders { registered: Vec<String> },
     /// MCP server configuration was invalid or duplicated.
     InvalidMcpServer { reason: String },
-    /// Context compaction configuration was invalid.
-    InvalidCompaction { reason: String },
 }
 
 impl fmt::Display for BuildError {
@@ -220,10 +218,10 @@ impl fmt::Display for BuildError {
                 write!(f, "duplicate tool name {name:?}")
             }
             BuildError::InvalidCapability { id, reason } => {
-                write!(f, "invalid advanced capability {id:?}: {reason}")
+                write!(f, "invalid capability {id:?}: {reason}")
             }
             BuildError::DuplicateCapability { id } => {
-                write!(f, "duplicate advanced capability id {id:?}")
+                write!(f, "duplicate capability id {id:?}")
             }
             BuildError::MissingProvider => write!(f, "agent requires a provider for a live model"),
             BuildError::MultipleProviders { registered } => write!(
@@ -233,9 +231,6 @@ impl fmt::Display for BuildError {
             ),
             BuildError::InvalidMcpServer { reason } => {
                 write!(f, "invalid MCP server configuration: {reason}")
-            }
-            BuildError::InvalidCompaction { reason } => {
-                write!(f, "invalid compaction configuration: {reason}")
             }
         }
     }
@@ -256,9 +251,7 @@ pub struct Agent {
     model: ModelSpec,
     provider: Provider,
     capabilities: Vec<AgentCapabilityConfig>,
-    function_tools: Vec<FunctionTool>,
-    #[cfg(feature = "capabilities")]
-    advanced_capabilities: Vec<crate::capability::Definition>,
+    capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
@@ -270,6 +263,39 @@ pub struct Agent {
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
     state: Arc<AgentState>,
+}
+
+#[derive(Clone)]
+enum CapabilityImplementation {
+    Function(FunctionTool),
+    #[cfg(feature = "capabilities")]
+    Definition(crate::capability::Definition),
+}
+
+impl CapabilityImplementation {
+    fn register(&self, builder: InProcessRuntimeBuilder) -> InProcessRuntimeBuilder {
+        match self {
+            Self::Function(tool) => builder.capability(tool.clone().into_capability()),
+            #[cfg(feature = "capabilities")]
+            Self::Definition(definition) => builder.capability(definition.runtime_adapter()),
+        }
+    }
+}
+
+impl fmt::Debug for CapabilityImplementation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Function(tool) => formatter
+                .debug_tuple("Function")
+                .field(&tool.name())
+                .finish(),
+            #[cfg(feature = "capabilities")]
+            Self::Definition(definition) => formatter
+                .debug_tuple("Definition")
+                .field(&definition.id())
+                .finish(),
+        }
+    }
 }
 
 struct AgentState {
@@ -316,13 +342,21 @@ impl fmt::Debug for AgentState {
 
 impl fmt::Debug for Agent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let capability_ids = self
+            .capabilities
+            .iter()
+            .map(AgentCapabilityConfig::capability_id)
+            .collect::<Vec<_>>();
         f.debug_struct("Agent")
             .field("name", &self.name)
             .field("instructions", &self.instructions)
             .field("model", &self.model)
             .field("provider", &self.provider)
-            .field("capabilities", &self.capabilities)
-            .field("function_tools", &self.function_tools)
+            .field("capabilities", &capability_ids)
+            .field(
+                "capability_implementations",
+                &self.capability_implementations,
+            )
             .field("initial_files", &self.initial_files)
             .field("max_iterations", &self.max_iterations)
             .field("parallel_tool_calls", &self.parallel_tool_calls)
@@ -375,7 +409,7 @@ impl Agent {
     ///     .instructions("You are concise.")
     ///     .model(Model::simulated("Sure."))
     ///     .name("assistant")
-    ///     .tool("test_math")
+    ///     .capability("test_math")
     ///     .parallel_tool_calls(true)
     ///     .build()?;
     /// # Ok::<(), everruns::BuildError>(())
@@ -638,15 +672,12 @@ impl Agent {
                 .build();
             builder = builder.platform_definition(platform);
         }
-        // Register each function tool as a closure-backed, single-tool
-        // capability so the runtime can execute the model's calls; the matching
-        // capability ref was attached to the harness/agent/session above.
-        for tool in &self.function_tools {
-            builder = builder.capability(tool.clone().into_capability());
-        }
-        #[cfg(feature = "capabilities")]
-        for capability in &self.advanced_capabilities {
-            builder = builder.capability(capability.runtime_adapter());
+        // References and code-defined implementations were normalized and
+        // collision-checked together at Agent build time. Register each
+        // implementation once on this session's private runtime; the matching
+        // activation ref is already attached at every configuration layer.
+        for implementation in &self.capability_implementations {
+            builder = implementation.register(builder);
         }
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
@@ -676,10 +707,8 @@ pub struct AgentBuilder {
     instructions: Option<String>,
     model: Option<Model>,
     providers: Vec<Provider>,
-    capabilities: Vec<AgentCapabilityConfig>,
+    capabilities: Vec<crate::CapabilitySpec>,
     tools: Vec<Tool>,
-    #[cfg(feature = "capabilities")]
-    advanced_capabilities: Vec<crate::capability::Definition>,
     initial_files: Vec<InitialFile>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
@@ -687,7 +716,6 @@ pub struct AgentBuilder {
     workspace_policy: everruns_core::WorkspacePolicy,
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
-    compaction: Option<crate::CompactionConfig>,
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
@@ -728,10 +756,10 @@ impl AgentBuilder {
 
     /// Add a tool the agent can call.
     ///
-    /// Accepts anything that is [`IntoTool`](crate::IntoTool): a
+    /// Accepts anything that is [`IntoTool`](crate::IntoTool), including a
     /// [`FunctionTool`](crate::FunctionTool) backed by an async function or
-    /// closure, or a `&str`/`String` capability id for a capability-referenced
-    /// tool. Tool names and JSON schemas are validated, and duplicate names
+    /// closure. Capability references use [`capability`](Self::capability)
+    /// instead. Tool names and JSON schemas are validated, and duplicate names
     /// rejected, at [`build`](Self::build).
     ///
     /// # Example
@@ -743,7 +771,7 @@ impl AgentBuilder {
     /// let agent = Agent::builder()
     ///     .instructions("You are concise.")
     ///     .model(Model::simulated("done"))
-    ///     .tool("test_math")
+    ///     .capability("test_math")
     ///     .tool(FunctionTool::new(
     ///         "roll",
     ///         "Roll a die.",
@@ -844,28 +872,28 @@ impl AgentBuilder {
         self
     }
 
-    /// Add a capability the agent can use.
-    pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
-        self.capabilities.push(capability.into());
+    /// Add one capability through the Framework's open conversion contract.
+    ///
+    /// Accepts typed built-ins such as [`CompactionConfig`](crate::CompactionConfig)
+    /// and [`ToolSearch`](crate::ToolSearch), a code-defined
+    /// `capability::Definition` (with the `capabilities` feature), a dynamic
+    /// [`CapabilityRef`](crate::CapabilityRef), or any third-party value that
+    /// implements [`IntoCapability`](crate::IntoCapability). Plain strings are
+    /// concise references with default configuration.
+    ///
+    /// Conversion happens immediately and is infallible. Identifier and JSON
+    /// validation, built-in schema validation, duplicate detection, and
+    /// implementation/reference collision checks happen together in
+    /// [`build`](Self::build). A stable ID may be activated only once; duplicate
+    /// inputs are errors rather than last-write-wins overrides.
+    pub fn capability(mut self, capability: impl crate::IntoCapability) -> Self {
+        self.capabilities.push(capability.into_capability());
         self
     }
 
     /// Limit the number of model/tool iterations allowed in one turn.
     pub fn max_iterations(mut self, max_iterations: usize) -> Self {
         self.max_iterations = Some(max_iterations);
-        self
-    }
-
-    /// Register a code-defined capability through the curated advanced SPI.
-    ///
-    /// This both installs the implementation on the private in-process runtime
-    /// and activates its stable id on the agent. Use [`#[everruns::tool]`](crate::tool)
-    /// for ordinary single-function tools; use this method when a reusable
-    /// capability needs typed protocol descriptors, context, progress, or
-    /// call-scoped cancellation.
-    #[cfg(feature = "capabilities")]
-    pub fn advanced_capability(mut self, capability: crate::capability::Definition) -> Self {
-        self.advanced_capabilities.push(capability);
         self
     }
 
@@ -913,10 +941,10 @@ impl AgentBuilder {
         if !self
             .capabilities
             .iter()
-            .any(|capability| capability.capability_id() == "session_file_system")
+            .any(|capability| capability.capability_ref().id() == "session_file_system")
         {
             self.capabilities
-                .push(AgentCapabilityConfig::new("session_file_system"));
+                .push(crate::CapabilityRef::new("session_file_system").into());
         }
         self
     }
@@ -953,12 +981,6 @@ impl AgentBuilder {
         Ok(self)
     }
 
-    /// Configure automatic context compaction for long-running sessions.
-    pub fn compaction(mut self, config: crate::CompactionConfig) -> Self {
-        self.compaction = Some(config);
-        self
-    }
-
     /// Enable restart-survivable local state and a real workspace.
     ///
     /// Task, schedule, and session identity state is stored in SQLite.
@@ -970,10 +992,10 @@ impl AgentBuilder {
         if !self
             .capabilities
             .iter()
-            .any(|capability| capability.capability_id() == "session_file_system")
+            .any(|capability| capability.capability_ref().id() == "session_file_system")
         {
             self.capabilities
-                .push(AgentCapabilityConfig::new("session_file_system"));
+                .push(crate::CapabilityRef::new("session_file_system").into());
         }
         self
     }
@@ -994,11 +1016,11 @@ impl AgentBuilder {
     /// - [`BuildError::DuplicateTool`] if two `.tool(..)` calls share a name.
     /// - [`BuildError::InvalidMcpServer`] if an MCP server is unnamed,
     ///   incomplete, or duplicates another server name.
-    /// - [`BuildError::InvalidCompaction`] if the proactive context budget is
-    ///   outside the supported range.
-    /// - [`BuildError::InvalidCapability`] if an advanced capability descriptor
-    ///   is invalid.
-    /// - [`BuildError::DuplicateCapability`] if advanced capabilities share an id.
+    /// - [`BuildError::InvalidCapability`] if a capability ID, JSON config, or
+    ///   code-defined descriptor is invalid.
+    /// - [`BuildError::DuplicateCapability`] if two inputs resolve to the same
+    ///   capability implementation, including aliases and reference/implementation
+    ///   collisions.
     pub fn build(self) -> Result<Agent, BuildError> {
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
@@ -1024,10 +1046,9 @@ impl AgentBuilder {
         let model = ModelSpec::on(provider.id().clone(), model.id);
         let name = self.name.unwrap_or_else(|| "agent".to_string());
 
-        // Validate tools and split them into capability refs (attached to the
-        // agent) and function tools (also registered on the runtime). Names
-        // must be unique across all `.tool(..)` calls.
-        let mut capabilities = self.capabilities;
+        // Function tools retain their own public entrypoint. Privately they are
+        // registered as single-tool capabilities, so their names participate in
+        // the same implementation-ID collision checks as every other input.
         let mut function_tools = Vec::new();
         let mut seen_tool_names: HashSet<String> = HashSet::new();
         for tool in self.tools {
@@ -1035,60 +1056,83 @@ impl AgentBuilder {
             if !seen_tool_names.insert(tool_name.clone()) {
                 return Err(BuildError::DuplicateTool { name: tool_name });
             }
-            match tool {
-                Tool::Capability(config) => capabilities.push(config),
-                Tool::Function(function_tool) => {
-                    validate_tool_name(function_tool.name()).map_err(|reason| {
-                        BuildError::InvalidToolName {
-                            name: tool_name.clone(),
-                            reason,
-                        }
-                    })?;
-                    validate_tool_schema(function_tool.schema()).map_err(|reason| {
-                        BuildError::InvalidToolSchema {
-                            name: tool_name.clone(),
-                            reason,
-                        }
-                    })?;
-                    capabilities.push(AgentCapabilityConfig::new(function_tool.name()));
-                    function_tools.push(function_tool);
+            let function_tool = tool.into_function();
+            validate_tool_name(function_tool.name()).map_err(|reason| {
+                BuildError::InvalidToolName {
+                    name: tool_name.clone(),
+                    reason,
                 }
-            }
+            })?;
+            validate_tool_schema(function_tool.schema()).map_err(|reason| {
+                BuildError::InvalidToolSchema {
+                    name: tool_name,
+                    reason,
+                }
+            })?;
+            function_tools.push(function_tool);
         }
 
         let mcp_servers = crate::mcp::into_scoped(self.mcp_servers)
             .map_err(|reason| BuildError::InvalidMcpServer { reason })?;
-        if let Some(compaction) = self.compaction {
-            if !(compaction.budget_percent.is_finite()
-                && 0.1 <= compaction.budget_percent
-                && compaction.budget_percent <= 1.0)
-            {
-                return Err(BuildError::InvalidCompaction {
-                    reason: "budget_percent must be at least 0.1 and at most 1".to_string(),
-                });
-            }
-            capabilities.push(compaction.capability_config());
-        }
 
-        #[cfg(feature = "capabilities")]
-        let advanced_capabilities = {
-            let mut seen_capability_ids: HashSet<String> = capabilities
-                .iter()
-                .map(|config| config.capability_id().to_string())
-                .collect();
-            for capability in &self.advanced_capabilities {
-                capability
+        // Use the same built-in set that this Agent will place on each private
+        // runtime. This makes build-time schema checks and implementation
+        // collision detection match execution instead of relying on a closed
+        // facade-owned list.
+        let capability_registry = {
+            #[cfg(feature = "local")]
+            if self.local.is_some() {
+                everruns_core::CapabilityRegistry::with_builtins()
+            } else {
+                everruns_core::CapabilityRegistry::runtime_builtins()
+            }
+            #[cfg(not(feature = "local"))]
+            {
+                everruns_core::CapabilityRegistry::runtime_builtins()
+            }
+        };
+
+        let mut capabilities = Vec::new();
+        let mut capability_implementations = Vec::new();
+        let mut seen_capability_ids = HashSet::new();
+
+        for input in self.capabilities {
+            let parts = input.into_parts();
+            let input_id = parts.reference.id().to_string();
+            crate::capability_config::validate_capability_id(&input_id).map_err(|reason| {
+                BuildError::InvalidCapability {
+                    id: input_id.clone(),
+                    reason,
+                }
+            })?;
+            crate::capability_config::validate_capability_config(parts.reference.config_value())
+                .map_err(|reason| BuildError::InvalidCapability {
+                    id: input_id.clone(),
+                    reason,
+                })?;
+
+            let canonical_id = capability_registry
+                .canonical_id(&input_id)
+                .unwrap_or(&input_id)
+                .to_string();
+            if seen_capability_ids.contains(&canonical_id) {
+                return Err(BuildError::DuplicateCapability { id: canonical_id });
+            }
+
+            #[cfg(feature = "capabilities")]
+            if let Some(definition) = parts.definition {
+                definition
                     .validate()
                     .map_err(|reason| BuildError::InvalidCapability {
-                        id: capability.id().to_string(),
+                        id: input_id.clone(),
                         reason,
                     })?;
-                if !seen_capability_ids.insert(capability.id().to_string()) {
+                if capability_registry.get(definition.id()).is_some() {
                     return Err(BuildError::DuplicateCapability {
-                        id: capability.id().to_string(),
+                        id: definition.id().to_string(),
                     });
                 }
-                for tool in capability.tools() {
+                for tool in definition.tools() {
                     let spec = tool.spec();
                     validate_tool_name(spec.name()).map_err(|reason| {
                         BuildError::InvalidToolName {
@@ -1108,10 +1152,35 @@ impl AgentBuilder {
                         });
                     }
                 }
-                capabilities.push(AgentCapabilityConfig::new(capability.id()));
+                capability_implementations.push(CapabilityImplementation::Definition(definition));
             }
-            self.advanced_capabilities
-        };
+
+            validate_registered_capability_config(
+                &capability_registry,
+                &canonical_id,
+                parts.reference.config_value(),
+            )?;
+            seen_capability_ids.insert(canonical_id.clone());
+            capabilities.push(AgentCapabilityConfig::with_config(
+                canonical_id,
+                parts.reference.config_value().clone(),
+            ));
+        }
+
+        for function_tool in function_tools {
+            let id = function_tool.name().to_string();
+            crate::capability_config::validate_capability_id(&id).map_err(|reason| {
+                BuildError::InvalidCapability {
+                    id: id.clone(),
+                    reason,
+                }
+            })?;
+            if capability_registry.get(&id).is_some() || !seen_capability_ids.insert(id.clone()) {
+                return Err(BuildError::DuplicateCapability { id });
+            }
+            capabilities.push(AgentCapabilityConfig::new(id.as_str()));
+            capability_implementations.push(CapabilityImplementation::Function(function_tool));
+        }
 
         Ok(Agent {
             name,
@@ -1119,9 +1188,7 @@ impl AgentBuilder {
             model,
             provider,
             capabilities,
-            function_tools,
-            #[cfg(feature = "capabilities")]
-            advanced_capabilities,
+            capability_implementations,
             initial_files: self.initial_files,
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
@@ -1135,6 +1202,76 @@ impl AgentBuilder {
             state: Arc::new(AgentState::new()),
         })
     }
+}
+
+fn validate_registered_capability_config(
+    registry: &everruns_core::CapabilityRegistry,
+    id: &str,
+    config: &serde_json::Value,
+) -> Result<(), BuildError> {
+    if let Some(capability) = registry.get(id) {
+        capability
+            .validate_config(config)
+            .map_err(|reason| BuildError::InvalidCapability {
+                id: id.to_string(),
+                reason,
+            })?;
+    }
+
+    if id == everruns_core::AUTO_TOOL_SEARCH_CAPABILITY_ID {
+        validate_tool_search_config(config).map_err(|reason| BuildError::InvalidCapability {
+            id: id.to_string(),
+            reason,
+        })?;
+    }
+
+    if everruns_core::is_declarative_capability(id) || everruns_core::is_plugin_capability(id) {
+        let definition = serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
+            config.clone(),
+        )
+        .map_err(|error| BuildError::InvalidCapability {
+            id: id.to_string(),
+            reason: format!("invalid declarative capability config: {error}"),
+        })?;
+        everruns_core::validate_declarative_capability_definition(&definition).map_err(
+            |reason| BuildError::InvalidCapability {
+                id: id.to_string(),
+                reason,
+            },
+        )?;
+    }
+    Ok(())
+}
+
+fn validate_tool_search_config(config: &serde_json::Value) -> Result<(), String> {
+    let object = config
+        .as_object()
+        .expect("capability config object validated before built-in schema");
+    for key in object.keys() {
+        if key != "threshold" && key != "never_defer" {
+            return Err(format!("unknown tool-search config field {key:?}"));
+        }
+    }
+    if let Some(threshold) = object.get("threshold") {
+        let value = threshold
+            .as_u64()
+            .ok_or_else(|| "threshold must be a non-negative integer".to_string())?;
+        usize::try_from(value)
+            .map_err(|_| "threshold is too large for this platform".to_string())?;
+    }
+    if let Some(never_defer) = object.get("never_defer") {
+        let names = never_defer
+            .as_array()
+            .ok_or_else(|| "never_defer must be an array of tool names".to_string())?;
+        for name in names {
+            let name = name
+                .as_str()
+                .ok_or_else(|| "never_defer must contain only tool names".to_string())?;
+            validate_tool_name(name)
+                .map_err(|reason| format!("invalid never_defer tool {name:?}: {reason}"))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -62,7 +62,7 @@
 //! let agent = Agent::builder()
 //!     .instructions("You are a concise assistant.")
 //!     .model(Model::simulated("done"))
-//!     .advanced_capability(weather)
+//!     .capability(weather)
 //!     .build()?;
 //! # let _ = agent;
 //! # Ok::<(), everruns::BuildError>(())
@@ -178,7 +178,7 @@ impl Definition {
     }
 
     pub(crate) fn validate(&self) -> Result<(), String> {
-        validate_identifier(&self.id, "capability")?;
+        crate::capability_config::validate_capability_id(&self.id)?;
         if self.name.trim().is_empty() {
             return Err("capability name must not be blank".to_string());
         }
@@ -211,29 +211,6 @@ impl Definition {
     pub(crate) fn runtime_adapter(&self) -> RuntimeDefinition {
         RuntimeDefinition(self.clone())
     }
-}
-
-fn validate_identifier(value: &str, noun: &str) -> Result<(), String> {
-    if value.is_empty() {
-        return Err(format!("{noun} id must not be empty"));
-    }
-    if value.len() > 64 {
-        return Err(format!("{noun} id must be at most 64 characters"));
-    }
-    let mut chars = value.chars();
-    let first = chars.next().expect("non-empty checked above");
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return Err(format!("{noun} id must start with a letter or underscore"));
-    }
-    if value
-        .chars()
-        .any(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '-'))
-    {
-        return Err(format!(
-            "{noun} id may only contain letters, digits, '_' or '-'"
-        ));
-    }
-    Ok(())
 }
 
 impl fmt::Debug for Definition {
@@ -939,7 +916,7 @@ mod tests {
         let agent = Agent::builder()
             .instructions("Use the weather capability.")
             .model(model)
-            .advanced_capability(lookup_capability())
+            .capability(lookup_capability())
             .build()
             .expect("valid agent");
         let session = agent.session();
@@ -980,7 +957,7 @@ mod tests {
         let agent = Agent::builder()
             .instructions("Try the lookup and handle errors.")
             .model(model)
-            .advanced_capability(capability)
+            .capability(capability)
             .build()
             .expect("valid agent");
 
@@ -1047,7 +1024,7 @@ mod tests {
         let agent = Agent::builder()
             .instructions("Run the completing lookup.")
             .model(model)
-            .advanced_capability(capability)
+            .capability(capability)
             .build()
             .expect("valid agent");
 
@@ -1115,7 +1092,7 @@ mod tests {
         let agent = Agent::builder()
             .instructions("Run the hanging lookup.")
             .model(model)
-            .advanced_capability(capability)
+            .capability(capability)
             .build()
             .expect("valid agent");
         let cancellation = CancellationToken::new();

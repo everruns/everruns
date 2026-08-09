@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instructions("Answer questions using the product catalog capability.")
         .provider(OpenAI::from_env()?)
         .model("gpt-5.6-terra")
-        .advanced_capability(catalog)
+        .capability(catalog)
         .build()?;
 
     let session = agent.session();

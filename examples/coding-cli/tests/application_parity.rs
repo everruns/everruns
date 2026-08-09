@@ -13,7 +13,7 @@ async fn compaction_policy_runs_without_host_checkpoint_types() {
     let agent = Agent::builder()
         .instructions("Keep long conversations useful.")
         .model(Model::simulated("ok"))
-        .compaction(
+        .capability(
             CompactionConfig::new()
                 .strategy(CompactionStrategy::ObservationMasking)
                 .budget_percent(0.75),

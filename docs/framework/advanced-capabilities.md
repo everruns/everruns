@@ -1,12 +1,85 @@
 ---
-title: Author tools and advanced capabilities
-description: Choose #[everruns::tool] for ordinary functions or everruns::capability for reusable typed capability packages.
+title: Configure and author capabilities
+description: Use one open AgentBuilder capability entrypoint for typed built-ins, dynamic references, and code-defined packages.
 sidebar:
   order: 1
 ---
 
-Everruns has two public Framework extension levels. Use the smallest one that
-fits the behavior you own.
+Every agent capability enters through `AgentBuilder::capability`. The method
+accepts the public, non-sealed `IntoCapability` contract, so Framework built-ins
+and third-party packages compose without adding a method or enum variant to
+`AgentBuilder`.
+
+## Configure capabilities
+
+Use typed values when the Framework exposes a stable configuration, a
+`capability::Definition` for application code, and `CapabilityRef` when the ID
+and JSON arrive dynamically:
+
+```rust
+use everruns::{
+    Agent, CapabilityRef, CompactionConfig, Model, ToolSearch,
+};
+use serde_json::json;
+
+let weather_definition = build_weather_capability();
+let agent = Agent::builder()
+    .instructions("Use configured capabilities when relevant.")
+    .model(Model::simulated("done"))
+    .capability(CompactionConfig::new().budget_percent(0.85))
+    .capability(ToolSearch::automatic())
+    .capability(weather_definition)
+    .capability(
+        CapabilityRef::new("vendor.custom")
+            .config(json!({ "mode": "database-driven" })),
+    )
+    .build()?;
+```
+
+`ToolSearch::automatic` uses hosted deferred loading on supported models and
+the existing provider-neutral client-side implementation everywhere else. Its
+optional threshold and never-defer allowlist map to the built-in's real
+configuration; there are no provider fields on the Framework value.
+
+`CapabilityRef` is the explicit escape hatch for database, plugin, or catalog
+configuration. Its ID stays open. An unknown ID is retained as a reference but
+contributes nothing until the selected host or plugin provides that
+implementation. This is not a function tool: ordinary functions remain on
+`AgentBuilder::tool` and `#[everruns::tool]`.
+
+JSON capability config is not a credential store. Framework debug output
+redacts it, but a host may persist or inspect it; pass a provider-owned secret
+handle rather than API keys or tokens.
+
+Conversion is infallible. `AgentBuilder::build` validates ID syntax and the JSON
+object boundary, runs known built-in and declarative/plugin validators, and
+rejects duplicate IDs after built-in alias resolution. A code implementation
+cannot shadow a built-in or be paired with a second reference of the same ID;
+registrations never use last-write-wins behavior.
+
+Third-party typed values implement `IntoCapability` using only `everruns`:
+
+```rust
+use everruns::{CapabilityRef, CapabilitySpec, IntoCapability};
+
+struct VendorSearch {
+    index: String,
+}
+
+impl IntoCapability for VendorSearch {
+    fn into_capability(self) -> CapabilitySpec {
+        CapabilityRef::new("vendor.search")
+            .config(serde_json::json!({ "index": self.index }))
+            .into()
+    }
+}
+```
+
+No `everruns-core`, registry, store, or host dependency is needed.
+
+## Choose an authoring level
+
+Use the smallest extension contract that fits the behavior you own.
 
 | Contract | `#[everruns::tool]` | `everruns::capability` |
 |---|---|---|
@@ -47,8 +120,8 @@ Prefer this until you need a capability-level contract.
 
 An advanced capability is an immutable `capability::Definition`. It owns a
 stable id, catalog text, optional instructions and JSON metadata, and one or
-more typed handlers. `AgentBuilder::advanced_capability` installs it on the
-private in-process runtime and activates it for the agent.
+more typed handlers. `AgentBuilder::capability` installs its implementation on
+the private in-process runtime and activates that stable id once.
 
 ```rust
 use everruns::{Agent, Model, capability};
@@ -118,7 +191,7 @@ let records = capability::Definition::new(
 let agent = Agent::builder()
     .instructions("Answer with verified record data.")
     .model(Model::simulated("done"))
-    .advanced_capability(records)
+    .capability(records)
     .build()?;
 # Ok::<(), everruns::BuildError>(())
 ```

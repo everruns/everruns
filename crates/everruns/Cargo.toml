@@ -126,3 +126,7 @@ required-features = ["openai"]
 [[example]]
 name = "advanced_capability"
 required-features = ["capabilities", "openai"]
+
+[[example]]
+name = "capability_configuration"
+required-features = ["capabilities"]

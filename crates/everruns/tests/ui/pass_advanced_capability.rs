@@ -39,7 +39,7 @@ fn main() {
     let _agent = Agent::builder()
         .instructions("Do math.")
         .model(Model::simulated("done"))
-        .advanced_capability(capability)
+        .capability(capability)
         .build()
         .unwrap();
 }

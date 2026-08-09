@@ -17,7 +17,7 @@ fn schema() -> Value {
 }
 
 #[test]
-fn registers_function_and_capability_tools_via_public_api() {
+fn registers_function_and_capability_via_separate_public_entrypoints() {
     let weather = FunctionTool::new(
         "get_weather",
         "Look up the weather for a city.",
@@ -31,12 +31,11 @@ fn registers_function_and_capability_tools_via_public_api() {
         },
     );
 
-    // A function tool and a capability-referenced tool coexist on the same
-    // builder, with no core/registry types in sight.
+    // Function tools and capability references remain distinct public inputs.
     let agent = Agent::builder()
         .instructions("You are a helpful weather assistant.")
         .model(Model::simulated("Clear skies."))
-        .tool("test_math")
+        .capability("current_time")
         .tool(weather)
         .build();
 
