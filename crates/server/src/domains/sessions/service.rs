@@ -1433,7 +1433,7 @@ impl SessionService {
         let mut hydration = SessionListHydration::default();
         for row in principal_rows {
             let principal = row_to_principal(row);
-            if principal.status != everruns_core::PrincipalStatus::Deleted {
+            if principal.status != everruns_platform::PrincipalStatus::Deleted {
                 hydration.owners.insert(principal.id, principal.summary());
             }
             if principal.kind == everruns_core::PrincipalKind::User
@@ -2988,7 +2988,7 @@ mod tests {
             .list(
                 &caller,
                 None,
-                Some(everruns_core::ANONYMOUS_USER_ID),
+                Some(everruns_platform::ANONYMOUS_USER_ID),
                 None,
                 Pagination {
                     limit: 1,
@@ -3005,7 +3005,7 @@ mod tests {
             .list(
                 &caller,
                 None,
-                Some(everruns_core::ANONYMOUS_USER_ID),
+                Some(everruns_platform::ANONYMOUS_USER_ID),
                 None,
                 Pagination {
                     limit: 20,
@@ -3073,7 +3073,7 @@ mod tests {
             .collect();
         db.get_session_previews(&legacy_ids).await.unwrap();
         db.get_session_output_previews(&legacy_ids).await.unwrap();
-        db.list_pinned_session_ids(everruns_core::ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
+        db.list_pinned_session_ids(everruns_platform::ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
             .await
             .unwrap();
         let legacy_elapsed = legacy_started.elapsed();
@@ -3085,7 +3085,7 @@ mod tests {
             .list(
                 &caller,
                 None,
-                Some(everruns_core::ANONYMOUS_USER_ID),
+                Some(everruns_platform::ANONYMOUS_USER_ID),
                 None,
                 Pagination {
                     limit: 20,
@@ -3215,7 +3215,7 @@ mod tests {
             .unwrap();
         }
         db.pin_session(
-            everruns_core::ANONYMOUS_USER_ID,
+            everruns_platform::ANONYMOUS_USER_ID,
             agent_session.id,
             DEFAULT_ORG_ID,
         )
@@ -3272,7 +3272,7 @@ mod tests {
             .list(
                 &caller,
                 None,
-                Some(everruns_core::ANONYMOUS_USER_ID),
+                Some(everruns_platform::ANONYMOUS_USER_ID),
                 None,
                 Pagination {
                     limit: 20,
@@ -3339,7 +3339,7 @@ mod tests {
             .list(
                 &caller,
                 None,
-                Some(everruns_core::ANONYMOUS_USER_ID),
+                Some(everruns_platform::ANONYMOUS_USER_ID),
                 None,
                 Pagination {
                     limit: 20,

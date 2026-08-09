@@ -16,10 +16,8 @@ use crate::storage::{
     },
     password::hash_password,
 };
-use everruns_core::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, DeploymentGrade, PlatformDefinition,
-};
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade, PlatformDefinition};
+use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;

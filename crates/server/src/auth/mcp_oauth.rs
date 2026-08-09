@@ -1531,7 +1531,7 @@ mod tests {
             roles: vec!["admin".to_string()],
             is_platform_user: false,
             auth_method: crate::auth::middleware::AuthMethod::Jwt,
-            organizations: vec![everruns_core::OrgMembership {
+            organizations: vec![everruns_platform::OrgMembership {
                 org_id: 42,
                 public_id: "org_test".to_string(),
                 name: "User Personal".to_string(),

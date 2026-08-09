@@ -3371,7 +3371,8 @@ mod tests {
         use async_trait::async_trait;
         use axum::body::{Body, to_bytes};
         use axum::http::Request;
-        use everruns_core::{OrgMembership, OrgRole};
+        use everruns_core::OrgRole;
+        use everruns_platform::OrgMembership;
         use tower::ServiceExt;
 
         /// Mock auth backend returning user with configurable platform access.

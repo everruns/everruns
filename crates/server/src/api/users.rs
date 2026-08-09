@@ -12,8 +12,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
-use everruns_core::validate_org_public_id;
-use everruns_platform::{AuditEvent, ManagementAction};
+use everruns_platform::{AuditEvent, ManagementAction, validate_org_public_id};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};

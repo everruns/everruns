@@ -14,9 +14,10 @@ use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
 use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use everruns_core::{
-    ANONYMOUS_USER_ID, Message, Session, SessionContextReport, SessionParticipant,
-    SessionParticipantKind, SessionParticipantRole, session_title_updated_event,
+    Message, Session, SessionContextReport, SessionParticipant, SessionParticipantKind,
+    SessionParticipantRole, session_title_updated_event,
 };
+use everruns_platform::ANONYMOUS_USER_ID;
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;

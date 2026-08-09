@@ -19,14 +19,22 @@
 //! models embed remain in `everruns-core` and are re-exported here so consumers
 //! can reach the whole surface through `everruns_platform`:
 //!
-//! - [`OrgRole`], [`OrgMembership`] and the multitenancy constants — used by
-//!   core's permissions/auth layer.
-//! - [`PrincipalKind`], [`PrincipalStatus`], [`PrincipalSummary`] — embedded in
-//!   `Session`/`App`/`SessionSchedule` and the agent-identity lifecycle.
+//! - [`OrgRole`] and the `DEFAULT_ORG_*` constants plus the internal<->public id
+//!   conversion helper — used by core's permissions/auth layer during a turn.
+//! - [`PrincipalKind`], [`PrincipalSummary`] — embedded in
+//!   `Session`/`SessionSchedule`/`AgentIdentity`.
 //! - The capability-internal payment execution contract (`PaymentRail`,
 //!   `PaymentMethod`, `MachinePaymentRequest`, `MachinePaymentResponse`) — bound
 //!   to core's `PaymentAuthority` trait and `ToolContext`. Re-exported from
 //!   [`payment`].
+//!
+//! # Identity values owned here (EVE-845)
+//!
+//! [`OrgMembership`], the `ANONYMOUS_USER_*` seed constants, the org public-id
+//! generation/validation helpers ([`generate_org_public_id`],
+//! [`validate_org_public_id`]), and the [`PrincipalStatus`] lifecycle enum are
+//! defined in this crate: no core code names them, so they moved out of the
+//! runtime-facing contract in `everruns-core`.
 
 pub mod audit;
 pub mod organization;
@@ -45,12 +53,15 @@ pub mod platform_store;
 pub mod agent_trigger;
 pub mod app;
 
-pub use organization::Organization;
+pub use organization::{
+    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership, Organization,
+    generate_org_public_id, validate_org_public_id,
+};
 pub use platform_store::{
     PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreExt,
     PlatformStoreSubagentDelegate,
 };
-pub use principal::Principal;
+pub use principal::{Principal, PrincipalStatus};
 
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
@@ -77,7 +88,6 @@ pub use audit::{
 // Re-export the identity value types and multitenancy constants that remain in
 // `everruns-core`, so `everruns_platform` exposes the complete identity surface.
 pub use everruns_core::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, PrincipalKind, PrincipalStatus,
-    PrincipalSummary, generate_org_public_id, org_public_id_from_internal, validate_org_public_id,
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, PrincipalKind, PrincipalSummary,
+    org_public_id_from_internal,
 };

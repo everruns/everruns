@@ -1,21 +1,52 @@
 // Principal entity (platform domain aggregate).
 //
-// Moved out of `everruns-core` in EVE-837. The principal value types embedded by
-// core domain models remain in `everruns-core`: `PrincipalSummary` is a field of
-// `Session`/`App`/`SessionSchedule`, `PrincipalKind` backs that summary, and
-// `PrincipalStatus` is shared with the agent-identity lifecycle. This aggregate
-// depends on them (direction: platform -> core) and re-exports them from the
-// crate root.
+// Moved out of `everruns-core` in EVE-837. The compact embedded value types
+// remain in `everruns-core`: `PrincipalSummary` is a field of `Session`/
+// `SessionSchedule`/`AgentIdentity`, and `PrincipalKind` backs that summary.
+// EVE-845 moved the `PrincipalStatus` lifecycle enum here — no core type embeds
+// it; it describes this durable aggregate. This crate depends on the core value
+// types (direction: platform -> core) and re-exports the full principal surface
+// from the crate root.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use everruns_core::typed_id::PrincipalId;
-use everruns_core::{PrincipalKind, PrincipalStatus, PrincipalSummary};
+use everruns_core::{PrincipalKind, PrincipalSummary};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
+
+/// Principal lifecycle status.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum PrincipalStatus {
+    Active,
+    Archived,
+    Deleted,
+}
+
+impl std::fmt::Display for PrincipalStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Active => write!(f, "active"),
+            Self::Archived => write!(f, "archived"),
+            Self::Deleted => write!(f, "deleted"),
+        }
+    }
+}
+
+impl From<&str> for PrincipalStatus {
+    fn from(value: &str) -> Self {
+        match value {
+            "archived" => Self::Archived,
+            "deleted" => Self::Deleted,
+            _ => Self::Active,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

@@ -505,23 +505,25 @@ pub use model_discovery::{
     normalize_and_enrich, rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
-// EVE-837: `Organization` moved to the `everruns-platform` crate. The role,
-// membership, and multitenancy constants stay here — the permissions/auth layer
-// and runtime fixtures depend on them.
+// EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`
+// constants, and the public-id generation/validation helpers moved to the
+// `everruns-platform` crate. `OrgRole` (portable turn authorization via
+// `permissions`), the `DEFAULT_ORG_*` constants, and the internal<->public id
+// conversion helper stay here because core's permissions/auth layer and runtime
+// name them.
 pub use organization::{
-    ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, generate_org_public_id,
-    org_public_id_from_internal, validate_org_public_id,
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, org_public_id_from_internal,
 };
 // EVE-838: the payment accounting records (`PaymentAccount`, `PaymentPolicy`,
 // `PaymentAttempt`, `PaymentOwnerType`, `PaymentStatus`) moved to the
 // `everruns-platform` crate. The capability-internal execution contract below
 // stays here — it is bound to the `PaymentAuthority` trait and `ToolContext`.
 pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail};
-// EVE-837: `Principal` moved to the `everruns-platform` crate. The value types
-// below stay here — they are embedded by `Session`/`App`/`SessionSchedule` and
-// the agent-identity lifecycle.
-pub use principal::{PrincipalKind, PrincipalStatus, PrincipalSummary};
+// EVE-837/EVE-845: `Principal` and the `PrincipalStatus` lifecycle enum moved to
+// the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
+// backs it stay here — they are embedded by `Session`/`SessionSchedule`/
+// `AgentIdentity`.
+pub use principal::{PrincipalKind, PrincipalSummary};
 pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
 pub use session::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,

@@ -312,7 +312,7 @@ async fn test_delete_organization() {
 
 #[test]
 fn test_validate_org_public_id() {
-    use everruns_core::validate_org_public_id;
+    use everruns_platform::validate_org_public_id;
 
     assert!(validate_org_public_id(
         "org_00000000000000000000000000000001"
@@ -333,7 +333,7 @@ fn test_validate_org_public_id() {
 
 #[test]
 fn test_generate_org_public_id_format() {
-    use everruns_core::{generate_org_public_id, validate_org_public_id};
+    use everruns_platform::{generate_org_public_id, validate_org_public_id};
 
     for _ in 0..10 {
         let id = generate_org_public_id();
