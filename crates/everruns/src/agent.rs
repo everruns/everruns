@@ -122,8 +122,8 @@ impl Model {
     /// Test-only: a simulated provider failure used to prove the facade event
     /// bridge retains failure lifecycle and diagnostic payloads end to end.
     pub(crate) fn simulated_error(message: impl Into<String>) -> Self {
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(LlmSimConfig::error(message))),
         )
     }
