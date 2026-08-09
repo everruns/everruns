@@ -145,9 +145,14 @@ jobs:
               "crates/mcp/Cargo.toml": [
                   "everruns-core",
               ],
+              "crates/host/Cargo.toml": [
+                  "everruns-core",
+                  "everruns-mcp",
+              ],
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
                   "everruns-engine",
+                  "everruns-host",
               ],
               "crates/everruns/Cargo.toml": [
                   "everruns-core",
@@ -250,6 +255,7 @@ jobs:
             everruns-engine
             everruns-platform
             everruns-mcp
+            everruns-host
             everruns-openai
             everruns-anthropic
             everruns-openrouter

@@ -17,6 +17,7 @@ fn engine_manifest_has_no_edge_to_hosts_or_backends() {
 
     for forbidden in [
         "everruns-runtime",
+        "everruns-host",
         "everruns-server",
         "everruns-worker",
         "everruns-platform",

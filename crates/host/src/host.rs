@@ -1,6 +1,7 @@
 // Shared host orchestration for embedded and durable execution hosts.
-// Decision: everruns-runtime owns worker-facing turn phase execution so
-// durable/server-backed hosts reuse the same input/reason/act wiring.
+// Decision: everruns-host owns worker-facing turn phase execution so
+// durable/server-backed hosts reuse the same input/reason/act wiring without
+// depending on the application facade or the runtime compatibility crate.
 
 use async_trait::async_trait;
 use everruns_core::atoms::{

@@ -42,6 +42,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 everruns-core.workspace = true
+everruns-host.workspace = true
 everruns-platform.workspace = true
 everruns-engine.workspace = true
 everruns-mcp.workspace = true

@@ -2661,6 +2661,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-host"
+version = "0.17.25"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "everruns-mcp",
+ "everruns-platform",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "everruns-integrations-brave-search"
 version = "0.17.25"
 dependencies = [
@@ -3106,6 +3118,7 @@ dependencies = [
  "chrono",
  "everruns-core",
  "everruns-engine",
+ "everruns-host",
  "everruns-mcp",
  "everruns-openai",
  "everruns-platform",

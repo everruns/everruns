@@ -8,6 +8,7 @@ members = [
     "crates/macros",
     "crates/core",
     "crates/engine",
+    "crates/host",
     "crates/platform",
     "crates/provider",
     "crates/bedrock",
@@ -169,6 +170,7 @@ futures-util = "0.3"
 everruns-sdk = "0.2.0"
 everruns-core = { path = "crates/core", version = "0.17.25" }
 everruns-engine = { path = "crates/engine", version = "0.17.25" }
+everruns-host = { path = "crates/host", version = "0.17.25" }
 everruns-platform = { path = "crates/platform", version = "0.17.25" }
 everruns-provider = { path = "crates/provider", version = "0.17.25" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
