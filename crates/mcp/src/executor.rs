@@ -16,6 +16,52 @@ use everruns_core::{AgentLoopError, McpToolInvoker, ToolCall, ToolResult, parse_
 use std::collections::HashMap;
 use std::sync::Arc;
 
+const REDACTED_CREDENTIAL: &str = "[REDACTED MCP CREDENTIAL]";
+
+fn redact_text(text: &str, secrets: &[String]) -> String {
+    secrets
+        .iter()
+        .filter(|secret| !secret.is_empty())
+        .fold(text.to_string(), |redacted, secret| {
+            redacted.replace(secret, REDACTED_CREDENTIAL)
+        })
+}
+
+fn redact_json(value: &mut serde_json::Value, secrets: &[String]) {
+    match value {
+        serde_json::Value::String(text) => *text = redact_text(text, secrets),
+        serde_json::Value::Array(values) => {
+            for value in values {
+                redact_json(value, secrets);
+            }
+        }
+        serde_json::Value::Object(object) => {
+            for value in object.values_mut() {
+                redact_json(value, secrets);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
+    if let Some(value) = result.result.as_mut() {
+        redact_json(value, secrets);
+    }
+    if let Some(images) = result.images.as_mut() {
+        for image in images {
+            image.base64 = redact_text(&image.base64, secrets);
+            image.media_type = redact_text(&image.media_type, secrets);
+        }
+    }
+    if let Some(error) = result.error.as_mut() {
+        *error = redact_text(error, secrets);
+    }
+    if let Some(raw_output) = result.raw_output.as_mut() {
+        *raw_output = redact_text(raw_output, secrets);
+    }
+}
+
 /// Resolves a sanitized server prefix to a connection. Implementations differ
 /// per host (runtime: effective scoped servers; worker: gRPC lookup).
 #[async_trait]
@@ -106,6 +152,7 @@ impl McpExecutor {
         }
 
         let mut arguments = tool_call.arguments.clone();
+        let mut injected_secrets = Vec::new();
         if let Some(bindings) = connection.secret_bindings.get(&original_tool_name) {
             let object = arguments
                 .as_object_mut()
@@ -150,17 +197,31 @@ impl McpExecutor {
                     binding.parameter_name.clone(),
                     serde_json::Value::String(value.clone()),
                 );
+                injected_secrets.push(value.clone());
             }
         }
 
-        self.client
+        let result = self
+            .client
             .call_as_tool_result(
                 &connection,
                 tool_call.id.clone(),
                 &original_tool_name,
                 arguments,
             )
-            .await
+            .await;
+
+        // THREAT[TM-TOOL-029]: the remote server can reflect credential-bearing
+        // arguments in successful content or any transport/JSON-RPC error.
+        // Scrub at the executor boundary before results or errors reach events,
+        // model context, persistence, tracing, or caller logs.
+        match result {
+            Ok(mut result) => {
+                redact_tool_result(&mut result, &injected_secrets);
+                Ok(result)
+            }
+            Err(error) => Err(anyhow!(redact_text(&error.to_string(), &injected_secrets))),
+        }
     }
 }
 
