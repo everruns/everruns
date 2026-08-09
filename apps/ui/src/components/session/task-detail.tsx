@@ -3,24 +3,23 @@
 // Per-session task detail card (knowledge/runtime-resources/session-tasks.md) — extracted from the
 // session Resources page so both the per-session Tasks tab and the
 // cross-session Work view (EVE-756) render the identical detail surface:
-// state badge, progress, summary/error, result + artifact links, cancel,
+// state badge, progress, summary/error, result + artifact links, the pending
 // input prompt, and the lazily-loaded lifecycle timeline + message thread.
 //
-// All task mutations/reads are keyed by the task's owning session, so callers
-// pass `sessionId` (for Work view: the task's `session_id`).
+// Read-only since EVE-854: a session is a recording, so the card reports what a
+// task did and asked for but cannot cancel it or answer it. Both of those are
+// reached by forking the session into a chat.
+//
+// Task reads are keyed by the task's owning session, so callers pass
+// `sessionId` (the task's `session_id`).
 
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ListTodo, MessageSquare } from "lucide-react";
-import {
-  useCancelSessionTask,
-  useSendTaskMessage,
-  useSessionTask,
-} from "@/hooks/use-session-tasks";
+import { useSessionTask } from "@/hooks/use-session-tasks";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatRelativeTime } from "@/lib/formatting";
@@ -63,56 +62,20 @@ export function TaskProgressBar({ task }: { task: SessionTask }) {
   );
 }
 
-function TaskInputPrompt({
-  task,
-  sessionId,
-}: {
-  task: SessionTask;
-  sessionId: string | undefined;
-}) {
-  const [text, setText] = useState("");
-  const sendMessage = useSendTaskMessage(sessionId);
-
+/**
+ * A task that is waiting on input shows what it asked for, but the answer is
+ * not typed here: session detail is a read-only recording (EVE-854), so the
+ * prompt is a fact. Fork the session into a chat to actually answer it.
+ */
+function TaskInputPrompt({ task }: { task: SessionTask }) {
   if (task.state !== "awaiting_input" || !task.input_request) return null;
-  const inputRequest = task.input_request;
-
-  const send = () => {
-    const trimmed = text.trim();
-    if (!trimmed || sendMessage.isPending) return;
-    sendMessage.mutate(
-      {
-        taskId: task.id,
-        request: {
-          content: [{ type: "text", text: trimmed }],
-          in_reply_to: inputRequest.id,
-        },
-      },
-      { onSuccess: () => setText("") },
-    );
-  };
 
   return (
-    <div className="space-y-2 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
-      <div className="text-sm text-foreground">{inputRequest.prompt}</div>
-      <div className="flex items-center gap-2">
-        <Input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") send();
-          }}
-          placeholder="Type a response..."
-          aria-label="Task input response"
-        />
-        <Button size="sm" onClick={send} disabled={!text.trim() || sendMessage.isPending}>
-          Send
-        </Button>
+    <div className="space-y-1 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2">
+      <div className="text-sm text-foreground">{task.input_request.prompt}</div>
+      <div className="text-xs text-muted-foreground">
+        Waiting for input. Fork this session into a chat to answer.
       </div>
-      {sendMessage.isError ? (
-        <div className="text-xs text-destructive">
-          {sendMessage.error instanceof Error ? sendMessage.error.message : "Failed to send"}
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -199,7 +162,7 @@ function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: stri
   );
 }
 
-/** Full task detail card: header (name, kind, state, cancel, expand), body
+/** Full task detail card: header (name, kind, state, expand), body
  *  (created/id/status, progress, summary/error, result + artifact links, child
  *  session link, input prompt), and the expandable drill-down. */
 export function TaskCard({
@@ -209,7 +172,6 @@ export function TaskCard({
   task: SessionTask;
   sessionId: string | undefined;
 }) {
-  const cancelTask = useCancelSessionTask(sessionId);
   const [expanded, setExpanded] = useState(false);
   const terminal = isTerminalTaskState(task.state);
   const artifacts = task.artifacts ?? [];
@@ -232,18 +194,9 @@ export function TaskCard({
           </div>
           <div className="flex items-center gap-2">
             {taskStateBadge(task.state)}
-            {terminal ? null : task.cancel_requested_at ? (
+            {!terminal && task.cancel_requested_at ? (
               <span className="text-xs text-muted-foreground">Cancel requested</span>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => cancelTask.mutate(task.id)}
-                disabled={cancelTask.isPending}
-              >
-                Cancel
-              </Button>
-            )}
+            ) : null}
             <Button
               variant="ghost"
               size="sm"
@@ -336,7 +289,7 @@ export function TaskCard({
             </Link>
           </div>
         ) : null}
-        <TaskInputPrompt task={task} sessionId={sessionId} />
+        <TaskInputPrompt task={task} />
         {expanded ? <TaskDrilldown task={task} sessionId={sessionId} /> : null}
       </CardContent>
     </Card>

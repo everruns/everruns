@@ -143,7 +143,7 @@ function ActiveTaskChips({ sessionId, basePath }: { sessionId: string; basePath:
     return null;
   }
 
-  const tasksHref = `${basePath}/resources`;
+  const tasksHref = `${basePath}/work`;
 
   return (
     <div

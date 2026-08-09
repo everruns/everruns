@@ -43,7 +43,6 @@ import {
   HardDrive,
   Building2,
   ChartColumn,
-  Waypoints,
   Library,
   Telescope,
   WalletCards,
@@ -125,12 +124,6 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/reports",
     icon: ChartColumn,
     keywords: ["analytics", "saved report"],
-  },
-  {
-    title: "Work",
-    href: "/work",
-    icon: Waypoints,
-    keywords: ["tasks", "delegation"],
   },
   {
     title: "Chat",

@@ -17,14 +17,11 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useLocale } from "@/providers/locale-provider";
 
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
-  chat: "Chat",
-  trajectory: "Trajectory",
-  files: "Files",
+  timeline: "Timeline",
+  work: "Work",
   events: "Events",
-  storage: "Storage",
-  resources: "Tasks",
-  schedules: "Schedules",
-  context: "Context",
+  files: "Workspace",
+  cost: "Cost",
 };
 
 interface SessionLayoutProps {
@@ -55,13 +52,10 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
   // Determine active tab from pathname
   const getActiveTab = (): SessionNavKey => {
     if (pathname.endsWith("/files")) return "files";
-    if (pathname.endsWith("/trajectory")) return "trajectory";
     if (pathname.endsWith("/events")) return "events";
-    if (pathname.endsWith("/storage")) return "storage";
-    if (pathname.endsWith("/resources")) return "resources";
-    if (pathname.endsWith("/schedules")) return "schedules";
-    if (pathname.endsWith("/context")) return "context";
-    return "chat"; // Default to chat (includes /chat and base path)
+    if (pathname.endsWith("/work")) return "work";
+    if (pathname.endsWith("/cost")) return "cost";
+    return "timeline"; // Default (includes /timeline and the base path)
   };
   const activeTab = getActiveTab();
 

@@ -72,7 +72,21 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   than re-pointing an existing one; the thread's transcript is only meaningful against
   the agent that produced it.
 * **A session is a read-only recording.** Session detail inspects, it does not edit. The
-  inspector pattern lives inside session detail rather than in the shell.
+  inspector pattern lives inside session detail rather than in the shell. It carries five
+  views — Timeline, Work, Events, Workspace, Cost — each showing something a recording
+  actually has; watching a live session stream is not editing it. Anything that would
+  change the session (composing a message, editing a file, writing a secret, steering or
+  cancelling a task, enabling a schedule) is absent rather than disabled, including the
+  WebMCP tools a browser agent could otherwise reach. The tab set is built by
+  `buildSessionNavigation` in
+  [`session-header.tsx`](../../apps/ui/src/components/session/session-header.tsx) and
+  gated on the session's capability features.
+* **Fork is what makes read-only acceptable.** The escape hatches from a recording are
+  Fork into chat, Open agent and Export — nothing else. Forking creates a *new* session
+  seeded with this one's conversation, workspace and durable storage
+  ([forking sessions](../runtime-resources/forking-sessions.md)) and lands the user in it
+  as a thread, so a recording can always be turned back into something you can talk to
+  without ever mutating the record.
 * **Reports is a saved view on Sessions, not a separate page concept.** It shares the
   session model and adds persistence of a query.
 

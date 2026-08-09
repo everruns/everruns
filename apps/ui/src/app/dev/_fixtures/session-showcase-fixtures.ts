@@ -106,7 +106,7 @@ export const sessionHeaderScenarios: Array<{
   secondaryMetaText: string;
 }> = [
   {
-    name: "Active chat session",
+    name: "Active recording",
     session: createSession({
       id: "session_showcase_active",
       title: "Tool transcript polish",
@@ -114,7 +114,7 @@ export const sessionHeaderScenarios: Array<{
       features: ["file_system", "leased_resources", "schedules"],
       activeScheduleCount: 2,
     }),
-    activeTab: "chat",
+    activeTab: "timeline",
     effectiveStatus: "active",
     liveUsage: sessionUsageSamples.medium,
     secondaryMetaText: "Started 4/22/2026, 9:20:00 AM",
@@ -143,7 +143,7 @@ export const sessionHeaderScenarios: Array<{
       activeScheduleCount: 1,
       usage: sessionUsageSamples.heavy,
     }),
-    activeTab: "chat",
+    activeTab: "timeline",
     effectiveStatus: "waiting_for_tool_results",
     liveUsage: sessionUsageSamples.heavy,
     secondaryMetaText: "Started 4/22/2026, 9:20:00 AM",

@@ -190,6 +190,13 @@ export interface UpdateAgentRequest {
   tools?: ToolDefinition[];
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
+  /**
+   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
+   * NULL for sessions that were not forked. Distinct from a subagent's parent.
+   */
+  forked_from_session_id?: string | null;
+  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
+  forked_from_sequence?: number | null;
 }
 
 /** Read-only agent example defined in code, adoptable as a real Agent */
@@ -3838,6 +3845,8 @@ export interface Session {
   workspace_id?: string;
   harness_id: string;
   agent_id: string | null;
+  /** Immutable agent version captured when the session was created or rebound. */
+  agent_version_id?: string | null;
   agent_identity_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
@@ -3876,6 +3885,13 @@ export interface Session {
   hints?: Record<string, unknown>;
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
+  /**
+   * Session this one was forked from (knowledge/runtime-resources/forking-sessions.md).
+   * NULL for sessions that were not forked. Distinct from a subagent's parent.
+   */
+  forked_from_session_id?: string | null;
+  /** Parent event sequence the fork was taken at. NULL unless this is a fork. */
+  forked_from_sequence?: number | null;
 }
 
 /** Session counts grouped by status */

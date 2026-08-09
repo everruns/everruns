@@ -117,12 +117,23 @@ jest.mock("@/lib/utils", () => ({
   shortenId: (id: string) => id.slice(0, 8),
 }));
 
-// Mock session hooks
+// Mock session hooks. The header's only mutation is fork, which creates a new
+// session rather than changing this one.
+const mockForkMutate = jest.fn();
 jest.mock("@/hooks/use-sessions", () => ({
-  useUpdateSession: () => ({
-    mutate: jest.fn(),
-    isPending: false,
-  }),
+  useForkSession: () => ({ mutate: mockForkMutate, isPending: false }),
+}));
+
+jest.mock("@/lib/session-export", () => ({
+  downloadSessionExport: jest.fn(),
+}));
+
+jest.mock("@/providers/notifications-provider", () => ({
+  useOptionalNotificationsContext: () => undefined,
+}));
+
+jest.mock("@/providers/locale-provider", () => ({
+  useLocale: () => ({ locale: "en", t: (key: string) => key }),
 }));
 
 // Mock providers hook (used by the layout to resolve the session trace link).
@@ -210,61 +221,80 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders compact navigation controls", async () => {
+  it("renders the five recording tabs", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /chat/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /advanced navigation/i })).toBeInTheDocument();
+    for (const label of [/timeline/i, /events/i, /workspace/i, /cost/i]) {
+      expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
+    }
   });
 
-  it("renders correct compact navigation destinations", async () => {
+  it("points each tab at its route", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /chat/i })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: /timeline/i })).toHaveAttribute(
         "href",
-        "/sessions/ses-abc12345/chat",
+        "/sessions/ses-abc12345/timeline",
       );
     });
-
-    fireEvent.click(screen.getByRole("button", { name: /advanced navigation/i }));
-    fireEvent.click(screen.getByRole("button", { name: /workspace/i }));
-
-    expect(mockPush).toHaveBeenCalledWith("/sessions/ses-abc12345/files");
+    expect(screen.getByRole("link", { name: /workspace/i })).toHaveAttribute(
+      "href",
+      "/sessions/ses-abc12345/files",
+    );
+    expect(screen.getByRole("link", { name: /cost/i })).toHaveAttribute(
+      "href",
+      "/sessions/ses-abc12345/cost",
+    );
   });
 
-  it("highlights active chat navigation", async () => {
-    mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
+  it("offers no chat, storage, schedules or trajectory tab", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      const chatLink = screen.getByRole("link", { name: /chat/i });
-      expect(chatLink).toHaveClass("border-primary");
-      expect(chatLink).toHaveClass("bg-card");
+      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     });
+    for (const retired of [/^chat$/i, /^storage$/i, /^schedules$/i, /^trajectory$/i]) {
+      expect(screen.queryByRole("link", { name: retired })).not.toBeInTheDocument();
+    }
   });
 
-  it("highlights advanced navigation when an advanced view is active", async () => {
+  it("highlights the active tab", async () => {
     mockPathname.mockReturnValue("/sessions/ses-abc12345/files");
     await renderLayout();
 
     await waitFor(() => {
-      const advancedTrigger = screen.getByRole("button", { name: /advanced navigation/i });
-      expect(advancedTrigger).toHaveClass("border-primary");
-      expect(advancedTrigger).toHaveClass("bg-card");
+      expect(screen.getByRole("link", { name: /workspace/i })).toHaveClass("border-primary");
     });
+    expect(screen.getByRole("link", { name: /timeline/i })).not.toHaveClass("border-primary");
   });
 
-  it("shows inactive style for advanced navigation on chat", async () => {
-    mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
+  it("offers the three escape hatches and no session-editing control", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      const advancedTrigger = screen.getByRole("button", { name: /advanced navigation/i });
-      expect(advancedTrigger).not.toHaveClass("border-primary");
+      expect(screen.getByRole("button", { name: /fork into chat/i })).toBeInTheDocument();
     });
+    expect(screen.getByRole("link", { name: /open agent/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /export session/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /edit session title/i })).not.toBeInTheDocument();
+  });
+
+  it("forks into a new session rather than mutating this one", async () => {
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /fork into chat/i })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /fork into chat/i }));
+
+    expect(mockForkMutate).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "ses-abc12345" }),
+      expect.anything(),
+    );
   });
 
   it("renders Back to Sessions link", async () => {
@@ -329,20 +359,15 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      // Chat and the advanced menu remain available
-      expect(screen.getByRole("link", { name: /chat/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /advanced navigation/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     });
-
-    // Feature-gated advanced items should NOT be present
-    expect(screen.queryByRole("button", { name: /workspace/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /storage/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /schedules/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /events/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /trajectory/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /cost/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^work$/i })).not.toBeInTheDocument();
   });
 
-  it("shows only workspace tab when only file_system feature is present", async () => {
+  it("shows Workspace only when the file_system feature is present", async () => {
     mockSessionContext.session = {
       ...mockSessionContext.session,
       features: ["file_system"],
@@ -350,28 +375,12 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /workspace/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /workspace/i })).toBeInTheDocument();
     });
-
-    expect(screen.queryByRole("button", { name: /storage/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /schedules/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^work$/i })).not.toBeInTheDocument();
   });
 
-  it("shows schedules tab when schedules feature is present", async () => {
-    mockSessionContext.session = {
-      ...mockSessionContext.session,
-      features: ["schedules"],
-    };
-    await renderLayout();
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /schedules/i })).toBeInTheDocument();
-    });
-
-    expect(screen.queryByRole("button", { name: /workspace/i })).not.toBeInTheDocument();
-  });
-
-  it("shows schedules count inside advanced navigation", async () => {
+  it("shows Work when the session scheduled or leased anything", async () => {
     mockSessionContext.session = {
       ...mockSessionContext.session,
       active_schedule_count: 3,
@@ -380,7 +389,7 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /schedules/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /work/i })).toBeInTheDocument();
     });
     expect(screen.getByText("3")).toBeInTheDocument();
   });

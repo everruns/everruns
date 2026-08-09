@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type ComponentType,
-  type KeyboardEvent,
-} from "react";
+import { useState, type ComponentType } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
@@ -17,17 +10,16 @@ import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuPositioner,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { IconTile } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useUpdateSession } from "@/hooks/use-sessions";
+import { useForkSession } from "@/hooks/use-sessions";
+import { downloadSessionExport } from "@/lib/session-export";
+import { useLocale } from "@/providers/locale-provider";
+import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
 import {
   getDisplayName,
   getEntityReferenceClassName,
@@ -36,34 +28,28 @@ import {
 import { formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import {
+  Activity,
   ArrowLeft,
   Bot,
-  CalendarClock,
-  Check,
-  ChevronDown,
-  Database,
+  Coins,
+  Download,
   ExternalLink,
   Folder,
-  GitBranch,
-  Activity,
-  ChartNoAxesColumn,
+  GitFork,
+  ListTree,
+  Loader2,
   MessageSquare,
-  Pencil,
   Sparkles,
-  Wrench,
-  X,
+  Waypoints,
   Zap,
 } from "lucide-react";
 
-export type SessionNavKey =
-  | "chat"
-  | "files"
-  | "storage"
-  | "resources"
-  | "schedules"
-  | "context"
-  | "events"
-  | "trajectory";
+/**
+ * A session is a recording, not a workspace (EVE-854), so its tabs are the five
+ * views a recording actually has. `files` keeps its route id — the label is
+ * "Workspace" and renaming the route would break existing links.
+ */
+export type SessionNavKey = "timeline" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -71,89 +57,6 @@ export interface SessionNavItem {
   href: string;
   icon: ComponentType<{ className?: string }>;
   badge?: string;
-}
-
-function EditableSessionTitle({
-  sessionId,
-  title,
-  fallback,
-  editable,
-}: {
-  sessionId: string;
-  title: string | null;
-  fallback: string;
-  editable: boolean;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(title ?? "");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const updateSession = useUpdateSession();
-
-  useEffect(() => {
-    if (editing) {
-      setValue(title ?? "");
-      requestAnimationFrame(() => inputRef.current?.select());
-    }
-  }, [editing, title]);
-
-  function save() {
-    const trimmed = value.trim();
-    if (trimmed === (title ?? "")) {
-      setEditing(false);
-      return;
-    }
-    updateSession.mutate(
-      { sessionId, request: { title: trimmed || undefined } },
-      { onSettled: () => setEditing(false) },
-    );
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1">
-        <Input
-          ref={inputRef}
-          value={value}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => setValue(e.target.value)}
-          onKeyDown={(e: KeyboardEvent) => {
-            if (e.key === "Enter") save();
-            if (e.key === "Escape") setEditing(false);
-          }}
-          className="h-8 w-64 text-xl font-bold"
-          placeholder={fallback}
-        />
-        <button
-          onClick={save}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Save title"
-        >
-          <Check className="h-4 w-4" />
-        </button>
-        <button
-          onClick={() => setEditing(false)}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Cancel editing"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
-      <EntityIdentity value={sessionId}>{title || fallback}</EntityIdentity>
-      {editable && (
-        <button
-          onClick={() => setEditing(true)}
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Edit session title"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </h1>
-  );
 }
 
 export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
@@ -247,52 +150,24 @@ export function buildSessionNavigation({
   activeScheduleCount?: number;
 }): SessionNavItem[] {
   const hasFeature = (feature: string) => features.has(feature);
+  // Work covers subagents, leased resources and the schedules this session
+  // created, so either capability is enough to make the tab worth showing.
+  const hasWork = hasFeature("leased_resources") || hasFeature("schedules");
 
   return [
     {
-      key: "chat",
-      label: "Chat",
-      href: `${basePath}/chat`,
-      icon: MessageSquare,
+      key: "timeline",
+      label: "Timeline",
+      href: `${basePath}/timeline`,
+      icon: ListTree,
     },
-    ...(hasFeature("file_system")
+    ...(hasWork
       ? [
           {
-            key: "files" as const,
-            label: "Workspace",
-            href: `${basePath}/files`,
-            icon: Folder,
-          },
-        ]
-      : []),
-    ...(hasFeature("secrets") || hasFeature("key_value")
-      ? [
-          {
-            key: "storage" as const,
-            label: "Storage",
-            href: `${basePath}/storage`,
-            icon: Database,
-          },
-        ]
-      : []),
-    ...(hasFeature("leased_resources")
-      ? [
-          {
-            key: "resources" as const,
-            // Route stays /resources — renaming it would break existing links.
-            label: "Tasks",
-            href: `${basePath}/resources`,
-            icon: Wrench,
-          },
-        ]
-      : []),
-    ...(hasFeature("schedules")
-      ? [
-          {
-            key: "schedules" as const,
-            label: "Schedules",
-            href: `${basePath}/schedules`,
-            icon: CalendarClock,
+            key: "work" as const,
+            label: "Work",
+            href: `${basePath}/work`,
+            icon: Waypoints,
             badge:
               activeScheduleCount && activeScheduleCount > 0
                 ? String(activeScheduleCount)
@@ -301,24 +176,130 @@ export function buildSessionNavigation({
         ]
       : []),
     {
-      key: "context",
-      label: "Context",
-      href: `${basePath}/context`,
-      icon: ChartNoAxesColumn,
-    },
-    {
       key: "events",
       label: "Events",
       href: `${basePath}/events`,
       icon: Activity,
     },
+    ...(hasFeature("file_system")
+      ? [
+          {
+            key: "files" as const,
+            // Route stays /files — renaming it would break existing links.
+            label: "Workspace",
+            href: `${basePath}/files`,
+            icon: Folder,
+          },
+        ]
+      : []),
     {
-      key: "trajectory",
-      label: "Trajectory",
-      href: `${basePath}/trajectory`,
-      icon: GitBranch,
+      key: "cost",
+      label: "Cost",
+      href: `${basePath}/cost`,
+      icon: Coins,
     },
   ];
+}
+
+/**
+ * The escape hatches from a read-only recording (EVE-854): fork it into a chat
+ * thread you can talk to, open the agent that ran it, or export the transcript.
+ * Fork is the only request this page can issue, and it creates a new session
+ * rather than changing this one.
+ */
+function SessionRecordingActions({
+  sessionId,
+  agentId,
+  sessionTitle,
+}: {
+  sessionId: string;
+  agentId?: string;
+  sessionTitle: string | null;
+}) {
+  const router = useRouter();
+  const { locale } = useLocale();
+  const notificationsContext = useOptionalNotificationsContext();
+  const forkSession = useForkSession();
+  const [forkError, setForkError] = useState<string | null>(null);
+
+  const handleFork = () => {
+    setForkError(null);
+    forkSession.mutate(
+      {
+        sessionId,
+        // Title is the only override worth setting: agent, model, locale, goal
+        // and tags should all inherit so the fork is the same run continued.
+        request: { title: sessionTitle ? `${sessionTitle} (chat)` : undefined },
+      },
+      {
+        onSuccess: (session) => router.push(`/chats/${session.id}`),
+        onError: (error) =>
+          setForkError(error instanceof Error ? error.message : "Could not fork this session"),
+      },
+    );
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={handleFork}
+        disabled={forkSession.isPending}
+        className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1")}
+      >
+        {forkSession.isPending ? (
+          <Loader2 className="icon-sharp h-4 w-4 animate-spin" />
+        ) : (
+          <GitFork className="icon-sharp h-4 w-4" />
+        )}
+        Fork into chat
+      </button>
+
+      {agentId && (
+        <Link
+          href={`/agents/${agentId}`}
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+        >
+          <Bot className="icon-sharp h-4 w-4" />
+          Open agent
+        </Link>
+      )}
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+          aria-label="Export session"
+        >
+          <Download className="icon-sharp h-4 w-4" />
+          Export
+        </DropdownMenuTrigger>
+        <DropdownMenuPositioner align="end">
+          <DropdownMenuContent className="w-40">
+            <DropdownMenuItem
+              onClick={() =>
+                void downloadSessionExport(sessionId, "jsonl", locale, notificationsContext?.notify)
+              }
+            >
+              JSONL
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                void downloadSessionExport(sessionId, "atif", locale, notificationsContext?.notify)
+              }
+            >
+              ATIF
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenuPositioner>
+      </DropdownMenu>
+
+      {forkError && (
+        <span role="alert" className="text-xs text-destructive">
+          {forkError}
+        </span>
+      )}
+    </>
+  );
 }
 
 export function SessionHeader({
@@ -336,7 +317,6 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Back to Sessions",
-  allowTitleEditing = true,
 }: {
   sessionId: string;
   session: Session;
@@ -353,9 +333,7 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
-  allowTitleEditing?: boolean;
 }) {
-  const router = useRouter();
   const agentReferenceLabel =
     session.agent_id != null
       ? getEntityReferenceLabel({
@@ -370,9 +348,6 @@ export function SessionHeader({
       buttonVariants({ variant: "outline", size: "sm" }),
       isActive ? "border-primary bg-card text-foreground" : "text-muted-foreground",
     );
-  const chatItem = navigationItems[0];
-  const advancedNavigationItems = navigationItems.slice(1);
-  const activeAdvancedItem = advancedNavigationItems.find((item) => item.key === activeTab);
 
   return (
     <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
@@ -387,13 +362,12 @@ export function SessionHeader({
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
           <IconTile size="md" icon={<MessageSquare />} className="mt-0.5" />
-          <div className="group/title min-w-0">
-            <EditableSessionTitle
-              sessionId={sessionId}
-              title={session.title}
-              fallback={`Session ${shortenId(session.id)}`}
-              editable={allowTitleEditing}
-            />
+          <div className="min-w-0">
+            <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
+              <EntityIdentity value={sessionId}>
+                {session.title || `Session ${shortenId(session.id)}`}
+              </EntityIdentity>
+            </h1>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               {agentReferenceLabel &&
                 (agent && agentId ? (
@@ -434,58 +408,30 @@ export function SessionHeader({
 
           <SessionStatusBadge status={effectiveStatus} />
 
-          {chatItem && (
-            <Link
-              href={chatItem.href}
-              className={getNavigationClassName(activeTab === chatItem.key)}
-              aria-current={activeTab === chatItem.key ? "page" : undefined}
-            >
-              <chatItem.icon className="icon-sharp h-4 w-4" />
-              {chatItem.label}
-            </Link>
-          )}
-
-          {advancedNavigationItems.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className={getNavigationClassName(activeTab !== "chat")}
-                aria-label="Advanced navigation"
-              >
-                Advanced
-                {activeAdvancedItem && (
-                  <span className="text-xs text-muted-foreground">{activeAdvancedItem.label}</span>
-                )}
-                <ChevronDown className="icon-sharp h-4 w-4 opacity-60" />
-              </DropdownMenuTrigger>
-              <DropdownMenuPositioner align="end">
-                <DropdownMenuContent className="w-56">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel>Advanced Views</DropdownMenuLabel>
-                    {advancedNavigationItems.map((item) => (
-                      <DropdownMenuItem
-                        key={item.key}
-                        onClick={() => router.push(item.href)}
-                        className="flex items-center justify-between gap-3"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <item.icon className="icon-sharp h-4 w-4" />
-                          <span>{item.label}</span>
-                        </span>
-                        <span className="flex items-center gap-2">
-                          {item.badge && <DropdownMenuShortcut>{item.badge}</DropdownMenuShortcut>}
-                          {activeTab === item.key && (
-                            <Check className="icon-sharp h-4 w-4 text-primary" />
-                          )}
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuGroup>
-                </DropdownMenuContent>
-              </DropdownMenuPositioner>
-            </DropdownMenu>
-          )}
+          <SessionRecordingActions
+            sessionId={sessionId}
+            agentId={agent && agentId ? agentId : undefined}
+            sessionTitle={session.title ?? null}
+          />
         </div>
       </div>
+
+      {/* Tabs get their own row: five of them plus the escape hatches do not fit
+          on one line, and crowding them squeezes the title out of legibility. */}
+      <nav className="mt-3 flex flex-wrap items-center gap-2">
+        {navigationItems.map((item) => (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={getNavigationClassName(activeTab === item.key)}
+            aria-current={activeTab === item.key ? "page" : undefined}
+          >
+            <item.icon className="icon-sharp h-4 w-4" />
+            {item.label}
+            {item.badge && <span className="text-xs text-muted-foreground">{item.badge}</span>}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }

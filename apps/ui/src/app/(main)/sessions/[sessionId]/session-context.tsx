@@ -312,8 +312,10 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Determine if session is actively processing
   // "active" = turn running, "waiting_for_tool_results" = paused for client-side tool
   const isActive = effectiveStatus === "active" || effectiveStatus === "waiting_for_tool_results";
-  const isChatPage =
-    pathname === `/sessions/${sessionId}` || pathname === `/sessions/${sessionId}/chat`;
+  // Browser-agent messaging is offered only on a surface that has a composer.
+  // Session detail is a read-only recording (EVE-854), so registering these
+  // tools there would hand a browser agent a mutation the page itself refuses.
+  const isChatSurface = pathname === "/chat" || pathname === `/chats/${sessionId}`;
   const canSendWebMcpMessage = effectiveStatus === "idle" || effectiveStatus === "started";
 
   const sendMessageTool = useMemo<WebMcpToolDefinition>(
@@ -331,7 +333,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
       execute: async (input) => {
         webmcp.assertBinding(webmcp.bindingToken);
-        if (!session || session.id !== sessionId || !canSendWebMcpMessage || !isChatPage) {
+        if (!session || session.id !== sessionId || !canSendWebMcpMessage || !isChatSurface) {
           throw new DOMException(
             "The bound session is no longer ready for a message",
             "AbortError",
@@ -360,7 +362,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         }
       },
     }),
-    [canSendWebMcpMessage, isChatPage, sendMessage, session, sessionId, webmcp],
+    [canSendWebMcpMessage, isChatSurface, sendMessage, session, sessionId, webmcp],
   );
 
   const cancelTurnTool = useMemo<WebMcpToolDefinition>(
@@ -372,7 +374,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
       execute: async () => {
         webmcp.assertBinding(webmcp.bindingToken);
-        if (!session || session.id !== sessionId || !isActive || !isChatPage) {
+        if (!session || session.id !== sessionId || !isActive || !isChatSurface) {
           throw new DOMException("The bound session no longer has an active turn", "AbortError");
         }
         if (webMcpActionPendingRef.current || cancelCurrentTurn.isPending) {
@@ -394,15 +396,15 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         }
       },
     }),
-    [cancelCurrentTurn, isActive, isChatPage, session, sessionId, webmcp],
+    [cancelCurrentTurn, isActive, isChatSurface, session, sessionId, webmcp],
   );
 
   useWebMcpTool(sendMessageTool, {
-    enabled: isChatPage && canSendWebMcpMessage,
+    enabled: isChatSurface && canSendWebMcpMessage,
     scopeKey: `${sessionId}:${effectiveStatus}`,
   });
   useWebMcpTool(cancelTurnTool, {
-    enabled: isChatPage && isActive,
+    enabled: isChatSurface && isActive,
     scopeKey: `${sessionId}:${effectiveStatus}`,
   });
 

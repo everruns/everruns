@@ -17,11 +17,16 @@ interface FileViewerProps {
   workspaceId: string | undefined;
   file: FileInfo;
   onClose: () => void;
+  /**
+   * View without the edit/save affordance. Used by the session detail page,
+   * which is a recording (EVE-854) and issues no mutating request.
+   */
+  readOnly?: boolean;
 }
 
 type ViewMode = "preview" | "source";
 
-export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
+export function FileViewer({ workspaceId, file, onClose, readOnly = false }: FileViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
@@ -129,7 +134,7 @@ export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
                 </Button>
               </div>
             )}
-            {isTextFile && !file.is_readonly && !isEditing && (
+            {!readOnly && isTextFile && !file.is_readonly && !isEditing && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -140,7 +145,7 @@ export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
                 <Edit3 className="h-3.5 w-3.5" />
               </Button>
             )}
-            {isEditing && (
+            {!readOnly && isEditing && (
               <>
                 <Button
                   variant="ghost"
@@ -188,7 +193,7 @@ export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
             <p>Binary file</p>
             <p className="text-xs mt-1">Use download to view this file</p>
           </div>
-        ) : isEditing ? (
+        ) : !readOnly && isEditing ? (
           <textarea
             className="w-full h-full p-4 text-sm font-mono resize-none focus:outline-none"
             value={editContent}
