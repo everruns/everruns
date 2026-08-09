@@ -12,6 +12,7 @@ use everruns_server::domains::apps::invoke_scheduled_app_channel;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
+use everruns_server::storage::SessionListFilters;
 use everruns_server::storage::models::CreateAuditLogRow;
 
 async fn create_app(
@@ -87,8 +88,7 @@ async fn list_app_sessions(server: &TestServer, app_id: &str, channel_id: &str) 
         .db
         .list_sessions(
             DEFAULT_ORG_ID,
-            None,
-            None,
+            &SessionListFilters::default(),
             Pagination {
                 offset: 0,
                 limit: 200,

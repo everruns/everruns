@@ -6,7 +6,35 @@ use super::matches_search_tokens;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::{AgentId, EventId, HarnessId, PrincipalId, SessionId};
+use everruns_core::{SessionActivity, SessionStatus};
 use uuid::Uuid;
+
+/// Facet dimension whose own selection is excluded when counting it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FacetDimension {
+    None,
+    Activity,
+    Source,
+    Agent,
+}
+
+fn session_activity(row: &SessionRow) -> SessionActivity {
+    SessionActivity::derive(
+        &SessionStatus::from(row.status.as_str()),
+        row.last_turn_status.as_deref(),
+    )
+}
+
+fn count_by(values: impl Iterator<Item = String>) -> Vec<SessionFacetBucket> {
+    let mut counts: std::collections::BTreeMap<String, i64> = std::collections::BTreeMap::new();
+    for value in values {
+        *counts.entry(value).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(value, count)| SessionFacetBucket { value, count })
+        .collect()
+}
 
 impl InMemoryDatabase {
     // ============================================
@@ -95,6 +123,9 @@ impl InMemoryDatabase {
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
             status: "started".to_string(),
+            source: input.source.as_str().to_string(),
+            last_turn_status: None,
+            last_turn_at: None,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -164,15 +195,60 @@ impl InMemoryDatabase {
 
     /// List sessions for an agent with pagination, validating org ownership.
     /// Returns (sessions, total_count).
+    /// Rows matching every filter except the dimensions named in `skip`, so the
+    /// facet rail can count a dimension with its own selection excluded.
+    fn filtered_sessions(
+        &self,
+        org_id: i64,
+        filters: &SessionListFilters,
+        skip: FacetDimension,
+    ) -> Vec<SessionRow> {
+        let sessions = self.sessions.read();
+        sessions
+            .values()
+            .filter(|s| s.org_id == org_id)
+            .filter(|s| {
+                skip == FacetDimension::Agent
+                    || filters.agent_id.is_none_or(|aid| s.agent_id == Some(aid))
+            })
+            .filter(|s| {
+                matches_search_tokens(
+                    filters.search.as_deref(),
+                    &[s.title.as_deref().unwrap_or("")],
+                )
+            })
+            .filter(|s| {
+                filters
+                    .owner_user_id
+                    .is_none_or(|uid| s.resolved_owner_user_id == Some(uid))
+            })
+            .filter(|s| filters.created_after.is_none_or(|t| s.created_at >= t))
+            .filter(|s| filters.created_before.is_none_or(|t| s.created_at < t))
+            .filter(|s| {
+                skip == FacetDimension::Source
+                    || filters.sources.is_empty()
+                    || filters
+                        .sources
+                        .iter()
+                        .any(|src| src.as_str() == s.source.as_str())
+            })
+            .filter(|s| {
+                skip == FacetDimension::Activity
+                    || filters.activities.is_empty()
+                    || filters.activities.contains(&session_activity(s))
+            })
+            .cloned()
+            .collect()
+    }
+
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Option<AgentId>,
-        search: Option<&str>,
+        filters: &SessionListFilters,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         // If agent_id is provided, validate it belongs to the org
-        if let Some(aid) = agent_id {
+        if let Some(aid) = filters.agent_id {
             let agents = self.agents.read();
             if !agents
                 .get(&aid)
@@ -183,14 +259,15 @@ impl InMemoryDatabase {
             }
         }
 
-        let sessions = self.sessions.read();
-        let mut result: Vec<_> = sessions
-            .values()
-            .filter(|s| s.org_id == org_id && agent_id.is_none_or(|aid| s.agent_id == Some(aid)))
-            .filter(|s| matches_search_tokens(search, &[s.title.as_deref().unwrap_or("")]))
-            .cloned()
-            .collect();
-        result.sort_by_key(|session| std::cmp::Reverse(session.created_at));
+        let mut result = self.filtered_sessions(org_id, filters, FacetDimension::None);
+        match filters.order {
+            SessionListOrder::CreatedAt => {
+                result.sort_by_key(|session| std::cmp::Reverse(session.created_at))
+            }
+            SessionListOrder::LastActivity => {
+                result.sort_by_key(|session| std::cmp::Reverse(session.updated_at))
+            }
+        }
 
         let total = result.len() as u32;
         let offset = pagination.offset as usize;
@@ -200,6 +277,87 @@ impl InMemoryDatabase {
         let paginated = result.into_iter().skip(offset).take(limit).collect();
 
         Ok((paginated, total))
+    }
+
+    pub async fn session_facets(
+        &self,
+        org_id: i64,
+        filters: &SessionListFilters,
+    ) -> Result<SessionFacetsRow> {
+        if let Some(aid) = filters.agent_id
+            && !self
+                .agents
+                .read()
+                .get(&aid)
+                .map(|a| a.org_id == org_id)
+                .unwrap_or(false)
+        {
+            return Ok(SessionFacetsRow::default());
+        }
+
+        let matched = self.filtered_sessions(org_id, filters, FacetDimension::None);
+        let today = Utc::now().date_naive();
+
+        let mut durations: Vec<i64> = matched
+            .iter()
+            .map(|s| {
+                let end = s.finished_at.or(s.last_turn_at).unwrap_or(s.updated_at);
+                let start = s.started_at.unwrap_or(s.created_at);
+                (end - start).num_milliseconds().max(0)
+            })
+            .collect();
+        durations.sort_unstable();
+        // Matches PostgreSQL's `percentile_cont` at the discrete boundary well
+        // enough for the in-memory backend's test-fixture scale.
+        let p95_duration_ms = if durations.is_empty() {
+            0
+        } else {
+            let idx = (((durations.len() - 1) as f64) * 0.95).round() as usize;
+            durations[idx]
+        };
+
+        Ok(SessionFacetsRow {
+            total: matched.len() as i64,
+            by_activity: count_by(
+                self.filtered_sessions(org_id, filters, FacetDimension::Activity)
+                    .iter()
+                    .map(|s| session_activity(s).as_str().to_string()),
+            ),
+            by_source: count_by(
+                self.filtered_sessions(org_id, filters, FacetDimension::Source)
+                    .iter()
+                    .map(|s| s.source.clone()),
+            ),
+            by_agent: count_by(
+                self.filtered_sessions(org_id, filters, FacetDimension::Agent)
+                    .iter()
+                    .filter_map(|s| s.agent_id.map(|a| a.uuid().to_string())),
+            ),
+            active_now: matched
+                .iter()
+                .filter(|s| matches!(s.status.as_str(), "active" | "waiting_for_tool_results"))
+                .count() as i64,
+            failed_today: matched
+                .iter()
+                .filter(|s| {
+                    matches!(
+                        s.last_turn_status.as_deref(),
+                        Some("failed") | Some("cancelled")
+                    ) && s.last_turn_at.is_some_and(|t| t.date_naive() == today)
+                })
+                .count() as i64,
+            p95_duration_ms,
+            tokens_today: matched
+                .iter()
+                .filter(|s| s.created_at.date_naive() == today)
+                .map(|s| {
+                    s.total_input_tokens
+                        + s.total_output_tokens
+                        + s.total_cache_read_tokens
+                        + s.total_cache_creation_tokens
+                })
+                .sum(),
+        })
     }
 
     pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {

@@ -616,6 +616,7 @@ mod tests {
 
     fn session_input(owner_user_id: Option<Uuid>) -> CreateSessionRow {
         CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             workspace_id: None,
             app_id: None,

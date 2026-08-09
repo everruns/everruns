@@ -17,11 +17,12 @@ use crate::max_iterations;
 use crate::org_init;
 use crate::server::ResourceLimitsConfig;
 use crate::services::{PrincipalService, row_to_principal};
+use super::types::{SessionFacetCount, SessionFacetsResponse};
 use crate::storage::{
     StorageBackend,
     models::{
         CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
-        MemoryRow, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
+        MemoryRow, SessionListFilters, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
     },
 };
 use anyhow::Result;
@@ -30,8 +31,8 @@ use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
-    PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionSeedMode, SessionStatus,
-    TokenUsage, WorkspaceId,
+    PrincipalSummary, Rule, Session, SessionActivity, SessionFile, SessionId, SessionSeedMode,
+    SessionSource, SessionStatus, TokenUsage, WorkspaceId,
     capabilities::{
         AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
         collect_capabilities_with_configs, compute_features, resolve_capability_configs,
@@ -179,6 +180,7 @@ impl SessionService {
         harness_id: Uuid,
         agent_internal_id: Option<Uuid>,
         agent_public_id: Option<AgentId>,
+        source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
         self.create_inner(
@@ -188,6 +190,7 @@ impl SessionService {
             agent_public_id,
             None,
             None,
+            source,
             req,
         )
         .await
@@ -215,6 +218,7 @@ impl SessionService {
         app_internal_id: Uuid,
         owner_principal_id: PrincipalId,
         resolved_owner_user_id: Option<Uuid>,
+        source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
         self.create_inner(
@@ -224,6 +228,7 @@ impl SessionService {
             agent_public_id,
             Some(app_internal_id),
             Some((owner_principal_id, resolved_owner_user_id)),
+            source,
             req,
         )
         .await
@@ -253,6 +258,8 @@ impl SessionService {
             Some(agent_public_id),
             None,
             Some((owner_principal_id, resolved_owner_user_id)),
+            // An agent trigger is a schedule fire by construction.
+            SessionSource::Schedule,
             req,
         )
         .await
@@ -321,6 +328,7 @@ impl SessionService {
         // isolated workspace is forced (`workspace_id: None`); never a subagent
         // (`parent_session_id: None`).
         let req = CreateSessionRequest {
+            source: None,
             harness_id: Some(parent.harness_id),
             harness_name: None,
             agent_id: agent_public_id,
@@ -355,6 +363,9 @@ impl SessionService {
                 agent_public_id,
                 None,
                 None,
+                // A fork keeps the origin of what it branched from: a forked
+                // chat thread is still a chat thread.
+                parent.source,
                 req,
             )
             .await?;
@@ -524,6 +535,10 @@ impl SessionService {
         // (principal, resolved_user) override; used by app-channel ingress so
         // the session owner matches the App row (not the internal caller).
         owner_override: Option<(PrincipalId, Option<Uuid>)>,
+        // How this session was started (EVE-852). Resolved by the calling
+        // ingress path, never read from the request body except for the two
+        // client-declarable variants the CreateSession command validates.
+        source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
         let org_id = caller.org_id;
@@ -787,6 +802,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            source,
             app_id,
             harness_id: Some(harness_id),
             agent_id,
@@ -949,6 +965,7 @@ impl SessionService {
         harness_id: Uuid,
         blueprint_id: String,
         blueprint_config: Option<serde_json::Value>,
+        source: SessionSource,
         req: CreateSessionRequest,
     ) -> Result<Session> {
         let org_id = caller.org_id;
@@ -974,6 +991,7 @@ impl SessionService {
         let input = CreateSessionRow {
             workspace_id: None,
             org_id,
+            source,
             app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
@@ -1349,18 +1367,13 @@ impl SessionService {
     pub async fn list(
         &self,
         caller: &Caller,
-        agent_id: Option<Uuid>,
         user_id: Option<Uuid>,
-        search: Option<&str>,
+        filters: &SessionListFilters,
         pagination: Pagination,
     ) -> Result<(Vec<Session>, u32)> {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
-        let agent_id = agent_id.map(AgentId::from_uuid);
-        let (rows, total) = self
-            .db
-            .list_sessions(org_id, agent_id, search, pagination)
-            .await?;
+        let (rows, total) = self.db.list_sessions(org_id, filters, pagination).await?;
         let fallback = if rows.iter().any(|r| r.harness_id.is_none()) {
             Some(org_init::base_harness_id(&self.db, org_id).await?)
         } else {
@@ -1404,6 +1417,49 @@ impl SessionService {
         }
 
         Ok((sessions, total))
+    }
+
+    /// Facet-rail counts and masthead metrics for the sessions surface
+    /// (EVE-852), aggregated over the same predicate as [`Self::list`].
+    ///
+    /// Agent buckets are returned keyed by the agent's public id so the caller
+    /// never has to expose or resolve internal UUIDs.
+    pub async fn facets(
+        &self,
+        caller: &Caller,
+        filters: &SessionListFilters,
+    ) -> Result<SessionFacetsResponse> {
+        let row = self.db.session_facets(caller.org_id, filters).await?;
+
+        let bucket = |buckets: Vec<crate::storage::SessionFacetBucket>| {
+            buckets
+                .into_iter()
+                .map(|b| SessionFacetCount {
+                    value: b.value,
+                    count: b.count as u64,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        Ok(SessionFacetsResponse {
+            total: row.total as u64,
+            by_activity: bucket(row.by_activity),
+            by_source: bucket(row.by_source),
+            by_agent: row
+                .by_agent
+                .into_iter()
+                .filter_map(|b| {
+                    Uuid::parse_str(&b.value).ok().map(|id| SessionFacetCount {
+                        value: AgentId::from_uuid(id).to_string(),
+                        count: b.count as u64,
+                    })
+                })
+                .collect(),
+            active_now: row.active_now as u64,
+            failed_today: row.failed_today as u64,
+            p95_duration_ms: row.p95_duration_ms as u64,
+            tokens_today: row.tokens_today as u64,
+        })
     }
 
     async fn load_session_list_hydration(
@@ -1840,10 +1896,12 @@ impl SessionService {
         }
 
         // Create a new chat session
+        let source = SessionSource::Chat;
         let harness_id_typed = HarnessId::from_uuid(harness_id);
         let input = CreateSessionRow {
             workspace_id: None,
             org_id,
+            source,
             app_id: None,
             harness_id: Some(harness_id_typed),
             agent_id: None,
@@ -2628,6 +2686,11 @@ impl SessionService {
             max_iterations: max_iterations::from_db(row.max_iterations),
             parallel_tool_calls: row.parallel_tool_calls,
             status: SessionStatus::from(row.status.as_str()),
+            source: SessionSource::from(row.source.as_str()),
+            activity: SessionActivity::derive(
+                &SessionStatus::from(row.status.as_str()),
+                row.last_turn_status.as_deref(),
+            ),
             created_at: row.created_at,
             updated_at: row.updated_at,
             started_at: row.started_at,
@@ -2878,6 +2941,7 @@ mod tests {
         model_id: Option<ModelId>,
     ) -> CreateSessionRequest {
         CreateSessionRequest {
+            source: None,
             workspace_id: None,
             harness_id: Some(harness_id),
             harness_name: None,
@@ -2977,6 +3041,7 @@ mod tests {
                     harness.id.uuid(),
                     Some(agent.internal_id),
                     Some(agent.public_id),
+                    SessionSource::Api,
                     request,
                 )
                 .await
@@ -2987,9 +3052,8 @@ mod tests {
         let (one, _) = service
             .list(
                 &caller,
-                None,
                 Some(everruns_platform::ANONYMOUS_USER_ID),
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 1,
                     offset: 0,
@@ -3004,9 +3068,8 @@ mod tests {
         let (twenty, _) = service
             .list(
                 &caller,
-                None,
                 Some(everruns_platform::ANONYMOUS_USER_ID),
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 20,
                     offset: 0,
@@ -3032,8 +3095,7 @@ mod tests {
         let (legacy_rows, _) = db
             .list_sessions(
                 DEFAULT_ORG_ID,
-                None,
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 20,
                     offset: 0,
@@ -3084,9 +3146,8 @@ mod tests {
         service
             .list(
                 &caller,
-                None,
                 Some(everruns_platform::ANONYMOUS_USER_ID),
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 20,
                     offset: 0,
@@ -3181,6 +3242,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
+                SessionSource::Api,
                 agent_request,
             )
             .await
@@ -3191,6 +3253,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -3237,6 +3300,7 @@ mod tests {
         let missing_owner_id = PrincipalId::new();
         let missing_reference_session = db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
@@ -3271,9 +3335,8 @@ mod tests {
         let (sessions, total) = service
             .list(
                 &caller,
-                None,
                 Some(everruns_platform::ANONYMOUS_USER_ID),
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 20,
                     offset: 0,
@@ -3338,9 +3401,8 @@ mod tests {
         let (empty_page, empty_total) = service
             .list(
                 &caller,
-                None,
                 Some(everruns_platform::ANONYMOUS_USER_ID),
-                None,
+                &SessionListFilters::default(),
                 Pagination {
                     limit: 20,
                     offset: 100,
@@ -3414,6 +3476,7 @@ mod tests {
                 harness_id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness_id, None, None),
             )
             .await
@@ -3456,6 +3519,7 @@ mod tests {
                 harness_id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness_id, None, Some(first_default)),
             )
             .await
@@ -3536,6 +3600,7 @@ mod tests {
                 app_internal_id,
                 app_owner.id,
                 app_owner.resolved_user_id,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -3567,6 +3632,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -3610,6 +3676,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -3798,6 +3865,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
+                SessionSource::Api,
                 build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
@@ -3899,6 +3967,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
+                SessionSource::Api,
                 build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
@@ -3981,7 +4050,7 @@ mod tests {
         });
 
         let err = session_service
-            .create(&caller, harness.id.uuid(), None, None, req)
+            .create(&caller, harness.id.uuid(), None, None, SessionSource::Api, req)
             .await
             .unwrap_err();
         assert!(
@@ -4058,6 +4127,7 @@ mod tests {
                 child.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(child.id, None, None),
             )
             .await
@@ -4138,6 +4208,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
+                SessionSource::Api,
                 build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
@@ -4178,6 +4249,7 @@ mod tests {
                 harness.id.uuid(),
                 Some(agent.internal_id),
                 Some(agent.public_id),
+                SessionSource::Api,
                 build_create_request(harness.id, Some(agent.public_id), None),
             )
             .await
@@ -4221,6 +4293,7 @@ mod tests {
                 other_harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(other_harness.id, None, None),
             )
             .await
@@ -4263,6 +4336,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, Some(other_model_id)),
             )
             .await
@@ -4322,6 +4396,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
@@ -4446,6 +4521,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4509,6 +4585,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4595,6 +4672,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4658,6 +4736,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
@@ -4783,6 +4862,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4855,6 +4935,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4898,6 +4979,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -4954,6 +5036,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -5026,6 +5109,7 @@ mod tests {
                     harness.id.uuid(),
                     None,
                     None,
+                    SessionSource::Api,
                     req,
                 )
                 .await
@@ -5082,6 +5166,7 @@ mod tests {
             app_id,
             owner_principal.id,
             owner_principal.resolved_user_id,
+            SessionSource::Api,
             build_create_request(harness.id, None, None),
         )
         .await
@@ -5096,6 +5181,7 @@ mod tests {
                 app_id,
                 owner_principal.id,
                 owner_principal.resolved_user_id,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -5151,6 +5237,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -5176,6 +5263,7 @@ mod tests {
                 harness.id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -5262,6 +5350,7 @@ mod tests {
                 harness_id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness_id, None, None),
             )
             .await
@@ -5302,6 +5391,7 @@ mod tests {
                 harness_id.uuid(),
                 None,
                 None,
+                SessionSource::Api,
                 build_create_request(harness_id, None, None),
             )
             .await

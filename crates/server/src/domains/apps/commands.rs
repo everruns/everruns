@@ -1451,7 +1451,17 @@ async fn find_or_create_invocation_session(
             // shared-session reuse depends on this. See `create_from_app` doc.
             app.owner_principal_id,
             app.resolved_owner_user_id,
+            // The invocation channel *is* the session's origin. `api_endpoint`
+            // collapses into `webhook`: both are an inbound HTTP call into the app.
+            match source {
+                AppInvocationSource::Schedule => everruns_core::SessionSource::Schedule,
+                AppInvocationSource::Webhook | AppInvocationSource::ApiEndpoint => {
+                    everruns_core::SessionSource::Webhook
+                }
+                AppInvocationSource::A2a => everruns_core::SessionSource::A2a,
+            },
             CreateSessionRequest {
+                source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
                 harness_name: None,

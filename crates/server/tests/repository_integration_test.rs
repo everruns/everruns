@@ -25,10 +25,10 @@ use everruns_server::storage::{
     CreateDeclarativeCapabilityRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
     CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
-    CreateUserConnectionRow, CreateUserRow, Database, StorageBackend, UpdateAgent,
-    UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateModel, UpdateOrganization,
-    UpdateOrganizationSettings, UpdateProvider, UpdateSession, UpdateSessionFile,
-    UpdateSessionScheduleRow,
+    CreateUserConnectionRow, CreateUserRow, Database, SessionListFilters, StorageBackend,
+    UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateModel,
+    UpdateOrganization, UpdateOrganizationSettings, UpdateProvider, UpdateSession,
+    UpdateSessionFile, UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
 
@@ -518,6 +518,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -684,6 +685,7 @@ async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
         .expect("add owner to org");
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let base = CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: TEST_ORG_ID,
         app_id: None,
@@ -813,6 +815,7 @@ async fn test_session_crud() {
         .expect("Failed to create app");
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: Some(app.id),
@@ -912,8 +915,10 @@ async fn test_session_crud() {
     let (sessions, total) = backend
         .list_sessions(
             TEST_ORG_ID,
-            Some(agent.id),
-            None,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
             Pagination {
                 limit: 10,
                 offset: 0,
@@ -1000,6 +1005,7 @@ async fn test_event_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1100,6 +1106,7 @@ async fn test_event_exclude_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1208,6 +1215,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1310,6 +1318,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1428,6 +1437,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1650,6 +1660,7 @@ async fn test_event_filter_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -1961,6 +1972,7 @@ async fn test_session_file_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -2442,6 +2454,7 @@ async fn test_session_usage_tracking() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -2551,6 +2564,7 @@ async fn test_session_previews() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -3162,6 +3176,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
@@ -3555,6 +3570,7 @@ async fn list_org_session_tasks_pg() {
         async move {
             backend
                 .create_session(CreateSessionRow {
+                    source: everruns_core::SessionSource::Api,
                     workspace_id: None,
                     org_id,
                     app_id: None,

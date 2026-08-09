@@ -542,6 +542,8 @@ pub mod tests {
                 session: {
                     let session_id = SessionId::new();
                     Session {
+                        source: Default::default(),
+                        activity: Default::default(),
                         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
                         id: session_id,
                         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),

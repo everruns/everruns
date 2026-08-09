@@ -1084,13 +1084,22 @@ impl StorageBackend {
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Option<AgentId>,
-        search: Option<&str>,
+        filters: &SessionListFilters,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
         #[cfg(test)]
         self.record_session_list_lookup().await;
-        dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
+        dispatch!(self, list_sessions, org_id, filters, pagination)
+    }
+
+    /// Facet-rail counts and masthead metrics over the same predicate as
+    /// [`Self::list_sessions`] (EVE-852).
+    pub async fn session_facets(
+        &self,
+        org_id: i64,
+        filters: &SessionListFilters,
+    ) -> Result<SessionFacetsRow> {
+        dispatch!(self, session_facets, org_id, filters)
     }
 
     /// List child sessions (subagents) for a parent session.

@@ -451,6 +451,8 @@ mod tests {
     fn test_session(harness_id: HarnessId, agent_id: everruns_core::AgentId) -> Session {
         let session_id = SessionId::new();
         Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: session_id,
             // Default 1:1 session<->workspace: workspace.id mirrors the session id.
             workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),

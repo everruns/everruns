@@ -19,6 +19,7 @@ fn test_harness_id() -> HarnessId {
 
 fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
     CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -173,6 +174,7 @@ async fn test_create_and_list_sessions() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -206,7 +208,14 @@ async fn test_create_and_list_sessions() {
 
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(sessions.len(), 1);
@@ -219,6 +228,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
     let db = InMemoryDatabase::new();
 
     let new_session = || CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -615,6 +625,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -720,6 +731,7 @@ async fn test_session_updated_at() {
     // Create session - updated_at should equal created_at
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -807,6 +819,7 @@ async fn test_events_sequence() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -895,6 +908,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -978,6 +992,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
     let db = InMemoryDatabase::new();
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -1083,6 +1098,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -1234,6 +1250,7 @@ async fn test_unpin_session_is_scoped_by_org() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -1316,6 +1333,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -2033,6 +2051,7 @@ async fn test_list_events_empty_session_with_limit() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -2103,6 +2122,7 @@ async fn test_sessions_pagination() {
     // Create 15 sessions
     for i in 0..15 {
         db.create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -2138,7 +2158,14 @@ async fn test_sessions_pagination() {
     // Test default pagination (all sessions fit within limit)
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -2147,7 +2174,14 @@ async fn test_sessions_pagination() {
     // Test with limit=5
     let pagination = crate::api::common::Pagination::new(0, 5);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -2156,7 +2190,14 @@ async fn test_sessions_pagination() {
     // Test with offset=5, limit=5
     let pagination = crate::api::common::Pagination::new(5, 5);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -2165,7 +2206,14 @@ async fn test_sessions_pagination() {
     // Test last partial page (offset=10, limit=10 should return 5)
     let pagination = crate::api::common::Pagination::new(10, 10);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -2174,7 +2222,14 @@ async fn test_sessions_pagination() {
     // Test beyond range (offset=20)
     let pagination = crate::api::common::Pagination::new(20, 10);
     let (sessions, total) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 15);
@@ -2212,6 +2267,7 @@ async fn test_sessions_pagination_ordering() {
     // Create sessions with sequential titles
     for i in 1..=5 {
         db.create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -2249,7 +2305,14 @@ async fn test_sessions_pagination_ordering() {
     // Sessions should be ordered by created_at DESC (newest first)
     let pagination = crate::api::common::Pagination::new(0, 10);
     let (sessions, _) = db
-        .list_sessions(DEFAULT_ORG_ID, Some(agent.id), None, pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                agent_id: Some(agent.id),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
 
@@ -2950,6 +3013,7 @@ async fn test_search_sessions_by_title() {
     let agent = create_test_agent(&db, "Agent", None).await;
 
     db.create_session(CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -2982,6 +3046,7 @@ async fn test_search_sessions_by_title() {
     .unwrap();
 
     db.create_session(CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -3015,7 +3080,14 @@ async fn test_search_sessions_by_title() {
 
     let pagination = crate::api::common::Pagination::new(0, 20);
     let (results, total) = db
-        .list_sessions(DEFAULT_ORG_ID, None, Some("memory leak"), pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                search: Some("memory leak".to_string()),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 1);
@@ -3030,6 +3102,7 @@ async fn test_search_sessions_with_agent_filter() {
     let agent2 = create_test_agent(&db, "Agent2", None).await;
 
     db.create_session(CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -3062,6 +3135,7 @@ async fn test_search_sessions_with_agent_filter() {
     .unwrap();
 
     db.create_session(CreateSessionRow {
+        source: everruns_core::SessionSource::Api,
         workspace_id: None,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
@@ -3098,8 +3172,11 @@ async fn test_search_sessions_with_agent_filter() {
     let (results, total) = db
         .list_sessions(
             DEFAULT_ORG_ID,
-            Some(agent1.id),
-            Some("shared keyword"),
+            &SessionListFilters {
+                agent_id: Some(agent1.id),
+                search: Some("shared keyword".to_string()),
+                ..Default::default()
+            },
             pagination,
         )
         .await
@@ -3118,7 +3195,14 @@ async fn test_search_sessions_poem_input() {
                     Rough winds do shake the darling buds of May, \
                     And summer's lease hath all too short a date.";
     let (results, total) = db
-        .list_sessions(DEFAULT_ORG_ID, None, Some(poem), pagination)
+        .list_sessions(
+            DEFAULT_ORG_ID,
+            &SessionListFilters {
+                search: Some(poem.to_string()),
+                ..Default::default()
+            },
+            pagination,
+        )
         .await
         .unwrap();
     assert_eq!(total, 0);
@@ -3298,6 +3382,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -3494,6 +3579,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
     // Create 3 sessions: one waiting+old, one waiting+recent, one active+old
     let s1 = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -3526,6 +3612,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
         .unwrap();
     let s2 = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -3558,6 +3645,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
         .unwrap();
     let s3 = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -3656,6 +3744,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
@@ -3712,6 +3801,7 @@ async fn test_session_system_prompt_defaults_to_none() {
 
     let session = db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

@@ -646,6 +646,7 @@ async fn process_slack_message(
             );
             let title = build_session_title(slack_config, event);
             let req = CreateSessionRequest {
+                source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
                 harness_name: None,
@@ -682,6 +683,7 @@ async fn process_slack_message(
                     app.internal_id,
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
+                    everruns_core::SessionSource::Slack,
                     req,
                 )
                 .await?;
@@ -2453,6 +2455,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         let row = CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: 1,
             app_id: None,

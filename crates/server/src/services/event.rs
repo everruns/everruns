@@ -609,6 +609,7 @@ mod tests {
 
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

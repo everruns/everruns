@@ -11,6 +11,168 @@ use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 
+/// Columns projected by every session detail/list query.
+const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at, \
+     total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
+     forked_from_session_id, forked_from_sequence, \
+     blueprint_id, blueprint_config";
+
+/// SQL mirror of `everruns_core::SessionActivity::derive` — the list filters in
+/// the database while the in-memory backend filters in Rust. Both must change
+/// together; `activity_derivation_truth_table` in `everruns_core::session`
+/// spells out the shared contract.
+const ACTIVITY_SQL: &str = "CASE \
+     WHEN status IN ('active', 'waiting_for_tool_results') THEN 'running' \
+     WHEN status = 'paused' THEN 'paused' \
+     WHEN last_turn_status IN ('failed', 'cancelled') THEN 'failed' \
+     WHEN last_turn_status = 'completed' THEN 'completed' \
+     ELSE 'idle' END";
+
+/// Compiled WHERE fragments plus their bind values for the sessions list and
+/// its facet aggregates. Source and activity values are inlined rather than
+/// bound: both come from closed Rust enums, so the literal text is a
+/// compile-time constant and cannot carry injected SQL.
+struct SessionFilterSql {
+    agent_predicate: String,
+    source_predicate: String,
+    activity_predicate: String,
+    search_predicate: String,
+    owner_predicate: String,
+    window_predicate: String,
+    agent_id: Option<AgentId>,
+    search_patterns: Vec<String>,
+    owner_user_id: Option<Uuid>,
+    created_after: Option<DateTime<Utc>>,
+    created_before: Option<DateTime<Utc>>,
+    /// First unused positional parameter (LIMIT/OFFSET start here).
+    next_param_idx: usize,
+}
+
+/// Binds the filter values in the exact order `SessionFilterSql::build`
+/// assigned their positional parameters. `$1` (org_id) is bound by the caller.
+macro_rules! bind_session_filters {
+    ($q:expr, $plan:expr) => {{
+        let mut q = $q;
+        if let Some(agent_id) = $plan.agent_id {
+            q = q.bind(agent_id);
+        }
+        for pattern in &$plan.search_patterns {
+            q = q.bind(pattern);
+        }
+        if let Some(user_id) = $plan.owner_user_id {
+            q = q.bind(user_id);
+        }
+        if let Some(after) = $plan.created_after {
+            q = q.bind(after);
+        }
+        if let Some(before) = $plan.created_before {
+            q = q.bind(before);
+        }
+        q
+    }};
+}
+
+fn sql_string_list(values: impl Iterator<Item = &'static str>) -> String {
+    values
+        .map(|v| format!("'{v}'"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+impl SessionFilterSql {
+    fn build(filters: &SessionListFilters) -> Self {
+        let mut param_idx = 2;
+
+        let agent_predicate = match filters.agent_id {
+            Some(_) => {
+                let p = format!(" AND agent_id = ${param_idx}");
+                param_idx += 1;
+                p
+            }
+            None => String::new(),
+        };
+
+        let (search_predicate, search_patterns) = build_search_sql(
+            filters.search.as_deref(),
+            "LOWER(COALESCE(title, ''))",
+            param_idx,
+        );
+        param_idx += search_patterns.len();
+
+        // `mine` resolves against the effective human owner so a session an
+        // agent identity created on the user's behalf still shows up.
+        let owner_predicate = match filters.owner_user_id {
+            Some(_) => {
+                let p = format!(" AND resolved_owner_user_id = ${param_idx}");
+                param_idx += 1;
+                p
+            }
+            None => String::new(),
+        };
+
+        let mut window_predicate = String::new();
+        if filters.created_after.is_some() {
+            window_predicate.push_str(&format!(" AND created_at >= ${param_idx}"));
+            param_idx += 1;
+        }
+        if filters.created_before.is_some() {
+            window_predicate.push_str(&format!(" AND created_at < ${param_idx}"));
+            param_idx += 1;
+        }
+
+        let source_predicate = if filters.sources.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " AND source IN ({})",
+                sql_string_list(filters.sources.iter().map(|s| s.as_str()))
+            )
+        };
+
+        let activity_predicate = if filters.activities.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " AND ({ACTIVITY_SQL}) IN ({})",
+                sql_string_list(filters.activities.iter().map(|a| a.as_str()))
+            )
+        };
+
+        Self {
+            agent_predicate,
+            source_predicate,
+            activity_predicate,
+            search_predicate,
+            owner_predicate,
+            window_predicate,
+            agent_id: filters.agent_id,
+            search_patterns,
+            owner_user_id: filters.owner_user_id,
+            created_after: filters.created_after,
+            created_before: filters.created_before,
+            next_param_idx: param_idx,
+        }
+    }
+
+    /// Filters that are not a facet dimension, so every facet applies them.
+    fn common_predicates(&self) -> String {
+        format!(
+            "{}{}{}",
+            self.search_predicate, self.owner_predicate, self.window_predicate
+        )
+    }
+
+    fn all_predicates(&self) -> String {
+        format!(
+            "{}{}{}{}",
+            self.agent_predicate,
+            self.common_predicates(),
+            self.source_predicate,
+            self.activity_predicate
+        )
+    }
+}
+
 impl Database {
     // ============================================
     // Sessions (instance of agentic loop)
@@ -85,9 +247,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, root_session_id, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 'started')
-            RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, root_session_id, source, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, 'started')
+            RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
                       blueprint_id, blueprint_config
             "#,
@@ -120,6 +282,7 @@ impl Database {
         .bind(workspace_id)
         .bind(input.parallel_tool_calls)
         .bind(root_session_id)
+        .bind(input.source.as_str())
         .fetch_one(&mut *tx)
         .await?;
 
@@ -225,7 +388,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -245,7 +408,7 @@ impl Database {
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -260,60 +423,39 @@ impl Database {
         Ok(row)
     }
 
-    /// List sessions for an organization with optional agent and search filters.
-    /// Returns (sessions, total_count).
+    /// List sessions for an organization (EVE-852).
+    ///
+    /// Filters compose: agent, title search, source, derived activity, owner
+    /// (`mine`), and a creation window. Returns (sessions, total_count).
     pub async fn list_sessions(
         &self,
         org_id: i64,
-        agent_id: Option<AgentId>,
-        search: Option<&str>,
+        filters: &SessionListFilters,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
-        // Build WHERE clause dynamically
-        let mut where_clause = "WHERE org_id = $1".to_string();
-        let mut param_idx = 2;
+        let plan = SessionFilterSql::build(filters);
+        let where_clause = format!("WHERE org_id = $1{}", plan.all_predicates());
+        let order_by = match filters.order {
+            SessionListOrder::CreatedAt => "created_at DESC",
+            SessionListOrder::LastActivity => "updated_at DESC",
+        };
 
-        if agent_id.is_some() {
-            where_clause.push_str(&format!(" AND agent_id = ${param_idx}"));
-            param_idx += 1;
-        }
-
-        let (search_sql, patterns) =
-            build_search_sql(search, "LOWER(COALESCE(title, ''))", param_idx);
-        where_clause.push_str(&search_sql);
-        param_idx += patterns.len();
-
-        // Helper: bind org_id, agent_id, and search patterns to a query
         macro_rules! bind_params {
-            ($q:expr) => {{
-                let mut q = $q.bind(org_id);
-                if let Some(aid) = agent_id {
-                    q = q.bind(aid);
-                }
-                for pat in &patterns {
-                    q = q.bind(pat);
-                }
-                q
-            }};
+            ($q:expr) => {{ bind_session_filters!($q.bind(org_id), plan) }};
         }
 
-        // Get total count
         let count_sql = format!("SELECT COUNT(*) as count FROM sessions {where_clause}");
         let count_query = bind_params!(sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(
             count_sql.as_str()
         )));
         let total: (i64,) = count_query.fetch_one(&self.pool).await?;
 
-        // Get paginated results
-        let limit_idx = param_idx;
-        let offset_idx = param_idx + 1;
+        let limit_idx = plan.next_param_idx;
+        let offset_idx = plan.next_param_idx + 1;
         let select_sql = format!(
-            r#"SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
-                   forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+            r#"SELECT {SESSION_COLUMNS}
             FROM sessions {where_clause}
-            ORDER BY created_at DESC
+            ORDER BY {order_by}
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
         );
         let data_query = bind_params!(sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(
@@ -326,6 +468,130 @@ impl Database {
             .await?;
 
         Ok((rows, total.0 as u32))
+    }
+
+    /// Facet-rail counts and masthead metrics for the sessions surface
+    /// (EVE-852).
+    ///
+    /// Aggregated over the same predicate as [`Self::list_sessions`], so the
+    /// counts always describe the page they annotate, and never require the
+    /// client to page the list to derive them. Each facet dimension is counted
+    /// with every *other* filter applied but its own excluded — that is what
+    /// makes a multi-select rail usable (selecting one source must not zero the
+    /// remaining source counts).
+    ///
+    /// Aggregating `sessions` rather than the `fact_session` projection is
+    /// deliberate: the projection is an eventually-consistent mirror of the
+    /// same row that carries neither `source` nor the last-turn outcome, so it
+    /// could not answer these filters and would report stale counts next to a
+    /// live page. See the PR notes on EVE-731.
+    pub async fn session_facets(
+        &self,
+        org_id: i64,
+        filters: &SessionListFilters,
+    ) -> Result<SessionFacetsRow> {
+        let plan = SessionFilterSql::build(filters);
+
+        // `base` carries the dimension-independent predicate; each facet then
+        // re-applies only the dimension filters it is not itself counting.
+        // NOT MATERIALIZED matters: materializing forces one full org-wide scan
+        // that every branch then re-reads from a temp file, while inlining lets
+        // each narrowed branch start from idx_sessions_org_source_created_at.
+        // Measured at 500k rows / 400k in-org: 495ms materialized, 207ms here.
+        let sql = format!(
+            r#"
+            WITH base AS NOT MATERIALIZED (
+                SELECT agent_id, source, status, last_turn_status
+                FROM sessions
+                WHERE org_id = $1{common}
+            )
+            SELECT 'activity' AS dimension, {ACTIVITY_SQL} AS value, COUNT(*)::bigint AS count
+              FROM base WHERE TRUE{source_pred}{agent_pred} GROUP BY 2
+            UNION ALL
+            SELECT 'source', source, COUNT(*)::bigint
+              FROM base WHERE TRUE{activity_pred}{agent_pred} GROUP BY source
+            UNION ALL
+            SELECT 'agent', agent_id::text, COUNT(*)::bigint
+              FROM base WHERE agent_id IS NOT NULL{activity_pred}{source_pred} GROUP BY agent_id
+            UNION ALL
+            SELECT 'total', '', COUNT(*)::bigint
+              FROM base WHERE TRUE{activity_pred}{source_pred}{agent_pred}
+            "#,
+            common = plan.common_predicates(),
+            activity_pred = plan.activity_predicate,
+            source_pred = plan.source_predicate,
+            agent_pred = plan.agent_predicate,
+        );
+
+        let rows: Vec<(String, Option<String>, i64)> = bind_session_filters!(
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id),
+            plan
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut facets = SessionFacetsRow::default();
+        for (dimension, value, count) in rows {
+            let bucket = SessionFacetBucket {
+                value: value.unwrap_or_default(),
+                count,
+            };
+            match dimension.as_str() {
+                "activity" => facets.by_activity.push(bucket),
+                "source" => facets.by_source.push(bucket),
+                "agent" => facets.by_agent.push(bucket),
+                _ => facets.total = count,
+            }
+        }
+
+        // Masthead metrics run over the same filtered population as the list
+        // (so a scoped view reports scoped numbers) with each metric's own time
+        // semantics layered on as a FILTER. The activity facet is excluded for
+        // the same reason it is excluded from its own count: drilling into
+        // "failed" must not make "active now" read zero.
+        let masthead_sql = format!(
+            r#"
+            SELECT
+                COUNT(*) FILTER (
+                    WHERE status IN ('active', 'waiting_for_tool_results')
+                )::bigint AS active_now,
+                COUNT(*) FILTER (
+                    WHERE last_turn_status IN ('failed', 'cancelled')
+                      AND last_turn_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+                )::bigint AS failed_today,
+                COALESCE(percentile_cont(0.95) WITHIN GROUP (
+                    ORDER BY GREATEST(
+                        EXTRACT(EPOCH FROM (
+                            COALESCE(finished_at, last_turn_at, updated_at)
+                            - COALESCE(started_at, created_at)
+                        )) * 1000, 0)
+                ), 0)::bigint AS p95_duration_ms,
+                COALESCE(SUM(
+                    total_input_tokens + total_output_tokens
+                    + total_cache_read_tokens + total_cache_creation_tokens
+                ) FILTER (
+                    WHERE created_at >= date_trunc('day', NOW() AT TIME ZONE 'UTC')
+                ), 0)::bigint AS tokens_today
+            FROM sessions
+            WHERE org_id = $1{common}{source_pred}{agent_pred}
+            "#,
+            common = plan.common_predicates(),
+            source_pred = plan.source_predicate,
+            agent_pred = plan.agent_predicate,
+        );
+        let masthead: SessionMastheadRow = bind_session_filters!(
+            sqlx::query_as(sqlx::AssertSqlSafe(masthead_sql.as_str())).bind(org_id),
+            plan
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        facets.active_now = masthead.active_now;
+        facets.failed_today = masthead.failed_today;
+        facets.p95_duration_ms = masthead.p95_duration_ms;
+        facets.tokens_today = masthead.tokens_today;
+
+        Ok(facets)
     }
 
     pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
@@ -392,7 +658,7 @@ impl Database {
     ) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -588,7 +854,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -615,7 +881,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -643,7 +909,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -672,7 +938,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
@@ -697,7 +963,7 @@ impl Database {
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
+            SELECT s.id, s.org_id, s.workspace_id, s.app_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.parallel_tool_calls, s.status, s.source, s.last_turn_status, s.last_turn_at, s.created_at, s.updated_at, s.started_at, s.finished_at,
                    s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_cost_usd, s.parent_session_id,
                    s.blueprint_id, s.blueprint_config
             FROM sessions s
@@ -761,7 +1027,7 @@ impl Database {
                 agent_version_id = COALESCE($17, agent_version_id),
                 agent_config_hash = COALESCE($18, agent_config_hash)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                       blueprint_id, blueprint_config
             "#,

@@ -204,6 +204,8 @@ pub mod tests {
                 session: {
                     let session_id = SessionId::new();
                     Session {
+                        source: Default::default(),
+                        activity: Default::default(),
                         id: session_id,
                         workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
                         organization_id: "org_00000000000000000000000000000001".to_string(),

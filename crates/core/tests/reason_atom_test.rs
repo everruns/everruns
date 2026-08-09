@@ -110,6 +110,8 @@ async fn setup_test_environment() -> (
     // Create a test session
     let session_id = Uuid::now_v7();
     let session = Session {
+        source: Default::default(),
+        activity: Default::default(),
         id: session_id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),

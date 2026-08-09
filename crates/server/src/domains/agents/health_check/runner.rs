@@ -170,7 +170,10 @@ async fn run_case(
             harness_id,
             Some(agent_internal_id),
             Some(agent_public_id),
+            // A health check is an internal API-shaped run, not a user session.
+            everruns_core::SessionSource::Api,
             CreateSessionRequest {
+                source: None,
                 harness_id: None,
                 harness_name: None,
                 agent_id: None,

@@ -570,6 +570,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
     let session = server
         .db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -996,6 +997,7 @@ async fn seed_run_with_tool_iterations(
     let session = server
         .db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1352,6 +1354,7 @@ async fn seed_session_with_raw_events(
     let session = server
         .db
         .create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,

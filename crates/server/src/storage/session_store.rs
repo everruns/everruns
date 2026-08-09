@@ -110,6 +110,11 @@ impl SessionStore for DbSessionStore {
                 let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
 
                 Ok(Some(Session {
+                    source: everruns_core::SessionSource::from(row.source.as_str()),
+                    activity: everruns_core::SessionActivity::derive(
+                        &everruns_core::SessionStatus::from(row.status.as_str()),
+                        row.last_turn_status.as_deref(),
+                    ),
                     id: row.id,
                     workspace_id: everruns_core::WorkspaceId::from_uuid(row.workspace_id),
                     organization_id: self.org_public_id.clone(),
