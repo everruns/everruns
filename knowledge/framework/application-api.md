@@ -144,6 +144,16 @@ No audited use case is removed as obsolete in this compatibility unit. The
 classification changes the recommended entrypoint, not the availability of the
 runtime API.
 
+## Session work boundary
+
+Framework sessions scope application-defined background tasks and direct wakes
+through the high-level work queue. Its default provider is offline and
+process-local; a host can replace it behind the same application values when it
+needs durable recovery. Local claim/settlement calls make leased, at-least-once
+delivery observable without exposing runtime task records, store registries, or
+platform constants. Distributed route ownership, recurring schedule runners,
+and multi-host lifecycle management remain host concerns.
+
 ## Compatibility constraints
 
 - The runtime compatibility surface remains published and usable throughout
@@ -184,7 +194,9 @@ dependency while allowing focused host and sibling crates.
 - `crates/everruns/src/mcp.rs`
 - `crates/everruns/src/plugin.rs`
 - `crates/everruns/src/local.rs`
+- `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`
+- `crates/everruns/tests/session_work.rs`
 - `examples/coding-cli/tests/application_parity.rs`
 - `crates/runtime/src/runtime.rs`
 - `crates/local/`
