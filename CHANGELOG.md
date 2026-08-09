@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.25] - 2026-08-09
+
+### What's Changed
+
+- fix(docker): install perl and make in the unified builder so git2's `vendored-openssl` build succeeds ([#3071](https://github.com/everruns/everruns/pull/3071)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.24] - 2026-08-09
 
 ### Highlights
