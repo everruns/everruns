@@ -464,7 +464,7 @@ async fn test_live_session_sandbox_recovers_after_physical_loss() {
         idle_pause_after_seconds: 180,
         provider_config: json!({
             "snapshot": "daytona-small",
-            "workspace_path": "/home/daytona",
+            "workspace_path": "/home/daytona/workspace",
             "title": "live-session-sandbox-recovery",
             "recovery": {
                 "enabled": true,

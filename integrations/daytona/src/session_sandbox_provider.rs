@@ -93,6 +93,11 @@ fn recovery_settings(
             "session_sandbox Daytona recovery cannot checkpoint '/' as the workspace",
         ));
     }
+    if workspace_path == DAYTONA_WORKSPACE_PATH {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "session_sandbox Daytona recovery requires a dedicated workspace below {DAYTONA_WORKSPACE_PATH}, such as {DAYTONA_WORKSPACE_PATH}/workspace"
+        )));
+    }
 
     let mount_path = recovery
         .get("mount_path")
@@ -1164,5 +1169,24 @@ mod tests {
         let instance = recovery_instance("/mnt/recovery", Some("rev-1723223212345678900"));
 
         assert!(recovery_binding(&instance).is_ok());
+    }
+
+    #[test]
+    fn recovery_settings_reject_daytona_home_as_workspace() {
+        let config = SessionSandboxConfig {
+            provider: "daytona".to_string(),
+            auto_start: true,
+            idle_pause_after_seconds: 180,
+            provider_config: json!({
+                "recovery": { "enabled": true }
+            }),
+            init: Default::default(),
+        };
+
+        assert!(recovery_settings(&config, DAYTONA_WORKSPACE_PATH).is_err());
+        assert!(
+            recovery_settings(&config, "/home/daytona/workspace").is_ok(),
+            "a dedicated child worktree should be recoverable"
+        );
     }
 }
