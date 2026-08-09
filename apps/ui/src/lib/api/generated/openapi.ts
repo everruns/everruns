@@ -14648,7 +14648,7 @@ export interface components {
      *     `everruns_core::SessionSandboxStatus` for the public API.
      * @enum {string}
      */
-    SessionSandboxStatusValue: "running" | "paused";
+    SessionSandboxStatusValue: "running" | "paused" | "lost";
     /**
      * @description How a session came into existence.
      *

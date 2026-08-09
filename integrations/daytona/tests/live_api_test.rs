@@ -451,6 +451,95 @@ async fn test_live_session_sandbox_provider_flow() {
     std::mem::forget(guard);
 }
 
+#[tokio::test]
+async fn test_live_session_sandbox_recovers_after_physical_loss() {
+    let api_key = require_api_key!();
+    let client = DaytonaClient::new(api_key.clone());
+    let context = live_provider_context(api_key);
+    let provider = create_session_sandbox_provider("daytona")
+        .expect("session_sandbox Daytona provider should be registered");
+    let config = SessionSandboxConfig {
+        provider: "daytona".to_string(),
+        auto_start: true,
+        idle_pause_after_seconds: 180,
+        provider_config: json!({
+            "snapshot": "daytona-small",
+            "workspace_path": "/workspace",
+            "title": "live-session-sandbox-recovery",
+            "recovery": {
+                "enabled": true,
+                "volume_name": "everruns-recovery"
+            }
+        }),
+        init: Default::default(),
+    };
+
+    let instance = provider
+        .create(&context, &config)
+        .await
+        .expect("recoverable session sandbox create failed");
+    let original_guard = SandboxGuard::new(instance.external_id.clone());
+
+    provider
+        .write_file(
+            &context,
+            &config,
+            &instance,
+            "/workspace/recovery-marker.txt",
+            "survived\n",
+        )
+        .await
+        .expect("recovery marker write failed");
+    let checkpointed = provider
+        .checkpoint(&context, &config, &instance)
+        .await
+        .expect("workspace checkpoint failed");
+
+    client
+        .delete_sandbox(&instance.external_id)
+        .await
+        .expect("physical sandbox deletion failed");
+    let state = SessionSandboxState {
+        provider: "daytona".to_string(),
+        status: SessionSandboxStatus::Running,
+        instance: checkpointed.clone(),
+        init_completed_at: None,
+        last_init_error: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        updated_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let lost = provider
+        .status(&context, &config, &state)
+        .await
+        .expect("lost sandbox status failed");
+    assert_eq!(lost.session_status, SessionSandboxStatus::Lost);
+
+    let replacement = provider
+        .resume(&context, &config, &checkpointed)
+        .await
+        .expect("lost sandbox replacement failed");
+    let replacement_guard = SandboxGuard::new(replacement.external_id.clone());
+    assert_ne!(replacement.external_id, instance.external_id);
+
+    let restored = provider
+        .read_file(
+            &context,
+            &config,
+            &replacement,
+            "/workspace/recovery-marker.txt",
+        )
+        .await
+        .expect("restored recovery marker read failed");
+    assert_eq!(restored.content, "survived\n");
+
+    provider
+        .delete(&context, &config, &replacement)
+        .await
+        .expect("recovered session sandbox delete failed");
+    std::mem::forget(original_guard);
+    std::mem::forget(replacement_guard);
+}
+
 /// Folder creation and file listing.
 #[tokio::test]
 async fn test_live_folder_and_list() {

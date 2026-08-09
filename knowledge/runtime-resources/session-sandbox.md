@@ -18,6 +18,7 @@ server-managed lifecycle:
 - auto-start on session creation
 - pause after session idle timeout
 - resume on next sandbox tool use
+- replacement and workspace restore when the physical provider sandbox is lost
 - optional one-time init commands
 - provider pluggability (Daytona first)
 
@@ -39,7 +40,12 @@ Configured through normal capability config on harness, agent, or session:
     "idle_pause_after_seconds": 180,
     "provider_config": {
       "size": "small",
-      "workspace_path": "/home/daytona"
+      "workspace_path": "/workspace",
+      "recovery": {
+        "enabled": true,
+        "volume_name": "everruns-recovery",
+        "retained_revisions": 10
+      }
     },
     "init": {
       "commands": ["echo ready"]
@@ -57,6 +63,11 @@ See `crates/core/src/session_sandbox.rs` for the full type definitions.
 - `idle_pause_after_seconds`: delay before auto-pause after `session.idled`
 - `provider_config`: provider-specific non-secret config
 - `init.commands`: one-time commands executed after first successful create
+
+Daytona recovery configuration also accepts `volume_id` to use a
+pre-provisioned volume and `mount_path` to override
+`/mnt/everruns-recovery`. When `volume_id` is absent, Everruns gets or creates
+the configured shared volume by name.
 
 ## Tool surface
 
@@ -81,11 +92,12 @@ The session owns exactly one sandbox, and provider selection comes from config.
 - `SessionSandboxProvider` trait
 - provider plugin registration via `inventory`
 - state persistence helpers using session secret storage
-- generic create/resume/pause/delete/init helpers
+- generic create/resume/pause/delete/init/checkpoint helpers
 
 `crates/core/src/capabilities/session_sandbox.rs` exposes the capability and
 generic tools. Tool execution resolves the configured provider and delegates
-through the trait.
+through the trait. After a completed shell or file mutation, the provider
+checkpoint is persisted before the tool result is returned to the runtime.
 
 ### Integrations
 
@@ -96,6 +108,44 @@ Provider implementations live in integration crates and register with:
 Daytona is the first implementation and lives in:
 
 `integrations/daytona/src/session_sandbox_provider.rs`
+
+### Daytona recovery
+
+The coding harness keeps the live worktree on Daytona's local filesystem at
+`/workspace`. A Daytona Volume is mounted separately at
+`/mnt/everruns-recovery`; it is a recovery journal, not the live worktree.
+
+Everruns uses one shared volume per Daytona connection and isolates each
+logical sandbox with `sessions/<session_id>` as the Daytona volume subpath.
+The stable binding is stored in provider state:
+
+- volume id and name
+- mount path and session subpath
+- retained revision count
+- authoritative completed revision
+
+Each completed mutating operation creates an immutable `tar.gz` workspace
+revision plus SHA-256 checksum and completion marker. Rebuildable caches
+(`node_modules`, `target`, `.venv`, and `.cache`) are excluded. The default
+retention is the newest ten revisions.
+
+If Daytona returns `404` for the physical sandbox, its observed status becomes
+`lost`. The next operation creates a new Daytona sandbox with the persisted
+volume id and subpath, verifies and restores the persisted revision into the
+local worktree, updates the disposable provider id, and continues the same
+session. Processes, memory, and interrupted commands are not restored.
+
+Explicit logical deletion clears the isolated recovery subpath before deleting
+the physical sandbox. If the physical sandbox was already lost, Everruns mounts
+the subpath on a temporary replacement, clears it, and then deletes that
+replacement.
+
+The persisted revision pointer, rather than the volume's convenience `HEAD`
+file, selects recovery state. This prevents a completely written but
+unpersisted revision from being selected after control-plane failure. State
+persistence and the durable tool-result/event commit are not yet one database
+transaction; closing that crash window requires the first-class Sandbox and
+SandboxCheckpoint records described by the sandbox abstraction proposal.
 
 ### Server lifecycle
 
@@ -117,7 +167,8 @@ the feature graduates.
 ## State and cleanup
 
 Managed sandbox state is stored in encrypted session secret storage under the
-secret name `session_sandbox`.
+secret name `session_sandbox`. The logical recovery binding lives there; the
+Daytona sandbox id is an incarnation that may change after recovery.
 
 Provider-owned remote resources should also register leased resources so the
 session resource registry and cleanup infrastructure can see them. Daytona does

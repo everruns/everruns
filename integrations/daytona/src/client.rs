@@ -22,7 +22,9 @@ use serde_json::{Value, json};
 use std::time::Duration;
 use tracing::debug;
 
-use crate::state::{ExecOutputChunk, ExecResult, ExecStream, SandboxInfo, SnapshotInfo};
+use crate::state::{
+    ExecOutputChunk, ExecResult, ExecStream, SandboxInfo, SnapshotInfo, VolumeInfo,
+};
 use crate::{EXEC_POLL_INTERVAL, SANDBOX_READY_MAX_WAIT, SANDBOX_READY_POLL_INTERVAL};
 
 /// Fixed session ID used for all command execution in a sandbox.
@@ -282,6 +284,39 @@ impl DaytonaClient {
             )
             .await?;
         serde_json::from_value(resp).map_err(|e| format!("Failed to parse sandbox info: {e}"))
+    }
+
+    pub async fn create_volume(&self, name: &str) -> Result<VolumeInfo, String> {
+        let resp = self
+            .management_request(
+                reqwest::Method::POST,
+                "/volumes",
+                Some(json!({ "name": name })),
+            )
+            .await?;
+        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
+    }
+
+    pub async fn get_volume_by_name(&self, name: &str) -> Result<VolumeInfo, String> {
+        let resp = self
+            .management_request(
+                reqwest::Method::GET,
+                &format!("/volumes/by-name/{}", urlencoding::encode(name)),
+                None,
+            )
+            .await?;
+        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
+    }
+
+    pub async fn get_volume(&self, volume_id: &str) -> Result<VolumeInfo, String> {
+        let resp = self
+            .management_request(
+                reqwest::Method::GET,
+                &format!("/volumes/{}", urlencoding::encode(volume_id)),
+                None,
+            )
+            .await?;
+        serde_json::from_value(resp).map_err(|e| format!("Failed to parse volume info: {e}"))
     }
 
     pub async fn start_sandbox(&self, sandbox_id: &str) -> Result<(), String> {
@@ -972,6 +1007,57 @@ mod tests {
         assert!(result.is_ok());
         let info = result.unwrap();
         assert_eq!(info.state, "started");
+    }
+
+    #[tokio::test]
+    async fn test_client_creates_volume() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/volumes"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "vol_recovery",
+                "name": "everruns-recovery",
+                "state": "pending_create"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let volume = client.create_volume("everruns-recovery").await.unwrap();
+
+        assert_eq!(volume.id, "vol_recovery");
+        assert_eq!(volume.state, "pending_create");
+    }
+
+    #[tokio::test]
+    async fn test_client_gets_volume_by_encoded_name() {
+        let mock_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/volumes/by-name/everruns%20recovery"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "vol_recovery",
+                "name": "everruns recovery",
+                "state": "ready"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let client = DaytonaClient::with_base_urls(
+            "test_key".to_string(),
+            mock_server.uri(),
+            mock_server.uri(),
+        );
+        let volume = client
+            .get_volume_by_name("everruns recovery")
+            .await
+            .unwrap();
+
+        assert_eq!(volume.id, "vol_recovery");
+        assert_eq!(volume.state, "ready");
     }
 
     #[tokio::test]

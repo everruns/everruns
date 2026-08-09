@@ -6,7 +6,7 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 pub use crate::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use crate::session_sandbox::{
-    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SessionSandboxConfig,
+    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SessionSandboxConfig, checkpoint_session_sandbox,
     create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
     load_session_sandbox_state, pause_session_sandbox, session_sandbox_tool_hints,
 };
@@ -343,7 +343,7 @@ impl Tool for SandboxExecTool {
             Ok(provider) => provider,
             Err(err) => return err,
         };
-        let state = match ensure_session_sandbox_running(context, &config).await {
+        let mut state = match ensure_session_sandbox_running(context, &config).await {
             Ok(state) => state,
             Err(err) => return err,
         };
@@ -372,6 +372,12 @@ impl Tool for SandboxExecTool {
             .await
         {
             Ok(response) => {
+                if let Err(err) =
+                    checkpoint_session_sandbox(context, provider.as_ref(), &config, &mut state)
+                        .await
+                {
+                    return err;
+                }
                 build_sandbox_exec_result(response, arguments.get("cwd").and_then(|v| v.as_str()))
             }
             Err(err) => err,
@@ -560,7 +566,7 @@ impl Tool for SandboxWriteFileTool {
             Ok(provider) => provider,
             Err(err) => return err,
         };
-        let state = match ensure_session_sandbox_running(context, &config).await {
+        let mut state = match ensure_session_sandbox_running(context, &config).await {
             Ok(state) => state,
             Err(err) => return err,
         };
@@ -575,10 +581,18 @@ impl Tool for SandboxWriteFileTool {
             .write_file(context, &config, &state.instance, path, content)
             .await
         {
-            Ok(response) => ToolExecutionResult::success(json!({
-                "path": response.path,
-                "bytes_written": response.bytes_written,
-            })),
+            Ok(response) => {
+                if let Err(err) =
+                    checkpoint_session_sandbox(context, provider.as_ref(), &config, &mut state)
+                        .await
+                {
+                    return err;
+                }
+                ToolExecutionResult::success(json!({
+                    "path": response.path,
+                    "bytes_written": response.bytes_written,
+                }))
+            }
             Err(err) => err,
         }
     }
