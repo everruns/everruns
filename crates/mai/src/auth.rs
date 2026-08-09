@@ -8,10 +8,10 @@
 //      client-credentials grant and are short-lived, so they are cached and
 //      refreshed before expiry.
 //
-// Both schemes are exposed through the generic [`AuthHeaderProvider`] hook on
-// the core Chat Completions driver, so the protocol driver never has to know
+// Both schemes implement the runtime provider's generic [`ProviderAuth`]
+// contract, so the protocol driver never has to know
 // which scheme is in use. New schemes (managed identity, workload identity
-// federation, ...) can be added by implementing [`AuthHeaderProvider`] without
+// federation, ...) can be added by implementing [`ProviderAuth`] without
 // touching the driver.
 
 use std::sync::Arc;
@@ -20,8 +20,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use everruns_provider::driver_registry::DriverConfig;
 use everruns_provider::error::{AgentLoopError, Result};
-use everruns_provider::openai_protocol::AuthHeaderProvider;
 use everruns_provider::validate_safe_url;
+use everruns_provider::{ProviderAuth, ProviderAuthRequest};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
@@ -105,12 +105,44 @@ impl MaiAuth {
         }
     }
 
-    /// Build the [`AuthHeaderProvider`] this strategy resolves to.
-    pub fn into_provider(self) -> Arc<dyn AuthHeaderProvider> {
+    /// Build the refreshable provider-auth implementation for this strategy.
+    pub fn into_provider(self) -> Arc<dyn ProviderAuth> {
         match self {
             MaiAuth::ApiKey(key) => Arc::new(ApiKeyAuth { key }),
             MaiAuth::EntraOAuth(config) => Arc::new(EntraOAuthProvider::new(config)),
         }
+    }
+}
+
+/// Preserve a configuration failure inside the provider-owned auth layer.
+///
+/// Transitional descriptor factories cannot return a construction error, so
+/// malformed credentials become an auth implementation that fails closed
+/// before the protocol sends a request.
+pub(crate) fn failing_provider(error: AgentLoopError) -> Arc<dyn ProviderAuth> {
+    Arc::new(FailingAuth {
+        message: error.to_string(),
+    })
+}
+
+struct FailingAuth {
+    message: String,
+}
+
+impl std::fmt::Debug for FailingAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FailingAuth").finish_non_exhaustive()
+    }
+}
+
+#[async_trait]
+impl ProviderAuth for FailingAuth {
+    async fn headers(&self, _request: ProviderAuthRequest<'_>) -> Result<Vec<(String, String)>> {
+        Err(AgentLoopError::llm(self.message.clone()))
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -128,9 +160,12 @@ impl std::fmt::Debug for ApiKeyAuth {
 }
 
 #[async_trait]
-impl AuthHeaderProvider for ApiKeyAuth {
-    async fn auth_header(&self) -> Result<(String, String)> {
-        Ok(("api-key".to_string(), self.key.clone()))
+impl ProviderAuth for ApiKeyAuth {
+    async fn headers(&self, _request: ProviderAuthRequest<'_>) -> Result<Vec<(String, String)>> {
+        Ok(vec![("api-key".to_string(), self.key.clone())])
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -295,7 +330,7 @@ struct EntraTokenResponse {
     expires_in: i64,
 }
 
-/// [`AuthHeaderProvider`] that mints and caches Entra ID bearer tokens via the
+/// [`ProviderAuth`] implementation that mints and caches Entra ID bearer tokens via the
 /// client-credentials grant.
 pub struct EntraOAuthProvider {
     config: EntraOAuthConfig,
@@ -373,10 +408,16 @@ impl EntraOAuthProvider {
 }
 
 #[async_trait]
-impl AuthHeaderProvider for EntraOAuthProvider {
-    async fn auth_header(&self) -> Result<(String, String)> {
+impl ProviderAuth for EntraOAuthProvider {
+    async fn headers(&self, _request: ProviderAuthRequest<'_>) -> Result<Vec<(String, String)>> {
         let token = self.bearer_token().await?;
-        Ok(("Authorization".to_string(), format!("Bearer {token}")))
+        Ok(vec![(
+            "authorization".to_string(),
+            format!("Bearer {token}"),
+        )])
+    }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }
 
@@ -390,6 +431,7 @@ mod tests {
     /// `DriverConfig::from_provider_config`.
     fn driver_config(api_key: Option<&str>, extra: Option<serde_json::Value>) -> DriverConfig {
         DriverConfig {
+            provider: everruns_provider::ProviderKey::new("mai"),
             provider_type: DriverId::Mai,
             credentials: everruns_provider::credential_schema::parse_credential_document(api_key),
             api_key: api_key.map(str::to_string),
@@ -583,7 +625,16 @@ mod tests {
     #[tokio::test]
     async fn api_key_provider_emits_api_key_header() {
         let provider = MaiAuth::ApiKey("secret-key".to_string()).into_provider();
-        let (name, value) = provider.auth_header().await.unwrap();
+        let headers = provider
+            .headers(ProviderAuthRequest {
+                method: "POST",
+                url: "https://example.services.ai.azure.com/openai/v1/chat/completions",
+                headers: &[],
+                body: b"{}",
+            })
+            .await
+            .unwrap();
+        let (name, value) = &headers[0];
         assert_eq!(name, "api-key");
         assert_eq!(value, "secret-key");
     }

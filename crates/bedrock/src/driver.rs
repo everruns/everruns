@@ -37,26 +37,68 @@ const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
 use crate::credential::BedrockCredential;
 
-/// AWS Bedrock Runtime Chat Driver.
+/// Provider-owned Bedrock authentication and signing stack.
 ///
-/// Implements `ChatDriver` using the `ConverseStream` API.
-/// Credentials come from the driver's declared typed credential fields.
-#[derive(Clone, Debug)]
-pub struct BedrockChatDriver {
-    /// AWS Bedrock client built once at construction. `aws_sdk_bedrockruntime::Client`
-    /// is cheap to clone and reuses its connection pool and credentials provider,
-    /// so we build it here instead of rebuilding the whole SDK client (credential
-    /// chain + pool) on every `chat_completion_stream` call (EVE-635).
+/// The AWS SDK resolves credentials and signs every ConverseStream request;
+/// keeping its client here preserves SigV4/event-stream behavior while the
+/// protocol driver itself remains credential-free.
+#[derive(Clone)]
+pub struct BedrockAuth {
     client: Client,
 }
 
-impl BedrockChatDriver {
+impl BedrockAuth {
+    pub fn new(credential: BedrockCredential) -> Self {
+        Self {
+            client: build_client(&credential),
+        }
+    }
+
     pub fn from_config(config: &DriverConfig) -> Result<Self> {
         let credential = BedrockCredential::from_driver_config(config)?;
-        Ok(Self {
-            client: build_client(&credential),
-        })
+        Ok(Self::new(credential))
     }
+}
+
+impl std::fmt::Debug for BedrockAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BedrockAuth")
+            .field("configured", &true)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl everruns_provider::ProviderAuth for BedrockAuth {
+    async fn headers(
+        &self,
+        _request: everruns_provider::ProviderAuthRequest<'_>,
+    ) -> Result<Vec<(String, String)>> {
+        Ok(Vec::new())
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+/// Credential-free Bedrock ConverseStream wire-protocol driver.
+#[derive(Clone, Debug, Default)]
+pub struct BedrockChatDriver;
+
+impl BedrockChatDriver {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Ready-to-use AWS Bedrock provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    credential: BedrockCredential,
+) -> everruns_provider::Provider {
+    everruns_provider::Provider::new(id, BedrockChatDriver::new())
+        .auth(BedrockAuth::new(credential))
 }
 
 /// Build the AWS Bedrock runtime client from typed credentials. Called once per
@@ -84,6 +126,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     // `api_key`. The fields are assembled into the stored credential document
     // and parsed back into the typed `DriverConfig` credential map.
     registry.register_descriptor(DriverDescriptor {
+        display_name: "AWS Bedrock".into(),
         credential_schema: CredentialFormSchema {
             fields: vec![
                 FormField::password("access_key_id", "Access Key ID").required(),
@@ -102,8 +145,13 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                     .to_string(),
         },
         ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
-            match BedrockChatDriver::from_config(config) {
-                Ok(driver) => Box::new(driver) as BoxedChatDriver,
+            match BedrockAuth::from_config(config) {
+                Ok(auth) => everruns_provider::Provider::new(
+                    config.provider.clone(),
+                    BedrockChatDriver::new(),
+                )
+                .auth(auth)
+                .into_boxed_driver(),
                 Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
             }
         })
@@ -117,6 +165,7 @@ struct FailDriver(String);
 impl ChatDriver for FailDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
         _messages: Vec<LlmMessage>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -128,10 +177,15 @@ impl ChatDriver for FailDriver {
 impl ChatDriver for BedrockChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        let client = self.client.clone();
+        let client = endpoint
+            .auth::<BedrockAuth>()
+            .ok_or_else(|| AgentLoopError::config("Bedrock provider requires BedrockAuth"))?
+            .client
+            .clone();
         let model_id = config.model.clone();
 
         let (system_blocks, bedrock_messages) = build_messages(&messages)?;
@@ -298,7 +352,10 @@ impl ChatDriver for BedrockChatDriver {
         Ok(Box::pin(ReceiverStream::new(rx)))
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+    async fn list_models(
+        &self,
+        _endpoint: &everruns_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Converse-compatible model set is seeded statically; skip discovery.
         Ok(None)
     }

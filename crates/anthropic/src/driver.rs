@@ -26,9 +26,9 @@ use everruns_provider::driver_helpers::{
     parse_data_url,
 };
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent, fold_system_messages,
 };
 use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_provider::is_provider_quota_message;
@@ -39,9 +39,21 @@ use everruns_provider::llm_retry::{
 use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
 use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
-const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
+const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// Ready-to-use Anthropic Messages provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    api_key: impl Into<String>,
+) -> everruns_provider::Provider {
+    everruns_provider::Provider::new(id, AnthropicChatDriver::new())
+        .base_url(DEFAULT_BASE_URL)
+        .auth(everruns_provider::StaticHeaderAuth::new(
+            "x-api-key",
+            api_key,
+        ))
+}
 
 /// Message-level prompt-cache breakpoints per request. Anthropic allows four
 /// in total; the system prompt and the tool array take one each, leaving two
@@ -61,43 +73,31 @@ const MESSAGE_CACHE_BREAKPOINTS: usize = 2;
 /// ```ignore
 /// use everruns_anthropic::AnthropicChatDriver;
 ///
-/// let driver = AnthropicChatDriver::new("your-api-key");
-/// // or with custom endpoint
-/// let driver = AnthropicChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
-/// // or with custom retry config
-/// let driver = AnthropicChatDriver::new("your-api-key")
+/// let driver = AnthropicChatDriver::new();
+/// // Endpoint and auth belong to the runtime Provider.
+/// let driver = AnthropicChatDriver::new()
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
 pub struct AnthropicChatDriver {
     client: Client,
-    api_key: String,
-    api_url: String,
-    /// Whether using a custom base URL (not Anthropic's API)
-    uses_custom_url: bool,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
 
+#[derive(Clone, Copy)]
+struct SendMessagesOptions<'a> {
+    needs_interleaved_thinking: bool,
+    wants_million_context: bool,
+    max_tokens_from_profile: bool,
+    model: &'a str,
+}
+
 impl AnthropicChatDriver {
     /// Create a new provider with the given API key
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new() -> Self {
         Self {
             client: driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: DEFAULT_API_URL.to_string(),
-            uses_custom_url: false,
-            retry_config: LlmRetryConfig::default(),
-        }
-    }
-
-    /// Create a new provider with a custom API URL
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        Self {
-            client: driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: api_url.into(),
-            uses_custom_url: true,
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -120,13 +120,17 @@ impl AnthropicChatDriver {
     /// exactly.
     async fn send_messages_request(
         &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
         request: Arc<Mutex<AnthropicRequest>>,
-        needs_interleaved_thinking: bool,
-        wants_million_context: bool,
-        max_tokens_from_profile: bool,
-        model: &str,
+        options: SendMessagesOptions<'_>,
         retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
+        let SendMessagesOptions {
+            needs_interleaved_thinking,
+            wants_million_context,
+            max_tokens_from_profile,
+            model,
+        } = options;
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
         let beta_logged = Arc::new(Mutex::new(false));
@@ -141,10 +145,12 @@ impl AnthropicChatDriver {
                 let beta_logged = Arc::clone(&beta_logged);
                 async move {
                     // Build request with headers (must rebuild each iteration).
+                    let url = endpoint.url("messages").ok_or_else(|| {
+                        SendOutcome::Fatal(AgentLoopError::config("Anthropic provider has no base URL"))
+                    })?;
                     let mut request_builder = self
                         .client
-                        .post(&self.api_url)
-                        .header("x-api-key", &self.api_key)
+                        .post(&url)
                         .header("anthropic-version", ANTHROPIC_VERSION)
                         .header("Content-Type", "application/json");
 
@@ -178,14 +184,18 @@ impl AnthropicChatDriver {
                     // Snapshot the (possibly fallback-mutated) request as JSON
                     // while holding the lock, then release it before awaiting the
                     // send so the guard never crosses an `.await` point.
-                    let body = serde_json::to_value(&*request.lock().unwrap())
+                    let body = serde_json::to_vec(&*request.lock().unwrap())
                         .map_err(|e| {
                             SendOutcome::Fatal(AgentLoopError::llm(format!(
                                 "Failed to serialize Anthropic request: {e}"
                             )))
                         })?;
+                    let resolved = endpoint.resolve("POST", url, &body).await.map_err(SendOutcome::Fatal)?;
+                    for (name, value) in resolved.headers {
+                        request_builder = request_builder.header(name, value);
+                    }
                     request_builder
-                        .json(&body)
+                        .body(body)
                         .send()
                         .await
                         .map_err(SendOutcome::Send)
@@ -301,11 +311,6 @@ impl AnthropicChatDriver {
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
         )
         .await
-    }
-
-    /// Check if using a custom base URL
-    pub fn uses_custom_url(&self) -> bool {
-        self.uses_custom_url
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -688,6 +693,7 @@ impl AnthropicChatDriver {
 impl ChatDriver for AnthropicChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -850,11 +856,14 @@ impl ChatDriver for AnthropicChatDriver {
         let (event_stream, retry_metadata) =
             connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |attempts| {
                 self.send_messages_request(
+                    endpoint,
                     Arc::clone(&request),
-                    needs_interleaved_thinking,
-                    wants_million_context,
-                    max_tokens_from_profile,
-                    &config.model,
+                    SendMessagesOptions {
+                        needs_interleaved_thinking,
+                        wants_million_context,
+                        max_tokens_from_profile,
+                        model: &config.model,
+                    },
                     attempts,
                 )
             })
@@ -1107,17 +1116,27 @@ impl ChatDriver for AnthropicChatDriver {
         true
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+    async fn list_models(
+        &self,
+        endpoint: &everruns_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Skip discovery for custom URLs (proxies, self-hosted)
-        if self.uses_custom_url {
+        if endpoint.base_url() != Some(DEFAULT_BASE_URL) {
             return Ok(None);
         }
 
-        let response = self
+        let url = endpoint
+            .url("models")
+            .ok_or_else(|| AgentLoopError::config("Anthropic provider has no base URL"))?;
+        let resolved = endpoint.resolve("GET", url, &[]).await?;
+        let mut request = self
             .client
-            .get(ANTHROPIC_MODELS_URL)
-            .header("x-api-key", &self.api_key)
-            .header("anthropic-version", ANTHROPIC_VERSION)
+            .get(&resolved.url)
+            .header("anthropic-version", ANTHROPIC_VERSION);
+        for (name, value) in resolved.headers {
+            request = request.header(name, value);
+        }
+        let response = request
             .send()
             .await
             .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
@@ -1163,9 +1182,7 @@ impl ChatDriver for AnthropicChatDriver {
 impl std::fmt::Debug for AnthropicChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AnthropicChatDriver")
-            .field("api_url", &self.api_url)
-            .field("api_key", &"[REDACTED]")
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -1188,18 +1205,23 @@ impl std::fmt::Debug for AnthropicChatDriver {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "Anthropic".into(),
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key in the [Anthropic Console](https://console.anthropic.com/settings/keys).",
         ),
         ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
-            let api_key = config.api_key.as_deref().unwrap_or("");
-            let driver = match config.base_url.as_deref() {
-                Some(url) => AnthropicChatDriver::with_base_url(api_key, url),
-                None => AnthropicChatDriver::new(api_key),
-            };
-            Box::new(driver) as BoxedChatDriver
+            let provider = everruns_provider::Provider::new(config.provider.clone(), AnthropicChatDriver::new())
+                .base_url(config.base_url.as_deref().unwrap_or(DEFAULT_BASE_URL))
+                .auth(everruns_provider::StaticHeaderAuth::new("x-api-key", config.api_key.as_deref().unwrap_or("")));
+            provider.into_boxed_driver()
         })
     });
+}
+
+impl Default for AnthropicChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ============================================================================
@@ -1998,7 +2020,7 @@ mod tests {
 
     #[test]
     fn supports_parallel_tool_calls_is_true() {
-        let driver = AnthropicChatDriver::new("test-key");
+        let driver = AnthropicChatDriver::new();
         assert!(driver.supports_parallel_tool_calls("claude-opus-4-8"));
     }
 

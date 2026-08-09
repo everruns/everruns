@@ -12,43 +12,13 @@ use crate::typed_id::ProviderId;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-/// LLM provider type identifier.
+/// Open string identifier retained as the 0.17.x integration-kind name.
 ///
-/// Built-in variants cover providers shipped with everruns. Any string that
-/// does not match a built-in id becomes `External(id)`, so embedders can store
-/// and use custom provider ids without schema migrations.
-///
-/// Serializes to/from a plain string (e.g. `"anthropic"`, `"openai-codex"`).
+/// Despite the legacy type name, this is not a built-in-provider enum: any
+/// normalized string is valid. The associated constants keep source
+/// compatibility for the 0.17.x runtime adapter and persisted HTTP shapes.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum DriverId {
-    /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
-    OpenAI,
-    /// OpenRouter using the OpenAI-compatible Responses API
-    OpenRouter,
-    /// Azure OpenAI using the Azure-hosted OpenAI v1 API
-    AzureOpenAI,
-    /// OpenAI using Chat Completions API (for backward compatibility)
-    OpenAICompletions,
-    Anthropic,
-    /// Google Gemini API
-    Gemini,
-    /// LLM simulator for testing
-    LlmSim,
-    /// AWS Bedrock Runtime (ConverseStream API)
-    Bedrock,
-    /// Microsoft MAI models (e.g. MAI-Code-1-Flash) served via Azure AI Foundry.
-    /// Uses an OpenAI-compatible Chat Completions API and supports either an
-    /// Azure AI Foundry API key or Microsoft Entra ID (OAuth) authentication.
-    Mai,
-    /// Fireworks AI — open-model inference (Llama, Qwen, DeepSeek, GLM, ...)
-    /// served via an OpenAI-compatible Chat Completions API.
-    Fireworks,
-    /// Meta Model API — Muse models served via an OpenAI-compatible Responses API.
-    Meta,
-    /// Embedder-defined provider not compiled into everruns-core. The inner id
-    /// is the canonical wire string (e.g. `"openai-codex"`).
-    External(std::sync::Arc<str>),
-}
+pub struct DriverId(std::borrow::Cow<'static, str>);
 
 impl std::fmt::Display for DriverId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -57,36 +27,42 @@ impl std::fmt::Display for DriverId {
 }
 
 impl DriverId {
+    #[allow(non_upper_case_globals)]
+    pub const OpenAI: Self = Self(std::borrow::Cow::Borrowed("openai"));
+    #[allow(non_upper_case_globals)]
+    pub const OpenRouter: Self = Self(std::borrow::Cow::Borrowed("openrouter"));
+    #[allow(non_upper_case_globals)]
+    pub const AzureOpenAI: Self = Self(std::borrow::Cow::Borrowed("azure_openai"));
+    #[allow(non_upper_case_globals)]
+    pub const OpenAICompletions: Self = Self(std::borrow::Cow::Borrowed("openai_completions"));
+    #[allow(non_upper_case_globals)]
+    pub const Anthropic: Self = Self(std::borrow::Cow::Borrowed("anthropic"));
+    #[allow(non_upper_case_globals)]
+    pub const Gemini: Self = Self(std::borrow::Cow::Borrowed("gemini"));
+    #[allow(non_upper_case_globals)]
+    pub const LlmSim: Self = Self(std::borrow::Cow::Borrowed("llmsim"));
+    #[allow(non_upper_case_globals)]
+    pub const Bedrock: Self = Self(std::borrow::Cow::Borrowed("bedrock"));
+    #[allow(non_upper_case_globals)]
+    pub const Mai: Self = Self(std::borrow::Cow::Borrowed("mai"));
+    #[allow(non_upper_case_globals)]
+    pub const Fireworks: Self = Self(std::borrow::Cow::Borrowed("fireworks"));
+    #[allow(non_upper_case_globals)]
+    pub const Meta: Self = Self(std::borrow::Cow::Borrowed("meta"));
+
     /// Construct an external driver id from its canonical wire id.
     ///
     /// The id is normalized to lowercase so registration and lookup match
     /// case-insensitively, consistent with built-in parsing.
-    pub fn external(id: impl Into<std::sync::Arc<str>>) -> Self {
-        let id: std::sync::Arc<str> = id.into();
-        // Avoid reallocating when the id is already lowercase.
-        if id.bytes().any(|b| b.is_ascii_uppercase()) {
-            DriverId::External(std::sync::Arc::from(id.to_lowercase().as_str()))
-        } else {
-            DriverId::External(id)
-        }
+    pub fn external(id: impl AsRef<str>) -> Self {
+        Self(std::borrow::Cow::Owned(
+            id.as_ref().trim().to_ascii_lowercase(),
+        ))
     }
 
     /// Return the canonical string identifier for this provider.
     pub fn as_str(&self) -> &str {
-        match self {
-            DriverId::OpenAI => "openai",
-            DriverId::OpenRouter => "openrouter",
-            DriverId::AzureOpenAI => "azure_openai",
-            DriverId::OpenAICompletions => "openai_completions",
-            DriverId::Anthropic => "anthropic",
-            DriverId::Gemini => "gemini",
-            DriverId::LlmSim => "llmsim",
-            DriverId::Bedrock => "bedrock",
-            DriverId::Mai => "mai",
-            DriverId::Fireworks => "fireworks",
-            DriverId::Meta => "meta",
-            DriverId::External(id) => id.as_ref(),
-        }
+        self.0.as_ref()
     }
 
     /// Default trace-link URL templates for this driver, as
@@ -106,12 +82,13 @@ impl DriverId {
     /// passes the id best-effort; worst case it lands on the Logs page where the
     /// generation can be found by recency.
     pub fn default_trace_templates(&self) -> (Option<String>, Option<String>) {
-        match self {
-            DriverId::OpenRouter => (
+        if self == &DriverId::OpenRouter {
+            (
                 Some("https://openrouter.ai/logs?id={response_id}".to_string()),
                 Some("https://openrouter.ai/logs".to_string()),
-            ),
-            _ => (None, None),
+            )
+        } else {
+            (None, None)
         }
     }
 }
@@ -123,21 +100,7 @@ impl std::str::FromStr for DriverId {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Normalize once so built-in matching and the External id share the
         // same lowercased form; casing variance never yields duplicate ids.
-        let lower = s.to_lowercase();
-        Ok(match lower.as_str() {
-            "openai" => DriverId::OpenAI,
-            "openrouter" => DriverId::OpenRouter,
-            "azure_openai" => DriverId::AzureOpenAI,
-            "openai_completions" => DriverId::OpenAICompletions,
-            "anthropic" => DriverId::Anthropic,
-            "gemini" => DriverId::Gemini,
-            "llmsim" => DriverId::LlmSim,
-            "bedrock" => DriverId::Bedrock,
-            "mai" => DriverId::Mai,
-            "fireworks" => DriverId::Fireworks,
-            "meta" => DriverId::Meta,
-            _ => DriverId::External(std::sync::Arc::from(lower.as_str())),
-        })
+        Ok(DriverId::external(s))
     }
 }
 
@@ -150,8 +113,37 @@ impl Serialize for DriverId {
 impl<'de> Deserialize<'de> for DriverId {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let s = String::deserialize(d)?;
+        if s.trim().is_empty() {
+            return Err(serde::de::Error::custom("provider type cannot be empty"));
+        }
+        if s != s.trim() {
+            return Err(serde::de::Error::custom(
+                "provider type cannot have leading or trailing whitespace",
+            ));
+        }
         // FromStr is infallible (unknown ids become External).
         Ok(s.parse().unwrap_or_else(|_| unreachable!()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DriverId;
+
+    #[test]
+    fn wire_ids_reject_empty_and_padded_values() {
+        assert!(serde_json::from_str::<DriverId>(r#"""#).is_err());
+        assert!(serde_json::from_str::<DriverId>(r#"" openai ""#).is_err());
+    }
+
+    #[test]
+    fn wire_ids_normalize_case_and_accept_extensions() {
+        assert_eq!(
+            serde_json::from_str::<DriverId>(r#""Custom-Driver""#)
+                .unwrap()
+                .as_str(),
+            "custom-driver"
+        );
     }
 }
 

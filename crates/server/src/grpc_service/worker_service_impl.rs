@@ -894,13 +894,6 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let model_id = parse_uuid(req.model_id.as_ref())?;
 
-        // Check if encryption service is available
-        if !self.provider_resolver_service.has_encryption() {
-            return Err(Status::unavailable(
-                "Encryption service not configured - cannot decrypt API keys",
-            ));
-        }
-
         // Resolve model via ProviderResolverService
         let resolved = self
             .provider_resolver_service
@@ -921,14 +914,6 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<GetDefaultModelRequest>,
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
         let req = request.into_inner();
-        // Check if encryption service is available
-        if !self.provider_resolver_service.has_encryption() {
-            tracing::error!("gRPC get_default_model: encryption service not available");
-            return Err(Status::unavailable(
-                "Encryption service not configured - cannot decrypt API keys",
-            ));
-        }
-
         // Resolve default model via ProviderResolverService
         let resolved = self
             .provider_resolver_service
@@ -939,12 +924,12 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to resolve default model")
             })?;
 
-        // Log model resolution result (omit api_key length for security)
+        // Model resolution is credential-free; provider config resolves later.
         if let Some(ref model) = resolved {
             tracing::debug!(
                 model_id = %model.model_id,
                 provider_type = %model.provider_type,
-                has_api_key = model.api_key.is_some(),
+                provider_id = %model.provider_id,
                 "gRPC get_default_model: resolved model"
             );
         } else {
@@ -2345,29 +2330,38 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<GetDefaultProviderCredentialsRequest>,
     ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
         let req = request.into_inner();
-        let resolved = self
-            .provider_resolver_service
-            .resolve_provider_credentials(req.org_id, &req.provider_type)
-            .await
-            .map_err(|e| {
-                tracing::error!(
-                    provider_type = %req.provider_type,
-                    error = %e,
-                    "Failed to resolve provider credentials"
-                );
-                Status::internal("Failed to resolve provider credentials")
-            })?;
+        let resolved = if req.provider_id.is_empty() {
+            self.provider_resolver_service
+                .resolve_provider_credentials(req.org_id, &req.provider_type)
+                .await
+                .map(|value| value.map(|credentials| (req.provider_type.clone(), credentials)))
+        } else {
+            self.provider_resolver_service
+                .resolve_runtime_provider(req.org_id, &req.provider_id)
+                .await
+                .map(|value| value.map(|provider| (provider.provider_type, provider.credentials)))
+        }
+        .map_err(|e| {
+            tracing::error!(
+                provider_type = %req.provider_type,
+                error = %e,
+                "Failed to resolve provider credentials"
+            );
+            Status::internal("Failed to resolve provider credentials")
+        })?;
 
         Ok(Response::new(match resolved {
-            Some(credentials) => GetDefaultProviderCredentialsResponse {
+            Some((provider_type, credentials)) => GetDefaultProviderCredentialsResponse {
                 found: true,
                 api_key: credentials.api_key,
                 base_url: credentials.base_url.unwrap_or_default(),
+                provider_type,
             },
             None => GetDefaultProviderCredentialsResponse {
                 found: false,
                 api_key: String::new(),
                 base_url: String::new(),
+                provider_type: String::new(),
             },
         }))
     }

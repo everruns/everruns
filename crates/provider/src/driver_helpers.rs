@@ -319,9 +319,8 @@ pub const GEMINI_NOT_FOUND_PATTERNS: &[&str] = &["not_found", "model"];
 /// Error message prefixes are passed in so each provider keeps its exact
 /// user-facing wording.
 ///
-/// Note: callers attach auth on `request` themselves (via
-/// [`crate::openai_protocol::apply_models_api_auth`] or an awaited
-/// `AuthHeaderProvider`), so this stays agnostic to the auth scheme.
+/// Note: callers resolve the request through their runtime
+/// `ProviderEndpoint` first, so this stays agnostic to the auth scheme.
 pub async fn fetch_models<T, F>(
     request: reqwest::RequestBuilder,
     fetch_err_prefix: &str,

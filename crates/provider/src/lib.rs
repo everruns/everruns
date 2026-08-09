@@ -25,10 +25,12 @@ pub mod llm_retry;
 pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
+pub mod model_spec;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
+pub mod runtime_provider;
 pub mod stream_accumulator;
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
@@ -54,7 +56,7 @@ pub use driver_registry::{
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
     LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
-    ProviderOpaqueContext, ServiceKind, fold_system_messages,
+    ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
@@ -72,13 +74,19 @@ pub use model_discovery::{
     normalize_and_enrich, rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
-pub use openai_protocol::{AuthHeaderProvider, OpenAIProtocolChatDriver};
+pub use model_spec::{ModelSpec, UnknownProvider};
+pub use openai_protocol::OpenAIProtocolChatDriver;
 pub use openresponses_protocol::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
     CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
     messages_to_compact_input,
 };
-pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
+pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
+pub use runtime_provider::{
+    BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
+    ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,
+    StaticHeaderAuth,
+};
 pub use tool_types::{
     BuiltinTool, ClientSideTool, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
     ToolHints, ToolPolicy, ToolResult, ToolResultImage,

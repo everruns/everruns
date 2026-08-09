@@ -2040,6 +2040,13 @@ mod tests {
             ) -> CoreResult<Option<everruns_core::traits::ResolvedModel>> {
                 unimplemented!()
             }
+            async fn get_provider_config(
+                &self,
+                _org_id: i64,
+                _provider: &everruns_core::ProviderKey,
+            ) -> CoreResult<Option<everruns_core::ProviderConfig>> {
+                unimplemented!()
+            }
             async fn resolve_image(
                 &self,
                 _org_id: i64,

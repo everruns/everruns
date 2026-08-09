@@ -191,13 +191,20 @@ impl JudgeClient for LlmJudgeClient {
 
         // DriverId::from_str is infallible (unknown ids become External).
         let driver_id: DriverId = resolved.provider_type.parse().unwrap();
-        let mut provider_config = ProviderConfig::new(driver_id);
-        if let Some(key) = resolved.api_key {
-            provider_config = provider_config.with_api_key(key);
-        }
-        if let Some(base) = resolved.base_url {
-            provider_config = provider_config.with_base_url(base);
-        }
+        let Some(runtime_provider) = self
+            .provider_resolver
+            .resolve_runtime_provider(org_id, &resolved.provider_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let provider_config = ProviderConfig {
+            provider: everruns_core::ProviderKey::new(&resolved.provider_id),
+            provider_type: driver_id,
+            api_key: Some(runtime_provider.credentials.api_key),
+            base_url: runtime_provider.credentials.base_url,
+            metadata: Default::default(),
+        };
         let driver = self.driver_registry.create_chat_driver(&provider_config)?;
 
         let (system, user) = build_judge_messages(rubric, evidence);
@@ -226,7 +233,13 @@ impl JudgeClient for LlmJudgeClient {
             volatile_suffix_len: 0,
         };
 
-        let response = driver.chat_completion(messages, &config).await?;
+        let response = driver
+            .chat_completion(
+                &everruns_core::ProviderEndpoint::default(),
+                messages,
+                &config,
+            )
+            .await?;
         let parsed = parse_judge_output(&response.text)?;
         let meta = response.metadata;
         Ok(Some(JudgeResult {

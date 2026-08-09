@@ -16,10 +16,9 @@
 
 use async_trait::async_trait;
 use futures::StreamExt;
-use reqwest::{Client, RequestBuilder, Url};
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -31,60 +30,11 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
+use crate::runtime_provider::ProviderEndpoint;
 use crate::stream_accumulator::StreamToolCallAccumulator;
 use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::ToolDefinition;
 use crate::user_facing_error::is_provider_quota_message;
-
-const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
-
-/// Compute the default OpenAI/Azure auth header `(name, value)` for `api_url`:
-/// Azure OpenAI uses `api-key`, everything else uses `Authorization: Bearer`.
-///
-/// Shared by the Chat Completions and Open Responses drivers so the default
-/// static-key behavior stays identical to a pluggable [`AuthHeaderProvider`]
-/// path (see [`AuthHeaderProvider`]). The Azure `api-key` branch borrows the
-/// key (no per-request allocation); only the bearer branch allocates.
-pub(crate) fn openai_auth_header_pair<'a>(
-    api_url: &str,
-    api_key: &'a str,
-) -> (&'static str, Cow<'a, str>) {
-    if is_azure_openai_api_url(api_url) {
-        ("api-key", Cow::Borrowed(api_key))
-    } else {
-        ("Authorization", Cow::Owned(format!("Bearer {}", api_key)))
-    }
-}
-
-pub(crate) fn apply_openai_api_auth(
-    request: RequestBuilder,
-    api_url: &str,
-    api_key: &str,
-) -> RequestBuilder {
-    let (name, value) = openai_auth_header_pair(api_url, api_key);
-    request.header(name, value.as_ref())
-}
-
-/// Pluggable authentication-header provider for OpenAI-compatible drivers.
-///
-/// When set on an [`OpenAIProtocolChatDriver`] via
-/// [`OpenAIProtocolChatDriver::with_auth_provider`], the driver calls
-/// [`AuthHeaderProvider::auth_header`] before each request and applies the
-/// returned `(name, value)` header instead of the default `api-key` / bearer
-/// logic keyed on the host.
-///
-/// This lets a driver authenticate with short-lived, refreshable tokens —
-/// e.g. Microsoft Entra ID (OAuth) bearer tokens for Azure AI Foundry — without
-/// the generic protocol driver having to know the auth scheme. The provider is
-/// responsible for caching and refreshing tokens; `auth_header` is awaited once
-/// per HTTP attempt, so it should be cheap on the cached path.
-#[async_trait]
-pub trait AuthHeaderProvider: Send + Sync {
-    /// Return the `(header_name, header_value)` pair to apply for
-    /// authentication, refreshing any cached credential as needed. Returning
-    /// `Err` aborts the request before it is sent.
-    async fn auth_header(&self) -> Result<(String, String)>;
-}
 
 pub fn is_azure_openai_api_url(api_url: &str) -> bool {
     Url::parse(api_url)
@@ -155,20 +105,6 @@ pub fn models_url_for_api_url(api_url: &str) -> String {
     OPENAI_MODELS_URL.to_string()
 }
 
-/// Apply the appropriate auth header for a `/models` discovery request: Azure
-/// OpenAI uses `api-key`, everything else uses bearer auth.
-pub fn apply_models_api_auth(
-    request: RequestBuilder,
-    api_url: &str,
-    api_key: &str,
-) -> RequestBuilder {
-    if is_azure_openai_api_url(api_url) {
-        request.header("api-key", api_key)
-    } else {
-        request.bearer_auth(api_key)
-    }
-}
-
 /// Build the error returned when the `/models` endpoint responds with a
 /// non-success status.
 pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
@@ -191,45 +127,25 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// ```ignore
 /// use everruns_core::OpenAIProtocolChatDriver;
 ///
-/// let driver = OpenAIProtocolChatDriver::new("your-api-key");
-/// // or with custom endpoint
-/// let driver = OpenAIProtocolChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
-/// // or with custom retry config
-/// let driver = OpenAIProtocolChatDriver::new("your-api-key")
+/// let driver = OpenAIProtocolChatDriver::new();
+/// // Endpoint and authentication are configured on a runtime Provider.
+/// // Retry policy remains a wire-protocol concern.
+/// let driver = OpenAIProtocolChatDriver::new()
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
 pub struct OpenAIProtocolChatDriver {
     client: Client,
-    api_key: String,
-    api_url: String,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
-    /// Optional pluggable auth-header provider. When set, it overrides the
-    /// default `api-key` / bearer auth (used for OAuth bearer tokens).
-    auth_provider: Option<Arc<dyn AuthHeaderProvider>>,
 }
 
 impl OpenAIProtocolChatDriver {
-    /// Create a new driver with the given API key
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// Create a wire-only OpenAI Chat Completions protocol driver.
+    pub fn new() -> Self {
         Self {
             client: crate::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: DEFAULT_API_URL.to_string(),
             retry_config: LlmRetryConfig::default(),
-            auth_provider: None,
-        }
-    }
-
-    /// Create a new driver with a custom API URL (for OpenAI-compatible APIs)
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        Self {
-            client: crate::driver_helpers::shared_streaming_http_client(),
-            api_key: api_key.into(),
-            api_url: api_url.into(),
-            retry_config: LlmRetryConfig::default(),
-            auth_provider: None,
         }
     }
 
@@ -237,23 +153,6 @@ impl OpenAIProtocolChatDriver {
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
         self
-    }
-
-    /// Set a pluggable [`AuthHeaderProvider`] that overrides the default
-    /// `api-key` / bearer auth. Used for OAuth bearer tokens (e.g. Entra ID).
-    pub fn with_auth_provider(mut self, provider: Arc<dyn AuthHeaderProvider>) -> Self {
-        self.auth_provider = Some(provider);
-        self
-    }
-
-    /// Get the API URL
-    pub fn api_url(&self) -> &str {
-        &self.api_url
-    }
-
-    /// Get the API key (for subclass access)
-    pub fn api_key(&self) -> &str {
-        &self.api_key
     }
 
     /// Get the HTTP client (for subclass access)
@@ -271,6 +170,8 @@ impl OpenAIProtocolChatDriver {
     /// and error messages exactly.
     async fn send_chat_completion_request(
         &self,
+        endpoint: &ProviderEndpoint,
+        api_url: &str,
         request: &OpenAiRequest,
         model: &str,
         retries_consumed: u32,
@@ -279,25 +180,23 @@ impl OpenAIProtocolChatDriver {
         let mut retry_config = self.retry_config.clone();
         retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
+        let body = serde_json::to_vec(request)
+            .map_err(|e| AgentLoopError::llm(format!("failed to serialize request: {e}")))?;
         retry_request(
             &retry_config,
             "OpenAIProtocolDriver",
             || async {
-                // Apply auth: a pluggable provider (e.g. OAuth bearer token)
-                // takes precedence over the default host-keyed `api-key` /
-                // bearer logic. An auth-provider failure is fatal (no retry).
-                let request_builder = self.client.post(&self.api_url);
-                let request_builder = match &self.auth_provider {
-                    Some(provider) => {
-                        let (name, value) =
-                            provider.auth_header().await.map_err(SendOutcome::Fatal)?;
-                        request_builder.header(name, value)
-                    }
-                    None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
-                };
+                let resolved = endpoint
+                    .resolve("POST", api_url, &body)
+                    .await
+                    .map_err(SendOutcome::Fatal)?;
+                let mut request_builder = self.client.post(&resolved.url);
+                for (name, value) in resolved.headers {
+                    request_builder = request_builder.header(name, value);
+                }
                 request_builder
                     .header("Content-Type", "application/json")
-                    .json(request)
+                    .body(body.clone())
                     .send()
                     .await
                     .map_err(SendOutcome::Send)
@@ -467,6 +366,12 @@ impl OpenAIProtocolChatDriver {
     }
 }
 
+impl Default for OpenAIProtocolChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Drop Tool-role messages whose tool_call_id has no matching assistant tool call in the
 /// visible window. Chat Completions rejects payloads where a `tool`-role message references
 /// a call that is absent from the conversation.
@@ -507,6 +412,7 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
 impl ChatDriver for OpenAIProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -558,9 +464,20 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send;
         // this adds the body-phase reconnect the official SDKs get for free.
+        let api_url = endpoint.url("chat/completions").ok_or_else(|| {
+            AgentLoopError::Configuration(
+                "OpenAI Chat Completions provider has no base URL".to_string(),
+            )
+        })?;
         let (event_stream, retry_metadata) =
             connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |attempts| {
-                self.send_chat_completion_request(&request, &config.model, attempts)
+                self.send_chat_completion_request(
+                    endpoint,
+                    &api_url,
+                    &request,
+                    &config.model,
+                    attempts,
+                )
             })
             .await?;
 
@@ -729,8 +646,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 impl std::fmt::Debug for OpenAIProtocolChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenAIProtocolChatDriver")
-            .field("api_url", &self.api_url)
-            .field("api_key", &"[REDACTED]")
+            .field("protocol", &"openai_chat_completions")
             .finish()
     }
 }
@@ -1116,19 +1032,9 @@ mod tests {
     }
 
     #[test]
-    fn test_driver_with_api_key() {
-        let driver = OpenAIProtocolChatDriver::new("test-key");
+    fn test_driver_is_wire_only() {
+        let driver = OpenAIProtocolChatDriver::new();
         assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));
-    }
-
-    #[test]
-    fn test_driver_with_base_url() {
-        let driver = OpenAIProtocolChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.com/v1/completions",
-        );
-        assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
     }
 
     #[test]

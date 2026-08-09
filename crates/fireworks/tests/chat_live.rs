@@ -8,10 +8,8 @@
 //! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-fireworks --test chat_live -- --ignored --nocapture`
 
-use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
-};
-use everruns_fireworks::FireworksChatDriver;
+use everruns_core::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent};
+use everruns_fireworks::provider;
 use futures::StreamExt;
 
 const LIVE_MODEL: &str = "accounts/fireworks/models/gpt-oss-120b";
@@ -24,7 +22,7 @@ fn api_key() -> String {
 #[tokio::test]
 #[ignore = "live network + FIREWORKS_API_KEY"]
 async fn fireworks_chat_streams_response() {
-    let driver = FireworksChatDriver::new(api_key());
+    let provider = provider("fireworks", api_key());
 
     let config = LlmCallConfig {
         speed: None,
@@ -51,7 +49,7 @@ async fn fireworks_chat_streams_response() {
         "Reply with exactly one word: pong",
     )];
 
-    let mut stream = driver
+    let mut stream = provider
         .chat_completion_stream(messages, &config)
         .await
         .expect("Fireworks should accept the chat request");
@@ -93,9 +91,9 @@ async fn fireworks_chat_streams_response() {
 #[tokio::test]
 #[ignore = "live network + FIREWORKS_API_KEY"]
 async fn fireworks_discovery_returns_chat_models_with_profiles() {
-    let driver = FireworksChatDriver::new(api_key());
+    let provider = provider("fireworks", api_key());
 
-    let models = driver
+    let models = provider
         .list_models()
         .await
         .expect("discovery request should succeed")

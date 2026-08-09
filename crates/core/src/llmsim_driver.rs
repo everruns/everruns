@@ -17,8 +17,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::driver_registry::{
-    BoxedChatDriver, ChatDriver, DriverId, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
-    LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::tool_types::ToolCall;
@@ -662,6 +662,7 @@ impl LlmSimDriver {
 impl ChatDriver for LlmSimDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &crate::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -806,10 +807,12 @@ impl std::fmt::Debug for LlmSimDriver {
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(DriverId::LlmSim, |_config| {
-        // Default driver - tests can create custom drivers directly
+    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, |_config| {
+        // Default driver - tests can create custom drivers directly.
         Box::new(LlmSimDriver::default_driver()) as BoxedChatDriver
     });
+    descriptor.display_name = "LLM Simulator".into();
+    registry.register_descriptor_or_replace(descriptor);
 }
 
 /// Register the LlmSim driver with a custom configuration. Useful for
@@ -822,9 +825,11 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// shared across invocations.
 pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
     let driver = LlmSimDriver::new(config);
-    registry.register(DriverId::LlmSim, move |_config| {
+    let mut descriptor = DriverDescriptor::chat_only(DriverId::LlmSim, move |_config| {
         Box::new(driver.clone()) as BoxedChatDriver
     });
+    descriptor.display_name = "LLM Simulator".into();
+    registry.register_descriptor_or_replace(descriptor);
 }
 
 /// Parse TTFT (time to first token) delay from model name if it contains "-ttft-{ms}" pattern.
@@ -1024,6 +1029,31 @@ pub fn monitor_demo_script() -> LlmSimConfig {
 mod tests {
     use super::*;
     use futures::StreamExt;
+
+    impl LlmSimDriver {
+        async fn chat_completion(
+            &self,
+            messages: Vec<LlmMessage>,
+            config: &LlmCallConfig,
+        ) -> Result<crate::driver_registry::LlmResponse> {
+            ChatDriver::chat_completion(self, &crate::ProviderEndpoint::default(), messages, config)
+                .await
+        }
+
+        async fn chat_completion_stream(
+            &self,
+            messages: Vec<LlmMessage>,
+            config: &LlmCallConfig,
+        ) -> Result<LlmResponseStream> {
+            ChatDriver::chat_completion_stream(
+                self,
+                &crate::ProviderEndpoint::default(),
+                messages,
+                config,
+            )
+            .await
+        }
+    }
 
     #[test]
     fn auditor_demo_script_calls_ec2_then_s3_then_summarises() {

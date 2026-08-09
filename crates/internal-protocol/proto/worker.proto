@@ -640,9 +640,9 @@ message CommitExecResponse {
 
 message ResolvedModel {
     string model = 1;
-    string provider_type = 2;
-    optional string api_key = 3;  // Decrypted by control plane
-    optional string base_url = 4;
+    string provider_id = 2;
+    reserved 3, 4;
+    string provider_type = 5;
 }
 
 message GetResolvedModelRequest {
@@ -1149,12 +1149,16 @@ message GetImageArtifactInfoResponse {
 message GetDefaultProviderCredentialsRequest {
     int64 org_id = 1;
     string provider_type = 2;
+    // Exact provider identity for model execution. Empty preserves the legacy
+    // tool-side lookup by provider type.
+    string provider_id = 3;
 }
 
 message GetDefaultProviderCredentialsResponse {
     bool found = 1;
     string api_key = 2;
     string base_url = 3;
+    string provider_type = 4;
 }
 
 

@@ -533,7 +533,7 @@ pub enum SendOutcome {
     /// [`is_transient_send_error`] for retry.
     Send(reqwest::Error),
     /// A non-transport error that must abort the loop immediately (e.g. an
-    /// `AuthHeaderProvider` failure resolved per attempt).
+    /// `ProviderAuth` failure resolved per attempt).
     Fatal(AgentLoopError),
 }
 

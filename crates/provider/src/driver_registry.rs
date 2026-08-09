@@ -290,6 +290,7 @@ pub trait ChatDriver: Send + Sync {
     /// Call the LLM with streaming response
     async fn chat_completion_stream(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream>;
@@ -297,12 +298,15 @@ pub trait ChatDriver: Send + Sync {
     /// Call the LLM without streaming (convenience method)
     async fn chat_completion(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
         use futures::StreamExt;
 
-        let mut stream = self.chat_completion_stream(messages, config).await?;
+        let mut stream = self
+            .chat_completion_stream(endpoint, messages, config)
+            .await?;
         let mut text = String::new();
         let mut thinking = String::new();
         let mut thinking_signature: Option<String> = None;
@@ -359,7 +363,10 @@ pub trait ChatDriver: Send + Sync {
     ///
     /// Implementations should filter to chat/completion models only,
     /// excluding embedding models, TTS, whisper, etc.
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+    async fn list_models(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
         // Default: not supported. Providers override if they support listing.
         Ok(None)
     }
@@ -428,7 +435,11 @@ pub trait ChatDriver: Send + Sync {
     ///
     /// The response contains the compacted output items which can be used
     /// directly as input for the next chat completion call.
-    async fn compact(&self, _request: CompactRequest) -> Result<Option<CompactResponse>> {
+    async fn compact(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _request: CompactRequest,
+    ) -> Result<Option<CompactResponse>> {
         // Default: not supported
         Ok(None)
     }
@@ -439,22 +450,29 @@ pub trait ChatDriver: Send + Sync {
 impl ChatDriver for Box<dyn ChatDriver> {
     async fn chat_completion_stream(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        (**self).chat_completion_stream(messages, config).await
+        (**self)
+            .chat_completion_stream(endpoint, messages, config)
+            .await
     }
 
     async fn chat_completion(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponse> {
-        (**self).chat_completion(messages, config).await
+        (**self).chat_completion(endpoint, messages, config).await
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        (**self).list_models().await
+    async fn list_models(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        (**self).list_models(endpoint).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -473,8 +491,12 @@ impl ChatDriver for Box<dyn ChatDriver> {
         (**self).supports_parallel_tool_calls(model)
     }
 
-    async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
-        (**self).compact(request).await
+    async fn compact(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        request: CompactRequest,
+    ) -> Result<Option<CompactResponse>> {
+        (**self).compact(endpoint, request).await
     }
 }
 
@@ -1534,7 +1556,7 @@ pub use crate::provider::DriverId;
 /// Built-in providers ignore this; embedder-defined ([`DriverId::External`])
 /// providers use it to carry OAuth tokens, account ids, or arbitrary extras
 /// their driver factory needs.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct ProviderMetadata {
     /// OAuth refresh token, when the provider authenticates via OAuth.
     pub refresh_token: Option<String>,
@@ -1544,9 +1566,24 @@ pub struct ProviderMetadata {
     pub extra: Option<serde_json::Value>,
 }
 
+impl std::fmt::Debug for ProviderMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderMetadata")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<configured>"),
+            )
+            .field("account_id", &self.account_id)
+            .field("extra", &self.extra.as_ref().map(|_| "<configured>"))
+            .finish()
+    }
+}
+
 /// Configuration for creating an LLM provider
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ProviderConfig {
+    /// Runtime service identity selected by the model.
+    pub provider: crate::runtime_provider::ProviderKey,
     /// Type of provider
     pub provider_type: DriverId,
     /// API key for authentication
@@ -1560,7 +1597,24 @@ pub struct ProviderConfig {
 impl ProviderConfig {
     /// Create a new provider config
     pub fn new(provider_type: DriverId) -> Self {
+        let provider = crate::runtime_provider::ProviderKey::new(provider_type.as_str());
         Self {
+            provider,
+            provider_type,
+            api_key: None,
+            base_url: None,
+            metadata: ProviderMetadata::default(),
+        }
+    }
+
+    /// Configure a runtime provider id independently from its hosted
+    /// integration kind.
+    pub fn for_provider(
+        provider: impl Into<crate::runtime_provider::ProviderKey>,
+        provider_type: DriverId,
+    ) -> Self {
+        Self {
+            provider: provider.into(),
             provider_type,
             api_key: None,
             base_url: None,
@@ -1587,13 +1641,30 @@ impl ProviderConfig {
     }
 }
 
+impl std::fmt::Debug for ProviderConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderConfig")
+            .field("provider", &self.provider)
+            .field("provider_type", &self.provider_type)
+            .field("auth", &self.api_key.as_ref().map(|_| "<configured>"))
+            .field("base_url", &self.base_url.as_ref().map(|_| "<configured>"))
+            .field(
+                "metadata",
+                &self.metadata.extra.as_ref().map(|_| "<configured>"),
+            )
+            .finish()
+    }
+}
+
 /// Everything a [`DriverFactory`] receives to build a driver instance.
 ///
 /// Replaces the old `(api_key, base_url)` factory arguments so that
 /// embedder-defined providers can receive richer auth via [`ProviderMetadata`]
 /// without changing the factory signature again.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DriverConfig {
+    /// Runtime service identity.
+    pub provider: crate::runtime_provider::ProviderKey,
     /// Provider type being created.
     pub provider_type: DriverId,
     /// Raw credential document, when one is configured. `None` for keyless
@@ -1622,6 +1693,7 @@ impl DriverConfig {
     /// gets the same typed view.
     pub fn from_provider_config(config: &ProviderConfig) -> Self {
         Self {
+            provider: config.provider.clone(),
             provider_type: config.provider_type.clone(),
             credentials: crate::credential_schema::parse_credential_document(
                 config.api_key.as_deref(),
@@ -1638,6 +1710,21 @@ impl DriverConfig {
             .get(name)
             .map(String::as_str)
             .filter(|s| !s.is_empty())
+    }
+}
+
+impl std::fmt::Debug for DriverConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DriverConfig")
+            .field("provider", &self.provider)
+            .field("provider_type", &self.provider_type)
+            .field("auth", &self.api_key.as_ref().map(|_| "<configured>"))
+            .field(
+                "credential_fields",
+                &self.credentials.keys().collect::<Vec<_>>(),
+            )
+            .field("base_url", &self.base_url.as_ref().map(|_| "<configured>"))
+            .finish()
     }
 }
 
@@ -1689,8 +1776,20 @@ pub trait EmbeddingsDriver: Send + Sync {
     /// Embed a batch of texts and return one vector per input.
     async fn embed(
         &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
         request: EmbedRequest,
     ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError>;
+}
+
+#[async_trait]
+impl EmbeddingsDriver for Box<dyn EmbeddingsDriver> {
+    async fn embed(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        request: EmbedRequest,
+    ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError> {
+        (**self).embed(endpoint, request).await
+    }
 }
 
 /// Boxed embeddings driver for dynamic dispatch.
@@ -1858,27 +1957,14 @@ impl std::fmt::Debug for DriverDescriptor {
 }
 
 fn default_display_name(id: &DriverId) -> String {
-    match id {
-        DriverId::OpenAI => "OpenAI".to_string(),
-        DriverId::OpenRouter => "OpenRouter".to_string(),
-        DriverId::AzureOpenAI => "Azure OpenAI".to_string(),
-        DriverId::OpenAICompletions => "OpenAI (Chat Completions)".to_string(),
-        DriverId::Anthropic => "Anthropic".to_string(),
-        DriverId::Gemini => "Google Gemini".to_string(),
-        DriverId::Bedrock => "AWS Bedrock".to_string(),
-        DriverId::Mai => "Microsoft MAI".to_string(),
-        DriverId::Fireworks => "Fireworks AI".to_string(),
-        DriverId::Meta => "Meta Model API".to_string(),
-        DriverId::LlmSim => "LLM Simulator".to_string(),
-        DriverId::External(id) => id.to_string(),
-    }
+    id.as_str().replace(['_', '-'], " ")
 }
 
 fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
-    match id {
-        // Keyless: simulator always; external drivers may auth via metadata.
-        DriverId::LlmSim | DriverId::External(_) => CredentialFormSchema::empty(),
-        _ => CredentialFormSchema::api_key(String::new()),
+    if id == &DriverId::LlmSim {
+        CredentialFormSchema::empty()
+    } else {
+        CredentialFormSchema::api_key(String::new())
     }
 }
 
@@ -1904,6 +1990,7 @@ fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
 #[derive(Clone, Default)]
 pub struct DriverRegistry {
     descriptors: HashMap<DriverId, DriverDescriptor>,
+    providers: crate::runtime_provider::RuntimeProviderRegistry,
 }
 
 impl DriverRegistry {
@@ -1911,7 +1998,32 @@ impl DriverRegistry {
     pub fn new() -> Self {
         Self {
             descriptors: HashMap::new(),
+            providers: crate::runtime_provider::RuntimeProviderRegistry::new(),
         }
+    }
+
+    /// Register an application-supplied runtime provider directly.
+    pub fn register_provider(
+        &mut self,
+        provider: crate::runtime_provider::RuntimeProvider,
+    ) -> Result<()> {
+        self.providers.register(provider)
+    }
+
+    /// Explicitly replace an application-supplied runtime provider.
+    pub fn replace_provider(
+        &mut self,
+        provider: crate::runtime_provider::RuntimeProvider,
+    ) -> Option<Arc<crate::runtime_provider::RuntimeProvider>> {
+        self.providers.replace(provider)
+    }
+
+    /// Look up a directly registered runtime provider by service identity.
+    pub fn provider(
+        &self,
+        id: &crate::runtime_provider::ProviderKey,
+    ) -> Option<Arc<crate::runtime_provider::RuntimeProvider>> {
+        self.providers.get(id)
     }
 
     /// Register a full driver descriptor.
@@ -1962,11 +2074,13 @@ impl DriverRegistry {
     /// keyed by its canonical id. The id is normalized to lowercase (via
     /// [`DriverId::external`]) so it matches parsed lookups regardless of
     /// the casing stored in the database or sent on the wire.
-    pub fn register_external<F>(&mut self, id: impl Into<Arc<str>>, factory: F)
+    pub fn register_external<F>(&mut self, id: impl AsRef<str>, factory: F)
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
-        self.register(DriverId::external(id), factory);
+        let mut descriptor = DriverDescriptor::chat_only(DriverId::external(id), factory);
+        descriptor.credential_schema = CredentialFormSchema::empty();
+        self.register_descriptor(descriptor);
     }
 
     /// Create an LLM driver based on configuration
@@ -1978,13 +2092,17 @@ impl DriverRegistry {
     ///
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
-        // API key is required for real built-in providers, but not for LlmSim
-        // (testing), External providers, or Mai (which may all authenticate via
-        // metadata-based auth — Mai supports Entra ID OAuth without an api_key).
-        let requires_api_key = !matches!(
-            config.provider_type,
-            DriverId::LlmSim | DriverId::External(_) | DriverId::Mai
-        );
+        if let Some(provider) = self.providers.get(&config.provider) {
+            return Ok((*provider).clone().into_boxed_driver());
+        }
+        let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
+            AgentLoopError::driver_not_registered(config.provider_type.to_string())
+        })?;
+        let requires_api_key = descriptor
+            .credential_schema
+            .fields
+            .iter()
+            .any(|field| field.name == "api_key" && field.required && field.group.is_none());
         if requires_api_key && config.api_key.is_none() {
             return Err(AgentLoopError::llm(
                 "API key is required. Configure the API key in provider settings.",
@@ -1992,9 +2110,6 @@ impl DriverRegistry {
         }
 
         // Look up the descriptor and its chat factory for this provider type
-        let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
-            AgentLoopError::driver_not_registered(config.provider_type.to_string())
-        })?;
         let factory = descriptor.chat.as_ref().ok_or_else(|| {
             AgentLoopError::llm(format!(
                 "Provider driver '{}' does not implement the chat service.",
@@ -2038,6 +2153,11 @@ impl DriverRegistry {
         self.descriptors.keys().cloned().collect()
     }
 
+    /// Runtime provider ids registered directly by an application.
+    pub fn registered_provider_ids(&self) -> Vec<String> {
+        self.providers.ids()
+    }
+
     /// Create an embeddings driver based on configuration.
     ///
     /// API keys must be provided in the config for real providers. Exception:
@@ -2049,10 +2169,7 @@ impl DriverRegistry {
         &self,
         config: &ProviderConfig,
     ) -> std::result::Result<BoxedEmbeddingsDriver, EmbeddingsDriverError> {
-        let requires_api_key = !matches!(
-            config.provider_type,
-            DriverId::LlmSim | DriverId::External(_)
-        );
+        let requires_api_key = config.provider_type != DriverId::LlmSim;
         if requires_api_key && config.api_key.is_none() {
             return Err(EmbeddingsDriverError::Provider(
                 "API key is required. Configure the API key in provider settings.".to_string(),
@@ -2105,6 +2222,7 @@ pub fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_provider::ProviderEndpoint;
 
     #[test]
     fn test_disjoint_prompt_tokens_subtracts_cached_subset() {
@@ -2126,6 +2244,7 @@ mod tests {
         impl ChatDriver for DefaultDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2140,6 +2259,7 @@ mod tests {
         impl ChatDriver for StatefulDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2373,6 +2493,28 @@ mod tests {
     }
 
     #[test]
+    fn provider_config_debug_redacts_runtime_values() {
+        let config = ProviderConfig::new(DriverId::OpenAI)
+            .with_api_key("secret-key")
+            .with_base_url("https://user:password@example.test/v1?token=secret")
+            .with_metadata(ProviderMetadata {
+                refresh_token: Some("refresh-secret".into()),
+                account_id: Some("account-1".into()),
+                extra: Some(serde_json::json!({ "client_secret": "metadata-secret" })),
+            });
+        let debug = format!("{config:?}");
+        for secret in [
+            "secret-key",
+            "password",
+            "token=secret",
+            "refresh-secret",
+            "metadata-secret",
+        ] {
+            assert!(!debug.contains(secret), "debug output exposed {secret}");
+        }
+    }
+
+    #[test]
     fn test_driver_registry_requires_api_key() {
         // Register a mock factory
         let mut registry = DriverRegistry::new();
@@ -2383,6 +2525,7 @@ mod tests {
             impl ChatDriver for MockDriver {
                 async fn chat_completion_stream(
                     &self,
+                    _endpoint: &ProviderEndpoint,
                     _messages: Vec<LlmMessage>,
                     _config: &LlmCallConfig,
                 ) -> Result<LlmResponseStream> {
@@ -2431,6 +2574,7 @@ mod tests {
             impl ChatDriver for MockDriver {
                 async fn chat_completion_stream(
                     &self,
+                    _endpoint: &ProviderEndpoint,
                     _messages: Vec<LlmMessage>,
                     _config: &LlmCallConfig,
                 ) -> Result<LlmResponseStream> {
@@ -2451,6 +2595,7 @@ mod tests {
         impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2484,6 +2629,7 @@ mod tests {
         impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2495,7 +2641,7 @@ mod tests {
         registry.register(DriverId::Anthropic, |_config| Box::new(MockDriver));
 
         let descriptor = registry.descriptor(&DriverId::Anthropic).unwrap();
-        assert_eq!(descriptor.display_name, "Anthropic");
+        assert_eq!(descriptor.display_name, "anthropic");
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert!(descriptor.chat.is_some());
         // Default credential shape is a single required api_key field.
@@ -2516,6 +2662,7 @@ mod tests {
         impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2575,6 +2722,7 @@ mod tests {
         impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
@@ -2595,6 +2743,7 @@ mod tests {
         impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
+                _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
                 _config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {

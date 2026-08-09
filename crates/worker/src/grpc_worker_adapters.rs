@@ -214,6 +214,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         everruns_core::traits::ProviderStore::get_default_model(&store).await
     }
 
+    async fn get_provider_config(
+        &self,
+        org_id: i64,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        self.client
+            .get_provider_config(org_id, provider.as_str())
+            .await
+    }
+
     // =========================================================================
     // Image Resolution Operations
     // =========================================================================

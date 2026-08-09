@@ -75,10 +75,13 @@ impl KnowledgeIndexSearchService {
         .await?;
         let response = embedder
             .driver
-            .embed(EmbedRequest {
-                texts: vec![query.to_string()],
-                model: embedder.model_id,
-            })
+            .embed(
+                &everruns_core::ProviderEndpoint::default(),
+                EmbedRequest {
+                    texts: vec![query.to_string()],
+                    model: embedder.model_id,
+                },
+            )
             .await
             .map_err(|e| anyhow::anyhow!("embedding request failed: {e}"))?;
         let embedding = response

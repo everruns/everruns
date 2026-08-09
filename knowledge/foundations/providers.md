@@ -10,9 +10,13 @@ tags:
 
 ## Abstract
 
-Providers are org-scoped accounts on AI service vendors (OpenAI, Anthropic, AWS Bedrock, OpenRouter, Azure OpenAI). A provider is configured once with credentials and connection settings, then powers one or more **services**: chat completion today; embeddings, realtime voice, images, and reranking as they land.
+Providers are configured AI services. The control plane persists org-scoped
+provider records; execution composes each record into a non-serializable runtime
+`Provider` containing its open identity, endpoint, headers, authentication, and
+wire-protocol driver. Models name that provider through a credential-free
+`ModelSpec`.
 
-This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. This is the canonical **target** domain model; implementation lands in the phases below. **There is no backward compatibility requirement**: old names (`llm_providers`, `llm_models`, `LlmProvider`, `provider_type`, `/v1/llm-providers`) will be removed everywhere — schema, code, API, UI, docs, and tests — as the refactor phases land, per the inventory below.
+This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. The runtime provider model is canonical in `0.17.x`; persisted HTTP shapes and the published `everruns-runtime` model/driver setup remain compatible at the boundary and adapt into it. Removing that compatibility surface or preparing a `0.18.0` cutover is outside this contract.
 
 ## Motivation
 
@@ -29,37 +33,64 @@ Evidence the old model was straining:
 
 ```mermaid
 graph LR
-    Driver["Driver (code)"] -->|instantiated as| Provider["Provider (org instance)"]
-    Provider -->|serves| Model["Model (model via provider)"]
-    Profile["Model Profile (identity)"] -->|describes| Model
-    Driver -->|declares| Service["Services: chat, embeddings, realtime, ..."]
-
-    Binding["Session / Agent / Router candidate"] -->|references| Model
+    Record["Provider record (org configuration)"] -->|composed at host boundary| Provider["Runtime Provider"]
+    Driver["Protocol driver (wire only)"] --> Provider
+    Provider -->|selected by open provider key| Spec["ModelSpec"]
+    Spec -->|model name| Model["Provider model"]
+    Profile["Model Profile (capabilities)"] -->|describes| Model
+    Provider -->|offers| Service["Services: chat, embeddings, realtime, ..."]
 
     classDef code fill:#ffd6a5,stroke:#e07b39,color:#5a3000
     classDef org fill:#c7f0db,stroke:#2d6a4f,color:#1b4332
     classDef catalog fill:#bde0fe,stroke:#3a86a8,color:#023047
 
     class Driver,Service code
-    class Provider,Model,Binding org
+    class Record,Model org
+    class Provider,Spec code
     class Profile catalog
 ```
 
 | Entity | Scope | Meaning |
 |---|---|---|
-| **Driver** | Code | Technical implementation of a vendor API shape. Declares a credential schema, the set of services it supports, per-service client factories, and model discovery. Registered in `DriverRegistry`. |
+| **Protocol driver** | Code | Reusable wire implementation: request shape, endpoint path, mandated protocol headers, response/stream decoding, retries, and error classification. It has no service identity, hostname, or credentials. |
 | **Service** | Code | A typed capability a driver exposes: `chat`, `embeddings`, `realtime`, `images`, `rerank`, ... Only `chat` is implemented today; the set is additive. |
-| **Provider** | Org | A configured instance of a driver: name, credentials, endpoint/zone, settings, status. Many providers may use the same driver (e.g. Azure OpenAI in two regions). |
+| **Provider record** | Org | Persisted management entity: name, integration kind, encrypted credentials, endpoint/zone, settings, and status. Public HTTP/serde shapes stay stable. |
+| **Runtime Provider** | Process | Open provider identity plus endpoint, service headers, async auth, and a protocol driver. Never serializable; debug output redacts values. Many instances may reuse one driver. |
+| **ModelSpec** | Configuration | Credential-free provider key + model name. Safe to persist, serialize, include in events, and debug. |
 | **Model** | Org | A specific model via a specific provider: provider FK + wire model id + operational flags. The unit that bindings reference. |
 | **Model Profile** | Global | The model's identity and metadata: stable key, vendor, service kind, capabilities, limits, pricing. One profile describes N models (one per provider serving it). |
 
 Connectors are the user-scoped sibling concept (see "Providers vs Connections" below): **Connector (code) → Connection (user instance)** mirrors **Driver (code) → Provider (org instance)**.
 
-### Driver
+### Protocol driver and runtime provider
 
-A driver is a code unit registered in `DriverRegistry`, keyed by a **driver id** (`openai`, `azure_openai`, `openai_completions`, `openrouter`, `anthropic`, `gemini`, `bedrock`, `mai`, `fireworks`, `meta`, `llmsim`). Ids are open, not a closed set: built-in drivers are compiled-in enum variants, and embedder-defined drivers register arbitrary ids via `ProviderType::External` (`register_external`, landed in EVE-561) through `PlatformDefinition` — an embedder adds a vendor without patching core. The database stores the id as a plain string; unknown ids parse to `External` rather than erroring.
+`ChatDriver` is a wire protocol. Each request receives a `ProviderEndpoint`; the
+driver appends its protocol path, serializes the exact body, asks the provider
+to resolve headers/auth for that attempt, and decodes the wire response. It does
+not select a vendor, own a default host, store credentials, or infer service
+semantics from a hostname.
 
-The `mai` driver (`everruns-mai`) is a publishable example of a first-party built-in driver layered on a generic protocol: Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry behind an OpenAI-compatible Chat Completions API, so the driver wraps `OpenAIProtocolChatDriver` and supplies authentication through the generic `AuthHeaderProvider` hook (see [llm-drivers.md](llm-drivers.md)). It is the only built-in driver besides `llmsim`/`External` that does not require an `api_key` at the registry layer, because it can authenticate via Microsoft Entra ID (OAuth) credentials supplied as first-class credential fields (or, on the embedder path, carried in `ProviderMetadata`).
+`ProviderKey` is an open normalized string. `ProviderRegistry` maps those keys
+to runtime providers. Duplicate registration is an error; tests and host
+overrides use the explicit replace operation. `ModelSpec::on(provider, model)`
+resolves the provider independently and reports the requested key plus sorted
+registered keys when missing. Thus two service identities can share one
+protocol driver while differing in endpoint, auth, and headers, and downstream
+code adds either a service or a new protocol without a central enum edit.
+
+`DriverId`, `DriverDescriptor`, and `DriverRegistry` remain in `0.17.x` for the
+published `everruns-runtime` and hosted provider-management integration. They
+are a compatibility/catalog adapter: descriptor factories compose the same
+runtime `Provider`, and execution checks direct runtime providers first. They
+must not acquire an independent resolution or execution algorithm. The
+high-level `everruns` facade accepts only `ModelSpec` and runtime `Provider`.
+
+The `mai` integration is a first-party example layered on a generic protocol:
+Microsoft MAI uses the OpenAI-compatible Chat Completions driver while its
+runtime provider owns either static `api-key` auth or refreshable Microsoft
+Entra auth. Bedrock uses the same provider boundary while retaining the AWS SDK
+client in provider-owned auth so ConverseStream framing and SigV4 signing remain
+unchanged.
 
 The `meta` driver (`everruns-meta`) wraps `OpenResponsesProtocolChatDriver` for Meta Model API at `api.meta.ai`. It uses Meta's stateful Responses API, bearer API-key authentication, and host-gated `/models` discovery. Muse profiles keep the Standard and Contributor data-use/pricing tiers distinct.
 
@@ -185,7 +216,21 @@ Profile matching heuristics (version normalization, slug mapping) run at **sync/
 
 ### Model-bound resolution (chat)
 
-Unchanged in shape: binding → model row → provider row → decrypt credentials → driver chat factory. The **fail-closed key resolution contract** in [llm-drivers.md](llm-drivers.md) (database-only in tenant paths, no env fallback, startup materialization rules, the `resolve_provider_api_key_env_key_set_does_not_leak` invariant) carries over verbatim with `credentials_encrypted` in place of `api_key_encrypted`. The resolver service is renamed `LlmResolverService` → `ProviderResolverService`.
+Resolution has two independent results:
+
+1. binding → persisted model row → credential-free `ModelSpec` (provider public
+   identity + wire model name);
+2. exact org/provider identity → provider record → decrypt credentials → compose
+   runtime `Provider` with the registered protocol implementation.
+
+The worker model DTO carries only the model and provider identities. It fetches
+provider configuration through the authenticated internal provider RPC, scoped
+by the turn's org and exact provider id, then executes through the same runtime
+provider registry used in-process. Credentials never ride in model DTOs.
+
+The **fail-closed key resolution contract** in
+[llm-drivers.md](llm-drivers.md) remains unchanged: tenant paths use database
+credentials only and never fall through to environment values.
 
 ### Service-bound resolution (non-chat)
 
@@ -304,25 +349,31 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 | Question | Decision | Rationale |
 |---|---|---|
-| Rename registry to ProviderRegistry? | No — stays `DriverRegistry` | A driver is the technical implementation; a provider is an instance using it. Many providers per driver (Azure zones). |
-| Registry key: enum or string? | Open driver ids: built-in enum variants + `External(Arc<str>)` for embedder ids (EVE-561) | Embedder-extensible via `PlatformDefinition`; DB stores the id as a plain string; unknown ids parse to `External`. |
+| Runtime registry? | `ProviderRegistry` | Execution selects configured service instances; the `DriverRegistry` name remains only on the `0.17.x` compatibility/catalog adapter. |
+| Registry key: enum or string? | Open normalized string | Provider and driver ids accept downstream values without a central enum edit; built-in associated constants are conveniences only. |
 | Where do services live? | Declared by the driver in code | DB storage would drift from what the code can actually do. |
 | Separate join entity between model and provider? | No | A model *is* "a specific model via a specific provider" — the join. `(provider_id, model_id)` is unique; "model X via provider Y" needs no third noun. |
 | What do bindings reference? | Concrete models | Explicit and predictable; no hidden provider selection per call. Cross-provider failover is a Model Router concern (candidates sharing a profile). |
 | Model identity layer? | Promote Model Profile | It already existed as a runtime-computed shadow; promotion (stable public key, stored assignment) beats inventing a new entity. |
 | Merge providers and connections? | No | Different scope, trust model, and resolution path; share only the credential descriptor plumbing. |
 | Utility LLM through providers? | No | Deliberate system-owned exception (`knowledge/operations/utility-llm.md` non-goals). |
-| Backward compatibility? | None | Pre-1.0 internal domain; renames are clean cuts. Migrations preserve data, not names. |
+| `0.17.x` runtime compatibility? | Adapter only | Existing `ResolvedModel`/descriptor inputs remain public, but convert before execution into the same `ModelSpec` and runtime-provider registry path. No independent legacy semantics remain. |
 
 ## Source Index
 
 The refactor has landed; current implementations live at:
 
 - `crates/provider/src/provider.rs` — `Provider` entity + `DriverId`
+- `crates/provider/src/runtime_provider.rs` — runtime `Provider`, open
+  `ProviderKey`, async/body-aware auth, endpoint redaction, and
+  `ProviderRegistry`
+- `crates/provider/src/model_spec.rs` — credential-free execution model
+  selection
 - `crates/provider/src/model.rs` — `Model` / `ModelWithProvider` entity types
 - `crates/provider/src/model_profiles.rs` — built-in profile data
 - `crates/provider/src/model_discovery.rs` — host-side catalog presentation: driver `list_models` plus the OpenAI-compatible `GET <base>/models` fallback for endpoints the drivers decline, profile enrichment, and picker ranking (ported from yolop, which had reimplemented all of it), plus `search_provider_models` — a substring search across several providers' catalogs at once, returning provider-qualified exact ids. Partial results are the contract: a provider with no catalog is skipped, one that errors is reported in `provider_errors`, and the rest still return matches
-- `crates/provider/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories); `DriverConfig` typed `credentials` map
+- `crates/provider/src/driver_registry.rs` — wire-only `ChatDriver`; transitional
+  `0.17.x` descriptor/catalog adapter and typed credential configuration
 - `crates/provider/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)

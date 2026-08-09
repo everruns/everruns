@@ -866,9 +866,8 @@ impl WorkerServiceImpl {
     fn resolved_model_to_proto(resolved: crate::services::ResolvedModel) -> proto::ResolvedModel {
         proto::ResolvedModel {
             model: resolved.model_id,
+            provider_id: resolved.provider_id,
             provider_type: resolved.provider_type,
-            api_key: resolved.api_key,
-            base_url: resolved.base_url,
         }
     }
 

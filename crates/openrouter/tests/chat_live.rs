@@ -10,10 +10,10 @@
 //!   `doppler run -- cargo test -p everruns-openrouter --test chat_live -- --ignored --nocapture`
 
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, OpenRouterRoute,
+    LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, OpenRouterRoute,
     OpenRouterRoutingConfig,
 };
-use everruns_openrouter::OpenRouterChatDriver;
+use everruns_openrouter::provider;
 use futures::StreamExt;
 
 #[tokio::test]
@@ -22,7 +22,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let api_key = std::env::var("OPENROUTER_API_KEY")
         .expect("OPENROUTER_API_KEY must be set for the live smoke test");
 
-    let driver = OpenRouterChatDriver::new(api_key);
+    let provider = provider("openrouter", api_key);
 
     let mut metadata = std::collections::HashMap::new();
     metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
@@ -58,7 +58,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         "Reply with exactly one word: pong",
     )];
 
-    let mut stream = driver
+    let mut stream = provider
         .chat_completion_stream(messages, &config)
         .await
         .expect("OpenRouter should accept the decorated chat request");

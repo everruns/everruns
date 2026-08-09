@@ -5,8 +5,8 @@
 //! the model fixed so call sites cannot turn it into a user-selectable model.
 
 use crate::{
-    AgentLoopError, ChatDriver, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
-    OpenResponsesProtocolChatDriver, Result,
+    AgentLoopError, BearerAuth, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
+    OpenResponsesProtocolChatDriver, Provider, Result,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -150,7 +150,7 @@ impl UtilityLlmService for DisabledUtilityLlmService {
 
 #[derive(Clone)]
 pub struct OpenAiUtilityLlmService {
-    driver: OpenResponsesProtocolChatDriver,
+    provider: Provider,
 }
 
 impl std::fmt::Debug for OpenAiUtilityLlmService {
@@ -167,7 +167,9 @@ impl OpenAiUtilityLlmService {
         // THREAT[TM-LLM-021]: Utility LLM credentials must not become agent- or
         // session-configurable. Keep the key inside this host service.
         Self {
-            driver: OpenResponsesProtocolChatDriver::new(api_key),
+            provider: Provider::new("utility-openai", OpenResponsesProtocolChatDriver::new())
+                .base_url("https://api.openai.com/v1")
+                .auth(BearerAuth::new(api_key)),
         }
     }
 }
@@ -180,7 +182,7 @@ impl UtilityLlmService for OpenAiUtilityLlmService {
 
     async fn chat_completion(&self, request: UtilityLlmRequest) -> Result<LlmResponse> {
         let (messages, config) = request.into_parts()?;
-        self.driver.chat_completion(messages, &config).await
+        self.provider.chat_completion(messages, &config).await
     }
 
     async fn chat_completion_stream(
@@ -188,7 +190,9 @@ impl UtilityLlmService for OpenAiUtilityLlmService {
         request: UtilityLlmRequest,
     ) -> Result<LlmResponseStream> {
         let (messages, config) = request.into_parts()?;
-        self.driver.chat_completion_stream(messages, &config).await
+        self.provider
+            .chat_completion_stream(messages, &config)
+            .await
     }
 
     fn name(&self) -> &'static str {

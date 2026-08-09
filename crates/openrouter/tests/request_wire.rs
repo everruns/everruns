@@ -7,13 +7,14 @@
 // assert the exact JSON sent.
 
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, OpenRouterDataCollection,
-    OpenRouterMaxPrice, OpenRouterPluginConfig, OpenRouterProviderRouting, OpenRouterProviderSort,
+    LlmCallConfig, LlmMessage, LlmMessageRole, OpenRouterDataCollection, OpenRouterMaxPrice,
+    OpenRouterPluginConfig, OpenRouterProviderRouting, OpenRouterProviderSort,
     OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,
     OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
     OpenRouterSortPartition, OpenRouterWebSearchPlugin,
 };
 use everruns_openrouter::OpenRouterChatDriver;
+use everruns_provider::{BearerAuth, Provider};
 use serde_json::json;
 use wiremock::matchers::method;
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -38,6 +39,12 @@ fn base_config(model: &str) -> LlmCallConfig {
     }
 }
 
+fn provider(api_url: String) -> Provider {
+    Provider::new("openrouter-test", OpenRouterChatDriver::new())
+        .base_url(api_url)
+        .auth(BearerAuth::new("test-key"))
+}
+
 async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -46,7 +53,7 @@ async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, config).await;
@@ -68,7 +75,7 @@ async fn sends_routing_controls_and_session_id() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     let mut config = base_config("openai/gpt-5-mini");
     config
@@ -142,7 +149,7 @@ async fn sends_openrouter_attribution_headers_from_metadata() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     let mut config = base_config("openai/gpt-5-mini");
     config.metadata.insert(
@@ -199,7 +206,7 @@ async fn skips_blank_openrouter_attribution_metadata() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     let mut config = base_config("openai/gpt-5-mini");
     config
@@ -332,7 +339,7 @@ async fn retries_after_openrouter_rate_limit_reset() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
     let mut stream = driver
         .chat_completion_stream(messages, &base_config("openai/gpt-4o-mini"))
@@ -369,7 +376,7 @@ async fn rejects_invalid_routing_before_dispatch() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     // Primary model absent from the fallback list.
     let mut mismatch = base_config("openai/gpt-5-mini");
@@ -428,7 +435,7 @@ async fn includes_plugins_in_request() {
         .await;
 
     let api_url = format!("{}/v1/responses", server.uri());
-    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let driver = provider(api_url);
 
     let mut config = base_config("openai/gpt-5-mini");
     config.openrouter_routing = Some(OpenRouterRoutingConfig {

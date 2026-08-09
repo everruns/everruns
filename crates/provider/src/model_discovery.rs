@@ -35,30 +35,15 @@ pub struct DiscoveredProviderModel {
 /// support model listing; callers should fall back to curated suggestions in
 /// that case rather than treating it as an error.
 ///
-/// Drivers that decline listing for an unrecognized OpenAI-compatible endpoint
-/// (Ollama, Gemini's OpenAI surface, proxies) are retried against
-/// [`list_openai_compatible_models`] when the config carries a base URL.
 pub async fn discover_provider_models(
     registry: &DriverRegistry,
     config: &ProviderConfig,
 ) -> Result<Option<Vec<DiscoveredProviderModel>>> {
-    // Neither of these has a catalog: the simulator has no API, and Bedrock
-    // model access is an account-level IAM concern rather than a listable one.
-    if matches!(config.provider_type, DriverId::LlmSim | DriverId::Bedrock) {
-        return Ok(None);
-    }
-
     let driver = registry.create_chat_driver(config)?;
-    let models = match driver.list_models().await? {
-        Some(models) => Some(models),
-        None => match &config.base_url {
-            Some(base_url) => {
-                list_openai_compatible_models(base_url, config.api_key.as_deref()).await?
-            }
-            None => None,
-        },
-    };
-    let Some(models) = models else {
+    let Some(models) = driver
+        .list_models(&crate::runtime_provider::ProviderEndpoint::default())
+        .await?
+    else {
         return Ok(None);
     };
 
@@ -142,39 +127,40 @@ struct OpenAiCompatibleModel {
 /// Discovery fallback for OpenAI-compatible endpoints no driver recognizes:
 /// `GET <base>/models` with bearer auth.
 pub async fn list_openai_compatible_models(
-    base_url: &str,
-    api_key: Option<&str>,
+    endpoint: &crate::runtime_provider::ProviderEndpoint,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    let url = endpoint
+        .url("models")
+        .ok_or_else(|| AgentLoopError::config("provider endpoint is not configured"))?;
+    let resolved = endpoint.resolve("GET", url, &[]).await?;
     // THREAT[TM-API-013]: Provider base URLs are org-configurable. Use the
     // shared client so redirects, private DNS results, and hung responses are
     // rejected at request time.
-    list_openai_compatible_models_with_client(&shared_request_http_client(), base_url, api_key)
-        .await
+    list_openai_compatible_models_with_client(&shared_request_http_client(), &resolved).await
 }
 
 async fn list_openai_compatible_models_with_client(
     client: &reqwest::Client,
-    base_url: &str,
-    api_key: Option<&str>,
+    resolved: &crate::runtime_provider::ResolvedProviderRequest,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
-    let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let mut request = client.get(&url);
-    if let Some(key) = api_key {
-        request = request.bearer_auth(key);
+    let mut request = client.get(&resolved.url);
+    for (name, value) in &resolved.headers {
+        request = request.header(name, value);
     }
     let response = request
         .send()
         .await
-        .map_err(|error| AgentLoopError::llm(format!("fetch models from {url}: {error}")))?;
+        .map_err(|error| AgentLoopError::llm(format!("fetch models: {error}")))?;
     if !response.status().is_success() {
         return Err(AgentLoopError::llm(format!(
-            "models API at {url} returned {}",
+            "models API returned {}",
             response.status()
         )));
     }
-    let parsed: OpenAiCompatibleModelsResponse = response.json().await.map_err(|error| {
-        AgentLoopError::llm(format!("parse models response from {url}: {error}"))
-    })?;
+    let parsed: OpenAiCompatibleModelsResponse = response
+        .json()
+        .await
+        .map_err(|error| AgentLoopError::llm(format!("parse models response: {error}")))?;
     let models = parsed
         .data
         .into_iter()
@@ -222,7 +208,7 @@ pub fn rank_discovered_models(
     current_model: Option<&str>,
     curated: &[&str],
 ) -> RankedDiscoveredModels {
-    if matches!(provider_type, DriverId::OpenRouter) {
+    if provider_type == &DriverId::OpenRouter {
         rank_aggregator_models(provider_type, models, current_model, curated)
     } else {
         RankedDiscoveredModels {
@@ -411,6 +397,20 @@ pub async fn search_provider_models(
 mod tests {
     use super::*;
 
+    struct NoCatalog;
+
+    #[async_trait::async_trait]
+    impl crate::ChatDriver for NoCatalog {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &crate::ProviderEndpoint,
+            _messages: Vec<crate::LlmMessage>,
+            _config: &crate::LlmCallConfig,
+        ) -> crate::Result<crate::LlmResponseStream> {
+            unreachable!()
+        }
+    }
+
     fn bare_discovered(model_id: &str) -> DiscoveredModel {
         DiscoveredModel {
             capabilities: vec!["chat".to_string()],
@@ -434,7 +434,8 @@ mod tests {
     async fn discovery_is_unsupported_for_llmsim() {
         // The offline simulator has no models API; discovery must signal
         // "unsupported" rather than erroring, so callers keep curated lists.
-        let registry = DriverRegistry::new();
+        let mut registry = DriverRegistry::new();
+        registry.register(DriverId::LlmSim, |_| Box::new(NoCatalog));
         let result = discover_provider_models(&registry, &ProviderConfig::new(DriverId::LlmSim))
             .await
             .expect("llmsim discovery should not error");
@@ -554,9 +555,8 @@ mod tests {
         );
     }
 
-    /// Drivers decline listing for unrecognized custom endpoints (here a
-    /// localhost "Ollama"); discovery must then query the OpenAI-compatible
-    /// `GET <base>/models` itself.
+    /// The explicit OpenAI-compatible discovery helper uses provider-resolved
+    /// request metadata rather than inferring auth from the endpoint host.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn openai_compatible_fallback_lists_models() {
         use std::io::{Read, Write};
@@ -585,8 +585,10 @@ mod tests {
                 .no_proxy()
                 .build()
                 .expect("build mock HTTP client"),
-            &format!("http://{addr}/v1"),
-            None,
+            &crate::ResolvedProviderRequest {
+                url: format!("http://{addr}/v1/models"),
+                headers: Vec::new(),
+            },
         )
         .await
         .expect("fallback discovery should succeed")
@@ -602,9 +604,15 @@ mod tests {
 
     #[tokio::test]
     async fn openai_compatible_fallback_blocks_internal_addresses() {
-        list_openai_compatible_models("http://127.0.0.1:9/v1", None)
-            .await
-            .expect_err("model discovery must use the provider SSRF guard");
+        list_openai_compatible_models_with_client(
+            &shared_request_http_client(),
+            &crate::ResolvedProviderRequest {
+                url: "http://127.0.0.1:9/v1/models".into(),
+                headers: Vec::new(),
+            },
+        )
+        .await
+        .expect_err("model discovery must use the provider SSRF guard");
     }
 
     fn presented(id: &str, display_name: Option<&str>) -> DiscoveredProviderModel {
@@ -643,7 +651,8 @@ mod tests {
 
     #[tokio::test]
     async fn search_skips_catalog_less_providers_and_records_failures() {
-        let registry = DriverRegistry::new();
+        let mut registry = DriverRegistry::new();
+        registry.register(DriverId::LlmSim, |_| Box::new(NoCatalog));
         let providers = vec![
             // No catalog to offer: skipped, not an error.
             ("sim".to_string(), ProviderConfig::new(DriverId::LlmSim)),

@@ -34,6 +34,7 @@ struct DeterministicEmbeddingsDriver;
 impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
     async fn embed(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         request: EmbedRequest,
     ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError> {
         let embeddings = request

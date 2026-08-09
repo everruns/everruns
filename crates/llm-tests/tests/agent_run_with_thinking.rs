@@ -188,7 +188,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     // - Anthropic: cryptographic signature (always present with thinking)
     // - OpenAI o-series: encrypted_content (present when model uses encrypted reasoning)
     // - OpenAI GPT-5.x: not used (reasoning summary is readable, not encrypted)
-    if matches!(config.provider_type, DriverId::Anthropic) {
+    if config.provider_type == DriverId::Anthropic {
         assert!(
             assistant_msg.thinking_signature.is_some(),
             "Anthropic should have thinking_signature for multi-turn"

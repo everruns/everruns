@@ -54,6 +54,7 @@ pub async fn build_embeddings_driver(
         .parse()
         .expect("DriverId::from_str is infallible");
     let provider_config = ProviderConfig {
+        provider: everruns_core::ProviderKey::new(provider.id.to_string()),
         provider_type,
         api_key: Some(resolved.credentials.api_key),
         base_url: resolved.credentials.base_url,

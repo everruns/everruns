@@ -15,18 +15,25 @@ use everruns_provider::OpenResponsesProtocolChatDriver;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    LlmCallConfig, LlmMessage, LlmResponseStream,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmMessage, LlmResponseStream,
 };
 use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{
-    apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
-};
+use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
 
 use crate::request_ext::OpenRouterRequestExtension;
 use crate::types::OpenRouterModelsResponse;
 
-const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
+/// Ready-to-use OpenRouter provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    api_key: impl Into<String>,
+) -> Provider {
+    Provider::new(id, OpenRouterChatDriver::new())
+        .base_url("https://openrouter.ai/api/v1")
+        .auth(BearerAuth::new(api_key))
+}
 
 // ============================================================================
 // OpenRouter Chat Driver (OpenAI-compatible Responses API)
@@ -36,48 +43,15 @@ const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
 #[derive(Clone)]
 pub struct OpenRouterChatDriver {
     inner: OpenResponsesProtocolChatDriver,
-    /// Whether constructed with an explicit base URL override via [`with_base_url`].
-    uses_custom_url: bool,
 }
 
 impl OpenRouterChatDriver {
-    /// Create a new OpenRouter driver with the default Responses API endpoint.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// Create the OpenRouter Responses wire driver.
+    pub fn new() -> Self {
         Self {
-            inner: OpenResponsesProtocolChatDriver::with_base_url(
-                api_key,
-                OPENROUTER_RESPONSES_URL,
-            )
-            .with_provider_type(DriverId::OpenRouter)
-            .with_request_extension(Arc::new(OpenRouterRequestExtension)),
-            uses_custom_url: false,
-        }
-    }
-
-    /// Create a new OpenRouter driver with an explicit API URL override.
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        let api_url = normalize_api_url(&api_url.into(), "/responses");
-        Self {
-            inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url)
-                .with_provider_type(DriverId::OpenRouter)
+            inner: OpenResponsesProtocolChatDriver::new()
                 .with_request_extension(Arc::new(OpenRouterRequestExtension)),
-            uses_custom_url: true,
         }
-    }
-
-    /// Get the API URL.
-    pub fn api_url(&self) -> &str {
-        self.inner.api_url()
-    }
-
-    /// Get the provider type used for model profile lookup.
-    pub fn provider_type(&self) -> &DriverId {
-        self.inner.provider_type()
-    }
-
-    /// Check if using a custom base URL.
-    pub fn uses_custom_url(&self) -> bool {
-        self.uses_custom_url
     }
 }
 
@@ -85,34 +59,41 @@ impl OpenRouterChatDriver {
 impl ChatDriver for OpenRouterChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        self.inner.chat_completion_stream(messages, config).await
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
         self.inner.supports_parallel_tool_calls(model)
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        let Some(api_url) = endpoint.url("responses") else {
+            return Ok(None);
+        };
         // OpenRouter discovery is only safe against OpenRouter's own host.
         // Custom proxy URLs may resolve to private infrastructure at request time.
-        if self.uses_custom_url && !is_openrouter_api_url(self.api_url()) {
+        if !is_openrouter_api_url(&api_url) {
             return Ok(None);
         }
 
-        let models_url = models_url_for_api_url(self.api_url());
-        list_openrouter_models(self.inner.client(), self.inner.api_key(), &models_url).await
+        let models_url = models_url_for_api_url(&api_url);
+        list_openrouter_models(self.inner.client(), endpoint, &models_url).await
     }
 }
 
 impl std::fmt::Debug for OpenRouterChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenRouterChatDriver")
-            .field("api_url", &self.api_url())
             .field("api", &"OpenRouter Responses")
-            .field("api_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -125,11 +106,16 @@ impl std::fmt::Debug for OpenRouterChatDriver {
 /// `supported_parameters` metadata OpenRouter advertises.
 async fn list_openrouter_models(
     client: &reqwest::Client,
-    api_key: &str,
+    endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    let resolved = endpoint.resolve("GET", models_url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
     fetch_models::<OpenRouterModelsResponse, _>(
-        apply_models_api_auth(client.get(models_url), models_url, api_key),
+        request,
         "Failed to fetch models",
         "Failed to parse models response",
         &[],
@@ -182,6 +168,7 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "OpenRouter".into(),
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), \
              or use \"Connect with OpenRouter\" to authorize one without leaving the app.",
@@ -191,14 +178,18 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         // pasting a key manually. The key is stored like any other credential.
         oauth: Some(everruns_provider::DriverOAuthConfig::openrouter()),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
-            let api_key = config.api_key.as_deref().unwrap_or("");
-            let driver = match config.base_url.as_deref() {
-                Some(url) => OpenRouterChatDriver::with_base_url(api_key, url),
-                None => OpenRouterChatDriver::new(api_key),
-            };
-            Box::new(driver) as BoxedChatDriver
+            Provider::new(config.provider.clone(), OpenRouterChatDriver::new())
+                .base_url(config.base_url.as_deref().unwrap_or("https://openrouter.ai/api/v1"))
+                .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
+                .into_boxed_driver()
         })
     });
+}
+
+impl Default for OpenRouterChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -208,31 +199,33 @@ mod tests {
 
     #[test]
     fn test_openrouter_driver_defaults_to_responses_api() {
-        let driver = OpenRouterChatDriver::new("test-key");
+        let driver = OpenRouterChatDriver::new();
+        let service = provider("openrouter", "test-key");
         assert!(format!("{:?}", driver).contains("OpenRouterChatDriver"));
-        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
-        assert_eq!(driver.provider_type(), &DriverId::OpenRouter);
+        assert_eq!(
+            service.endpoint().url("responses").as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
+        );
     }
 
     #[test]
     fn test_openrouter_driver_with_base_url_marks_custom_url() {
-        let driver = OpenRouterChatDriver::with_base_url(
-            "test-key",
-            "https://openrouter.ai/api/v1/responses",
+        let service =
+            provider("openrouter", "test-key").base_url("https://openrouter.ai/api/v1/responses");
+        assert_eq!(
+            service.endpoint().url("responses").as_deref(),
+            Some("https://openrouter.ai/api/v1/responses")
         );
-        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
-        assert!(driver.uses_custom_url());
     }
 
     #[tokio::test]
     async fn test_openrouter_custom_non_openrouter_host_skips_model_listing() {
-        let driver = OpenRouterChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.example/v1/responses",
-        );
+        let service = Provider::new("custom", OpenRouterChatDriver::new())
+            .base_url("https://custom.api.example/v1");
+        let driver = OpenRouterChatDriver::new();
 
         let discovered = driver
-            .list_models()
+            .list_models(service.endpoint())
             .await
             .expect("custom non-OpenRouter discovery should be skipped");
 

@@ -12,53 +12,41 @@ use everruns_provider::OpenResponsesProtocolChatDriver;
 use everruns_provider::credential_schema::CredentialFormSchema;
 use everruns_provider::driver_helpers::fetch_models;
 use everruns_provider::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    LlmCallConfig, LlmMessage, LlmResponseStream,
+    ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
+    LlmMessage, LlmResponseStream,
 };
 use everruns_provider::error::Result;
-use everruns_provider::openai_protocol::{
-    apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
-};
+use everruns_provider::openai_protocol::{models_url_for_api_url, url_host_eq};
+use everruns_provider::{BearerAuth, Provider, ProviderEndpoint};
 
 /// Meta Model API Responses endpoint.
 pub const META_DEFAULT_API_URL: &str = "https://api.meta.ai/v1/responses";
 const META_API_HOST: &str = "api.meta.ai";
 
+/// Ready-to-use Meta Model API provider assembly.
+pub fn provider(
+    id: impl Into<everruns_provider::ProviderKey>,
+    api_key: impl Into<String>,
+) -> Provider {
+    Provider::new(id, MetaChatDriver::new())
+        .base_url("https://api.meta.ai/v1")
+        .auth(BearerAuth::new(api_key))
+}
+
 /// Meta Model API driver using the OpenAI-compatible Responses API.
 #[derive(Clone)]
 pub struct MetaChatDriver {
     inner: OpenResponsesProtocolChatDriver,
-    uses_custom_url: bool,
 }
 
 impl MetaChatDriver {
-    /// Create a driver targeting Meta's hosted Model API.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    /// Create the Meta-compatible Responses wire driver.
+    pub fn new() -> Self {
         Self {
-            inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, META_DEFAULT_API_URL)
-                .with_provider_type(DriverId::Meta),
-            uses_custom_url: false,
+            inner: OpenResponsesProtocolChatDriver::new()
+                .with_native_features(true, true)
+                .with_stateful_responses(true),
         }
-    }
-
-    /// Create a driver with an explicit Responses API endpoint override.
-    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
-        let api_url = normalize_api_url(&api_url.into(), "/responses");
-        Self {
-            inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url)
-                .with_provider_type(DriverId::Meta),
-            uses_custom_url: true,
-        }
-    }
-
-    /// The resolved Responses API URL.
-    pub fn api_url(&self) -> &str {
-        self.inner.api_url()
-    }
-
-    /// The provider id used for model-profile lookup.
-    pub fn provider_type(&self) -> &DriverId {
-        self.inner.provider_type()
     }
 }
 
@@ -66,10 +54,13 @@ impl MetaChatDriver {
 impl ChatDriver for MetaChatDriver {
     async fn chat_completion_stream(
         &self,
+        endpoint: &ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        self.inner.chat_completion_stream(messages, config).await
+        self.inner
+            .chat_completion_stream(endpoint, messages, config)
+            .await
     }
 
     fn supports_stateful_responses(&self) -> bool {
@@ -80,22 +71,26 @@ impl ChatDriver for MetaChatDriver {
         self.inner.supports_parallel_tool_calls(model)
     }
 
-    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        if self.uses_custom_url && !url_host_eq(self.api_url(), META_API_HOST) {
+    async fn list_models(
+        &self,
+        endpoint: &ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        let Some(api_url) = endpoint.url("responses") else {
+            return Ok(None);
+        };
+        if !url_host_eq(&api_url, META_API_HOST) {
             return Ok(None);
         }
 
-        let models_url = models_url_for_api_url(self.api_url());
-        list_meta_models(self.inner.client(), self.inner.api_key(), &models_url).await
+        let models_url = models_url_for_api_url(&api_url);
+        list_meta_models(self.inner.client(), endpoint, &models_url).await
     }
 }
 
 impl std::fmt::Debug for MetaChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MetaChatDriver")
-            .field("api_url", &self.api_url())
             .field("api", &"Meta Model API Responses")
-            .field("api_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -116,11 +111,16 @@ struct MetaModelInfo {
 
 async fn list_meta_models(
     client: &reqwest::Client,
-    api_key: &str,
+    endpoint: &ProviderEndpoint,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    let resolved = endpoint.resolve("GET", models_url, &[]).await?;
+    let mut request = client.get(&resolved.url);
+    for (name, value) in resolved.headers {
+        request = request.header(name, value);
+    }
     fetch_models::<MetaModelsResponse, _>(
-        apply_models_api_auth(client.get(models_url), models_url, api_key),
+        request,
         "Failed to fetch Meta models",
         "Failed to parse Meta models response",
         &[],
@@ -147,18 +147,28 @@ async fn list_meta_models(
 /// Register Meta Model API as a chat provider.
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
+        display_name: "Meta Model API".into(),
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key in the [Meta Model API dashboard](https://dev.meta.ai/).",
         ),
         ..DriverDescriptor::chat_only(DriverId::Meta, |config| {
-            let api_key = config.api_key.as_deref().unwrap_or("");
-            let driver = match config.base_url.as_deref() {
-                Some(url) => MetaChatDriver::with_base_url(api_key, url),
-                None => MetaChatDriver::new(api_key),
-            };
-            Box::new(driver) as BoxedChatDriver
+            Provider::new(config.provider.clone(), MetaChatDriver::new())
+                .base_url(
+                    config
+                        .base_url
+                        .as_deref()
+                        .unwrap_or("https://api.meta.ai/v1"),
+                )
+                .auth(BearerAuth::new(config.api_key.clone().unwrap_or_default()))
+                .into_boxed_driver()
         })
     });
+}
+
+impl Default for MetaChatDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -170,23 +180,37 @@ mod tests {
 
     #[test]
     fn defaults_to_meta_responses_api() {
-        let driver = MetaChatDriver::new("test-key");
-        assert_eq!(driver.api_url(), META_DEFAULT_API_URL);
-        assert_eq!(driver.provider_type(), &DriverId::Meta);
+        let provider = provider("meta", "test-key");
+        let driver = MetaChatDriver::new();
+        assert_eq!(
+            provider.endpoint().url("responses").unwrap(),
+            META_DEFAULT_API_URL
+        );
         assert!(driver.supports_stateful_responses());
         assert!(driver.supports_parallel_tool_calls("muse-spark-1.2"));
     }
 
     #[test]
     fn base_url_is_normalized_to_responses() {
-        let driver = MetaChatDriver::with_base_url("test-key", "https://api.meta.ai/v1");
-        assert_eq!(driver.api_url(), META_DEFAULT_API_URL);
+        let provider = provider("meta", "test-key");
+        assert_eq!(
+            provider.endpoint().url("responses").unwrap(),
+            META_DEFAULT_API_URL
+        );
     }
 
     #[tokio::test]
     async fn custom_non_meta_host_skips_discovery() {
-        let driver = MetaChatDriver::with_base_url("test-key", "https://proxy.example.com/v1");
-        assert!(driver.list_models().await.unwrap().is_none());
+        let provider =
+            Provider::new("proxy", MetaChatDriver::new()).base_url("https://proxy.example.com/v1");
+        let driver = MetaChatDriver::new();
+        assert!(
+            driver
+                .list_models(provider.endpoint())
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -207,9 +231,12 @@ mod tests {
             .mount(&server)
             .await;
 
+        let provider = Provider::new("meta-test", MetaChatDriver::new())
+            .base_url(format!("{}/v1", server.uri()))
+            .auth(BearerAuth::new("meta-secret"));
         let models = list_meta_models(
             &reqwest::Client::new(),
-            "meta-secret",
+            provider.endpoint(),
             &format!("{}/v1/models", server.uri()),
         )
         .await

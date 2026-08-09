@@ -69,21 +69,18 @@ impl ProviderStore for DbProviderStore {
             None => return Ok(None),
         };
 
-        // Decrypt the API key
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &self.encryption)
-            .store_err()?;
-
         // Parse provider type
-        let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
+        let provider_type = parse_provider_type(&provider_row.provider_type)?;
 
         Ok(Some(ResolvedModel {
             model: model_row.model_id,
             provider_type,
-            api_key: provider_with_key.api_key,
-            base_url: provider_with_key.base_url,
-            provider_metadata: None,
+            api_key: None,
+            base_url: None,
+            provider_metadata: Some(everruns_core::ProviderMetadata {
+                extra: Some(serde_json::json!({ "provider_id": provider_row.id.to_string() })),
+                ..Default::default()
+            }),
         }))
     }
 
@@ -108,21 +105,46 @@ impl ProviderStore for DbProviderStore {
             None => return Ok(None),
         };
 
-        // Decrypt the API key
-        let provider_with_key = self
-            .db
-            .get_provider_with_api_key(&provider_row, &self.encryption)
-            .store_err()?;
-
         // Parse provider type
-        let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
+        let provider_type = parse_provider_type(&provider_row.provider_type)?;
 
         Ok(Some(ResolvedModel {
             model: model_row.model_id,
             provider_type,
-            api_key: provider_with_key.api_key,
-            base_url: provider_with_key.base_url,
-            provider_metadata: None,
+            api_key: None,
+            base_url: None,
+            provider_metadata: Some(everruns_core::ProviderMetadata {
+                extra: Some(serde_json::json!({ "provider_id": provider_row.id.to_string() })),
+                ..Default::default()
+            }),
+        }))
+    }
+
+    async fn get_provider_config(
+        &self,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        let id: everruns_core::ProviderId = provider.as_str().parse().map_err(|_| {
+            AgentLoopError::Configuration(format!("invalid persisted provider id '{}'", provider))
+        })?;
+        let Some(row) = self
+            .db
+            .get_provider(self.org_id, id.uuid())
+            .await
+            .store_err()?
+        else {
+            return Ok(None);
+        };
+        let with_key = self
+            .db
+            .get_provider_with_api_key(&row, &self.encryption)
+            .store_err()?;
+        Ok(Some(everruns_core::ProviderConfig {
+            provider: provider.clone(),
+            provider_type: parse_provider_type(&with_key.provider_type)?,
+            api_key: with_key.api_key,
+            base_url: with_key.base_url,
+            metadata: everruns_core::ProviderMetadata::default(),
         }))
     }
 }

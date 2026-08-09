@@ -10,15 +10,16 @@ tags:
 
 > **Domain model note:** the canonical provider domain model (drivers, services,
 > providers, models, model profiles) is [providers.md](providers.md). That
-> refactor is in progress: the driver trait is now `ChatDriver` (it implements
-> the chat service of a provider). As later phases land, the entity/resolution
-> content will move out of this document, leaving this spec as the chat-service
-> wire contract (streaming, error types, retries, thinking, prompt cache,
-> compaction).
+> `ChatDriver` is the chat wire-protocol contract. Service identity, endpoint,
+> headers, and authentication belong to runtime providers as specified in
+> [providers.md](providers.md).
 
 ## Abstract
 
-LLM drivers provide a provider-agnostic interface for interacting with Large Language Model APIs. The driver abstraction enables dependency inversion - provider implementations (OpenAI, Anthropic) register their drivers at startup, while core business logic operates against the trait interface.
+LLM drivers implement reusable wire protocols. Runtime providers bind those
+drivers to concrete services. Core business logic resolves a credential-free
+model specification and runtime provider independently, then passes the
+provider-owned endpoint into the protocol driver.
 
 ## Architecture
 
@@ -26,7 +27,7 @@ LLM drivers provide a provider-agnostic interface for interacting with Large Lan
 graph TD
     subgraph Provider [everruns-provider]
         ChatDriver[ChatDriver Trait]
-        Registry[DriverRegistry]
+        Registry[ProviderRegistry]
         Errors[AgentLoopError]
     end
 
@@ -44,13 +45,13 @@ graph TD
         ReasonAtom[ReasonAtom]
     end
 
-    OpenAI -->|implements| ChatDriver
-    Anthropic -->|implements| ChatDriver
-    Gemini -->|implements| ChatDriver
-    OpenAI -->|registers| Registry
-    Anthropic -->|registers| Registry
-    Gemini -->|registers| Registry
-    ReasonAtom -->|uses| Registry
+    OpenAI -->|assembles provider over| ChatDriver
+    Anthropic -->|assembles provider over| ChatDriver
+    Gemini -->|assembles provider over| ChatDriver
+    OpenAI -->|registers provider| Registry
+    Anthropic -->|registers provider| Registry
+    Gemini -->|registers provider| Registry
+    ReasonAtom -->|resolves provider from| Registry
     OpenAI -->|outbound HTTP| Egress
     Anthropic -->|outbound HTTP| Egress
     Gemini -->|outbound HTTP| Egress
@@ -65,7 +66,9 @@ graph TD
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
-3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `Meta` (Muse models via Meta Model API, OpenAI-compatible Responses), `LlmSim` (testing).
+3. **Provider independence**: the trait contains no service/vendor identity,
+   default hostname, or credential. The same driver instance may serve multiple
+   provider keys with different endpoints, headers, and auth.
 
 ### Error Types (Contract)
 
@@ -87,23 +90,27 @@ Each driver MUST implement provider-specific error detection to classify context
 - `crates/anthropic/src/` — Anthropic error detection
 - `crates/gemini/src/` — Gemini error detection
 
-### Driver Registry
+### Provider registry and 0.17 compatibility catalog
 
-Provider crates register a `DriverDescriptor` at startup: driver id, display
-name, declared `ServiceKind`s (see `knowledge/foundations/providers.md`), a credential form
-schema, and per-service factories (chat today). Chat drivers are created
-on-demand from `ProviderConfig`. All real built-in providers require API keys;
-`LlmSim` and `External` drivers are exempted (external drivers may authenticate
-via `ProviderMetadata`). See `crates/provider/src/driver_registry.rs` for
-`DriverRegistry` and `DriverDescriptor`.
+Applications register concrete runtime providers in `ProviderRegistry`, keyed
+by open `ProviderKey`. Official integration crates expose ready-made provider
+assemblies; downstream code may construct the same public `Provider` directly.
+
+`DriverDescriptor`/`DriverRegistry` remain in `0.17.x` as the hosted
+provider-management catalog and the compatibility surface for
+`everruns-runtime`. Descriptor factories compose runtime providers and route
+into the same registry/execution path; they are not a second driver semantics
+layer.
 
 ### Host-Owned Transport
 
-Provider drivers and model discovery use direct provider HTTP clients. They are
+Protocol drivers and model discovery use direct provider HTTP clients. They are
 host-owned platform services: provider endpoints and credentials come from
 deployment/org provider configuration, not from agent-authored URLs or
-tenant/agent egress policy. Drivers still own provider-specific request
-construction, streaming parse logic, retry classification, and error mapping.
+tenant/agent egress policy. Runtime providers own endpoint, auth, and service
+headers. Drivers own protocol request construction, streaming parse logic,
+retry classification, and error mapping. Shared clients disable redirects and
+pin DNS only after private-range validation.
 
 ### Message Types
 
@@ -396,7 +403,7 @@ capabilities by matching the id at sync time (the OpenAI/Azure OpenAI pattern).
 Rich capability metadata lives only in the separate Foundry model *catalog* API
 (different host/auth, reflects the catalog not the deployment) and cost is never
 provider-reported, so neither is used for profiling. The discovery request is
-authenticated with the same `AuthHeaderProvider` as chat (so it works for both
+authenticated with the same runtime `ProviderAuth` as chat (so it works for both
 api-key and OAuth) and is gated to recognized Foundry hosts
 (`*.services.ai.azure.com` / `*.openai.azure.com`); custom proxy URLs return
 `None`. Project-scoped Foundry endpoints (`.../api/projects/<project>`) expose
@@ -423,22 +430,17 @@ preserved (a stored credential is still required; nothing falls back to env).
 Existing rows that stored OAuth as a JSON document keep resolving, since that
 document parses into the same typed fields.
 
-### Pluggable Authentication (`AuthHeaderProvider`)
+### Provider-owned authentication
 
-Authentication is the reason MAI gets its own crate rather than reusing the
-Azure OpenAI driver: MAI deployments accept either an Azure AI Foundry **API
-key** (`api-key` header) or a Microsoft **Entra ID (OAuth)** bearer token. Both
-the Chat Completions and Open Responses protocol drivers expose the same
-generic, async `AuthHeaderProvider` hook
-(`OpenAIProtocolChatDriver::with_auth_provider` and
-`OpenResponsesProtocolChatDriver::with_auth_provider`); the trait is exported
-from one stable place (`everruns_core::AuthHeaderProvider`, defined in
-`crates/provider/src/openai_protocol.rs`). When set, it overrides the default
-host-keyed `api-key`/bearer logic and is awaited once per HTTP attempt — for the
-Open Responses driver this includes the streaming `/responses` call, every retry
-attempt, and the `/responses/compact` call — so providers can refresh short-lived
-tokens transparently. When unset, both drivers fall back to the identical static
-`api_key` behavior (Azure → `api-key`, otherwise `Authorization: Bearer`).
+MAI deployments accept either an Azure AI Foundry **API key** (`api-key`
+header) or a Microsoft **Entra ID (OAuth)** bearer token. Both are runtime
+`ProviderAuth` implementations attached to a provider over the reusable Chat
+Completions protocol. `ProviderAuth::headers` is async and receives the method,
+URL, service headers, and exact serialized body on every HTTP attempt. This
+supports refreshable OAuth and body-aware signing without teaching a protocol
+driver about service identity. Bedrock keeps the AWS SDK client in
+provider-owned `BedrockAuth`, preserving SDK SigV4 signing and event-stream
+framing.
 
 The four request seams are deliberately separate and compose as follows:
 
@@ -446,8 +448,8 @@ The four request seams are deliberately separate and compose as follows:
   `crates/core/src/credential_provider.rs`) resolves a *static*
   `ProviderCredentials` (`api_key`, `base_url`) **before** the driver is built.
   It cannot mint or refresh request-time tokens.
-- **Request auth** (`AuthHeaderProvider`) runs **per HTTP attempt** and owns the
-  single authentication header. This is the seam for refreshable OAuth.
+- **Request auth** (`ProviderAuth`) runs **per HTTP attempt** and may return
+  multiple headers. This is the seam for static, refreshable, and signed auth.
 - **Request decoration** (`OpenResponsesRequestExtension`, Open Responses only)
   layers provider-specific *non-auth* body fields and headers (routing,
   attribution, `session_id`, `OpenAI-Beta`, `originator`, account ids). It must
@@ -469,7 +471,7 @@ The MAI crate ships two providers built on that hook:
 present is a fail-closed configuration error. Because OAuth needs no `api_key`,
 `DriverId::Mai` is exempt from the registry's mandatory-api-key check (like
 `External`). New schemes (managed identity, workload identity federation) are
-additive: implement `AuthHeaderProvider` without touching the driver.
+additive: implement `ProviderAuth` without touching the protocol driver.
 
 ### Model Discovery and Capability Profiles
 
@@ -609,11 +611,16 @@ Invariant: **a request with `previous_response_id` only carries delta items in `
 
 `OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol.rs`).
 
-### Stateless Gateways
+### Provider-declared statefulness
 
 Server-side continuation only works where the endpoint actually stores responses. OpenAI-compatible gateways that expose a stateless `/responses` shim — e.g. OpenRouter and Google Gemini's compat endpoint — *accept* `previous_response_id` but silently ignore it (`store: false`). Chaining against them drops the conversation from turn 2 onward (only the latest tool output reaches the model), so the agent loses the task and loops on exploration.
 
-The driver therefore gates continuation on the endpoint: only `api.openai.com` and Azure OpenAI hosts (`endpoint_persists_responses`) are treated as stateful. For any other base URL the driver drops `previous_response_id` and replays the **full** transcript in `input` each turn. The full transcript is always available because the runtime reconstructs it from stored messages on every turn; delta trimming is purely a token-saving optimization for genuinely stateful endpoints.
+Statefulness is service semantics, not a hostname property. The provider
+assembly explicitly enables it for OpenAI, Azure OpenAI, and Meta. Stateless
+assemblies such as OpenRouter leave it disabled, so the driver drops
+`previous_response_id` and replays the **full** transcript. Custom services opt
+in only when their endpoint actually persists Responses state. No protocol
+driver contains a host-based service dispatch.
 
 ## Automatic Retry for Transient Errors
 
@@ -755,7 +762,7 @@ useful headroom instead of accepting any merely smaller response.
 ## Key Resolution Contract (Fail-Closed)
 
 This section is the single source of truth for **where provider credentials may
-come from**. Read it before touching any driver constructor, `DriverConfig`
+come from**. Read it before touching any provider assembly, `DriverConfig`
 builder, provider store, or resolver. Violating it can silently fund tenant
 execution from platform credentials — a cost-runaway and trust boundary
 incident, not a cosmetic bug.
@@ -767,7 +774,8 @@ incident, not a cosmetic bug.
 > in any `crates/openai`, `crates/anthropic`, `crates/gemini`,
 > `crates/openrouter`, `crates/bedrock`, `crates/mai`, or the protocol drivers in
 > `crates/core` (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials
-> only ever arrive through a constructor argument or a `DriverConfig`.
+> only ever arrive through a runtime provider assembly or a `DriverConfig`
+> compatibility/catalog adapter.
 >
 > Scope: this bans reading *credentials* from env, not all environment access. A
 > driver may still read a non-credential tuning knob from env (e.g.
@@ -790,7 +798,7 @@ path must be one of them; there is no third option and no fallback between them.
    resolve_provider_api_key()                  caller injects a CredentialProvider
    (encrypted DB, fail-closed)                 (EnvCredentialProvider for env vars)
               │                                           │
-        DriverConfig ─────────────► driver constructor ◄──────── DriverConfig
+        DriverConfig ─────────────► runtime Provider ◄──────── Provider assembly
               (no env reads anywhere on either path)
 ```
 
@@ -855,8 +863,8 @@ into the DB, never read by a driver.
 
 **Do**
 
-- Pass credentials into a driver via its constructor (`new`, `with_base_url`) or a
-  `DriverConfig`.
+- Attach credentials/auth and the endpoint to a runtime `Provider`; protocol
+  driver constructors remain credential-free.
 - In a standalone/dev/CLI entrypoint, construct `EnvCredentialProvider` (or any
   other `CredentialProvider`) and inject it.
 - Add a new env var mapping for an existing driver in `EnvCredentialProvider` —

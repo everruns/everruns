@@ -207,6 +207,25 @@ pub enum AgentLoopError {
 }
 
 impl AgentLoopError {
+    /// Prefix a provider-bound error without discarding its semantic variant.
+    pub fn with_provider(mut self, provider: &str) -> Self {
+        let prefix = format!("provider '{provider}': ");
+        match &mut self {
+            AgentLoopError::Llm(error) if !error.message.starts_with(&prefix) => {
+                error.message.insert_str(0, &prefix)
+            }
+            AgentLoopError::RequestTooLarge(message)
+            | AgentLoopError::ModelNotAvailable(message)
+            | AgentLoopError::Configuration(message)
+                if !message.starts_with(&prefix) =>
+            {
+                message.insert_str(0, &prefix)
+            }
+            _ => {}
+        }
+        self
+    }
+
     /// Create an LLM error with no semantic kind (falls back to string
     /// classification downstream).
     pub fn llm(msg: impl Into<String>) -> Self {

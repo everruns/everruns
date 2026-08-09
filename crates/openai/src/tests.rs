@@ -2,67 +2,76 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
+    use crate::{
+        DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, azure_provider,
+        completions_provider, provider, register_driver,
+    };
     use everruns_provider::driver_registry::{DriverId, ProviderConfig};
 
     #[test]
-    fn test_driver_with_api_key() {
-        let driver = OpenAIChatDriver::new("test-key");
+    fn test_responses_driver_is_wire_only() {
+        let driver = OpenAIChatDriver::new();
         // Just verify it can be created
         assert!(format!("{:?}", driver).contains("OpenAIChatDriver"));
         assert!(format!("{:?}", driver).contains("Open Responses"));
-        // URL should be for Open Responses API
-        assert!(driver.api_url().contains("responses"));
+        let service = provider("openai", "test-key");
+        assert_eq!(
+            service.endpoint().url("responses").as_deref(),
+            Some("https://api.openai.com/v1/responses")
+        );
     }
 
     #[test]
-    fn test_driver_with_base_url() {
-        let driver =
-            OpenAIChatDriver::with_base_url("test-key", "https://custom.api.com/v1/responses");
-        assert!(format!("{:?}", driver).contains("OpenAIChatDriver"));
-        assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
-        assert!(driver.uses_custom_url());
+    fn test_provider_accepts_custom_base_url() {
+        let service = provider("custom", "test-key").base_url("https://custom.api.com/v1");
+        assert_eq!(
+            service.endpoint().url("responses").as_deref(),
+            Some("https://custom.api.com/v1/responses")
+        );
     }
 
     #[test]
     fn test_driver_normalizes_v1_base_url() {
-        let driver = OpenAIChatDriver::with_base_url("test-key", "https://api.openai.com/v1");
-        assert_eq!(driver.api_url(), "https://api.openai.com/v1/responses");
+        let service = provider("openai", "test-key");
+        assert_eq!(
+            service.endpoint().url("responses").as_deref(),
+            Some("https://api.openai.com/v1/responses")
+        );
     }
 
     #[test]
     fn test_driver_normalizes_azure_v1_base_url() {
-        let driver = OpenAIChatDriver::with_base_url(
-            "test-key",
+        let service = azure_provider(
+            "azure",
             "https://resource.openai.azure.com/openai/v1/",
+            "test-key",
         );
         assert_eq!(
-            driver.api_url(),
-            "https://resource.openai.azure.com/openai/v1/responses"
+            service.endpoint().url("responses").as_deref(),
+            Some("https://resource.openai.azure.com/openai/v1/responses")
         );
     }
 
     #[test]
     fn test_completions_driver_with_api_key() {
-        let driver = OpenAICompletionsChatDriver::new("test-key");
+        let driver = OpenAICompletionsChatDriver::new();
         assert!(format!("{:?}", driver).contains("OpenAICompletionsChatDriver"));
         assert!(format!("{:?}", driver).contains("Chat Completions"));
-        // URL should be for Chat Completions API
-        assert!(driver.api_url().contains("chat/completions"));
+        let service = completions_provider("openai-completions", "test-key");
+        assert_eq!(
+            service.endpoint().url("chat/completions").as_deref(),
+            Some("https://api.openai.com/v1/chat/completions")
+        );
     }
 
     #[test]
     fn test_completions_driver_with_base_url() {
-        let driver = OpenAICompletionsChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.com/v1/chat/completions",
-        );
-        assert!(format!("{:?}", driver).contains("OpenAICompletionsChatDriver"));
+        let service = completions_provider("custom", "test-key")
+            .base_url("https://custom.api.com/v1/chat/completions");
         assert_eq!(
-            driver.api_url(),
-            "https://custom.api.com/v1/chat/completions"
+            service.endpoint().url("chat/completions").as_deref(),
+            Some("https://custom.api.com/v1/chat/completions")
         );
-        assert!(driver.uses_custom_url());
     }
 
     #[test]

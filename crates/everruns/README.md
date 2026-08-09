@@ -5,39 +5,24 @@ The application-facing entrypoint to the [Everruns](https://everruns.com) agenti
 `everruns` is a thin, publishable facade over the in-process runtime. Add a single dependency and
 run an agent turn — without wiring up `everruns-core` or `everruns-runtime` directly.
 
-This first release is a **compatibility facade**: it moves no engine code and re-exports the
-minimum needed to construct and run an in-process session. Default features stay offline — no
-provider, MCP, filesystem, SQLx, server, or worker integrations are activated by default. APIs not
-yet promoted onto the facade remain reachable through the escape-hatch `everruns::core` and
-`everruns::runtime` modules.
+The high-level API uses an open, credential-free `ModelSpec` plus runtime
+`Provider` contract. Default features stay offline. Custom providers and wire
+protocols can be supplied through `everruns` alone; applications do not need to
+import `everruns-core` or `everruns-runtime`.
 
 ## Example
 
 ```rust
-use everruns::{DriverId, InProcessRuntimeBuilder, InputMessage, LlmSimConfig, ResolvedModel};
+use everruns::{Agent, Model};
 
 #[tokio::main]
-async fn main() -> Result<(), everruns::AgentLoopError> {
-    let runtime = InProcessRuntimeBuilder::new()
-        .single_session(|s| {
-            s.harness("assistant", "You are a helpful assistant.")
-                .agent("assistant-agent", "Answer the user.")
-        })
-        .llm_sim(LlmSimConfig::fixed("4"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let agent = Agent::builder()
+        .instructions("You are a helpful assistant.")
+        .model(Model::simulated("4"))
         .build()
-        .await?;
-
-    let session_id = runtime.default_session_id().expect("single_session id");
-    let result = runtime
-        .run_turn(session_id, InputMessage::user("What is 2 + 2?"))
-        .await?;
+        .expect("valid agent");
+    let result = agent.session().run("What is 2 + 2?").await?;
 
     assert_eq!(result.response, "4");
     Ok(())

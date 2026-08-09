@@ -229,6 +229,7 @@ struct ProactiveCompactDriver {
 impl everruns_core::ChatDriver for ProactiveCompactDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -259,6 +260,7 @@ impl everruns_core::ChatDriver for ProactiveCompactDriver {
 
     async fn compact(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         request: everruns_core::CompactRequest,
     ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
         self.compact_attempts.fetch_add(1, Ordering::SeqCst);
@@ -367,7 +369,8 @@ impl ProactiveTestRig {
             usage,
         };
         let mut driver_registry = DriverRegistry::new();
-        driver_registry.register(provider_type.clone(), move |_| Box::new(driver.clone()));
+        driver_registry
+            .register_external(provider_type.as_str(), move |_| Box::new(driver.clone()));
         let mut capability_registry = CapabilityRegistry::new();
         capability_registry.register(CompactionCapability);
 
@@ -513,6 +516,7 @@ impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
 impl everruns_core::ChatDriver for NativeCompactFailureDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         _config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -535,6 +539,7 @@ impl everruns_core::ChatDriver for NativeCompactFailureDriver {
 
     async fn compact(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _request: everruns_core::CompactRequest,
     ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
         Err(everruns_core::AgentLoopError::llm("compact failed"))
@@ -545,6 +550,7 @@ impl everruns_core::ChatDriver for NativeCompactFailureDriver {
 impl everruns_core::ChatDriver for NativeCompactRetryDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -616,6 +622,7 @@ impl everruns_core::ChatDriver for NativeCompactRetryDriver {
 
     async fn compact(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         request: everruns_core::CompactRequest,
     ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
         *self.compact_request.lock().await = Some(request);
@@ -646,6 +653,7 @@ impl everruns_core::ChatDriver for NativeCompactRetryDriver {
 impl everruns_core::ChatDriver for FlakyStreamDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -696,6 +704,7 @@ struct StallingStreamDriver {
 impl everruns_core::ChatDriver for StallingStreamDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -737,6 +746,7 @@ struct ThinkingLeakDriver {
 impl everruns_core::ChatDriver for ThinkingLeakDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -770,6 +780,7 @@ struct SpeedCapturingDriver {
 impl everruns_core::ChatDriver for SpeedCapturingDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -2875,7 +2886,11 @@ async fn test_driver_registry_integration() {
     };
 
     let response = driver
-        .chat_completion(messages, &call_config)
+        .chat_completion(
+            &everruns_core::ProviderEndpoint::default(),
+            messages,
+            &call_config,
+        )
         .await
         .expect("Chat completion should succeed");
 
@@ -3210,6 +3225,7 @@ struct ToolCallsThenErrorDriver;
 impl everruns_core::ChatDriver for ToolCallsThenErrorDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         _config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -3303,6 +3319,7 @@ struct TextThenErrorDriver;
 impl everruns_core::ChatDriver for TextThenErrorDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         _config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -3393,6 +3410,7 @@ struct PureErrorDriver {
 impl everruns_core::ChatDriver for PureErrorDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         _messages: Vec<everruns_core::LlmMessage>,
         _config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -3770,6 +3788,7 @@ struct SystemPromptCapturingDriver {
 impl everruns_core::ChatDriver for SystemPromptCapturingDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
@@ -3806,6 +3825,7 @@ struct ConversationCapturingDriver {
 impl everruns_core::ChatDriver for ConversationCapturingDriver {
     async fn chat_completion_stream(
         &self,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {

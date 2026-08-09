@@ -6,8 +6,8 @@
 //!
 //! Microsoft MAI models are served via [Azure AI Foundry](https://ai.azure.com)
 //! behind an OpenAI-compatible Chat Completions API, so [`MaiChatDriver`] wraps
-//! `everruns_provider::OpenAIProtocolChatDriver` and supplies authentication through
-//! the driver's pluggable [`AuthHeaderProvider`] hook.
+//! `everruns_provider::OpenAIProtocolChatDriver`; its runtime provider owns
+//! authentication through [`ProviderAuth`].
 //!
 //! # Authentication
 //!
@@ -19,7 +19,7 @@
 //!   metadata. Bearer tokens are minted and cached, refreshed before expiry.
 //!
 //! Additional schemes (managed identity, workload identity federation, ...) can
-//! be added by implementing [`AuthHeaderProvider`] without changing the driver.
+//! be added by implementing [`ProviderAuth`] without changing the driver.
 //!
 //! # Registering the Driver
 //!
@@ -31,7 +31,7 @@
 //! register_driver(&mut registry);
 //! ```
 //!
-//! [`AuthHeaderProvider`]: everruns_provider::openai_protocol::AuthHeaderProvider
+//! [`ProviderAuth`]: everruns_provider::ProviderAuth
 
 mod auth;
 mod driver;
@@ -39,7 +39,7 @@ mod driver;
 pub use auth::{
     DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, EntraOAuthConfig, EntraOAuthProvider, MaiAuth,
 };
-pub use driver::{MaiChatDriver, register_driver};
+pub use driver::{MaiChatDriver, provider, register_driver};
 
 // Re-export core types for convenience.
 pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

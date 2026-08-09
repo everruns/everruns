@@ -11,9 +11,10 @@
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::driver_registry::{
-    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent,
+    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
+    LlmStreamEvent,
 };
+use everruns_core::{BearerAuth, Provider};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -109,11 +110,10 @@ async fn mount_sse(server: &MockServer, body: String) {
         .await;
 }
 
-fn driver(server: &MockServer) -> OpenAIProtocolChatDriver {
-    OpenAIProtocolChatDriver::with_base_url(
-        "test-key",
-        format!("{}/v1/chat/completions", server.uri()),
-    )
+fn driver(server: &MockServer) -> Provider {
+    Provider::new("openai-protocol-test", OpenAIProtocolChatDriver::new())
+        .base_url(format!("{}/v1/chat/completions", server.uri()))
+        .auth(BearerAuth::new("test-key"))
 }
 
 /// Text streaming: two content deltas, a `stop` finish chunk, then the usage

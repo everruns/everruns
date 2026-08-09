@@ -14,8 +14,8 @@ use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
-use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::{AgentCapabilityConfig, DriverId, InitialFile, ResolvedModel, SessionId};
+use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+use everruns_core::{AgentCapabilityConfig, InitialFile, ModelSpec, Provider, SessionId};
 use everruns_runtime::{
     AgentBuilder as RuntimeAgentBuilder, EventBus, HarnessBuilder, InProcessRuntime,
     InProcessRuntimeBuilder, RuntimeBackends, RuntimeMessageStore, SessionBuilder,
@@ -25,17 +25,13 @@ use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_too
 
 /// How an [`Agent`] talks to a model.
 ///
-/// A `Model` carries the driver selection and model configuration behind a
-/// value-first surface, so the public builder never exposes `ResolvedModel`,
-/// `DriverId`, or the simulator config. [`Model::simulated`] backs an offline
-/// simulator; with the `openai` feature, an
-/// [`OpenAI`](crate::providers::openai::OpenAI) configuration converts into a
-/// `Model` that targets the real provider.
+/// A `Model` carries a credential-free specification and may bundle a ready-made
+/// provider assembly. [`Model::simulated`] uses the same provider path as every
+/// network-backed model.
 #[derive(Clone)]
 pub struct Model {
-    resolved: ResolvedModel,
-    /// Present when the model is backed by the in-process LLM simulator.
-    sim: Option<LlmSimConfig>,
+    spec: ModelSpec,
+    bundled_provider: Option<Provider>,
 }
 
 impl Model {
@@ -44,43 +40,41 @@ impl Model {
     /// Backed by the `llmsim` driver, so an agent using it runs entirely
     /// offline — no credentials, no network.
     pub fn simulated(response: impl Into<String>) -> Self {
-        Self {
-            resolved: ResolvedModel {
-                model: "llmsim-model".to_string(),
-                provider_type: DriverId::LlmSim,
-                api_key: Some("fake-key".to_string()),
-                base_url: None,
-                provider_metadata: None,
-            },
-            sim: Some(LlmSimConfig::fixed(response)),
-        }
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(LlmSimConfig::fixed(response))),
+        )
     }
 
     /// Build a `Model` that targets OpenAI's Responses API.
     ///
-    /// Keeps `ResolvedModel`/`DriverId` off the public surface: the
-    /// [`OpenAI`](crate::providers::openai::OpenAI) config is the value-first
-    /// entry point, and `build_runtime` registers the OpenAI driver only for a
-    /// model produced here.
+    /// The convenience produces the same public model/provider pair callers can
+    /// assemble directly with [`ModelSpec`] and [`Provider`].
     #[cfg(feature = "openai")]
     pub(crate) fn openai(config: crate::providers::openai::OpenAI) -> Self {
         let (model, api_key, base_url) = config.into_parts();
-        Self {
-            resolved: ResolvedModel {
-                model,
-                provider_type: DriverId::OpenAI,
-                api_key: Some(api_key),
-                base_url,
-                provider_metadata: None,
-            },
-            sim: None,
+        let mut provider = everruns_openai::provider("openai", api_key);
+        if let Some(base_url) = base_url {
+            provider = provider.base_url(base_url);
         }
+        Self::with_provider(ModelSpec::on("openai", model), provider)
     }
 
-    /// Whether this model needs the OpenAI driver registered on the runtime.
-    #[cfg(feature = "openai")]
-    fn is_openai(&self) -> bool {
-        self.resolved.provider_type == DriverId::OpenAI
+    /// Pair a model specification with a ready-to-use provider assembly.
+    pub fn with_provider(spec: ModelSpec, provider: Provider) -> Self {
+        Self {
+            spec,
+            bundled_provider: Some(provider),
+        }
+    }
+}
+
+impl From<ModelSpec> for Model {
+    fn from(spec: ModelSpec) -> Self {
+        Self {
+            spec,
+            bundled_provider: None,
+        }
     }
 }
 
@@ -95,16 +89,10 @@ impl Model {
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);
         sim.message_capture = Some(capture);
-        Self {
-            resolved: ResolvedModel {
-                model: "llmsim-model".to_string(),
-                provider_type: DriverId::LlmSim,
-                api_key: Some("fake-key".to_string()),
-                base_url: None,
-                provider_metadata: None,
-            },
-            sim: Some(sim),
-        }
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(sim)),
+        )
     }
 
     /// Test-only: a simulated model that waits `delay` (a TTFT delay) before
@@ -115,16 +103,10 @@ impl Model {
         delay: std::time::Duration,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_response_delay(delay);
-        Self {
-            resolved: ResolvedModel {
-                model: "llmsim-model".to_string(),
-                provider_type: DriverId::LlmSim,
-                api_key: Some("fake-key".to_string()),
-                base_url: None,
-                provider_metadata: None,
-            },
-            sim: Some(sim),
-        }
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(sim)),
+        )
     }
 
     /// Test-only: a simulated model that emits the given per-turn tool-call
@@ -135,26 +117,18 @@ impl Model {
         tool_call_sequence: Vec<Vec<everruns_core::ToolCall>>,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_tool_call_sequence(tool_call_sequence);
-        Self {
-            resolved: ResolvedModel {
-                model: "llmsim-model".to_string(),
-                provider_type: DriverId::LlmSim,
-                api_key: Some("fake-key".to_string()),
-                base_url: None,
-                provider_metadata: None,
-            },
-            sim: Some(sim),
-        }
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(sim)),
+        )
     }
 }
 
 impl fmt::Debug for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Redact the resolved model's api key; report only the shape.
         f.debug_struct("Model")
-            .field("model", &self.resolved.model)
-            .field("provider_type", &self.resolved.provider_type)
-            .field("simulated", &self.sim.is_some())
+            .field("spec", &self.spec)
+            .field("bundled_provider", &self.bundled_provider)
             .finish()
     }
 }
@@ -188,6 +162,13 @@ pub enum BuildError {
         /// The colliding tool name.
         name: String,
     },
+    /// Two providers used the same normalized identity.
+    DuplicateProvider { id: String },
+    /// The selected model names a provider that was not registered.
+    UnknownProvider {
+        requested: String,
+        registered: Vec<String>,
+    },
 }
 
 impl fmt::Display for BuildError {
@@ -206,6 +187,15 @@ impl fmt::Display for BuildError {
             BuildError::DuplicateTool { name } => {
                 write!(f, "duplicate tool name {name:?}")
             }
+            BuildError::DuplicateProvider { id } => write!(f, "duplicate provider {id:?}"),
+            BuildError::UnknownProvider {
+                requested,
+                registered,
+            } => write!(
+                f,
+                "provider {requested:?} is not registered; registered providers: [{}]",
+                registered.join(", ")
+            ),
         }
     }
 }
@@ -223,6 +213,7 @@ pub struct Agent {
     name: String,
     instructions: String,
     model: Model,
+    providers: Vec<Provider>,
     capabilities: Vec<AgentCapabilityConfig>,
     function_tools: Vec<FunctionTool>,
     initial_files: Vec<InitialFile>,
@@ -355,7 +346,7 @@ impl Agent {
             .harness(harness)
             .agent(agent)
             .session(session)
-            .default_model(self.model.resolved.clone());
+            .model_spec(self.model.spec.clone());
         // Route the runtime's raw event bus through the facade sink, and swap in
         // a persisting message store when one was supplied (EVE-836). Any store
         // not overridden stays on the default in-memory backend.
@@ -375,17 +366,8 @@ impl Agent {
         for tool in &self.function_tools {
             builder = builder.capability(tool.clone().into_capability());
         }
-        if let Some(sim) = &self.model.sim {
-            builder = builder.llm_sim(sim.clone());
-        }
-        // A real OpenAI model needs its driver registered so a turn can reach the
-        // provider; setting `default_model` alone is not enough. Register only for
-        // an OpenAI model, so a simulated-model agent needs no provider wiring.
-        #[cfg(feature = "openai")]
-        if self.model.is_openai() {
-            let mut registry = everruns_core::DriverRegistry::new();
-            everruns_openai::register_driver(&mut registry);
-            builder = builder.driver_registry(registry);
+        for provider in &self.providers {
+            builder = builder.provider(provider.clone());
         }
         builder.build().await
     }
@@ -401,6 +383,7 @@ pub struct AgentBuilder {
     name: Option<String>,
     instructions: Option<String>,
     model: Option<Model>,
+    providers: Vec<Provider>,
     capabilities: Vec<AgentCapabilityConfig>,
     tools: Vec<Tool>,
     initial_files: Vec<InitialFile>,
@@ -421,6 +404,12 @@ impl AgentBuilder {
     /// under the `openai` feature.
     pub fn model(mut self, model: impl Into<Model>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Register a service provider selected by the model specification.
+    pub fn provider(mut self, provider: Provider) -> Self {
+        self.providers.push(provider);
         self
     }
 
@@ -499,6 +488,29 @@ impl AgentBuilder {
             return Err(BuildError::BlankInstructions);
         }
         let model = self.model.ok_or(BuildError::MissingModel)?;
+        let mut providers = self.providers;
+        if let Some(provider) = model.bundled_provider.clone() {
+            providers.push(provider);
+        }
+        let mut provider_ids = HashSet::new();
+        for provider in &providers {
+            if !provider_ids.insert(provider.id().clone()) {
+                return Err(BuildError::DuplicateProvider {
+                    id: provider.id().to_string(),
+                });
+            }
+        }
+        if !provider_ids.contains(&model.spec.provider) {
+            let mut registered = provider_ids
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            registered.sort();
+            return Err(BuildError::UnknownProvider {
+                requested: model.spec.provider.to_string(),
+                registered,
+            });
+        }
         let name = self.name.unwrap_or_else(|| "agent".to_string());
 
         // Validate tools and split them into capability refs (attached to the
@@ -537,6 +549,7 @@ impl AgentBuilder {
             name,
             instructions,
             model,
+            providers,
             capabilities,
             function_tools,
             initial_files: self.initial_files,
@@ -742,9 +755,11 @@ mod tests {
         use crate::providers::openai::OpenAI;
 
         let model = Model::openai(OpenAI::new("gpt-5-mini", "sk-super-secret"));
-        assert!(model.is_openai());
-        assert_eq!(model.resolved.model, "gpt-5-mini");
-        assert!(model.sim.is_none(), "an OpenAI model uses no simulator");
+        assert_eq!(model.spec, ModelSpec::on("openai", "gpt-5-mini"));
+        assert_eq!(
+            model.bundled_provider.as_ref().unwrap().id().as_str(),
+            "openai"
+        );
         // The value-first `Debug` reports shape only, never the key.
         let rendered = format!("{model:?}");
         assert!(!rendered.contains("sk-super-secret"), "got {rendered}");

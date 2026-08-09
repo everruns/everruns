@@ -326,6 +326,7 @@ impl GrpcClient {
         let request = proto::GetDefaultProviderCredentialsRequest {
             org_id,
             provider_type: provider_type.to_string(),
+            provider_id: String::new(),
         };
 
         let mut client = self.inner.lock().await;
@@ -342,6 +343,38 @@ impl GrpcClient {
         Ok(Some(ProviderCredentials {
             api_key: response.api_key,
             base_url: non_empty_string(response.base_url),
+        }))
+    }
+
+    pub async fn get_provider_config(
+        &self,
+        org_id: i64,
+        provider_id: &str,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        let request = proto::GetDefaultProviderCredentialsRequest {
+            org_id,
+            provider_type: String::new(),
+            provider_id: provider_id.to_string(),
+        };
+        let mut client = self.inner.lock().await;
+        let response = client
+            .get_default_provider_credentials(request)
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        if !response.found {
+            return Ok(None);
+        }
+        let provider_type = response
+            .provider_type
+            .parse()
+            .unwrap_or_else(|_| unreachable!());
+        Ok(Some(everruns_core::ProviderConfig {
+            provider: everruns_core::ProviderKey::new(provider_id),
+            provider_type,
+            api_key: non_empty_string(response.api_key),
+            base_url: non_empty_string(response.base_url),
+            metadata: everruns_core::ProviderMetadata::default(),
         }))
     }
 
@@ -1683,6 +1716,15 @@ impl ProviderStore for GrpcOrgAdapter {
             None => Ok(None),
         }
     }
+
+    async fn get_provider_config(
+        &self,
+        provider: &everruns_core::ProviderKey,
+    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        self.client
+            .get_provider_config(self.org_id, provider.as_str())
+            .await
+    }
 }
 
 #[async_trait]
@@ -1735,9 +1777,12 @@ fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<Res
     Ok(ResolvedModel {
         model: proto.model,
         provider_type,
-        api_key: proto.api_key.filter(|s| !s.is_empty()),
-        base_url: proto.base_url.filter(|s| !s.is_empty()),
-        provider_metadata: None,
+        api_key: None,
+        base_url: None,
+        provider_metadata: Some(everruns_core::ProviderMetadata {
+            extra: Some(serde_json::json!({ "provider_id": proto.provider_id })),
+            ..Default::default()
+        }),
     })
 }
 
@@ -4363,6 +4408,21 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
 mod tests {
     use super::*;
     use uuid::Uuid;
+
+    #[test]
+    fn resolved_model_proto_conversion_is_credential_free() {
+        let resolved = proto_model_with_provider_to_model(proto::ResolvedModel {
+            model: "custom-model".into(),
+            provider_id: "provider-123".into(),
+            provider_type: "custom-protocol".into(),
+        })
+        .unwrap();
+
+        assert_eq!(resolved.model, "custom-model");
+        assert_eq!(resolved.provider_key().as_str(), "provider-123");
+        assert!(resolved.api_key.is_none());
+        assert!(resolved.base_url.is_none());
+    }
 
     #[test]
     fn test_proto_harness_to_harness_preserves_metadata() {

@@ -527,7 +527,7 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
     // Native execution phases are implemented by the first-party OpenAI and
     // Meta Responses surfaces. Gateways keep the base model profile while
     // masking provider-native request options.
-    if !matches!(provider_type, DriverId::OpenAI | DriverId::Meta) {
+    if provider_type != &DriverId::OpenAI && provider_type != &DriverId::Meta {
         profile.supports_phases = false;
     }
     // Hosted tool_search is rendered by the OpenAI Responses driver and the
@@ -539,22 +539,22 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
     //     only on the InvokeModel API, which this driver does not use.
     //   - OpenAI Completions / Gemini: no hosted tool_search at all.
     // So mask the flag except on the first-party surfaces that implement it.
-    if !matches!(
-        provider_type,
-        DriverId::OpenAI | DriverId::Anthropic | DriverId::Meta
-    ) {
+    if provider_type != &DriverId::OpenAI
+        && provider_type != &DriverId::Anthropic
+        && provider_type != &DriverId::Meta
+    {
         profile.tool_search = false;
     }
     // Speed (service tier) is an OpenAI-platform billing feature. Azure has
     // its own capacity model and gateways (OpenRouter) do their own routing,
     // so only the first-party OpenAI surface keeps the selector.
-    if !matches!(provider_type, DriverId::OpenAI) {
+    if provider_type != &DriverId::OpenAI {
         profile.speed = None;
     }
     // Verbosity (`text.verbosity` / `verbosity`) is an OpenAI-specific request
     // parameter. Gateways that proxy these models may reject the unknown field,
     // so only the first-party OpenAI surface keeps the selector.
-    if !matches!(provider_type, DriverId::OpenAI) {
+    if provider_type != &DriverId::OpenAI {
         profile.verbosity = None;
     }
     Some(profile)

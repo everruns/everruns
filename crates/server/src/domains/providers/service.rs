@@ -368,10 +368,9 @@ fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     if raw.trim().is_empty() {
         return Err(BadRequestError::new("Provider type cannot be empty").into());
     }
-    // `DriverId::external` preserves the string verbatim, so a padded id like
-    // " openai " is non-empty here but later fails driver-registry lookup and
-    // persists as a corrupt row. Reject surrounding whitespace outright rather
-    // than silently normalizing it.
+    // Keep this defense for already-constructed values. HTTP deserialization
+    // rejects padding before normalization, so malformed wire ids cannot reach
+    // persistence as canonical-but-unintended names.
     if raw != raw.trim() {
         return Err(BadRequestError::new(
             "Provider type cannot have leading or trailing whitespace",
@@ -551,14 +550,8 @@ mod tests {
 
     #[test]
     fn provider_type_rejects_padded_external_id() {
-        // Non-empty but whitespace-padded: would persist verbatim and fail
-        // driver-registry lookup later, so it must be rejected at write time.
-        let err = validate_provider_type(&DriverId::external(" openai ")).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Provider type cannot have leading or trailing whitespace")
-        );
-        assert!(err.downcast_ref::<BadRequestError>().is_some());
+        let result = serde_json::from_str::<DriverId>(r#"" openai ""#);
+        assert!(result.is_err());
     }
 
     #[test]
