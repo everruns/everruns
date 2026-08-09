@@ -35,7 +35,8 @@ The Framework owns value-first configuration for:
 - editable and read-only initial files plus an optional real-disk workspace;
 - scoped HTTP or local-process MCP servers;
 - local plugin directory loading and non-fatal compile warnings;
-- multi-turn execution, events, cancellation, context inspection, and
+- live message ingress with automatic active-turn steering, optional turn
+  waiting, events, cancellation, context inspection, and
   credential-free model identity;
 - canonical, lossless session events and lifecycle hooks through curated
   application values rather than engine or worker phase records;
@@ -121,6 +122,7 @@ remove. Host implementations may continue using the compatibility crate in
 | Built-in simulation and real or custom model providers | Promote | Applications select a plain credential-free model id and attach one provider configuration or custom protocol driver without constructing a `ModelSpec` or platform registry. |
 | Application-defined function tools and initial files | Promote | These are agent behavior and workspace inputs, not host entities. |
 | In-process and OpenAI runtime examples | Promote | They map to normal agent construction and one or more Framework sessions. |
+| Live message send, steering, and optional waiting | Promote | A Framework session is a live conversation: message acceptance is independent of turn completion, and routing to the active or next turn is decided atomically by the session. |
 | Context-inspection example and evaluation assertions | Promote | Applications receive a curated next-turn context rather than stored records or backend assembly types. |
 | Real-disk filesystem and agent-instruction examples | Promote | A single owned workspace root plus editable/read-only seed files is an application concern and retains the runtime filesystem boundary. |
 | Plugin-directory example | Promote | Local plugin compilation configures an agent; non-fatal warnings stay inspectable. |
@@ -164,6 +166,11 @@ and multi-host lifecycle management remain host concerns.
 - Canonical events are the sole durable conversation record. Message/context
   history is a read projection; new Framework profiles must not select or own a
   writable message store.
+- A Framework session has at most one active turn. Sending while that turn still
+  accepts input steers it; sending after its terminal boundary starts the next
+  turn. The acceptance receipt is authoritative for that timing-dependent
+  decision, and blocking request/response remains convenience over send plus
+  wait rather than a separate execution mode.
 - The host log owns coherent append and bounded snapshot replay. In-memory
   durability is process-lifetime only; JSONL acknowledges only a flushed and
   synchronized canonical envelope. Any projection index is rebuildable.

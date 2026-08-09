@@ -159,7 +159,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         .max_iterations(6)
         .build()?;
 
-    let mut session = agent.session();
+    let session = agent.session();
     let mut events = session.events();
     let context = session.inspect().await?;
     let tool_names = context.tools.iter().map(|tool| tool.name.clone()).collect();

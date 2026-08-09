@@ -24,7 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .readonly_file("input/brief.md", "Summarize the workspace policy.")
         .build()?;
 
-    let turn = agent.session().run("Confirm the policy is active.").await?;
+    let turn = agent
+        .session()
+        .send_and_wait("Confirm the policy is active.")
+        .await?;
     assert_eq!(turn.response, "Workspace policy configured.");
     assert_eq!(
         std::fs::read_to_string(workspace.path().join("input/brief.md"))?,

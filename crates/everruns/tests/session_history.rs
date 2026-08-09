@@ -48,7 +48,7 @@ async fn new_session_has_one_empty_terminal_page_and_fused_end() {
 #[tokio::test]
 async fn history_is_stably_ordered_and_pages_at_exact_boundaries() {
     let agent = test_agent();
-    let mut session = agent.session();
+    let session = agent.session();
     session.run("first input").await.unwrap();
 
     let exact = session.history().limit(2).unwrap().page().await.unwrap();
@@ -75,7 +75,7 @@ async fn history_is_stably_ordered_and_pages_at_exact_boundaries() {
 #[tokio::test]
 async fn cursor_snapshot_excludes_concurrent_appends() {
     let agent = test_agent();
-    let mut session = agent.session();
+    let session = agent.session();
     session.run("one").await.unwrap();
     session.run("two").await.unwrap();
 
@@ -113,7 +113,7 @@ async fn cursor_snapshot_excludes_concurrent_appends() {
 #[tokio::test]
 async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
     let agent = test_agent();
-    let mut first = agent.session();
+    let first = agent.session();
     first.run("one").await.unwrap();
     let cursor = first
         .history()
@@ -160,7 +160,7 @@ async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
 async fn default_agent_and_its_clones_resume_but_a_new_agent_does_not() {
     let agent = test_agent();
     let clone = agent.clone();
-    let mut session = agent.session();
+    let session = agent.session();
     let session_id = session.session_id();
     session.run("remember me").await.unwrap();
     drop(session);
@@ -210,13 +210,13 @@ async fn local_profile_resumes_empty_and_multi_turn_sessions_across_agents() {
 
     {
         let agent = local_agent(root.path());
-        let mut resumed = agent.resume(session_id).await.unwrap();
+        let resumed = agent.resume(session_id).await.unwrap();
         assert!(resumed.history().page().await.unwrap().is_empty());
         resumed.run("persisted input").await.unwrap();
     }
 
     let agent = local_agent(root.path());
-    let mut resumed = agent.resume(session_id).await.unwrap();
+    let resumed = agent.resume(session_id).await.unwrap();
     let history = resumed.history().page().await.unwrap();
     assert_eq!(history.len(), 2);
     assert_eq!(history.messages[0].text(), "persisted input");
@@ -274,7 +274,7 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
     let torn_root = tempfile::tempdir().unwrap();
     let torn_id = {
         let agent = local_agent(torn_root.path());
-        let mut session = agent.session();
+        let session = agent.session();
         session.run("committed").await.unwrap();
         session.session_id()
     };
@@ -291,7 +291,7 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
     let corrupt_root = tempfile::tempdir().unwrap();
     let corrupt_id = {
         let agent = local_agent(corrupt_root.path());
-        let mut session = agent.session();
+        let session = agent.session();
         session.run("committed").await.unwrap();
         session.session_id()
     };

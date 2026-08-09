@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let turn = agent
         .session()
-        .run("Is the payments service healthy?")
+        .send_and_wait("Is the payments service healthy?")
         .await?;
     println!("response: {}", turn.response);
 

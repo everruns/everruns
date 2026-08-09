@@ -169,9 +169,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     println!("monitoring {}", mode.target());
-    let mut session = agent.session();
+    let session = agent.session();
     let started = session
-        .run("Monitor this pull request until its checks finish.")
+        .send_and_wait("Monitor this pull request until its checks finish.")
         .await?;
     println!("agent: {}", started.response);
 
@@ -187,7 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "[automatic] Background task {} {status}.\n\n{}",
         completion.task_id, completion.output
     );
-    let reviewed = session.run(wake).await?;
+    let reviewed = session.send_and_wait(wake).await?;
     println!("agent: {}", reviewed.response);
 
     Ok(())

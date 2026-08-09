@@ -388,7 +388,7 @@ impl Agent {
     /// agent.
     ///
     /// The session is lazy: the in-process runtime is assembled on the first
-    /// [`Session::run`](crate::Session::run) or
+    /// [`Session::send`](crate::Session::send) or
     /// [`Session::inspect`](crate::Session::inspect). Each session gets a fresh
     /// id and isolated history. The Agent and its clones share the private
     /// session catalog and event log so a dropped session can be resumed while
@@ -1251,7 +1251,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let mut session = agent.session();
+        let session = agent.session();
         let turn = session.run("Please greet Ada.").await.expect("turn runs");
 
         assert!(turn.success, "turn should succeed: {:?}", turn.error);
@@ -1290,7 +1290,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let mut session = agent.session();
+        let session = agent.session();
         // The handler error becomes a tool result the model consumes; the turn
         // still completes rather than panicking.
         let turn = session.run("go").await.expect("turn runs");

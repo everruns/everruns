@@ -27,6 +27,9 @@ Application-facing behavior should have these qualities:
   plain model id, without exposing execution-facing model specifications;
 - multi-turn state is isolated by session and inspectable without backend
   access;
+- sessions accept messages independently of response timing, automatically
+  route concurrent input to the active or next turn, and let applications wait
+  only when they choose;
 - live observation and cancellation never require ownership of the host event
   bus or task runner;
 - awaited lifecycle extensions are explicit and distinct from non-blocking

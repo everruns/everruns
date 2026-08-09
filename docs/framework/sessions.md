@@ -16,9 +16,9 @@ let agent = Agent::builder()
     .model(Model::simulated("Acknowledged."))
     .build()?;
 
-let mut session = agent.session();
-let first = session.run("My project is Atlas.").await?;
-let second = session.run("Continue with that project.").await?;
+let session = agent.session();
+let first = session.send_and_wait("My project is Atlas.").await?;
+let second = session.send_and_wait("Continue with that project.").await?;
 
 assert!(first.success);
 assert!(second.success);
@@ -26,10 +26,45 @@ assert!(second.success);
 # }
 ```
 
+`Session` is always a live conversation. `send` accepts a message without
+waiting for a response. If a turn is active, the message steers that turn; if
+the previous turn has already finished, it starts a follow-up turn. The receipt
+reports which case occurred, so applications do not need to race on session
+state themselves:
+
+```rust
+# use everruns::{Agent, Model, SendDisposition};
+# #[tokio::main]
+# async fn main() -> Result<(), Box<dyn std::error::Error>> {
+# let agent = Agent::builder().instructions("Remember input.").model(Model::simulated("Done.")).build()?;
+let session = agent.session();
+let initial = session.send("Plan my trip.").await?;
+let latest = session.send("Prefer trains.").await?;
+
+match latest.disposition {
+    SendDisposition::Steered => {
+        assert_eq!(latest.turn_id, initial.turn_id);
+    }
+    SendDisposition::Started => {
+        // The first turn completed before the second message was accepted.
+    }
+    _ => {}
+}
+
+let result = latest.wait().await?;
+# let _ = result;
+# Ok(())
+# }
+```
+
+Waiting on the latest receipt works in both cases. `send_and_wait` (also
+available as the shorter `run` alias) is request/response convenience over the
+same live session, not a separate mode.
+
 The first asynchronous operation materializes the in-process host. Later turns
-reuse it and send the accumulated history through the same context-assembly
-path. Two sessions opened from the same agent have different opaque IDs and
-isolated histories even though the Agent owns their shared event backend.
+reuse it and send accumulated history through the same context-assembly path.
+Two sessions opened from the same agent have different opaque IDs and isolated
+histories even though the Agent owns their shared event backend.
 
 `Session::inspect` returns the context assembled for the next model call. Use it
 for application assertions and debugging rather than reaching into runtime

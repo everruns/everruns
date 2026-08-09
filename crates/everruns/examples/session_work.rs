@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instructions("You summarize completed background work.")
         .model(Model::simulated("Background work handled."))
         .build()?;
-    let mut session = agent.session();
+    let session = agent.session();
 
     let queue = WorkQueue::in_memory();
     let session_work = session.work(&queue);

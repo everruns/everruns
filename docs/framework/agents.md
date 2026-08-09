@@ -52,7 +52,7 @@ the application-facing session context.
 Inspect the next model call before or after a turn:
 
 ```rust
-let mut session = agent.session();
+let session = agent.session();
 let context = session.inspect().await?;
 println!("messages: {}", context.messages.len());
 println!("tools: {}", context.tools.len());

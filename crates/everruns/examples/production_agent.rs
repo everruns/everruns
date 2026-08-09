@@ -30,10 +30,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .tool(lookup_order())
         .build()?;
 
-    let mut session = agent.session();
-    let first = session.run("What is the status of order A-42?").await?;
+    let session = agent.session();
+    let first = session
+        .send_and_wait("What is the status of order A-42?")
+        .await?;
     println!("assistant: {}", first.response);
-    let second = session.run("What can you do next?").await?;
+    let second = session.send_and_wait("What can you do next?").await?;
     println!("assistant: {}", second.response);
     Ok(())
 }

@@ -62,17 +62,17 @@ async fn main() -> Result<()> {
     }
     .context("build the coding agent")?;
 
-    let mut session = agent.session();
+    let session = agent.session();
 
     if cli.prompt.is_empty() {
-        repl(&mut session).await
+        repl(&session).await
     } else {
-        run_prompt(&mut session, &cli.prompt.join(" ")).await
+        run_prompt(&session, &cli.prompt.join(" ")).await
     }
 }
 
 /// Run one prompt: render the tool activity the turn emits, then its response.
-async fn run_prompt(session: &mut Session, prompt: &str) -> Result<()> {
+async fn run_prompt(session: &Session, prompt: &str) -> Result<()> {
     let mut events = session.events();
     let turn = session.run(prompt).await.context("run turn")?;
 
@@ -99,7 +99,7 @@ async fn run_prompt(session: &mut Session, prompt: &str) -> Result<()> {
 }
 
 /// Interactive REPL: each line is a turn; history accumulates in the session.
-async fn repl(session: &mut Session) -> Result<()> {
+async fn repl(session: &Session) -> Result<()> {
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     eprintln!("ercode — type a prompt, or Ctrl-D to exit.");
     loop {

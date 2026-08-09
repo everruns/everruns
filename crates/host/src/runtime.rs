@@ -45,10 +45,13 @@ use everruns_core::{
     AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext, plugin_capability_id, resolve_runtime_capabilities,
 };
-use everruns_engine::{ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason};
+use everruns_engine::{
+    ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
+};
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
 ///
@@ -121,6 +124,123 @@ pub struct TurnResult {
     pub stop_reason: TurnStopReason,
     /// Turn identifier used to correlate emitted events.
     pub turn_id: everruns_core::typed_id::TurnId,
+}
+
+/// An application message accepted for a specific in-process turn.
+///
+/// The caller creates this value before dispatch so it can acknowledge the
+/// stable message id without waiting for execution to begin.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct AcceptedTurnInput {
+    message_id: MessageId,
+    input: InputMessage,
+}
+
+impl AcceptedTurnInput {
+    pub fn new(input: impl Into<InputMessage>) -> Self {
+        Self {
+            message_id: MessageId::new(),
+            input: input.into(),
+        }
+    }
+
+    pub fn message_id(&self) -> MessageId {
+        self.message_id
+    }
+
+    pub fn input(&self) -> &InputMessage {
+        &self.input
+    }
+
+    fn into_message(self) -> Message {
+        message_from_input_with_id(self.message_id, self.input)
+    }
+}
+
+/// Concurrency-safe ingress for messages sent while an in-process turn runs.
+///
+/// Closing and observing an empty queue is one atomic operation. A sender can
+/// therefore never be told that it steered a turn after that turn committed to
+/// completion; rejected input belongs to the next turn instead.
+#[doc(hidden)]
+#[derive(Clone, Debug)]
+pub struct TurnSteering {
+    state: Arc<Mutex<TurnSteeringState>>,
+}
+
+#[doc(hidden)]
+#[derive(Debug)]
+pub enum TurnSteeringPushError {
+    Closed(Box<AcceptedTurnInput>),
+    Full(Box<AcceptedTurnInput>),
+}
+
+/// Bounds user input retained between reason boundaries when a model or tool is slow.
+// THREAT[TM-DOS-036]: reject overflow before accepting more steering input.
+const TURN_STEERING_CAPACITY: usize = 256;
+
+#[derive(Debug, Default)]
+struct TurnSteeringState {
+    open: bool,
+    inputs: VecDeque<AcceptedTurnInput>,
+}
+
+impl TurnSteering {
+    pub fn new() -> Self {
+        Self {
+            state: Arc::new(Mutex::new(TurnSteeringState {
+                open: true,
+                inputs: VecDeque::new(),
+            })),
+        }
+    }
+
+    pub fn try_push(
+        &self,
+        input: AcceptedTurnInput,
+    ) -> std::result::Result<(), TurnSteeringPushError> {
+        let mut state = self.state.lock().expect("turn steering lock poisoned");
+        if !state.open {
+            return Err(TurnSteeringPushError::Closed(Box::new(input)));
+        }
+        if state.inputs.len() >= TURN_STEERING_CAPACITY {
+            return Err(TurnSteeringPushError::Full(Box::new(input)));
+        }
+        state.inputs.push_back(input);
+        Ok(())
+    }
+
+    fn drain(&self) -> Vec<AcceptedTurnInput> {
+        let mut state = self.state.lock().expect("turn steering lock poisoned");
+        state.inputs.drain(..).collect()
+    }
+
+    /// Drain accepted input, or close the ingress when there is none.
+    fn drain_or_close(&self) -> Vec<AcceptedTurnInput> {
+        let mut state = self.state.lock().expect("turn steering lock poisoned");
+        if state.inputs.is_empty() {
+            state.open = false;
+            return vec![];
+        }
+        state.inputs.drain(..).collect()
+    }
+
+    pub fn close(&self) {
+        self.state.lock().expect("turn steering lock poisoned").open = false;
+    }
+
+    pub fn close_and_drain(&self) -> Vec<AcceptedTurnInput> {
+        let mut state = self.state.lock().expect("turn steering lock poisoned");
+        state.open = false;
+        state.inputs.drain(..).collect()
+    }
+}
+
+impl Default for TurnSteering {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Result of changing the session-scoped capability set of a live runtime.
@@ -953,6 +1073,25 @@ impl InProcessRuntime {
         session_id: SessionId,
         input: impl Into<InputMessage>,
     ) -> Result<TurnResult> {
+        self.run_steerable_turn(
+            session_id,
+            AcceptedTurnInput::new(input),
+            TurnId::new(),
+            TurnSteering::new(),
+        )
+        .await
+    }
+
+    /// Execute one turn while accepting additional user messages at reason
+    /// boundaries.
+    #[doc(hidden)]
+    pub async fn run_steerable_turn(
+        &self,
+        session_id: SessionId,
+        input: AcceptedTurnInput,
+        turn_id: TurnId,
+        steering: TurnSteering,
+    ) -> Result<TurnResult> {
         let session = self
             .session_store
             .get_session(session_id)
@@ -961,7 +1100,7 @@ impl InProcessRuntime {
 
         // The canonical input envelope is the only write. EventHistory rebuilds
         // the message projection from this accepted append.
-        let input_message = message_from_input(input.into());
+        let input_message = input.into_message();
         self.event_emitter
             .emit(EventRequest::new(
                 session_id,
@@ -971,7 +1110,6 @@ impl InProcessRuntime {
             .await?;
 
         let org_id = in_process_internal_org_id(&session.organization_id);
-        let turn_id = TurnId::new();
 
         // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
         // decision comes from `everruns-engine`; this loop only executes the
@@ -1021,18 +1159,23 @@ impl InProcessRuntime {
         let mut iterations: usize = 0;
         let mut tool_calls_count: usize = 0;
         let mut last_response = String::new();
+        let mut pending_prompt_message_ids = Vec::new();
 
         loop {
             match plan {
                 RuntimeTurnPlan::ScheduleReason(next_state) => {
                     state = next_state;
+                    let mut prompt_message_ids = std::mem::take(&mut pending_prompt_message_ids);
+                    prompt_message_ids.extend(
+                        self.inject_steering_inputs(session_id, steering.drain())
+                            .await?,
+                    );
                     // Iteration boundary: drain queued task wakes and inject
                     // them before the LLM call so this reason reacts to them
                     // (EVE-681, part A). Draining here also delivers wakes that
                     // arrived while the session was idle, on the next turn's
                     // first iteration (between-turn fallback).
-                    let wake_message_ids = self.drain_and_inject_wakes(session_id).await?;
-                    let mut prompt_message_ids = wake_message_ids;
+                    prompt_message_ids.extend(self.drain_and_inject_wakes(session_id).await?);
                     if state.iteration == 1 {
                         prompt_message_ids.insert(0, input_message.id);
                     }
@@ -1057,16 +1200,36 @@ impl InProcessRuntime {
                         last_response = reason_result.text.clone();
                     }
 
-                    // If a wake landed during this reason (e.g. a background
-                    // task settling on another task), continue a would-idle turn
-                    // so it is delivered on the very next iteration rather than
-                    // after the session idles. The engine reads this as the
-                    // steering-message count the durable host reports.
-                    let pending_user_message_count = usize::from(
+                    // Only a reason that would otherwise finish may close user
+                    // ingress. The queue check and close are atomic, so a send
+                    // is always classified as either steering this turn or
+                    // starting the next one.
+                    let pending_wake_count = usize::from(
                         self.session_wake_queue
                             .as_ref()
                             .is_some_and(|q| q.has_pending(session_id)),
                     );
+                    let can_continue = reason_result.success
+                        && state.iteration < reason_result.max_iterations as u32;
+                    let pending_steering = if !reason_schedules_act(&state, &reason_result)
+                        && can_continue
+                        && pending_wake_count == 0
+                    {
+                        steering.drain_or_close()
+                    } else {
+                        vec![]
+                    };
+                    let pending_steering_count = pending_steering.len();
+                    if !pending_steering.is_empty() {
+                        pending_prompt_message_ids.extend(
+                            self.inject_steering_inputs(session_id, pending_steering)
+                                .await?,
+                        );
+                    }
+                    if !can_continue {
+                        steering.close();
+                    }
+                    let pending_user_message_count = pending_wake_count + pending_steering_count;
 
                     let act_scheduling =
                         crate::turn_strategy::resolve_act_scheduling(self, &state, &reason_result)
@@ -1107,6 +1270,7 @@ impl InProcessRuntime {
                     plan = next;
                 }
                 RuntimeTurnPlan::Complete { stop_reason, error } => {
+                    steering.close();
                     return Ok(finish_turn(
                         turn_id,
                         stop_reason,
@@ -1120,6 +1284,9 @@ impl InProcessRuntime {
                 // path, so a pause resolves the turn here. The session has
                 // already been marked `waiting_for_tool_results` by the effect.
                 RuntimeTurnPlan::WaitForToolResults { .. } => {
+                    steering.close();
+                    self.inject_steering_inputs(session_id, steering.drain())
+                        .await?;
                     return Ok(finish_turn(
                         turn_id,
                         TurnStopReason::EndTurn,
@@ -1139,6 +1306,38 @@ impl InProcessRuntime {
         text: impl Into<String>,
     ) -> Result<TurnResult> {
         self.run_turn(session_id, InputMessage::user(text)).await
+    }
+
+    async fn inject_steering_inputs(
+        &self,
+        session_id: SessionId,
+        inputs: Vec<AcceptedTurnInput>,
+    ) -> Result<Vec<MessageId>> {
+        let mut message_ids = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            let message = input.into_message();
+            message_ids.push(message.id);
+            self.event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ))
+                .await?;
+        }
+        Ok(message_ids)
+    }
+
+    /// Persist accepted steering that could not reach another reason boundary.
+    #[doc(hidden)]
+    pub async fn append_accepted_inputs(
+        &self,
+        session_id: SessionId,
+        inputs: Vec<AcceptedTurnInput>,
+    ) -> Result<()> {
+        self.inject_steering_inputs(session_id, inputs)
+            .await
+            .map(|_| ())
     }
 
     /// Drain any queued task wakes for `session_id` and inject them into the
@@ -1620,8 +1819,12 @@ async fn seed_runtime_initial_files(
 }
 
 fn message_from_input(input: InputMessage) -> Message {
+    message_from_input_with_id(MessageId::new(), input)
+}
+
+fn message_from_input_with_id(message_id: MessageId, input: InputMessage) -> Message {
     Message {
-        id: MessageId::new(),
+        id: message_id,
         role: input.role,
         content: input.content,
         phase: None,

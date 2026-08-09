@@ -9,6 +9,7 @@ contains the maintained public examples. Each imports the `everruns` facade.
 | Example | Demonstrates | Command |
 | --- | --- | --- |
 | [`workspace_policy.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_policy.rs) | Safe workspace scopes and trusted starter files, fully offline | `cargo run -p everruns --example workspace_policy` |
+| [`live_session.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/live_session.rs) | Non-blocking send, automatic steering, and optional waiting, fully offline | `cargo run -p everruns --example live_session` |
 | [`hello.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/hello.rs) | Small live-provider agent | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/production_agent.rs) | Tools, files, and production-style setup | `cargo run -p everruns --features openai --example production_agent` |
 | [`github_monitor.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/github_monitor.rs) | Typed tools and an offline simulation mode | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
@@ -19,9 +20,10 @@ contains the maintained public examples. Each imports the `everruns` facade.
 | [`observe_and_cancel.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) | Live events and cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`lifecycle_hooks.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 
-Live modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`. `canonical_events`,
-`session_work`, `workspace_policy`, and `session_history` are fully offline;
-the GitHub monitor also offers a simulated GitHub flow:
+Live-provider modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`.
+`canonical_events`, `live_session`, `session_work`, `workspace_policy`, and
+`session_history` are fully offline; the GitHub monitor also offers a simulated
+GitHub flow:
 
 ```bash
 cargo run -p everruns --features openai --example github_monitor -- --simulate

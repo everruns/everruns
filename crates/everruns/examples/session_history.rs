@@ -21,16 +21,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let session_id = {
         let first_agent = agent(&data_dir)?;
-        let mut session = first_agent.session();
-        session.run("My project is Atlas.").await?;
-        session.run("Remember that name.").await?;
+        let session = first_agent.session();
+        session.send_and_wait("My project is Atlas.").await?;
+        session.send_and_wait("Remember that name.").await?;
         session.session_id()
     };
 
     // A newly built Agent restores identity and history from the same trusted
     // local profile. Application code never opens an event log or database.
     let second_agent = agent(&data_dir)?;
-    let mut resumed = second_agent.resume(session_id).await?;
+    let resumed = second_agent.resume(session_id).await?;
     let mut pages = resumed.history().limit(2)?.pages();
     while let Some(page) = pages.next_page().await? {
         for message in page.messages {
@@ -38,7 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    resumed.run("Continue the session.").await?;
+    resumed.send_and_wait("Continue the session.").await?;
     println!("resumed session {session_id}");
     println!("local state: {}", data_dir.display());
     Ok(())

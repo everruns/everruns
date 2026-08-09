@@ -23,7 +23,7 @@ users should depend on `everruns` and use the Framework.
 | Use one real workspace | `AgentBuilder::workspace` or feature-gated `LocalConfig` |
 | Configure scoped MCP or a plugin | `McpServer` and `AgentBuilder::plugin` |
 | Inspect next-turn context | `Session::inspect` |
-| Observe and cancel a live turn | `Session::events` and `Session::run_with` |
+| Send, steer, observe, wait, or cancel a live turn | `Session::send`, its receipt/turn handle, and `Session::events` |
 
 Move application concerns first. Keep direct runtime imports only where code
 really owns host backend traits, stored entities, platform definitions, phase

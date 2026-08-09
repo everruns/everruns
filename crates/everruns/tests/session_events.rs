@@ -7,6 +7,7 @@
 //! covered by the crate's unit tests, which reach those internal test helpers.
 
 use everruns::prelude::*;
+use std::time::Duration;
 
 /// Collect every event from a stream until it closes (the session is dropped).
 async fn drain(mut stream: EventStream) -> Vec<SessionEvent> {
@@ -25,7 +26,7 @@ async fn stream_emits_ordered_start_delta_completion() {
         .build()
         .expect("valid agent");
 
-    let mut session = agent.session();
+    let session = agent.session();
     // Subscribe before running so the turn's events are observed from the start.
     let stream = session.events();
 
@@ -166,7 +167,7 @@ async fn pre_cancelled_token_yields_cancelled_stop_reason() {
         .build()
         .expect("valid agent");
 
-    let mut session = agent.session();
+    let session = agent.session();
     let stream = session.events();
     let token = CancellationToken::new();
     token.cancel();
@@ -199,7 +200,7 @@ async fn dropped_and_slow_consumers_do_not_stall_the_runner() {
         .build()
         .expect("valid agent");
 
-    let mut session = agent.session();
+    let session = agent.session();
 
     // One consumer subscribes then immediately drops its stream; another never
     // reads. Neither must block or fail the turn.
@@ -223,7 +224,7 @@ async fn two_sessions_do_not_receive_each_others_events() {
         .build()
         .expect("valid agent");
 
-    let mut first = agent.session();
+    let first = agent.session();
     let second = agent.session();
 
     let first_stream = first.events();
@@ -252,4 +253,147 @@ async fn two_sessions_do_not_receive_each_others_events() {
         first_events.iter().all(|e| e.session_id == first_id),
         "every observed event belongs to the first session"
     );
+}
+
+#[tokio::test]
+async fn send_routes_to_the_active_turn_and_returns_before_completion() {
+    let model = Model::simulated_with_config(
+        LlmSimConfig::echo().with_response_delay(Duration::from_millis(100)),
+    );
+    let agent = Agent::builder()
+        .instructions("Follow every user message.")
+        .model(model)
+        .build()
+        .expect("valid agent");
+    let session = agent.session();
+
+    let initial = tokio::time::timeout(Duration::from_millis(25), session.send("Plan my trip"))
+        .await
+        .expect("send only waits for acceptance")
+        .expect("message accepted");
+    assert_eq!(initial.disposition, SendDisposition::Started);
+
+    let latest = session
+        .send("Prefer trains")
+        .await
+        .expect("steering accepted");
+    assert_eq!(latest.disposition, SendDisposition::Steered);
+    assert_eq!(latest.turn_id, initial.turn_id);
+
+    let turn = latest.wait().await.expect("active turn completes");
+    assert!(turn.success);
+    assert_eq!(turn.turn_id, latest.turn_id);
+    assert_eq!(turn.response, "Echo: Prefer trains");
+
+    let history = session.history().page().await.expect("history available");
+    let user_text: Vec<String> = history
+        .messages
+        .iter()
+        .filter(|message| message.role == MessageRole::User)
+        .map(|message| message.text())
+        .collect();
+    assert_eq!(user_text, ["Plan my trip", "Prefer trains"]);
+}
+
+#[tokio::test]
+async fn send_after_completion_starts_a_follow_up_turn() {
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("done"))
+        .build()
+        .expect("valid agent");
+    let session = agent.session();
+
+    let initial = session.send("first").await.expect("first accepted");
+    initial.wait().await.expect("first completes");
+
+    let follow_up = session.send("second").await.expect("follow-up accepted");
+    assert_eq!(follow_up.disposition, SendDisposition::Started);
+    assert_ne!(follow_up.turn_id, initial.turn_id);
+    follow_up.wait().await.expect("follow-up completes");
+}
+
+#[tokio::test]
+async fn send_and_wait_is_request_response_convenience() {
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("hello"))
+        .build()
+        .expect("valid agent");
+    let session = agent.session();
+
+    let turn = session
+        .send_and_wait("hi")
+        .await
+        .expect("convenience completes");
+    assert_eq!(turn.response, "hello");
+}
+
+#[tokio::test]
+async fn send_acknowledges_before_turn_start_hooks_finish() {
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("hello"))
+        .on_turn_start(|_| async {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        })
+        .build()
+        .expect("valid agent");
+    let session = agent.session();
+
+    let pending = tokio::time::timeout(Duration::from_millis(25), session.send("hi"))
+        .await
+        .expect("send acknowledges before execution hooks finish")
+        .expect("message accepted");
+    assert_eq!(pending.disposition, SendDisposition::Started);
+    assert!(pending.wait().await.expect("turn completes").success);
+}
+
+#[tokio::test]
+async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
+    let model = Model::simulated_with_config(
+        LlmSimConfig::fixed("too late").with_response_delay(Duration::from_millis(100)),
+    );
+    let agent = Agent::builder()
+        .instructions("You are concise.")
+        .model(model)
+        .build()
+        .expect("valid agent");
+    let session = agent.session();
+    let mut events = session.events();
+
+    let pending = session.send("hi").await.expect("message accepted");
+    let steered = session
+        .send("include this")
+        .await
+        .expect("steering accepted");
+    steered
+        .turn()
+        .cancel()
+        .await
+        .expect("active turn cancelled");
+    let turn = steered.wait().await.expect("cancellation is an outcome");
+    assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .expect("terminal event arrives")
+            .expect("event stream is healthy")
+            .expect("event stream remains open");
+        if event.kind.is_terminal() {
+            assert_eq!(event.turn_id.as_deref(), Some(pending.turn_id.as_str()));
+            assert!(matches!(event.kind, SessionEventKind::TurnCancelled));
+            break;
+        }
+    }
+
+    let history = session.history().page().await.expect("history available");
+    let user_text: Vec<String> = history
+        .messages
+        .iter()
+        .filter(|message| message.role == MessageRole::User)
+        .map(|message| message.text())
+        .collect();
+    assert_eq!(user_text, ["hi", "include this"]);
 }

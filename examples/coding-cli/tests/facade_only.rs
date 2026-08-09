@@ -15,7 +15,7 @@ async fn offline_smoke_runs_a_turn() {
         .model(Model::simulated("Done."))
         .build()
         .expect("agent builds via the facade");
-    let mut session = agent.session();
+    let session = agent.session();
     let turn = session
         .run("list the files")
         .await
@@ -36,7 +36,7 @@ async fn session_history_persists_across_two_prompts() {
         .model(Model::simulated("ack"))
         .build()
         .expect("agent builds");
-    let mut session = agent.session();
+    let session = agent.session();
 
     let first = session.run("first prompt").await.expect("first turn");
     let second = session.run("second prompt").await.expect("second turn");
