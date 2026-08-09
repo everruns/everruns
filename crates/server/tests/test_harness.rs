@@ -280,7 +280,6 @@ impl TestServer {
         feature_flags.agent_versions = true;
         feature_flags.app_budgets = true;
         feature_flags.global_chat = true;
-        feature_flags.mcp_endpoint = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
@@ -295,7 +294,6 @@ impl TestServer {
             "agent_versions",
             "app_budgets",
             "global_chat",
-            "mcp_endpoint",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))

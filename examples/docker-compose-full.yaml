@@ -34,6 +34,7 @@
 #   - 8428 (default): VictoriaMetrics UI & API (configurable via VICTORIAMETRICS_PORT)
 #
 # Note: Images are from ghcr.io/everruns - ensure you have access or build locally
+# The authenticated /mcp endpoint is mounted by default; no MCP feature variable is required.
 
 services:
   # ==========================================================================

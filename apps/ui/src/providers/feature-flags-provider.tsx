@@ -22,7 +22,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   agent_delegation: false,
   observers: false,
   public_chat: false,
-  mcp_endpoint: false,
   webmcp: false,
 };
 

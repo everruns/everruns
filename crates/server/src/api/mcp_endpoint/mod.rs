@@ -564,10 +564,6 @@ async fn handle_mcp(
     headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
-    if !org.feature_flags.mcp_endpoint {
-        return StatusCode::NOT_FOUND.into_response();
-    }
-
     let protocol_version = if req.method == "initialize" {
         None
     } else {
@@ -1412,12 +1408,6 @@ async fn resolve_org_by_id(
             &std::collections::HashMap::new(),
         )
     });
-
-    if !feature_flags.mcp_endpoint {
-        return Err(format!(
-            "MCP endpoint is not enabled for organization: {org_public_id}"
-        ));
-    }
 
     Ok(ResolvedOrg {
         org_id: org_row.org_id,

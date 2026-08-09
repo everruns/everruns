@@ -89,6 +89,7 @@ API_PREFIX=/api
 
 **Notes:**
 - `/health`, `/api-doc/openapi.json`, `/mcp`, `/.well-known/*`, `/oauth/*`, and `/cli/login-success` stay at the server root
+- `/mcp` is always mounted and authenticated; there is no `FEATURE_MCP_ENDPOINT` deployment variable or organization feature toggle
 - REST API routes including auth (`/v1/auth/*`) are mounted under this prefix
 - OAuth callback URLs use `AUTH_BASE_URL`, which defaults to `PUBLIC_APP_URL` plus `API_PREFIX` when unset
 - Override only if you need a non-`/api` REST prefix behind a reverse proxy or gateway
