@@ -18,7 +18,7 @@ let mut session = agent.session();
 let mut events = session.events();
 
 let turn = session.run("Start.").await?;
-while let Some(event) = events.try_recv() {
+while let Some(event) = events.try_recv()? {
     println!("{}", event.event_type());
 }
 assert!(turn.success);
@@ -26,13 +26,18 @@ assert!(turn.success);
 # }
 ```
 
-Known events have typed `SessionEventKind` values. Unknown runtime event types
+Known events have typed `SessionEventKind` values. Unknown canonical event types
 are preserved as `Other` with their payload, so the projection does not silently
 drop information. The feed is live and non-blocking: a slow or dropped consumer
 does not stop the turn, and it is not a durable replay API.
 
 Use [lifecycle hooks](/framework/lifecycle-hooks/) instead when application work
 must be awaited at an execution boundary or its failure must affect the run.
+
+See [Canonical Framework events](/framework/canonical-events/) for lossless
+envelopes, explicit lag handling, ordering, and the durability boundary.
+Use [Session History and Resume](/framework/session-history/) to rebuild a
+bounded persisted transcript after live lag or a process restart.
 
 ## Cancel a turn
 

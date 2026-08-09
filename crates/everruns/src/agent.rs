@@ -125,6 +125,15 @@ impl Model {
         )
     }
 
+    /// Test-only: a simulated provider failure used to prove the facade event
+    /// bridge retains failure lifecycle and diagnostic payloads end to end.
+    pub(crate) fn simulated_error(message: impl Into<String>) -> Self {
+        Self::with_provider(
+            ModelSpec::on("llmsim", "llmsim-model"),
+            Provider::new("llmsim", LlmSimDriver::new(LlmSimConfig::error(message))),
+        )
+    }
+
     /// Test-only: a simulated model that emits the given per-turn tool-call
     /// sequence before replying with `response`. Lets a facade test drive the
     /// end-to-end tool-execution loop for a function tool.

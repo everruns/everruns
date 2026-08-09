@@ -11,7 +11,7 @@ use everruns::prelude::*;
 /// Collect every event from a stream until it closes (the session is dropped).
 async fn drain(mut stream: EventStream) -> Vec<SessionEvent> {
     let mut events = Vec::new();
-    while let Some(event) = stream.recv().await {
+    while let Some(event) = stream.recv().await.expect("event stream stays lossless") {
         events.push(event);
     }
     events
@@ -44,10 +44,20 @@ async fn stream_emits_ordered_start_delta_completion() {
         .expect("at least one text delta");
     let completed = position(|e| matches!(e.kind, SessionEventKind::TurnCompleted))
         .expect("a turn.completed event");
+    let output_started = position(|e| matches!(e.kind, SessionEventKind::OutputStarted { .. }))
+        .expect("an output.message.started event");
+    let output_completed = position(|e| matches!(e.kind, SessionEventKind::OutputCompleted { .. }))
+        .expect("an output.message.completed event");
+    let model_generation = position(|e| matches!(e.kind, SessionEventKind::ModelGeneration))
+        .expect("an llm.generation event");
 
     assert!(
-        started < delta && delta < completed,
-        "expected ordered start < delta < completion, got indices {started}/{delta}/{completed}"
+        started < output_started
+            && output_started < delta
+            && delta < output_completed
+            && model_generation < output_completed
+            && output_completed < completed,
+        "expected ordered turn start < output start < delta < output completion < turn completion"
     );
 
     // The concatenated deltas reconstruct the assistant's response.
@@ -59,6 +69,70 @@ async fn stream_emits_ordered_start_delta_completion() {
         })
         .collect();
     assert_eq!(streamed, "Hello, world!");
+
+    // The raw side of the bridge is the complete canonical event protocol, not
+    // a second facade vocabulary. Durable replay sequence is optional because
+    // live-only deltas are ephemeral; channel arrival order is the live ordering
+    // contract. Every envelope retains timestamp, context, data, metadata, and
+    // tags semantics.
+    let sequences: Vec<i64> = events
+        .iter()
+        .filter_map(|event| {
+            let raw = event.as_json();
+            assert!(raw["id"].as_str().is_some());
+            assert_eq!(raw["type"], event.event_type());
+            assert!(raw["ts"].as_str().is_some());
+            assert!(raw["session_id"].as_str().is_some());
+            assert!(raw["context"].is_object());
+            assert!(raw.get("data").is_some());
+            let raw_sequence = raw.get("sequence").and_then(serde_json::Value::as_i64);
+            assert_eq!(raw_sequence.map(|value| value as i32), event.sequence());
+            raw_sequence
+        })
+        .collect();
+    assert!(
+        sequences.windows(2).all(|pair| pair[0] < pair[1]),
+        "durable events retain strictly increasing replay positions"
+    );
+    assert!(
+        events
+            .iter()
+            .filter(|event| matches!(event.kind, SessionEventKind::TextDelta { .. }))
+            .all(|event| event.sequence().is_none()),
+        "ephemeral deltas are ordered by live arrival, not replay sequence"
+    );
+
+    let output_message_ids: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            SessionEventKind::OutputStarted { message_id }
+            | SessionEventKind::OutputCompleted { message_id } => Some(message_id.as_str()),
+            SessionEventKind::TextDelta { .. } => event.data()["message_id"].as_str(),
+            _ => None,
+        })
+        .collect();
+    assert!(!output_message_ids.is_empty());
+    assert!(
+        output_message_ids.windows(2).all(|pair| pair[0] == pair[1]),
+        "one assistant message id spans start, deltas, and completion"
+    );
+
+    // Conversation history is rebuildable from canonical message events. The
+    // facade adds no second writable message representation.
+    let input = events
+        .iter()
+        .find(|event| event.event_type() == "input.message")
+        .expect("canonical input message");
+    let output = events
+        .iter()
+        .find(|event| event.event_type() == "output.message.completed")
+        .expect("canonical assistant message");
+    assert!(matches!(input.kind, SessionEventKind::InputMessage { .. }));
+    assert_eq!(input.data()["message"]["role"], "user");
+    assert!(input.data()["message"]["content"].is_array());
+    assert_eq!(output.data()["message"]["role"], "agent");
+    assert!(output.data()["message"]["content"].is_array());
+    assert!(input.sequence().unwrap() < output.sequence().unwrap());
 
     // Correlation ids are preserved: turn-scoped events share one turn id, and
     // every event carries the same session id.
@@ -93,6 +167,7 @@ async fn pre_cancelled_token_yields_cancelled_stop_reason() {
         .expect("valid agent");
 
     let mut session = agent.session();
+    let stream = session.events();
     let token = CancellationToken::new();
     token.cancel();
     assert!(token.is_cancelled());
@@ -104,6 +179,16 @@ async fn pre_cancelled_token_yields_cancelled_stop_reason() {
         .expect("run_with resolves");
     assert!(!turn.success, "a cancelled turn is not a success");
     assert_eq!(turn.stop_reason, TurnStopReason::Cancelled);
+
+    drop(session);
+    let events = drain(stream).await;
+    let cancelled = events
+        .iter()
+        .find(|event| matches!(event.kind, SessionEventKind::TurnCancelled))
+        .expect("cancellation emits its canonical terminal event");
+    assert_eq!(cancelled.turn_id.as_deref(), Some(turn.turn_id.as_str()));
+    assert_eq!(cancelled.data()["reason"], "cancelled by application");
+    assert!(cancelled.sequence().is_some(), "cancellation is durable");
 }
 
 #[tokio::test]

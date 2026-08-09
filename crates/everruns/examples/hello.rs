@@ -7,7 +7,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use everruns::{Agent, OpenAI, SessionEventKind};
+use everruns::{Agent, EventStreamError, OpenAI, SessionEventKind};
 
 /// Return the current Unix time in seconds.
 #[everruns::tool]
@@ -32,13 +32,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut events = session.events();
     let observer = tokio::spawn(async move {
         let mut event_types = Vec::new();
-        while let Some(event) = events.recv().await {
+        while let Some(event) = events.recv().await? {
             event_types.push(event.event_type().to_string());
             if matches!(event.kind, SessionEventKind::TurnCompleted) {
                 break;
             }
         }
-        event_types
+        Ok::<_, EventStreamError>(event_types)
     });
 
     let turn = session.run("what time is it?").await?;
@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("\nevents:");
-    for (index, event_type) in observer.await?.into_iter().enumerate() {
+    for (index, event_type) in observer.await??.into_iter().enumerate() {
         println!("  {:>2}. {event_type}", index + 1);
     }
 

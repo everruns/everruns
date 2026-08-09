@@ -1,8 +1,8 @@
 # `everruns` examples
 
 These examples use the application-facing [`everruns`](../README.md) crate.
-Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `session_work` and
-`workspace_policy` and `session_history` run entirely offline.
+Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `canonical_events`,
+`session_work`, `workspace_policy`, and `session_history` run entirely offline.
 
 | Example | What it demonstrates | Run |
 |---|---|---|
@@ -12,6 +12,7 @@ Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `session_work` and
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`session_work.rs`](session_work.rs) | Session-owned work, leased delivery, and completion wakes | `cargo run -p everruns --example session_work` |
 | [`session_history.rs`](session_history.rs) | Durable local resume and bounded, event-derived history pages | `cargo run -p everruns --features local --example session_history` |
+| [`canonical_events.rs`](canonical_events.rs) | Lossless recording and typed rendering of live canonical events | `cargo run -p everruns --example canonical_events` |
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
 | [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |

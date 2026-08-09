@@ -9,6 +9,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
+use everruns_core::traits::EventEmitter;
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::TurnId;
 use everruns_core::{AgentLoopError, InputMessage, SessionId};
@@ -123,7 +124,15 @@ impl Session {
     /// created (subscribe before calling [`run`](Session::run)). Multiple streams
     /// can observe the same session independently, and each session's events are
     /// isolated — one session never sees another's. Dropping a stream, or letting
-    /// a consumer fall behind, never affects a running turn.
+    /// a consumer fall behind, never affects a running turn. The stream is
+    /// bounded and reports an explicit [`EventStreamError::Lagged`](crate::EventStreamError::Lagged)
+    /// gap; it never hides loss or applies observer backpressure to execution.
+    /// Each [`SessionEvent`](crate::SessionEvent) also retains the complete
+    /// canonical event envelope through
+    /// [`SessionEvent::as_json`](crate::SessionEvent::as_json).
+    /// Use [`history`](Session::history) to rebuild a bounded persisted
+    /// transcript after live lag or a process restart; ephemeral streaming
+    /// deltas are intentionally not part of that projection.
     ///
     /// Events are non-blocking observation. For application work that must be
     /// awaited at a lifecycle boundary, register an
@@ -185,7 +194,7 @@ impl Session {
             )
             .await
             {
-                HookRun::Cancelled => return Ok(Turn::cancelled()),
+                HookRun::Cancelled => return self.emit_cancelled().await,
                 HookRun::Completed(Err(failure)) => return Err(RunError::Hook(failure)),
                 HookRun::Completed(Ok(())) => self.agent_started = true,
             }
@@ -202,7 +211,7 @@ impl Session {
         )
         .await
         {
-            HookRun::Cancelled => return Ok(Turn::cancelled()),
+            HookRun::Cancelled => return self.emit_cancelled().await,
             HookRun::Completed(Err(failure)) => return Err(RunError::Hook(failure)),
             HookRun::Completed(Ok(())) => {}
         }
@@ -216,18 +225,22 @@ impl Session {
                 Turn::from(result)
             }
             Some(token) => {
-                // Race the turn against cancellation. `biased` checks the token
-                // first, so a pre-cancelled token stops the turn before it runs.
-                // On cancellation the turn future is dropped, which is the
-                // runtime's own cooperative teardown path — no second stop
-                // mechanism is introduced.
+                if token.is_cancelled() {
+                    return self.emit_cancelled().await;
+                }
+
+                // Race the turn against cancellation. A completed result wins
+                // when both branches become ready together, preventing a
+                // synthetic cancellation after a committed terminal event. On
+                // cancellation the turn future is dropped, which is the
+                // runtime's own cooperative teardown path.
                 tokio::select! {
                     biased;
+                    result = runtime.run_turn(self.session_id, input) => Turn::from(result?),
                     () = token.cancelled() => {
                         self.hook_state.take_failures();
-                        return Ok(Turn::cancelled());
+                        return self.emit_cancelled().await;
                     },
-                    result = runtime.run_turn(self.session_id, input) => Turn::from(result?),
                 }
             }
         };
@@ -279,6 +292,14 @@ impl Session {
             );
         }
         Ok(())
+    }
+
+    async fn emit_cancelled(&mut self) -> Result<Turn, RunError> {
+        self.ensure_runtime().await?;
+        let runtime = self.runtime.as_ref().expect("runtime built above");
+        let (turn_id, request) = self.event_bus.cancellation_request(self.session_id);
+        runtime.host_event_emitter().emit(request).await?;
+        Ok(Turn::cancelled(turn_id))
     }
 }
 
@@ -339,12 +360,12 @@ impl Turn {
     /// Synthesized by [`Session::run_with`] when a turn is cancelled in flight:
     /// its future is dropped before the runtime can report an outcome, so the
     /// facade maps that to a non-success turn carrying
-    /// [`TurnStopReason::Cancelled`]. The `turn_id` is a fresh correlation id —
-    /// the dropped turn's own id is not recoverable.
-    pub(crate) fn cancelled() -> Self {
+    /// [`TurnStopReason::Cancelled`]. `turn_id` is shared with the durable
+    /// cancellation event emitted after the run future is dropped.
+    pub(crate) fn cancelled(turn_id: TurnId) -> Self {
         Self {
             response: String::new(),
-            turn_id: TurnId::new().to_string(),
+            turn_id: turn_id.to_string(),
             stop_reason: TurnStopReason::Cancelled,
             iterations: 0,
             tool_calls: 0,
@@ -408,9 +429,13 @@ impl From<AgentLoopError> for RunError {
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use everruns_core::events::EventData;
     use everruns_core::turn::TurnStopReason;
     use everruns_core::{ContentPart, InputMessage, MessageRole, TurnId};
-    use everruns_host::TurnResult;
+    use everruns_host::{
+        EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
+        EventReadRequest, TurnResult,
+    };
 
     use super::Turn;
     use crate::{Agent, Model};
@@ -434,6 +459,57 @@ mod tests {
             calls[1].len() > calls[0].len(),
             "the second turn's request must include the first turn's messages"
         );
+    }
+
+    #[tokio::test]
+    async fn normal_session_history_is_rebuilt_from_canonical_events() {
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .build()
+            .expect("valid agent");
+        let mut session = agent.session();
+        let session_id = session.session_id();
+
+        session.run("hello").await.expect("turn runs");
+
+        let runtime = session.runtime.as_ref().expect("run built the runtime");
+        let event_log = runtime.event_log();
+        let events = event_log
+            .read_page(EventReadRequest::new(session_id, EventReadLimit::default()))
+            .await
+            .expect("canonical events replay");
+        assert!(
+            events.events.iter().all(|event| event.sequence.is_some()),
+            "durable replay excludes sequence-less live deltas"
+        );
+
+        let canonical_messages: Vec<_> = events
+            .events
+            .iter()
+            .filter_map(|event| match &event.data {
+                EventData::InputMessage(data) => Some(data.message.clone()),
+                EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+                _ => None,
+            })
+            .collect();
+        let history = EventHistory::new(event_log);
+        let page = history
+            .read_page(EventHistoryReadRequest::new(
+                session_id,
+                EventHistoryReadLimit::new(8).expect("valid message limit"),
+            ))
+            .await
+            .expect("event-derived history page");
+
+        assert_eq!(
+            serde_json::to_value(&page.messages).expect("history serializes"),
+            serde_json::to_value(&canonical_messages).expect("events serialize")
+        );
+        assert_eq!(page.messages.len(), 2);
+        assert_eq!(page.messages[0].text(), Some("hello"));
+        assert_eq!(page.messages[1].text(), Some("ok"));
+        assert!(page.next_cursor.is_none());
     }
 
     #[tokio::test]
@@ -523,7 +599,7 @@ mod tests {
 
     async fn drain(mut stream: crate::EventStream) -> Vec<SessionEvent> {
         let mut events = Vec::new();
-        while let Some(event) = stream.recv().await {
+        while let Some(event) = stream.recv().await.expect("event stream stays lossless") {
             events.push(event);
         }
         events

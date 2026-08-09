@@ -179,6 +179,7 @@ export default defineConfig({
                     { label: "Session Work and Wakes", slug: "framework/background-work" },
                     { label: "Session History", slug: "framework/session-history" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
+                    { label: "Canonical Events", slug: "framework/canonical-events" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Persistence", slug: "framework/persistence" },
                   ],

@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut session = agent.session();
     let mut events = session.events();
     let observer = tokio::spawn(async move {
-        while let Some(event) = events.recv().await {
+        while let Some(event) = events.recv().await? {
             if let SessionEventKind::ToolProgress { message, .. } = &event.kind {
                 eprintln!("progress: {message}");
             }
@@ -101,10 +101,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 break;
             }
         }
+        Ok::<_, everruns::EventStreamError>(())
     });
 
     let turn = session.run("What is product EVR-42?").await?;
     println!("{}", turn.response);
-    observer.await?;
+    observer.await??;
     Ok(())
 }

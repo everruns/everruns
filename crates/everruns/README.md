@@ -112,7 +112,7 @@ let stopped = session.run_with("Do not start.", options).await?;
 
 assert!(first.success);
 assert!(!stopped.success);
-while let Some(event) = events.try_recv() {
+while let Some(event) = events.try_recv()? {
     println!("{}", event.event_type());
 }
 # Ok::<(), everruns::RunError>(())
@@ -157,7 +157,7 @@ catalog alongside its real workspace and task/schedule state.
 - Value-first `Agent`, open `ModelSpec`/`Provider`, and deterministic simulation
 - Typed and dynamic function tools
 - Independent multi-turn `Session`s, typed resume, bounded history, and next-turn context inspection
-- Live typed events, lossless unknown-event projection, and cancellation
+- Live typed events, lossless canonical envelopes, and cancellation
 - Session-owned immediate and scheduled work with leased, at-least-once delivery
 - Awaited, typed lifecycle hooks with explicit failure isolation
 - Editable/read-only files, one trusted workspace, scoped MCP, and plugins
@@ -172,6 +172,7 @@ The [example catalog](./examples/README.md) includes:
 - `production_agent` — production-style composition
 - `github_monitor --simulate` — credential-free typed-tool flow
 - `session_work` — offline background work and completion wakes
+- `canonical_events` — offline lossless event recording and typed rendering
 - `subagents` — public-facade delegation
 - `observe_and_cancel` — events and cancellation
 - `session_history` — offline durable resume and bounded history pages
@@ -202,6 +203,7 @@ Examples are compiled in CI and import only `everruns`.
 - [Session work and wakes](https://docs.everruns.com/framework/background-work/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [Lifecycle hooks](https://docs.everruns.com/framework/lifecycle-hooks/)
+- [Canonical events](https://docs.everruns.com/framework/canonical-events/)
 - [API reference](https://docs.rs/everruns)
 
 ## Extend agents
