@@ -406,6 +406,8 @@ Code references:
 | TM-FS-012 | Offloaded object content unencrypted at rest (S3) | Low | Bytes stored in the object store rely on bucket-side encryption (SSE / SSE-KMS); application-level envelope encryption of blobs is out of scope (mirrors TM-FS-006 for inline PostgreSQL storage). | **ACCEPTED** |
 | TM-FS-013 | Multi-root host workspace escape | High | `WorkspaceRootSet` canonicalizes every registered host root, rejects duplicates and overlapping directories, rejects host-absolute paths outside the registered root set, and routes additional roots only through `/workspace/roots/<name>/...`. Each mounted root is backed by its own `RealDiskFileStore`, preserving per-root symlink rejection and containment checks; `MountFs` rejects `..` traversal under additional-root prefixes before normalization so an attempted escape cannot silently reroute to the primary root. | MITIGATED |
 | TM-FS-014 | Canonical event JSONL exposes conversation content to other local users | Medium | `JsonlEventLog` creates new files with owner-only `0600` permissions on Unix. The embedder selects and protects the containing data directory; existing files retain their operator-managed permissions. | MITIGATED |
+| TM-FS-015 | Framework workspace-policy bypass through alternate paths or hidden content | High | `WorkspacePolicy` validates one portable `/workspace` namespace, fails closed on traversal, NUL bytes, and platform separators, compares ASCII case conservatively across case-sensitive and case-insensitive providers, applies deny-over-allow precedence, protects hidden and common sensitive paths by default, and supports exact component write denies at every depth without depending on a public global blocklist. Listings and grep summaries are filtered as well as direct reads. Recursive-delete opt-in preflights every provider-visible descendant so it cannot override a deny. The host applies policy after resolving any platform filesystem factory, so custom providers do not bypass it. Concrete host providers retain responsibility for host-path containment and symlink handling. | MITIGATED |
+| TM-FS-016 | Host filesystem symlink-swap race between validation and I/O | High | `RealDiskFileStore` rejects symlinks in every existing path component immediately before each operation, including symlinks introduced after store construction; regression coverage swaps a checked directory for an outside symlink between operations. The local host provider is not an OS sandbox, and a same-user process can still race the final check and path-based syscall. Applications with mutually untrusted local processes must use a sandboxed filesystem provider or OS isolation rather than treating `WorkspacePolicy` as a process boundary. | **ACCEPTED** |
 
 ### Mitigation Details
 
@@ -421,6 +423,19 @@ Per-session and per-file byte quotas are enforced at the application layer in bo
 - `SESSION_FILE_SINGLE_MAX_BYTES` — per-file ceiling (default 100 MB)
 
 Writes that would exceed either limit fail with a clear error before any DB insert.
+
+**TM-FS-015/016 — Framework Host Workspaces:**
+
+Policy is intentionally split from storage. `WorkspacePolicy` decides which
+model-facing paths are visible or mutable, while the selected provider decides
+how those paths map to storage. This keeps policy portable and provider-extensible
+without claiming that a path policy is a host-process sandbox. The real-disk
+provider rechecks symlink components per operation and fails closed for swaps
+that happen before the check; eliminating a malicious same-user TOCTOU race
+requires descriptor-relative/no-follow I/O or a sandbox provider.
+Filesystem policy applies at `SessionFileSystem`; a custom tool that performs
+direct host I/O or launches a shell is a separate capability boundary and must
+be restricted or sandboxed by its embedder.
 
 ## 6. Session SQL Database (TM-SQL)
 

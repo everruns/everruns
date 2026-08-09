@@ -251,6 +251,7 @@ pub struct Agent {
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
+    workspace_policy: everruns_core::WorkspacePolicy,
     mcp_servers: everruns_core::ScopedMcpServers,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "local")]
@@ -374,7 +375,8 @@ impl Agent {
             .harness(harness)
             .agent(agent)
             .session(session)
-            .model_spec(self.model.spec.clone());
+            .model_spec(self.model.spec.clone())
+            .workspace_policy(self.workspace_policy.clone());
 
         let mut backends = HostBackends::in_memory();
         if let Some(event_sink) = event_sink {
@@ -476,6 +478,7 @@ pub struct AgentBuilder {
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
+    workspace_policy: everruns_core::WorkspacePolicy,
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
     compaction: Option<crate::CompactionConfig>,
@@ -702,6 +705,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the read and write policy for this agent's workspace.
+    ///
+    /// The default is [`WorkspacePolicy::read_only`](crate::WorkspacePolicy::read_only):
+    /// ordinary files are readable, writes and hidden or sensitive paths are
+    /// denied, and framework-managed `.agents` content remains readable.
+    /// Select [`WorkspacePolicy::read_write`](crate::WorkspacePolicy::read_write)
+    /// or build narrower scopes for an explicit write opt-in.
+    pub fn workspace_policy(mut self, policy: crate::WorkspacePolicy) -> Self {
+        self.workspace_policy = policy;
+        self
+    }
+
     /// Add a scoped MCP server to this agent.
     pub fn mcp_server(mut self, server: crate::McpServer) -> Self {
         self.mcp_servers.push(server);
@@ -898,6 +913,7 @@ impl AgentBuilder {
             initial_files: self.initial_files,
             parallel_tool_calls: self.parallel_tool_calls,
             workspace_root: self.workspace_root,
+            workspace_policy: self.workspace_policy,
             mcp_servers,
             plugin_warnings: self.plugin_warnings,
             #[cfg(feature = "local")]
@@ -1096,6 +1112,52 @@ mod tests {
             .build()
             .expect("valid agent");
         assert_eq!(agent.name, "assistant");
+    }
+
+    #[test]
+    fn workspace_policy_defaults_to_read_only() {
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("Sure."))
+            .build()
+            .expect("valid agent");
+
+        assert!(agent.workspace_policy.permits_read("notes.txt"));
+        assert!(!agent.workspace_policy.permits_write("notes.txt"));
+        assert!(!agent.workspace_policy.permits_read(".env"));
+    }
+
+    #[tokio::test]
+    async fn custom_workspace_policy_reaches_the_high_level_runtime() {
+        let workspace = tempfile::tempdir().expect("workspace tempdir");
+        let policy = crate::WorkspacePolicy::builder()
+            .allow_read("public")
+            .build()
+            .expect("valid policy");
+        let agent = Agent::builder()
+            .instructions("Read the workspace.")
+            .model(Model::simulated("Sure."))
+            .workspace(workspace.path())
+            .workspace_policy(policy)
+            .file("public/note.txt", "visible")
+            .file("private/note.txt", "hidden")
+            .build()
+            .expect("valid agent");
+
+        let session_id = SessionId::new();
+        let runtime = agent
+            .build_runtime_with_backends(session_id, None, None)
+            .await
+            .expect("runtime builds");
+        let visible = runtime
+            .read_file(session_id, "public/note.txt")
+            .await
+            .expect("allowed read")
+            .expect("seeded file");
+        assert_eq!(visible.content.as_deref(), Some("visible"));
+
+        let denied = runtime.read_file(session_id, "private/note.txt").await;
+        assert!(denied.is_err());
     }
 
     #[cfg(feature = "openai")]

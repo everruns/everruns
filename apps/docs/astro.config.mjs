@@ -172,6 +172,7 @@ export default defineConfig({
                   label: "Core APIs",
                   items: [
                     { label: "Agents", slug: "framework/agents" },
+                    { label: "Workspace Security", slug: "framework/workspace-security" },
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },
                     { label: "Sessions", slug: "framework/sessions" },

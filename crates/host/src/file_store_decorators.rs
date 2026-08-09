@@ -1,8 +1,10 @@
 // Composable host `SessionFileSystem` decorators for policy enforcement.
 //
 // EVE-478: promoted from `examples/coding-cli` so any non-server embedder can
-// compose them on top of `RealDiskFileStore`. Two concerns are layered here:
+// compose them on top of `RealDiskFileStore`. Three concerns are layered here:
 //
+//   * `PolicyFileStore` — apply portable workspace read/write policy to any
+//     provider selected by the runtime.
 //   * `WriteBlocklistFileStore` — reject writes/deletes inside vendored or
 //     build directories (`.git/`, `node_modules/`, `target/`, …) at any depth.
 //     Reads pass through.
@@ -10,24 +12,25 @@
 //     embedder-supplied async `FileApprovalGate`. Reads pass through. The
 //     embedder owns the UI / oneshot wiring; this crate only cares about the
 //     yes/no answer.
-//
-// Compose as `ApprovalGatingFileStore::new(WriteBlocklistFileStore::new(real_disk), gate)`.
-// Reads short-circuit through both layers; only the destructive paths take
-// the policy decisions.
 
 use async_trait::async_trait;
+use everruns_core::WorkspacePolicy;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+    build_grep_search_result,
 };
 use everruns_core::traits::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
+use std::collections::{HashSet, VecDeque};
 use std::path::Component;
 use std::sync::Arc;
 
+const MAX_POLICY_WALK_ENTRIES: usize = 100_000;
+
 /// Default vendored / build directory names that `WriteBlocklistFileStore`
 /// rejects writes into. Embedders can override via `with_blocklist`.
-pub const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
+const LEGACY_WRITE_BLOCKLIST: &[&str] = &[
     ".git",
     "node_modules",
     "target",
@@ -39,6 +42,289 @@ pub const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
     ".tox",
     ".gradle",
 ];
+
+/// Legacy default for [`WriteBlocklistFileStore`].
+///
+/// New applications should configure [`WorkspacePolicy`] instead. This alias
+/// remains only for 0.17 source compatibility; policy defaults are owned by the
+/// policy value and may evolve without a permanent public list.
+#[deprecated(since = "0.17.25", note = "use WorkspacePolicy instead")]
+pub const DEFAULT_WRITE_BLOCKLIST: &[&str] = LEGACY_WRITE_BLOCKLIST;
+
+/// Apply a backend-independent [`WorkspacePolicy`] to a session filesystem.
+///
+/// Every model-driven read, listing, search, write, create, and delete flows
+/// through the same policy regardless of the concrete provider. Starter-file
+/// seeding bypasses the policy because it is trusted application configuration;
+/// later model access to a seeded path is still checked normally. Custom
+/// providers must honor the canonical-path contract of
+/// [`SessionFileSystem::resolve_path`].
+pub struct PolicyFileStore {
+    inner: Arc<dyn SessionFileSystem>,
+    policy: WorkspacePolicy,
+}
+
+impl PolicyFileStore {
+    /// Wrap `inner` with `policy`.
+    pub fn new(inner: Arc<dyn SessionFileSystem>, policy: WorkspacePolicy) -> Self {
+        Self { inner, policy }
+    }
+
+    fn checked_path(&self, path: &str) -> Result<String> {
+        WorkspacePolicy::validate_path(path)
+            .map(|()| self.inner.resolve_path(path))
+            .map_err(|error| AgentLoopError::tool(error.to_string()))
+    }
+
+    fn check_read(&self, path: &str) -> Result<()> {
+        // THREAT[TM-FS-015]: every read spelling is normalized and checked at
+        // the shared filesystem seam before a provider sees it.
+        self.checked_path(path).and_then(|path| {
+            self.policy
+                .check_read(&path)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))
+        })
+    }
+
+    fn check_write(&self, path: &str) -> Result<()> {
+        // THREAT[TM-FS-015]: deny precedence and protected-path defaults apply
+        // uniformly to every provider and every mutating capability.
+        self.checked_path(path).and_then(|path| {
+            self.policy
+                .check_write(&path)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))
+        })
+    }
+
+    async fn check_recursive_delete(&self, session_id: SessionId, path: &str) -> Result<()> {
+        if !self.policy.permits_recursive_delete() {
+            return Err(AgentLoopError::tool(format!(
+                "workspace policy denied recursive delete of `{path}`; recursive deletion requires an explicit opt-in"
+            )));
+        }
+
+        let Some(target) = self.inner.stat_file(session_id, path).await? else {
+            return Ok(());
+        };
+        if !target.is_directory {
+            return Ok(());
+        }
+
+        // THREAT[TM-FS-015]: an opt-in to recursive deletion does not override
+        // denied descendants. Inspect through the inner provider so protected
+        // entries hidden from model-facing listings still block the delete.
+        // A same-user filesystem mutation can still race this preflight; host
+        // embedders that need a stronger boundary must add OS isolation.
+        let mut pending = VecDeque::from([target.path]);
+        let mut visited = HashSet::new();
+        let mut entries_seen = 0usize;
+        while let Some(directory) = pending.pop_front() {
+            if !visited.insert(directory.clone()) {
+                continue;
+            }
+            for entry in self.inner.list_directory(session_id, &directory).await? {
+                entries_seen += 1;
+                if entries_seen > MAX_POLICY_WALK_ENTRIES {
+                    return Err(AgentLoopError::tool(format!(
+                        "workspace policy stopped recursive delete after {MAX_POLICY_WALK_ENTRIES} entries"
+                    )));
+                }
+                self.check_write(&entry.path)?;
+                if entry.is_directory {
+                    pending.push_back(entry.path);
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SessionFileSystem for PolicyFileStore {
+    fn display_root(&self) -> String {
+        self.inner.display_root()
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        self.inner.display_path(path)
+    }
+
+    fn resolve_path(&self, input: &str) -> String {
+        self.inner.resolve_path(input)
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
+    }
+
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
+        self.check_read(path)?;
+        self.inner.read_file(session_id, path).await
+    }
+
+    async fn write_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile> {
+        self.check_write(path)?;
+        self.inner
+            .write_file(session_id, path, content, encoding)
+            .await
+    }
+
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        self.check_write(path)?;
+        self.inner
+            .write_file_if_content_matches(
+                session_id,
+                path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
+            .await
+    }
+
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
+        self.check_write(path)?;
+        if recursive {
+            self.check_recursive_delete(session_id, path).await?;
+        }
+        self.inner.delete_file(session_id, path, recursive).await
+    }
+
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        let canonical = self.checked_path(path)?;
+        if !self.policy.permits_read_traversal(&canonical) {
+            self.policy
+                .check_read(&canonical)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        }
+        let mut entries = self.inner.list_directory(session_id, path).await?;
+        entries.retain(|entry| {
+            self.checked_path(&entry.path).is_ok_and(|canonical| {
+                self.policy.permits_read(&canonical)
+                    || self.policy.permits_read_traversal(&canonical)
+            })
+        });
+        Ok(entries)
+    }
+
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        let canonical = self.checked_path(path)?;
+        if !self.policy.permits_read_traversal(&canonical) {
+            self.policy
+                .check_read(&canonical)
+                .map_err(|error| AgentLoopError::tool(error.to_string()))?;
+        }
+        self.inner.stat_file(session_id, path).await
+    }
+
+    async fn grep_files(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> Result<Vec<GrepMatch>> {
+        let result = self
+            .grep_files_with_options(
+                session_id,
+                pattern,
+                &GrepOptions {
+                    path_pattern: path_pattern.map(ToString::to_string),
+                    ..GrepOptions::default()
+                },
+            )
+            .await?;
+        Ok(result.matches)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let regex = crate::grep_limits::build_regex(pattern)?;
+        crate::grep_limits::validate_path_pattern(options.path_pattern.as_deref())?;
+        let path_pattern = options
+            .path_pattern
+            .as_deref()
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
+
+        // Walk through the policy-filtered listing surface and read only files
+        // the policy permits. Calling the provider's grep directly and
+        // filtering its output would still make it open denied files.
+        let mut pending = VecDeque::from(["/".to_string()]);
+        let mut visited = HashSet::new();
+        let mut text_files = Vec::new();
+        let mut total_scanned = 0usize;
+        let mut entries_seen = 0usize;
+        while let Some(directory) = pending.pop_front() {
+            if !visited.insert(directory.clone()) {
+                continue;
+            }
+            for entry in self.list_directory(session_id, &directory).await? {
+                entries_seen += 1;
+                if entries_seen > MAX_POLICY_WALK_ENTRIES {
+                    return Err(AgentLoopError::tool(format!(
+                        "workspace policy stopped grep after {MAX_POLICY_WALK_ENTRIES} entries"
+                    )));
+                }
+                if entry.is_directory {
+                    pending.push_back(entry.path);
+                    continue;
+                }
+                if path_pattern
+                    .as_ref()
+                    .is_some_and(|matcher| !matcher.is_match(&entry.path))
+                {
+                    continue;
+                }
+                let Some(file) = self.read_file(session_id, &entry.path).await? else {
+                    continue;
+                };
+                if file.encoding != "text" {
+                    continue;
+                }
+                let Some(content) = file.content else {
+                    continue;
+                };
+                if crate::grep_limits::account_scan(&mut total_scanned, content.len())? {
+                    text_files.push((entry.path, content));
+                }
+            }
+        }
+        Ok(build_grep_search_result(text_files, &regex, options))
+    }
+
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        self.check_write(path)?;
+        self.inner.create_directory(session_id, path).await
+    }
+
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        self.inner.seed_initial_file(session_id, file).await
+    }
+}
 
 /// Reject writes into vendored / build directories at any depth.
 ///
@@ -56,11 +342,11 @@ pub struct WriteBlocklistFileStore {
 }
 
 impl WriteBlocklistFileStore {
-    /// Wrap `inner` with the [`DEFAULT_WRITE_BLOCKLIST`].
+    /// Wrap `inner` with the compatibility blocklist.
     pub fn new(inner: Arc<dyn SessionFileSystem>) -> Self {
         Self {
             inner,
-            blocklist: DEFAULT_WRITE_BLOCKLIST
+            blocklist: LEGACY_WRITE_BLOCKLIST
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
@@ -474,6 +760,214 @@ mod tests {
             .await
             .expect_err("custom blocklist entry must be enforced");
         assert!(format!("{err}").contains("forbidden"));
+    }
+
+    #[tokio::test]
+    async fn workspace_policy_filters_reads_listings_and_grep_summaries() {
+        let inner_store: Arc<dyn SessionFileSystem> = inner();
+        for (path, content) in [
+            ("/src/lib.rs", "visible sentinel"),
+            ("/.env", "hidden sentinel"),
+            ("/private/secret.txt", "private sentinel"),
+        ] {
+            inner_store
+                .write_file(sid(), path, content, "text")
+                .await
+                .unwrap();
+        }
+        let policy = WorkspacePolicy::builder()
+            .allow_read("/")
+            .deny_read("private")
+            .build()
+            .unwrap();
+        let store = PolicyFileStore::new(inner_store, policy);
+
+        assert!(store.read_file(sid(), "/src/lib.rs").await.is_ok());
+        assert!(store.read_file(sid(), "/.env").await.is_err());
+        assert!(store.read_file(sid(), "/private/secret.txt").await.is_err());
+
+        let listed = store.list_directory(sid(), "/").await.unwrap();
+        assert_eq!(
+            listed
+                .iter()
+                .map(|entry| entry.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/src"]
+        );
+
+        let result = store
+            .grep_files_with_options(sid(), "sentinel", &GrepOptions::default())
+            .await
+            .unwrap();
+        assert_eq!(result.returned_matches, 1);
+        assert_eq!(result.total_matches, 1);
+        assert_eq!(result.matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn workspace_policy_enforces_write_scope_deny_precedence_and_recursive_opt_in() {
+        let policy = WorkspacePolicy::builder()
+            .allow_read("/")
+            .allow_write("output")
+            .deny_write("output/locked")
+            .allow_recursive_delete(false)
+            .build()
+            .unwrap();
+        let store = PolicyFileStore::new(inner(), policy);
+
+        store
+            .write_file(sid(), "/output/report.txt", "ok", "text")
+            .await
+            .unwrap();
+        assert!(
+            store
+                .write_file(sid(), "/output/locked/report.txt", "no", "text")
+                .await
+                .is_err()
+        );
+        assert!(
+            store
+                .write_file(sid(), "/src/lib.rs", "no", "text")
+                .await
+                .is_err()
+        );
+        assert!(store.delete_file(sid(), "/output", true).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn recursive_delete_opt_in_does_not_override_a_denied_descendant() {
+        let inner_store: Arc<dyn SessionFileSystem> = inner();
+        inner_store
+            .write_file(sid(), "/output/report.txt", "ok", "text")
+            .await
+            .unwrap();
+        inner_store
+            .write_file(sid(), "/output/locked/secret.txt", "no", "text")
+            .await
+            .unwrap();
+        let policy = WorkspacePolicy::builder()
+            .allow_write("output")
+            .deny_write("output/locked")
+            .allow_recursive_delete(true)
+            .build()
+            .unwrap();
+        let store = PolicyFileStore::new(inner_store.clone(), policy);
+
+        let error = store.delete_file(sid(), "/output", true).await.unwrap_err();
+        assert!(error.to_string().contains("/workspace/output/locked"));
+        assert!(
+            inner_store
+                .read_file(sid(), "/output/report.txt")
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn trusted_seed_bypasses_policy_but_later_access_does_not() {
+        let store = PolicyFileStore::new(inner(), WorkspacePolicy::default());
+        store
+            .seed_initial_file(
+                sid(),
+                &InitialFile {
+                    path: "/.env".to_string(),
+                    content: "TOKEN=secret".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(store.read_file(sid(), "/.env").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn workspace_policy_rejects_traversal_before_backend_access() {
+        let store = PolicyFileStore::new(inner(), WorkspacePolicy::read_write());
+        let error = store
+            .write_file(sid(), "/workspace/src/../../outside", "no", "text")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("traversal"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn host_symlink_swap_between_operations_is_rejected() {
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(workspace.path().join("current")).unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "outside").unwrap();
+        let inner: Arc<dyn SessionFileSystem> =
+            Arc::new(crate::real_disk::RealDiskFileStore::new(workspace.path()).unwrap());
+        let store = PolicyFileStore::new(inner, WorkspacePolicy::read_write());
+
+        store
+            .write_file(sid(), "/current/safe.txt", "inside", "text")
+            .await
+            .unwrap();
+        std::fs::remove_dir_all(workspace.path().join("current")).unwrap();
+        symlink(outside.path(), workspace.path().join("current")).unwrap();
+
+        let error = store
+            .read_file(sid(), "/current/secret.txt")
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("symlink"));
+    }
+
+    #[tokio::test]
+    async fn host_absolute_path_outside_root_cannot_expose_host_file() {
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), "outside").unwrap();
+        let inner: Arc<dyn SessionFileSystem> =
+            Arc::new(crate::real_disk::RealDiskFileStore::new(workspace.path()).unwrap());
+        let store = PolicyFileStore::new(inner, WorkspacePolicy::read_write());
+
+        match store
+            .read_file(sid(), outside.path().to_str().unwrap())
+            .await
+        {
+            Ok(None) | Err(_) => {}
+            Ok(Some(file)) => assert_ne!(
+                file.content.as_deref(),
+                Some("outside"),
+                "an absolute path outside the root must not expose that host file"
+            ),
+        }
+    }
+
+    #[tokio::test]
+    async fn host_absolute_alias_cannot_bypass_canonical_deny_scope() {
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir(workspace.path().join("private")).unwrap();
+        let secret = workspace.path().join("private/secret.txt");
+        std::fs::write(&secret, "secret").unwrap();
+        let inner: Arc<dyn SessionFileSystem> =
+            Arc::new(crate::real_disk::RealDiskFileStore::new(workspace.path()).unwrap());
+        let policy = WorkspacePolicy::builder()
+            .allow_read("/")
+            .deny_read("private")
+            .build()
+            .unwrap();
+        let store = PolicyFileStore::new(inner, policy);
+
+        // `RealDiskFileStore::display_root` exposes the canonical host root, so
+        // use the same spelling a model could echo back from tool output.
+        let canonical_secret = secret.canonicalize().unwrap();
+        let error = store
+            .read_file(sid(), canonical_secret.to_str().unwrap())
+            .await
+            .unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("/workspace/private/secret.txt"),
+            "unexpected policy diagnostic: {message}"
+        );
     }
 
     struct RecordingGate {

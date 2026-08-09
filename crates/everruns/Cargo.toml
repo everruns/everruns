@@ -95,6 +95,9 @@ trybuild = { workspace = true }
 tempfile = { workspace = true }
 
 [[example]]
+name = "workspace_policy"
+
+[[example]]
 name = "production_agent"
 required-features = ["openai"]
 

@@ -150,6 +150,10 @@ impl RealDiskFileStore {
     /// are allowed so callers can create new files/directories after all
     /// existing ancestors have been checked.
     async fn reject_symlink_path(&self, absolute: &Path) -> Result<()> {
+        // THREAT[TM-FS-016]: recheck every existing component immediately
+        // before I/O. This catches swaps between operations; the local provider
+        // is not an OS sandbox against a same-user process racing the final
+        // path-based syscall.
         let root = self.root();
         let relative = absolute.strip_prefix(&root).map_err(|_| {
             AgentLoopError::tool(format!(
@@ -214,6 +218,13 @@ impl SessionFileSystem for RealDiskFileStore {
             Ok(rel) => self.paths.to_display(&rel),
             Err(_) => path.to_string(),
         }
+    }
+
+    fn resolve_path(&self, input: &str) -> String {
+        self.paths
+            .parse_input(input)
+            .map(|path| path.to_session_path())
+            .unwrap_or_else(|_| input.to_string())
     }
 
     fn is_mount_resolver(&self) -> bool {

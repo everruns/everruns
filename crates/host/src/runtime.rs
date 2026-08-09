@@ -194,6 +194,7 @@ pub struct InProcessRuntimeBuilder {
     model_spec: Option<everruns_core::ModelSpec>,
     legacy_provider_config: Option<everruns_core::ProviderConfig>,
     backends: Option<HostBackends>,
+    workspace_policy: Option<everruns_core::WorkspacePolicy>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
     agents: Vec<Agent>,
@@ -239,6 +240,7 @@ impl InProcessRuntimeBuilder {
             model_spec: None,
             legacy_provider_config: None,
             backends: None,
+            workspace_policy: None,
             session_file_system_factory_context: SessionFileSystemFactoryContext::new(),
             harnesses: Vec::new(),
             agents: Vec::new(),
@@ -311,6 +313,16 @@ impl InProcessRuntimeBuilder {
     /// Supply a custom backend bundle instead of the built-in in-memory stores.
     pub fn backends(mut self, backends: HostBackends) -> Self {
         self.backends = Some(backends);
+        self
+    }
+
+    /// Apply a backend-independent policy to the resolved session filesystem.
+    ///
+    /// The policy wraps whichever factory the platform selected, so in-memory,
+    /// host-disk, database, and custom providers receive identical access
+    /// checks without changing their implementations.
+    pub fn workspace_policy(mut self, policy: everruns_core::WorkspacePolicy) -> Self {
+        self.workspace_policy = Some(policy);
         self
     }
 
@@ -488,11 +500,14 @@ impl InProcessRuntimeBuilder {
             Some(backends) => backends,
             None => HostBackends::in_memory(),
         };
-        let file_store = resolve_session_file_system(
+        let mut file_store = resolve_session_file_system(
             &self.platform_definition,
             self.session_file_system_factory_context.clone(),
         )
         .await?;
+        if let Some(policy) = self.workspace_policy.take() {
+            file_store = Arc::new(crate::PolicyFileStore::new(file_store, policy));
+        }
 
         if let Some(config) = self.llm_sim_config.take() {
             let driver = LlmSimDriver::new(config);

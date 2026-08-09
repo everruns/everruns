@@ -1,11 +1,12 @@
 # `everruns` examples
 
 These examples use the application-facing [`everruns`](../README.md) crate.
-Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `session_work` runs
-entirely offline.
+Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `session_work` and
+`workspace_policy` run entirely offline.
 
 | Example | What it demonstrates | Run |
 |---|---|---|
+| [`workspace_policy.rs`](workspace_policy.rs) | Safe read/write scopes, default restrictions, and trusted starter files | `cargo run -p everruns --example workspace_policy` |
 | [`hello.rs`](hello.rs) | Minimal agent, typed tool, turn result, and event observation | `cargo run -p everruns --features openai --example hello` |
 | [`production_agent.rs`](production_agent.rs) | Tool safety boundary and production-shaped multi-turn use | `cargo run -p everruns --features openai --example production_agent` |
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
