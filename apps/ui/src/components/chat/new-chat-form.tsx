@@ -35,7 +35,17 @@ import type { CreateSessionRequest } from "@/lib/api/types";
 /** Sentinel select value for the harness-bound Platform Chat thread. */
 const PLATFORM_CHAT_VALUE = "__platform_chat__";
 
-export function NewChatForm() {
+export function NewChatForm({
+  onStartingChange,
+}: {
+  /**
+   * Fired when a thread starts being created, and again with `false` if it
+   * fails. Creating a thread invalidates the session list, and a host that swaps
+   * this form out on the first result would unmount it before the navigation
+   * below runs — so the host holds the form in place until this says otherwise.
+   */
+  onStartingChange?: (starting: boolean) => void;
+} = {}) {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: harnesses = [] } = useHarnesses();
@@ -50,6 +60,7 @@ export function NewChatForm() {
   const start = async () => {
     if (!selection) return;
     setError(null);
+    onStartingChange?.(true);
     const binding: Partial<CreateSessionRequest> =
       selection === PLATFORM_CHAT_VALUE
         ? { harness_name: PLATFORM_CHAT_HARNESS_NAME }
@@ -61,6 +72,7 @@ export function NewChatForm() {
       });
       router.push(`/chats/${session.id}`);
     } catch (e) {
+      onStartingChange?.(false);
       setError(e instanceof Error ? e.message : "Could not start the chat.");
     }
   };

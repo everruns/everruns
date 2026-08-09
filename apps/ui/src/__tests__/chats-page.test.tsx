@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import ChatsPageClient from "@/app/(main)/chats/chats-page-client";
 import ChatThreadPage from "@/app/(main)/chats/[threadId]/page";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -32,7 +32,11 @@ jest.mock("@/hooks", () => ({
 }));
 
 jest.mock("@/components/chat/new-chat-form", () => ({
-  NewChatForm: () => <div>new-chat-form</div>,
+  NewChatForm: ({ onStartingChange }: { onStartingChange?: (starting: boolean) => void }) => (
+    <button type="button" onClick={() => onStartingChange?.(true)}>
+      new-chat-form
+    </button>
+  ),
 }));
 
 jest.mock("@/components/chat/chat-panel", () => ({
@@ -106,6 +110,25 @@ describe("Chats surface", () => {
 
     expect(screen.getByRole("link", { name: /Standup/ })).toHaveAttribute("href", "/chats/sess_1");
     expect(screen.getByRole("link", { name: /Latency/ })).toHaveAttribute("href", "/chats/sess_2");
+  });
+
+  it("keeps the starting form mounted when the new thread lands in the list", () => {
+    mockUseFeatureFlag.mockReturnValue(true);
+
+    const { rerender } = render(<ChatsPageClient />);
+    fireEvent.click(screen.getByText("new-chat-form"));
+
+    // The created thread arrives from the invalidated session list. Swapping the
+    // form out here would unmount it mid-navigation and strand the user on /chats.
+    mockUseChatThreads.mockReturnValue({
+      threads: [thread({ id: "sess_1" })],
+      isLoading: false,
+      error: null,
+    });
+    rerender(<ChatsPageClient />);
+
+    expect(screen.getByText("new-chat-form")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Standup/ })).not.toBeInTheDocument();
   });
 });
 

@@ -60,7 +60,7 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             className={cn(
               rowClass,
               isActive
-                ? "border-l-primary bg-card text-foreground"
+                ? "border-l-primary bg-card font-medium text-foreground"
                 : "border-l-transparent text-muted-foreground hover:border-l-border hover:bg-card/80 hover:text-foreground",
             )}
           >
