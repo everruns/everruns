@@ -1,9 +1,10 @@
 //! Multi-turn sessions (EVE-831).
 //!
 //! [`Agent::session`](crate::Agent::session) opens a [`Session`]; each
-//! [`Session::run`] executes one turn and appends to a conversation history that
-//! lives for as long as the `Session`. Two sessions from the same agent are
-//! independent and never share history.
+//! [`Session::run`] executes one turn and appends canonical events. Two sessions
+//! from the same agent are independent and never share history. Dropped sessions
+//! can be reopened through [`Agent::resume`](crate::Agent::resume) while the
+//! Agent's configured persistence lifecycle remains available.
 
 use std::future::Future;
 use std::sync::Arc;
@@ -24,8 +25,8 @@ use crate::hooks::{
 /// Open one with [`Agent::session`](crate::Agent::session). The first
 /// [`run`](Self::run) or [`inspect`](Self::inspect) materializes an isolated
 /// in-process runtime; later operations reuse it, so history accumulates across
-/// turns. Move the `Session` to keep its history; drop it to discard the
-/// conversation.
+/// turns. Keep its typed [`SessionId`](crate::SessionId) to resume it after this
+/// handle is dropped.
 ///
 /// # Example
 ///
@@ -91,6 +92,18 @@ impl Session {
     /// remains available when a string is needed for display or serialization.
     pub fn session_id(&self) -> SessionId {
         self.session_id
+    }
+
+    /// Build an owned, bounded history query for this session.
+    ///
+    /// The happy path is `session.history().page().await`. The first page
+    /// returns at most 100 messages in canonical event-sequence order and an
+    /// opaque continuation cursor when more remain. Use
+    /// [`HistoryQuery::limit`](crate::HistoryQuery::limit) to select up to 256
+    /// messages, or [`HistoryQuery::pages`](crate::HistoryQuery::pages) for a
+    /// lazy bounded walk of the snapshot.
+    pub fn history(&self) -> crate::HistoryQuery {
+        crate::HistoryQuery::new(self.agent.clone(), self.session_id)
     }
 
     /// Scope a background-work queue to this session.

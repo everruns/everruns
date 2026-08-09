@@ -862,10 +862,50 @@ impl EventHistory {
                     messages.push(message);
                 }
             }
-            if messages.len() >= message_limit || page.next_cursor.is_none() {
+            if messages.len() >= message_limit {
+                // A raw continuation can point only to trailing lifecycle
+                // envelopes. Probe within the same bounded snapshot so the
+                // projected cursor truthfully means another message exists and
+                // callers never need an empty terminal page after an exact
+                // message boundary.
+                let boundary_cursor = page.next_cursor.clone();
+                let mut next_cursor = None;
+                if let Some(boundary_cursor) = boundary_cursor {
+                    let mut probe_request = EventReadRequest::from_cursor(
+                        boundary_cursor.clone(),
+                        EventReadLimit::default(),
+                    );
+                    loop {
+                        let probe = self.reader.read_page(probe_request).await?;
+                        examined = examined.saturating_add(probe.events.len());
+                        if examined > MAX_EVENT_HISTORY_REPLAY {
+                            return Err(EventLogError::InvalidRead {
+                                detail: format!(
+                                    "history page examined more than {MAX_EVENT_HISTORY_REPLAY} events"
+                                ),
+                            });
+                        }
+                        if probe.events.iter().any(event_projects_message) {
+                            next_cursor = Some(boundary_cursor);
+                            break;
+                        }
+                        let Some(cursor) = probe.next_cursor else {
+                            break;
+                        };
+                        probe_request =
+                            EventReadRequest::from_cursor(cursor, EventReadLimit::default());
+                    }
+                }
                 return Ok(EventHistoryPage {
                     messages,
-                    next_cursor: page.next_cursor,
+                    next_cursor,
+                    snapshot_high_watermark,
+                });
+            }
+            if page.next_cursor.is_none() {
+                return Ok(EventHistoryPage {
+                    messages,
+                    next_cursor: None,
                     snapshot_high_watermark,
                 });
             }
@@ -953,6 +993,15 @@ impl EventHistory {
         }
         Ok(projected)
     }
+}
+
+fn event_projects_message(event: &Event) -> bool {
+    matches!(
+        &event.data,
+        EventData::InputMessage(_)
+            | EventData::OutputMessageCompleted(_)
+            | EventData::ToolCompleted(_)
+    )
 }
 
 #[async_trait]
@@ -1137,8 +1186,10 @@ fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::events::{EventContext, OutputMessageDeltaData};
-    use everruns_core::typed_id::TurnId;
+    use everruns_core::events::{
+        EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
+    };
+    use everruns_core::typed_id::{HarnessId, TurnId};
 
     struct LifecycleHeavyReader;
 
@@ -1191,6 +1242,48 @@ mod tests {
         };
         assert!(matches!(error, EventLogError::InvalidRead { .. }));
         assert!(error.to_string().contains("examined more than"));
+    }
+
+    #[tokio::test]
+    async fn exact_message_boundary_ignores_trailing_lifecycle_events() {
+        let session_id = SessionId::new();
+        let log = Arc::new(InMemoryEventLog::new());
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(Message::user("hello")),
+        ))
+        .await
+        .expect("append input message");
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(Message::assistant("hi")),
+        ))
+        .await
+        .expect("append output message");
+        log.append(EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            SessionStartedData {
+                harness_id: HarnessId::new(),
+                agent_id: None,
+                model_id: None,
+            },
+        ))
+        .await
+        .expect("append lifecycle event");
+
+        let page = EventHistory::new(log)
+            .read_page(EventHistoryReadRequest::new(
+                session_id,
+                EventHistoryReadLimit::new(2).expect("valid history limit"),
+            ))
+            .await
+            .expect("read history");
+
+        assert_eq!(page.messages.len(), 2);
+        assert!(page.next_cursor.is_none());
     }
 
     #[test]

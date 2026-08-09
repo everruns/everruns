@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 
 /// Local application data and workspace locations.
 ///
-/// Enabling this profile gives sessions a real-disk workspace and
-/// SQLite-backed task/schedule state. Conversation persistence is intentionally
-/// not configured here: canonical events are the durable record and history is
-/// a rebuildable projection. Requires the `local` feature.
+/// Enabling this profile gives sessions a real-disk workspace, SQLite-backed
+/// task/schedule state and session catalog, and a crash-durable canonical event
+/// log. Conversation history remains a read-only event projection rather than
+/// a second writable store. Requires the `local` feature.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalConfig {
     pub(crate) data_dir: PathBuf,

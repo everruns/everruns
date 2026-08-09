@@ -44,9 +44,10 @@ before importing `everruns-runtime` directly.
 - [Tools and macros](/framework/tools-and-macros/) — typed function tools through `everruns::tool`.
 - [Sessions](/framework/sessions/) — independent, multi-turn conversations.
 - [Session work and wakes](/framework/background-work/) — immediate and scheduled work with explicit delivery and restart semantics.
+- [Session History and Resume](/framework/session-history/) — bounded transcript pages and typed continuation.
 - [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
 - [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
-- [Persistence](/framework/persistence/) — current in-memory and local-state behavior.
+- [Persistence](/framework/persistence/) — Agent-lifetime memory and crash-durable local state.
 
 ## Extend and operate
 

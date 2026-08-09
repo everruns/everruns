@@ -6,22 +6,24 @@
 //! `PlatformDefinition`. The builder validates the value-first configuration and
 //! adapts it, inside [`AgentBuilder::build`], to the existing runtime builders.
 //!
-//! Running turns and multi-turn sessions are intentionally out of scope here;
-//! this type only describes an agent and can materialize independent in-process
-//! runtimes from that description.
+//! The built Agent owns the configured session lifecycle: it opens independent
+//! sessions, shares their private catalog and canonical event log across Agent
+//! clones, and can resume typed session identities while that lifecycle remains
+//! available.
 
 use std::collections::HashSet;
 use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::{AgentCapabilityConfig, InitialFile, ModelSpec, Provider, SessionId};
 use everruns_host::{
-    AgentBuilder as RuntimeAgentBuilder, EventSink, HarnessBuilder, HostBackends, InProcessRuntime,
-    InProcessRuntimeBuilder, SessionBuilder,
+    AgentBuilder as RuntimeAgentBuilder, EventLogError, EventSink, HarnessBuilder, HostBackends,
+    InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
 };
+use tokio::sync::OnceCell;
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 
@@ -250,7 +252,7 @@ impl std::error::Error for BuildError {}
 /// and materializes independent in-process runtimes from it, one per
 /// [`session`](Agent::session); the underlying runtime composition is kept in
 /// private fields.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Agent {
     name: String,
     instructions: String,
@@ -270,6 +272,98 @@ pub struct Agent {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    state: Arc<AgentState>,
+}
+
+struct AgentState {
+    backends: OnceCell<HostBackends>,
+    issued_sessions: Mutex<HashSet<SessionId>>,
+}
+
+impl AgentState {
+    fn new() -> Self {
+        Self {
+            backends: OnceCell::new(),
+            issued_sessions: Mutex::new(HashSet::new()),
+        }
+    }
+
+    fn remember(&self, session_id: SessionId) {
+        self.issued_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(session_id);
+    }
+
+    fn issued(&self, session_id: SessionId) -> bool {
+        self.issued_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains(&session_id)
+    }
+}
+
+impl fmt::Debug for AgentState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let issued_sessions = self
+            .issued_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len();
+        f.debug_struct("AgentState")
+            .field("backends_initialized", &self.backends.initialized())
+            .field("issued_sessions", &issued_sessions)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Agent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Agent")
+            .field("name", &self.name)
+            .field("instructions", &self.instructions)
+            .field("model", &self.model)
+            .field("providers", &self.providers)
+            .field("capabilities", &self.capabilities)
+            .field("function_tools", &self.function_tools)
+            .field("initial_files", &self.initial_files)
+            .field("max_iterations", &self.max_iterations)
+            .field("parallel_tool_calls", &self.parallel_tool_calls)
+            .field("workspace_root", &self.workspace_root)
+            .field("mcp_servers", &self.mcp_servers)
+            .field("plugin_warnings", &self.plugin_warnings)
+            .field("state", &self.state)
+            .finish_non_exhaustive()
+    }
+}
+
+#[allow(dead_code)] // Only constructed by the optional local persistence edge.
+pub(crate) enum BackendInitError {
+    Event(EventLogError),
+    Host(everruns_core::AgentLoopError),
+}
+
+impl BackendInitError {
+    fn into_agent_loop(self) -> everruns_core::AgentLoopError {
+        match self {
+            Self::Event(error) => everruns_core::AgentLoopError::store(error.to_string()),
+            Self::Host(error) => error,
+        }
+    }
+
+    pub(crate) fn history_error(&self) -> crate::HistoryError {
+        match self {
+            Self::Event(EventLogError::Corruption { .. }) => crate::HistoryError::Corrupt,
+            Self::Event(_) | Self::Host(_) => crate::HistoryError::Unavailable,
+        }
+    }
+
+    fn resume_error(&self) -> crate::ResumeError {
+        match self {
+            Self::Event(EventLogError::Corruption { .. }) => crate::ResumeError::Corrupt,
+            Self::Event(_) | Self::Host(_) => crate::ResumeError::Unavailable,
+        }
+    }
 }
 
 impl Agent {
@@ -299,10 +393,48 @@ impl Agent {
     /// The session is lazy: the in-process runtime is assembled on the first
     /// [`Session::run`](crate::Session::run) or
     /// [`Session::inspect`](crate::Session::inspect). Each session gets a fresh
-    /// id and its own history, so two sessions from the same agent never share
-    /// conversation state, and cloning an `Agent` never shares history.
+    /// id and isolated history. The Agent and its clones share the private
+    /// session catalog and event log so a dropped session can be resumed while
+    /// the Agent's configured persistence lifecycle remains available.
     pub fn session(&self) -> crate::Session {
-        crate::Session::new(self.clone(), SessionId::new())
+        let session_id = SessionId::new();
+        self.state.remember(session_id);
+        crate::Session::new(self.clone(), session_id)
+    }
+
+    /// Resume a session through this Agent's configured session catalog.
+    ///
+    /// The default catalog is Agent-lifetime memory and is shared by Agent
+    /// clones. With [`LocalConfig`](crate::LocalConfig), the catalog and
+    /// canonical event log survive a new Agent and process. The resumed session
+    /// uses this Agent's current model, instructions, tools, hooks, and
+    /// workspace configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ResumeError`](crate::ResumeError) when the id is unknown, the
+    /// configured catalog is unavailable, or persisted local state is corrupt.
+    pub async fn resume(
+        &self,
+        session_id: SessionId,
+    ) -> Result<crate::Session, crate::ResumeError> {
+        if !self.state.issued(session_id) {
+            let backends = self
+                .shared_backends()
+                .await
+                .map_err(|error| error.resume_error())?;
+            let exists = backends
+                .session_store
+                .get_session(session_id)
+                .await
+                .map_err(|_| crate::ResumeError::Unavailable)?
+                .is_some();
+            if !exists {
+                return Err(crate::ResumeError::SessionNotFound { session_id });
+            }
+            self.state.remember(session_id);
+        }
+        Ok(crate::Session::new(self.clone(), session_id))
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -311,6 +443,75 @@ impl Agent {
 
     pub(crate) fn lifecycle_hooks(&self) -> crate::hooks::LifecycleHooks {
         self.lifecycle_hooks.clone()
+    }
+
+    pub(crate) async fn shared_backends(&self) -> Result<&HostBackends, BackendInitError> {
+        self.state
+            .backends
+            .get_or_try_init(|| async {
+                let backends = HostBackends::in_memory();
+                #[cfg(feature = "local")]
+                let backends = if let Some(config) = &self.local {
+                    let profile = config.profile();
+                    profile.ensure_dirs().map_err(|error| {
+                        BackendInitError::Host(everruns_core::AgentLoopError::config(
+                            error.to_string(),
+                        ))
+                    })?;
+                    let event_log = Arc::new(
+                        everruns_host::JsonlEventLog::open(config.data_dir().join("events.jsonl"))
+                            .await
+                            .map_err(BackendInitError::Event)?,
+                    );
+                    let local = everruns_local::LocalBackends::new(
+                        profile,
+                        backends.with_event_log(event_log),
+                    )
+                    .map_err(BackendInitError::Host)?;
+                    let session_store = Arc::new(
+                        everruns_local::LocalSessionStore::new(local.db.clone())
+                            .map_err(BackendInitError::Host)?,
+                    );
+                    local.runtime_backends.with_session_store(session_store)
+                } else {
+                    backends
+                };
+                Ok(backends)
+            })
+            .await
+    }
+
+    pub(crate) async fn ensure_session_cataloged(
+        &self,
+        session_id: SessionId,
+    ) -> Result<(), crate::HistoryError> {
+        let backends = self
+            .shared_backends()
+            .await
+            .map_err(|error| error.history_error())?;
+        if backends
+            .session_store
+            .get_session(session_id)
+            .await
+            .map_err(|_| crate::HistoryError::Unavailable)?
+            .is_some()
+        {
+            return Ok(());
+        }
+        if !self.state.issued(session_id) {
+            return Err(crate::HistoryError::SessionNotFound { session_id });
+        }
+        // Catalog identity is intentionally independent from event presence.
+        // A zero-message session becomes resumable without inventing a history
+        // event or treating orphan events as a session record.
+        let session = SessionBuilder::new(everruns_core::HarnessId::new())
+            .id(session_id)
+            .build();
+        backends
+            .session_store
+            .add_session(session)
+            .await
+            .map_err(|_| crate::HistoryError::Unavailable)
     }
 
     /// Materialize a fresh in-process runtime for this agent, seeded with the
@@ -394,21 +595,13 @@ impl Agent {
             .model_spec(self.model.spec.clone())
             .workspace_policy(self.workspace_policy.clone());
 
-        let mut backends = HostBackends::in_memory();
+        let mut backends = self
+            .shared_backends()
+            .await
+            .map_err(BackendInitError::into_agent_loop)?
+            .clone();
         if let Some(event_sink) = event_sink {
             backends = backends.with_event_sink(event_sink);
-        }
-        #[cfg(feature = "local")]
-        if let Some(config) = &self.local {
-            config
-                .profile()
-                .ensure_dirs()
-                .map_err(|error| everruns_core::AgentLoopError::config(error.to_string()))?;
-        }
-        #[cfg(feature = "local")]
-        if let Some(config) = &self.local {
-            let local = everruns_local::LocalBackends::new(config.profile(), backends)?;
-            backends = local.runtime_backends;
         }
         builder = builder.backends(backends);
 
@@ -766,11 +959,11 @@ impl AgentBuilder {
         self
     }
 
-    /// Enable local task/schedule state and a real workspace.
+    /// Enable restart-survivable local state and a real workspace.
     ///
-    /// Task and schedule state is stored in SQLite. Conversation persistence is
-    /// event-derived and is not selected by this profile. Requires the `local`
-    /// feature.
+    /// Task, schedule, and session identity state is stored in SQLite.
+    /// Conversation history is reconstructed from the canonical local event
+    /// log. Requires the `local` feature.
     #[cfg(feature = "local")]
     pub fn local(mut self, config: crate::LocalConfig) -> Self {
         self.local = Some(config);
@@ -943,6 +1136,7 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
+            state: Arc::new(AgentState::new()),
         })
     }
 }

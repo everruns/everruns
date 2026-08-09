@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-local/badge.svg)](https://docs.rs/everruns-local)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-local` supplies local filesystem configuration and SQLite-backed task
-and schedule state. Framework applications access the high-level profile
+`everruns-local` supplies local filesystem configuration and SQLite-backed
+session-catalog, task, and schedule state. Framework applications access the high-level profile
 through the `everruns` crate's `local` feature; advanced hosts can compose the
 focused backends directly with `everruns-host`.
 
@@ -22,6 +22,8 @@ harness engine for building unstoppable agents.
 
 - **`LocalSessionTaskRegistry`** — a `SessionTaskRegistry` over SQLite,
   persisting session tasks and their message channel.
+- **`LocalSessionStore`** — a durable session identity and metadata catalog;
+  conversation messages remain an event-derived projection.
 - **`LocalScheduleStore`** — a `SessionScheduleStore` over SQLite, with an
   additive JSON `metadata` bag (name/color/kind/…) kept local rather than
   widening the shared core primitive.
@@ -40,8 +42,9 @@ harness engine for building unstoppable agents.
   factory.
 - **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`.
 
-Task and schedule state persists to SQLite. Conversation history is a separate
-concern and is not made durable merely by selecting this crate.
+Session identity, task, and schedule state persist to SQLite. Advanced hosts
+still select their event log independently; the Framework's `LocalConfig`
+combines this catalog with its crash-durable canonical event log.
 
 ## Install
 

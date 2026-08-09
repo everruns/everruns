@@ -2397,6 +2397,7 @@ name = "everruns"
 version = "0.17.25"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
  "everruns-core",
  "everruns-host",
  "everruns-local",

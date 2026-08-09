@@ -7,6 +7,8 @@
 //!   over SQLite, persisting tasks and their message channel.
 //! - [`LocalScheduleStore`] — a [`everruns_core::traits::SessionScheduleStore`]
 //!   over SQLite, with an additive JSON metadata bag (see its module docs).
+//! - [`LocalSessionStore`] — a durable session identity and metadata catalog;
+//!   conversation history remains canonical-event-derived.
 //! - [`LocalScheduleRunner`] — an explicitly managed in-process executor that
 //!   claims due schedules and delivers them through [`LocalSessionRunner`].
 //! - [`LocalPlatformStore`] — a [`everruns_platform::PlatformStore`]
@@ -45,6 +47,7 @@ mod profile;
 mod runtime_builder;
 mod schedule_runner;
 mod schedule_store;
+mod session_store;
 mod task_registry;
 mod wake_routing;
 
@@ -58,5 +61,6 @@ pub use schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };
 pub use schedule_store::LocalScheduleStore;
+pub use session_store::LocalSessionStore;
 pub use task_registry::LocalSessionTaskRegistry;
 pub use wake_routing::{HostRoutedRunner, WakeRoutes};
