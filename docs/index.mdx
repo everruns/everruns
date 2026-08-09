@@ -8,11 +8,19 @@ import { Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
 
 Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks, with real-time SSE event streaming and PostgreSQL-backed durability.
 
+Build directly inside a Rust application with the [Everruns Framework](/framework/),
+or use the Platform and SDK documentation for a durable deployment and remote clients.
+
 ## What kind of help do you need?
 
 The documentation is organised by what you're trying to do.
 
 <CardGrid>
+  <LinkCard
+    title="Framework"
+    description="Build and run agents in a Rust process with the application-facing everruns crate."
+    href="/framework/"
+  />
   <LinkCard
     title="Learn — Tutorials"
     description="Hand-held lessons that take you from zero to a running agent. Start here if you're new."
@@ -38,8 +46,8 @@ The documentation is organised by what you're trying to do.
 ## Getting started fast
 
 <Steps>
-1. [Deploy with Docker Compose](/getting-started/docker-compose/) — full platform in one command.
-2. Follow the [Build your first agent](/tutorials/building-agents-using-sdk/) tutorial.
+1. Choose the [Framework](/framework/) for an in-process Rust application or [Docker Compose](/getting-started/docker-compose/) for the full Platform.
+2. Run the [Framework quickstart](/framework/quickstart/) or follow the [SDK tutorial](/tutorials/building-agents-using-sdk/).
 3. Browse [How-to guides](/how-to/) to do something specific.
 </Steps>
 
@@ -65,6 +73,11 @@ The documentation is organised by what you're trying to do.
     title="REST API reference"
     description="OpenAPI-generated reference for every endpoint."
     href="/api/"
+  />
+  <LinkCard
+    title="Everruns Framework"
+    description="Application-facing Rust agents, models, tools, sessions, events, and extension points."
+    href="/framework/"
   />
   <LinkCard
     title="SDKs"

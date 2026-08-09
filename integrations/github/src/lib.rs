@@ -8,6 +8,16 @@
 //! tools for code search, file reads, and issue or pull request search. Tool
 //! credentials are resolved from the existing `github` user connection, with a
 //! `GITHUB_TOKEN` session secret fallback for local and compatibility flows.
+//! It is part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_github::GitHubScoutCapability;
+//!
+//! let capability = GitHubScoutCapability;
+//! # let _ = capability;
+//! ```
 
 mod client;
 mod tools;

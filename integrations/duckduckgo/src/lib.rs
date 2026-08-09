@@ -17,10 +17,6 @@
 //! assert_eq!(capability.id(), "duckduckgo");
 //! assert_eq!(capability.tools().len(), 1);
 //! ```
-//!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: No API key required — DuckDuckGo Instant Answer API is free
-//! Decision: Stateless — no per-resource state management needed
 
 pub mod client;
 mod tools;

@@ -1,0 +1,53 @@
+---
+title: Everruns Framework
+description: Build and run agents inside a Rust application with the application-facing everruns crate.
+---
+
+The **Everruns Framework** is the application-facing [`everruns`](https://docs.rs/everruns)
+crate. Use it to describe agents, attach models and tools, run multi-turn sessions,
+observe events, and embed agent execution directly in a Rust process.
+
+```rust
+use everruns::{Agent, Model};
+
+let agent = Agent::builder()
+    .instructions("Answer in one short sentence.")
+    .model(Model::simulated("Hello from Everruns."))
+    .build()?;
+
+let turn = agent.session().run("Say hello.").await?;
+assert_eq!(turn.response, "Hello from Everruns.");
+# Ok::<(), Box<dyn std::error::Error>>(())
+```
+
+The default build runs this example offline. A database, server, worker, network
+connection, and provider credential are not required.
+
+## Choose the right surface
+
+| Surface | Use it for |
+| --- | --- |
+| **Framework** | Rust applications that build and run agents in process through `everruns` |
+| **Runtime** | Low-level execution-host composition and existing `everruns-runtime` 0.17.x applications |
+| **SDKs** | Remote clients that call a running Everruns server |
+| **Platform** | The control plane, server, workers, UI, and durable deployment |
+
+Normal library users should start with the Framework. See [Runtime compatibility](/framework/runtime-compatibility/)
+before importing `everruns-runtime` directly.
+
+## Start here
+
+- [Quickstart](/framework/quickstart/) — install the crate and run an offline agent.
+- [Agents](/framework/agents/) — instructions, files, workspaces, MCP, plugins, and context inspection.
+- [Models and providers](/framework/models-and-providers/) — simulation, OpenAI, and the open provider boundary.
+- [Tools and macros](/framework/tools-and-macros/) — typed function tools through `everruns::tool`.
+- [Sessions](/framework/sessions/) — independent, multi-turn conversations.
+- [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
+- [Persistence](/framework/persistence/) — current in-memory and local-state behavior.
+
+## Extend and operate
+
+- [Custom providers](/framework/custom-providers/) — attach a custom `ChatDriver` without changing a closed enum.
+- [Custom backends](/framework/custom-backends/) — cross into low-level host composition deliberately.
+- [Testing and simulation](/framework/testing-and-simulation/) — deterministic tests without credentials.
+- [Runnable examples](/framework/examples/) — complete programs maintained with the crate.

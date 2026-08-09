@@ -1,12 +1,14 @@
-//! The agentic runtime — the in-process entrypoint to the Everruns agentic
-//! framework.
+//! Low-level in-process execution hosting and 0.17.x compatibility for Everruns.
 //!
-//! The runtime crate exposes an in-memory execution surface that runs the same
-//! core atoms (`input`, `reason`, `act`) used elsewhere in the system, but
-//! without the durable engine, gRPC worker boundary, or control-plane server.
-//! It is part of the [Everruns](https://everruns.com) ecosystem.
+//! The runtime crate exposes reference stores and reusable host-phase execution
+//! without requiring the durable engine, gRPC worker boundary, or control-plane
+//! server. Existing 0.17.x applications and advanced hosts may continue using
+//! it. New ordinary applications should start with the application-facing
+//! [`everruns`](https://docs.rs/everruns) crate and the
+//! [Everruns Framework](https://docs.everruns.com/framework/).
+//! Both are part of the [Everruns](https://everruns.com) ecosystem.
 //!
-//! This is the agentic framework entrypoint for embedders who want to:
+//! This low-level crate is for embedders who want to:
 //!
 //! - run sessions in their own process
 //! - provide their own platform definition (capabilities, drivers, harnesses)
@@ -31,52 +33,11 @@
 //! # Example
 //!
 //! ```
-//! # #[tokio::main]
-//! # async fn main() -> Result<(), everruns_core::AgentLoopError> {
-//! use everruns_core::{
-//!     CapabilityRegistry, DriverRegistry, InputMessage, DriverId, ResolvedModel,
-//!     PlatformDefinition,
-//! };
-//! use everruns_core::capabilities::TestMathCapability;
-//! use everruns_runtime::InProcessRuntimeBuilder;
+//! use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
 //!
-//! let mut capabilities = CapabilityRegistry::new();
-//! capabilities.register(TestMathCapability);
-//!
-//! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-//!
-//! let runtime = InProcessRuntimeBuilder::new()
-//!     .platform_definition(platform)
-//!     .single_session(|s| {
-//!         s.harness("math", "You are a calculator.")
-//!             .harness_display_name("Math")
-//!             .with_capability("test_math")
-//!             .agent("math-agent", "Use tools when needed.")
-//!             .agent_display_name("Math Agent")
-//!             .agent_max_iterations(8)
-//!             .session_title("Math Session")
-//!     })
-//!     .llm_sim(everruns_core::llmsim_driver::LlmSimConfig::fixed("4"))
-//!     .default_model(ResolvedModel {
-//!         model: "llmsim-model".into(),
-//!         provider_type: DriverId::LlmSim,
-//!         api_key: Some("fake-key".into()),
-//!         base_url: None,
-//!         provider_metadata: None,
-//!     })
-//!     .build()
-//!     .await?;
-//!
-//! let session_id = runtime.default_session_id().expect("single_session id");
-//! let result = runtime
-//!     .run_turn(
-//!         session_id,
-//!         InputMessage::user("What is 2 + 2?"),
-//!     )
-//!     .await?;
-//! assert!(result.success);
-//! # Ok(())
-//! # }
+//! let backends = RuntimeBackends::in_memory();
+//! let builder = InProcessRuntimeBuilder::new().backends(backends);
+//! # let _ = builder;
 //! ```
 //!
 //! # Real-disk workspace
@@ -95,7 +56,7 @@
 //! cargo run -p everruns-runtime --example real_disk_file_system_tools
 //! ```
 //!
-//! And `knowledge/runtime-resources/file-store.md` for the trait contract.
+//! See the API reference for the file-store trait contract.
 
 mod backends;
 mod builders;

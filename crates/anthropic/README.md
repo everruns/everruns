@@ -15,8 +15,8 @@ and maps provider errors onto Everruns runtime errors.
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
-or run with no key at all using the built-in LLM simulator in
-[`everruns-runtime`](https://crates.io/crates/everruns-runtime).
+or run with no key through the offline simulator in the application-facing
+[`everruns`](https://crates.io/crates/everruns) crate.
 
 ## Quick Example
 
@@ -32,10 +32,8 @@ register_driver(&mut registry);
 assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
 ```
 
-Register the driver into a platform and drive a full turn with
-[`everruns-runtime`](https://crates.io/crates/everruns-runtime); see the
-[`everruns-openai`](https://crates.io/crates/everruns-openai) README for the same
-end-to-end shape with a different provider.
+Framework applications attach the ready-made provider through the open
+`ModelSpec`/`Provider` boundary. Low-level hosts can register the driver directly.
 
 ## What It Provides
 
@@ -48,6 +46,7 @@ end-to-end shape with a different provider.
 
 - [API reference (docs.rs)](https://docs.rs/everruns-anthropic)
 - [Anthropic provider guide](https://docs.everruns.com/providers/anthropic/)
+- [Framework models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

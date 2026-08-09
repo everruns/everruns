@@ -13,7 +13,7 @@ echo "🔒 Running pre-push checks..."
 echo ""
 
 # 1. Rust formatting
-echo "1/11 Rust formatting"
+echo "1/12 Rust formatting"
 if cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
@@ -21,7 +21,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/11 Rust linting"
+echo "2/12 Rust linting"
 if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
@@ -29,7 +29,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/11 Cargo.lock freshness"
+echo "3/12 Cargo.lock freshness"
 if cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
@@ -37,7 +37,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/11 UI formatting"
+echo "4/12 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
@@ -49,7 +49,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/11 UI linting"
+echo "5/12 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
@@ -61,7 +61,7 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/11 Migration ordering"
+echo "6/12 Migration ordering"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
@@ -72,7 +72,7 @@ else
 fi
 
 # 7. Migration immutability check
-echo "7/11 Migration immutability"
+echo "7/12 Migration immutability"
 if MIGRATION_IMMUTABILITY_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-immutability.sh" 2>&1
 )"; then
@@ -83,7 +83,7 @@ else
 fi
 
 # 8. Server integration test enumeration
-echo "8/11 Server test enumeration"
+echo "8/12 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-server-test-enumeration.sh" 2>&1
 )"; then
@@ -94,7 +94,7 @@ else
 fi
 
 # 9. Public everruns example inventory and compile check
-echo "9/11 Public everruns examples"
+echo "9/12 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
@@ -105,7 +105,7 @@ else
 fi
 
 # 10. Knowledge bundle conformance
-echo "10/11 Knowledge bundle conformance"
+echo "10/12 Knowledge bundle conformance"
 if KNOWLEDGE_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
@@ -115,8 +115,19 @@ else
   fail "knowledge bundle conformance check failed"
 fi
 
-# 11. Commit author attribution check
-echo "11/11 Commit author attribution"
+# 11. Published crate documentation contract
+echo "11/12 Published crate documentation"
+if PUBLISHED_DOCS_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/test-published-crate-docs.sh" 2>&1
+)"; then
+  pass "$PUBLISHED_DOCS_OUTPUT"
+else
+  printf '%s\n' "$PUBLISHED_DOCS_OUTPUT" | sed 's/^/   /'
+  fail "published crate documentation check failed"
+fi
+
+# 12. Commit author attribution check
+echo "12/12 Commit author attribution"
 if ! resolve_commit_git_identity; then
   fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
 elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then

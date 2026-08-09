@@ -160,9 +160,17 @@ This repository is a [Claude Code plugin marketplace](https://code.claude.com/do
 
 Run `/everruns-dev:whoami` and complete the OAuth flow on first use. See [`plugins/everruns-dev/README.md`](./plugins/everruns-dev/README.md) for Codex, Cursor, local clone, and custom deployment options.
 
-## Embed in your own app
+## Build with the Framework
 
-Need to build agents directly in Rust? `everruns-runtime` is the agentic runtime — the in-process entrypoint to the Everruns agentic framework. Use `InProcessRuntimeBuilder` for in-memory sessions, filesystem, and storage. See the [Runtime](https://docs.everruns.com/features/runtime/) and [Embedding Everruns](https://docs.everruns.com/advanced/embedding-everruns/) guides.
+Build agents directly inside a Rust application with the **Everruns Framework** and its
+application-facing [`everruns`](./crates/everruns) crate. The default build runs offline with a
+deterministic simulator; opt-in providers, typed tools, multi-turn sessions, events,
+cancellation, files, MCP, and context inspection all stay on the same public facade. Start with
+the [Framework quickstart](https://docs.everruns.com/framework/quickstart/).
+
+`everruns-runtime` remains available for existing 0.17.x applications and low-level execution
+hosts. See [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
+before choosing it for new code.
 
 A CLI (`everruns-cli`) is also available for scripting against a deployment — see the [CLI](https://docs.everruns.com/features/cli/) guide.
 
@@ -171,6 +179,7 @@ A CLI (`everruns-cli`) is also available for scripting against a deployment — 
 Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
 
 - [Introduction](https://docs.everruns.com/getting-started/introduction/) — what Everruns is and core [concepts](https://docs.everruns.com/getting-started/concepts/)
+- [Everruns Framework](https://docs.everruns.com/framework/) — build and run agents inside a Rust application
 - [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) — run the full stack
 - [How-to guides](https://docs.everruns.com/how-to/) — give agents tools, stream events, publish to Slack, enforce budgets
 - [Capabilities](https://docs.everruns.com/features/capabilities/) and [Harnesses](https://docs.everruns.com/features/harnesses/) — the building blocks

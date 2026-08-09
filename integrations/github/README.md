@@ -28,7 +28,9 @@ let capability = GitHubScoutCapability;
 assert_eq!(capability.id(), "github_scout");
 ```
 
-## The `github_scout` Blueprint
+## What It Provides
+
+### The `github_scout` Blueprint
 
 A read-only scout agent for repository exploration:
 

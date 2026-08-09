@@ -106,7 +106,7 @@ activity logs show each request's trace — often enough to debug a run without
 leaving OpenRouter. When you need richer tracing, OpenRouter can forward your
 generations to external observability tools such as Braintrust or LangSmith;
 configure that on the OpenRouter side. This complements Everruns' own
-[run inspection](/features/runtime/) rather than replacing it.
+[Framework context inspection](/framework/agents/#inspect-effective-context) rather than replacing it.
 
 ## Links
 

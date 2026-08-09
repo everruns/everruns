@@ -17,6 +17,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-provider"
 description = "Provider/LLM abstraction foundation shared by Everruns core and provider crates"
+readme = "README.md"
 keywords = ["everruns", "llm", "provider", "ai", "agents"]
 categories = ["api-bindings", "asynchronous"]
 

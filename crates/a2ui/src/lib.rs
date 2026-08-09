@@ -15,7 +15,6 @@
 //! assert!(prompt.contains("```a2ui"));
 //! ```
 //!
-//! Ref: knowledge/ui/a2ui.md
 //! Ref: <https://github.com/google/a2ui>
 
 mod catalog;

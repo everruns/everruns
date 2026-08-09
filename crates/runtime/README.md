@@ -1,18 +1,20 @@
 # everruns-runtime
 
-> The agentic runtime — build agents in Rust by embedding the Everruns agentic framework directly in your process. No server, worker, or database required.
+> Low-level in-process execution hosting and 0.17.x compatibility for Everruns embedders.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-runtime.svg)](https://crates.io/crates/everruns-runtime)
 [![Documentation](https://docs.rs/everruns-runtime/badge.svg)](https://docs.rs/everruns-runtime)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-runtime` is the agentic runtime at the core of Everruns — the
-entrypoint to the Everruns agentic framework. It runs an agent harness entirely
-inside your own process — with in-memory stores by default — using the same
-`input → reason → act` loop as worker- and server-backed execution, but without
-the durable engine, gRPC worker boundary, or control-plane server. It is the
-recommended starting point for building agents, trying Everruns, and writing
-tests.
+`everruns-runtime` exposes the low-level in-process host, reference stores, and
+reusable host-phase execution used by embedded and durable systems. It runs the
+same `input → reason → act` loop without requiring the durable engine, gRPC
+worker boundary, or control-plane server.
+
+This crate remains supported for existing 0.17.x applications and advanced
+hosts that own backend or orchestration topology. New ordinary applications
+should start with the application-facing [`everruns`](https://crates.io/crates/everruns)
+crate and the [Everruns Framework](https://docs.everruns.com/framework/).
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. The runtime builds on the
@@ -24,49 +26,16 @@ with provider crates such as
 ## Quick Example
 
 ```rust
-use everruns_core::{
-    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
-};
-use everruns_core::capabilities::TestMathCapability;
-use everruns_runtime::InProcessRuntimeBuilder;
+use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
 
-# async fn example() -> Result<(), Box<dyn std::error::Error>> {
-let mut capabilities = CapabilityRegistry::new();
-capabilities.register(TestMathCapability);
-
-let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-let runtime = InProcessRuntimeBuilder::new()
-    .platform_definition(platform)
-    .llm_sim(everruns_core::llmsim_driver::LlmSimConfig::fixed("4"))
-    .default_model(ResolvedModel {
-        model: "llmsim-model".into(),
-        provider_type: DriverId::LlmSim,
-        api_key: Some("fake-key".into()),
-        base_url: None,
-        provider_metadata: None,
-    })
-    .single_session(|s| {
-        s.harness("math", "You are a calculator.")
-            .with_capability("test_math")
-            .agent("math-agent", "Use tools when useful.")
-            .session_title("Math example")
-    })
-    .build()
-    .await?;
-
-let session_id = runtime.default_session_id().expect("single_session id");
-let result = runtime.run_text_turn(session_id, "What is 2 + 2?").await?;
-
-assert!(result.success);
-assert_eq!(result.stop_reason, everruns_runtime::TurnStopReason::EndTurn);
-# Ok(())
-# }
+let backends = RuntimeBackends::in_memory();
+let builder = InProcessRuntimeBuilder::new().backends(backends);
+# let _ = builder;
 ```
 
-The example above uses the built-in deterministic LLM simulator so it runs with
-no API key. Swap in a real provider (for example
-[`everruns-openai`](https://crates.io/crates/everruns-openai)) to talk to a
-hosted model.
+The builder is the compatibility path for hosts that intentionally own runtime
+backends. To run an ordinary offline agent, use the smaller Framework
+[quickstart](https://docs.everruns.com/framework/quickstart/).
 
 `InProcessRuntimeBuilder::new()` starts with a runtime-safe built-in capability
 registry. If you call `.platform_definition(...)`, that platform becomes
@@ -92,8 +61,9 @@ cargo run -p everruns-runtime --example real_disk_file_system_tools
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-runtime)
-- [Runtime — embed Everruns in your process](https://docs.everruns.com/features/runtime/)
-- [Tutorial: build your first agent](https://docs.everruns.com/tutorials/building-agents-using-sdk/)
+- [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
+- [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
+- [Everruns Framework](https://docs.everruns.com/framework/)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

@@ -1,0 +1,61 @@
+---
+title: Agents
+description: Describe an agent with instructions, a model, tools, files, integrations, and an optional workspace.
+---
+
+An `Agent` is an immutable, validated application description. Build it once,
+then open independent sessions from it.
+
+```rust
+use everruns::{Agent, McpServer, Model};
+
+let agent = Agent::builder()
+    .name("researcher")
+    .instructions("Research carefully and cite the evidence you used.")
+    .model(Model::simulated("No network was used."))
+    .file("brief.md", "Investigate the supplied question.")
+    .readonly_file("policy.md", "Never expose secrets.")
+    .mcp_server(McpServer::http("catalog", "https://example.com/mcp"))
+    .build()?;
+# Ok::<(), everruns::BuildError>(())
+```
+
+Builder validation catches blank instructions, a missing model, duplicate
+providers or tools, invalid tool schemas, and invalid MCP configuration before
+a session starts.
+
+## Files and workspaces
+
+- `file(path, content)` seeds an editable file.
+- `readonly_file(path, content)` seeds a file the agent may read but not change.
+- `workspace(root)` exposes one trusted real-disk root as `/workspace`.
+
+Choose workspace roots from trusted application configuration. Model output and
+untrusted request fields must not select executable paths or host directories.
+The underlying filesystem boundary rejects traversal and symlink escape.
+
+## MCP and plugins
+
+`McpServer::http` adds a remote Streamable HTTP server. Headers may be supplied
+by the host and are redacted from `Debug`. Local-process MCP is separately
+feature-gated with `mcp-stdio`; its command, arguments, and environment are
+trusted host configuration.
+
+`AgentBuilder::plugin(path)` loads a local plugin directory and returns a typed
+error if it cannot be compiled. Non-fatal compiler warnings remain visible in
+the application-facing session context.
+
+## Inspect effective context
+
+Inspect the next model call before or after a turn:
+
+```rust
+let mut session = agent.session();
+let context = session.inspect().await?;
+println!("messages: {}", context.messages.len());
+println!("tools: {}", context.tools.len());
+# Ok::<(), everruns::RunError>(())
+```
+
+Inspection uses the same assembly path as execution, including MCP discovery,
+plugin prompt contributions, message filters, and model selection.

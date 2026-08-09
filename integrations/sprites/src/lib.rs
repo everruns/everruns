@@ -1,13 +1,16 @@
-//! Sprites Integration
+//! Persistent Sprites microVM sandboxes for Everruns agents.
 //!
-//! Persistent, hardware-isolated Linux microVMs via Sprites (Fly.io) REST API.
-//! Sprites are Firecracker VMs with full ext4 filesystems that persist across sessions.
+//! This integration contributes tools for creating, managing, executing in, and
+//! checkpointing Sprites to the [Everruns](https://everruns.com) ecosystem.
 //!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: API token resolved via user connections (Settings > Connections), not secrets store
-//! Decision: Per-sprite state stored in session secrets (encrypted at rest)
-//! Decision: Single API tier — all operations go through api.sprites.dev/v1
-//! Decision: Embrace persistence — sprites survive idle, expose HTTP endpoints, support checkpoints
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_sprites::SpritesCapability;
+//!
+//! let capability = SpritesCapability;
+//! # let _ = capability;
+//! ```
 
 pub mod client;
 pub mod connection;

@@ -1,10 +1,16 @@
-//! Cursor Cloud Agents integration.
+//! Cursor Cloud Agents integration for Everruns.
 //!
-//! Decision: use Cursor's public Background/Cloud Agents REST API directly.
-//! Cursor does not publish an official Rust client in the public API docs.
-//! Decision: API key resolves from user connections first, then a per-session
-//! `CURSOR_API_KEY` session secret. The previous process-wide env-var
-//! fallback was removed to enforce per-session credential boundaries.
+//! This integration contributes tools for launching and managing Cursor Cloud
+//! Agents to the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_cursor::CursorCapability;
+//!
+//! let capability = CursorCapability;
+//! # let _ = capability;
+//! ```
 
 pub mod client;
 pub mod connection;

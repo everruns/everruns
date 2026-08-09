@@ -1,26 +1,42 @@
 # everruns-platform
 
-Backend platform identity entities for the [Everruns](https://everruns.com)
-agentic runtime.
+> Backend control-plane entities and store contracts for the Everruns Platform.
 
-This crate owns the durable backend identity aggregates that were historically
-defined in `everruns-core`:
+[![Crates.io](https://img.shields.io/crates/v/everruns-platform.svg)](https://crates.io/crates/everruns-platform)
+[![Documentation](https://docs.rs/everruns-platform/badge.svg)](https://docs.rs/everruns-platform)
+[![License](https://img.shields.io/crates/l/everruns-platform.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-- `Organization`
-- `Principal`
+`everruns-platform` contains organization, principal, app/channel, trigger,
+payment, reporting, audit, and hosted-management values used by server and
+platform backends. It also exposes the platform store contract consumed by
+those hosts.
 
-It also owns the auth-facing identity values that no core code names
-(`OrgMembership`, the `ANONYMOUS_USER_*` seed constants, the org public-id
-generation/validation helpers, and the `PrincipalStatus` lifecycle enum).
+It is a backend crate in the [Everruns](https://everruns.com) ecosystem. Normal
+Framework applications use `everruns`; control-plane and specialized host code
+uses this crate when it owns platform records or storage.
 
-Cross-cutting value types that core's runtime and permissions layer embed
-(`OrgRole`, `PrincipalKind`, `PrincipalSummary`) and the `DEFAULT_ORG_*`
-multitenancy constants remain in `everruns-core` and are re-exported here for a
-unified consumer surface.
+## Quick Example
 
-The dependency direction is strictly `platform -> core`; `everruns-core` never
-depends on `everruns-platform`.
+```rust
+use everruns_platform::{Organization, Principal};
+
+fn accepts_platform_values(_organization: &Organization, _principal: &Principal) {}
+# let _ = accepts_platform_values;
+```
+
+## What It Provides
+
+- Organization, membership, and principal domain values
+- App/channel and agent-trigger control-plane records
+- Hosted platform store and subagent-delegation contracts
+- Payment, reporting, audit, and governance records
+
+## Documentation
+
+- [Everruns Platform architecture](https://docs.everruns.com/explanation/architecture/)
+- [Framework crate selection](https://docs.everruns.com/framework/custom-backends/)
+- [API reference](https://docs.rs/everruns-platform)
 
 ## License
 
-MIT
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

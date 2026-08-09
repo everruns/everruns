@@ -1,14 +1,9 @@
-//! Docker Container Integration (Experimental)
+//! Experimental Docker container tools for Everruns agents.
 //!
 //! This capability provides tools for running and interacting with a Docker container
 //! tied to the session lifecycle. The container is lazily started on first tool use
 //! and persists for the duration of the session.
-//!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: Experimental-only (gated behind DeploymentGrade::Dev)
-//! Decision: Gated behind FEATURE_DOCKER_CAPABILITY flag (disabled by default on all envs)
-//! Decision: Single container per session, named everruns-{session_id}
-//! Decision: Lazy start on first tool use, host networking
+//! It is part of the [Everruns](https://everruns.com) ecosystem.
 //!
 //! Configuration (via AgentCapabilityConfig.config):
 //! ```json
@@ -16,6 +11,15 @@
 //!   "image": "mcr.microsoft.com/devcontainers/python:3.11",
 //!   "working_dir": "/workspace"  // optional, defaults to /workspace
 //! }
+//! ```
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_integrations_docker::DockerContainerCapability;
+//!
+//! let capability = DockerContainerCapability;
+//! # let _ = capability;
 //! ```
 
 use everruns_core::ToolHints;
