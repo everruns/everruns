@@ -190,9 +190,7 @@ export function SessionFacetRail({
 
       {error ? (
         <RailSection label="Facets">
-          <p className="text-[13px] text-destructive">
-            Counts unavailable. The list below is still accurate.
-          </p>
+          <p className="text-[13px] text-destructive">Counts unavailable.</p>
         </RailSection>
       ) : (
         <>

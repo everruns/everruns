@@ -215,6 +215,10 @@ export default function SessionsPageClient() {
                 </span>
               ))}
             </>
+          ) : facetsError ? (
+            // Say so rather than claim a permanent "Loading…" the counters will
+            // never resolve out of.
+            <span>Counters unavailable</span>
           ) : (
             <span>Loading counters…</span>
           )

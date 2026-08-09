@@ -81,8 +81,12 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
         </span>
       </div>
 
-      {/* Outcome: the failure replaces the work summary, never sits beside it. */}
-      <div className="hidden min-w-0 flex-[1_1_12rem] text-[13px] @2xl/page-main:block">
+      {/*
+        Outcome: the failure replaces the work summary, never sits beside it.
+        This is the column that earns its place, so it survives down to a narrow
+        main column — the rail alone keeps the page under the wider breakpoints.
+      */}
+      <div className="hidden min-w-0 flex-[1_1_10rem] text-[13px] @lg/page-main:block">
         {failed ? (
           <span
             className="truncate font-medium text-destructive"
@@ -97,7 +101,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
         )}
       </div>
 
-      <span className="hidden w-16 flex-none text-right font-mono text-[13px] text-muted-foreground @xl/page-main:block">
+      <span className="hidden w-16 flex-none text-right font-mono text-[13px] text-muted-foreground @md/page-main:block">
         {duration ?? "—"}
       </span>
       <span className="w-24 flex-none text-right text-[13px] text-muted-foreground">
