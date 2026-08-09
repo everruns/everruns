@@ -1,4 +1,9 @@
 // From legacy agent-identity-types.ts; retained as UI compatibility over generated OpenAPI schemas.
+
+// Enums that stay generated (closed sets the server owns) while the entity they
+// annotate is still hand-maintained here.
+import type { SessionActivity, SessionSource } from "./schema-types";
+
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
 
@@ -3883,6 +3888,18 @@ export interface Session {
   /** Tool definitions (including client-side tools), defaults to [] */
   tools?: ToolDefinition[];
   status: SessionStatus;
+  /**
+   * How the session was started (EVE-852). Server-owned for every ingress
+   * except `chat`/`api`, which is what makes the Sessions source facet
+   * trustworthy. Optional here so responses from an older server still parse.
+   */
+  source?: SessionSource;
+  /**
+   * Outcome-oriented view of the session, derived server-side from its status
+   * and the outcome of its most recent turn. `status` alone has no notion of
+   * failure, which is why the list and the facet rail read this instead.
+   */
+  activity?: SessionActivity;
   created_at: string;
   updated_at: string;
   started_at: string | null;

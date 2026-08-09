@@ -16,6 +16,7 @@ export * from "./use-session-resources";
 export * from "./use-session-participants";
 export * from "./use-session-tasks";
 export * from "./use-session-schedules";
+export * from "./use-session-views";
 export * from "./use-commands";
 export * from "./use-notifications";
 export * from "./use-mount-effect";
