@@ -26,3 +26,32 @@ fn missing_model_is_a_typed_error() {
         .unwrap_err();
     assert_eq!(err, BuildError::MissingModel);
 }
+
+#[test]
+fn invalid_compaction_budget_is_a_typed_error() {
+    use everruns::{BuildError, CompactionConfig};
+
+    for invalid in [0.05, 1.5, f32::NAN] {
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::simulated("ok"))
+            .compaction(CompactionConfig::new().budget_percent(invalid))
+            .build()
+            .unwrap_err();
+        assert!(matches!(err, BuildError::InvalidCompaction { .. }));
+    }
+}
+
+#[test]
+fn duplicate_mcp_names_are_a_typed_error() {
+    use everruns::{BuildError, McpServer};
+
+    let err = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("ok"))
+        .mcp_server(McpServer::http("docs", "https://one.invalid/mcp"))
+        .mcp_server(McpServer::http("docs", "https://two.invalid/mcp"))
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, BuildError::InvalidMcpServer { .. }));
+}

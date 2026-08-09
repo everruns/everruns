@@ -40,13 +40,26 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+mod compaction;
+mod context;
 mod events;
+mod mcp;
+mod plugin;
 mod session;
 mod tool;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
+pub use compaction::{CompactionConfig, CompactionStrategy};
+pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use events::{CancellationToken, EventStream, RunOptions, SessionEvent, SessionEventKind};
+pub use mcp::McpServer;
+pub use plugin::PluginError;
 pub use session::{RunError, Session, Turn};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
+
+#[cfg(feature = "local")]
+mod local;
+#[cfg(feature = "local")]
+pub use local::LocalConfig;
 
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;
@@ -118,10 +131,10 @@ pub use everruns_runtime::{
 // --- Portable message, model, and platform types ------------------------
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, InputMessage,
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
-    MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth, ProviderAuthRequest,
-    ProviderEndpoint, ProviderKey, ProviderRegistry, StaticHeaderAuth,
+    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, InitialFile,
+    InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
+    LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth,
+    ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, StaticHeaderAuth,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------
@@ -149,12 +162,15 @@ pub use everruns_runtime as runtime;
 /// assert!(agent.is_ok());
 /// ```
 pub mod prelude {
+    #[cfg(feature = "local")]
+    pub use crate::LocalConfig;
     #[cfg(feature = "macros")]
     pub use crate::tool;
     pub use crate::{
-        Agent, AgentBuilder, BuildError, CancellationToken, EventStream, FunctionTool, IntoTool,
-        IntoToolResult, Model, RunError, RunOptions, Session, SessionEvent, SessionEventKind, Tool,
-        ToolResponse, Turn,
+        Agent, AgentBuilder, BuildError, CancellationToken, CompactionConfig, CompactionStrategy,
+        EventStream, FunctionTool, InitialFile, IntoTool, IntoToolResult, McpServer, Model,
+        PluginError, RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind,
+        Tool, ToolInfo, ToolResponse, Turn,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};

@@ -278,6 +278,19 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
         .await
         .expect("runtime builds");
 
+    let context = runtime
+        .load_context(session_id)
+        .await
+        .expect("context inspection discovers MCP tools");
+    assert!(
+        context
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "mcp_docs__echo"),
+        "load_context must use the same MCP discovery path as execution"
+    );
+
     let result = runtime
         .run_text_turn(session_id, "Use the docs MCP echo tool.")
         .await

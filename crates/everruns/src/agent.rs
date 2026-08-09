@@ -12,6 +12,7 @@
 
 use std::collections::HashSet;
 use std::fmt;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
@@ -169,6 +170,10 @@ pub enum BuildError {
         requested: String,
         registered: Vec<String>,
     },
+    /// MCP server configuration was invalid or duplicated.
+    InvalidMcpServer { reason: String },
+    /// Context compaction configuration was invalid.
+    InvalidCompaction { reason: String },
 }
 
 impl fmt::Display for BuildError {
@@ -196,6 +201,12 @@ impl fmt::Display for BuildError {
                 "provider {requested:?} is not registered; registered providers: [{}]",
                 registered.join(", ")
             ),
+            BuildError::InvalidMcpServer { reason } => {
+                write!(f, "invalid MCP server configuration: {reason}")
+            }
+            BuildError::InvalidCompaction { reason } => {
+                write!(f, "invalid compaction configuration: {reason}")
+            }
         }
     }
 }
@@ -218,6 +229,11 @@ pub struct Agent {
     function_tools: Vec<FunctionTool>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
+    workspace_root: Option<PathBuf>,
+    mcp_servers: everruns_core::ScopedMcpServers,
+    plugin_warnings: Vec<String>,
+    #[cfg(feature = "local")]
+    local: Option<crate::LocalConfig>,
 }
 
 impl Agent {
@@ -304,6 +320,10 @@ impl Agent {
             .await
     }
 
+    pub(crate) fn plugin_warnings(&self) -> Vec<String> {
+        self.plugin_warnings.clone()
+    }
+
     async fn build_runtime_with_backends(
         &self,
         session_id: SessionId,
@@ -333,7 +353,8 @@ impl Agent {
         let mut session = SessionBuilder::new(harness_id)
             .id(session_id)
             .agent(agent_id)
-            .capabilities(self.capabilities.clone());
+            .capabilities(self.capabilities.clone())
+            .mcp_servers(self.mcp_servers.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             session = session.parallel_tool_calls(parallel);
         }
@@ -347,18 +368,64 @@ impl Agent {
             .agent(agent)
             .session(session)
             .model_spec(self.model.spec.clone());
-        // Route the runtime's raw event bus through the facade sink, and swap in
-        // a persisting message store when one was supplied (EVE-836). Any store
-        // not overridden stays on the default in-memory backend.
-        if event_bus.is_some() || message_store.is_some() {
-            let mut backends = RuntimeBackends::in_memory();
-            if let Some(event_bus) = event_bus {
-                backends = backends.with_event_bus(event_bus);
+
+        let mut backends = RuntimeBackends::in_memory();
+        if let Some(event_bus) = event_bus {
+            backends = backends.with_event_bus(event_bus);
+        }
+        #[cfg(feature = "local")]
+        if let Some(config) = &self.local {
+            config
+                .profile()
+                .ensure_dirs()
+                .map_err(|error| everruns_core::AgentLoopError::config(error.to_string()))?;
+        }
+        if let Some(message_store) = message_store {
+            backends = backends.with_message_store(message_store);
+        }
+
+        #[cfg(feature = "local")]
+        if let Some(config) = &self.local {
+            let local = everruns_local::LocalBackends::new(config.profile(), backends)?;
+            backends = local.runtime_backends;
+        }
+        builder = builder.backends(backends);
+
+        let workspace_root = self.workspace_root.as_ref().or_else(|| {
+            #[cfg(feature = "local")]
+            {
+                self.local.as_ref().map(|config| &config.workspace_root)
             }
-            if let Some(message_store) = message_store {
-                backends = backends.with_message_store(message_store);
+            #[cfg(not(feature = "local"))]
+            {
+                None
             }
-            builder = builder.backends(backends);
+        });
+        if let Some(root) = workspace_root {
+            // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
+            // real-disk factory so every operation retains containment and
+            // symlink rejection; the facade does not implement a second path
+            // mapper.
+            let registry = {
+                #[cfg(feature = "local")]
+                if self.local.is_some() {
+                    everruns_core::CapabilityRegistry::with_builtins()
+                } else {
+                    everruns_core::CapabilityRegistry::runtime_builtins()
+                }
+                #[cfg(not(feature = "local"))]
+                {
+                    everruns_core::CapabilityRegistry::runtime_builtins()
+                }
+            };
+            let platform = everruns_core::PlatformDefinition::builder()
+                .capability_registry(registry)
+                .driver_registry(everruns_core::DriverRegistry::new())
+                .session_file_system_factory(Arc::new(
+                    everruns_runtime::RealDiskSessionFileSystemFactory::new(root),
+                ))
+                .build();
+            builder = builder.platform_definition(platform);
         }
         // Register each function tool as a closure-backed, single-tool
         // capability so the runtime can execute the model's calls; the matching
@@ -388,6 +455,12 @@ pub struct AgentBuilder {
     tools: Vec<Tool>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
+    workspace_root: Option<PathBuf>,
+    mcp_servers: Vec<crate::McpServer>,
+    plugin_warnings: Vec<String>,
+    compaction: Option<crate::CompactionConfig>,
+    #[cfg(feature = "local")]
+    local: Option<crate::LocalConfig>,
 }
 
 impl AgentBuilder {
@@ -470,6 +543,91 @@ impl AgentBuilder {
         self
     }
 
+    /// Seed an editable UTF-8 text file into the initial workspace.
+    pub fn file(mut self, path: impl Into<String>, content: impl Into<String>) -> Self {
+        self.initial_files.push(InitialFile {
+            path: path.into(),
+            content: content.into(),
+            encoding: "text".to_string(),
+            is_readonly: false,
+        });
+        self
+    }
+
+    /// Seed a read-only UTF-8 text file into the initial workspace.
+    pub fn readonly_file(mut self, path: impl Into<String>, content: impl Into<String>) -> Self {
+        self.initial_files.push(InitialFile {
+            path: path.into(),
+            content: content.into(),
+            encoding: "text".to_string(),
+            is_readonly: true,
+        });
+        self
+    }
+
+    /// Use a real host directory as this agent's `/workspace`.
+    ///
+    /// The runtime rejects traversal and symlink escapes at every filesystem
+    /// operation. The directory must exist before the session is first used and
+    /// must be selected by trusted application configuration, not model input.
+    pub fn workspace(mut self, root: impl Into<PathBuf>) -> Self {
+        self.workspace_root = Some(root.into());
+        if !self
+            .capabilities
+            .iter()
+            .any(|capability| capability.capability_id() == "session_file_system")
+        {
+            self.capabilities
+                .push(AgentCapabilityConfig::new("session_file_system"));
+        }
+        self
+    }
+
+    /// Add a scoped MCP server to this agent.
+    pub fn mcp_server(mut self, server: crate::McpServer) -> Self {
+        self.mcp_servers.push(server);
+        self
+    }
+
+    /// Load and enable a local plugin directory.
+    ///
+    /// Reading and compilation happen immediately so invalid or unsafe plugin
+    /// input fails before the agent is built. Non-fatal warnings are available
+    /// from [`Session::inspect`](crate::Session::inspect). Plugins contribute
+    /// instructions and capabilities, so select the directory from trusted
+    /// application configuration rather than model or request input.
+    pub fn plugin(mut self, path: impl AsRef<Path>) -> Result<Self, crate::PluginError> {
+        let loaded = crate::plugin::load(path.as_ref())?;
+        self.capabilities.push(loaded.capability);
+        self.plugin_warnings.extend(loaded.warnings);
+        Ok(self)
+    }
+
+    /// Configure automatic context compaction for long-running sessions.
+    pub fn compaction(mut self, config: crate::CompactionConfig) -> Self {
+        self.compaction = Some(config);
+        self
+    }
+
+    /// Enable local task/schedule state and a real workspace.
+    ///
+    /// Task and schedule state is stored in SQLite. Conversation persistence is
+    /// event-derived and is not selected by this profile. Requires the `local`
+    /// feature.
+    #[cfg(feature = "local")]
+    pub fn local(mut self, config: crate::LocalConfig) -> Self {
+        self.local = Some(config);
+        if !self
+            .capabilities
+            .iter()
+            .any(|capability| capability.capability_id() == "session_file_system")
+        {
+            self.capabilities
+                .push(AgentCapabilityConfig::new("session_file_system"));
+        }
+        self
+    }
+
     /// Validate the description and produce an [`Agent`].
     ///
     /// # Errors
@@ -482,6 +640,10 @@ impl AgentBuilder {
     /// - [`BuildError::InvalidToolSchema`] if a function tool's JSON schema is
     ///   not a valid arguments schema.
     /// - [`BuildError::DuplicateTool`] if two `.tool(..)` calls share a name.
+    /// - [`BuildError::InvalidMcpServer`] if an MCP server is unnamed,
+    ///   incomplete, or duplicates another server name.
+    /// - [`BuildError::InvalidCompaction`] if the proactive context budget is
+    ///   outside the supported range.
     pub fn build(self) -> Result<Agent, BuildError> {
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
@@ -545,6 +707,20 @@ impl AgentBuilder {
             }
         }
 
+        let mcp_servers = crate::mcp::into_scoped(self.mcp_servers)
+            .map_err(|reason| BuildError::InvalidMcpServer { reason })?;
+        if let Some(compaction) = self.compaction {
+            if !(compaction.budget_percent.is_finite()
+                && 0.1 <= compaction.budget_percent
+                && compaction.budget_percent <= 1.0)
+            {
+                return Err(BuildError::InvalidCompaction {
+                    reason: "budget_percent must be at least 0.1 and at most 1".to_string(),
+                });
+            }
+            capabilities.push(compaction.capability_config());
+        }
+
         Ok(Agent {
             name,
             instructions,
@@ -554,6 +730,11 @@ impl AgentBuilder {
             function_tools,
             initial_files: self.initial_files,
             parallel_tool_calls: self.parallel_tool_calls,
+            workspace_root: self.workspace_root,
+            mcp_servers,
+            plugin_warnings: self.plugin_warnings,
+            #[cfg(feature = "local")]
+            local: self.local,
         })
     }
 }

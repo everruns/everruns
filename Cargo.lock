@@ -2398,6 +2398,7 @@ version = "0.17.25"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-local",
  "everruns-macros",
  "everruns-openai",
  "everruns-runtime",

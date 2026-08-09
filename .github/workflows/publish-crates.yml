@@ -152,6 +152,7 @@ jobs:
               "crates/everruns/Cargo.toml": [
                   "everruns-core",
                   "everruns-runtime",
+                  "everruns-local",
                   "everruns-macros",
               ],
               "crates/local/Cargo.toml": [

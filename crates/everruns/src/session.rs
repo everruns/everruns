@@ -140,17 +140,7 @@ impl Session {
         input: impl Into<InputMessage>,
         options: RunOptions,
     ) -> Result<Turn, RunError> {
-        if self.runtime.is_none() {
-            self.runtime = Some(
-                self.agent
-                    .build_runtime_with_event_bus(
-                        self.session_id,
-                        self.event_bus.clone(),
-                        self.message_store.clone(),
-                    )
-                    .await?,
-            );
-        }
+        self.ensure_runtime().await?;
         let runtime = self.runtime.as_ref().expect("runtime built above");
 
         match options.cancel {
@@ -171,6 +161,40 @@ impl Session {
                 }
             }
         }
+    }
+
+    /// Inspect the exact application-facing context for the next model call.
+    ///
+    /// This is valid before the first turn and after any later turn. MCP tool
+    /// discovery, plugin prompt contributions, message filters, and model
+    /// selection use the same runtime assembly path as execution.
+    pub async fn inspect(&mut self) -> Result<crate::SessionContext, RunError> {
+        self.ensure_runtime().await?;
+        let context = self
+            .runtime
+            .as_ref()
+            .expect("runtime built above")
+            .load_context(self.session_id)
+            .await?;
+        Ok(crate::SessionContext::from_runtime(
+            context,
+            self.agent.plugin_warnings(),
+        ))
+    }
+
+    async fn ensure_runtime(&mut self) -> Result<(), RunError> {
+        if self.runtime.is_none() {
+            self.runtime = Some(
+                self.agent
+                    .build_runtime_with_event_bus(
+                        self.session_id,
+                        self.event_bus.clone(),
+                        self.message_store.clone(),
+                    )
+                    .await?,
+            );
+        }
+        Ok(())
     }
 }
 
