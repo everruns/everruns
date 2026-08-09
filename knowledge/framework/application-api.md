@@ -181,8 +181,8 @@ and multi-host lifecycle management remain host concerns.
   protections.
 - Local task/schedule state is opt-in. Schedule delivery remains an explicitly
   managed host lifecycle with at-least-once semantics.
-- Removal or compiler deprecation of `everruns-runtime`, and any post-`0.18`
-  cutover work, are outside this contract.
+- Runtime transition and removal policy is owned by
+  [Runtime Compatibility and Deprecation Policy](runtime-compatibility.md).
 
 ## Success bar
 

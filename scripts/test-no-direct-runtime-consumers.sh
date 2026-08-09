@@ -6,14 +6,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Compatibility ownership is explicit: the workspace declaration keeps the
-# 0.17 adapter publishable, and only the adapter crate may import its own Rust
-# name. The coding CLI fixture is a source guard whose string is the assertion
-# needle, not a dependency.
+# 0.17 adapter publishable, and only the adapter plus the tested legacy
+# downstream fixture may import its Rust name. The coding CLI exception is an
+# assertion needle, not a dependency. Primary install/import examples are
+# confined to the compatibility crate, migration guide, and compatibility skill.
 SOURCE_PREFIX_ALLOWLIST=(
   "crates/runtime/"
 )
 SOURCE_FILE_ALLOWLIST=(
   "examples/coding-cli/tests/facade_only.rs"
+  "tests/fixtures/runtime-migration/legacy/src/main.rs"
+)
+DOC_PREFIX_ALLOWLIST=(
+  "crates/runtime/"
+  "skills/everruns-runtime/"
+)
+DOC_FILE_ALLOWLIST=(
+  "docs/framework/runtime-compatibility.md"
 )
 
 python3 - "$PROJECT_ROOT" <<'PY'
@@ -23,6 +32,7 @@ import tomllib
 
 root = pathlib.Path(sys.argv[1]).resolve()
 violations = []
+manifest_allowlist = {"tests/fixtures/runtime-migration/legacy/Cargo.toml"}
 
 def dependency_tables(value, path=()):
     if not isinstance(value, dict):
@@ -45,6 +55,8 @@ for manifest in root.rglob("Cargo.toml"):
             package = declaration.get("package") if isinstance(declaration, dict) else None
             if name == "everruns-runtime" or package == "everruns-runtime":
                 if relative == "Cargo.toml" and table_path == ("workspace", "dependencies"):
+                    continue
+                if relative in manifest_allowlist:
                     continue
                 violations.append(f"{relative}: {'.'.join(table_path)}.{name}")
 
@@ -125,6 +137,43 @@ done < <(
 if [ "${#violations[@]}" -ne 0 ]; then
   echo "everruns_runtime imports/references are forbidden outside the compatibility allowlist:" >&2
   printf '  %s\n' "${violations[@]}" >&2
+  exit 1
+fi
+
+doc_violations=()
+while IFS= read -r match; do
+  [ -n "$match" ] || continue
+  path="${match%%:*}"
+  allowed=false
+  for prefix in "${DOC_PREFIX_ALLOWLIST[@]}"; do
+    if [[ "$path" == "$prefix"* ]]; then
+      allowed=true
+      break
+    fi
+  done
+  if [ "$allowed" = false ]; then
+    for file in "${DOC_FILE_ALLOWLIST[@]}"; do
+      if [ "$path" = "$file" ]; then
+        allowed=true
+        break
+      fi
+    done
+  fi
+  if [ "$allowed" = false ]; then
+    doc_violations+=("$match")
+  fi
+done < <(
+  cd "$PROJECT_ROOT"
+  rg -n \
+    --glob '*.md' --glob '*.mdx' --glob '*.rs' \
+    --glob '!target/**' \
+    'cargo add everruns-runtime|use everruns_runtime(?:::|\s*::|\s*\{)' \
+    README.md docs crates examples skills || true
+)
+
+if [ "${#doc_violations[@]}" -ne 0 ]; then
+  echo "primary docs and examples must not recommend or import everruns-runtime:" >&2
+  printf '  %s\n' "${doc_violations[@]}" >&2
   exit 1
 fi
 

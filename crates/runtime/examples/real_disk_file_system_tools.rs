@@ -1,3 +1,6 @@
+//! 0.17 compatibility example. New applications use the `everruns` Framework
+//! workspace APIs; see <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 // Demonstrates that the built-in `file_system` capability's tools
 // (`write_file`, `read_file`, `list_directory`) operate against whichever
 // `SessionFileSystem` the embedder plugs in — here, a `RealDiskFileStore`

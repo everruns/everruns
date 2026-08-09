@@ -1,3 +1,6 @@
+//! 0.17 compatibility example. New applications use `Session::inspect` from
+//! `everruns`; migrate with <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 use chrono::Utc;
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;

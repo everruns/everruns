@@ -7,9 +7,9 @@
 //! deterministic simulator needs no credentials or network.
 //!
 //! `everruns` is the primary Rust library in the
-//! [Everruns](https://everruns.com) ecosystem. Existing low-level and 0.17.x
-//! applications may continue using `everruns-runtime`; new ordinary
-//! applications should begin here.
+//! [Everruns](https://everruns.com) ecosystem. New ordinary applications begin
+//! here. Existing `everruns-runtime` 0.17.x applications should follow the
+//! [runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
 //!
 //! # Example
 //!

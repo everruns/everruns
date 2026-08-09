@@ -15,9 +15,9 @@ together.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. Provider crates such as
-[`everruns-openai`](https://crates.io/crates/everruns-openai) and host crates
-such as [`everruns-runtime`](https://crates.io/crates/everruns-runtime) depend on
-these contracts instead of on server internals.
+[`everruns-openai`](https://crates.io/crates/everruns-openai) and
+[`everruns-host`](https://crates.io/crates/everruns-host) depend on these
+contracts instead of on server internals.
 
 ## Quick Example
 

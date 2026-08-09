@@ -171,9 +171,9 @@ the [Framework quickstart](https://docs.everruns.com/framework/quickstart/).
 Reusable capability packages can use the curated
 [`everruns::capability`](https://docs.everruns.com/framework/advanced-capabilities/) authoring API.
 
-`everruns-runtime` remains available for existing 0.17.x applications and low-level execution
-hosts. See [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
-before choosing it for new code.
+Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates.
+Existing `everruns-runtime` 0.17.x applications should follow the
+[runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
 
 A CLI (`everruns-cli`) is also available for scripting against a deployment — see the [CLI](https://docs.everruns.com/features/cli/) guide.
 

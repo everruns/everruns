@@ -1,3 +1,6 @@
+//! 0.17 compatibility example. New applications use the `everruns` Framework
+//! workspace APIs; see <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 // Demonstrates that `AgentInstructionsCapability` reads `AGENTS.md` from
 // whichever `SessionFileSystem` the embedder plugs in — here, a
 // `RealDiskFileStore` rooted at a temp directory.

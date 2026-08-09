@@ -144,6 +144,7 @@ jobs:
             shell:
               - 'scripts/run-shell-tests.sh'
               - 'scripts/test-*.sh'
+              - 'tests/fixtures/runtime-migration/**'
               - 'scripts/check_okf.py'
               - 'scripts/lib/**'
               - 'scripts/sync-publish-pin-versions.py'

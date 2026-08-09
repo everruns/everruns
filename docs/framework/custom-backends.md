@@ -21,15 +21,12 @@ The low-level crates expose focused contracts for:
 - local SQLite-backed task and schedule state;
 - platform/control-plane entities and durable deployment components.
 
-During 0.17.x, `everruns-runtime` remains the supported compatibility crate for
-existing `InProcessRuntimeBuilder` and `RuntimeBackends` users. New ordinary
-applications should not reproduce that topology merely to run a session.
-
-An advanced host may depend on `everruns` plus the focused host crates it
-actually needs. It is healthy for such a host to use low-level extension traits;
-the goal is not to re-export every backend through one facade. See the
-[`everruns-runtime` API reference](https://docs.rs/everruns-runtime) and
-[Runtime compatibility](/framework/runtime-compatibility/) for that transitional path.
+An advanced host depends on `everruns` plus `everruns-host` and the focused
+crates it actually needs. It is healthy for such a host to use low-level
+extension traits; the goal is not to re-export every backend through one
+facade. Existing 0.17 `everruns-runtime` users should follow the
+[runtime migration guide](/framework/runtime-compatibility/) to reach that
+maintained boundary.
 
 ## Security boundary
 

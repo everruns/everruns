@@ -1,4 +1,6 @@
 //! Run an in-process runtime turn against a live OpenAI model.
+//! This is 0.17 compatibility coverage. New applications use the `everruns`
+//! Framework; see <https://docs.everruns.com/framework/runtime-compatibility/>.
 //!
 //! Unlike the `in_process_runtime` example (which uses the deterministic
 //! `llmsim` driver), this one talks to a real provider. The key difference is

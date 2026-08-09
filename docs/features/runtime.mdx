@@ -12,11 +12,7 @@ model/provider configuration, typed tools, sessions, events, cancellation,
 files, MCP, and context inspection without requiring applications to assemble a
 low-level execution host.
 
-`everruns-runtime` remains published and supported throughout 0.17.x. Existing
-applications do not need to migrate immediately, and advanced embedders may
-continue using it for host backends, platform definitions, phase adapters, and
-in-memory execution topology.
-
-See [Runtime compatibility](/framework/runtime-compatibility/) for the
-application migration map and [Custom backends](/framework/custom-backends/)
-for the low-level embedding boundary.
+Advanced system integrators use `everruns` plus `everruns-host` and focused MCP,
+provider, platform, or integration crates. Existing `everruns-runtime` 0.17.x
+applications remain usable while they follow the authoritative
+[runtime migration guide](/framework/runtime-compatibility/).

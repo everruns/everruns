@@ -7,7 +7,8 @@
 //! should normally depend on `everruns`.
 //!
 //! The deprecated `everruns-runtime` package re-exports this implementation so
-//! its 0.17 public paths continue to use the same canonical code.
+//! its 0.17 public paths continue to use the same canonical code. Existing
+//! users should follow the [runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
 //!
 //! # Example
 //!

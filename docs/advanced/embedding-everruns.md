@@ -13,9 +13,10 @@ or credentials.
 Low-level embedding is for applications that are themselves execution hosts:
 servers, evaluation harnesses, research runtimes, or specialized systems that
 must replace backend stores, platform definitions, or orchestration phases.
-Those hosts can compose focused crates and may continue using
-`everruns-runtime` as a supported 0.17.x compatibility surface.
+Those hosts compose `everruns` with `everruns-host` and the focused crates they
+need.
 
 The useful low-level boundary, security obligations, and crate-selection
 guidance now live in [Custom backends](/framework/custom-backends/). Existing
-runtime users should also read [Runtime compatibility](/framework/runtime-compatibility/).
+0.17 runtime users should follow the
+[runtime migration guide](/framework/runtime-compatibility/).

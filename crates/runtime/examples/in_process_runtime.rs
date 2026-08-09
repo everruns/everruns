@@ -1,3 +1,6 @@
+//! 0.17 compatibility example. New applications use the `everruns` Framework;
+//! migrate with <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;

@@ -1,3 +1,6 @@
+//! 0.17 compatibility example. New applications use `AgentBuilder::plugin`
+//! from `everruns`; see <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 // Load a plugin from a local directory and inspect the assembled context.
 //
 // This example demonstrates `InProcessRuntimeBuilder::with_plugin_dir`:

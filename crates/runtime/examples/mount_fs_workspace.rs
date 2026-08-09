@@ -1,3 +1,6 @@
+//! 0.17 advanced-host compatibility example. New hosts import filesystem
+//! implementations from `everruns-host`; see <https://docs.everruns.com/framework/runtime-compatibility/>.
+
 // Mount-based workspace filesystem (EVE-660).
 //
 // Demonstrates `MountFs`: the agent sees ONE namespace where `/workspace` is a
