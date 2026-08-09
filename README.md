@@ -64,7 +64,7 @@ Workers are stateless and hold no database credentials — they reach the contro
 ### Connect any model and any tool
 
 - **LLM providers**: OpenAI (Responses + Chat Completions), Azure OpenAI, Anthropic, Gemini, plus `llmsim` for tests. Model resolution is layered: message → session → agent → system default.
-- **[MCP](https://docs.everruns.com/features/mcp/), both ways** — register remote MCP servers as virtual capabilities (auto-discovered and namespaced), and expose your own deployment's MCP endpoint with OAuth 2.1 so other agents can call yours.
+- **[MCP](https://docs.everruns.com/features/mcp/), both ways** — register remote MCP servers as virtual capabilities (auto-discovered and namespaced), and use every deployment's always-available authenticated MCP endpoint with OAuth 2.1 so other agents can call yours.
 - **[Integrations](https://docs.everruns.com/integrations/)**: Docker, Daytona, E2B, Deno, Browserless, Brave Search, DuckDuckGo, Parallel, Sprites, Cursor — auto-registered via the `inventory` plugin system.
 - **Client-side tools** for SDK/API consumers that want to run tools locally.
 

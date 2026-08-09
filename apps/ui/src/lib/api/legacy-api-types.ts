@@ -792,8 +792,6 @@ export interface FeatureFlags {
   observers: boolean;
   /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
   public_chat: boolean;
-  /** First-party MCP server endpoint (`POST /mcp`). Experimental. */
-  mcp_endpoint: boolean;
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
 }

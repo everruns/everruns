@@ -99,17 +99,17 @@ async fn mcp_request_raw(
 }
 
 #[tokio::test]
-async fn test_mcp_returns_404_when_org_not_opted_in() {
+async fn test_mcp_is_available_when_obsolete_org_flag_is_disabled() {
     let server = TestServer::in_memory().await;
     let disabled_flags = std::collections::HashMap::from([("mcp_endpoint".to_string(), false)]);
     server
         .db
         .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &disabled_flags)
         .await
-        .expect("disable MCP endpoint flag");
+        .expect("seed obsolete MCP endpoint flag row");
 
     let resp = mcp_request_raw(&server, "initialize", json!({}), vec![]).await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::OK);
 }
 
 /// Call tools/call with a given tool name and arguments.
@@ -2097,7 +2097,7 @@ async fn test_mcp_execute_create_mcp_server() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_org_override_requires_target_org_opt_in() {
+async fn test_mcp_org_override_is_available_without_target_org_opt_in() {
     let server = TestServer::in_memory().await;
 
     let org2: Value = server
@@ -2123,7 +2123,7 @@ async fn test_mcp_org_override_requires_target_org_opt_in() {
         vec![("cookie", org2_cookie.as_str())],
     )
     .await;
-    assert_eq!(direct_org2_resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(direct_org2_resp.status(), StatusCode::OK);
 
     let override_resp = mcp_tool_call(
         &server,
@@ -2135,13 +2135,8 @@ async fn test_mcp_org_override_requires_target_org_opt_in() {
     )
     .await;
     assert!(
-        tool_is_error(&override_resp),
-        "disabled target org override unexpectedly executed: {}",
-        tool_text(&override_resp)
-    );
-    assert!(
-        tool_text(&override_resp).contains("MCP endpoint is not enabled"),
-        "expected MCP feature-gate failure, got: {}",
+        !tool_is_error(&override_resp),
+        "target org override failed without feature opt-in: {}",
         tool_text(&override_resp)
     );
 }
@@ -2167,23 +2162,6 @@ async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
         .await
         .assert_status(StatusCode::OK);
     let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
-
-    // The MCP endpoint is feature-gated per org; opt the freshly-created org2
-    // in so this test exercises org-scope isolation rather than the 404 gate.
-    server
-        .db
-        .replace_org_feature_flags(
-            server
-                .db
-                .get_organization_by_public_id(&org2_id)
-                .await
-                .expect("lookup org2")
-                .expect("org2 exists")
-                .org_id,
-            &std::collections::HashMap::from([("mcp_endpoint".to_string(), true)]),
-        )
-        .await
-        .expect("opt org2 into mcp_endpoint");
 
     let create_agent_resp = mcp_tool_call_with_headers(
         &server,
@@ -2456,23 +2434,6 @@ async fn test_mcp_resources_read_cannot_escape_org_scope() {
         .await
         .assert_status(StatusCode::OK);
     let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
-
-    // The MCP endpoint is feature-gated per org; opt the freshly-created org2
-    // in so this test exercises org-scope isolation rather than the 404 gate.
-    server
-        .db
-        .replace_org_feature_flags(
-            server
-                .db
-                .get_organization_by_public_id(&org2_id)
-                .await
-                .expect("lookup org2")
-                .expect("org2 exists")
-                .org_id,
-            &std::collections::HashMap::from([("mcp_endpoint".to_string(), true)]),
-        )
-        .await
-        .expect("opt org2 into mcp_endpoint");
 
     let create_agent_resp = mcp_tool_call_with_headers(
         &server,

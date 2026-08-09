@@ -9,11 +9,11 @@ Everruns speaks the [Model Context Protocol](https://spec.modelcontextprotocol.i
 
 ## Everruns as an MCP server
 
-Every Everruns deployment exposes an MCP endpoint at `/mcp` so external clients — Claude Desktop, Cursor, VS Code, or another agent — can discover and call your agents and tools over JSON-RPC.
+Every Everruns deployment exposes an authenticated MCP endpoint at `/mcp` so external clients — Claude Desktop, Cursor, VS Code, or another agent — can discover and call your agents and tools over JSON-RPC. It is a standard product surface, with no deployment variable or organization feature toggle.
 
 - **Transport** — JSON-RPC 2.0 over Streamable HTTP (`POST /mcp`). Protocol versions `2025-06-18` and `2025-03-26` are supported.
 - **Methods** — `initialize`, `ping`, `tools/list`, `tools/call`, `resources/list`, `resources/read`.
-- **Auth** — the same org resolution as the REST API (API keys, JWT/cookie sessions), plus OAuth 2.1 with mandatory PKCE for dynamic client registration. Discovery metadata is served at `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`.
+- **Auth** — MCP requests authenticate and resolve an organization before dispatch. OAuth 2.1 uses mandatory PKCE, and MCP access tokens are bound to the exact `/mcp` resource so they cannot be reused against the REST API. Unauthenticated requests fail with `401` and protected-resource discovery metadata is served at `/.well-known/oauth-protected-resource/mcp`.
 - **Entity cards** — under protocol `2025-06-18`, tools like `agent_get_card` return a sandboxed `text/html` MCP App resource at the `ui://` scheme alongside a text summary, so MCP-Apps-aware hosts render rich cards while others fall back to text.
 
 Routing is intentionally split: REST under `/api/*`, MCP OAuth under `/oauth/*`, and MCP JSON-RPC at `/mcp`.

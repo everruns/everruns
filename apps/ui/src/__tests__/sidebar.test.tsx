@@ -68,7 +68,6 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
-const mockMcpEndpointEnabled = jest.fn(() => true);
 jest.mock("@/components/layout/mcp-connect-button", () => ({
   McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
   McpConnectDialog: ({ open }: { open: boolean }) =>
@@ -115,10 +114,8 @@ jest.mock("@/providers/feature-flags-provider", () => ({
     voice: true,
     agent_delegation: true,
     observers: true,
-    mcp_endpoint: true,
   }),
-  useFeatureFlag: (flag: string) =>
-    flag === "mcp_endpoint" ? mockMcpEndpointEnabled() : flag === "notifications",
+  useFeatureFlag: (flag: string) => flag === "notifications",
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
@@ -148,7 +145,6 @@ describe("Sidebar", () => {
     mockPush.mockClear();
     mockPrefetch.mockClear();
     mockThreads.mockReturnValue([]);
-    mockMcpEndpointEnabled.mockReturnValue(true);
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": true } },
       can: (policyId: string) => policyId === "durable.view",
@@ -241,8 +237,7 @@ describe("Sidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("hides MCP Connect when the endpoint capability is disabled", () => {
-    mockMcpEndpointEnabled.mockReturnValue(false);
+  it("keeps MCP Connect visible without endpoint feature flag data", () => {
     mockUseAuth.mockReturnValue({
       user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
       requiresAuth: false,
@@ -257,7 +252,7 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
 
-    expect(screen.queryByRole("menuitem", { name: "Connect via MCP" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
   });
 
   it("preserves authentication-only actions in authenticated mode", () => {

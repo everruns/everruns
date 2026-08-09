@@ -12,9 +12,9 @@ This test exercises the `/mcp` endpoint's catalog search path plus the bashkit-b
 
 ## Preconditions
 
-- Control-plane running (`just start-dev` or `just start-all`)
-- MCP endpoint reachable at `/mcp`
-- Caller authenticated for `/mcp` (DEV_MODE, session cookie, API key, or MCP OAuth token)
+- Auth-enabled control-plane running for the fail-closed check; `AUTH_MODE=none` may be used only for the authenticated-flow equivalent in local development
+- MCP endpoint reachable at `/mcp` without deployment or organization feature configuration
+- Caller authorized for `/mcp` (local anonymous identity in `AUTH_MODE=none`, personal access token, or resource-bound MCP OAuth token)
 - Default org has built-in harnesses provisioned (`base`, `generic`, `platform-chat`)
 
 ## Test Data
@@ -29,60 +29,67 @@ This test exercises the `/mcp` endpoint's catalog search path plus the bashkit-b
 
 ## Steps
 
+### Negative path — unauthenticated discovery fails closed
+
+1. **POST an `initialize` request to `/mcp` without credentials.**
+
+2. **Expected:** HTTP `401 Unauthorized`, with `WWW-Authenticate` pointing to
+   `/.well-known/oauth-protected-resource/mcp`. The response must not disclose tools or org data.
+
 ### Happy path — discover then execute
 
-1. **Call MCP `discover`** with query `agent`.
+3. **Call MCP `discover`** with query `agent` using an authenticated MCP client.
 
-2. **Verify the response** includes `create_agent` and enough surrounding context to show that catalog search is matching operation names/descriptions rather than returning an empty result.
+4. **Verify the response** includes `create_agent` and enough surrounding context to show that catalog search is matching operation names/descriptions rather than returning an empty result.
 
-3. **Call MCP `discover`** with query `harnesses`.
+5. **Call MCP `discover`** with query `harnesses`.
 
-4. **Verify the response** includes `list_harnesses`. This proves the client can find related operations without prior knowledge of exact command names.
+6. **Verify the response** includes `list_harnesses`. This proves the client can find related operations without prior knowledge of exact command names.
 
-5. **Call MCP `execute`** with:
+7. **Call MCP `execute`** with:
 
    ```bash
    list_harnesses
    ```
 
-6. **Verify the output** shows:
+8. **Verify the output** shows:
    - A JSON payload
    - Seed harnesses including `generic`
 
-7. **Call MCP `execute`** with:
+9. **Call MCP `execute`** with:
 
    ```bash
    create_agent --name 'catalog-smoke-bot' --display_name 'Catalog Smoke Bot' --system_prompt 'Reply with the single word catalog.'
    ```
 
-8. **Verify the output** returns a created agent with:
+10. **Verify the output** returns a created agent with:
    - An `agent_...` ID
    - `name: "catalog-smoke-bot"`
    - `display_name: "Catalog Smoke Bot"`
 
-9. **Call MCP `execute`** again using the positional form:
+11. **Call MCP `execute`** again using the positional form:
 
    ```bash
-   get_agent <agent_id_from_step_7>
+   get_agent <agent_id_from_step_9>
    ```
 
-10. **Verify the positional form succeeds** even without an explicit `--id` flag.
+12. **Verify the positional form succeeds** even without an explicit `--id` flag.
 
 ### Negative path A — missing discover query
 
-11. **Call MCP `discover`** with no `query` and no `all: true`.
+13. **Call MCP `discover`** with no `query` and no `all: true`.
 
-12. **Expected:** MCP returns a tool error explaining that a query is required (or that `all: true` must be set). No transport error, no 500, no empty success payload.
+14. **Expected:** MCP returns a tool error explaining that a query is required (or that `all: true` must be set). No transport error, no 500, no empty success payload.
 
 ### Negative path B — bad execute builtin
 
-13. **Call MCP `execute`** with:
+15. **Call MCP `execute`** with:
 
    ```bash
    definitely_not_a_real_command
    ```
 
-14. **Expected:** MCP returns a command-not-found/tool-error style response. The server stays healthy and subsequent valid `discover`/`execute` calls still work.
+16. **Expected:** MCP returns a command-not-found/tool-error style response. The server stays healthy and subsequent valid `discover`/`execute` calls still work.
 
 ## Expected Result
 

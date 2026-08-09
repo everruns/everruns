@@ -1648,11 +1648,10 @@ impl ServerAppBuilder {
             }))
         };
 
-        let mut root_routes = Router::new();
-
-        if feature_flags.mcp_endpoint {
-            root_routes = root_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
-        }
+        // The authenticated MCP product surface is always mounted. Access is
+        // enforced per request by MCP-specific auth, org resolution, policy,
+        // and the root-route rate limiter below (TM-MCP-001, TM-MCP-006).
+        let mut root_routes = Router::new().merge(api::mcp_endpoint::routes(mcp_endpoint_state));
 
         if let Some(public_routes) = auth_backend.public_routes() {
             root_routes = root_routes.merge(public_routes);

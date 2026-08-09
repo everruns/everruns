@@ -125,6 +125,7 @@ async fn test_feature_flags_endpoint() {
     assert!(body.is_object());
     assert!(body.get("global_chat").is_some());
     assert!(body.get("notifications").is_some());
+    assert!(body.get("mcp_endpoint").is_none());
     // In test env (DEV_MODE=true), experimental flags are enabled
     assert!(body["global_chat"].is_boolean());
     assert_eq!(body["notifications"], Value::Bool(false));
@@ -142,6 +143,7 @@ async fn test_org_feature_flags_opt_in() {
         .json();
 
     let flags = settings["flags"].as_array().expect("flags array");
+    assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
     let notifications = flags
         .iter()
         .find(|f| f["name"] == "notifications")
@@ -168,6 +170,15 @@ async fn test_org_feature_flags_opt_in() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(effective["notifications"], serde_json::Value::Bool(false));
+    assert!(effective.get("mcp_endpoint").is_none());
+
+    server
+        .patch(
+            &format!("/v1/orgs/{org_id}/feature-flags"),
+            serde_json::json!({ "flags": { "mcp_endpoint": true } }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
