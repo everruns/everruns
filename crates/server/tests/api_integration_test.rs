@@ -127,6 +127,7 @@ async fn test_feature_flags_endpoint() {
     assert!(body.get("global_chat").is_some());
     assert!(body.get("notifications").is_some());
     assert!(body.get("mcp_endpoint").is_none());
+    assert_eq!(body["machine_payments"], Value::Bool(false));
     // In test env (DEV_MODE=true), experimental flags are enabled
     assert!(body["global_chat"].is_boolean());
     assert_eq!(body["notifications"], Value::Bool(false));
@@ -172,6 +173,10 @@ async fn test_org_feature_flags_opt_in() {
         .json();
     assert_eq!(effective["notifications"], serde_json::Value::Bool(false));
     assert!(effective.get("mcp_endpoint").is_none());
+    assert_eq!(
+        effective["machine_payments"],
+        serde_json::Value::Bool(false)
+    );
 
     server
         .patch(

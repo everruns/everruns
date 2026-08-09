@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { notFound, usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { IconTile } from "@/components/layout/page-layout";
 import {
@@ -15,6 +15,7 @@ import {
   FlaskConical,
   Settings as SettingsIcon,
 } from "lucide-react";
+import { useFeatureFlagsState } from "@/providers/feature-flags-provider";
 
 interface NavItem {
   name: string;
@@ -95,6 +96,16 @@ interface SettingsLayoutProps {
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const pathname = usePathname();
+  const { flags, isLoading: featureFlagsLoading } = useFeatureFlagsState();
+  const machinePaymentsEnabled = flags.machine_payments;
+
+  if (
+    !featureFlagsLoading &&
+    !machinePaymentsEnabled &&
+    pathname.startsWith("/settings/payments")
+  ) {
+    notFound();
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -117,27 +128,29 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
                   {section.label}
                 </div>
                 <div className="grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">
-                  {section.items.map((item) => {
-                    const isActive = pathname === item.href;
-                    return (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        prefetch={false}
-                        className={cn(
-                          "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
-                          isActive
-                            ? "bg-accent/10 text-accent-foreground border-accent"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
-                        )}
-                      >
-                        <item.icon className="h-4 w-4" />
-                        <div>
-                          <div className="font-medium">{item.name}</div>
-                        </div>
-                      </Link>
-                    );
-                  })}
+                  {section.items
+                    .filter((item) => item.href !== "/settings/payments" || machinePaymentsEnabled)
+                    .map((item) => {
+                      const isActive = pathname === item.href;
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          prefetch={false}
+                          className={cn(
+                            "flex items-center gap-3 px-3 py-2 text-sm transition-colors border-l-2",
+                            isActive
+                              ? "bg-accent/10 text-accent-foreground border-accent"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground border-transparent",
+                          )}
+                        >
+                          <item.icon className="h-4 w-4" />
+                          <div>
+                            <div className="font-medium">{item.name}</div>
+                          </div>
+                        </Link>
+                      );
+                    })}
                 </div>
               </div>
             ))}

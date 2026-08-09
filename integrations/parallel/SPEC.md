@@ -6,7 +6,7 @@ This crate hosts two independent Parallel capabilities. They share only the vend
   server for web search/fetch. Experimental (dev-only).
 - `parallel` — **paid**, payment-backed. Implements in-process search/extract/task tools
   that spend real money through the core `PaymentAuthority`. Gated by the
-  `machine_payments` internal feature flag (off by default everywhere).
+  deployment-controlled `machine_payments` feature flag (off by default everywhere).
 
 The two have opposite trust models and share no code. Core owns the payment trust
 boundary (`PaymentAuthority`, payment DTOs, `ToolContext`); this crate owns only the
@@ -49,7 +49,7 @@ for the trust boundary and rails.
 The paid tools never sign or submit payments themselves: they build a typed
 `MachinePaymentRequest` and call `ToolContext.payment_authority`. With no authority wired
 (the default), they fail closed. The capability is registered only when the
-`machine_payments` internal feature flag is on (`FEATURE_MACHINE_PAYMENTS=true`), off by
+`machine_payments` feature flag is on (`FEATURE_MACHINE_PAYMENTS=true`), off by
 default on every grade including dev because spend is irreversible.
 
 ## Tests

@@ -63,8 +63,8 @@ use std::sync::Arc;
 pub struct IntegrationPlugin {
     /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
     pub experimental_only: bool,
-    /// If set, only registered when the named internal feature flag is enabled.
-    /// Checked via `InternalFeatureFlags::is_enabled()` at registry build time.
+    /// If set, only registered when the named deployment feature flag is enabled.
+    /// Both API-visible and internal flag catalogs are checked at registry build time.
     pub feature_flag: Option<&'static str>,
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,
@@ -1558,6 +1558,7 @@ impl CapabilityRegistry {
 
         // External integration plugins (registered via inventory::submit! in integration crates)
         let internal_flags = crate::InternalFeatureFlags::from_env();
+        let feature_flags = crate::FeatureFlags::from_env(&grade);
         if internal_flags.session_sandbox {
             registry.register(SessionSandboxCapability);
         }
@@ -1575,7 +1576,7 @@ impl CapabilityRegistry {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin
                     .feature_flag
-                    .is_none_or(|f| internal_flags.is_enabled(f))
+                    .is_none_or(|f| internal_flags.is_enabled(f) || feature_flags.is_enabled(f))
             {
                 registry.register_boxed((plugin.factory)());
             }

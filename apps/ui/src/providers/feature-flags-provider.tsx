@@ -27,6 +27,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   observers: false,
   public_chat: false,
   webmcp: false,
+  machine_payments: false,
 };
 
 export interface FeatureFlagsContextValue {
@@ -70,11 +71,15 @@ export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
 }
 
 export function useFeatureFlags(): FeatureFlags {
+  return useFeatureFlagsState().flags;
+}
+
+export function useFeatureFlagsState(): FeatureFlagsContextValue {
   const context = useContext(FeatureFlagsContext);
   if (context === undefined) {
-    throw new Error("useFeatureFlags must be used within a FeatureFlagsProvider");
+    throw new Error("feature flag hooks must be used within a FeatureFlagsProvider");
   }
-  return context.flags;
+  return context;
 }
 
 export function useFeatureFlag(flag: keyof FeatureFlags): boolean {

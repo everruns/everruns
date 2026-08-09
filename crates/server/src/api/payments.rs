@@ -59,7 +59,13 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
-pub fn routes(state: AppState) -> Router {
+pub fn routes(state: AppState, machine_payments_enabled: bool) -> Router {
+    // THREAT[TM-CRYPTO-008]: Do not expose wallet-custody or spending-policy APIs when
+    // machine payments are disabled, even though their handlers remain compiled in.
+    if !machine_payments_enabled {
+        return Router::new();
+    }
+
     Router::new()
         .route(
             "/v1/payments/accounts",
@@ -371,16 +377,19 @@ mod tests {
     use serde_json::json;
     use tower::ServiceExt;
 
-    fn test_app() -> Router {
+    fn test_app(machine_payments_enabled: bool) -> Router {
         let db = Arc::new(StorageBackend::in_memory());
         let encryption =
             EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
                 .unwrap();
-        routes(AppState::new(
-            db.clone(),
-            Some(Arc::new(encryption)),
-            AuthState::builtin(AuthConfig::default(), db),
-        ))
+        routes(
+            AppState::new(
+                db.clone(),
+                Some(Arc::new(encryption)),
+                AuthState::builtin(AuthConfig::default(), db),
+            ),
+            machine_payments_enabled,
+        )
     }
 
     fn request(method: Method, uri: &str, body: serde_json::Value) -> Request<Body> {
@@ -419,7 +428,7 @@ mod tests {
 
     #[tokio::test]
     async fn account_routes_support_list_get_and_uuid_paths() {
-        let app = test_app();
+        let app = test_app(true);
         let account = create_test_account(app.clone()).await;
 
         let response = app
@@ -461,7 +470,7 @@ mod tests {
 
     #[tokio::test]
     async fn policy_routes_support_get_uuid_paths_and_missing_disable_404() {
-        let app = test_app();
+        let app = test_app(true);
         let account = create_test_account(app.clone()).await;
 
         let response = app
@@ -506,5 +515,37 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn payment_routes_are_not_mounted_when_machine_payments_are_disabled() {
+        let app = test_app(false);
+        let account_id = uuid::Uuid::now_v7();
+        let policy_id = uuid::Uuid::now_v7();
+        let routes = [
+            (Method::GET, "/v1/payments/accounts".to_string()),
+            (Method::POST, "/v1/payments/accounts".to_string()),
+            (Method::GET, format!("/v1/payments/accounts/{account_id}")),
+            (Method::PATCH, format!("/v1/payments/accounts/{account_id}")),
+            (
+                Method::DELETE,
+                format!("/v1/payments/accounts/{account_id}"),
+            ),
+            (Method::GET, "/v1/payments/policies".to_string()),
+            (Method::POST, "/v1/payments/policies".to_string()),
+            (Method::GET, format!("/v1/payments/policies/{policy_id}")),
+            (Method::PATCH, format!("/v1/payments/policies/{policy_id}")),
+            (Method::DELETE, format!("/v1/payments/policies/{policy_id}")),
+            (Method::GET, "/v1/payments/attempts".to_string()),
+        ];
+
+        for (method, uri) in routes {
+            let response = app
+                .clone()
+                .oneshot(request(method, &uri, serde_json::Value::Null))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{uri}");
+        }
     }
 }

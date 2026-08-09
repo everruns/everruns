@@ -14,15 +14,55 @@ jest.mock("next/link", () => ({
   ),
 }));
 
-// Mock next/navigation
 const mockPathname = jest.fn();
+const mockMachinePaymentsEnabled = jest.fn(() => true);
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlagsState: () => ({
+    flags: { machine_payments: mockMachinePaymentsEnabled() },
+    isLoading: false,
+  }),
+}));
+
+const mockNotFound = jest.fn(() => {
+  throw new Error("NEXT_NOT_FOUND");
+});
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+  notFound: () => mockNotFound(),
 }));
 
 describe("SettingsLayout", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/settings/providers");
+    mockMachinePaymentsEnabled.mockReturnValue(true);
+    mockNotFound.mockClear();
+  });
+
+  it("hides Payments navigation when machine payments are disabled", () => {
+    mockMachinePaymentsEnabled.mockReturnValue(false);
+
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.queryByRole("link", { name: /Payments/i })).not.toBeInTheDocument();
+  });
+
+  it("returns not found for the Payments page when machine payments are disabled", () => {
+    mockPathname.mockReturnValue("/settings/payments");
+    mockMachinePaymentsEnabled.mockReturnValue(false);
+
+    expect(() =>
+      render(
+        <SettingsLayout>
+          <div>Payment custody form</div>
+        </SettingsLayout>,
+      ),
+    ).toThrow("NEXT_NOT_FOUND");
+    expect(mockNotFound).toHaveBeenCalled();
+    expect(screen.queryByText("Payment custody form")).not.toBeInTheDocument();
   });
 
   it("renders the Settings header", () => {

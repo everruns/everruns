@@ -812,6 +812,8 @@ export interface FeatureFlags {
   public_chat: boolean;
   /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
   webmcp: boolean;
+  /** Machine-payment custody, policy, audit, and paid capability surfaces. */
+  machine_payments: boolean;
 }
 
 export interface OrgFeatureFlagSetting {
