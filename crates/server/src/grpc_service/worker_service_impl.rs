@@ -4086,7 +4086,15 @@ impl WorkerService for WorkerServiceImpl {
 
         let (sessions, _total) = self
             .session_service
-            .list(&internal_caller, agent_id, None, None, pagination)
+            .list(
+                &internal_caller,
+                None,
+                &crate::storage::SessionListFilters {
+                    agent_id: agent_id.map(everruns_core::AgentId::from_uuid),
+                    ..Default::default()
+                },
+                pagination,
+            )
             .await
             .map_err(|e| Status::internal(format!("Failed to list sessions: {}", e)))?;
 
@@ -4129,6 +4137,7 @@ impl WorkerService for WorkerServiceImpl {
             .and_then(|s| serde_json::from_str(s).ok());
 
         let create_req = crate::api::sessions::CreateSessionRequest {
+            source: None,
             workspace_id: None,
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             harness_name: None,
@@ -4162,6 +4171,10 @@ impl WorkerService for WorkerServiceImpl {
                     harness_id,
                     blueprint_id,
                     blueprint_config,
+                    // Platform-initiated creation is a delegated child of a
+                    // running session (subagent spawn / handoff), not an
+                    // ordinary API call.
+                    everruns_core::SessionSource::Subagent,
                     create_req,
                 )
                 .await
@@ -4173,6 +4186,7 @@ impl WorkerService for WorkerServiceImpl {
                     harness_id,
                     agent_uuid,
                     create_req.agent_id,
+                    everruns_core::SessionSource::Subagent,
                     create_req,
                 )
                 .await

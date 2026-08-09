@@ -20,6 +20,7 @@
 * [Session SQL Database Specification](session-sqldb.md) - Session-scoped SQL databases.
 * [Session Export (JSONL)](session-export.md) - Session export to JSONL.
 * [Forking Sessions](forking-sessions.md) - Fork a session into an independent copy (history + workspace + state).
+* [Session Source and List Facets](session-source-and-facets.md) - How a session records the way it was started, and how the sessions list filters and counts over it.
 * [Knowledge Bases Specification](knowledge-bases.md) - Curated organization knowledge.
 * [Open Knowledge Format (OKF) Adoption](okf-adoption.md) - Open Knowledge Format (OKF) import/export adoption for Knowledge Bases.
 * [Knowledge Indexes Specification](knowledge-indexes.md) - Source-backed, embedded, citable knowledge indexes.

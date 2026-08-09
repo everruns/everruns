@@ -503,6 +503,7 @@ mod tests {
         let guest_agent = seed_agent(&db, harness.id, "routing-guest").await;
         let session = db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),
@@ -652,6 +653,7 @@ mod tests {
             .expect("create Platform Chat harness");
         let row = db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),

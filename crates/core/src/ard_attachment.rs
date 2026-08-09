@@ -209,6 +209,8 @@ mod tests {
     fn test_session() -> Session {
         let session_id = SessionId::new();
         Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: session_id,
             workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),

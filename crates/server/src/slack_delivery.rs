@@ -1393,6 +1393,7 @@ mod tests {
 
             let session = db
                 .create_session(CreateSessionRow {
+                    source: everruns_core::SessionSource::Api,
                     workspace_id: None,
                     org_id,
                     app_id,

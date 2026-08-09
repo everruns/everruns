@@ -44,6 +44,16 @@ impl InMemoryDatabase {
                 match row.event_type.as_str() {
                     "turn.completed" | "turn.failed" | "turn.cancelled" => {
                         session.turn_count += 1;
+                        // Mirrors the sessions_last_turn_insert trigger
+                        // (migration 118) so the derived activity facet is the
+                        // same on both backends.
+                        session.last_turn_status = Some(
+                            row.event_type
+                                .strip_prefix("turn.")
+                                .unwrap_or(&row.event_type)
+                                .to_string(),
+                        );
+                        session.last_turn_at = Some(row.ts);
                     }
                     "tool.completed" => session.tool_call_count += 1,
                     _ => {}

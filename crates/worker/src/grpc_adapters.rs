@@ -1610,6 +1610,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .collect();
 
     Ok(Session {
+        // The proto Session does not carry origin/activity: the worker has no
+        // use for either, and the control plane is their source of truth.
+        source: Default::default(),
+        activity: Default::default(),
         id: id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(id),
         organization_id: proto_session.organization_id,

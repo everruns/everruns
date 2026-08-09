@@ -2165,6 +2165,8 @@ mod tests {
         let now = Utc::now();
         let session_id = everruns_core::SessionId::new();
         let session = everruns_core::Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: session_id,
             // Equality invariant: workspace.id == session.id for default sessions.
             workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
@@ -2369,6 +2371,8 @@ mod tests {
         let now = Utc::now();
         let session_id = everruns_core::SessionId::new();
         let session = everruns_core::Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: session_id,
             workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),

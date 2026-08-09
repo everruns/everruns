@@ -530,8 +530,8 @@ pub use runtime_provider::{
     StaticHeaderAuth,
 };
 pub use session::{
-    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,
-    SessionStatus, SubagentStatus,
+    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    SessionSeedMode, SessionSource, SessionStatus, SubagentStatus,
 };
 pub use session_file::{
     FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,

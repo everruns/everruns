@@ -803,6 +803,16 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub parallel_tool_calls: Option<bool>,
     pub status: String,
+    /// How the session was started (EVE-852). Stored as the closed-set string
+    /// backing `everruns_core::SessionSource`.
+    #[sqlx(default)]
+    pub source: String,
+    /// Denormalized outcome of the most recent terminal turn: `completed`,
+    /// `failed`, `cancelled`, or `None` when no turn has finished yet.
+    #[sqlx(default)]
+    pub last_turn_status: Option<String>,
+    #[sqlx(default)]
+    pub last_turn_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
@@ -856,6 +866,62 @@ pub struct SessionRow {
     pub blueprint_config: Option<serde_json::Value>,
 }
 
+/// Ordering for the sessions list. The chat thread list wants last activity;
+/// the operational list wants creation order.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SessionListOrder {
+    #[default]
+    CreatedAt,
+    LastActivity,
+}
+
+/// Filter predicate shared by the sessions list and its facet aggregates
+/// (EVE-852). Both read the same struct so a count can never describe a
+/// different population than the page it annotates.
+#[derive(Debug, Clone, Default)]
+pub struct SessionListFilters {
+    pub agent_id: Option<AgentId>,
+    pub search: Option<String>,
+    /// Empty means "any source".
+    pub sources: Vec<everruns_core::SessionSource>,
+    /// Empty means "any activity".
+    pub activities: Vec<everruns_core::SessionActivity>,
+    /// Restrict to sessions whose resolved human owner is this user (`mine`).
+    pub owner_user_id: Option<Uuid>,
+    pub created_after: Option<DateTime<Utc>>,
+    pub created_before: Option<DateTime<Utc>>,
+    pub order: SessionListOrder,
+}
+
+/// One bucket of a facet rail dimension.
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionFacetBucket {
+    pub value: String,
+    pub count: i64,
+}
+
+/// Masthead metrics and facet-rail counts for the sessions surface.
+#[derive(Debug, Clone, Default)]
+pub struct SessionFacetsRow {
+    pub total: i64,
+    pub by_activity: Vec<SessionFacetBucket>,
+    pub by_source: Vec<SessionFacetBucket>,
+    /// `value` holds the agent's internal UUID as text; `NULL` agents are omitted.
+    pub by_agent: Vec<SessionFacetBucket>,
+    pub active_now: i64,
+    pub failed_today: i64,
+    pub p95_duration_ms: i64,
+    pub tokens_today: i64,
+}
+
+#[derive(Debug, Clone, Default, FromRow)]
+pub struct SessionMastheadRow {
+    pub active_now: i64,
+    pub failed_today: i64,
+    pub p95_duration_ms: i64,
+    pub tokens_today: i64,
+}
+
 #[derive(Debug, Clone, Default, FromRow)]
 pub struct SessionAggregateStatsRow {
     pub session_count: i64,
@@ -880,6 +946,10 @@ pub struct SessionAggregateStatsRow {
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
     pub org_id: i64,
+    /// How this session was started. Set by the creating ingress path, never
+    /// taken from untrusted client input except for the two client-declarable
+    /// variants (see `SessionSource::is_client_declarable`).
+    pub source: everruns_core::SessionSource,
     pub app_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,

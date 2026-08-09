@@ -116,6 +116,164 @@ impl From<&str> for SessionStatus {
     }
 }
 
+/// How a session came into existence.
+///
+/// Closed set: the sessions facet rail enumerates every variant, so the value
+/// is typed rather than a free-form string. Ingress paths set it server-side —
+/// clients may only declare the two variants they can legitimately be
+/// (`Chat` and `Api`), which keeps a facet like "started by a schedule"
+/// trustworthy. Rows that predate the column, or whose origin could not be
+/// inferred at backfill time, carry `Unknown`.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSource {
+    /// Interactive chat thread (UI chat surface, global chat, public chat).
+    Chat,
+    /// Direct `POST /v1/sessions` from the API, CLI, or an SDK.
+    Api,
+    /// Slack channel ingress.
+    Slack,
+    /// AG-UI channel ingress.
+    AgUi,
+    /// FCP channel ingress.
+    Fcp,
+    /// Fired by a schedule (app schedule channel or agent trigger).
+    Schedule,
+    /// Inbound webhook or app API endpoint.
+    Webhook,
+    /// Inbound A2A request.
+    A2a,
+    /// Created by an eval run.
+    Eval,
+    /// Spawned as a subagent / delegated peer of another session.
+    Subagent,
+    /// Origin not recorded (pre-migration rows that could not be inferred).
+    #[default]
+    Unknown,
+}
+
+impl SessionSource {
+    pub const ALL: &'static [SessionSource] = &[
+        SessionSource::Chat,
+        SessionSource::Api,
+        SessionSource::Slack,
+        SessionSource::AgUi,
+        SessionSource::Fcp,
+        SessionSource::Schedule,
+        SessionSource::Webhook,
+        SessionSource::A2a,
+        SessionSource::Eval,
+        SessionSource::Subagent,
+        SessionSource::Unknown,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionSource::Chat => "chat",
+            SessionSource::Api => "api",
+            SessionSource::Slack => "slack",
+            SessionSource::AgUi => "ag_ui",
+            SessionSource::Fcp => "fcp",
+            SessionSource::Schedule => "schedule",
+            SessionSource::Webhook => "webhook",
+            SessionSource::A2a => "a2a",
+            SessionSource::Eval => "eval",
+            SessionSource::Subagent => "subagent",
+            SessionSource::Unknown => "unknown",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|v| v.as_str() == s)
+    }
+
+    /// Whether a client may declare this source on `POST /v1/sessions`.
+    /// Everything else is server-owned so facets cannot be spoofed.
+    pub fn is_client_declarable(self) -> bool {
+        matches!(self, SessionSource::Chat | SessionSource::Api)
+    }
+}
+
+impl std::fmt::Display for SessionSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<&str> for SessionSource {
+    fn from(s: &str) -> Self {
+        Self::parse(s).unwrap_or(SessionSource::Unknown)
+    }
+}
+
+/// Outcome-oriented view of a session, as the sessions list and facet rail
+/// present it. Derived from the session's execution status plus the outcome of
+/// its most recent turn — `SessionStatus` alone has no notion of failure.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionActivity {
+    /// A turn is executing, or the session is waiting on client tool results.
+    Running,
+    /// Budget limit reached; waiting for the user to resume.
+    Paused,
+    /// Last completed turn failed or was cancelled.
+    Failed,
+    /// Last completed turn succeeded and nothing is running.
+    Completed,
+    /// Created but idle with no completed turn yet.
+    #[default]
+    Idle,
+}
+
+impl SessionActivity {
+    pub const ALL: &'static [SessionActivity] = &[
+        SessionActivity::Running,
+        SessionActivity::Paused,
+        SessionActivity::Failed,
+        SessionActivity::Completed,
+        SessionActivity::Idle,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SessionActivity::Running => "running",
+            SessionActivity::Paused => "paused",
+            SessionActivity::Failed => "failed",
+            SessionActivity::Completed => "completed",
+            SessionActivity::Idle => "idle",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|v| v.as_str() == s)
+    }
+
+    /// Single source of truth for the derivation, mirrored by
+    /// `session_activity_sql` in the sessions repository so the list, the facet
+    /// counts, and the in-memory backend cannot drift apart.
+    pub fn derive(status: &SessionStatus, last_turn_status: Option<&str>) -> Self {
+        match status {
+            SessionStatus::Active | SessionStatus::WaitingForToolResults => {
+                SessionActivity::Running
+            }
+            SessionStatus::Paused => SessionActivity::Paused,
+            _ => match last_turn_status {
+                Some("failed") | Some("cancelled") => SessionActivity::Failed,
+                Some("completed") => SessionActivity::Completed,
+                _ => SessionActivity::Idle,
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for SessionActivity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 /// Kind of actor participating in a session.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -367,6 +525,13 @@ pub struct Session {
     pub parallel_tool_calls: Option<bool>,
     /// Current execution status of the session.
     pub status: SessionStatus,
+    /// How this session was started. Server-owned for every ingress path.
+    #[serde(default)]
+    pub source: SessionSource,
+    /// Outcome-oriented status derived from `status` and the last turn result.
+    /// This is the value the sessions list groups by and the facet rail counts.
+    #[serde(default)]
+    pub activity: SessionActivity,
     /// Timestamp when the session was created.
     #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
@@ -456,5 +621,74 @@ impl SessionSeedMode {
             Self::Fork => "fork",
             Self::Workspace => "workspace",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The list filters activity in SQL and the in-memory backend filters it in
+    /// Rust, so this truth table is the contract both sides implement. It is
+    /// duplicated verbatim as a comment beside `ACTIVITY_SQL` in
+    /// `crates/server/src/storage/repositories/sessions.rs`.
+    #[test]
+    fn activity_derivation_truth_table() {
+        use SessionActivity as A;
+        use SessionStatus as S;
+
+        let cases: &[(SessionStatus, Option<&str>, SessionActivity)] = &[
+            // Execution state wins: a running turn is running whatever the
+            // previous turn did.
+            (S::Active, None, A::Running),
+            (S::Active, Some("failed"), A::Running),
+            (S::WaitingForToolResults, Some("completed"), A::Running),
+            (S::Paused, Some("failed"), A::Paused),
+            // Otherwise the last terminal turn decides.
+            (S::Idle, Some("completed"), A::Completed),
+            (S::Idle, Some("failed"), A::Failed),
+            (S::Idle, Some("cancelled"), A::Failed),
+            (S::Started, Some("completed"), A::Completed),
+            // No completed turn yet, or an unrecognized outcome.
+            (S::Started, None, A::Idle),
+            (S::Idle, None, A::Idle),
+            (S::Idle, Some("weird"), A::Idle),
+        ];
+
+        for (status, last_turn, expected) in cases {
+            assert_eq!(
+                SessionActivity::derive(status, *last_turn),
+                *expected,
+                "status={status} last_turn={last_turn:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn session_source_round_trips_through_its_wire_string() {
+        for source in SessionSource::ALL {
+            assert_eq!(SessionSource::parse(source.as_str()), Some(*source));
+        }
+        // Unknown text degrades to the explicit unknown bucket rather than
+        // inventing a facet.
+        assert_eq!(SessionSource::from("not_a_source"), SessionSource::Unknown);
+    }
+
+    #[test]
+    fn only_chat_and_api_are_client_declarable() {
+        let declarable: Vec<_> = SessionSource::ALL
+            .iter()
+            .filter(|s| s.is_client_declarable())
+            .copied()
+            .collect();
+        assert_eq!(declarable, vec![SessionSource::Chat, SessionSource::Api]);
+    }
+
+    #[test]
+    fn session_activity_round_trips_through_its_wire_string() {
+        for activity in SessionActivity::ALL {
+            assert_eq!(SessionActivity::parse(activity.as_str()), Some(*activity));
+        }
+        assert_eq!(SessionActivity::parse("nope"), None);
     }
 }

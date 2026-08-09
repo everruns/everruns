@@ -664,6 +664,8 @@ impl SessionBuilder {
         let updated_at = self.updated_at.unwrap_or(created_at);
 
         Session {
+            source: Default::default(),
+            activity: Default::default(),
             id: self.id,
             workspace_id: everruns_core::WorkspaceId::from_uuid((self.id).uuid()),
             organization_id: self.organization_id,

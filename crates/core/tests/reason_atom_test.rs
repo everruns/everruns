@@ -110,6 +110,8 @@ async fn setup_test_environment() -> (
     // Create a test session
     let session_id = Uuid::now_v7();
     let session = Session {
+        source: Default::default(),
+        activity: Default::default(),
         id: session_id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
@@ -2079,6 +2081,8 @@ async fn test_reason_atom_with_different_configs() {
     let session_id2 = Uuid::now_v7();
     let now2 = chrono::Utc::now();
     let session2 = Session {
+        source: Default::default(),
+        activity: Default::default(),
         id: session_id2.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id2),
         organization_id: "default".to_string(),
@@ -3879,6 +3883,8 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
         let now = chrono::Utc::now();
         session_store
             .add_session(Session {
+                source: Default::default(),
+                activity: Default::default(),
                 id: session_id.into(),
                 workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
@@ -4007,6 +4013,8 @@ async fn test_empty_session_system_prompt_is_ignored() {
         let now = chrono::Utc::now();
         session_store
             .add_session(Session {
+                source: Default::default(),
+                activity: Default::default(),
                 id: session_id.into(),
                 workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),

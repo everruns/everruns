@@ -410,6 +410,7 @@ impl PermissionResolver for SessionsOnlyResolver {
 
 fn create_session_request() -> CreateSessionRequest {
     CreateSessionRequest {
+        source: None,
         workspace_id: None,
         harness_id: None,
         harness_name: None,

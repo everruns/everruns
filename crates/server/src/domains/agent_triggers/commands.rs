@@ -1113,6 +1113,7 @@ async fn find_or_create_trigger_session(
     };
 
     let req = CreateSessionRequest {
+        source: None,
         workspace_id: None,
         harness_id: Some(execution_context.harness_id),
         harness_name: None,
@@ -1149,6 +1150,7 @@ async fn find_or_create_trigger_session(
                 app_id,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
+                everruns_core::SessionSource::Schedule,
                 req,
             )
             .await

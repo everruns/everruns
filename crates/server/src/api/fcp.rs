@@ -670,7 +670,9 @@ async fn resolve_session(
             app.internal_id,
             app.owner_principal_id,
             app.resolved_owner_user_id,
+            everruns_core::SessionSource::Fcp,
             CreateSessionRequest {
+                source: None,
                 workspace_id: None,
                 harness_id: Some(app.harness_id),
                 harness_name: None,

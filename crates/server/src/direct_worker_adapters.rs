@@ -588,6 +588,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Ok(Some({
             // Parse capabilities from JSON
             Session {
+                source: everruns_core::SessionSource::from(r.source.as_str()),
+                activity: everruns_core::SessionActivity::derive(
+                    &everruns_core::SessionStatus::from(r.status.as_str()),
+                    r.last_turn_status.as_deref(),
+                ),
                 id: r.id,
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
                 workspace_id: everruns_core::WorkspaceId::from_uuid(r.workspace_id),
@@ -3956,6 +3961,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         db.create_session(CreateSessionRow {
+            source: everruns_core::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,
@@ -4909,6 +4915,7 @@ mod tests {
         let row = adapters
             .db
             .create_session(CreateSessionRow {
+                source: everruns_core::SessionSource::Api,
                 workspace_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 app_id: None,

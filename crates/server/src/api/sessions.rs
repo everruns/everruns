@@ -6,9 +6,9 @@ use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
     AddSessionParticipant, CancelSession, CreateSession, DeleteSession, ForkSession,
-    GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionStats,
+    GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionFacets, GetSessionStats,
     LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
-    SESSION_VIEW, SessionService, UnpinSession, UpdateSessionCmd,
+    SESSION_VIEW, SessionFilterArgs, SessionService, UnpinSession, UpdateSessionCmd,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;
@@ -41,6 +41,12 @@ use utoipa::{IntoParams, ToSchema};
 /// Request to create a session
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
+    /// How this session was started. Clients may declare only `chat` (an
+    /// interactive thread) or `api` (the default); every other source is
+    /// server-owned so the sessions facet rail stays trustworthy.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "chat")]
+    pub source: Option<everruns_core::SessionSource>,
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the harness is derived from the agent (when one is supplied),
     /// else the org default harness, else the built-in fallback. New orgs default
@@ -366,12 +372,48 @@ pub struct ListSessionsQuery {
     pub agent_id: Option<AgentId>,
     /// Search by title (case-insensitive substring match).
     pub search: Option<String>,
+    /// Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,
+    /// `fcp`, `schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`.
+    #[param(example = "chat")]
+    pub source: Option<String>,
+    /// Comma-separated derived statuses: `running`, `paused`, `failed`,
+    /// `completed`, `idle`.
+    #[param(example = "running,failed")]
+    pub status: Option<String>,
+    /// Restrict to sessions owned by the calling user.
+    #[param(example = true)]
+    pub mine: Option<bool>,
+    /// Inclusive lower bound on creation time (RFC 3339).
+    #[param(example = "2026-08-01T00:00:00Z")]
+    pub created_after: Option<String>,
+    /// Exclusive upper bound on creation time (RFC 3339).
+    #[param(example = "2026-08-09T00:00:00Z")]
+    pub created_before: Option<String>,
+    /// `created_at` (default) or `last_activity`.
+    #[param(example = "last_activity")]
+    pub order: Option<String>,
     /// Number of items to skip (for pagination).
     #[param(minimum = 0, default = 0)]
     pub offset: Option<u32>,
     /// Maximum number of items to return (for pagination).
     #[param(minimum = 1, maximum = 100, default = 20)]
     pub limit: Option<u32>,
+}
+
+/// Query parameters for the sessions facet rail. Mirrors `ListSessionsQuery`
+/// minus pagination, so counts and page always share a predicate.
+#[derive(Debug, Deserialize, IntoParams)]
+#[into_params(parameter_in = Query)]
+pub struct SessionFacetsQuery {
+    #[param(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
+    pub search: Option<String>,
+    pub source: Option<String>,
+    pub status: Option<String>,
+    pub mine: Option<bool>,
+    pub created_after: Option<String>,
+    pub created_before: Option<String>,
+    pub order: Option<String>,
 }
 
 /// App state for sessions routes
@@ -447,6 +489,43 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
+/// One bucket of a sessions facet dimension.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SessionFacetCount {
+    /// The dimension value: an activity, a source, or an agent's public id.
+    #[schema(example = "running")]
+    pub value: String,
+    pub count: u64,
+}
+
+/// Facet-rail counts and masthead metrics for the sessions surface (EVE-852).
+///
+/// Every count is aggregated server-side over the same filter predicate as
+/// `GET /v1/sessions`, so a client never derives them by paging the list. Each
+/// facet dimension is counted with the other filters applied but its own
+/// selection excluded, which is what lets the rail offer multi-select.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SessionFacetsResponse {
+    /// Sessions matching every applied filter.
+    pub total: u64,
+    /// Counts per derived activity (`running`, `paused`, `failed`,
+    /// `completed`, `idle`).
+    pub by_activity: Vec<SessionFacetCount>,
+    /// Counts per session source.
+    pub by_source: Vec<SessionFacetCount>,
+    /// Counts per agent, keyed by the agent's public id. Sessions with no
+    /// agent are omitted.
+    pub by_agent: Vec<SessionFacetCount>,
+    /// Sessions executing a turn or awaiting client tool results right now.
+    pub active_now: u64,
+    /// Sessions whose most recent turn failed or was cancelled today (UTC).
+    pub failed_today: u64,
+    /// 95th percentile session duration over the filtered set, milliseconds.
+    pub p95_duration_ms: u64,
+    /// Tokens consumed by sessions created today (UTC).
+    pub tokens_today: u64,
+}
+
 /// Response for session statistics endpoint
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SessionStatsResponse {
@@ -469,6 +548,8 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/sessions/config", get(session_config))
         // Global chat session (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/chat", post(get_or_create_chat_session))
+        // Session facets (must be before /{session_id} to avoid conflict)
+        .route("/v1/sessions/facets", get(get_session_facets))
         // Session stats (must be before /{session_id} to avoid conflict)
         .route("/v1/sessions/stats", get(get_session_stats))
         // Session CRUD
@@ -710,8 +791,16 @@ pub async fn list_sessions(
 ) -> ApiResult<PaginatedResponse<WithUrls<Session>>> {
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let page = ListSessions {
-        agent_id: query.agent_id,
-        search: query.search,
+        filters: SessionFilterArgs {
+            agent_id: query.agent_id,
+            search: query.search,
+            source: query.source,
+            status: query.status,
+            mine: query.mine,
+            created_after: query.created_after,
+            created_before: query.created_before,
+            order: query.order,
+        },
         offset: query.offset,
         limit: query.limit,
     }
@@ -720,6 +809,41 @@ pub async fn list_sessions(
 
     Ok(Json(
         PaginatedResponse::new(page.data, page.total, page.offset, page.limit).with_urls(&urls),
+    ))
+}
+
+/// GET /v1/sessions/facets - Facet counts and masthead metrics
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/facets",
+    params(SessionFacetsQuery),
+    responses(
+        (status = 200, description = "Facet counts over the applied filters", body = SessionFacetsResponse),
+        (status = 400, description = "Unknown filter value"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_session_facets(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<SessionFacetsQuery>,
+) -> ApiResult<SessionFacetsResponse> {
+    Ok(Json(
+        GetSessionFacets {
+            filters: SessionFilterArgs {
+                agent_id: query.agent_id,
+                search: query.search,
+                source: query.source,
+                status: query.status,
+                mine: query.mine,
+                created_after: query.created_after,
+                created_before: query.created_before,
+                order: query.order,
+            },
+        }
+        .run(&state.ctx(&org))
+        .await?,
     ))
 }
 

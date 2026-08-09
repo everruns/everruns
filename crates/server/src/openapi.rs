@@ -115,6 +115,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::sessions::leave_session_participant,
         api::sessions::get_session_context_report,
         api::sessions::get_session_stats,
+        api::sessions::get_session_facets,
         api::sessions::update_session,
         api::sessions::delete_session,
         api::sessions::get_or_create_chat_session,
