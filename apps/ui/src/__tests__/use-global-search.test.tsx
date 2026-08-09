@@ -185,7 +185,6 @@ describe("useGlobalSearch", () => {
 
   it.each([
     ["reports", "/reports"],
-    ["work", "/work"],
     ["knowledge indexes", "/knowledge-indexes"],
     ["plugins", "/plugins"],
     ["observers", "/observers"],

@@ -48,6 +48,12 @@ interface FileBrowserProps {
   selectedPath?: string;
   /** Increment to trigger a full refresh (e.g. after file upload) */
   refreshToken?: number;
+  /**
+   * Browse without write affordances. The session detail page is a recording
+   * (EVE-854), so it renders the same tree with create/delete removed — no
+   * mutating request can be issued from it.
+   */
+  readOnly?: boolean;
 }
 
 // Get file icon based on extension with muted colors matching app theme
@@ -110,6 +116,7 @@ export function FileBrowser({
   onFileSelect,
   selectedPath,
   refreshToken,
+  readOnly = false,
 }: FileBrowserProps) {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(["/workspace"]));
   const [loadedDirs, setLoadedDirs] = useState<Map<string, FileInfo[]>>(new Map());
@@ -129,6 +136,7 @@ export function FileBrowser({
   const createFile = useCreateFile();
   const createDir = useCreateDirectory();
   const deleteFile = useDeleteFile();
+  const writable = !readOnly;
 
   // Sync root files into loadedDirs when root data changes.
   useEffect(() => {
@@ -312,31 +320,35 @@ export function FileBrowser({
             actions={
               <FileTreeActions>
                 {file.is_readonly && <Lock className="size-3 text-muted-foreground" />}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openCreateFileDialog(file.path);
-                  }}
-                  title="New file"
-                >
-                  <Plus className="size-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openCreateDirDialog(file.path);
-                  }}
-                  title="New folder"
-                >
-                  <FolderPlus className="size-3" />
-                </Button>
-                {!file.is_readonly && (
+                {writable && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCreateFileDialog(file.path);
+                    }}
+                    title="New file"
+                  >
+                    <Plus className="size-3" />
+                  </Button>
+                )}
+                {writable && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCreateDirDialog(file.path);
+                    }}
+                    title="New folder"
+                  >
+                    <FolderPlus className="size-3" />
+                  </Button>
+                )}
+                {writable && !file.is_readonly && (
                   <Button
                     variant="ghost"
                     size="icon"
@@ -366,7 +378,7 @@ export function FileBrowser({
             <span className="text-xs text-muted-foreground tabular-nums">
               {formatFileSize(file.size_bytes)}
             </span>
-            {!file.is_readonly && (
+            {writable && !file.is_readonly && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -397,26 +409,30 @@ export function FileBrowser({
           <RefreshCw className="size-3.5" />
           <span className="text-xs">Refresh</span>
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 gap-1.5"
-          onClick={() => openCreateDirDialog("/workspace")}
-          title="New folder"
-        >
-          <FolderPlus className="size-3.5" />
-          <span className="text-xs">Folder</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 gap-1.5"
-          onClick={() => openCreateFileDialog("/workspace")}
-          title="New file"
-        >
-          <Plus className="size-3.5" />
-          <span className="text-xs">File</span>
-        </Button>
+        {writable && (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 gap-1.5"
+              onClick={() => openCreateDirDialog("/workspace")}
+              title="New folder"
+            >
+              <FolderPlus className="size-3.5" />
+              <span className="text-xs">Folder</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 gap-1.5"
+              onClick={() => openCreateFileDialog("/workspace")}
+              title="New file"
+            >
+              <Plus className="size-3.5" />
+              <span className="text-xs">File</span>
+            </Button>
+          </>
+        )}
       </div>
 
       {/* File Tree */}
@@ -445,7 +461,7 @@ export function FileBrowser({
       </ScrollArea>
 
       {/* Create File Dialog */}
-      <Dialog open={isCreateFileOpen} onOpenChange={setIsCreateFileOpen}>
+      <Dialog open={writable && isCreateFileOpen} onOpenChange={setIsCreateFileOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create File</DialogTitle>
@@ -482,7 +498,7 @@ export function FileBrowser({
       </Dialog>
 
       {/* Create Directory Dialog */}
-      <Dialog open={isCreateDirOpen} onOpenChange={setIsCreateDirOpen}>
+      <Dialog open={writable && isCreateDirOpen} onOpenChange={setIsCreateDirOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Folder</DialogTitle>

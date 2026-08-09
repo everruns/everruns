@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSession,
   deleteSession,
+  forkSession,
   getSession,
   getSessionResolvedModel,
   getSessionContextReport,
@@ -20,6 +21,7 @@ import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/a
 import { queryKeys } from "@/lib/query-keys";
 import type {
   CreateSessionRequest,
+  ForkSessionRequest,
   UpdateSessionRequest,
   Controls,
   Event,
@@ -174,6 +176,29 @@ export function useUpdateSession() {
       queryClient.invalidateQueries({
         queryKey: queryKeys.sessions.detail(org, sessionId),
       });
+    },
+  });
+}
+
+/**
+ * Fork a session into a new one seeded with the parent's context.
+ *
+ * The session detail page is a read-only recording (EVE-854); forking is the
+ * escape hatch that turns a recording back into something you can talk to.
+ */
+export function useForkSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ sessionId, request }: { sessionId: string; request?: ForkSessionRequest }) =>
+      forkSession(sessionId, request),
+    onSuccess: (session) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      if (session.agent_id) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessions.byAgent(session.agent_id),
+        });
+      }
     },
   });
 }

@@ -53,7 +53,7 @@ export default function DevSessionComponentsPage() {
                       activeScheduleCount: scenario.session.active_schedule_count,
                     })}
                     secondaryMetaText={scenario.secondaryMetaText}
-                    allowTitleEditing={false}
+                    showRecordingActions={false}
                   />
                 </div>
               </div>

@@ -6,6 +6,7 @@ import type {
   Session,
   SessionStats,
   CreateSessionRequest,
+  ForkSessionRequest,
   UpdateSessionRequest,
   SessionContextReport,
   SessionResolvedModelResponse,
@@ -91,6 +92,23 @@ export async function updateSession(
 
 export async function deleteSession(sessionId: string): Promise<void> {
   await api.delete(`/v1/sessions/${sessionId}`);
+}
+
+/**
+ * Fork a session into an independent copy
+ * (knowledge/runtime-resources/forking-sessions.md).
+ *
+ * The server seeds the fork with the parent's conversation events, workspace
+ * files and durable session storage, so the fork can answer questions that
+ * depend on the original transcript. Every request field is optional; omitted
+ * fields inherit the parent's value.
+ */
+export async function forkSession(
+  sessionId: string,
+  request: ForkSessionRequest = {},
+): Promise<Session> {
+  const response = await api.post<Session>(`/v1/sessions/${sessionId}/fork`, request);
+  return response.data;
 }
 
 /**
