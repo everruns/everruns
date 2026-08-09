@@ -69,6 +69,7 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        enforce_platform_chat_owner(ctx, &session).await?;
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -93,6 +94,32 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)
     }
+}
+
+async fn enforce_platform_chat_owner(
+    ctx: &Ctx,
+    session: &everruns_core::Session,
+) -> Result<(), CommandError> {
+    let harness = ctx
+        .db
+        .get_harness(ctx.org_id(), session.harness_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Harness"))?;
+
+    // THREAT[TM-AGENT-017]: Platform Chat executes catalog commands as the
+    // persisted session owner, so only that owner may initiate a turn.
+    if harness.is_built_in
+        && harness.name == "platform-chat"
+        && !ctx.caller.is_internal
+        && ctx.caller.user_id != session.resolved_owner_user_id
+    {
+        return Err(CommandError::forbidden(
+            "Only the session owner can send messages to Platform Chat",
+        ));
+    }
+
+    Ok(())
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
@@ -390,7 +417,7 @@ mod tests {
     };
     use async_trait::async_trait;
     use everruns_core::typed_id::{HarnessId, MessageId};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId, organization::OrgRole};
     use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
@@ -449,12 +476,27 @@ mod tests {
     }
 
     async fn setup_routing_fixture() -> RoutingFixture {
+        setup_routing_fixture_for(
+            "routing-harness",
+            false,
+            None,
+            Caller::internal(DEFAULT_ORG_ID),
+        )
+        .await
+    }
+
+    async fn setup_routing_fixture_for(
+        harness_name: &str,
+        is_built_in: bool,
+        owner_user_id: Option<uuid::Uuid>,
+        caller: Caller,
+    ) -> RoutingFixture {
         let db = Arc::new(StorageBackend::in_memory());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
                 CreateHarnessRow {
-                    name: "routing-harness".to_string(),
+                    name: harness_name.to_string(),
                     display_name: None,
                     description: None,
                     system_prompt: Some("You are helpful.".to_string()),
@@ -465,7 +507,7 @@ mod tests {
                     mcp_servers: serde_json::json!({}),
                     network_access: None,
                     embedder_metadata: serde_json::json!({}),
-                    is_built_in: false,
+                    is_built_in,
                 },
             )
             .await
@@ -483,7 +525,7 @@ mod tests {
                 agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
-                resolved_owner_user_id: None,
+                resolved_owner_user_id: owner_user_id,
                 title: Some("Routing session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -535,7 +577,7 @@ mod tests {
             false,
             EventDelivery::in_memory(),
         ));
-        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
+        let ctx = Ctx::minimal_for_test(caller, db.clone(), None)
             .with_session_service(Arc::new(SessionService::new(db)))
             .with_message_service(message_service);
 
@@ -547,6 +589,17 @@ mod tests {
             session,
             guest_participant,
             user_participant,
+        }
+    }
+
+    fn user_caller(user_id: uuid::Uuid) -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".to_string(),
+            user_id: Some(user_id),
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
         }
     }
 
@@ -630,6 +683,41 @@ mod tests {
                     .expect("host public id")
             )]
         );
+    }
+
+    #[tokio::test]
+    async fn platform_chat_rejects_messages_from_non_owner() {
+        let owner_id = uuid::Uuid::new_v4();
+        let fixture = setup_routing_fixture_for(
+            "platform-chat",
+            true,
+            Some(owner_id),
+            user_caller(uuid::Uuid::new_v4()),
+        )
+        .await;
+
+        let err = create_message_command(fixture.session.id, None)
+            .execute(&fixture.ctx)
+            .await
+            .expect_err("non-owner must not initiate owner-authorized Platform commands");
+
+        assert_eq!(err.status().as_u16(), 403);
+        assert!(fixture.runner.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn platform_chat_accepts_messages_from_owner() {
+        let owner_id = uuid::Uuid::new_v4();
+        let fixture =
+            setup_routing_fixture_for("platform-chat", true, Some(owner_id), user_caller(owner_id))
+                .await;
+
+        create_message_command(fixture.session.id, None)
+            .execute(&fixture.ctx)
+            .await
+            .expect("owner can initiate Platform commands");
+
+        wait_for_runner_calls(&fixture.runner, 1).await;
     }
 
     #[tokio::test]
