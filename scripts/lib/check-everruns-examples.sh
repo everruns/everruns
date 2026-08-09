@@ -37,14 +37,14 @@ if ! diff -u "$FILES" "$TARGETS"; then
 fi
 
 for file in "$EXAMPLES_DIR"/*.rs; do
-  if ! rg -q 'everruns::' "$file"; then
+  if ! grep -Eq 'everruns::' "$file"; then
     echo "$(basename "$file") does not use the public everruns crate" >&2
     exit 1
   fi
 done
 
-if rg -n \
-  'everruns[_-](core|runtime)|everruns::(core|runtime)(::|\b)' \
+if grep -En \
+  'everruns[_-](core|runtime)|everruns::(core|runtime)(::|[^[:alnum:]_]|$)' \
   "$EXAMPLES_DIR"/*.rs; then
   echo "Public examples must not import internal crates or facade escape hatches." >&2
   exit 1
