@@ -425,9 +425,9 @@ tar --exclude='./node_modules' --exclude='*/node_modules' \
     -czf "$revision_dir/workspace.tar.gz" -C "$workspace" .
 (cd "$revision_dir" && sha256sum workspace.tar.gz > workspace.tar.gz.sha256)
 printf '%s\n' "$revision" > "$revision_dir/COMPLETE"
-head_tmp="$mount/.HEAD.$revision"
-printf '%s\n' "$revision" > "$head_tmp"
-mv -f -- "$head_tmp" "$mount/HEAD"
+# Daytona Volume's FUSE layer does not implement rename. HEAD is only a
+# convenience marker; persisted provider state remains authoritative.
+printf '%s\n' "$revision" > "$mount/HEAD"
 kept=0
 for candidate in $(ls -1 "$mount/revisions" | sort -r); do
     kept=$((kept + 1))
@@ -475,7 +475,7 @@ workspace={workspace}
 revision={revision}
 case "$revision" in
     rev-[0-9]*) ;;
-    *) echo "Invalid recovery HEAD: $revision" >&2; exit 72 ;;
+    *) echo "Invalid recovery revision: $revision" >&2; exit 72 ;;
 esac
 revision_dir="$mount/revisions/$revision"
 test -f "$revision_dir/COMPLETE"

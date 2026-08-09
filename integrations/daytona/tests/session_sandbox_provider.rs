@@ -371,6 +371,7 @@ async fn daytona_provider_checkpoints_after_completed_exec() {
         request.url.path() == "/sb_checkpoint/process/session/everruns-exec/exec"
             && String::from_utf8_lossy(&request.body).contains("workspace.tar.gz")
             && String::from_utf8_lossy(&request.body).contains("$mount/HEAD")
+            && !String::from_utf8_lossy(&request.body).contains("mv -f")
             && String::from_utf8_lossy(&request.body).contains("protected_revision='rev-1'")
     }));
     assert_ne!(

@@ -557,7 +557,7 @@ durable state.
 
 - Provision: one provider sandbox from the pinned profile.
 - Filesystem: Daytona API rooted at the configured provider worktree (currently
-  `/home/daytona`; logical path translation is internal).
+  `/home/daytona/workspace`; logical path translation is internal).
 - Compute: streaming Daytona exec.
 - Stop: preserve filesystem; pause/memory preservation only when the selected
   Daytona class advertises it.
@@ -575,7 +575,7 @@ sandbox deletion, but are slower than the sandbox-local filesystem and use
 last-writer-wins rather than transactional writes. The default layout is:
 
 ```text
-/home/daytona              fast, disposable Daytona-local worktree
+/home/daytona/workspace    fast, disposable Daytona-local worktree
 /mnt/everruns-recovery     durable volume mount used for checkpoints
 ```
 
@@ -619,11 +619,11 @@ Provision and recovery are therefore:
 
 After every completed mutating tool call, a helper inside the sandbox writes a
 new immutable workspace revision to the mount. It writes content and manifest
-first, a `COMPLETE` marker next, and updates `HEAD` last. Only after Everruns
-has verified that revision may it commit the tool result and revision pointer
-in the database. If the physical sandbox dies partway through a command or
-checkpoint, the unpublished revision is ignored and the replacement restores
-the preceding `HEAD`.
+first, a `COMPLETE` marker next, and a non-authoritative convenience `HEAD`
+last. Only after Everruns has verified that revision may it commit the tool
+result and revision pointer in the database. If the physical sandbox dies
+partway through a command or checkpoint, the unpublished revision is ignored
+and the replacement restores the preceding persisted revision pointer.
 
 The first implementation may store a full compressed workspace archive per
 revision, excluding rebuildable caches such as `node_modules`, `target`, and
