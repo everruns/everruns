@@ -21,8 +21,11 @@ let agent = Agent::builder()
 ```
 
 Builder validation catches blank instructions, a missing model, duplicate
-providers or tools, invalid tool schemas, and invalid MCP configuration before
-a session starts.
+providers, tools, or capabilities, invalid tool schemas, invalid capability
+IDs/configuration, implementation collisions, and invalid MCP configuration
+before a session starts. Configure typed built-ins, code-defined packages, and
+dynamic references through the single `capability(...)` entrypoint; see
+[Configure and author capabilities](/framework/advanced-capabilities/).
 
 ## Files and workspaces
 

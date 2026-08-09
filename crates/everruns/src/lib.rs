@@ -40,6 +40,7 @@ extern crate self as everruns;
 mod agent;
 #[cfg(feature = "capabilities")]
 pub mod capability;
+mod capability_config;
 mod compaction;
 mod context;
 mod events;
@@ -49,9 +50,11 @@ mod mcp;
 mod plugin;
 mod session;
 mod tool;
+mod tool_search;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
+pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
 pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use events::{
@@ -70,6 +73,7 @@ pub use mcp::McpServer;
 pub use plugin::PluginError;
 pub use session::{CancelError, RunError, SendDisposition, SentMessage, Session, Turn, TurnHandle};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
+pub use tool_search::ToolSearch;
 
 #[cfg(feature = "local")]
 mod local;
@@ -135,12 +139,14 @@ pub use everruns_host::{
 };
 
 // --- Portable message, model, and platform types ------------------------
+#[doc(hidden)]
+pub use everruns_core::AgentCapabilityConfig;
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart,
-    Controls, ImageContentPart, InitialFile, InputMessage, LlmCallConfig, LlmCompletionMetadata,
-    LlmMessage, LlmResponseStream, LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition,
-    Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry,
+    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, Controls,
+    ImageContentPart, InitialFile, InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage,
+    LlmResponseStream, LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition, Provider,
+    ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry,
     ReasoningConfig, SessionId, StaticHeaderAuth, ToolCall, WorkspacePolicy,
     WorkspacePolicyBuilder, WorkspacePolicyError,
 };
@@ -183,14 +189,14 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CompactionConfig, CompactionStrategy, CompletionContext, EventStream, EventStreamError,
-        FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
-        HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile, IntoHookResult, IntoTool,
-        IntoToolResult, LlmSimConfig, McpServer, Model, PluginError, ResumeError, RunError,
-        RunOptions, SendDisposition, SentMessage, Session, SessionContext, SessionEvent,
-        SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
-        ToolStartContext, Turn, TurnHandle, TurnStartContext, WorkspacePolicy,
-        WorkspacePolicyBuilder, WorkspacePolicyError,
+        CapabilityRef, CapabilitySpec, CompactionConfig, CompactionStrategy, CompletionContext,
+        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
+        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
+        PluginError, ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session,
+        SessionContext, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
+        ToolEndContext, ToolInfo, ToolResponse, ToolSearch, ToolStartContext, Turn, TurnHandle,
+        TurnStartContext, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};

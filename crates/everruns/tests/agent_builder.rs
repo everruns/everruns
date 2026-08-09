@@ -35,10 +35,10 @@ fn invalid_compaction_budget_is_a_typed_error() {
         let err = Agent::builder()
             .instructions("You are concise.")
             .model(Model::simulated("ok"))
-            .compaction(CompactionConfig::new().budget_percent(invalid))
+            .capability(CompactionConfig::new().budget_percent(invalid))
             .build()
             .unwrap_err();
-        assert!(matches!(err, BuildError::InvalidCompaction { .. }));
+        assert!(matches!(err, BuildError::InvalidCapability { ref id, .. } if id == "compaction"));
     }
 }
 

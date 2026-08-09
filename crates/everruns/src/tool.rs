@@ -6,11 +6,11 @@
 //! arguments as a [`serde_json::Value`] and returns any [`IntoToolResult`]
 //! (a `serde_json::Value`, a `String`, or an explicit [`ToolResponse`]).
 //!
-//! [`AgentBuilder::tool`](crate::AgentBuilder::tool) accepts anything that is
-//! [`IntoTool`]: a [`FunctionTool`], or a `&str`/`String` capability id for the
-//! existing capability-referenced tools. The builder validates tool names and
-//! JSON schemas and rejects duplicate names before an [`Agent`](crate::Agent)
-//! is produced.
+//! [`AgentBuilder::tool`](crate::AgentBuilder::tool) accepts function tools via
+//! [`IntoTool`]. Capability references use the separate, scalable
+//! [`AgentBuilder::capability`](crate::AgentBuilder::capability) entrypoint. The
+//! builder validates tool names and JSON schemas and rejects duplicates before
+//! an [`Agent`](crate::Agent) is produced.
 //!
 //! Under the hood a `FunctionTool` is adapted to the core tool-execution
 //! contract ([`everruns_core::tools::Tool`]) and registered as a single-tool,
@@ -54,7 +54,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::AgentCapabilityConfig;
 use everruns_core::capabilities::Capability;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
 use serde_json::Value;
@@ -230,9 +229,9 @@ impl CoreTool for FunctionTool {
 
 /// A closure-backed [`Capability`] exposing exactly one [`FunctionTool`].
 ///
-/// Its capability id equals the tool name, so a single
-/// [`AgentCapabilityConfig`] reference wires the tool onto the agent. This is
-/// the bridge from a library-user function to the core capability/tool contract.
+/// Its capability id equals the tool name. The Framework creates the matching
+/// private activation when `.tool(...)` is built; applications never configure
+/// this implementation as a public capability reference.
 pub(crate) struct FunctionCapability {
     tool: FunctionTool,
 }
@@ -255,16 +254,13 @@ impl Capability for FunctionCapability {
     }
 }
 
-/// An agent tool: either a reference to an existing capability id, or a
-/// closure-backed [`FunctionTool`].
+/// A closure-backed function tool accepted by [`AgentBuilder::tool`](crate::AgentBuilder::tool).
 ///
-/// This is the application-facing adapter that [`AgentBuilder::tool`](crate::AgentBuilder::tool) accepts
-/// via [`IntoTool`]. A `&str`/`String` names a capability-referenced tool; a
-/// [`FunctionTool`] carries its own handler.
+/// Capability references are deliberately not represented here; configure
+/// those through [`AgentBuilder::capability`](crate::AgentBuilder::capability).
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum Tool {
-    /// A tool provided by an existing capability, referenced by id.
-    Capability(AgentCapabilityConfig),
     /// A custom tool backed by an async function or closure.
     Function(FunctionTool),
 }
@@ -273,17 +269,22 @@ impl Tool {
     /// The model-facing name of this tool.
     pub(crate) fn name(&self) -> &str {
         match self {
-            Tool::Capability(config) => config.capability_id(),
             Tool::Function(tool) => &tool.name,
+        }
+    }
+
+    pub(crate) fn into_function(self) -> FunctionTool {
+        match self {
+            Self::Function(tool) => tool,
         }
     }
 }
 
 /// Conversion into a [`Tool`] for [`AgentBuilder::tool`](crate::AgentBuilder::tool).
 ///
-/// Implemented for [`FunctionTool`], for `&str`/`String` (a capability id), and
-/// for [`AgentCapabilityConfig`], so the same `.tool(..)` call accepts both a
-/// custom function tool and an existing capability-referenced tool.
+/// Implemented for [`FunctionTool`] and the [`Tool`] wrapper emitted by public
+/// tool adapters. Capability IDs implement
+/// [`IntoCapability`](crate::IntoCapability), not `IntoTool`.
 pub trait IntoTool {
     /// Convert `self` into a [`Tool`].
     fn into_tool(self) -> Tool;
@@ -298,30 +299,6 @@ impl IntoTool for Tool {
 impl IntoTool for FunctionTool {
     fn into_tool(self) -> Tool {
         Tool::Function(self)
-    }
-}
-
-impl IntoTool for AgentCapabilityConfig {
-    fn into_tool(self) -> Tool {
-        Tool::Capability(self)
-    }
-}
-
-impl IntoTool for &str {
-    fn into_tool(self) -> Tool {
-        Tool::Capability(AgentCapabilityConfig::new(self))
-    }
-}
-
-impl IntoTool for String {
-    fn into_tool(self) -> Tool {
-        Tool::Capability(AgentCapabilityConfig::new(self))
-    }
-}
-
-impl IntoTool for &String {
-    fn into_tool(self) -> Tool {
-        Tool::Capability(AgentCapabilityConfig::new(self.as_str()))
     }
 }
 
@@ -485,22 +462,12 @@ mod tests {
     }
 
     #[test]
-    fn into_tool_maps_str_to_capability_ref() {
-        match "test_math".into_tool() {
-            Tool::Capability(config) => assert_eq!(config.capability_id(), "test_math"),
-            other => panic!("expected capability ref, got {other:?}"),
-        }
-    }
-
-    #[test]
     fn into_tool_maps_function_tool() {
         let tool = FunctionTool::new("noop", "no-op", obj_schema(), |_: Value| async move {
             Ok::<_, String>(json!({}))
         });
-        match tool.into_tool() {
-            Tool::Function(f) => assert_eq!(f.name(), "noop"),
-            other => panic!("expected function tool, got {other:?}"),
-        }
+        let Tool::Function(function) = tool.into_tool();
+        assert_eq!(function.name(), "noop");
     }
 
     #[test]

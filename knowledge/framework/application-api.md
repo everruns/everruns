@@ -30,8 +30,9 @@ provider registry, model resolution, turn semantics, or execution algorithm.
 
 The Framework owns value-first configuration for:
 
-- agent instructions, plain model ids, one provider per agent, tools, and
-  capability references;
+- agent instructions, plain model ids, one provider per agent, function tools,
+  and one open capability-configuration entrypoint for typed built-ins,
+  code-defined implementations, and dynamic references;
 - editable and read-only initial files plus an optional real-disk workspace;
 - scoped HTTP or local-process MCP servers;
 - local plugin directory loading and non-fatal compile warnings;
@@ -40,11 +41,13 @@ The Framework owns value-first configuration for:
   credential-free model identity;
 - canonical, lossless session events and lifecycle hooks through curated
   application values rather than engine or worker phase records;
-- high-level context-compaction behavior without checkpoint-store plumbing;
+- high-level context-compaction and model-adaptive tool-search behavior without
+  checkpoint-store or provider-specific plumbing;
 - high-level task, background-message, wake, and workspace-policy behavior
   without route-claiming or filesystem-backend plumbing;
-- an advanced capability-author SPI with typed schemas, narrow call context,
-  progress, cancellation, and structured errors;
+- an open, non-sealed capability conversion contract plus a curated
+  capability-author SPI with typed schemas, narrow call context, progress,
+  cancellation, and structured errors;
 - an opt-in local profile that combines real workspace files with local
   task/schedule state;
 - event-derived session history and resume, without promoting writable message
@@ -132,6 +135,7 @@ remove. Host implementations may continue using the compatibility crate in
 | Event-derived local history and resume | Promote | Conversation identity and restart continuation are application behavior; canonical events are the durable truth and history is a rebuildable projection. |
 | Legacy writable message-store trait | Isolate for `0.17.x` compatibility | The deprecated runtime-only shim is non-authoritative and execution never calls it; maintained history uses event replay. |
 | Context compaction policy | Promote | Applications choose high-level strategy and proactive budget; durable checkpoint storage remains host-owned. |
+| Capability configuration and dynamic references | Promote | Every capability enters through one open conversion contract. Typed values expose stable built-in schemas; database/plugin catalogs use an ID plus JSON without a closed enum or host dependency. |
 | Local task/schedule state used by an agent | Promote | The local profile supplies the state behind activated Framework capabilities. |
 | Canonical events, post-turn sinks, and typed lifecycle hooks | Promote | Applications observe lossless values and register behavior; engine buses, worker phases, and durable event-store topology remain host-owned. |
 | High-level tasks, background messages, wake, and workspace policy | Promote | Applications configure behavior and resume work without taking ownership of route claims, delivery daemons, or filesystem implementations. |
@@ -176,6 +180,12 @@ and multi-host lifecycle management remain host concerns.
   synchronized canonical envelope. Any projection index is rebuildable.
 - Promoting an application concern must not expose credentials, tenant records,
   backend stores, or host lifecycle entities.
+- Capability values converge through one builder entrypoint. New built-ins do
+  not add builder methods, and third-party values must not require a core or
+  host dependency. Dynamic references validate their open ID and JSON object
+  boundary at agent build time; known implementations additionally own schema
+  validation. Duplicate references and implementation collisions are errors,
+  never registry overwrites.
 - Local-process MCP stays opt-in and must not enter hosted builds by default.
 - Real workspaces keep the runtime filesystem's traversal and symlink-escape
   protections.
@@ -199,6 +209,8 @@ dependency while allowing focused host and sibling crates.
 ## Source index
 
 - `crates/everruns/src/agent.rs`
+- `crates/everruns/src/capability_config.rs`
+- `crates/everruns/src/tool_search.rs`
 - `crates/everruns/src/hooks.rs`
 - `crates/everruns/src/compaction.rs`
 - `crates/everruns/src/session.rs`
@@ -208,6 +220,7 @@ dependency while allowing focused host and sibling crates.
 - `crates/everruns/src/local.rs`
 - `crates/everruns/src/work.rs`
 - `crates/everruns/tests/application_parity.rs`
+- `crates/everruns/tests/capability_configuration.rs`
 - `crates/everruns/tests/session_work.rs`
 - `crates/everruns/tests/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`

@@ -168,7 +168,9 @@ deterministic simulator; opt-in providers, typed tools, multi-turn sessions, eve
 cancellation, files, MCP, and context inspection all stay on the same public facade. Start with
 the [Framework quickstart](https://docs.everruns.com/framework/quickstart/).
 
-Reusable capability packages can use the curated
+Typed built-ins, dynamic third-party references, and reusable packages all use
+`AgentBuilder::capability`; packages can implement the open `IntoCapability`
+contract or use the curated
 [`everruns::capability`](https://docs.everruns.com/framework/advanced-capabilities/) authoring API.
 
 Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates.

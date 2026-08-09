@@ -93,6 +93,47 @@ The default-enabled macro generates the argument schema and adapter. The
 `everruns-macros` package is an implementation crate re-exported as
 `everruns::tool`; applications do not need to depend on it directly.
 
+## Unified Capability Configuration
+
+Every capability uses one scalable builder entrypoint. Typed built-ins,
+code-defined packages, open third-party values, plain default-config IDs, and
+dynamic JSON references all implement `IntoCapability`:
+
+```rust
+use everruns::{
+    Agent, CapabilityRef, CompactionConfig, Model, ToolSearch, capability,
+};
+use serde_json::json;
+
+let weather_definition = capability::Definition::new(
+    "weather",
+    "Weather",
+    "Application-defined weather tools.",
+).tool(weather_handler);
+
+let agent = Agent::builder()
+    .instructions("Use configured capabilities when relevant.")
+    .model(Model::simulated("Done."))
+    .capability(CompactionConfig::new().budget_percent(0.85))
+    .capability(ToolSearch::automatic())
+    .capability(weather_definition)
+    .capability(
+        CapabilityRef::new("vendor.custom")
+            .config(json!({ "mode": "database-driven" })),
+    )
+    .build()?;
+# Ok::<(), everruns::BuildError>(())
+```
+
+`CapabilityRef` is the explicit database/plugin escape hatch: the Framework
+validates its stable open ID and JSON object at build time, and known built-ins
+validate their own schemas. Duplicate IDs and code-implementation collisions
+are errors, never silent overwrites. Third-party crates can implement the
+non-sealed `IntoCapability` trait without importing `everruns-core`.
+
+Keep ordinary functions on `#[everruns::tool]` and `.tool(...)`; a function
+tool is not a capability reference.
+
 ## Sessions, Events, and Cancellation
 
 An agent opens independent live sessions. `send` accepts a message immediately,
@@ -222,7 +263,7 @@ Examples are compiled in CI and import only `everruns`.
 Use `#[everruns::tool]` for an ordinary typed async function. Reusable packages
 that need multiple typed tools, capability metadata, execution context,
 progress, or call-scoped cancellation use the curated `everruns::capability`
-SPI and `AgentBuilder::advanced_capability`.
+SPI and the same `AgentBuilder::capability` entrypoint.
 
 See the [Framework capability-authoring guide](../../docs/framework/advanced-capabilities.md)
 and the [runnable advanced example](examples/advanced_capability.rs).

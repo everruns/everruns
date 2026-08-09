@@ -3,8 +3,8 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use everruns_core::plugin_capability_id;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
-use everruns_core::{AgentCapabilityConfig, plugin_capability_id};
 
 /// Failure while reading or compiling a local plugin directory.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,7 +29,7 @@ impl fmt::Display for PluginError {
 impl std::error::Error for PluginError {}
 
 pub(crate) struct LoadedPlugin {
-    pub capability: AgentCapabilityConfig,
+    pub capability: crate::CapabilitySpec,
     pub warnings: Vec<String>,
 }
 
@@ -51,7 +51,9 @@ pub(crate) fn load(path: &Path) -> Result<LoadedPlugin, PluginError> {
         message: error.to_string(),
     })?;
     Ok(LoadedPlugin {
-        capability: AgentCapabilityConfig::with_config(capability_id, config),
+        capability: crate::CapabilityRef::new(capability_id)
+            .config(config)
+            .into(),
         warnings: compiled.warnings,
     })
 }

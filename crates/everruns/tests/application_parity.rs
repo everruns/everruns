@@ -14,7 +14,7 @@ async fn compaction_is_configured_without_checkpoint_store_types() {
     let agent = Agent::builder()
         .instructions("Keep long conversations useful.")
         .model(Model::simulated("ok"))
-        .compaction(
+        .capability(
             CompactionConfig::new()
                 .strategy(CompactionStrategy::ObservationMasking)
                 .budget_percent(0.75),

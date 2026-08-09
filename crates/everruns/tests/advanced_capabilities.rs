@@ -70,7 +70,7 @@ fn installs_capability_and_exposes_typed_protocol() {
     let agent = Agent::builder()
         .instructions("Use arithmetic tools when asked.")
         .model(Model::simulated("done"))
-        .advanced_capability(arithmetic)
+        .capability(arithmetic)
         .build();
     assert!(agent.is_ok(), "public advanced SPI should build: {agent:?}");
 }
@@ -81,7 +81,7 @@ fn rejects_invalid_descriptors_and_colliding_tools() {
     let error = Agent::builder()
         .instructions("Do math.")
         .model(Model::simulated("done"))
-        .advanced_capability(empty)
+        .capability(empty)
         .build()
         .expect_err("an advanced capability must define a tool");
     assert!(matches!(error, BuildError::InvalidCapability { .. }));
@@ -90,7 +90,7 @@ fn rejects_invalid_descriptors_and_colliding_tools() {
     let error = Agent::builder()
         .instructions("Do math.")
         .model(Model::simulated("done"))
-        .advanced_capability(invalid)
+        .capability(invalid)
         .build()
         .expect_err("invalid capability id must fail");
     assert!(matches!(error, BuildError::InvalidCapability { .. }));
@@ -100,8 +100,8 @@ fn rejects_invalid_descriptors_and_colliding_tools() {
     let error = Agent::builder()
         .instructions("Do math.")
         .model(Model::simulated("done"))
-        .advanced_capability(first)
-        .advanced_capability(second)
+        .capability(first)
+        .capability(second)
         .build()
         .expect_err("tool names must be unique across capabilities");
     assert_eq!(

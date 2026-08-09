@@ -1,12 +1,13 @@
 # `everruns` examples
 
 These examples use the application-facing [`everruns`](../README.md) crate.
-Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`; `canonical_events`,
-`live_session`,
-`session_work`, `workspace_policy`, and `session_history` run entirely offline.
+Most use `gpt-5.6-terra` and require `OPENAI_API_KEY`;
+`capability_configuration`, `canonical_events`, `live_session`, `session_work`,
+`workspace_policy`, and `session_history` run entirely offline.
 
 | Example | What it demonstrates | Run |
 |---|---|---|
+| [`capability_configuration.rs`](capability_configuration.rs) | One open entrypoint for typed Compaction and ToolSearch, a code-defined Definition, and a dynamic vendor reference | `cargo run -p everruns --example capability_configuration` |
 | [`workspace_policy.rs`](workspace_policy.rs) | Safe read/write scopes, default restrictions, and trusted starter files | `cargo run -p everruns --example workspace_policy` |
 | [`live_session.rs`](live_session.rs) | Non-blocking send, automatic steering, and optional waiting | `cargo run -p everruns --example live_session` |
 | [`hello.rs`](hello.rs) | Minimal agent, typed tool, turn result, and event observation | `cargo run -p everruns --features openai --example hello` |
