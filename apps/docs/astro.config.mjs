@@ -175,6 +175,7 @@ export default defineConfig({
                     { label: "Models and Providers", slug: "framework/models-and-providers" },
                     { label: "Tools and Macros", slug: "framework/tools-and-macros" },
                     { label: "Sessions", slug: "framework/sessions" },
+                    { label: "Session Work and Wakes", slug: "framework/background-work" },
                     { label: "Events and Cancellation", slug: "framework/events-and-cancellation" },
                     { label: "Persistence", slug: "framework/persistence" },
                   ],

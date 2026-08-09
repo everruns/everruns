@@ -44,6 +44,8 @@ mod mcp;
 mod plugin;
 mod session;
 mod tool;
+/// Session-owned background work, scheduling, cancellation, and wakes.
+pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
@@ -164,6 +166,9 @@ pub mod prelude {
     pub use crate::LocalConfig;
     #[cfg(feature = "macros")]
     pub use crate::tool;
+    pub use crate::work::{
+        TaskOutcome, TaskRequest, WakePolicy, WakeRequest, WorkQueue, WorkSchedule,
+    };
     pub use crate::{
         Agent, AgentBuilder, BuildError, CancellationToken, CompactionConfig, CompactionStrategy,
         EventStream, FunctionTool, InitialFile, IntoTool, IntoToolResult, McpServer, Model,

@@ -135,6 +135,7 @@ model for new Framework applications.
 - Typed and dynamic function tools
 - Independent multi-turn `Session`s and next-turn context inspection
 - Live typed events, lossless unknown-event projection, and cancellation
+- Session-owned immediate and scheduled work with leased, at-least-once delivery
 - Editable/read-only files, one trusted workspace, scoped MCP, and plugins
 - Optional OpenAI and local profiles without enlarging the offline default
 
@@ -145,6 +146,7 @@ The [example catalog](./examples/README.md) includes:
 - `hello` — smallest live-provider program
 - `production_agent` — production-style composition
 - `github_monitor --simulate` — credential-free typed-tool flow
+- `session_work` — offline background work and completion wakes
 - `subagents` — public-facade delegation
 - `observe_and_cancel` — events and cancellation
 
@@ -167,6 +169,7 @@ Examples are compiled in CI and import only `everruns`.
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Tools and macros](https://docs.everruns.com/framework/tools-and-macros/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
+- [Session work and wakes](https://docs.everruns.com/framework/background-work/)
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [API reference](https://docs.rs/everruns)
 

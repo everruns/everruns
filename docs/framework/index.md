@@ -42,6 +42,7 @@ before importing `everruns-runtime` directly.
 - [Models and providers](/framework/models-and-providers/) — simulation, OpenAI, and the open provider boundary.
 - [Tools and macros](/framework/tools-and-macros/) — typed function tools through `everruns::tool`.
 - [Sessions](/framework/sessions/) — independent, multi-turn conversations.
+- [Session work and wakes](/framework/background-work/) — immediate and scheduled work with explicit delivery and restart semantics.
 - [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
 - [Persistence](/framework/persistence/) — current in-memory and local-state behavior.
 

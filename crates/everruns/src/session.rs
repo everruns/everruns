@@ -100,6 +100,16 @@ impl Session {
         self.session_id
     }
 
+    /// Scope a background-work queue to this session.
+    ///
+    /// The returned handle fixes this session as the owner of every submitted
+    /// task, task read, cancellation request, and direct wake. The queue
+    /// determines persistence and restart behavior; the default queue is
+    /// process-local and database-free.
+    pub fn work(&self, queue: &crate::work::WorkQueue) -> crate::work::SessionWork {
+        queue.for_session(self.id())
+    }
+
     /// Subscribe to this session's live [`SessionEvent`](crate::SessionEvent)
     /// feed.
     ///
