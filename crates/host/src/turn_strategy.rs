@@ -1,4 +1,4 @@
-// Thin I/O wrapper over the pure turn planner in `everruns-engine`.
+// Thin host I/O wrapper over the pure turn planner in `everruns-engine`.
 //
 // Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
 // brain lives in `everruns-engine` as pure, deterministic functions. This

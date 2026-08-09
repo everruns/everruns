@@ -147,16 +147,17 @@ jobs:
               ],
               "crates/host/Cargo.toml": [
                   "everruns-core",
+                  "everruns-engine",
                   "everruns-mcp",
+                  "everruns-platform",
               ],
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
-                  "everruns-engine",
                   "everruns-host",
               ],
               "crates/everruns/Cargo.toml": [
                   "everruns-core",
-                  "everruns-runtime",
+                  "everruns-host",
                   "everruns-local",
                   "everruns-macros",
               ],
@@ -250,8 +251,8 @@ jobs:
             everruns-provider
             everruns-meta
             everruns-core
-            # The sans-IO turn planner sits between core and runtime: it depends
-            # on everruns-core, and everruns-runtime depends on it.
+            # The sans-I/O planner and backend entities publish before the host
+            # implementation that composes them.
             everruns-engine
             everruns-platform
             everruns-mcp

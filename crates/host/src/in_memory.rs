@@ -1,4 +1,4 @@
-// In-memory runtime stores.
+// In-memory host stores.
 // Decision: runtime ships batteries-included in-memory stores for public
 // embedding so common capabilities work without depending on server internals.
 

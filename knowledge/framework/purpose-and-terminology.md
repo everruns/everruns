@@ -26,8 +26,8 @@ phases, or a control plane to run an agent.
 
 - **Framework** means the application-facing `everruns` crate and its public
   library experience.
-- **Runtime** means the low-level execution host and the `everruns-runtime`
-  0.17.x compatibility crate. It is not a synonym for Framework.
+- **Runtime** means low-level host execution. `everruns-runtime` is the 0.17.x
+  compatibility package for that implementation, not a synonym for Framework.
 - **SDKs** are remote clients for a running Everruns server. They do not embed
   Framework execution in the client process.
 - **Platform** is the control plane, server, workers, UI, durable storage, and
@@ -41,9 +41,11 @@ not alternative product names for the Framework.
 `everruns` composes the application contract over focused implementation
 crates. Core owns shared agent and provider-facing values; provider owns the
 lean model-driver abstraction; engine owns deterministic turn planning;
-runtime owns low-level in-process and reusable host execution; local supplies
-optional local host state; macros implements the tool attribute re-exported by
-`everruns`; platform owns backend control-plane entities.
+host owns shared effect application, backend composition, event persistence,
+and low-level in-process execution; runtime re-exports host for 0.17.x
+compatibility; local supplies optional local host state; macros implements the
+tool attribute re-exported by `everruns`; platform owns backend control-plane
+entities.
 
 Those implementation relationships do not make the focused crates alternative
 application entrypoints. Advanced hosts may depend on the focused crates they

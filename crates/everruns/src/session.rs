@@ -11,7 +11,7 @@ use std::sync::Arc;
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::TurnId;
 use everruns_core::{AgentLoopError, InputMessage, SessionId};
-use everruns_runtime::{InProcessRuntime, RuntimeMessageStore, TurnResult};
+use everruns_host::{InProcessRuntime, TurnResult};
 
 use crate::Agent;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
@@ -54,12 +54,8 @@ pub struct Session {
     runtime: Option<InProcessRuntime>,
     /// The session's event sink, created eagerly so [`events`](Session::events)
     /// can subscribe before the first turn builds the runtime. Handed to the
-    /// runtime as its raw event bus on first [`run`](Session::run).
+    /// host as its post-commit event sink on first [`run`](Session::run).
     event_bus: Arc<FacadeEventBus>,
-    /// Optional persisting message store (EVE-836). When set, it replaces the
-    /// default in-memory message backend so the session's history is written to
-    /// disk and can be reloaded to resume the conversation in a fresh process.
-    message_store: Option<Arc<dyn RuntimeMessageStore>>,
     /// Per-session lifecycle state. Handler definitions come from the agent;
     /// tool-hook failures are accumulated here by the runtime adapters.
     hook_state: Arc<HookRunState>,
@@ -76,26 +72,6 @@ impl Session {
             session_id,
             runtime: None,
             event_bus: Arc::new(FacadeEventBus::new()),
-            message_store: None,
-            hook_state,
-            agent_started: false,
-        }
-    }
-
-    /// Open a session whose messages are persisted through `store` (EVE-836).
-    #[cfg(feature = "jsonl")]
-    pub(crate) fn with_message_store(
-        agent: Agent,
-        session_id: SessionId,
-        store: Arc<dyn RuntimeMessageStore>,
-    ) -> Self {
-        let hook_state = HookRunState::new(agent.lifecycle_hooks());
-        Self {
-            agent,
-            session_id,
-            runtime: None,
-            event_bus: Arc::new(FacadeEventBus::new()),
-            message_store: Some(store),
             hook_state,
             agent_started: false,
         }
@@ -281,10 +257,9 @@ impl Session {
         if self.runtime.is_none() {
             self.runtime = Some(
                 self.agent
-                    .build_runtime_with_event_bus(
+                    .build_runtime_with_event_sink(
                         self.session_id,
                         self.event_bus.clone(),
-                        self.message_store.clone(),
                         self.hook_state.clone(),
                     )
                     .await?,
@@ -422,7 +397,7 @@ mod tests {
 
     use everruns_core::turn::TurnStopReason;
     use everruns_core::{ContentPart, InputMessage, MessageRole, TurnId};
-    use everruns_runtime::TurnResult;
+    use everruns_host::TurnResult;
 
     use super::Turn;
     use crate::{Agent, Model};

@@ -21,9 +21,10 @@ implementation crates. Session history and resume are application concerns,
 but their durable source is the canonical event log rather than a writable
 message store.
 
-`everruns-runtime` remains a supported `0.17.x` compatibility API. It is also
-the temporary owner of reusable host implementation, but that ownership does
-not make its backend entities part of the Framework application model.
+`everruns-host` is the neutral, non-application-facing implementation boundary
+for shared effectful orchestration. `everruns-runtime` remains a supported
+`0.17.x` compatibility adapter over that one implementation; it owns no
+provider registry, model resolution, turn semantics, or execution algorithm.
 
 ## Promoted application concerns
 
@@ -58,12 +59,12 @@ An ordinary application targets `everruns` alone for agent configuration and
 execution. The facade-only acceptance fixture enforces that boundary and is
 intentionally stricter than the requirement for a complete execution host.
 
-An advanced system integrator may combine `everruns` with focused host, MCP,
-provider, and integration crates. That modular composition is healthy: success
-means the host no longer imports `everruns-runtime`, not that every transport,
-backend, or integration is re-exported by one facade. During the `0.17.x`
-transition, host-only contracts remain available through the compatibility
-crate until their neutral host owner lands atomically.
+An advanced system integrator may combine `everruns` with `everruns-host` and
+focused MCP, provider, and integration crates. That modular composition is
+healthy: success means the host no longer imports `everruns-runtime`, not that
+every transport, backend, or integration is re-exported by one facade. During
+the `0.17.x` transition, established runtime paths remain usable by re-exporting
+the same host implementation.
 
 ## Audited application and host surfaces
 
@@ -93,7 +94,7 @@ additional application entrypoints.
 The following stay on the host side rather than being mirrored into ordinary
 application configuration:
 
-- replacing individual harness, agent, session, message, provider, event,
+- replacing individual harness, agent, session, provider, event,
   checkpoint, storage, task, schedule, or platform stores;
 - constructing stored harness/agent/session records with stable internal ids;
 - replacing the complete platform definition, capability registry, filesystem
@@ -109,8 +110,7 @@ These are valid extension points for server, worker, evaluation, research, or
 specialized embedding hosts. Re-exporting their backend-oriented entities from
 the Framework would recreate the coupling the application API is intended to
 remove. Host implementations may continue using the compatibility crate in
-`0.17.x`; migration of internal consumers and implementation ownership is a
-separate atomic step.
+`0.17.x`, but new advanced integrations depend on `everruns-host` directly.
 
 ## Classification of existing public use cases
 
@@ -127,7 +127,7 @@ separate atomic step.
 | Weekend-concierge offline host | Promote | Its seeded harness/agent/session shape is ordinary Framework agent, tool, file, and session composition. |
 | Generic evaluation runner | Promote | A custom provider/model, fresh session per sample, workspace seeding/reads, events, and context assertions all have Framework equivalents. |
 | Event-derived local history and resume | Promote | Conversation identity and restart continuation are application behavior; canonical events are the durable truth and history is a rebuildable projection. |
-| Explicit JSONL message-store APIs | Keep for `0.17.x` compatibility | They remain source-compatible for existing callers but are legacy dual-write machinery, not the durable Framework ownership model. |
+| Legacy writable message-store trait | Isolate for `0.17.x` compatibility | The deprecated runtime-only shim is non-authoritative and execution never calls it; maintained history uses event replay. |
 | Context compaction policy | Promote | Applications choose high-level strategy and proactive budget; durable checkpoint storage remains host-owned. |
 | Local task/schedule state used by an agent | Promote | The local profile supplies the state behind activated Framework capabilities. |
 | Canonical events, post-turn sinks, and typed lifecycle hooks | Promote | Applications observe lossless values and register behavior; engine buses, worker phases, and durable event-store topology remain host-owned. |
@@ -163,6 +163,9 @@ and multi-host lifecycle management remain host concerns.
 - Canonical events are the sole durable conversation record. Message/context
   history is a read projection; new Framework profiles must not select or own a
   writable message store.
+- The host log owns coherent append and bounded snapshot replay. In-memory
+  durability is process-lifetime only; JSONL acknowledges only a flushed and
+  synchronized canonical envelope. Any projection index is rebuildable.
 - Promoting an application concern must not expose credentials, tenant records,
   backend stores, or host lifecycle entities.
 - Local-process MCP stays opt-in and must not enter hosted builds by default.
@@ -200,5 +203,7 @@ dependency while allowing focused host and sibling crates.
 - `crates/everruns/tests/session_work.rs`
 - `crates/everruns/tests/lifecycle_hooks.rs`
 - `examples/coding-cli/tests/application_parity.rs`
-- `crates/runtime/src/runtime.rs`
+- `crates/host/src/runtime.rs`
+- `crates/host/src/events.rs`
+- `crates/runtime/src/lib.rs`
 - `crates/local/`

@@ -1,12 +1,12 @@
-// In-process runtime builder and runner.
+// In-process host builder and runner.
 // Decision: the public runtime is in-memory today, but uses the same core atoms
 // and capability resolution path as the durable worker so behavior stays close.
 
 use crate::backends::{
-    EventBus, RuntimeAgentStore, RuntimeBackends, RuntimeHarnessStore, RuntimeMessageStore,
-    RuntimeProviderStore, RuntimeSessionStore,
+    HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
 };
 use crate::builders::SingleSessionBuilder;
+use crate::events::{EventHistory, EventLog, EventReadLimit, EventReadRequest, HostEventEmitter};
 use crate::host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, execute_act_activity, execute_input_activity,
     execute_reason_activity_with_prompt_messages,
@@ -25,18 +25,16 @@ use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
-    Event, EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
-    ToolCompletedData,
+    Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
 };
 use everruns_core::harness::Harness;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::Message;
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::session_file::{InitialFile, SessionFile};
-use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
     SessionStorageStore, SessionStore, UserConnectionResolver,
@@ -195,7 +193,7 @@ pub struct InProcessRuntimeBuilder {
     providers: Vec<everruns_core::Provider>,
     model_spec: Option<everruns_core::ModelSpec>,
     legacy_provider_config: Option<everruns_core::ProviderConfig>,
-    backends: Option<RuntimeBackends>,
+    backends: Option<HostBackends>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
     agents: Vec<Agent>,
@@ -311,48 +309,39 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Supply a custom backend bundle instead of the built-in in-memory stores.
-    pub fn backends(mut self, backends: RuntimeBackends) -> Self {
+    pub fn backends(mut self, backends: HostBackends) -> Self {
         self.backends = Some(backends);
         self
     }
 
     /// Inject a session-task registry. Convenience over `backends(...)` that
     /// initializes an in-memory backend bundle on first use, so embedders can
-    /// add the registry without assembling a full `RuntimeBackends`.
+    /// add the registry without assembling a full `HostBackends`.
     pub fn with_session_task_registry(
         mut self,
         registry: Arc<dyn everruns_core::session_task::SessionTaskRegistry>,
     ) -> Self {
-        let backends = self
-            .backends
-            .take()
-            .unwrap_or_else(RuntimeBackends::in_memory);
+        let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
         self.backends = Some(backends.with_session_task_registry(registry));
         self
     }
 
-    /// Inject a per-org schedule store factory (see [`RuntimeBackends`]).
+    /// Inject a per-org schedule store factory (see [`HostBackends`]).
     pub fn with_schedule_store_factory(
         mut self,
         factory: crate::backends::ScheduleStoreFactory,
     ) -> Self {
-        let backends = self
-            .backends
-            .take()
-            .unwrap_or_else(RuntimeBackends::in_memory);
+        let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
         self.backends = Some(backends.with_schedule_store_factory(factory));
         self
     }
 
-    /// Inject a per-(org, session) platform store factory (see [`RuntimeBackends`]).
+    /// Inject a per-(org, session) platform store factory (see [`HostBackends`]).
     pub fn with_platform_store_factory(
         mut self,
         factory: crate::backends::PlatformStoreFactory,
     ) -> Self {
-        let backends = self
-            .backends
-            .take()
-            .unwrap_or_else(RuntimeBackends::in_memory);
+        let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
         self.backends = Some(backends.with_platform_store_factory(factory));
         self
     }
@@ -497,7 +486,7 @@ impl InProcessRuntimeBuilder {
     pub async fn build(mut self) -> Result<InProcessRuntime> {
         let backends = match self.backends.take() {
             Some(backends) => backends,
-            None => RuntimeBackends::in_memory(),
+            None => HostBackends::in_memory(),
         };
         let file_store = resolve_session_file_system(
             &self.platform_definition,
@@ -618,8 +607,12 @@ impl InProcessRuntimeBuilder {
             file_store.seed_initial_file(*session_id, file).await?;
         }
 
-        let persisting_emitter =
-            PersistingEventEmitter::new(backends.event_bus.clone(), backends.message_store.clone());
+        let event_log = backends.event_log.clone();
+        let event_history = Arc::new(EventHistory::new(event_log.clone()));
+        let event_emitter = Arc::new(HostEventEmitter::new(
+            event_log.clone(),
+            backends.event_sink.clone(),
+        ));
 
         // Mid-turn wake delivery (EVE-681, part A): when a task registry is
         // present, wrap it so qualifying task transitions fan out to a
@@ -638,17 +631,19 @@ impl InProcessRuntimeBuilder {
             None => (None, None),
         };
 
-        Ok(InProcessRuntime {
+        let seeded_session_ids = self.sessions.iter().map(|session| session.id).collect();
+        let runtime = InProcessRuntime {
             platform_definition: Arc::new(self.platform_definition),
             harness_store: backends.harness_store,
             agent_store: backends.agent_store,
             session_store: backends.session_store,
             default_session_id: self.default_session_id,
-            message_store: backends.message_store,
+            seeded_session_ids,
+            event_log,
+            event_history,
             compaction_checkpoint_store: backends.compaction_checkpoint_store,
             provider_store: backends.provider_store,
-            event_bus: backends.event_bus,
-            persisting_emitter,
+            event_emitter,
             file_store,
             storage_store: backends.storage_store,
             connection_resolver: backends.connection_resolver,
@@ -663,7 +658,11 @@ impl InProcessRuntimeBuilder {
             provider_stall_timeout: self.provider_stall_timeout,
             mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
-        })
+        };
+        for session in &self.sessions {
+            runtime.ensure_session_started(session).await?;
+        }
+        Ok(runtime)
     }
 }
 
@@ -693,11 +692,12 @@ pub struct InProcessRuntime {
     agent_store: Arc<dyn RuntimeAgentStore>,
     session_store: Arc<dyn RuntimeSessionStore>,
     default_session_id: Option<SessionId>,
-    message_store: Arc<dyn RuntimeMessageStore>,
+    seeded_session_ids: Vec<SessionId>,
+    event_log: Arc<dyn EventLog>,
+    event_history: Arc<EventHistory>,
     compaction_checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
-    event_bus: Arc<dyn EventBus>,
-    persisting_emitter: PersistingEventEmitter,
+    event_emitter: Arc<HostEventEmitter>,
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
@@ -718,6 +718,42 @@ pub struct InProcessRuntime {
 }
 
 impl InProcessRuntime {
+    async fn ensure_session_started(&self, session: &Session) -> Result<()> {
+        if self
+            .event_history
+            .contains_event_type(session.id, everruns_core::events::SESSION_STARTED)
+            .await
+            .map_err(|error| AgentLoopError::store(error.to_string()))?
+        {
+            return Ok(());
+        }
+        self.event_emitter
+            .emit(EventRequest::new(
+                session.id,
+                EventContext::empty(),
+                SessionStartedData {
+                    harness_id: session.harness_id,
+                    agent_id: session.agent_id,
+                    model_id: session.model_id,
+                },
+            ))
+            .await?;
+        Ok(())
+    }
+
+    /// Clone the canonical emitter used by this runtime.
+    ///
+    /// Facades may retain it to append a correlated terminal event after an
+    /// in-flight turn future is dropped. Calls still commit before observation.
+    pub fn host_event_emitter(&self) -> Arc<HostEventEmitter> {
+        self.event_emitter.clone()
+    }
+
+    /// Coherent canonical event log backing this runtime.
+    pub fn event_log(&self) -> Arc<dyn EventLog> {
+        self.event_log.clone()
+    }
+
     /// Build the shared MCP client over the platform egress boundary and the
     /// configured auth provider.
     fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
@@ -893,10 +929,10 @@ impl InProcessRuntime {
 
     /// Execute one turn for an existing session.
     ///
-    /// The input message is stored in the runtime history, an `input.message`
-    /// event is emitted, and the turn then runs `input -> reason -> act` as
-    /// planned step-by-step by [`everruns_engine`] — the same planner the
-    /// durable worker drives its turns with.
+    /// The input message is appended as the canonical `input.message` event;
+    /// [`EventHistory`] derives the read projection from that one write. The
+    /// turn then runs `input -> reason -> act` as planned step-by-step by
+    /// [`everruns_engine`] — the same planner the durable worker drives.
     pub async fn run_turn(
         &self,
         session_id: SessionId,
@@ -908,15 +944,10 @@ impl InProcessRuntime {
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
 
-        // Input message is recorded directly (and emitted via the raw bus so
-        // that PersistingEventEmitter does not double-store it). All
-        // subsequent activity-emitted events flow through the persisting
-        // emitter the adapter hands out.
-        let input_message = self
-            .message_store
-            .add_input_message(session_id, input.into())
-            .await?;
-        self.event_bus
+        // The canonical input envelope is the only write. EventHistory rebuilds
+        // the message projection from this accepted append.
+        let input_message = message_from_input(input.into());
+        self.event_emitter
             .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
@@ -1116,16 +1147,10 @@ impl InProcessRuntime {
         }
         let mut message_ids = Vec::with_capacity(wakes.len());
         for wake in wakes {
-            // Persist the wake as a user message (history reload picks it up)
-            // and emit the input event on the raw bus so it appears in the turn
-            // span without the persisting emitter double-storing it — mirroring
-            // how `run_turn` records the initial input message.
-            let message = self
-                .message_store
-                .add_input_message(session_id, InputMessage::user(wake.text))
-                .await?;
+            // Append one canonical input event; history is reconstructed from it.
+            let message = message_from_input(InputMessage::user(wake.text));
             message_ids.push(message.id);
-            self.event_bus
+            self.event_emitter
                 .emit(EventRequest::new(
                     session_id,
                     EventContext::empty(),
@@ -1138,7 +1163,7 @@ impl InProcessRuntime {
 
     /// Load the current message history for a session.
     pub async fn messages(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        self.message_store.load(session_id).await
+        self.event_history.load(session_id).await
     }
 
     /// Read a file from the in-memory session filesystem.
@@ -1182,12 +1207,39 @@ impl InProcessRuntime {
         .await
     }
 
-    /// Return all collected events from the runtime event bus.
+    /// Return canonical durable events collected by this runtime's log.
     ///
-    /// Event buses that do not retain events return an empty `Vec` (see
-    /// [`EventBus::collected_events`]).
+    /// This 0.17 convenience paginates through the bounded host SPI and fails
+    /// once [`crate::events::MAX_EVENT_HISTORY_REPLAY`] envelopes are reached.
     pub async fn events(&self) -> Result<Vec<Event>> {
-        Ok(self.event_bus.collected_events().await)
+        let limit = EventReadLimit::default();
+        let session_id = self
+            .default_session_id
+            .or_else(|| (self.seeded_session_ids.len() == 1).then(|| self.seeded_session_ids[0]))
+            .ok_or_else(|| {
+                AgentLoopError::config(
+                    "events() requires exactly one seeded session; use event_log() for bounded per-session replay",
+                )
+            })?;
+        let mut request = EventReadRequest::new(session_id, limit);
+        let mut events = Vec::new();
+        loop {
+            let page = self
+                .event_log
+                .read_page(request)
+                .await
+                .map_err(|error| AgentLoopError::store(error.to_string()))?;
+            if events.len().saturating_add(page.events.len())
+                > crate::events::MAX_EVENT_HISTORY_REPLAY
+            {
+                return Err(AgentLoopError::store("event replay bound exceeded"));
+            }
+            events.extend(page.events);
+            let Some(cursor) = page.next_cursor else {
+                return Ok(events);
+            };
+            request = EventReadRequest::from_cursor(cursor, limit);
+        }
     }
 
     /// Execute a system command declared by a registered capability.
@@ -1214,7 +1266,7 @@ impl InProcessRuntime {
             self.harness_store.clone(),
             self.agent_store.clone(),
             self.session_store.clone(),
-            self.message_store.clone(),
+            self.event_history.clone(),
             self.provider_store.clone(),
             registry.clone(),
             self.platform_definition.driver_registry().clone(),
@@ -1278,7 +1330,7 @@ impl InProcessRuntime {
             self.harness_store.as_ref(),
             self.agent_store.as_ref(),
             self.session_store.as_ref(),
-            self.message_store.as_ref(),
+            self.event_history.as_ref(),
             self.provider_store.as_ref(),
             self.platform_definition.capability_registry(),
             session_id,
@@ -1338,7 +1390,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,
         };
-        let messages = self.message_store.load(session_id).await?;
+        let messages = self.event_history.load(session_id).await?;
         let model = self.provider_store.get_default_model().await?;
 
         // Discover tools from the session's scoped MCP servers so they appear
@@ -1408,7 +1460,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn message_store(&self) -> Arc<dyn MessageRetriever> {
-        self.message_store.clone()
+        self.event_history.clone()
     }
 
     fn compaction_checkpoint_store(
@@ -1418,7 +1470,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
-        Arc::new(self.persisting_emitter.clone())
+        self.event_emitter.clone()
     }
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem> {
@@ -1472,34 +1524,6 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
         self.provider_stall_timeout
-    }
-}
-
-#[derive(Clone)]
-struct PersistingEventEmitter {
-    inner: Arc<dyn EventBus>,
-    message_store: Arc<dyn RuntimeMessageStore>,
-}
-
-impl PersistingEventEmitter {
-    fn new(inner: Arc<dyn EventBus>, message_store: Arc<dyn RuntimeMessageStore>) -> Self {
-        Self {
-            inner,
-            message_store,
-        }
-    }
-}
-
-#[async_trait]
-impl EventEmitter for PersistingEventEmitter {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
-        let event = self.inner.emit(request.clone()).await?;
-        if let Some(message) = message_from_event(&event.data) {
-            self.message_store
-                .store_message(request.session_id, message)
-                .await?;
-        }
-        Ok(event)
     }
 }
 
@@ -1580,152 +1604,18 @@ async fn seed_runtime_initial_files(
     Ok(())
 }
 
-fn message_from_event(data: &EventData) -> Option<Message> {
-    match data {
-        EventData::InputMessage(data) => Some(data.message.clone()),
-        EventData::OutputMessageCompleted(OutputMessageCompletedData { message, .. }) => {
-            Some(message.clone())
-        }
-        EventData::ToolCompleted(data) => Some(tool_completed_to_message(data.clone())),
-        _ => None,
-    }
-}
-
-fn tool_completed_to_message(data: ToolCompletedData) -> Message {
-    let mut images: Vec<ToolResultImage> = Vec::new();
-    let metadata = tool_result_metadata(&data);
-    let result = data.result.map(|parts| {
-        for part in &parts {
-            if let ContentPart::Image(img) = part
-                && let (Some(base64), Some(media_type)) = (&img.base64, &img.media_type)
-            {
-                images.push(ToolResultImage {
-                    base64: base64.clone(),
-                    media_type: media_type.clone(),
-                });
-            }
-        }
-
-        let text_parts: Vec<&ContentPart> = parts
-            .iter()
-            .filter(|part| matches!(part, ContentPart::Text(_)))
-            .collect();
-        if text_parts.len() == 1
-            && let ContentPart::Text(text) = text_parts[0]
-        {
-            return parse_structured_tool_result_text(&text.text);
-        }
-        if !text_parts.is_empty() {
-            serde_json::to_value(&text_parts).unwrap_or_default()
-        } else {
-            serde_json::Value::Null
-        }
-    });
-
-    let mut message = if images.is_empty() {
-        Message::tool_result(&data.tool_call_id, result, data.error)
-    } else {
-        Message::tool_result_with_images(&data.tool_call_id, result, images)
-    };
-    message.metadata = metadata;
-    message
-}
-
-fn tool_result_metadata(
-    data: &ToolCompletedData,
-) -> Option<std::collections::HashMap<String, serde_json::Value>> {
-    let mut metadata = std::collections::HashMap::new();
-    metadata.insert("tool_name".to_string(), serde_json::json!(data.tool_name));
-    if let Some(fingerprint) = &data.tool_call_fingerprint {
-        metadata.insert(
-            "tool_call_fingerprint".to_string(),
-            serde_json::json!(fingerprint),
-        );
-    }
-    if let Some(fingerprint) = &data.tool_result_fingerprint {
-        metadata.insert(
-            "tool_result_fingerprint".to_string(),
-            serde_json::json!(fingerprint),
-        );
-    }
-    (!metadata.is_empty()).then_some(metadata)
-}
-
-fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
-    let trimmed = text.trim_start();
-    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
-        return serde_json::Value::String(text.to_string());
-    }
-
-    match serde_json::from_str(text) {
-        Ok(value @ (serde_json::Value::Object(_) | serde_json::Value::Array(_))) => value,
-        _ => serde_json::Value::String(text.to_string()),
-    }
-}
-
-#[cfg(test)]
-mod tool_completed_replay_tests {
-    use super::*;
-
-    #[test]
-    fn tool_completed_replay_preserves_json_object_shape() {
-        let data = ToolCompletedData::success(
-            "call_read".to_string(),
-            "read_file".to_string(),
-            vec![ContentPart::text(
-                serde_json::json!({
-                    "path": "/workspace/src/lib.rs",
-                    "content": "1|fn main() {}"
-                })
-                .to_string(),
-            )],
-            Some(1),
-        );
-
-        let message = tool_completed_to_message(data);
-        let result = message
-            .tool_result_content()
-            .and_then(|content| content.result.as_ref())
-            .expect("tool result should be present");
-
-        assert_eq!(result["path"], "/workspace/src/lib.rs");
-        assert_eq!(result["content"], "1|fn main() {}");
-    }
-
-    #[test]
-    fn tool_completed_replay_keeps_scalar_json_as_text() {
-        let data = ToolCompletedData::success(
-            "call_scalar".to_string(),
-            "custom_tool".to_string(),
-            vec![ContentPart::text("123")],
-            Some(1),
-        );
-
-        let message = tool_completed_to_message(data);
-        let result = message
-            .tool_result_content()
-            .and_then(|content| content.result.as_ref())
-            .expect("tool result should be present");
-
-        assert_eq!(result, &serde_json::Value::String("123".to_string()));
-    }
-
-    #[test]
-    fn tool_completed_replay_preserves_fingerprints_as_metadata() {
-        let data = ToolCompletedData::success(
-            "call_read".to_string(),
-            "read_file".to_string(),
-            vec![ContentPart::text("{}")],
-            Some(1),
-        )
-        .with_fingerprints("sha256:call".to_string(), "sha256:result".to_string());
-
-        let message = tool_completed_to_message(data);
-        let metadata = message.metadata.expect("metadata should be present");
-
-        assert_eq!(metadata["tool_name"], "read_file");
-        assert_eq!(metadata["tool_call_fingerprint"], "sha256:call");
-        assert_eq!(metadata["tool_result_fingerprint"], "sha256:result");
+fn message_from_input(input: InputMessage) -> Message {
+    Message {
+        id: MessageId::new(),
+        role: input.role,
+        content: input.content,
+        phase: None,
+        thinking: None,
+        thinking_signature: None,
+        controls: input.controls,
+        metadata: input.metadata,
+        external_actor: None,
+        created_at: Utc::now(),
     }
 }
 

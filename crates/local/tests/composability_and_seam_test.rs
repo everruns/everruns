@@ -13,44 +13,35 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::events::{Event, EventRequest};
+use everruns_core::events::Event;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TaskLinks,
     TaskWakePolicy,
 };
 use everruns_core::traits::{
-    EventEmitter, SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_core::{
     CapabilityRegistry, DriverId, InputMessage, PlatformDefinition, ResolvedModel, ToolCall,
 };
 use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
 use everruns_runtime::{
-    AgentBuilder, EventBus, HarnessBuilder, InProcessRuntimeBuilder, RealDiskFileStore,
-    RuntimeBackends, RuntimeHostAdapter, SessionBuilder,
+    AgentBuilder, EventSink, EventSinkError, HarnessBuilder, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeBackends, RuntimeHostAdapter, SessionBuilder,
 };
 
 // ---- Caller-supplied event bus decorator ----------------------------------
 
 #[derive(Default)]
-struct CountingEventBus {
-    inner: everruns_core::in_memory::InMemoryEventEmitter,
+struct CountingEventSink {
     count: AtomicUsize,
 }
 
-#[async_trait]
-impl EventEmitter for CountingEventBus {
-    async fn emit(&self, request: EventRequest) -> everruns_core::Result<Event> {
+impl EventSink for CountingEventSink {
+    fn try_send(&self, _event: Event) -> Result<(), EventSinkError> {
         self.count.fetch_add(1, Ordering::SeqCst);
-        self.inner.emit(request).await
-    }
-}
-
-#[async_trait]
-impl EventBus for CountingEventBus {
-    async fn collected_events(&self) -> Vec<Event> {
-        self.inner.events().await
+        Ok(())
     }
 }
 
@@ -94,8 +85,8 @@ async fn embedder_bus_and_fs_factory_are_used() {
     let workspace = tempfile::tempdir().unwrap();
     let data = tempfile::tempdir().unwrap();
 
-    let bus: Arc<dyn EventBus> = Arc::new(CountingEventBus::default());
-    let count_handle = bus.clone();
+    let sink = Arc::new(CountingEventSink::default());
+    let count_handle = sink.clone();
     let fs_used = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let factory = Arc::new(FlaggingFactory {
         root: workspace.path().to_path_buf(),
@@ -104,7 +95,7 @@ async fn embedder_bus_and_fs_factory_are_used() {
 
     // Composable: pass our own bus on the runtime backends, our own FS factory
     // on the platform definition. LocalBackends only adds the local stores.
-    let runtime_backends = RuntimeBackends::in_memory().with_event_bus(bus.clone());
+    let runtime_backends = RuntimeBackends::in_memory().with_event_sink(sink);
     let profile = LocalProfile::new(data.path()).with_workspace_root(workspace.path());
     let local = LocalBackends::with_db(
         profile,
@@ -174,9 +165,10 @@ async fn embedder_bus_and_fs_factory_are_used() {
     assert!(result.success, "turn should succeed");
 
     assert!(fs_used.load(Ordering::SeqCst), "custom FS factory was used");
-    // Downcast not needed: collected_events proves our bus saw the turn events.
-    let collected = count_handle.collected_events().await;
-    assert!(!collected.is_empty(), "caller bus collected turn events");
+    assert!(
+        count_handle.count.load(Ordering::SeqCst) > 0,
+        "caller sink observed turn events"
+    );
 }
 
 #[tokio::test]

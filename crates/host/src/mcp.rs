@@ -1,4 +1,4 @@
-//! Runtime MCP wiring (knowledge/integrations/runtime-mcp.md D4).
+//! Host MCP wiring (knowledge/integrations/runtime-mcp.md D4).
 //!
 //! Resolves the effective scoped MCP servers for a session (harness chain →
 //! agent → session, last wins), turns them into transport connections, and

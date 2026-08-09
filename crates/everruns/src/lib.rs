@@ -70,15 +70,6 @@ pub use local::LocalConfig;
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;
 
-// --- File-backed session persistence (feature-gated) --------------------
-/// Persist and resume a [`Session`]'s conversation as an append-only JSONL file
-/// with only `everruns` and the `jsonl` feature. Off by default; adds no
-/// filesystem dependencies to the standard build.
-#[cfg(feature = "jsonl")]
-pub mod persistence;
-#[cfg(feature = "jsonl")]
-pub use persistence::{JsonlError, JsonlSessionStore};
-
 // --- Function-tool procedural macro (feature-gated) ---------------------
 /// Turn a typed async function into an agent tool.
 ///
@@ -129,7 +120,7 @@ pub use providers::openai::{ModelError, OpenAI};
 // Note: the value-first `AgentBuilder` above intentionally replaces the runtime
 // crate's low-level `AgentBuilder` at the facade root. The runtime builder
 // remains reachable as `everruns::runtime::AgentBuilder`.
-pub use everruns_runtime::{
+pub use everruns_host::{
     HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     SingleSessionBuilder, TurnResult,
 };
@@ -152,10 +143,12 @@ pub use everruns_core::llmsim_driver::LlmSimConfig;
 /// types the facade does not yet surface directly.
 pub use everruns_core as core;
 
-/// Escape hatch onto the underlying `everruns-runtime` crate for APIs not yet
-/// promoted onto the facade. Prefer the re-exports above; reach here only for
-/// types the facade does not yet surface directly.
-pub use everruns_runtime as runtime;
+/// 0.17 facade-module compatibility alias for the canonical host implementation.
+#[deprecated(
+    since = "0.17.25",
+    note = "advanced hosts should depend on everruns-host directly"
+)]
+pub use everruns_host as runtime;
 
 /// The common path: everything needed to describe an agent and run turns.
 ///

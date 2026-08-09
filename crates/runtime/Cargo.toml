@@ -1,5 +1,4 @@
-# Low-level in-process execution host and 0.17.x compatibility crate.
-# In-memory defaults let host implementers run without durable/control-plane services.
+# 0.17.x compatibility adapter. All maintained execution lives in everruns-host.
 
 [package]
 name = "everruns-runtime"
@@ -11,7 +10,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-runtime"
-description = "Low-level in-process execution host and 0.17.x compatibility crate for Everruns"
+description = "0.17.x compatibility adapter for the Everruns host implementation"
 readme = "README.md"
 keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
 categories = ["development-tools", "asynchronous"]
@@ -21,14 +20,19 @@ default = []
 # Enable local-process (stdio) MCP servers. Off by default so the hosted
 # server/worker (which depend on this crate transitively) never compile stdio
 # in — see knowledge/integrations/runtime-mcp.md (D2). Embedders like the coding CLI opt in.
-mcp-stdio = ["everruns-mcp/stdio"]
+mcp-stdio = ["everruns-host/mcp-stdio"]
 # Compile the experimental sandboxed Lua execution engine (mlua) into core so
 # the `lua` / `lua_code_mode` capabilities actually run scripts. Off by default
 # so the standard runtime build pulls in no interpreter. Enables the
 # `lua_code_mode_agent` example and the `lua_code_mode_test` integration test.
-lua = ["everruns-core/lua"]
+lua = ["everruns-host/lua"]
 
 [dependencies]
+async-trait.workspace = true
+everruns-core.workspace = true
+everruns-host.workspace = true
+
+[dev-dependencies]
 async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
@@ -37,20 +41,13 @@ regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tokio = { workspace = true, features = ["fs", "rt", "sync"] }
-tracing.workspace = true
-uuid.workspace = true
-
-everruns-core.workspace = true
-everruns-host.workspace = true
-everruns-platform.workspace = true
-everruns-engine.workspace = true
-everruns-mcp.workspace = true
-
-[dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
-async-trait.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+everruns-engine.workspace = true
+everruns-mcp.workspace = true
+everruns-platform.workspace = true
 # Dev-only: powers the `openai_runtime` example. Carries a version (via the
 # workspace dep) so `cargo publish` keeps it resolvable; it is not a published
 # runtime dependency, so embedders pull in only the provider crates they use.

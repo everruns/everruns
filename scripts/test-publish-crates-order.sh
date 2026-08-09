@@ -109,9 +109,11 @@ for crate in published:
 for earlier, later in (
     ("everruns-core", "everruns-engine"),
     ("everruns-core", "everruns-host"),
+    ("everruns-engine", "everruns-host"),
     ("everruns-mcp", "everruns-host"),
+    ("everruns-platform", "everruns-host"),
     ("everruns-host", "everruns-runtime"),
-    ("everruns-engine", "everruns-runtime"),
+    ("everruns-host", "everruns"),
     ("everruns-macros", "everruns"),
 ):
     if earlier not in order:
@@ -125,8 +127,11 @@ for earlier, later in (
 for manifest_rel, dependency in (
     ("crates/engine/Cargo.toml", "everruns-core"),
     ("crates/host/Cargo.toml", "everruns-core"),
+    ("crates/host/Cargo.toml", "everruns-engine"),
     ("crates/host/Cargo.toml", "everruns-mcp"),
+    ("crates/host/Cargo.toml", "everruns-platform"),
     ("crates/runtime/Cargo.toml", "everruns-host"),
+    ("crates/everruns/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
 ):
     entry = re.search(

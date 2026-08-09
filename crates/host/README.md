@@ -30,10 +30,15 @@ fn accepts_context(_: RuntimeHostTurnContext) {}
 
 ## What It Provides
 
-- Shared input, reason, and act phase execution
-- Session and turn lifecycle application
+- Canonical event append, bounded replay, and read-only history projection
+- Backend/store composition and low-level in-process execution
+- Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Host adapter contracts for worker, local, and advanced integrations
-- One effectful boundary beneath the application facade
+
+`everruns-engine` remains the sans-I/O planner. Canonical events are the sole
+history write path: host execution appends events, while `EventHistory` rebuilds
+messages from bounded, sequence-ordered replay. No writable message store is
+part of the maintained host API.
 
 ## Documentation
 

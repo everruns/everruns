@@ -1,4 +1,4 @@
-// Real-disk SessionFileSystem implementation.
+// Real-disk host SessionFileSystem implementation.
 //
 // Rationale: built-in capabilities (`file_system`, `agent_instructions`,
 // `skills`, ...) read and write through `SessionFileSystem`. For non-server

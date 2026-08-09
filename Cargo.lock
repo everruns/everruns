@@ -2398,10 +2398,10 @@ version = "0.17.25"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-host",
  "everruns-local",
  "everruns-macros",
  "everruns-openai",
- "everruns-runtime",
  "futures",
  "schemars",
  "serde",
@@ -2665,11 +2665,22 @@ name = "everruns-host"
 version = "0.17.25"
 dependencies = [
  "async-trait",
+ "chrono",
  "everruns-core",
+ "everruns-engine",
  "everruns-mcp",
  "everruns-platform",
+ "futures",
+ "ignore",
+ "regex",
+ "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
  "tracing",
+ "uuid 1.24.0",
 ]
 
 [[package]]

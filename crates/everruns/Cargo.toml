@@ -1,13 +1,13 @@
 # The application-facing `everruns` library: a thin, publishable facade over the
-# existing in-process runtime.
+# canonical in-process host.
 #
 # Decision (EVE-830): the first public `everruns` crate is a compatibility facade
-# over `everruns-core` and `everruns-runtime`. It moves no engine code and only
+# over `everruns-core` and `everruns-host`. It moves no engine code and only
 # re-exports the minimum needed to construct and run the in-process runtime.
 # Default features stay offline — no provider, MCP, filesystem, SQLx, server, or
-# worker integrations are activated by default. The escape-hatch `everruns::core`
-# and `everruns::runtime` modules expose the underlying crates for APIs not yet
-# promoted onto the facade.
+# worker integrations are activated by default. The `everruns::runtime` module
+# remains only as a deprecated 0.17 alias for canonical host re-exports;
+# advanced hosts should depend on `everruns-host` directly.
 
 [package]
 name = "everruns"
@@ -42,16 +42,16 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # serde/schemars with `macros` but remains independently gateable so the bare
 # facade still compiles with `--no-default-features`.
 capabilities = ["dep:schemars", "dep:serde"]
-# Persist and resume a session's conversation as an append-only JSONL file
-# (EVE-836). Off by default; adds no new dependencies (only `std::fs` and the
-# already-present `serde_json`), so the standard build gains no filesystem edge.
+# 0.17 feature-name compatibility. Writable message JSONL was retired in favor
+# of canonical event logs; retaining the no-op name keeps dependent feature
+# lists compiling without exposing a writable message store.
 jsonl = []
-# Compile the experimental sandboxed Lua execution engine into the runtime.
-# Mirrors `everruns-runtime/lua`; off by default so the standard facade build
+# Compile the experimental sandboxed Lua execution engine into the host.
+# Mirrors `everruns-host/lua`; off by default so the standard facade build
 # pulls in no interpreter.
-lua = ["everruns-runtime/lua"]
-# Enable local-process (stdio) MCP servers, mirroring `everruns-runtime/mcp-stdio`.
-mcp-stdio = ["everruns-runtime/mcp-stdio"]
+lua = ["everruns-host/lua"]
+# Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
+mcp-stdio = ["everruns-host/mcp-stdio"]
 # Enable SQLite-backed local task/schedule state and real workspaces through
 # `LocalConfig`. Conversation history is derived from canonical events rather
 # than selecting a writable message store here.
@@ -63,12 +63,12 @@ openai = ["dep:everruns-openai"]
 
 [dependencies]
 everruns-core.workspace = true
-everruns-runtime.workspace = true
+everruns-host.workspace = true
 everruns-local = { workspace = true, optional = true }
 # Optional real-provider edge, activated by the `openai` feature. Referenced via
 # workspace inheritance; the workspace pin is a compatible lower bound, so this
 # is intentionally absent from the publish version-sync lists (unlike
-# everruns-core/everruns-runtime, which track the workspace version exactly).
+# everruns-core/everruns-host, which track the workspace version exactly).
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
 serde_json.workspace = true
@@ -91,12 +91,12 @@ futures.workspace = true
 tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
 serde = { workspace = true }
 trybuild = { workspace = true }
-# Backing files for the `jsonl` persistence tests.
+# Temporary workspaces and plugin fixtures used by facade acceptance tests.
 tempfile = { workspace = true }
 
 [[example]]
 name = "production_agent"
-required-features = ["jsonl", "openai"]
+required-features = ["openai"]
 
 [[example]]
 name = "github_monitor"

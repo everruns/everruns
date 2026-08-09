@@ -19,10 +19,50 @@
 //! # let _ = accepts_context;
 //! ```
 
+mod backends;
+mod builders;
+pub mod events;
+mod file_store_decorators;
+mod grep_limits;
 mod host;
+mod in_memory;
+mod mcp;
+mod mcp_cache;
+mod real_disk;
+mod runtime;
+mod turn_strategy;
+
+pub use backends::{
+    HostBackends, PlatformStoreFactory, RuntimeAgentStore, RuntimeHarnessStore,
+    RuntimeProviderStore, RuntimeSessionStore, ScheduleStoreFactory,
+};
+pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
+pub use events::{
+    DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
+    EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,
+    EventPage, EventReadLimit, EventReadRequest, EventReader, EventSink, EventSinkError,
+    HostEventEmitter, InMemoryEventLog, JsonlEventLog, MAX_EVENT_HISTORY_PAGE_SIZE,
+    MAX_EVENT_HISTORY_REPLAY, MAX_EVENT_PAGE_SIZE, NoopEventSink,
+};
+pub use everruns_core::AssembledTurnContext;
+pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
+pub use everruns_core::turn::TurnStopReason;
+pub use file_store_decorators::{
+    ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
+};
 
 pub use host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
     execute_reason_activity_with_prompt_messages,
 };
+pub use in_memory::{
+    InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
+    InMemorySessionStore,
+};
+pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
+pub use runtime::{
+    CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
+    in_process_internal_org_id,
+};
+pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

@@ -7,7 +7,7 @@ entirely offline.
 | Example | What it demonstrates | Run |
 |---|---|---|
 | [`hello.rs`](hello.rs) | Minimal agent, typed tool, turn result, and event observation | `cargo run -p everruns --features openai --example hello` |
-| [`production_agent.rs`](production_agent.rs) | Tool safety boundary, multi-turn use, JSONL persistence, and resume | `cargo run -p everruns --features openai,jsonl --example production_agent` |
+| [`production_agent.rs`](production_agent.rs) | Tool safety boundary and production-shaped multi-turn use | `cargo run -p everruns --features openai --example production_agent` |
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`session_work.rs`](session_work.rs) | Session-owned work, leased delivery, and completion wakes | `cargo run -p everruns --example session_work` |
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |

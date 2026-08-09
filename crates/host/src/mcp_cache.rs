@@ -1,4 +1,4 @@
-//! Per-session MCP tool-discovery cache.
+//! Per-session host MCP tool-discovery cache.
 //!
 //! Mirrors the hosted server's stale-while-revalidate + single-flight tool
 //! cache (`crates/server`, #2131), adapted to the in-process runtime's
