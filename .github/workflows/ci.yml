@@ -167,6 +167,11 @@ jobs:
               - '.github/workflows/ci.yml'
             ui:
               - 'apps/ui/**'
+              # api-types:check regenerates apps/ui/src/lib/api/generated from
+              # this spec, so a spec-only change can leave the committed types
+              # stale. Without it here the UI job is skipped and the drift only
+              # surfaces on the next unrelated UI pull request.
+              - 'docs/api/openapi.json'
               - '.github/workflows/ci.yml'
             docs:
               - 'apps/docs/**'

@@ -2780,6 +2780,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/facets": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/sessions/facets - Facet counts and masthead metrics */
+    get: operations["get_session_facets"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/stats": {
     parameters: {
       query?: never;
@@ -6608,6 +6625,13 @@ export interface components {
        * @example true
        */
       parallel_tool_calls?: boolean | null;
+      /**
+       * @description How this session was started. Clients may declare only `chat` (an
+       *     interactive thread) or `api` (the default); every other source is
+       *     server-owned so the sessions facet rail stays trustworthy.
+       * @example chat
+       */
+      source?: string | null;
       /**
        * @description Optional session-level system prompt override.
        *     Prepended to the agent's system prompt when building RuntimeAgent.
@@ -11998,6 +12022,11 @@ export interface components {
          */
         active_schedule_count?: number | null;
         /**
+         * @description Outcome-oriented status derived from `status` and the last turn result.
+         *     This is the value the sessions list groups by and the facet rail counts.
+         */
+        activity?: components["schemas"]["SessionActivity"];
+        /**
          * @description ID of the agent working in this session (format: agent_{32-hex}). Optional.
          * @example agent_01933b5a00007000800000000000001
          */
@@ -12162,6 +12191,8 @@ export interface components {
          * @example 550e8400-e29b-41d4-a716-446655440000
          */
         resolved_owner_user_id?: string | null;
+        /** @description How this session was started. Server-owned for every ingress path. */
+        source?: components["schemas"]["SessionSource"];
         /**
          * Format: date-time
          * @description Timestamp when the session started executing.
@@ -12460,6 +12491,11 @@ export interface components {
          */
         active_schedule_count?: number | null;
         /**
+         * @description Outcome-oriented status derived from `status` and the last turn result.
+         *     This is the value the sessions list groups by and the facet rail counts.
+         */
+        activity?: components["schemas"]["SessionActivity"];
+        /**
          * @description ID of the agent working in this session (format: agent_{32-hex}). Optional.
          * @example agent_01933b5a00007000800000000000001
          */
@@ -12624,6 +12660,8 @@ export interface components {
          * @example 550e8400-e29b-41d4-a716-446655440000
          */
         resolved_owner_user_id?: string | null;
+        /** @description How this session was started. Server-owned for every ingress path. */
+        source?: components["schemas"]["SessionSource"];
         /**
          * Format: date-time
          * @description Timestamp when the session started executing.
@@ -14146,6 +14184,11 @@ export interface components {
        */
       active_schedule_count?: number | null;
       /**
+       * @description Outcome-oriented status derived from `status` and the last turn result.
+       *     This is the value the sessions list groups by and the facet rail counts.
+       */
+      activity?: components["schemas"]["SessionActivity"];
+      /**
        * @description ID of the agent working in this session (format: agent_{32-hex}). Optional.
        * @example agent_01933b5a00007000800000000000001
        */
@@ -14310,6 +14353,8 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       resolved_owner_user_id?: string | null;
+      /** @description How this session was started. Server-owned for every ingress path. */
+      source?: components["schemas"]["SessionSource"];
       /**
        * Format: date-time
        * @description Timestamp when the session started executing.
@@ -14368,6 +14413,13 @@ export interface components {
       turn_id: string;
     };
     /**
+     * @description Outcome-oriented view of a session, as the sessions list and facet rail
+     *     present it. Derived from the session's execution status plus the outcome of
+     *     its most recent turn — `SessionStatus` alone has no notion of failure.
+     * @enum {string}
+     */
+    SessionActivity: "running" | "paused" | "failed" | "completed" | "idle";
+    /**
      * @description Token-budget report for a session — a model-aware breakdown of the
      *     context window into named sections plus per-source contributions, so
      *     callers can answer "what's filling the context?" without reverse-
@@ -14393,6 +14445,63 @@ export interface components {
       sections: components["schemas"]["ContextReportSection"][];
       /** @description Prefixed session identifier this report describes. */
       session_id: string;
+    };
+    /** @description One bucket of a sessions facet dimension. */
+    SessionFacetCount: {
+      /** Format: int64 */
+      count: number;
+      /**
+       * @description The dimension value: an activity, a source, or an agent's public id.
+       * @example running
+       */
+      value: string;
+    };
+    /**
+     * @description Facet-rail counts and masthead metrics for the sessions surface (EVE-852).
+     *
+     *     Every count is aggregated server-side over the same filter predicate as
+     *     `GET /v1/sessions`, so a client never derives them by paging the list. Each
+     *     facet dimension is counted with the other filters applied but its own
+     *     selection excluded, which is what lets the rail offer multi-select.
+     */
+    SessionFacetsResponse: {
+      /**
+       * Format: int64
+       * @description Sessions executing a turn or awaiting client tool results right now.
+       */
+      active_now: number;
+      /**
+       * @description Counts per derived activity (`running`, `paused`, `failed`,
+       *     `completed`, `idle`).
+       */
+      by_activity: components["schemas"]["SessionFacetCount"][];
+      /**
+       * @description Counts per agent, keyed by the agent's public id. Sessions with no
+       *     agent are omitted.
+       */
+      by_agent: components["schemas"]["SessionFacetCount"][];
+      /** @description Counts per session source. */
+      by_source: components["schemas"]["SessionFacetCount"][];
+      /**
+       * Format: int64
+       * @description Sessions whose most recent turn failed or was cancelled today (UTC).
+       */
+      failed_today: number;
+      /**
+       * Format: int64
+       * @description 95th percentile session duration over the filtered set, milliseconds.
+       */
+      p95_duration_ms: number;
+      /**
+       * Format: int64
+       * @description Tokens consumed by sessions created today (UTC).
+       */
+      tokens_today: number;
+      /**
+       * Format: int64
+       * @description Sessions matching every applied filter.
+       */
+      total: number;
     };
     /** @description Complete file with content */
     SessionFile: {
@@ -14540,6 +14649,29 @@ export interface components {
      * @enum {string}
      */
     SessionSandboxStatusValue: "running" | "paused";
+    /**
+     * @description How a session came into existence.
+     *
+     *     Closed set: the sessions facet rail enumerates every variant, so the value
+     *     is typed rather than a free-form string. Ingress paths set it server-side —
+     *     clients may only declare the two variants they can legitimately be
+     *     (`Chat` and `Api`), which keeps a facet like "started by a schedule"
+     *     trustworthy. Rows that predate the column, or whose origin could not be
+     *     inferred at backfill time, carry `Unknown`.
+     * @enum {string}
+     */
+    SessionSource:
+      | "chat"
+      | "api"
+      | "slack"
+      | "ag_ui"
+      | "fcp"
+      | "schedule"
+      | "webhook"
+      | "a2a"
+      | "eval"
+      | "subagent"
+      | "unknown";
     /** @description Data for session.started event */
     SessionStartedData: {
       /**
@@ -17783,6 +17915,11 @@ export interface components {
        */
       active_schedule_count?: number | null;
       /**
+       * @description Outcome-oriented status derived from `status` and the last turn result.
+       *     This is the value the sessions list groups by and the facet rail counts.
+       */
+      activity?: components["schemas"]["SessionActivity"];
+      /**
        * @description ID of the agent working in this session (format: agent_{32-hex}). Optional.
        * @example agent_01933b5a00007000800000000000001
        */
@@ -17947,6 +18084,8 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       resolved_owner_user_id?: string | null;
+      /** @description How this session was started. Server-owned for every ingress path. */
+      source?: components["schemas"]["SessionSource"];
       /**
        * Format: date-time
        * @description Timestamp when the session started executing.
@@ -27071,6 +27210,38 @@ export interface operations {
         agent_id?: string | null;
         /** @description Search by title (case-insensitive substring match). */
         search?: string | null;
+        /**
+         * @description Comma-separated session sources: `chat`, `api`, `slack`, `ag_ui`,
+         *     `fcp`, `schedule`, `webhook`, `a2a`, `eval`, `subagent`, `unknown`.
+         * @example chat
+         */
+        source?: string | null;
+        /**
+         * @description Comma-separated derived statuses: `running`, `paused`, `failed`,
+         *     `completed`, `idle`.
+         * @example running,failed
+         */
+        status?: string | null;
+        /**
+         * @description Restrict to sessions owned by the calling user.
+         * @example true
+         */
+        mine?: boolean | null;
+        /**
+         * @description Inclusive lower bound on creation time (RFC 3339).
+         * @example 2026-08-01T00:00:00Z
+         */
+        created_after?: string | null;
+        /**
+         * @description Exclusive upper bound on creation time (RFC 3339).
+         * @example 2026-08-09T00:00:00Z
+         */
+        created_before?: string | null;
+        /**
+         * @description `created_at` (default) or `last_activity`.
+         * @example last_activity
+         */
+        order?: string | null;
         /** @description Number of items to skip (for pagination). */
         offset?: number | null;
         /** @description Maximum number of items to return (for pagination). */
@@ -27247,6 +27418,50 @@ export interface operations {
       };
       /** @description Platform Chat (global_chat) or voice feature is disabled for the org */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_facets: {
+    parameters: {
+      query?: {
+        /** @example agent_01933b5a00007000800000000000001 */
+        agent_id?: string;
+        search?: string;
+        source?: string;
+        status?: string;
+        mine?: boolean;
+        created_after?: string;
+        created_before?: string;
+        order?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Facet counts over the applied filters */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionFacetsResponse"];
+        };
+      };
+      /** @description Unknown filter value */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };
