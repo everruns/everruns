@@ -27,13 +27,17 @@ categories = ["development-tools", "asynchronous"]
 [features]
 # Default features stay offline: the facade activates no provider, MCP,
 # filesystem, SQLx, server, or worker integrations. The `macros` surface is the
-# one default beyond the bare re-exports — it pulls in no network or I/O edge,
-# only the proc-macro and schema-generation toolchain.
-default = ["macros"]
+# default surfaces beyond the bare re-exports — macros and typed capabilities —
+# pull in no network or I/O edge, only async adaptation and schema generation.
+default = ["macros", "capabilities"]
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
 macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
+# Curated service-provider interface for code-defined capabilities. This shares
+# serde/schemars with `macros` but remains independently gateable so the bare
+# facade still compiles with `--no-default-features`.
+capabilities = ["dep:schemars", "dep:serde"]
 # Persist and resume a session's conversation as an append-only JSONL file
 # (EVE-836). Off by default; adds no new dependencies (only `std::fs` and the
 # already-present `serde_json`), so the standard build gains no filesystem edge.
@@ -71,8 +75,9 @@ tokio = { workspace = true, features = ["sync", "macros"] }
 # leaking the tokio-util type onto the public surface. Matches the pin used by
 # everruns-core.
 tokio-util = { version = "0.7", default-features = false }
-# Activated by the `macros` feature. `everruns-macros` provides the
-# `#[everruns::tool]` attribute; `schemars` and `serde` back the code it emits.
+# Activated by `macros` and/or `capabilities`. `everruns-macros` provides the
+# `#[everruns::tool]` attribute; `schemars` and `serde` back generated and
+# advanced typed protocol schemas.
 everruns-macros = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
@@ -104,3 +109,7 @@ required-features = ["openai"]
 [[example]]
 name = "subagents"
 required-features = ["openai"]
+
+[[example]]
+name = "advanced_capability"
+required-features = ["capabilities", "openai"]

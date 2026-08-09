@@ -10,6 +10,7 @@ These examples use the application-facing [`everruns`](../README.md) crate and
 | [`github_monitor.rs`](github_monitor.rs) | Host-owned background work that wakes an agent when it finishes | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`subagents.rs`](subagents.rs) | Concurrent child agents managed by an application-owned task registry | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](observe_and_cancel.rs) | Live event streaming and cooperative cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
+| [`advanced_capability.rs`](advanced_capability.rs) | Curated capability SPI with typed protocol, metadata, progress, and structured errors | `cargo run -p everruns --features openai --example advanced_capability` |
 
 The GitHub monitor's default `--simulate` mode skips GitHub access but still
 uses the configured model. Its explicit live mode requires an authenticated

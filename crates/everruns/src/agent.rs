@@ -163,6 +163,18 @@ pub enum BuildError {
         /// The colliding tool name.
         name: String,
     },
+    /// An advanced capability's public descriptor is invalid.
+    InvalidCapability {
+        /// The rejected capability id.
+        id: String,
+        /// Why the descriptor was rejected.
+        reason: String,
+    },
+    /// Two advanced capability registrations used the same stable id.
+    DuplicateCapability {
+        /// The colliding capability id.
+        id: String,
+    },
     /// Two providers used the same normalized identity.
     DuplicateProvider { id: String },
     /// The selected model names a provider that was not registered.
@@ -191,6 +203,12 @@ impl fmt::Display for BuildError {
             }
             BuildError::DuplicateTool { name } => {
                 write!(f, "duplicate tool name {name:?}")
+            }
+            BuildError::InvalidCapability { id, reason } => {
+                write!(f, "invalid advanced capability {id:?}: {reason}")
+            }
+            BuildError::DuplicateCapability { id } => {
+                write!(f, "duplicate advanced capability id {id:?}")
             }
             BuildError::DuplicateProvider { id } => write!(f, "duplicate provider {id:?}"),
             BuildError::UnknownProvider {
@@ -227,6 +245,8 @@ pub struct Agent {
     providers: Vec<Provider>,
     capabilities: Vec<AgentCapabilityConfig>,
     function_tools: Vec<FunctionTool>,
+    #[cfg(feature = "capabilities")]
+    advanced_capabilities: Vec<crate::capability::Definition>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
@@ -433,6 +453,10 @@ impl Agent {
         for tool in &self.function_tools {
             builder = builder.capability(tool.clone().into_capability());
         }
+        #[cfg(feature = "capabilities")]
+        for capability in &self.advanced_capabilities {
+            builder = builder.capability(capability.runtime_adapter());
+        }
         for provider in &self.providers {
             builder = builder.provider(provider.clone());
         }
@@ -453,6 +477,8 @@ pub struct AgentBuilder {
     providers: Vec<Provider>,
     capabilities: Vec<AgentCapabilityConfig>,
     tools: Vec<Tool>,
+    #[cfg(feature = "capabilities")]
+    advanced_capabilities: Vec<crate::capability::Definition>,
     initial_files: Vec<InitialFile>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
@@ -528,6 +554,19 @@ impl AgentBuilder {
     /// Add a capability the agent can use.
     pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
         self.capabilities.push(capability.into());
+        self
+    }
+
+    /// Register a code-defined capability through the curated advanced SPI.
+    ///
+    /// This both installs the implementation on the private in-process runtime
+    /// and activates its stable id on the agent. Use [`#[everruns::tool]`](crate::tool)
+    /// for ordinary single-function tools; use this method when a reusable
+    /// capability needs typed protocol descriptors, context, progress, or
+    /// call-scoped cancellation.
+    #[cfg(feature = "capabilities")]
+    pub fn advanced_capability(mut self, capability: crate::capability::Definition) -> Self {
+        self.advanced_capabilities.push(capability);
         self
     }
 
@@ -644,6 +683,9 @@ impl AgentBuilder {
     ///   incomplete, or duplicates another server name.
     /// - [`BuildError::InvalidCompaction`] if the proactive context budget is
     ///   outside the supported range.
+    /// - [`BuildError::InvalidCapability`] if an advanced capability descriptor
+    ///   is invalid.
+    /// - [`BuildError::DuplicateCapability`] if advanced capabilities share an id.
     pub fn build(self) -> Result<Agent, BuildError> {
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
@@ -721,6 +763,49 @@ impl AgentBuilder {
             capabilities.push(compaction.capability_config());
         }
 
+        #[cfg(feature = "capabilities")]
+        let advanced_capabilities = {
+            let mut seen_capability_ids: HashSet<String> = capabilities
+                .iter()
+                .map(|config| config.capability_id().to_string())
+                .collect();
+            for capability in &self.advanced_capabilities {
+                capability
+                    .validate()
+                    .map_err(|reason| BuildError::InvalidCapability {
+                        id: capability.id().to_string(),
+                        reason,
+                    })?;
+                if !seen_capability_ids.insert(capability.id().to_string()) {
+                    return Err(BuildError::DuplicateCapability {
+                        id: capability.id().to_string(),
+                    });
+                }
+                for tool in capability.tools() {
+                    let spec = tool.spec();
+                    validate_tool_name(spec.name()).map_err(|reason| {
+                        BuildError::InvalidToolName {
+                            name: spec.name().to_string(),
+                            reason,
+                        }
+                    })?;
+                    validate_tool_schema(spec.input_schema()).map_err(|reason| {
+                        BuildError::InvalidToolSchema {
+                            name: spec.name().to_string(),
+                            reason,
+                        }
+                    })?;
+                    if !seen_tool_names.insert(spec.name().to_string()) {
+                        return Err(BuildError::DuplicateTool {
+                            name: spec.name().to_string(),
+                        });
+                    }
+                }
+                capabilities.push(AgentCapabilityConfig::new(capability.id()));
+            }
+            self.advanced_capabilities
+        };
+
         Ok(Agent {
             name,
             instructions,
@@ -728,6 +813,8 @@ impl AgentBuilder {
             providers,
             capabilities,
             function_tools,
+            #[cfg(feature = "capabilities")]
+            advanced_capabilities,
             initial_files: self.initial_files,
             parallel_tool_calls: self.parallel_tool_calls,
             workspace_root: self.workspace_root,

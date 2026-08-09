@@ -1,7 +1,7 @@
 //! OpenAI-backed model configuration (requires the `openai` feature).
 //!
 //! [`OpenAI`] is the value-first entry point for talking to OpenAI's Responses
-//! API. Convert it into a [`Model`](crate::Model) — directly or via
+//! API. Convert it into a [`Model`] — directly or via
 //! [`AgentBuilder::model`](crate::AgentBuilder::model) — and the agent's runtime
 //! registers the OpenAI driver automatically.
 //!
@@ -49,7 +49,7 @@ impl fmt::Display for ModelError {
 
 impl std::error::Error for ModelError {}
 
-/// Configuration for an OpenAI-backed [`Model`](crate::Model).
+/// Configuration for an OpenAI-backed [`Model`].
 ///
 /// Build one with [`OpenAI::new`] (explicit, deterministic — reads no
 /// environment) or [`OpenAI::from_env`] (reads `OPENAI_API_KEY` and, when set,

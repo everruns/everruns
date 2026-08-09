@@ -25,7 +25,7 @@ use async_trait::async_trait;
 use everruns_core::error::Result as CoreResult;
 use everruns_core::events::{
     self, Event, EventData, EventRequest, OutputMessageDeltaData, ToolCompletedData,
-    ToolStartedData, TurnFailedData,
+    ToolProgressData, ToolStartedData, TurnFailedData,
 };
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::EventId;
@@ -101,6 +101,15 @@ pub enum SessionEventKind {
         /// Whether the tool call succeeded.
         success: bool,
     },
+    /// A best-effort progress update emitted by an in-flight tool.
+    ToolProgress {
+        /// Opaque id of the tool call.
+        tool_call_id: String,
+        /// Name of the tool emitting progress.
+        tool_name: String,
+        /// Human-readable interim status.
+        message: String,
+    },
     /// Any other runtime event, carried through unprojected.
     ///
     /// `event_type` is the stable dot-notation type string (e.g.
@@ -126,6 +135,7 @@ impl SessionEvent {
             SessionEventKind::TextDelta { .. } => events::OUTPUT_MESSAGE_DELTA,
             SessionEventKind::ToolStarted { .. } => events::TOOL_STARTED,
             SessionEventKind::ToolCompleted { .. } => events::TOOL_COMPLETED,
+            SessionEventKind::ToolProgress { .. } => events::TOOL_PROGRESS,
             SessionEventKind::Other { event_type, .. } => event_type,
         }
     }
@@ -176,6 +186,19 @@ impl SessionEvent {
                     tool_call_id: tool_call_id.clone(),
                     tool_name: tool_name.clone(),
                     success: *success,
+                },
+                _ => Self::other_kind(event),
+            },
+            events::TOOL_PROGRESS => match &event.data {
+                EventData::ToolProgress(ToolProgressData {
+                    tool_call_id,
+                    tool_name,
+                    message,
+                    ..
+                }) => SessionEventKind::ToolProgress {
+                    tool_call_id: tool_call_id.clone(),
+                    tool_name: tool_name.clone(),
+                    message: message.clone(),
                 },
                 _ => Self::other_kind(event),
             },

@@ -48,6 +48,7 @@ before importing `everruns-runtime` directly.
 ## Extend and operate
 
 - [Custom providers](/framework/custom-providers/) — attach a custom `ChatDriver` without changing a closed enum.
+- [Advanced capabilities](/framework/advanced-capabilities/) — package typed tools with stable metadata and lifecycle context.
 - [Custom backends](/framework/custom-backends/) — cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/) — deterministic tests without credentials.
 - [Runnable examples](/framework/examples/) — complete programs maintained with the crate.

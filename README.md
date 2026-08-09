@@ -168,6 +168,9 @@ deterministic simulator; opt-in providers, typed tools, multi-turn sessions, eve
 cancellation, files, MCP, and context inspection all stay on the same public facade. Start with
 the [Framework quickstart](https://docs.everruns.com/framework/quickstart/).
 
+Reusable capability packages can use the curated
+[`everruns::capability`](https://docs.everruns.com/framework/advanced-capabilities/) authoring API.
+
 `everruns-runtime` remains available for existing 0.17.x applications and low-level execution
 hosts. See [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
 before choosing it for new code.

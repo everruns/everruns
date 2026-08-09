@@ -37,6 +37,8 @@ extern crate self as everruns;
 
 // --- Value-first agent description and execution -------------------------
 mod agent;
+#[cfg(feature = "capabilities")]
+pub mod capability;
 mod compaction;
 mod context;
 mod events;
@@ -162,6 +164,8 @@ pub use everruns_runtime as runtime;
 pub mod prelude {
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
+    #[cfg(feature = "capabilities")]
+    pub use crate::capability;
     #[cfg(feature = "macros")]
     pub use crate::tool;
     pub use crate::{

@@ -170,6 +170,16 @@ Examples are compiled in CI and import only `everruns`.
 - [Events and cancellation](https://docs.everruns.com/framework/events-and-cancellation/)
 - [API reference](https://docs.rs/everruns)
 
+## Extend agents
+
+Use `#[everruns::tool]` for an ordinary typed async function. Reusable packages
+that need multiple typed tools, capability metadata, execution context,
+progress, or call-scoped cancellation use the curated `everruns::capability`
+SPI and `AgentBuilder::advanced_capability`.
+
+See the [Framework capability-authoring guide](../../docs/framework/advanced-capabilities.md)
+and the [runnable advanced example](examples/advanced_capability.rs).
+
 ## License
 
 Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
