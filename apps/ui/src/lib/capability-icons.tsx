@@ -33,7 +33,7 @@ import {
  * Icon component type that accepts both LucideIcon and custom SVG forwardRef components.
  * Avoids `as unknown as LucideIcon` double casts for custom icons.
  */
-type IconComponent =
+export type IconComponent =
   | LucideIcon
   | ForwardRefExoticComponent<SVGProps<SVGSVGElement> & RefAttributes<SVGSVGElement>>;
 

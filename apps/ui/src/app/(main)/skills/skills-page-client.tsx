@@ -26,7 +26,8 @@ import {
   useUploadSkill,
 } from "@/hooks/use-skills";
 import { usePolicies } from "@/hooks/use-policies";
-import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
+import { Plus, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import type { Skill, SkillUsage } from "@/lib/api/types";
 import {
   getDisplayName,
@@ -53,6 +54,8 @@ import {
 import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 
 type StatusTab = "all" | "active" | "archived";
+
+const SkillsIcon = registryDomainIcons.skills;
 
 function SkillRow({
   skill,
@@ -314,7 +317,7 @@ export default function SkillsPageClient() {
       <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Skills" }]} />
 
       <PageMasthead
-        icon={<BookOpen />}
+        icon={<SkillsIcon />}
         title="Skills"
         badges={
           <Badge variant="outline" className="font-mono">
@@ -374,7 +377,7 @@ export default function SkillsPageClient() {
             }
             emptyState={
               <EmptyState
-                icon={<BookOpen />}
+                icon={<SkillsIcon />}
                 title={
                   search.trim() || statusTab !== "active"
                     ? "No skills match your filters."

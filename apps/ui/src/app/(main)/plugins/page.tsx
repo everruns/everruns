@@ -57,7 +57,6 @@ import {
 import { usePageTitle } from "@/hooks";
 import {
   Plus,
-  Puzzle,
   Package,
   Store,
   RefreshCw,
@@ -68,6 +67,7 @@ import {
   ChevronRight,
   Ellipsis,
 } from "lucide-react";
+import { registryDomainIcons } from "@/lib/registry-navigation";
 import { pluralize } from "@/lib/formatting";
 import type {
   Marketplace,
@@ -79,6 +79,8 @@ import type {
 // ============================================
 // Helpers
 // ============================================
+
+const PluginsIcon = registryDomainIcons.plugins;
 
 function truncateSha(sha: string | null | undefined): string {
   if (!sha) return "";
@@ -782,7 +784,7 @@ export default function PluginsPage() {
       <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Plugins" }]} />
 
       <PageMasthead
-        icon={<Puzzle />}
+        icon={<PluginsIcon />}
         title="Plugins"
         badges={
           <Badge variant="outline" className="font-mono">

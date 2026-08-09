@@ -356,6 +356,17 @@ describe("Sidebar", () => {
     expect(settingsLink).toHaveAttribute("href", "/settings/organization");
   });
 
+  it("renders distinct semantic icons for registry navigation", () => {
+    render(<Sidebar />);
+
+    const icon = (name: string) => screen.getByRole("link", { name }).querySelector("svg");
+
+    expect(icon("Skills")).toHaveClass("lucide-book-open");
+    expect(icon("Capabilities")).toHaveClass("lucide-blocks");
+    expect(icon("Plugins")).toHaveClass("lucide-plug");
+    expect(icon("MCP servers")).toHaveAttribute("viewBox", "0 0 186 186");
+  });
+
   it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 

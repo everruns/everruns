@@ -21,7 +21,6 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   Boxes,
-  BookOpen,
   Brain,
   Calendar,
   ChartColumn,
@@ -31,7 +30,6 @@ import {
   ListTodo,
   MessageCircle,
   MessageSquare,
-  Puzzle,
   Rocket,
   Search,
   Server,
@@ -41,10 +39,10 @@ import {
   UserRound,
   Workflow,
   Cog,
-  Cpu,
   Menu,
 } from "lucide-react";
-import { capabilityIconMap } from "@/lib/capability-icons";
+import type { IconComponent } from "@/lib/capability-icons";
+import { registryNavigationItems } from "@/lib/registry-navigation";
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useProviders } from "@/hooks/use-providers";
 import { usePolicies } from "@/hooks/use-policies";
@@ -65,7 +63,7 @@ const { version } = packageJson;
 export type NavigationItem = {
   name: string;
   href: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: IconComponent;
   activePrefix?: string;
   /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
   prefetch?: boolean;
@@ -118,13 +116,9 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   { name: "Apps", href: "/apps", icon: Rocket },
 ];
 
-export const defaultRegistriesNavigation: NavigationItem[] = [
-  { name: "Models", href: "/models", icon: Cpu },
-  { name: "MCP servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
-  { name: "Skills", href: "/skills", icon: BookOpen },
-  { name: "Capabilities", href: "/capabilities", icon: Puzzle },
-  { name: "Plugins", href: "/plugins", icon: Puzzle },
-];
+export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
+  ({ name, href, icon }) => ({ name, href, icon }),
+);
 
 export const defaultQualityNavigation: NavigationItem[] = [
   { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
