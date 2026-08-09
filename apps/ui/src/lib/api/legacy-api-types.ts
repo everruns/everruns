@@ -793,6 +793,14 @@ export interface FeatureFlags {
   global_chat: boolean;
   notifications: boolean;
   evals: boolean;
+  /** Skills registry management UI. Experimental. */
+  skills: boolean;
+  /** Workspace memory management UI. Experimental. */
+  memory: boolean;
+  /** Knowledge index management UI. Experimental. */
+  knowledge: boolean;
+  /** Plugin marketplace and installed-plugin management UI. Experimental. */
+  plugins: boolean;
   app_budgets: boolean;
   agent_versions: boolean;
   voice: boolean;

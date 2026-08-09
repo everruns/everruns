@@ -111,13 +111,22 @@ export const defaultBuildingNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Harnesses", href: "/harnesses", icon: Shield },
   { name: "Identities", href: "/agent-identities", icon: UserRound },
-  { name: "Knowledge indexes", href: "/knowledge-indexes", icon: Library },
-  { name: "Memory", href: "/memory", icon: Brain },
+  {
+    name: "Knowledge indexes",
+    href: "/knowledge-indexes",
+    icon: Library,
+    flag: "knowledge",
+    experimental: true,
+  },
+  { name: "Memory", href: "/memory", icon: Brain, flag: "memory", experimental: true },
   { name: "Apps", href: "/apps", icon: Rocket },
 ];
 
 export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
-  ({ name, href, icon }) => ({ name, href, icon }),
+  ({ name, href, icon }) => {
+    const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
+    return { name, href, icon, flag, experimental: Boolean(flag) };
+  },
 );
 
 export const defaultQualityNavigation: NavigationItem[] = [

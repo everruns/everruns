@@ -59,6 +59,9 @@ Planned flag:
 
 Current API-visible experimental flags include:
 
+- `skills`, `memory`, `knowledge`, and `plugins`: gate their management pages, sidebar entries,
+  and global-search results. These visibility flags do not disable the underlying APIs or runtime
+  capabilities, which continue to enforce their normal org scope and permissions.
 - `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `knowledge/runtime-resources/agent-versions.md`.
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). When off, these capabilities are not registered in the backend and are absent from the capability picker. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.

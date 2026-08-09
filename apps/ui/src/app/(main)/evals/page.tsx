@@ -8,7 +8,6 @@ import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type { Eval, EvalTarget } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
@@ -86,22 +85,10 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
 
 export default function EvalsPage() {
   usePageTitle("Evals");
-  const evalsEnabled = useFeatureFlag("evals");
   const { data: evals, isLoading, error } = useEvals({ includeArchived: false });
   const { data: agents } = useAgents({ includeArchived: false });
 
   const agentMap = new Map((agents ?? []).map((a) => [a.id, getDisplayName(a)]));
-
-  if (!evalsEnabled) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Evals is not enabled</p>
-          <p className="text-sm">This feature is currently disabled.</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
