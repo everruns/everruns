@@ -543,6 +543,10 @@ pub trait SessionFileSystem: Send + Sync {
     /// This is how a shell seeds its working directory: [`MountFs`] returns a
     /// path in its stable agent-facing namespace, so the shell and file tools
     /// share the same identity. The default is the flat VFS session form.
+    /// Security decorators may authorize the returned path, so providers that
+    /// accept additional aliases must use the same contained mapping here and
+    /// in their I/O methods. An alias must never resolve to one workspace path
+    /// here and a different storage object during the subsequent operation.
     ///
     /// [`MountFs`]: crate::mount_fs::MountFs
     fn resolve_path(&self, input: &str) -> String {

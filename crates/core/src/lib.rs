@@ -122,6 +122,7 @@ pub mod task_observer;
 pub mod vector_store;
 pub mod wake_queue;
 pub mod workspace;
+pub mod workspace_policy;
 pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
@@ -255,6 +256,7 @@ pub use user_facing_error::{
     is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
     parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
+pub use workspace_policy::{WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError};
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
     WorkspaceRootSet,

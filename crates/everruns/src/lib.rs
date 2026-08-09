@@ -132,7 +132,7 @@ pub use everruns_core::{
     InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream,
     LlmStreamEvent, MessageRole, ModelSpec, PlatformDefinition, Provider, ProviderAuth,
     ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, SessionId,
-    StaticHeaderAuth,
+    StaticHeaderAuth, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------
@@ -177,6 +177,7 @@ pub mod prelude {
         InitialFile, IntoHookResult, IntoTool, IntoToolResult, McpServer, Model, PluginError,
         RunError, RunOptions, Session, SessionContext, SessionEvent, SessionEventKind, SessionId,
         Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn, TurnStartContext,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
     };
     #[cfg(feature = "openai")]
     pub use crate::{ModelError, OpenAI};

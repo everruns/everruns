@@ -47,8 +47,10 @@ pub use events::{
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
+#[allow(deprecated)]
 pub use file_store_decorators::{
-    ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
+    ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, PolicyFileStore,
+    WriteBlocklistFileStore,
 };
 
 pub use host::{

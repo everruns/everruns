@@ -520,17 +520,34 @@ See the runnable examples for the full wiring against a real
 
 ## Policy Decorators
 
-Embedders that need to apply policy to LLM-driven writes can compose
-`SessionFileSystem` decorators on top of a base store. Two are shipped in
-`everruns-runtime`:
+`WorkspacePolicy` is the application-facing policy value. The in-process host
+wraps the filesystem selected by the platform factory, so the same
+policy applies to in-memory, host-disk, database, and third-party providers.
+The policy owns portable `/workspace` access decisions; concrete providers
+still own storage mapping, containment, symlink handling, and atomic I/O.
 
-- `WriteBlocklistFileStore` — rejects `write_file`, `delete_file`,
-  `create_directory`, `seed_initial_file`, and
-  `write_file_if_content_matches` whose path contains any blocked directory
-  component (`.git`, `node_modules`, `target`, …) at any depth. Reads,
-  listings, stats, and greps pass through. The blocklist defaults to
-  `DEFAULT_WRITE_BLOCKLIST` and is fully overridable via
-  `WriteBlocklistFileStore::with_blocklist(inner, custom)`.
+The safe default permits reads of ordinary workspace files and denies writes,
+hidden paths, sensitive paths, and recursive deletes. Applications opt into
+writes and protected paths with explicit scopes. The broad read-write
+convenience retains component-level denies for common dependency and build
+directories; custom policies can configure their own component restrictions.
+Denies win, and composition is an intersection so adding a layer cannot broaden
+access. See the source for the API contract rather than duplicating its methods
+here.
+
+`PolicyFileStore` performs the uniform enforcement. Trusted application seed
+files bypass mutation policy while being installed; every later model-driven
+read or mutation is checked. Directory listings and grep output are filtered so
+denied path names, content, counts, and byte totals are not returned.
+
+The older `WriteBlocklistFileStore` remains as a low-level compatibility
+decorator. Its `DEFAULT_WRITE_BLOCKLIST` export is deprecated and retained only
+for 0.17 source compatibility; new policy behavior does not depend on that
+global list. New applications use `WorkspacePolicy` instead of importing a
+concrete store or a blocklist constant.
+
+The independent approval decorator remains available:
+
 - `ApprovalGatingFileStore` — gates `write_file`, `delete_file`, and the
   inner write inside `write_file_if_content_matches` through an embedder
   supplied `FileApprovalGate`. The trait has two async methods,
@@ -541,32 +558,11 @@ Embedders that need to apply policy to LLM-driven writes can compose
   files are embedder-supplied, not LLM-driven). Writes always read the
   inner store's existing content first so the embedder can render a diff.
 
-The intended composition (eliding boilerplate):
-
-```rust,ignore
-let disk: Arc<dyn SessionFileSystem> =
-    Arc::new(RealDiskFileStore::new(&workspace_root)?);
-let blocklisted: Arc<dyn SessionFileSystem> =
-    Arc::new(WriteBlocklistFileStore::new(disk));
-let gated: Arc<dyn SessionFileSystem> =
-    Arc::new(ApprovalGatingFileStore::new(blocklisted, gate));
-```
-
-Reads short-circuit through both layers; only the destructive paths take
-the policy decisions. Each layer holds `Arc<dyn SessionFileSystem>` rather
-than a generic inner so decorator stacks compose without coherence
-gymnastics.
-
-Smell to acknowledge: this puts policy in the storage layer rather than the
-tool layer. The trade-off is uniformity — every built-in capability that
+Enforcement sits at the filesystem seam so every built-in capability that
 calls `ToolContext.file_store` / `SystemPromptContext.file_store` (today:
 `file_system`, `agent_instructions`, `skills`, `web_fetch`,
-`tool_output_persistence`) picks the policy up for free. The alternative
-(tool-layer policy) would require every capability to wire its own gate and
-its own blocklist, which the [examples/coding-cli][cli] prototype
-demonstrated is the wrong default.
-
-[cli]: ../../examples/coding-cli
+`tool_output_persistence`) observes one policy rather than reimplementing path
+rules at each tool boundary.
 
 ## Non-goals
 
@@ -597,17 +593,19 @@ APIs or the `SessionFileSystem` trait.
   (`to_session_path`, `to_display_path`)
 - `crates/core/src/workspace_roots.rs` — `WorkspaceRootSet` and host-root
   resolver for multi-root host sessions
-- `crates/runtime/src/real_disk.rs` — `RealDiskFileStore` + its private
+- `crates/core/src/workspace_policy.rs` — portable `WorkspacePolicy`
+- `crates/host/src/real_disk.rs` — `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
 - `crates/core/src/traits.rs` — `SessionFileSystem` trait
   (`display_path`/`display_root`/`resolve_path`)
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
-- `crates/runtime/src/backends.rs` — `RuntimeBackends`
-- `crates/runtime/src/file_store_decorators.rs` — `WriteBlocklistFileStore`,
-  `ApprovalGatingFileStore`, `FileApprovalGate`, `DEFAULT_WRITE_BLOCKLIST`
-- `crates/runtime/src/in_memory.rs` — `InMemorySessionFileStore`
-- `crates/runtime/src/real_disk.rs` — `RealDiskFileStore`
+- `crates/host/src/backends.rs` — `HostBackends`
+- `crates/host/src/file_store_decorators.rs` — `PolicyFileStore`,
+  `WriteBlocklistFileStore`, its deprecated compatibility constant,
+  `ApprovalGatingFileStore`, `FileApprovalGate`
+- `crates/host/src/in_memory.rs` — `InMemorySessionFileStore`
+- `crates/host/src/real_disk.rs` — `RealDiskFileStore`
 - `crates/runtime/examples/real_disk_agent_instructions.rs` — wiring
   example for `AgentInstructionsCapability`
 - `crates/runtime/examples/real_disk_file_system_tools.rs` — wiring

@@ -471,10 +471,11 @@ jobs:
           # picked up automatically rather than silently skipped. `--features lua`
           # so the lua code-mode integration test compiles and runs in the same pass.
           cargo test -p everruns-runtime --features lua -- --test-threads=1
-          # everruns facade (EVE-830): whole crate — the facade_smoke integration
-          # test and the lib doctest both build one session and run one llmsim turn
-          # importing only `everruns`. Pure, no network/credentials.
-          cargo test -p everruns
+          # everruns facade (EVE-830): whole crate across every optional facade
+          # feature, plus a bare-facade compile so public policy configuration
+          # cannot accidentally acquire a feature-only dependency.
+          cargo test -p everruns --all-features
+          cargo check -p everruns --no-default-features
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
           bash scripts/lib/check-everruns-examples.sh

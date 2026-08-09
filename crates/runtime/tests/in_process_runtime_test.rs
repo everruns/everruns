@@ -10,7 +10,7 @@ use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
     PlatformDefinition, ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, ToolCall,
+    SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
 };
 use everruns_runtime::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
@@ -658,6 +658,51 @@ async fn runtime_uses_platform_session_file_system_factory() {
         .unwrap();
     assert_eq!(file.content.as_deref(), Some("from platform factory"));
     assert!(tempdir.path().join("seed.txt").exists());
+}
+
+#[tokio::test]
+async fn workspace_policy_wraps_custom_platform_file_system_factory() {
+    let harness_id = "harness_00000000000000000000000000000054".parse().unwrap();
+    let session_id = "session_00000000000000000000000000000054".parse().unwrap();
+    let tempdir = tempfile::tempdir().unwrap();
+    let platform = PlatformDefinition::builder()
+        .capability_registry(CapabilityRegistry::new())
+        .driver_registry(DriverRegistry::new())
+        .session_file_system_factory(Arc::new(ContextRealDiskFactory))
+        .build();
+    let policy = WorkspacePolicy::builder()
+        .allow_read("public")
+        .build()
+        .unwrap();
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .session_file_system_factory_context(
+            SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
+        )
+        .workspace_policy(policy)
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .harness(harness(harness_id))
+        .session(session(session_id, harness_id, None))
+        .seed_text_file(session_id, "/public/readme.md", "visible")
+        .seed_text_file(session_id, "/private/secret.txt", "hidden")
+        .build()
+        .await
+        .unwrap();
+
+    assert!(
+        runtime
+            .read_file(session_id, "/public/readme.md")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        runtime
+            .read_file(session_id, "/private/secret.txt")
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]

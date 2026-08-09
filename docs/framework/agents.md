@@ -32,7 +32,9 @@ a session starts.
 
 Choose workspace roots from trusted application configuration. Model output and
 untrusted request fields must not select executable paths or host directories.
-The underlying filesystem boundary rejects traversal and symlink escape.
+The underlying filesystem boundary rejects traversal and symlink escape. Use a
+[`WorkspacePolicy`](/framework/workspace-security/) to configure portable read,
+write, hidden-path, and recursive-delete restrictions.
 
 ## MCP and plugins
 

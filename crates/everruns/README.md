@@ -167,6 +167,7 @@ model for new Framework applications.
 
 The [example catalog](./examples/README.md) includes:
 
+- `workspace_policy` — secure workspace scopes with an offline simulator
 - `hello` — smallest live-provider program
 - `production_agent` — production-style composition
 - `github_monitor --simulate` — credential-free typed-tool flow
@@ -191,6 +192,7 @@ Examples are compiled in CI and import only `everruns`.
 
 - [Everruns Framework](https://docs.everruns.com/framework/)
 - [Framework quickstart](https://docs.everruns.com/framework/quickstart/)
+- [Workspace security](https://docs.everruns.com/framework/workspace-security/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Tools and macros](https://docs.everruns.com/framework/tools-and-macros/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)
