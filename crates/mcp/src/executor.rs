@@ -45,6 +45,12 @@ fn redact_json(value: &mut serde_json::Value, secrets: &[String]) {
 }
 
 fn redact_tool_result(result: &mut ToolResult, secrets: &[String]) {
+    // Nothing was injected for this call, so nothing can be reflected. Skip the
+    // walk instead of reallocating every string in the result (base64 images in
+    // particular) on the overwhelmingly common no-binding path.
+    if secrets.is_empty() {
+        return;
+    }
     if let Some(value) = result.result.as_mut() {
         redact_json(value, secrets);
     }
@@ -197,7 +203,9 @@ impl McpExecutor {
                     binding.parameter_name.clone(),
                     serde_json::Value::String(value.clone()),
                 );
-                injected_secrets.push(value.clone());
+                if !value.is_empty() {
+                    injected_secrets.push(value.clone());
+                }
             }
         }
 
@@ -220,6 +228,9 @@ impl McpExecutor {
                 redact_tool_result(&mut result, &injected_secrets);
                 Ok(result)
             }
+            // Redacting an error flattens it to a string, so keep the original
+            // chain intact whenever there is nothing to scrub.
+            Err(error) if injected_secrets.is_empty() => Err(error),
             Err(error) => Err(anyhow!(redact_text(&error.to_string(), &injected_secrets))),
         }
     }
