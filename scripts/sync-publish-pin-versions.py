@@ -35,7 +35,7 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/platform/Cargo.toml": ["everruns-core"],
     "crates/mcp/Cargo.toml": ["everruns-core"],
     "crates/runtime/Cargo.toml": ["everruns-core", "everruns-engine"],
-    "crates/everruns/Cargo.toml": ["everruns-core", "everruns-runtime", "everruns-macros"],
+    "crates/everruns/Cargo.toml": ["everruns-core", "everruns-runtime", "everruns-local", "everruns-macros"],
     "crates/local/Cargo.toml": ["everruns-core", "everruns-runtime"],
     "crates/openai/Cargo.toml": ["everruns-provider"],
     "crates/anthropic/Cargo.toml": ["everruns-provider"],
@@ -57,7 +57,7 @@ INNER_PINS: dict[str, list[str]] = {
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
-WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-engine", "everruns-platform", "everruns-provider", "everruns-mcp", "everruns-runtime", "everruns-ard", "everruns", "everruns-macros"]
+WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-engine", "everruns-platform", "everruns-provider", "everruns-mcp", "everruns-runtime", "everruns-local", "everruns-ard", "everruns", "everruns-macros"]
 
 
 def workspace_version() -> str:

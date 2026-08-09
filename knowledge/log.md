@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-09
+
+* **Framework application boundary**: Established the Framework knowledge
+  collection and classified workspace, MCP, plugins, context inspection,
+  event-derived history/resume, and schedules as application concerns while
+  retaining writable message stores, backend topology, mount primitives, and
+  host orchestration as low-level `0.17.x` compatibility surfaces.
+
 ## 2026-08-08
 
 * **Navigation information architecture**: Recorded the placement rule that groups the

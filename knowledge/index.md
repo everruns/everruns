@@ -9,6 +9,7 @@ okf_version: "0.2"
 
 # Domains
 
+* [framework/](framework/) - Application-facing Framework purpose, boundaries, and compatibility decisions.
 * [foundations/](foundations/) - Core entities, architecture, runtime, providers, and developer conventions.
 * [execution/](execution/) - API contracts, capability behavior, tool execution, and streaming.
 * [runtime-resources/](runtime-resources/) - Agents, sessions, workspaces, knowledge, memory, and runtime-owned resources.

@@ -1157,8 +1157,29 @@ impl InProcessRuntime {
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
-        self.inspect_context_with_ids(session_id, session.harness_id, session.agent_id)
+        let agent = match session.agent_id {
+            Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
+            None => None,
+        };
+        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        let mcp_tool_definitions = if scoped_servers.is_empty() {
+            vec![]
+        } else {
+            crate::mcp::discover_tool_definitions(
+                &self.mcp_discovery_cache,
+                self.mcp_client(),
+                session_id.uuid(),
+                &scoped_servers,
+            )
             .await
+        };
+        self.inspect_context_with_ids(
+            session_id,
+            session.harness_id,
+            session.agent_id,
+            &mcp_tool_definitions,
+        )
+        .await
     }
 
     /// Return all collected events from the runtime event bus.
@@ -1251,6 +1272,7 @@ impl InProcessRuntime {
         session_id: SessionId,
         harness_id: everruns_core::HarnessId,
         agent_id: Option<AgentId>,
+        mcp_tool_definitions: &[everruns_core::ToolDefinition],
     ) -> Result<AssembledTurnContext> {
         inspect_turn_context(
             self.harness_store.as_ref(),
@@ -1262,7 +1284,7 @@ impl InProcessRuntime {
             session_id,
             harness_id,
             agent_id,
-            &[],
+            mcp_tool_definitions,
             Some(self.file_store.clone()),
         )
         .await
