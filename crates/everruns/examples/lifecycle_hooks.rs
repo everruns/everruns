@@ -22,7 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .name("lifecycle-demo")
         .instructions("Always call service_status before answering a status question.")
-        .model(OpenAI::from_env("gpt-5.6-terra")?)
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
         .tool(service_status())
         .on_agent_start(|context| async move {
             println!(

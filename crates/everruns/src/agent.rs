@@ -27,14 +27,14 @@ use tokio::sync::OnceCell;
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 
-/// How an [`Agent`] talks to a model.
+/// A model selected for an [`Agent`].
 ///
-/// A `Model` carries a credential-free specification and may bundle a ready-made
-/// provider assembly. [`Model::simulated`] uses the same provider path as every
-/// network-backed model.
+/// Live models are named with a plain provider-visible id and configured with a
+/// separate [`AgentBuilder::provider`] call. [`Model::simulated`] bundles its
+/// private offline provider so deterministic agents need no extra setup.
 #[derive(Clone)]
 pub struct Model {
-    spec: ModelSpec,
+    id: String,
     bundled_provider: Option<Provider>,
 }
 
@@ -44,8 +44,8 @@ impl Model {
     /// Backed by the `llmsim` driver, so an agent using it runs entirely
     /// offline — no credentials, no network.
     pub fn simulated(response: impl Into<String>) -> Self {
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(LlmSimConfig::fixed(response))),
         )
     }
@@ -56,39 +56,33 @@ impl Model {
     /// responses, tool-call sequences, and the other controls exposed by
     /// [`LlmSimConfig`].
     pub fn simulated_with_config(config: LlmSimConfig) -> Self {
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(config)),
         )
     }
 
-    /// Build a `Model` that targets OpenAI's Responses API.
-    ///
-    /// The convenience produces the same public model/provider pair callers can
-    /// assemble directly with [`ModelSpec`] and [`Provider`].
-    #[cfg(feature = "openai")]
-    pub(crate) fn openai(config: crate::providers::openai::OpenAI) -> Self {
-        let (model, api_key, base_url) = config.into_parts();
-        let mut provider = everruns_openai::provider("openai", api_key);
-        if let Some(base_url) = base_url {
-            provider = provider.base_url(base_url);
-        }
-        Self::with_provider(ModelSpec::on("openai", model), provider)
-    }
-
-    /// Pair a model specification with a ready-to-use provider assembly.
-    pub fn with_provider(spec: ModelSpec, provider: Provider) -> Self {
+    fn bundled(id: impl Into<String>, provider: Provider) -> Self {
         Self {
-            spec,
+            id: id.into(),
             bundled_provider: Some(provider),
         }
     }
 }
 
-impl From<ModelSpec> for Model {
-    fn from(spec: ModelSpec) -> Self {
+impl From<&str> for Model {
+    fn from(id: &str) -> Self {
         Self {
-            spec,
+            id: id.to_string(),
+            bundled_provider: None,
+        }
+    }
+}
+
+impl From<String> for Model {
+    fn from(id: String) -> Self {
+        Self {
+            id,
             bundled_provider: None,
         }
     }
@@ -105,8 +99,8 @@ impl Model {
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);
         sim.message_capture = Some(capture);
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(sim)),
         )
     }
@@ -119,8 +113,8 @@ impl Model {
         delay: std::time::Duration,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_response_delay(delay);
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(sim)),
         )
     }
@@ -133,8 +127,8 @@ impl Model {
         tool_call_sequence: Vec<Vec<everruns_core::ToolCall>>,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_tool_call_sequence(tool_call_sequence);
-        Self::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
+        Self::bundled(
+            "llmsim-model",
             Provider::new("llmsim", LlmSimDriver::new(sim)),
         )
     }
@@ -143,7 +137,7 @@ impl Model {
 impl fmt::Debug for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Model")
-            .field("spec", &self.spec)
+            .field("id", &self.id)
             .field("bundled_provider", &self.bundled_provider)
             .finish()
     }
@@ -190,13 +184,10 @@ pub enum BuildError {
         /// The colliding capability id.
         id: String,
     },
-    /// Two providers used the same normalized identity.
-    DuplicateProvider { id: String },
-    /// The selected model names a provider that was not registered.
-    UnknownProvider {
-        requested: String,
-        registered: Vec<String>,
-    },
+    /// A live model was selected without a provider.
+    MissingProvider,
+    /// More than one provider was attached to the agent.
+    MultipleProviders { registered: Vec<String> },
     /// MCP server configuration was invalid or duplicated.
     InvalidMcpServer { reason: String },
     /// Context compaction configuration was invalid.
@@ -225,13 +216,10 @@ impl fmt::Display for BuildError {
             BuildError::DuplicateCapability { id } => {
                 write!(f, "duplicate advanced capability id {id:?}")
             }
-            BuildError::DuplicateProvider { id } => write!(f, "duplicate provider {id:?}"),
-            BuildError::UnknownProvider {
-                requested,
-                registered,
-            } => write!(
+            BuildError::MissingProvider => write!(f, "agent requires a provider for a live model"),
+            BuildError::MultipleProviders { registered } => write!(
                 f,
-                "provider {requested:?} is not registered; registered providers: [{}]",
+                "agent accepts one provider; registered providers: [{}]",
                 registered.join(", ")
             ),
             BuildError::InvalidMcpServer { reason } => {
@@ -256,8 +244,8 @@ impl std::error::Error for BuildError {}
 pub struct Agent {
     name: String,
     instructions: String,
-    model: Model,
-    providers: Vec<Provider>,
+    model: ModelSpec,
+    provider: Provider,
     capabilities: Vec<AgentCapabilityConfig>,
     function_tools: Vec<FunctionTool>,
     #[cfg(feature = "capabilities")]
@@ -323,7 +311,7 @@ impl fmt::Debug for Agent {
             .field("name", &self.name)
             .field("instructions", &self.instructions)
             .field("model", &self.model)
-            .field("providers", &self.providers)
+            .field("provider", &self.provider)
             .field("capabilities", &self.capabilities)
             .field("function_tools", &self.function_tools)
             .field("initial_files", &self.initial_files)
@@ -592,7 +580,7 @@ impl Agent {
             .harness(harness)
             .agent(agent)
             .session(session)
-            .model_spec(self.model.spec.clone())
+            .model_spec(self.model.clone())
             .workspace_policy(self.workspace_policy.clone());
 
         let mut backends = self
@@ -654,18 +642,17 @@ impl Agent {
         if let Some(capability) = hook_capability {
             builder = builder.capability(capability);
         }
-        for provider in &self.providers {
-            builder = builder.provider(provider.clone());
-        }
+        builder = builder.provider(self.provider.clone());
         builder.build().await
     }
 }
 
 /// Fluent builder behind [`Agent::builder`].
 ///
-/// Instructions and a model are required; everything else is optional. Blank
-/// instructions or a missing model fail [`build`](Self::build) with a typed
-/// [`BuildError`].
+/// Instructions and a model are required. A live string model also requires
+/// exactly one provider; deterministic [`Model::simulated`] values supply their
+/// own offline provider. Invalid configurations fail [`build`](Self::build)
+/// with a typed [`BuildError`].
 ///
 /// Lifecycle methods such as [`on_turn_start`](Self::on_turn_start) accept
 /// async `Fn` handlers. The Framework awaits each per-point chain in builder
@@ -706,17 +693,21 @@ impl AgentBuilder {
 
     /// Select the model the agent talks to. Required.
     ///
-    /// Accepts a [`Model`] directly or anything convertible into one — for
-    /// example an [`OpenAI`](crate::providers::openai::OpenAI) configuration
-    /// under the `openai` feature.
+    /// Live models use their provider-visible string id. Configure how to reach
+    /// that model separately with [`provider`](Self::provider). A
+    /// [`Model::simulated`] value needs no provider.
     pub fn model(mut self, model: impl Into<Model>) -> Self {
         self.model = Some(model.into());
         self
     }
 
-    /// Register a service provider selected by the model specification.
-    pub fn provider(mut self, provider: Provider) -> Self {
-        self.providers.push(provider);
+    /// Configure the service provider used by the selected live model.
+    ///
+    /// Accepts a raw [`Provider`] or a provider convenience such as
+    /// [`OpenAI`](crate::providers::openai::OpenAI) with the `openai` feature.
+    /// An agent currently accepts exactly one provider.
+    pub fn provider(mut self, provider: impl Into<Provider>) -> Self {
+        self.providers.push(provider.into());
         self
     }
 
@@ -985,6 +976,8 @@ impl AgentBuilder {
     /// - [`BuildError::BlankInstructions`] if instructions are missing or only
     ///   whitespace.
     /// - [`BuildError::MissingModel`] if no model was set.
+    /// - [`BuildError::MissingProvider`] if a live model has no provider.
+    /// - [`BuildError::MultipleProviders`] if more than one provider was set.
     /// - [`BuildError::InvalidToolName`] if a function tool's name is not a
     ///   valid model-facing identifier.
     /// - [`BuildError::InvalidToolSchema`] if a function tool's JSON schema is
@@ -1004,28 +997,22 @@ impl AgentBuilder {
         }
         let model = self.model.ok_or(BuildError::MissingModel)?;
         let mut providers = self.providers;
-        if let Some(provider) = model.bundled_provider.clone() {
+        if let Some(provider) = model.bundled_provider {
             providers.push(provider);
         }
-        let mut provider_ids = HashSet::new();
-        for provider in &providers {
-            if !provider_ids.insert(provider.id().clone()) {
-                return Err(BuildError::DuplicateProvider {
-                    id: provider.id().to_string(),
-                });
-            }
+        if providers.is_empty() {
+            return Err(BuildError::MissingProvider);
         }
-        if !provider_ids.contains(&model.spec.provider) {
-            let mut registered = provider_ids
+        if providers.len() > 1 {
+            let mut registered = providers
                 .iter()
-                .map(ToString::to_string)
+                .map(|provider| provider.id().to_string())
                 .collect::<Vec<_>>();
             registered.sort();
-            return Err(BuildError::UnknownProvider {
-                requested: model.spec.provider.to_string(),
-                registered,
-            });
+            return Err(BuildError::MultipleProviders { registered });
         }
+        let provider = providers.pop().expect("provider count checked above");
+        let model = ModelSpec::on(provider.id().clone(), model.id);
         let name = self.name.unwrap_or_else(|| "agent".to_string());
 
         // Validate tools and split them into capability refs (attached to the
@@ -1121,7 +1108,7 @@ impl AgentBuilder {
             name,
             instructions,
             model,
-            providers,
+            provider,
             capabilities,
             function_tools,
             #[cfg(feature = "capabilities")]
@@ -1333,6 +1320,52 @@ mod tests {
     }
 
     #[test]
+    fn build_resolves_plain_model_id_against_provider() {
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .provider(Provider::new(
+                "acme",
+                LlmSimDriver::new(LlmSimConfig::fixed("Sure.")),
+            ))
+            .model("assistant-v1")
+            .build()
+            .expect("valid agent");
+
+        assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
+        assert_eq!(agent.provider.id().as_str(), "acme");
+    }
+
+    #[test]
+    fn build_rejects_live_model_without_provider() {
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .model("assistant-v1")
+            .build()
+            .unwrap_err();
+
+        assert_eq!(err, BuildError::MissingProvider);
+    }
+
+    #[test]
+    fn build_rejects_multiple_providers() {
+        let provider = |id| Provider::new(id, LlmSimDriver::new(LlmSimConfig::fixed("Sure.")));
+        let err = Agent::builder()
+            .instructions("You are concise.")
+            .provider(provider("zeta"))
+            .provider(provider("alpha"))
+            .model("assistant-v1")
+            .build()
+            .unwrap_err();
+
+        assert_eq!(
+            err,
+            BuildError::MultipleProviders {
+                registered: vec!["alpha".to_string(), "zeta".to_string()],
+            }
+        );
+    }
+
+    #[test]
     fn workspace_policy_defaults_to_read_only() {
         let agent = Agent::builder()
             .instructions("You are concise.")
@@ -1380,17 +1413,12 @@ mod tests {
 
     #[cfg(feature = "openai")]
     #[test]
-    fn openai_model_reports_provider_without_leaking_key() {
+    fn openai_provider_converts_without_leaking_key() {
         use crate::providers::openai::OpenAI;
 
-        let model = Model::openai(OpenAI::new("gpt-5-mini", "sk-super-secret"));
-        assert_eq!(model.spec, ModelSpec::on("openai", "gpt-5-mini"));
-        assert_eq!(
-            model.bundled_provider.as_ref().unwrap().id().as_str(),
-            "openai"
-        );
-        // The value-first `Debug` reports shape only, never the key.
-        let rendered = format!("{model:?}");
+        let provider: Provider = OpenAI::new("sk-super-secret").into();
+        assert_eq!(provider.id().as_str(), "openai");
+        let rendered = format!("{provider:?}");
         assert!(!rendered.contains("sk-super-secret"), "got {rendered}");
     }
 
@@ -1404,7 +1432,8 @@ mod tests {
         // contacted when a turn actually runs, which this test never does.
         let agent = Agent::builder()
             .instructions("You are concise.")
-            .model(OpenAI::new("gpt-5-mini", "sk-test"))
+            .provider(OpenAI::new("sk-test"))
+            .model("gpt-5-mini")
             .build()
             .expect("valid agent");
 

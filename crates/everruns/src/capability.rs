@@ -767,9 +767,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+    use everruns_core::llmsim_driver::LlmSimConfig;
     use everruns_core::tools::Tool as _;
-    use everruns_core::{ModelSpec, Provider, SessionId, ToolCall, ToolContext};
+    use everruns_core::{SessionId, ToolCall, ToolContext};
     use serde_json::{Value, json};
     use tokio::sync::Notify;
     use tokio::time::timeout;
@@ -829,10 +829,7 @@ mod tests {
 
     fn scripted_model(calls: Vec<Vec<ToolCall>>) -> Model {
         let sim = LlmSimConfig::fixed("done").with_tool_call_sequence(calls);
-        Model::with_provider(
-            ModelSpec::on("llmsim", "llmsim-model"),
-            Provider::new("llmsim", LlmSimDriver::new(sim)),
-        )
+        Model::simulated_with_config(sim)
     }
 
     #[test]

@@ -30,7 +30,8 @@ provider registry, model resolution, turn semantics, or execution algorithm.
 
 The Framework owns value-first configuration for:
 
-- agent instructions, models, providers, tools, and capability references;
+- agent instructions, plain model ids, one provider per agent, tools, and
+  capability references;
 - editable and read-only initial files plus an optional real-disk workspace;
 - scoped HTTP or local-process MCP servers;
 - local plugin directory loading and non-fatal compile warnings;
@@ -117,7 +118,7 @@ remove. Host implementations may continue using the compatibility crate in
 | Audited use case | Classification | Why / Framework mapping |
 |---|---|---|
 | Runtime README, skill, and documentation quickstarts | Promote | Ordinary agent/model/session execution is the Framework's primary path. |
-| Built-in simulation and real or custom model providers | Promote | Applications select a credential-free model and attach provider configuration or a custom protocol driver without constructing a platform registry. |
+| Built-in simulation and real or custom model providers | Promote | Applications select a plain credential-free model id and attach one provider configuration or custom protocol driver without constructing a `ModelSpec` or platform registry. |
 | Application-defined function tools and initial files | Promote | These are agent behavior and workspace inputs, not host entities. |
 | In-process and OpenAI runtime examples | Promote | They map to normal agent construction and one or more Framework sessions. |
 | Context-inspection example and evaluation assertions | Promote | Applications receive a curated next-turn context rather than stored records or backend assembly types. |

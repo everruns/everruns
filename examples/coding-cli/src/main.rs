@@ -12,7 +12,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use everruns::Model;
 use everruns::{OpenAI, Session, SessionEventKind};
-use everruns_coding_cli::{build_agent, set_workspace};
+use everruns_coding_cli::{agent_builder, set_workspace};
 use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[derive(Parser, Debug)]
@@ -50,13 +50,15 @@ async fn main() -> Result<()> {
     set_workspace(root);
 
     let agent = if cli.offline {
-        build_agent(Model::simulated(
-            "Offline simulator: set up a real model with --model to use the tools.",
-        ))
+        agent_builder()
+            .model(Model::simulated(
+                "Offline simulator: set up a real model with --model to use the tools.",
+            ))
+            .build()
     } else {
-        let model = OpenAI::from_env(&cli.model)
+        let provider = OpenAI::from_env()
             .context("configure OpenAI (set OPENAI_API_KEY, or pass --offline)")?;
-        build_agent(model)
+        agent_builder().provider(provider).model(cli.model).build()
     }
     .context("build the coding agent")?;
 

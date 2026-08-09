@@ -25,7 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .name("support-agent")
         .instructions("Answer from tool results; do not invent order status.")
-        .model(OpenAI::from_env("gpt-5.6-terra")?)
+        .provider(OpenAI::from_env()?)
+        .model("gpt-5.6-terra")
         .tool(lookup_order())
         .build()?;
 

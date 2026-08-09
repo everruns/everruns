@@ -5,23 +5,19 @@ description: Implement and attach a custom model provider through the open Frame
 
 Use a custom provider when an application talks to a model service that the
 Framework does not configure for you. The extension boundary is the public
-`ChatDriver` trait plus a credential-free `ModelSpec` and a `Provider` value.
+`ChatDriver` trait plus a `Provider` value. The agent selects that provider's
+model with a plain credential-free string id.
 
 At a high level:
 
 ```rust
-use everruns::{Agent, BuildError, ChatDriver, Model, ModelSpec, Provider};
+use everruns::{Agent, BuildError, ChatDriver, Provider};
 
 fn agent_for(driver: impl ChatDriver) -> Result<Agent, BuildError> {
-    let provider = Provider::new("company-gateway", driver);
-    let model = Model::with_provider(
-        ModelSpec::on("company-gateway", "assistant-v2"),
-        provider,
-    );
-
     Agent::builder()
         .instructions("Use the company model gateway.")
-        .model(model)
+        .provider(Provider::new("company-gateway", driver))
+        .model("assistant-v2")
         .build()
 }
 ```
@@ -32,7 +28,7 @@ an `LlmResponseStream`. Exact trait methods and event shapes live in the
 [`everruns::ChatDriver` API reference](https://docs.rs/everruns/latest/everruns/trait.ChatDriver.html).
 
 Keep credential lookup and refresh in trusted host/provider configuration.
-`ModelSpec` must remain safe to log, compare, store, and pass across application
+Model ids must remain safe to log, compare, store, and pass across application
 boundaries. Provider errors should preserve useful classifications without
 including secrets.
 

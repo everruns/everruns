@@ -23,6 +23,8 @@ Application-facing behavior should have these qualities:
   worker language;
 - configuration errors surface before execution when the application can fix
   them;
+- the common live-provider path reads as separate provider configuration and a
+  plain model id, without exposing execution-facing model specifications;
 - multi-turn state is isolated by session and inspectable without backend
   access;
 - live observation and cancellation never require ownership of the host event
@@ -30,7 +32,7 @@ Application-facing behavior should have these qualities:
 - awaited lifecycle extensions are explicit and distinct from non-blocking
   observation events;
 - credentials, tenant records, and host lifecycle entities do not leak through
-  model or agent values;
+  model identity or diagnostic values;
 - optional integrations remain feature-gated and do not enlarge the default
   offline build;
 - advanced host composition stays possible without making it the newcomer path.
