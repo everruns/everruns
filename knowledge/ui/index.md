@@ -5,6 +5,7 @@
 * [OpenUI — Generative UI Integration](openui.md) - OpenUI generative-UI capability.
 * [A2UI — Google Generative UI Integration](a2ui.md) - A2UI generative-UI capability.
 * [MCP Entity Cards](mcp-cards.md) - MCP Apps entity cards and sandboxed HTML resources.
+* [Navigation Information Architecture](information-architecture.md) - How navigation is grouped by what you do with a thing, and the dismissed alternatives.
 * [Brand Specification](brand.md) - Brand identity, colors, typography.
 * [Diagram Specification](diagrams.md) - Diagram specification.
 * [Documentation Site Specification](documentation.md) - Documentation site.

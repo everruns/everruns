@@ -17,7 +17,7 @@ Verify that the create action remains unavailable while the required URL is empt
 
 ## Steps
 
-1. Navigate to Building blocks > MCP Servers
+1. Navigate to Registries > MCP servers
 2. Click "Add MCP Server" button
 3. Enter name: `test-server`
 4. Leave URL field empty

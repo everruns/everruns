@@ -2,6 +2,10 @@
 
 ## 2026-08-08
 
+* **Navigation information architecture**: Recorded the placement rule that groups the
+  shell by what you do with a thing (Chats, Operational, Building, Registries, Quality),
+  the worked hard cases, the surface contracts, and the three dismissed options.
+
 * **Agent MCP credentials**: Added durable write-only Agent bindings for MCP
   tool-parameter credentials, model-schema removal, runtime-only injection,
   secure setup affordances, and tenant/non-disclosure threat controls.

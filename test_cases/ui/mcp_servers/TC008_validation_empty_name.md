@@ -17,7 +17,7 @@ Verify that the create action remains unavailable while the required name is emp
 
 ## Steps
 
-1. Navigate to Building blocks > MCP Servers
+1. Navigate to Registries > MCP servers
 2. Click "Add MCP Server" button
 3. Leave name field empty
 4. Enter URL: `https://mcp.example.com/v1/mcp`
