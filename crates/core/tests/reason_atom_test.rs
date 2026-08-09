@@ -369,7 +369,8 @@ impl ProactiveTestRig {
             usage,
         };
         let mut driver_registry = DriverRegistry::new();
-        driver_registry.register(provider_type.clone(), move |_| Box::new(driver.clone()));
+        driver_registry
+            .register_external(provider_type.as_str(), move |_| Box::new(driver.clone()));
         let mut capability_registry = CapabilityRegistry::new();
         capability_registry.register(CompactionCapability);
 
