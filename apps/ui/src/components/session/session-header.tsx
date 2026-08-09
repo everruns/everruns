@@ -317,7 +317,6 @@ export function SessionHeader({
   sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Back to Sessions",
-  showRecordingActions = true,
 }: {
   sessionId: string;
   session: Session;
@@ -334,8 +333,6 @@ export function SessionHeader({
   sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
-  /** Render Fork / Open agent / Export. Off for isolated renders (dev page). */
-  showRecordingActions?: boolean;
 }) {
   const agentReferenceLabel =
     session.agent_id != null
@@ -411,28 +408,30 @@ export function SessionHeader({
 
           <SessionStatusBadge status={effectiveStatus} />
 
-          {navigationItems.map((item) => (
-            <Link
-              key={item.key}
-              href={item.href}
-              className={getNavigationClassName(activeTab === item.key)}
-              aria-current={activeTab === item.key ? "page" : undefined}
-            >
-              <item.icon className="icon-sharp h-4 w-4" />
-              {item.label}
-              {item.badge && <span className="text-xs text-muted-foreground">{item.badge}</span>}
-            </Link>
-          ))}
-
-          {showRecordingActions && (
-            <SessionRecordingActions
-              sessionId={sessionId}
-              agentId={agent && agentId ? agentId : undefined}
-              sessionTitle={session.title ?? null}
-            />
-          )}
+          <SessionRecordingActions
+            sessionId={sessionId}
+            agentId={agent && agentId ? agentId : undefined}
+            sessionTitle={session.title ?? null}
+          />
         </div>
       </div>
+
+      {/* Tabs get their own row: five of them plus the escape hatches do not fit
+          on one line, and crowding them squeezes the title out of legibility. */}
+      <nav className="mt-3 flex flex-wrap items-center gap-2">
+        {navigationItems.map((item) => (
+          <Link
+            key={item.key}
+            href={item.href}
+            className={getNavigationClassName(activeTab === item.key)}
+            aria-current={activeTab === item.key ? "page" : undefined}
+          >
+            <item.icon className="icon-sharp h-4 w-4" />
+            {item.label}
+            {item.badge && <span className="text-xs text-muted-foreground">{item.badge}</span>}
+          </Link>
+        ))}
+      </nav>
     </div>
   );
 }
