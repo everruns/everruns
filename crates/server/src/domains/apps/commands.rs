@@ -22,17 +22,18 @@ use crate::services::PrincipalService;
 use crate::storage::models::AuditLogQuery;
 use crate::storage::password::hash_password;
 use chrono::{DateTime, Duration, Timelike, Utc};
-use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
+use everruns_core::Policy;
 use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId};
-use everruns_core::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, ApiEndpointChannelConfig, App,
-    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppStatus, ChannelType, FcpChannelConfig, Policy, PublicChatChannelConfig, SlackChannelConfig,
-};
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleExecutionStatus, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
     WorkflowEventStore,
+};
+use everruns_platform::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
+use everruns_platform::{
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, ApiEndpointChannelConfig, App,
+    AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
+    AppStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig, SlackChannelConfig,
 };
 use everruns_platform::{AgentAction, AuditEvent};
 use regex::Regex;
@@ -4142,7 +4143,7 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_seed(3),
             agent_id: None,
-            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
             agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(4),

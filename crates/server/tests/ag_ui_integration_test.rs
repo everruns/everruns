@@ -10,7 +10,7 @@ use axum::http::{Method, StatusCode};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_core::App;
+use everruns_platform::App;
 
 fn unique_id(prefix: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};

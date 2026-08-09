@@ -23,7 +23,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use everruns_core::{
+use everruns_platform::{
     App, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus, PublicChatChannelConfig,
 };
 use serde::Serialize;

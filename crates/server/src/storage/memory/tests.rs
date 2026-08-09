@@ -4220,7 +4220,7 @@ async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
     assert_eq!(created.agent_id, agent_id);
 
     // Config round-trips into the typed core accessor.
-    let trigger = everruns_core::AgentTrigger {
+    let trigger = everruns_platform::AgentTrigger {
         id: created.id,
         agent_id: created.agent_id,
         trigger_type: created.trigger_type.as_str().into(),

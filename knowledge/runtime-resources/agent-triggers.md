@@ -22,7 +22,7 @@ starts (or reuses) a session on the agent's own harness, as the agent's own
 identity.
 
 Field shapes, SQL, and route handlers live in code — see
-`crates/core/src/agent_trigger.rs` (`AgentTrigger`, `AgentTriggerType`,
+`crates/platform/src/agent_trigger.rs` (`AgentTrigger`, `AgentTriggerType`,
 `ScheduleTriggerConfig`), migration `104_agent_triggers.sql`, the
 `crates/server/src/domains/agent_triggers/` domain, and the
 `/v1/agents/{agent_id}/triggers` API.

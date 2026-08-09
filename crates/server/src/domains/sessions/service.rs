@@ -26,8 +26,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
+use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
     PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionSeedMode, SessionStatus,
@@ -43,6 +43,7 @@ use everruns_core::{
     typed_id::MemoryId,
 };
 use everruns_durable::UpdateField;
+use everruns_platform::AgentVersionPolicy;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

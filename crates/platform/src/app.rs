@@ -14,8 +14,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::principal::PrincipalSummary;
-use crate::typed_id::{
+use everruns_core::principal::PrincipalSummary;
+use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
 };
 
@@ -409,7 +409,7 @@ pub enum SessionStrategy {
     PerUser,
 }
 
-impl From<SessionStrategy> for crate::channel::SessionRoutingStrategy {
+impl From<SessionStrategy> for everruns_core::channel::SessionRoutingStrategy {
     fn from(s: SessionStrategy) -> Self {
         match s {
             SessionStrategy::PerThread => Self::PerThread,
@@ -419,12 +419,12 @@ impl From<SessionStrategy> for crate::channel::SessionRoutingStrategy {
     }
 }
 
-impl From<crate::channel::SessionRoutingStrategy> for SessionStrategy {
-    fn from(s: crate::channel::SessionRoutingStrategy) -> Self {
+impl From<everruns_core::channel::SessionRoutingStrategy> for SessionStrategy {
+    fn from(s: everruns_core::channel::SessionRoutingStrategy) -> Self {
         match s {
-            crate::channel::SessionRoutingStrategy::PerThread => Self::PerThread,
-            crate::channel::SessionRoutingStrategy::PerChannel => Self::PerChannel,
-            crate::channel::SessionRoutingStrategy::PerUser => Self::PerUser,
+            everruns_core::channel::SessionRoutingStrategy::PerThread => Self::PerThread,
+            everruns_core::channel::SessionRoutingStrategy::PerChannel => Self::PerChannel,
+            everruns_core::channel::SessionRoutingStrategy::PerUser => Self::PerUser,
         }
     }
 }
@@ -444,7 +444,7 @@ pub enum SlackReplyMode {
     ReportProgressOnly,
 }
 
-impl From<SlackReplyMode> for crate::channel::ChannelReplyMode {
+impl From<SlackReplyMode> for everruns_core::channel::ChannelReplyMode {
     fn from(m: SlackReplyMode) -> Self {
         match m {
             SlackReplyMode::AllMessages => Self::AllMessages,
@@ -453,11 +453,13 @@ impl From<SlackReplyMode> for crate::channel::ChannelReplyMode {
     }
 }
 
-impl From<crate::channel::ChannelReplyMode> for SlackReplyMode {
-    fn from(m: crate::channel::ChannelReplyMode) -> Self {
+impl From<everruns_core::channel::ChannelReplyMode> for SlackReplyMode {
+    fn from(m: everruns_core::channel::ChannelReplyMode) -> Self {
         match m {
-            crate::channel::ChannelReplyMode::AllMessages => Self::AllMessages,
-            crate::channel::ChannelReplyMode::ReportProgressOnly => Self::ReportProgressOnly,
+            everruns_core::channel::ChannelReplyMode::AllMessages => Self::AllMessages,
+            everruns_core::channel::ChannelReplyMode::ReportProgressOnly => {
+                Self::ReportProgressOnly
+            }
         }
     }
 }

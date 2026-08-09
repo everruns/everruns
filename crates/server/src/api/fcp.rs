@@ -40,7 +40,8 @@ use everruns_core::events::{
     TurnCancelledData, TurnFailedData,
 };
 use everruns_core::message::ExecutionPhase;
-use everruns_core::{App, AppStatus, Caller, ContentPart, ExternalActor, FcpChannelConfig};
+use everruns_core::{Caller, ContentPart, ExternalActor};
+use everruns_platform::{App, AppStatus, FcpChannelConfig};
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;

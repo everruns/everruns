@@ -6,7 +6,7 @@
 // config.
 
 use chrono::{DateTime, Utc};
-use everruns_core::InvocationSessionMode;
+use everruns_platform::InvocationSessionMode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

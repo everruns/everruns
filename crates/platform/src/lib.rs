@@ -38,12 +38,30 @@ pub mod reporting;
 pub mod capabilities;
 pub mod platform_store;
 
+// Hosted control-plane orchestration records carved out of `everruns-core`
+// (EVE-841). `App`/`AppChannel` and their channel configs, plus `AgentTrigger`,
+// are persisted/API records not consumed during a turn. Turn-consumed neutral
+// values (`DeploymentGrade`, `SessionSchedule` and its store) stay in core.
+pub mod agent_trigger;
+pub mod app;
+
 pub use organization::Organization;
 pub use platform_store::{
     PlatformCreateSessionRequest, PlatformMessage, PlatformStore, PlatformStoreExt,
     PlatformStoreSubagentDelegate,
 };
 pub use principal::Principal;
+
+// Hosted control-plane orchestration records (EVE-841).
+pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
+pub use app::{
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
+    ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
+    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
+    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
+    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
+    SlackReplyMode,
+};
 
 // Payment accounting records (EVE-838). The execution-contract types
 // (PaymentRail/PaymentMethod/MachinePaymentRequest/MachinePaymentResponse) stay

@@ -224,7 +224,7 @@ The create form is a streamlined draft form: an **App details** section (name, d
 
 ## Data Model
 
-See `crates/core/src/app.rs` for the complete `App` and `AppChannel` definitions.
+See `crates/platform/src/app.rs` for the complete `App` and `AppChannel` definitions.
 
 Version binding fields:
 

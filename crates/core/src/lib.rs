@@ -82,8 +82,6 @@ pub mod budget;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod agent_identity;
-pub mod agent_trigger;
-pub mod app;
 pub mod ard_attachment;
 pub mod capability_dto;
 pub mod connector;
@@ -441,15 +439,9 @@ pub use agent::{
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
-pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
-pub use app::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
-    ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
-    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
-    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
-    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
-    SlackReplyMode,
-};
+// EVE-841: the app and agent-trigger control-plane records moved to the
+// `everruns-platform` crate. They are hosted orchestration records not consumed
+// during a turn, so core no longer defines or re-exports them.
 pub use ard_attachment::{
     ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,
     ArdAttachmentTarget, apply_session_attachments, attachment_kv_key, load_session_attachments,
