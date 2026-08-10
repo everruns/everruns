@@ -163,7 +163,8 @@ jobs:
               ],
               "crates/local/Cargo.toml": [
                   "everruns-core",
-                  "everruns-runtime",
+                  "everruns-host",
+                  "everruns-platform",
               ],
               "crates/openai/Cargo.toml": [
                   "everruns-provider",
