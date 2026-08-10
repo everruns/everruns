@@ -407,9 +407,7 @@ fn extract_locale_override(messages: &[Message]) -> Option<String> {
 mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};
-    use crate::capabilities::{
-        AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry, TestMathCapability,
-    };
+    use crate::capabilities::{AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry};
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
         InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
@@ -418,9 +416,58 @@ mod tests {
     use crate::message_retriever::InputMessage;
     use crate::network_access::NetworkAccessList;
     use crate::session::{Session, SessionStatus};
+    use crate::tools::{Tool, ToolExecutionResult};
     use crate::typed_id::{AgentId, HarnessId};
     use chrono::Utc;
     use uuid::Uuid;
+
+    /// Local stand-in for the `test_math` fixture capability, which lives in
+    /// `everruns-test-support` (EVE-875). These tests only need a registered
+    /// capability that contributes one named tool.
+    struct TestMathCapability;
+
+    impl Capability for TestMathCapability {
+        fn id(&self) -> &str {
+            "test_math"
+        }
+        fn name(&self) -> &str {
+            "Test Math"
+        }
+        fn description(&self) -> &str {
+            "Local test capability contributing a multiply tool."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![Box::new(MultiplyTool)]
+        }
+    }
+
+    struct MultiplyTool;
+
+    #[async_trait::async_trait]
+    impl Tool for MultiplyTool {
+        fn name(&self) -> &str {
+            "multiply"
+        }
+        fn description(&self) -> &str {
+            "Multiply two numbers."
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number" },
+                    "b": { "type": "number" }
+                },
+                "required": ["a", "b"],
+                "additionalProperties": false
+            })
+        }
+        async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+            let a = arguments.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let b = arguments.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            ToolExecutionResult::success(serde_json::json!({ "result": a * b }))
+        }
+    }
 
     fn harness(harness_id: HarnessId) -> Harness {
         Harness {

@@ -2540,9 +2540,9 @@ async fn test_second_message_triggers_workflow() {
 /// Test capability mounts are applied when session is created
 ///
 /// This test verifies:
-/// 1. Create agent with sample_data capability (which has mount points)
+/// 1. Create agent with data_knowledge capability (which has a readonly mount)
 /// 2. Create session for the agent
-/// 3. Verify the /samples directory exists with expected files
+/// 3. Verify the /knowledge directory exists with expected scaffold files
 /// 4. Verify files are read-only (from readonly mount)
 #[tokio::test]
 async fn test_capability_mounts_applied_on_session_creation() {
@@ -2550,8 +2550,8 @@ async fn test_capability_mounts_applied_on_session_creation() {
 
     println!("Testing capability mounts applied on session creation...");
 
-    // Step 1: Create an agent with sample_data capability
-    println!("\nStep 1: Creating agent with sample_data capability...");
+    // Step 1: Create an agent with data_knowledge capability
+    println!("\nStep 1: Creating agent with data_knowledge capability...");
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
@@ -2559,7 +2559,7 @@ async fn test_capability_mounts_applied_on_session_creation() {
             "display_name": "Mount Test Agent",
             "system_prompt": "Test agent for capability mounts",
             "capabilities": [
-                {"ref": "sample_data", "config": {}},
+                {"ref": "data_knowledge", "config": {}},
                 {"ref": "session_file_system", "config": {}}
             ]
         }))
@@ -2606,69 +2606,79 @@ async fn test_capability_mounts_applied_on_session_creation() {
 
     let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
 
-    // Step 3: Verify /samples directory exists
-    println!("\nStep 3: Verifying /samples directory exists...");
+    // Step 3: Verify /knowledge directory exists
+    println!("\nStep 3: Verifying /knowledge directory exists...");
     let stat_response = client
         .post(format!("{}/_/stat", fs_url))
-        .json(&json!({"path": "/samples"}))
+        .json(&json!({"path": "/knowledge"}))
         .send()
         .await
-        .expect("Failed to stat /samples");
+        .expect("Failed to stat /knowledge");
 
     assert_eq!(stat_response.status(), 200);
     let stat: Value = stat_response.json().await.expect("Failed to parse stat");
-    assert_eq!(stat["is_directory"], true, "/samples should be a directory");
-    println!("/samples directory exists");
+    assert_eq!(
+        stat["is_directory"], true,
+        "/knowledge should be a directory"
+    );
+    println!("/knowledge directory exists");
 
-    // Step 4: List /samples directory contents
-    println!("\nStep 4: Listing /samples directory...");
+    // Step 4: List /knowledge directory contents
+    println!("\nStep 4: Listing /knowledge directory...");
     let list_response = client
-        .get(format!("{}/samples", fs_url))
+        .get(format!("{}/knowledge", fs_url))
         .send()
         .await
-        .expect("Failed to list /samples");
+        .expect("Failed to list /knowledge");
 
     assert_eq!(list_response.status(), 200);
     let list_result: Value = list_response.json().await.expect("Failed to parse list");
     let files = list_result["data"].as_array().expect("Expected data array");
-    println!("Found {} files in /samples", files.len());
+    println!("Found {} entries in /knowledge", files.len());
 
-    // Should have users.json, config.yaml, README.md
+    // Should have index.md plus the tables/business/queries scaffold dirs
     let file_names: Vec<&str> = files.iter().map(|f| f["name"].as_str().unwrap()).collect();
     assert!(
-        file_names.contains(&"users.json"),
-        "Expected users.json in /samples"
+        file_names.contains(&"index.md"),
+        "Expected index.md in /knowledge"
     );
     assert!(
-        file_names.contains(&"config.yaml"),
-        "Expected config.yaml in /samples"
+        file_names.contains(&"tables"),
+        "Expected tables/ in /knowledge"
     );
     assert!(
-        file_names.contains(&"README.md"),
-        "Expected README.md in /samples"
+        file_names.contains(&"business"),
+        "Expected business/ in /knowledge"
     );
-    println!("All expected files present: {:?}", file_names);
+    assert!(
+        file_names.contains(&"queries"),
+        "Expected queries/ in /knowledge"
+    );
+    println!("All expected entries present: {:?}", file_names);
 
-    // Step 5: Verify users.json is readable
-    println!("\nStep 5: Reading /samples/users.json...");
+    // Step 5: Verify index.md is readable
+    println!("\nStep 5: Reading /knowledge/index.md...");
     let read_response = client
-        .get(format!("{}/samples/users.json", fs_url))
+        .get(format!("{}/knowledge/index.md", fs_url))
         .send()
         .await
-        .expect("Failed to read users.json");
+        .expect("Failed to read index.md");
 
     assert_eq!(read_response.status(), 200);
     let file: SessionFile = read_response.json().await.expect("Failed to parse file");
     assert!(file.content.is_some(), "File should have content");
     let content = file.content.as_ref().unwrap();
-    assert!(content.contains("Alice"), "users.json should contain Alice");
+    assert!(
+        content.contains("Data Knowledge"),
+        "index.md should contain Data Knowledge"
+    );
     assert!(file.is_readonly, "Mounted file should be readonly");
-    println!("users.json is readable and readonly");
+    println!("index.md is readable and readonly");
 
-    // Step 6: Verify readonly protection - try to update users.json
+    // Step 6: Verify readonly protection - try to update index.md
     println!("\nStep 6: Verifying readonly protection...");
     let update_response = client
-        .put(format!("{}/samples/users.json", fs_url))
+        .put(format!("{}/knowledge/index.md", fs_url))
         .json(&json!({
             "content": "modified content"
         }))
@@ -2684,26 +2694,22 @@ async fn test_capability_mounts_applied_on_session_creation() {
     );
     println!("Readonly protection working - update rejected");
 
-    // Step 7: Verify config.yaml content
-    println!("\nStep 7: Reading /samples/config.yaml...");
-    let config_response = client
-        .get(format!("{}/samples/config.yaml", fs_url))
+    // Step 7: Verify nested scaffold content
+    println!("\nStep 7: Reading /knowledge/tables/index.md...");
+    let tables_response = client
+        .get(format!("{}/knowledge/tables/index.md", fs_url))
         .send()
         .await
-        .expect("Failed to read config.yaml");
+        .expect("Failed to read tables/index.md");
 
-    assert_eq!(config_response.status(), 200);
-    let config_file: SessionFile = config_response.json().await.expect("Failed to parse file");
-    let config_content = config_file.content.as_ref().unwrap();
+    assert_eq!(tables_response.status(), 200);
+    let tables_file: SessionFile = tables_response.json().await.expect("Failed to parse file");
+    let tables_content = tables_file.content.as_ref().unwrap();
     assert!(
-        config_content.contains("application:"),
-        "config.yaml should contain application:"
+        tables_content.contains("Table Documentation"),
+        "tables/index.md should contain Table Documentation"
     );
-    assert!(
-        config_content.contains("database:"),
-        "config.yaml should contain database:"
-    );
-    println!("config.yaml has expected YAML content");
+    println!("tables/index.md has expected scaffold content");
 
     // Step 8: Create a second session - verify mounts are independent
     println!("\nStep 8: Creating second session...");
@@ -2729,18 +2735,18 @@ async fn test_capability_mounts_applied_on_session_creation() {
     let fs_url2 = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session2.id);
     let stat2_response = client
         .post(format!("{}/_/stat", fs_url2))
-        .json(&json!({"path": "/samples"}))
+        .json(&json!({"path": "/knowledge"}))
         .send()
         .await
-        .expect("Failed to stat /samples in session2");
+        .expect("Failed to stat /knowledge in session2");
 
     assert_eq!(stat2_response.status(), 200);
     let stat2: Value = stat2_response.json().await.expect("Failed to parse stat2");
     assert_eq!(
         stat2["is_directory"], true,
-        "session2 should also have /samples"
+        "session2 should also have /knowledge"
     );
-    println!("Second session also has /samples directory mounted");
+    println!("Second session also has /knowledge directory mounted");
 
     // Cleanup
     println!("\nCleaning up...");
@@ -3849,12 +3855,13 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     println!("Anthropic agent execution with tool calls test passed!");
 }
 
-/// Test agent execution with multiple tool calls in sequence.
+/// Test agent execution with a tool-bearing capability over several turns.
 ///
-/// This test verifies an agent can make multiple tool calls in a conversation:
-/// 1. Create an agent with test_math capability (add, subtract, multiply, divide)
-/// 2. Send a message requiring multiple math operations
-/// 3. Verify the agent calls multiple tools and combines results
+/// This test verifies the full agent round-trip with a capability that
+/// exposes tools (current_time):
+/// 1. Create an agent with the current_time capability
+/// 2. Send a message that would exercise the tool surface
+/// 3. Verify the agent produces a response
 ///
 /// Requirements: API + Worker running (uses LlmSim, no real API keys needed)
 #[tokio::test]
@@ -3910,15 +3917,15 @@ async fn test_agent_execution_multiple_tool_calls() {
     let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created provider and model");
 
-    // Step 2: Create agent with test_math capability
-    println!("\nStep 2: Creating math agent with test_math capability...");
+    // Step 2: Create agent with current_time capability
+    println!("\nStep 2: Creating agent with current_time capability...");
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
-            "name": "math-calculator-agent",
-            "display_name": "Math Calculator Agent",
-            "system_prompt": "You are a math calculator. Use the available math tools (add, subtract, multiply, divide) to solve problems. Show your work step by step.",
-            "capabilities": [{"ref": "test_math", "config": {}}],
+            "name": "multi-tool-agent",
+            "display_name": "Multi Tool Agent",
+            "system_prompt": "You are a scheduling assistant. Use the get_current_time tool to answer questions about the current time, and show your reasoning step by step.",
+            "capabilities": [{"ref": "current_time", "config": {}}],
             "default_model_id": model.id
         }))
         .send()
@@ -3950,7 +3957,7 @@ async fn test_agent_execution_multiple_tool_calls() {
         ))
         .json(&json!({
             "message": {
-                "content": [{"type": "text", "text": "Calculate 5 + 3, then multiply the result by 2"}]
+                "content": [{"type": "text", "text": "What time is it right now? Check the clock before answering."}]
             }
         }))
         .send()

@@ -2,6 +2,15 @@
 
 ## 2026-08-10
 
+* **Test-support extraction**: Moved deterministic simulation and demo-only
+  behavior out of `everruns-core` into the new `everruns-test-support` crate
+  (EVE-875): the `llmsim` driver, the in-memory agentic loop, mock test
+  doubles, and the fake/demo fixture capabilities. Core has no llmsim
+  dependency or feature, product registries no longer register demo
+  capabilities, and a new architecture guard enforces the isolation. Updated
+  code-organization, capabilities, LLM-driver, sans-IO, and agent-handoff
+  concepts accordingly.
+
 * **Single low-level host boundary**: Deleted the `everruns-runtime`
   compatibility crate for 0.18 and retired the runtime compatibility and
   deprecation specification. `everruns-host` is now the only low-level host

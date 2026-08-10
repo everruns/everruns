@@ -1129,6 +1129,7 @@ dependencies = [
  "everruns-core",
  "everruns-host",
  "everruns-macros",
+ "everruns-test-support",
  "schemars",
  "serde",
  "serde_json",
@@ -1169,7 +1170,6 @@ dependencies = [
  "hex",
  "inventory",
  "jsonschema",
- "llmsim",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -1292,6 +1292,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-test-support"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "everruns-host",
+ "futures",
+ "inventory",
+ "llmsim",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "external-capability-pack"
 version = "0.0.0"
 dependencies = [
@@ -1316,6 +1333,7 @@ dependencies = [
  "async-trait",
  "everruns-core",
  "everruns-host",
+ "everruns-test-support",
  "tokio",
 ]
 

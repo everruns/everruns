@@ -2404,6 +2404,7 @@ dependencies = [
  "everruns-local",
  "everruns-macros",
  "everruns-openai",
+ "everruns-test-support",
  "futures",
  "schemars",
  "serde",
@@ -2570,7 +2571,6 @@ dependencies = [
  "insta",
  "inventory",
  "jsonschema",
- "llmsim",
  "mlua",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2683,6 +2683,7 @@ dependencies = [
  "everruns-engine",
  "everruns-mcp",
  "everruns-platform",
+ "everruns-test-support",
  "futures",
  "ignore",
  "regex",
@@ -2946,6 +2947,7 @@ dependencies = [
  "everruns-openai",
  "everruns-openrouter",
  "everruns-platform",
+ "everruns-test-support",
  "rstest",
  "serde_json",
  "tokio",
@@ -2966,6 +2968,7 @@ dependencies = [
  "everruns-core",
  "everruns-host",
  "everruns-platform",
+ "everruns-test-support",
  "futures",
  "libc",
  "parking_lot",
@@ -3272,6 +3275,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-test-support"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "everruns-host",
+ "futures",
+ "inventory",
+ "llmsim",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid 1.24.0",
+]
+
+[[package]]
 name = "everruns-turbopuffer"
 version = "0.17.26"
 dependencies = [
@@ -3324,6 +3345,7 @@ dependencies = [
  "everruns-openai",
  "everruns-openrouter",
  "everruns-platform",
+ "everruns-test-support",
  "mimalloc",
  "prost-types",
  "reqwest 0.13.4",

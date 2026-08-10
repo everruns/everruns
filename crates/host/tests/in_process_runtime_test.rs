@@ -1,11 +1,8 @@
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use everruns_core::capabilities::{
-    InfinityContextCapability, SessionTasksCapability, TestMathCapability,
-};
+use everruns_core::capabilities::{InfinityContextCapability, SessionTasksCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
@@ -16,6 +13,9 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
     SessionBuilder, TurnStopReason,
 };
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::TestMathCapability;
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 use std::path::PathBuf;
 use std::sync::Arc;
 

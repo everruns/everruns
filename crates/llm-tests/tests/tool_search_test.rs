@@ -15,16 +15,16 @@
 
 mod llm_test_matrix;
 
+use everruns_test_support::{TestMathCapability, TestWeatherCapability};
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
     AutoToolSearchCapability, BashkitShellCapability, ClaudeToolSearchCapability,
     CurrentTimeCapability, FileSystemCapability, OpenAiToolSearchCapability, SessionCapability,
-    StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability,
-    ToolSearchCapability,
+    StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
-use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
     let generations = runner.events_by_type(LLM_GENERATION).await;

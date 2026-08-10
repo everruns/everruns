@@ -19,8 +19,8 @@ the other.
 
 Both real hosts now plan through the engine: the durable worker via
 `plan_next_host_turn`, and the in-process runtime since EVE-842. The mutable
-machine survives only behind core's `in_memory_loop`, which no shipped host
-drives.
+machine survives only behind the `in_memory_loop` in `everruns-test-support`
+(moved out of core by EVE-875), which no shipped host drives.
 
 This spec proposes converging them on one **sans-IO** representation: a
 serializable `TurnState` whose transitions are pure functions, with all I/O —

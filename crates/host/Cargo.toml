@@ -46,3 +46,7 @@ lua = ["everruns-core/lua"]
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
+# Deterministic simulator + fixtures for host tests/examples. Version-less
+# path dependency: stripped on publish, so the host <-> test-support
+# dev-dependency cycle never reaches crates.io.
+everruns-test-support = { path = "../test-support" }

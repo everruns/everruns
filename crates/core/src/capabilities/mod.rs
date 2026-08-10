@@ -104,10 +104,6 @@ mod declarative;
 mod delegation_result;
 mod error_disclosure;
 pub mod facts;
-mod fake_aws;
-mod fake_crm;
-mod fake_financial;
-mod fake_warehouse;
 mod file_system;
 mod guardrails;
 mod human_intent;
@@ -122,7 +118,6 @@ mod memory;
 mod message_metadata;
 mod model_scout;
 mod monitors;
-mod noop;
 mod openai_tool_search;
 mod openrouter_server_tools;
 mod openrouter_workspace;
@@ -133,7 +128,6 @@ mod progress_guard;
 mod prompt_caching;
 mod prompt_canary_guardrail;
 mod research;
-mod sample_data;
 mod self_budget;
 mod session;
 mod session_sandbox;
@@ -146,8 +140,6 @@ mod skills_scoped;
 mod stateless_todo_list;
 mod subagents;
 mod system_commands;
-mod test_math;
-mod test_weather;
 mod tool_approval;
 mod tool_call_repair;
 mod tool_output_distillation;
@@ -225,29 +217,6 @@ pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
 };
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
-pub use fake_aws::{
-    AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
-    AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
-    AwsListIamUsersTool, AwsListRdsDatabasesTool, AwsListS3BucketsTool, AwsListSecurityGroupsTool,
-    AwsStopEc2InstanceTool, FAKE_AWS_CAPABILITY_ID, FakeAwsCapability,
-};
-pub use fake_crm::{
-    CrmAddInteractionTool, CrmCreateCustomerTool, CrmCreateTicketTool, CrmGetCustomerTool,
-    CrmListCustomersTool, CrmListTicketsTool, CrmSearchCustomersTool, CrmUpdateTicketTool,
-    FAKE_CRM_CAPABILITY_ID, FakeCrmCapability,
-};
-pub use fake_financial::{
-    FAKE_FINANCIAL_CAPABILITY_ID, FakeFinancialCapability, FinanceCreateBudgetTool,
-    FinanceCreateTransactionTool, FinanceForecastCashFlowTool, FinanceGetBalanceTool,
-    FinanceGetExpenseReportTool, FinanceGetRevenueReportTool, FinanceListBudgetsTool,
-    FinanceListTransactionsTool,
-};
-pub use fake_warehouse::{
-    FAKE_WAREHOUSE_CAPABILITY_ID, FakeWarehouseCapability, WarehouseCreateInvoiceTool,
-    WarehouseCreateOrderTool, WarehouseCreateShipmentTool, WarehouseGetInventoryTool,
-    WarehouseInventoryReportTool, WarehouseListOrdersTool, WarehouseListShipmentsTool,
-    WarehouseProcessReturnTool, WarehouseUpdateInventoryTool, WarehouseUpdateShipmentStatusTool,
-};
 pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
@@ -282,7 +251,6 @@ pub use model_scout::{
     MODEL_SCOUT_CAPABILITY_ID, ModelRanking, ModelScoutCapability, ProbeResult, ProbeTask,
     RouterUpdateProposal, compute_score, rank_results,
 };
-pub use noop::{NOOP_CAPABILITY_ID, NoopCapability};
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     model_supports_native_tool_search,
@@ -309,7 +277,6 @@ pub use prompt_canary_guardrail::{
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
-pub use sample_data::{SAMPLE_DATA_CAPABILITY_ID, SampleDataCapability};
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use session::{
     GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
@@ -351,12 +318,6 @@ pub use bashkit_shell::{
     BASHKIT_SHELL_CAPABILITY_ID, BashTool, BashkitShellCapability, SessionFileSystemAdapter,
 };
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
-pub use test_math::{
-    AddTool, DivideTool, MultiplyTool, SubtractTool, TEST_MATH_CAPABILITY_ID, TestMathCapability,
-};
-pub use test_weather::{
-    GetForecastTool, GetWeatherTool, TEST_WEATHER_CAPABILITY_ID, TestWeatherCapability,
-};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
     ToolApprover,
@@ -1374,7 +1335,6 @@ impl CapabilityRegistry {
 
         registry.register(AgentInstructionsCapability);
         registry.register(HumanIntentCapability);
-        registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(MessageMetadataCapability);
         registry.register(FileSystemCapability);
@@ -1426,7 +1386,6 @@ impl CapabilityRegistry {
         // Core capabilities (all environments)
         registry.register(AgentInstructionsCapability);
         registry.register(HumanIntentCapability);
-        registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
@@ -1438,8 +1397,6 @@ impl CapabilityRegistry {
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
-        registry.register(TestMathCapability);
-        registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         #[cfg(feature = "web-fetch")]
         registry.register(WebFetchCapability::from_env());
@@ -1534,9 +1491,6 @@ impl CapabilityRegistry {
             registry.register(A2UiCapability);
         }
 
-        // Demo capability with mount points (all environments)
-        registry.register(SampleDataCapability);
-
         // Data knowledge scaffold (all environments)
         registry.register(DataKnowledgeCapability);
 
@@ -1552,11 +1506,10 @@ impl CapabilityRegistry {
         // Citation verification (stamps faithfulness verdicts — see knowledge/runtime-resources/citations.md)
         registry.register(CitationVerificationCapability);
 
-        // Fake demo capabilities (all environments)
-        registry.register(FakeWarehouseCapability);
-        registry.register(FakeAwsCapability);
-        registry.register(FakeCrmCapability);
-        registry.register(FakeFinancialCapability);
+        // Demo/test fixture capabilities (fake_*, test_math/test_weather,
+        // sample_data, noop) are NOT registered here. They live in the
+        // `everruns-test-support` crate (EVE-875) and are registered
+        // explicitly by tests and examples, never by product registries.
 
         // External integration plugins (registered via inventory::submit! in integration crates)
         let internal_flags = crate::InternalFeatureFlags::from_env();
@@ -3245,6 +3198,136 @@ mod tests {
         SystemPromptContext::without_file_store(SessionId::new())
     }
 
+    // -------------------------------------------------------------------------
+    // Local stand-ins for the fixture capabilities that moved to the
+    // `everruns-test-support` crate (EVE-875). The registry/apply/dependency
+    // mechanics tested here only need capabilities with these shapes: one
+    // that contributes nothing, one that contributes plain tools, and one
+    // that carries mounts plus a dependency.
+    // -------------------------------------------------------------------------
+
+    /// Contributes nothing: no tools, no prompt, no dependencies.
+    struct NoopFixture;
+
+    impl Capability for NoopFixture {
+        fn id(&self) -> &str {
+            "noop"
+        }
+        fn name(&self) -> &str {
+            "No-Op"
+        }
+        fn description(&self) -> &str {
+            "Contributes nothing."
+        }
+    }
+
+    struct FixtureTool(&'static str);
+
+    #[async_trait]
+    impl Tool for FixtureTool {
+        fn name(&self) -> &str {
+            self.0
+        }
+        fn description(&self) -> &str {
+            "Fixture tool."
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            })
+        }
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(serde_json::json!({ "ok": true }))
+        }
+    }
+
+    /// Contributes four plain calculator-style tools and no prompt addition.
+    struct MathFixture;
+
+    impl Capability for MathFixture {
+        fn id(&self) -> &str {
+            "test_math"
+        }
+        fn name(&self) -> &str {
+            "Test Math"
+        }
+        fn description(&self) -> &str {
+            "Fixture: calculator tools."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![
+                Box::new(FixtureTool("add")),
+                Box::new(FixtureTool("subtract")),
+                Box::new(FixtureTool("multiply")),
+                Box::new(FixtureTool("divide")),
+            ]
+        }
+    }
+
+    /// Contributes two plain tools.
+    struct WeatherFixture;
+
+    impl Capability for WeatherFixture {
+        fn id(&self) -> &str {
+            "test_weather"
+        }
+        fn name(&self) -> &str {
+            "Test Weather"
+        }
+        fn description(&self) -> &str {
+            "Fixture: weather tools."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![
+                Box::new(FixtureTool("get_weather")),
+                Box::new(FixtureTool("get_forecast")),
+            ]
+        }
+    }
+
+    /// Carries a read-only mount, a prompt addition, a feature, and a
+    /// dependency on `session_file_system`.
+    struct SampleDataFixture;
+
+    impl Capability for SampleDataFixture {
+        fn id(&self) -> &str {
+            "sample_data"
+        }
+        fn name(&self) -> &str {
+            "Sample Data"
+        }
+        fn description(&self) -> &str {
+            "Fixture: mounted sample files."
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("Read-only sample files are mounted at `/samples`.")
+        }
+        fn mounts(&self) -> Vec<MountPoint> {
+            let samples_dir = MountDirectoryBuilder::new()
+                .file("users.json", "[]")
+                .build();
+            vec![MountPoint::readonly("/samples", samples_dir, self.id())]
+        }
+        fn dependencies(&self) -> Vec<&'static str> {
+            vec!["session_file_system"]
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["file_system"]
+        }
+    }
+
+    /// Built-in registry plus the local fixture stand-ins above.
+    fn fixture_registry() -> CapabilityRegistry {
+        let mut registry = CapabilityRegistry::with_builtins();
+        registry.register(NoopFixture);
+        registry.register(MathFixture);
+        registry.register(WeatherFixture);
+        registry.register(SampleDataFixture);
+        registry
+    }
+
     /// A host-defined capability carrying annotations core knows nothing about.
     struct HostAnnotatedCapability;
 
@@ -3267,7 +3350,7 @@ mod tests {
     #[test]
     fn capability_metadata_is_an_opt_in_host_hatch() {
         // Core capabilities carry none, so nothing changes for them.
-        assert!(NoopCapability.metadata().is_none());
+        assert!(CurrentTimeCapability.metadata().is_none());
 
         let metadata = HostAnnotatedCapability.metadata().expect("metadata");
         assert_eq!(metadata["icon"], "sparkles");
@@ -3281,15 +3364,12 @@ mod tests {
             "human_intent",
             "budgeting",
             "self_budget",
-            "noop",
             "current_time",
             "research",
             "session_file_system",
             "session_storage",
             "session",
             "session_sql_database",
-            "test_math",
-            "test_weather",
             "stateless_todo_list",
             "web_fetch",
             "bashkit_shell",
@@ -3310,7 +3390,6 @@ mod tests {
             "skills",
             "subagents",
             "system_commands",
-            "sample_data",
             "data_knowledge",
             "knowledge_base",
             "knowledge_index",
@@ -3318,10 +3397,6 @@ mod tests {
             "citation_verification",
             "tool_output_persistence",
             "tool_output_distillation",
-            "fake_warehouse",
-            "fake_aws",
-            "fake_crm",
-            "fake_financial",
             "loop_detection",
             "progress_guard",
             "usage_limit_auto_continue",
@@ -3350,7 +3425,6 @@ mod tests {
             "human_intent",
             "budgeting",
             "self_budget",
-            "noop",
             "current_time",
             "session_file_system",
             "session_storage",
@@ -3454,14 +3528,7 @@ mod tests {
             "session_sql_database",
             "knowledge_base",
             "knowledge_index",
-            "sample_data",
             "data_knowledge",
-            "fake_aws",
-            "fake_crm",
-            "fake_financial",
-            "fake_warehouse",
-            "test_math",
-            "test_weather",
             "research",
         ] {
             assert!(
@@ -3497,10 +3564,9 @@ mod tests {
     fn test_capability_registry_get() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get("noop").unwrap();
-        assert_eq!(noop.id(), "noop");
-        assert_eq!(noop.name(), "No-Op");
-        assert_eq!(noop.status(), CapabilityStatus::Available);
+        let current_time = registry.get("current_time").unwrap();
+        assert_eq!(current_time.id(), "current_time");
+        assert_eq!(current_time.status(), CapabilityStatus::Available);
     }
 
     /// Registry-wide invariants for every built-in capability. This replaces the
@@ -3591,17 +3657,10 @@ mod tests {
         // use the generic display-name presentation. Keep the reason specific.
         const GENERIC_NARRATION_ALLOWLIST: &[(&str, &str)] = &[
             // Demo / eval fixtures — not a production surface.
-            ("sample_data", "demo capability with fixture mounts"),
             (
                 "data_knowledge",
                 "demo knowledge scaffold; fixture data only",
             ),
-            ("fake_aws", "demo/eval fixture tools"),
-            ("fake_crm", "demo/eval fixture tools"),
-            ("fake_financial", "demo/eval fixture tools"),
-            ("fake_warehouse", "demo/eval fixture tools"),
-            ("test_math", "test fixture capability"),
-            ("test_weather", "test fixture capability"),
             // Platform-admin surface: the mutating `manage_*` tools narrate via
             // `narration_noun` hints; the read/query/messaging tools are a
             // low-frequency operator surface where the display-name presentation
@@ -3720,11 +3779,11 @@ mod tests {
     #[test]
     fn test_capability_registry_builder() {
         let registry = CapabilityRegistry::builder()
-            .capability(NoopCapability)
+            .capability(HumanIntentCapability)
             .capability(CurrentTimeCapability)
             .build();
 
-        assert!(registry.has("noop"));
+        assert!(registry.has("human_intent"));
         assert!(registry.has("current_time"));
         assert_eq!(registry.len(), 2);
     }
@@ -3744,9 +3803,8 @@ mod tests {
     fn test_capability_icons_and_categories() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let noop = registry.get("noop").unwrap();
-        assert_eq!(noop.icon(), Some("circle-off"));
-        assert_eq!(noop.category(), Some("Testing"));
+        let session = registry.get("session_file_system").unwrap();
+        assert!(session.icon().is_some());
 
         let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
@@ -3755,16 +3813,32 @@ mod tests {
 
     #[test]
     fn test_system_prompt_preview_default_delegates_to_addition() {
-        let registry = CapabilityRegistry::with_builtins();
+        // A capability with a static system_prompt_addition — preview should
+        // match the addition by default.
+        struct StaticPromptCapability;
+        impl Capability for StaticPromptCapability {
+            fn id(&self) -> &str {
+                "static_prompt"
+            }
+            fn name(&self) -> &str {
+                "Static Prompt"
+            }
+            fn description(&self) -> &str {
+                "Static prompt addition."
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Use the static prompt.")
+            }
+        }
 
-        // test_math has a static system_prompt_addition — preview should match
-        let test_math = registry.get("test_math").unwrap();
+        let cap = StaticPromptCapability;
         assert_eq!(
-            test_math.system_prompt_preview().as_deref(),
-            test_math.system_prompt_addition()
+            cap.system_prompt_preview().as_deref(),
+            cap.system_prompt_addition()
         );
 
         // current_time has no system_prompt_addition — preview should be None
+        let registry = CapabilityRegistry::with_builtins();
         let current_time = registry.get("current_time").unwrap();
         assert!(current_time.system_prompt_preview().is_none());
         assert!(current_time.system_prompt_addition().is_none());
@@ -3803,7 +3877,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_noop() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -3882,7 +3956,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_multiple() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -3899,7 +3973,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_preserves_order() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("Base prompt.", "gpt-5.2");
 
         // Order should be preserved in applied_ids
@@ -3916,7 +3990,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_test_math() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -3950,7 +4024,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_test_weather() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -3975,7 +4049,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_test_math_and_test_weather() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -4127,7 +4201,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_xml_wrapping_for_noop_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
         // Noop has no system_prompt_addition, so no XML wrapping should occur
@@ -4148,7 +4222,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_collect_capabilities_includes_mounts() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let collected =
             collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
@@ -4241,7 +4315,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_collect_capabilities_combines_mounts() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Collect from multiple capabilities - only sample_data has mounts.
         // sample_data depends on session_file_system, which is auto-resolved.
@@ -4266,7 +4340,7 @@ mod tests {
 
     #[test]
     fn test_sample_data_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let cap = registry.get("sample_data").unwrap();
 
         assert_eq!(cap.id(), "sample_data");
@@ -4309,7 +4383,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_with_deps() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // SampleData depends on FileSystem
         let resolved = resolve_dependencies(&["sample_data".to_string()], &registry).unwrap();
@@ -4334,7 +4408,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_already_selected() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // If dependency is already selected, it shouldn't be duplicated
         let resolved = resolve_dependencies(
@@ -4350,7 +4424,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_preserves_order() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Multiple independent capabilities should maintain their relative order
         let resolved =
@@ -4373,7 +4447,7 @@ mod tests {
 
     #[test]
     fn test_get_dependencies() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // SampleData depends on FileSystem
         let deps = get_dependencies("sample_data", &registry);
@@ -4390,7 +4464,7 @@ mod tests {
 
     #[test]
     fn test_sample_data_has_dependency() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let cap = registry.get("sample_data").unwrap();
 
         let deps = cap.dependencies();
@@ -4400,7 +4474,7 @@ mod tests {
 
     #[test]
     fn test_noop_has_no_dependencies() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let cap = registry.get("noop").unwrap();
 
         assert!(cap.dependencies().is_empty());
@@ -4702,7 +4776,7 @@ mod tests {
 
     #[test]
     fn test_capability_without_message_filter_returns_none() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let noop = registry.get("noop").unwrap();
         assert!(noop.message_filter_provider().is_none());
@@ -5301,7 +5375,7 @@ mod tests {
     async fn test_collect_capabilities_resolves_dependencies() {
         // sample_data depends on session_file_system
         // Passing only sample_data should still include session_file_system tools
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected =
             collect_capabilities(&["sample_data".to_string()], &registry, &test_ctx()).await;
 
@@ -5808,7 +5882,7 @@ mod tests {
 
     #[test]
     fn test_capability_features_default_empty() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Most capabilities have no features
         let noop = registry.get("noop").unwrap();
@@ -5931,7 +6005,7 @@ mod tests {
 
     #[test]
     fn test_sample_data_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let sample = registry.get("sample_data").unwrap();
         assert_eq!(sample.features(), vec!["file_system"]);
@@ -6045,7 +6119,7 @@ mod tests {
 
     #[test]
     fn test_capability_risk_levels() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // bashkit_shell is High (code execution requires admin gating)
         let bash = registry.get("bashkit_shell").unwrap();
@@ -6093,7 +6167,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_openai_tool_search_with_other_capabilities() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
 
         let applied = apply_capabilities(
@@ -6139,7 +6213,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_collect_capabilities_auto_tool_search_resolves_to_generic_off_native() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let configs = vec![
             AgentCapabilityConfig::with_config(
@@ -6656,6 +6730,6 @@ mod tests {
             Some("Controls things.")
         );
         // Capabilities without localizations have no config description.
-        assert_eq!(NoopCapability.describe_schema(Some("uk")), None);
+        assert_eq!(HostAnnotatedCapability.describe_schema(Some("uk")), None);
     }
 }

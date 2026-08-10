@@ -1,6 +1,6 @@
 //! Noop Capability - for testing and demonstration purposes
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 
 pub const NOOP_CAPABILITY_ID: &str = "noop";
 

@@ -11,9 +11,7 @@
 //! carried state survives a serialize/reconstruct between every step, so a host
 //! that persists it between activities plans the identical turn.
 
-use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use everruns_core::{
     Agent, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel, Session,
 };
@@ -24,6 +22,9 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     TurnStopReason,
 };
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::TestMathCapability;
+use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use serde_json::json;
 
 fn math_platform() -> PlatformDefinition {

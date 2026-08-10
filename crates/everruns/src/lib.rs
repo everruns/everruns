@@ -152,7 +152,7 @@ pub use everruns_core::{
 };
 
 // --- Deterministic in-process LLM simulator -----------------------------
-pub use everruns_core::llmsim_driver::LlmSimConfig;
+pub use everruns_test_support::LlmSimConfig;
 
 /// Escape hatch onto the underlying `everruns-core` crate for APIs not yet
 /// promoted onto the facade. Prefer the re-exports above; reach here only for

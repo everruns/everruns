@@ -1,10 +1,11 @@
-use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::{DriverRegistry, LlmMessage};
 use everruns_core::events::EventData;
 use everruns_core::llm_retry::LlmRetryConfig;
-use everruns_core::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use everruns_core::{CapabilityRegistry, PlatformDefinition};
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::TestMathCapability;
+use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

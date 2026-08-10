@@ -66,12 +66,20 @@ Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
 protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
-heavy subtrees (telemetry/OTLP, `a2a` gRPC, web-fetch/fetchkit, the `llmsim`
-simulator driver), so a standalone provider build never pulls them in. A
-provider is therefore a pure `ChatDriver` implementation with no dependency on
-core's agent-loop runtime; provider crates keep `everruns-core` only as a
-**dev-dependency** for integration tests that drive the in-memory runtime +
-`llmsim` harness.
+heavy subtrees (telemetry/OTLP, `a2a` gRPC, web-fetch/fetchkit), so a
+standalone provider build never pulls them in. A provider is therefore a pure
+`ChatDriver` implementation with no dependency on core's agent-loop runtime;
+provider crates keep `everruns-core` (and, where needed,
+`everruns-test-support` for the in-memory runtime + `llmsim` harness) only as
+**dev-dependencies**.
+
+Deterministic simulation and demo fixtures live in `everruns-test-support`
+(EVE-875): the `llmsim` driver, the in-memory agentic loop, mock test doubles,
+and the fake/demo capabilities (fake AWS/CRM/financial/warehouse, test
+math/weather, sample-data, noop). `everruns-core` carries no llmsim dependency
+or feature, product registries never register the fixtures, and
+`scripts/lib/check-test-support-isolation.sh` (pre-push + CI) enforces both.
+The facade's `Model::simulated` consumes only the crate's `sim` feature.
 
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,

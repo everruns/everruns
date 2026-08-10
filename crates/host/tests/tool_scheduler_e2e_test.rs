@@ -14,7 +14,6 @@
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
@@ -22,6 +21,8 @@ use everruns_core::{
     ToolCall,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;

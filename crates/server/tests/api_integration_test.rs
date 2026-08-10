@@ -3598,17 +3598,11 @@ async fn test_capability_info_includes_features() {
         "session_schedule should have schedules feature",
     );
 
-    // Find noop — should have no features (empty or absent)
-    let noop = data
-        .iter()
-        .find(|c| c["id"] == "noop")
-        .expect("noop capability should exist");
-    let noop_features = noop.get("features");
+    // noop is a test fixture (everruns-test-support) and must not appear in
+    // the product capability registry.
     assert!(
-        noop_features
-            .and_then(|v| v.as_array())
-            .is_none_or(|a| a.is_empty()),
-        "noop should have no features",
+        !data.iter().any(|c| c["id"] == "noop"),
+        "noop fixture capability must not be registered in the product",
     );
 }
 

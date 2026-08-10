@@ -673,18 +673,19 @@ impl ToolRegistry {
     /// - `get_current_time`: Returns the current date and time
     /// - `echo`: Echoes back the provided message
     /// - `report_progress`: Emits deterministic external progress updates
-    /// - TestMath tools: add, subtract, multiply, divide
-    /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
     /// - FileSystem tools: read_file, write_file, edit_file, list_directory, grep_files, delete_file, stat_file
     /// - WebFetch tools: web_fetch — only when the `web-fetch` cargo feature is
     ///   enabled (on by default; absent in provider builds that disable core
     ///   default features)
+    ///
+    /// Test fixture tools (test math/weather) are NOT included: they moved to
+    /// the `everruns-test-support` crate (EVE-875) and are registered
+    /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
         use crate::capabilities::{
-            AddTool, DeleteFileTool, DivideTool, EditFileTool, GetCurrentTimeTool, GetForecastTool,
-            GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
-            StatFileTool, SubtractTool, WriteFileTool, WriteTodosTool,
+            DeleteFileTool, EditFileTool, GetCurrentTimeTool, GrepFilesTool, ListDirectoryTool,
+            ReadFileTool, StatFileTool, WriteFileTool, WriteTodosTool,
         };
         use crate::progress_reporting::ReportProgressTool;
 
@@ -701,14 +702,6 @@ impl ToolRegistry {
             // executor only knows about `spawn_background` when the model
             // can also see it.
             .tool(ReportProgressTool)
-            // TestMath capability tools
-            .tool(AddTool)
-            .tool(SubtractTool)
-            .tool(MultiplyTool)
-            .tool(DivideTool)
-            // TestWeather capability tools
-            .tool(GetWeatherTool)
-            .tool(GetForecastTool)
             // TaskList capability tools
             .tool(WriteTodosTool)
             // FileSystem capability tools
@@ -736,17 +729,11 @@ impl ToolRegistry {
     /// controls such as network ACLs, egress routing, storage, or filesystem
     /// mediation.
     pub fn with_monitor_probe_defaults() -> Self {
-        use crate::capabilities::{
-            AddTool, DivideTool, GetCurrentTimeTool, MultiplyTool, SubtractTool,
-        };
+        use crate::capabilities::GetCurrentTimeTool;
 
         ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
             .tool(EchoTool)
-            .tool(AddTool)
-            .tool(SubtractTool)
-            .tool(MultiplyTool)
-            .tool(DivideTool)
             .build()
     }
 
@@ -2932,15 +2919,13 @@ mod tests {
             "should have report_progress"
         );
 
-        // TestMath capability tools
-        assert!(registry.has("add"), "should have add");
-        assert!(registry.has("subtract"), "should have subtract");
-        assert!(registry.has("multiply"), "should have multiply");
-        assert!(registry.has("divide"), "should have divide");
-
-        // TestWeather capability tools
-        assert!(registry.has("get_weather"), "should have get_weather");
-        assert!(registry.has("get_forecast"), "should have get_forecast");
+        // Test fixture tools moved to everruns-test-support (EVE-875) and
+        // must NOT be in defaults.
+        assert!(!registry.has("add"), "add must NOT be in defaults");
+        assert!(
+            !registry.has("get_weather"),
+            "get_weather must NOT be in defaults"
+        );
 
         // TaskList capability tools
         assert!(registry.has("write_todos"), "should have write_todos");
@@ -2958,7 +2943,7 @@ mod tests {
         assert!(registry.has("web_fetch"), "should have web_fetch");
 
         // Total count: 19 - 1 (spawn_background, moved to capability) = 18
-        assert_eq!(registry.len(), 18, "should have 18 default tools");
+        assert_eq!(registry.len(), 12, "should have 12 default tools");
     }
 
     #[tokio::test]
@@ -2977,25 +2962,6 @@ mod tests {
 
         assert!(result.error.is_none());
         assert_eq!(result.result.unwrap()["echoed"], "hello from defaults");
-    }
-
-    #[tokio::test]
-    async fn test_with_defaults_math_tools() {
-        let registry = ToolRegistry::with_defaults();
-
-        // Test add tool
-        let tool_call = ToolCall {
-            id: "call_add".to_string(),
-            name: "add".to_string(),
-            arguments: serde_json::json!({"a": 5, "b": 3}),
-        };
-
-        let tool_def = registry.get("add").unwrap().to_definition();
-        let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-
-        assert!(result.error.is_none());
-        // AddTool returns floats, so compare as f64
-        assert_eq!(result.result.unwrap()["result"].as_f64().unwrap(), 8.0);
     }
 
     /// Regression: with_defaults() must NOT include capability-provided tools like

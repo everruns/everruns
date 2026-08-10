@@ -24,8 +24,8 @@ use rstest::rstest;
 
 use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
-use everruns_core::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 use everruns_core::traits::ResolvedModel;
+use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 // ============================================================================
 // Scenario: basic completion (no tools)

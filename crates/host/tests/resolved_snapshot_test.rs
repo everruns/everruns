@@ -3,13 +3,14 @@
 // `load_resolved_turn`, and no credential or platform-only metadata reaches
 // snapshot serialization, Debug output, or emitted event metadata.
 
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::mcp_server::ScopedMcpServer;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
 };
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 
 const HEADER_SECRET: &str = "SECRET-MCP-HEADER-MARKER";
 const TITLE_MARKER: &str = "UI-TITLE-MARKER";

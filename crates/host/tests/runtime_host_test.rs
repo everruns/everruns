@@ -5,8 +5,7 @@ use everruns_core::ToolContext;
 use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
-    Capability, CapabilityStatus, SystemPromptContext, TestMathCapability,
-    collect_capabilities_with_configs,
+    Capability, CapabilityStatus, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::in_memory::{
@@ -32,6 +31,7 @@ use everruns_host::{
     RuntimeTurnPlan, RuntimeTurnState, TurnStopReason, execute_act_activity,
     execute_input_activity, plan_next_host_turn,
 };
+use everruns_test_support::TestMathCapability;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -2395,9 +2395,9 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
 async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_core::atoms::ReasonInput;
     use everruns_core::capabilities::InfinityContextCapability;
-    use everruns_core::llmsim_driver::{LlmSimConfig, register_driver_with_config};
     use everruns_core::user_hook_types::HookEvent;
     use everruns_host::execute_reason_activity;
+    use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
 
     let mut adapter = mock_host();
     let provider_messages = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -2508,11 +2508,11 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
 #[tokio::test]
 async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
     use everruns_core::atoms::ReasonInput;
-    use everruns_core::llmsim_driver::{LlmSimConfig, register_driver_with_config};
     use everruns_core::session_task::{
         SessionTaskState, TASK_KIND_AGENT_HANDOFF, TaskLinks, TaskWakePolicy,
     };
     use everruns_host::execute_reason_activity;
+    use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
 
     let mut adapter = mock_host();
     register_driver_with_config(&mut adapter.driver_registry, LlmSimConfig::fixed("ready"));

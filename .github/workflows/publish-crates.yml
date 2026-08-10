@@ -158,6 +158,11 @@ jobs:
                   "everruns-host",
                   "everruns-local",
                   "everruns-macros",
+                  "everruns-test-support",
+              ],
+              "crates/test-support/Cargo.toml": [
+                  "everruns-core",
+                  "everruns-host",
               ],
               "crates/local/Cargo.toml": [
                   "everruns-core",
@@ -276,6 +281,10 @@ jobs:
             everruns-integrations-docker
             everruns-integrations-sprites
             everruns-local
+            # Deterministic simulation/test kit: publishes after host (its
+            # optional runtime extension) and before the facade, whose
+            # default `Model::simulated` path re-exports its simulator.
+            everruns-test-support
             # `everruns` enables its `macros` feature by default, so the facade
             # is only installable once everruns-macros is on crates.io.
             everruns-macros

@@ -446,12 +446,30 @@ mod tests {
         }
     }
 
-    // Registers the llmsim driver, so it follows the `llmsim` feature gate.
-    #[cfg(feature = "llmsim")]
+    /// Chat driver stub: registration-only, never invoked in these tests.
+    struct StubChatDriver;
+
+    #[async_trait]
+    impl crate::ChatDriver for StubChatDriver {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &crate::ProviderEndpoint,
+            _messages: Vec<crate::LlmMessage>,
+            _config: &crate::LlmCallConfig,
+        ) -> crate::Result<crate::LlmResponseStream> {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
     #[test]
     fn test_platform_definition_builder() {
         let mut drivers = DriverRegistry::new();
-        crate::llmsim_driver::register_driver(&mut drivers);
+        let mut descriptor = crate::driver_registry::DriverDescriptor::chat_only(
+            crate::DriverId::LlmSim,
+            |_config| Box::new(StubChatDriver) as crate::BoxedChatDriver,
+        );
+        descriptor.display_name = "Stub".into();
+        drivers.register_descriptor_or_replace(descriptor);
 
         let platform = PlatformDefinition::builder()
             .driver_registry(drivers.clone())

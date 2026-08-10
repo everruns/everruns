@@ -13,11 +13,11 @@
 //! - `crm_add_interaction`: Add customer interaction note
 //! - `crm_search_customers`: Search customers by criteria
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 

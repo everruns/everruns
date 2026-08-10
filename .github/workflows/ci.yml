@@ -375,6 +375,25 @@ jobs:
       - name: Check capability contract ownership
         run: bash scripts/lib/check-capability-contract.sh
 
+  # Architecture guard (EVE-875): deterministic simulation and demo fixture
+  # capabilities live in crates/test-support. Core carries no llmsim edge,
+  # provider-only trees stay clean, and product binaries can never link the
+  # demo fixtures.
+  test-support-isolation:
+    name: Test-Support Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check test-support isolation
+        run: bash scripts/lib/check-test-support-isolation.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest
@@ -471,6 +490,10 @@ jobs:
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
           cargo test -p everruns-core -p everruns-local --all-features
+          # Test-support (EVE-875): the deterministic simulator, in-memory loop,
+          # fixture capabilities, and the llmsim-driven suites that moved out of
+          # core. Pure llmsim; no credentials or network.
+          cargo test -p everruns-test-support --all-features
           # mcp: whole crate (lib + http_transport + stdio_transport + doctests).
           # Was not tested in CI at all. --all-features enables the `stdio` transport
           # (off in hosted builds) so its transport test runs here. All in-process,

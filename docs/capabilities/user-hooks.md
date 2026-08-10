@@ -230,11 +230,11 @@ To mute a bundled hook, list its `HookId` under
 
 Any built-in capability can contribute hook specs to your agent by
 overriding `Capability::user_hooks_with_config` and returning a list of
-`UserHookSpec`s. The `cloud-cost-security-auditor` seed agent is a live
-example: its `user_hooks` capability config (in
+`UserHookSpec`s. The `guarded-bash-demo` seed agent is a live example:
+its `user_hooks` capability config (in
 [`crates/server/src/seed.rs`](https://github.com/everruns/everruns/blob/main/crates/server/src/seed.rs))
-ships an audit-log `post_tool_use` hook that fires every time the agent
-runs an AWS tool, with no extra setup.
+ships a `pre_tool_use` hook that refuses destructive `rm -rf`
+invocations before the bash tool ever runs, with no extra setup.
 
 Capability-contributed hooks ride the trust gate of enabling the
 contributing capability, so admin assignment rules still apply.

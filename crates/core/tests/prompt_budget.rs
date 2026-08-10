@@ -13,9 +13,9 @@
 
 use everruns_core::capabilities::{
     BudgetingCapability, Capability, DataKnowledgeCapability, FileSystemCapability,
-    InfinityContextCapability, MemoryCapability, MessageMetadataCapability, SampleDataCapability,
-    SelfBudgetCapability, SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability,
-    SubagentCapability, SystemPromptContext, WebFetchCapability,
+    InfinityContextCapability, MemoryCapability, MessageMetadataCapability, SelfBudgetCapability,
+    SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability, SubagentCapability,
+    SystemPromptContext, WebFetchCapability,
 };
 use everruns_core::typed_id::SessionId;
 
@@ -103,9 +103,11 @@ async fn session_sandbox_prompt_within_budget() {
     assert_contribution_under(&SessionSandboxCapability, 300).await;
 }
 
+// Note: the `sample_data` fixture capability's budget test lives in
+// `everruns-test-support` (tests/prompt_budget_fixtures.rs) since the fixture
+// moved out of core (EVE-875).
 #[tokio::test]
 async fn mounted_data_prompts_within_budget() {
-    assert_contribution_under(&SampleDataCapability, 250).await;
     // Bumped 300 → 350: the Open Knowledge Format (OKF) adoption (#2321) added a
     // short description of the mounted bundle layout (markdown + YAML frontmatter,
     // index.md navigation) to the system-prompt contribution, taking it to 342

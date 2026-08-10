@@ -33,7 +33,6 @@ use async_trait::async_trait;
 use everruns_core::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
-use everruns_core::llmsim_driver::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 use everruns_core::session::Session;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
@@ -49,6 +48,10 @@ use everruns_host::{
 };
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::llmsim_driver::{
+    LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern,
+};
 
 /// Substrings that steer the content-keyed llmsim: a parent prompt containing
 /// one of these makes the model emit the matching `spawn_agent` call. Child

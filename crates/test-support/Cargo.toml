@@ -1,0 +1,64 @@
+# Deterministic simulation and demo fixtures for testing Everruns agents.
+#
+# This crate carries everything that used to live inside `everruns-core`
+# purely for tests, examples, and demos: the in-process `llmsim` driver, the
+# in-memory agentic loop, mock/echo/failing test doubles, and the fake
+# demo capabilities (AWS/CRM/financial/warehouse, test math/weather,
+# sample-data and noop fixtures). Production compositions must never register
+# the `fixtures` surface; the architecture guard in
+# scripts/lib/check-test-support-isolation.sh enforces that server/worker
+# code cannot import the demo capabilities and that core and the provider
+# crates carry no llmsim edge at all.
+
+[package]
+name = "everruns-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-test-support"
+readme = "README.md"
+description = "Deterministic LLM simulation, in-memory agent loop, and demo capability fixtures for testing Everruns agents"
+keywords = ["agent", "agentic", "llm", "testing", "simulation"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+# Everything on by default: test crates want the whole kit. Narrow consumers
+# (the `everruns` facade, the worker's llmsim provider) select only `sim` so
+# their dependency trees never carry the demo capability fixtures.
+default = ["sim", "fixtures", "host"]
+# The in-process `llmsim` chat driver plus the in-memory agentic loop built
+# on it.
+sim = ["dep:llmsim"]
+# Fake demo capabilities: fake AWS/CRM/financial/warehouse, test math and
+# weather, the sample-data mount demo, and the noop fixture.
+fixtures = []
+# `LlmSimRuntimeExt`: the `.llm_sim(...)` convenience for
+# `everruns_host::InProcessRuntimeBuilder`.
+host = ["dep:everruns-host", "sim"]
+
+[dependencies]
+everruns-core = { path = "../core", version = "0.17.26", default-features = false }
+everruns-host = { workspace = true, optional = true }
+
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+futures.workspace = true
+inventory.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "time", "rt"] }
+
+# LLM simulation. default-features = false sheds the server/cli/tui/tokens
+# subtrees (axum, tower-http, tiktoken-rs, clap, tracing-subscriber,
+# crossterm, ratatui) — the driver only uses the in-process library types
+# (generator, latency, openai, script, stream).
+llmsim = { version = "0.5.1", default-features = false, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+uuid.workspace = true

@@ -10,7 +10,6 @@
 use async_trait::async_trait;
 use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_core::{
     AgentCapabilityConfig, Capability, CapabilityRegistry, CapabilityStatus, DriverId,
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
@@ -18,6 +17,8 @@ use everruns_core::{
     ToolContext, ToolExecutionResult, ToolResult,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
