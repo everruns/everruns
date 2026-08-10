@@ -16,7 +16,6 @@ use crate::{
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
     vector_store::{InMemoryVectorStore, VectorStore},
 };
-use serde_json::Value;
 use std::sync::Arc;
 
 /// Stable role assigned to a built-in harness template.
@@ -37,31 +36,12 @@ pub enum BuiltInHarnessRole {
 }
 
 /// Capability entry for a built-in harness template.
-#[derive(Debug, Clone)]
-pub struct BuiltInCapabilityDefinition {
-    /// Capability identifier.
-    pub id: String,
-    /// Per-harness capability config passed to capability resolution.
-    pub config: Value,
-}
-
-impl BuiltInCapabilityDefinition {
-    /// Create a capability entry with an empty config object.
-    pub fn new(id: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            config: serde_json::json!({}),
-        }
-    }
-
-    /// Create a capability entry with explicit config.
-    pub fn with_config(id: impl Into<String>, config: Value) -> Self {
-        Self {
-            id: id.into(),
-            config,
-        }
-    }
-}
+///
+/// This is the neutral [`everruns_capability::CapabilityRef`] under its
+/// historical provisioning name (EVE-873): built-in provisioning uses the
+/// same reference/config representation as persisted attachments and the
+/// Framework instead of a second semantic model.
+pub use crate::capability_types::AgentCapabilityConfig as BuiltInCapabilityDefinition;
 
 /// Built-in harness template provisioned by a platform definition.
 ///

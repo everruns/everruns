@@ -111,7 +111,7 @@ mod tests {
         let capability_ids: Vec<&str> = harness
             .capabilities
             .iter()
-            .map(|cap| cap.id.as_str())
+            .map(|cap| cap.capability_id())
             .collect();
 
         assert_eq!(harness.parent_name, None);

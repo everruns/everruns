@@ -100,7 +100,10 @@ pub struct CreateSessionRequest {
     /// Session-level capabilities (additive to agent capabilities).
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
-    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    #[schema(
+        value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>,
+        example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}])
+    )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
     /// These tools are sent to the LLM but executed by the client.

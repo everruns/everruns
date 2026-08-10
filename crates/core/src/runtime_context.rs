@@ -239,7 +239,7 @@ async fn assemble_turn_context_with_mode(
         .capabilities
         .iter()
         .find(|cap| cap.capability_id() == COMPACTION_CAPABILITY_ID)
-        .map(|cap| CompactionConfig::from_json(&cap.config));
+        .map(|cap| CompactionConfig::from_json(cap.config_value()));
 
     let runtime_agent = build_runtime_agent(
         &session,

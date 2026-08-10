@@ -1,5 +1,6 @@
 use crate::domains::common::{Command, CommandError, CommandMeta, Ctx, classify_anyhow};
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
+use everruns_core::capabilities::McpCapabilityIdExt;
 use everruns_core::{AgentId, CapabilityId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

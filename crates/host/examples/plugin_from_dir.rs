@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The microsoft-learn MCP server should be declared in the definition.
     if let Some(cap) = plugin_config
         && let Ok(def) = serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
-            cap.config.clone(),
+            cap.config_value().clone(),
         )
     {
         if let Some(servers) = &def.mcp_servers

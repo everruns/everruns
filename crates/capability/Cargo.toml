@@ -1,0 +1,38 @@
+# The neutral capability contract (EVE-873).
+#
+# One open identity/configuration contract shared by the `everruns` Framework,
+# the hosted product composition (core/host/server/worker), and integration
+# crates. Deliberately dependency-light: no everruns-core, no everruns-host,
+# no Tokio, HTTP, SQLx, OpenAPI, inventory, or platform records — third-party
+# capability crates can depend on this crate alone.
+
+[package]
+name = "everruns-capability"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-capability"
+readme = "README.md"
+description = "Neutral capability contract for Everruns - capability identity, configuration, and code-defined capability authoring"
+keywords = ["agent", "agentic", "llm", "ai", "framework"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+# The code-defined capability authoring surface (`Definition`, `Handler`,
+# typed tool schemas). Pulls in schemars and async-trait; the bare
+# identity/configuration contract compiles without them.
+default = ["definition"]
+definition = ["dep:schemars", "dep:async-trait"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+schemars = { workspace = true, optional = true }
+async-trait = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true

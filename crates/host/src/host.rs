@@ -299,31 +299,31 @@ fn subagent_nesting_policy_from_configs(
     let configured_depth = subagents_config
         .and_then(|config| {
             config
-                .config
+                .config_value()
                 .get("max_subagent_depth")
-                .or_else(|| config.config.get("max_depth"))
+                .or_else(|| config.config_value().get("max_depth"))
         })
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
     let configured_max_active = subagents_config
         .and_then(|config| {
             config
-                .config
+                .config_value()
                 .get("max_active_descendant_tasks")
-                .or_else(|| config.config.get("max_concurrent_descendant_tasks"))
+                .or_else(|| config.config_value().get("max_concurrent_descendant_tasks"))
         })
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
     let configured_max_total = subagents_config
-        .and_then(|config| config.config.get("max_total_descendant_tasks"))
+        .and_then(|config| config.config_value().get("max_total_descendant_tasks"))
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
     let configured_max_active_detached = subagents_config
-        .and_then(|config| config.config.get("max_active_detached_tasks"))
+        .and_then(|config| config.config_value().get("max_active_detached_tasks"))
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
     let configured_max_total_detached = subagents_config
-        .and_then(|config| config.config.get("max_total_detached_tasks"))
+        .and_then(|config| config.config_value().get("max_total_detached_tasks"))
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
 
@@ -356,13 +356,15 @@ fn finalize_specs_from_configs(
         let Some(capability) = capability_registry.get(config.capability_id()) else {
             continue;
         };
-        let specs = capability.user_hooks_with_config(&config.config);
+        let specs = capability.user_hooks_with_config(config.config_value());
         if !specs.is_empty() {
             hook_contributions.push((config.capability_id().to_string(), specs));
         }
         if config.capability_id() == "user_hooks" {
             disabled_contributions.extend(
-                everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+                everruns_core::capabilities::user_hooks::disabled_contributions(
+                    config.config_value(),
+                ),
             );
         }
     }
@@ -522,7 +524,9 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             capability_registry
                 .get(config.capability_id())
                 .filter(|capability| capability.status() == CapabilityStatus::Available)
-                .map(|capability| capability.post_tool_exec_hooks_with_config(&config.config))
+                .map(|capability| {
+                    capability.post_tool_exec_hooks_with_config(config.config_value())
+                })
                 .unwrap_or_default()
         })
         .collect();
@@ -557,7 +561,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             capability_registry
                 .get(config.capability_id())
                 .filter(|capability| capability.status() == CapabilityStatus::Available)
-                .map(|capability| capability.pre_tool_use_hooks_with_config(&config.config))
+                .map(|capability| capability.pre_tool_use_hooks_with_config(config.config_value()))
                 .unwrap_or_default()
         })
         .collect();

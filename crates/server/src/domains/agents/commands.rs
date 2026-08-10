@@ -93,7 +93,7 @@ async fn check_high_risk_caps(
     if caps.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
         return Ok(());
     }
-    let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
+    let refs: Vec<&str> = caps.iter().map(|c| c.capability_id()).collect();
     let high = ctx
         .capability_service
         .high_risk_ids_for_org(ctx.org_id(), &refs)
@@ -1653,6 +1653,7 @@ inventory::submit! { CommandDescriptor::of::<ForkAgentVersion>() }
 pub struct PreviewAgent {
     pub system_prompt: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
@@ -1742,6 +1743,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
 pub struct AnalyzeAgent {
     pub system_prompt: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,

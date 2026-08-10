@@ -187,20 +187,30 @@ impl Capability for McpCapability {
     }
 }
 
-/// Capability ID constant for MCP capabilities
-impl CapabilityId {
+/// MCP-namespace helpers for [`CapabilityId`].
+///
+/// An extension trait because the ID type lives in the neutral
+/// `everruns-capability` contract crate while the `mcp:` namespace is owned
+/// by this capability implementation.
+pub trait McpCapabilityIdExt: Sized {
     /// Check if this capability ID is for an MCP server
-    pub fn is_mcp(&self) -> bool {
+    fn is_mcp(&self) -> bool;
+    /// Create a capability ID for an MCP server
+    fn mcp(server_id: Uuid) -> Self;
+    /// Parse MCP server UUID from this capability ID
+    fn mcp_server_id(&self) -> Option<Uuid>;
+}
+
+impl McpCapabilityIdExt for CapabilityId {
+    fn is_mcp(&self) -> bool {
         is_mcp_capability(self.as_str())
     }
 
-    /// Create a capability ID for an MCP server
-    pub fn mcp(server_id: Uuid) -> Self {
+    fn mcp(server_id: Uuid) -> Self {
         Self::new(mcp_capability_id(server_id))
     }
 
-    /// Parse MCP server UUID from this capability ID
-    pub fn mcp_server_id(&self) -> Option<Uuid> {
+    fn mcp_server_id(&self) -> Option<Uuid> {
         parse_mcp_capability_id(self.as_str())
     }
 }

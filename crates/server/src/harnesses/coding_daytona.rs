@@ -108,7 +108,7 @@ mod tests {
         let capability_ids: Vec<&str> = harness
             .capabilities
             .iter()
-            .map(|cap| cap.id.as_str())
+            .map(|cap| cap.capability_id())
             .collect();
 
         assert!(capability_ids.contains(&"daytona"));

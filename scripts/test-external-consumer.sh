@@ -1,11 +1,18 @@
 #!/usr/bin/env bash
 # Build and run real out-of-workspace consumers of the published crates:
 #
-#   external-consumer-app  runs one offline turn on the `everruns` facade.
-#   external-event-log     implements the canonical `EventLog`/`EventReader`
-#                          SPI from `everruns-host` and supplies it to host
-#                          composition, so the SPI fails here if it stops being
-#                          implementable without in-crate access.
+#   external-consumer-app     runs offline turns on the `everruns` facade,
+#                             including capabilities installed from the
+#                             external capability pack.
+#   external-capability-pack  implements `IntoCapability` and a code-defined
+#                             capability against the neutral
+#                             `everruns-capability` contract ALONE (EVE-873),
+#                             so the open capability seams fail here if they
+#                             stop being usable without core/host access.
+#   external-event-log        implements the canonical `EventLog`/`EventReader`
+#                             SPI from `everruns-host` and supplies it to host
+#                             composition, so the SPI fails here if it stops
+#                             being implementable without in-crate access.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under
@@ -30,6 +37,11 @@ if [ "$answer" != "4" ]; then
 fi
 
 echo "External consumer runs on the public everruns facade under -D warnings: $answer"
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-capability-pack
+
+echo "External capability pack builds on the neutral everruns-capability contract under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-event-log

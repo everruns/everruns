@@ -399,9 +399,9 @@ pub fn cap_tuples(caps: &[AgentCapabilityConfig]) -> Vec<(String, i32, serde_jso
             let config = if is_declarative_capability(c.capability_id()) {
                 serde_json::json!({})
             } else {
-                c.config.clone()
+                c.config_value().clone()
             };
-            (c.capability_ref.to_string(), i as i32, config)
+            (c.capability_id().to_string(), i as i32, config)
         })
         .collect()
 }

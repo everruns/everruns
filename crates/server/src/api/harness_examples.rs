@@ -34,6 +34,7 @@ pub struct HarnessExample {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_name: Option<String>,
     /// Capabilities the example will assign with their per-harness config.
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Whether this example is only available when experimental features are on.
     pub dev_only: bool,
@@ -50,7 +51,12 @@ fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
             .definition
             .capabilities
             .iter()
-            .map(|cap| AgentCapabilityConfig::with_config(cap.id.clone(), cap.config.clone()))
+            .map(|cap| {
+                AgentCapabilityConfig::with_config(
+                    cap.typed_id().clone(),
+                    cap.config_value().clone(),
+                )
+            })
             .collect(),
         dev_only: ex.dev_only,
     }
@@ -99,7 +105,7 @@ pub async fn list_examples(
             ex.definition
                 .capabilities
                 .iter()
-                .all(|cap| platform.capability_registry().has(&cap.id))
+                .all(|cap| platform.capability_registry().has(cap.capability_id()))
         })
         .map(example_to_dto)
         .collect();

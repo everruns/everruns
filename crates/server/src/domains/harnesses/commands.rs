@@ -798,6 +798,7 @@ pub struct PreviewHarness {
     #[serde(default)]
     pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,

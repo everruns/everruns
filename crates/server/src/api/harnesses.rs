@@ -218,7 +218,7 @@ pub async fn import_harness(
         .definition
         .capabilities
         .iter()
-        .map(|c| c.id.as_str())
+        .map(|c| c.capability_id())
         .filter(|id| !state.platform_definition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
@@ -251,7 +251,9 @@ pub async fn import_harness(
         .definition
         .capabilities
         .iter()
-        .map(|cap| AgentCapabilityConfig::with_config(cap.id.clone(), cap.config.clone()))
+        .map(|cap| {
+            AgentCapabilityConfig::with_config(cap.typed_id().clone(), cap.config_value().clone())
+        })
         .collect();
 
     // Pick a non-colliding name with random suffix retry — same strategy as

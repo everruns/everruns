@@ -135,6 +135,7 @@ jobs:
                   "everruns-openui",
                   "everruns-a2ui",
                   "everruns-provider",
+                  "everruns-capability",
               ],
               "crates/engine/Cargo.toml": [
                   "everruns-core",
@@ -152,6 +153,7 @@ jobs:
                   "everruns-platform",
               ],
               "crates/everruns/Cargo.toml": [
+                  "everruns-capability",
                   "everruns-core",
                   "everruns-host",
                   "everruns-local",
@@ -247,6 +249,9 @@ jobs:
             everruns-a2ui
             everruns-provider
             everruns-meta
+            # The dependency-light neutral capability contract publishes
+            # before core, which re-exports it.
+            everruns-capability
             everruns-core
             # The sans-I/O planner and backend entities publish before the host
             # implementation that composes them.

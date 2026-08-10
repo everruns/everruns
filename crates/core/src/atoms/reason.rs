@@ -103,12 +103,11 @@ async fn apply_tool_call_repair(
 
     // Opt-in: only run when the capability is enabled for this agent.
     let Some(cfg) = resolved_capability_configs.iter().find(|c| {
-        capability_registry.canonical_id(c.capability_ref.as_str())
-            == Some(TOOL_CALL_REPAIR_CAPABILITY_ID)
+        capability_registry.canonical_id(c.capability_id()) == Some(TOOL_CALL_REPAIR_CAPABILITY_ID)
     }) else {
         return;
     };
-    let repair_config = ToolCallRepairConfig::from_json(&cfg.config);
+    let repair_config = ToolCallRepairConfig::from_json(cfg.config_value());
 
     for call in tool_calls.iter_mut() {
         // Schema for the targeted tool, if its definition is available.
@@ -1012,9 +1011,9 @@ impl ReasonAtom {
         resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
-                let cap = self.capability_registry.get(cfg.capability_ref.as_str())?;
+                let cap = self.capability_registry.get(cfg.capability_id())?;
                 let hook = cap.llm_error_hook()?;
-                Some((hook, cfg.config.clone()))
+                Some((hook, cfg.config_value().clone()))
             })
             .collect()
     }
@@ -1564,7 +1563,7 @@ impl ReasonAtom {
         )> = resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
-                let cap_id = cfg.capability_ref.as_str();
+                let cap_id = cfg.capability_id();
                 let cap = self.capability_registry.get(cap_id)?;
                 let guards = cap.output_guardrails();
                 if guards.is_empty() {
@@ -1573,7 +1572,7 @@ impl ReasonAtom {
                 Some(
                     guards
                         .into_iter()
-                        .map(move |g| (cap_id, &cfg.config, g))
+                        .map(move |g| (cap_id, cfg.config_value(), g))
                         .collect::<Vec<_>>(),
                 )
             })
@@ -1588,9 +1587,9 @@ impl ReasonAtom {
         let post_output_providers: Vec<PostGenerationProvider> = resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
-                let cap_id = cfg.capability_ref.as_str();
+                let cap_id = cfg.capability_id();
                 let cap = self.capability_registry.get(cap_id)?;
-                let providers = cap.post_output_guardrails_with_config(&cfg.config);
+                let providers = cap.post_output_guardrails_with_config(cfg.config_value());
                 if providers.is_empty() {
                     return None;
                 }
@@ -1614,9 +1613,9 @@ impl ReasonAtom {
         let annotation_providers: Vec<AnnotationProvider> = resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
-                let cap_id = cfg.capability_ref.as_str();
+                let cap_id = cfg.capability_id();
                 let cap = self.capability_registry.get(cap_id)?;
-                let providers = cap.post_output_annotation_hooks_with_config(&cfg.config);
+                let providers = cap.post_output_annotation_hooks_with_config(cfg.config_value());
                 if providers.is_empty() {
                     return None;
                 }
@@ -1639,9 +1638,9 @@ impl ReasonAtom {
         let citation_verifiers: Vec<VerifierProvider> = resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
-                let cap_id = cfg.capability_ref.as_str();
+                let cap_id = cfg.capability_id();
                 let cap = self.capability_registry.get(cap_id)?;
-                let verifier = cap.citation_verifier_with_config(&cfg.config)?;
+                let verifier = cap.citation_verifier_with_config(cfg.config_value())?;
                 Some(VerifierProvider {
                     capability_id: cap_id.to_string(),
                     provider: verifier,

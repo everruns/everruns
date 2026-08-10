@@ -21,7 +21,9 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
-use everruns_core::capabilities::{Capability, CapabilityRegistry};
+use everruns_core::capabilities::{
+    Capability, CapabilityRegistry, McpCapabilityIdExt, SkillCapabilityIdExt,
+};
 use everruns_core::{
     Caller, CapabilityId, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition,
     McpCapability, RiskLevel, Skill, declarative_capability_info, is_declarative_capability,
@@ -568,7 +570,7 @@ impl CapabilityService {
         let mut builtin_cap_configs: Vec<everruns_core::AgentCapabilityConfig> = Vec::new();
 
         for cap_config in &capability_configs {
-            let cap_ref = &cap_config.capability_ref;
+            let cap_ref = &cap_config.typed_id();
             if let Some(server_id) = cap_ref.mcp_server_id() {
                 mcp_cap_ids.push(server_id);
             } else if cap_ref.skill_id().is_some() {

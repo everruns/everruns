@@ -2321,9 +2321,9 @@ mod tests {
 
         let agent = proto_agent_to_schema(proto_agent).unwrap();
 
-        assert_eq!(agent.capabilities[0].config["name"], "resend");
+        assert_eq!(agent.capabilities[0].config_value()["name"], "resend");
         serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
-            agent.capabilities[0].config.clone(),
+            agent.capabilities[0].config_value().clone(),
         )
         .expect("plugin definition remains runtime-loadable");
     }
@@ -2344,7 +2344,10 @@ mod tests {
         let agent = proto_agent_to_schema(proto_agent).unwrap();
 
         assert_eq!(agent.capabilities[0].capability_id(), "session");
-        assert_eq!(agent.capabilities[0].config, serde_json::json!({}));
+        assert_eq!(
+            agent.capabilities[0].config_value().clone(),
+            serde_json::json!({})
+        );
     }
 
     #[test]

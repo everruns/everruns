@@ -2073,13 +2073,15 @@ impl SessionService {
             let Some(capability) = self.capability_registry.get(config.capability_id()) else {
                 continue;
             };
-            let specs = capability.user_hooks_with_config(&config.config);
+            let specs = capability.user_hooks_with_config(config.config_value());
             if !specs.is_empty() {
                 contributions.push((config.capability_id().to_string(), specs));
             }
             if config.capability_id() == "user_hooks" {
                 disabled.extend(
-                    everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+                    everruns_core::capabilities::user_hooks::disabled_contributions(
+                        config.config_value(),
+                    ),
                 );
             }
         }
@@ -2230,8 +2232,8 @@ impl SessionService {
         else {
             return Ok(vec![]);
         };
-        let memory_config: MemoryConfig =
-            serde_json::from_value(config.config.clone()).map_err(|error| {
+        let memory_config: MemoryConfig = serde_json::from_value(config.config_value().clone())
+            .map_err(|error| {
                 BadRequestError::new(format!("Invalid workspace memory config: {error}"))
             })?;
         let mut mounts = Vec::with_capacity(memory_config.mounts.len());
@@ -2724,7 +2726,7 @@ fn sanitize_session_capabilities(
         .map(|mut capability| {
             if capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID
                 && let Some(provider_config) = capability
-                    .config
+                    .config_mut()
                     .get_mut("provider_config")
                     .and_then(serde_json::Value::as_object_mut)
             {
@@ -2880,7 +2882,7 @@ mod tests {
 
         let sanitized = sanitize_session_capabilities(capabilities);
         let provider_config = sanitized[0]
-            .config
+            .config_value()
             .get("provider_config")
             .and_then(serde_json::Value::as_object)
             .expect("provider_config should be object");

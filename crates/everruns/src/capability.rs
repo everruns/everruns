@@ -7,6 +7,14 @@
 //! engine contracts needed by capability authors without exposing registries,
 //! stores, tenancy, or host implementation types.
 //!
+//! The authoring types are the neutral `everruns-capability` contract
+//! (EVE-873), re-exported here at their stable Framework paths. Capability
+//! packages that want a dependency-light build can depend on
+//! `everruns-capability` directly (its `definition` module is this same
+//! surface); applications keep depending only on `everruns`. This module
+//! additionally owns the private adapters that install a [`Definition`] onto
+//! the in-process runtime.
+//!
 //! # Example
 //!
 //! ```
@@ -70,160 +78,27 @@
 
 #![deny(missing_docs)]
 
-use std::fmt;
 use std::sync::Arc;
 
 use everruns_core::capabilities::Capability as CoreCapability;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
 use everruns_core::{ToolContext, ToolHints};
-use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-pub use async_trait::async_trait;
-pub use schemars::{self, JsonSchema};
-pub use serde::{self, Deserialize, Serialize};
-pub use serde_json;
+pub use everruns_capability::definition::{
+    CallCancellation, CancellationSignal, Context, Definition, Deserialize, Error, ErrorVisibility,
+    Handler, Hints, JsonSchema, ProgressSink, Serialize, Tool, ToolSpec, async_trait, schemars,
+    serde, serde_json,
+};
 
-/// A reusable code-defined capability.
-///
-/// A definition is an immutable value: clone it to install the same capability
-/// on several agents. The runtime registers it privately when the agent's
-/// session starts; capability authors never manipulate an engine registry.
-#[derive(Clone)]
-pub struct Definition {
-    id: String,
-    name: String,
-    description: String,
-    instructions: Option<String>,
-    metadata: Option<Value>,
-    tools: Vec<Tool>,
-}
+// ============================================================================
+// Runtime adapters (private): neutral contract -> in-process engine
+// ============================================================================
 
-impl Definition {
-    /// Start a capability definition.
-    ///
-    /// `id` is the stable persisted identifier. `name` and `description` are
-    /// human-facing catalog text. These values, tool names, and tool input
-    /// schemas are validated by [`AgentBuilder::build`](crate::AgentBuilder::build).
-    pub fn new(
-        id: impl Into<String>,
-        name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            name: name.into(),
-            description: description.into(),
-            instructions: None,
-            metadata: None,
-            tools: Vec::new(),
-        }
-    }
-
-    /// Add capability-level behavioral guidance to the agent's system prompt.
-    ///
-    /// Do not repeat facts already expressed by tool names, descriptions, or
-    /// schemas. Use this for cross-tool ordering, constraints, and semantics.
-    pub fn instructions(mut self, instructions: impl Into<String>) -> Self {
-        self.instructions = Some(instructions.into());
-        self
-    }
-
-    /// Attach host-owned, JSON metadata for catalogs and embedding hosts.
-    ///
-    /// The engine does not interpret this value. It may be persisted or shown
-    /// to clients, so it must never contain credentials or sensitive payloads.
-    pub fn metadata(mut self, metadata: impl Into<Value>) -> Self {
-        self.metadata = Some(metadata.into());
-        self
-    }
-
-    /// Add one typed tool handler.
-    pub fn tool<H>(mut self, handler: H) -> Self
-    where
-        H: Handler,
-    {
-        self.tools.push(Tool::new(handler));
-        self
-    }
-
-    /// The stable capability identifier.
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    /// The human-readable capability name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// The capability description.
-    pub fn description(&self) -> &str {
-        &self.description
-    }
-
-    /// Capability-level instructions, when configured.
-    pub fn instructions_text(&self) -> Option<&str> {
-        self.instructions.as_deref()
-    }
-
-    /// Host-owned capability metadata, when configured.
-    pub fn metadata_value(&self) -> Option<&Value> {
-        self.metadata.as_ref()
-    }
-
-    /// Typed tool descriptors in registration order.
-    pub fn tools(&self) -> &[Tool] {
-        &self.tools
-    }
-
-    pub(crate) fn validate(&self) -> Result<(), String> {
-        crate::capability_config::validate_capability_id(&self.id)?;
-        if self.name.trim().is_empty() {
-            return Err("capability name must not be blank".to_string());
-        }
-        if self.description.trim().is_empty() {
-            return Err("capability description must not be blank".to_string());
-        }
-        if self
-            .instructions
-            .as_ref()
-            .is_some_and(|text| text.trim().is_empty())
-        {
-            return Err("capability instructions must not be blank".to_string());
-        }
-        if self.tools.is_empty() {
-            return Err("capability must define at least one tool".to_string());
-        }
-        if let Some(tool) = self
-            .tools
-            .iter()
-            .find(|tool| tool.spec.description.trim().is_empty())
-        {
-            return Err(format!(
-                "tool {:?} description must not be blank",
-                tool.spec.name
-            ));
-        }
-        Ok(())
-    }
-
-    pub(crate) fn runtime_adapter(&self) -> RuntimeDefinition {
-        RuntimeDefinition(self.clone())
-    }
-}
-
-impl fmt::Debug for Definition {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Definition")
-            .field("id", &self.id)
-            .field("name", &self.name)
-            .field("description", &self.description)
-            .field("instructions", &self.instructions)
-            .field("metadata", &self.metadata)
-            .field("tools", &self.tools)
-            .finish()
-    }
+/// Adapt a neutral [`Definition`] into the engine's `Capability` trait for
+/// private registration on this agent's runtime.
+pub(crate) fn runtime_adapter(definition: &Definition) -> RuntimeDefinition {
+    RuntimeDefinition(definition.clone())
 }
 
 pub(crate) struct RuntimeDefinition(Definition);
@@ -231,136 +106,59 @@ pub(crate) struct RuntimeDefinition(Definition);
 #[async_trait]
 impl CoreCapability for RuntimeDefinition {
     fn id(&self) -> &str {
-        &self.0.id
+        self.0.id()
     }
 
     fn name(&self) -> &str {
-        &self.0.name
+        self.0.name()
     }
 
     fn description(&self) -> &str {
-        &self.0.description
+        self.0.description()
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        self.0.instructions.as_deref()
+        self.0.instructions_text()
     }
 
     fn metadata(&self) -> Option<Value> {
-        self.0.metadata.clone()
+        self.0.metadata_value().cloned()
     }
 
     fn tools(&self) -> Vec<Box<dyn CoreTool>> {
         self.0
-            .tools
+            .tools()
             .iter()
             .cloned()
-            .map(|tool| Box::new(tool) as Box<dyn CoreTool>)
+            .map(|tool| Box::new(CoreToolAdapter(tool)) as Box<dyn CoreTool>)
             .collect()
     }
 }
 
-/// Implemented by one typed tool inside an advanced capability.
-///
-/// Input values are deserialized after the model calls the tool. Output values
-/// are serialized as JSON without a `String` intermediary. Both types also
-/// provide schemas, allowing hosts and documentation to inspect the full
-/// protocol even though the current model protocol consumes only the input
-/// schema.
-#[async_trait]
-pub trait Handler: Send + Sync + 'static {
-    /// Typed tool arguments.
-    type Input: DeserializeOwned + JsonSchema + Send + 'static;
-    /// Typed, JSON-serializable tool result.
-    type Output: Serialize + JsonSchema + Send + 'static;
-    /// Structured handler error. Custom error enums can implement `Into<Error>`.
-    type Error: Into<Error> + Send + 'static;
-
-    /// Stable model-facing tool name.
-    fn name(&self) -> &str;
-    /// Model-facing description of when and how to use the tool.
-    fn description(&self) -> &str;
-
-    /// Optional human-readable display name for clients.
-    fn display_name(&self) -> Option<&str> {
-        None
-    }
-
-    /// Semantic and host-owned tool metadata.
-    fn hints(&self) -> Hints {
-        Hints::default()
-    }
-
-    /// Execute one call.
-    ///
-    /// Awaited work is cancelled by dropping this future when the turn stops.
-    /// Use [`Context::cancellation`] for child tasks or resources that can
-    /// outlive this future, and [`Context::progress`] for correlated status.
-    async fn execute(
-        &self,
-        input: Self::Input,
-        context: Context,
-    ) -> Result<Self::Output, Self::Error>;
-}
-
-/// A type-erased typed tool plus its stable protocol descriptor.
-///
-/// Constructed through [`Definition::tool`] in normal use. The public accessor
-/// exists so capability packages can test and document their exported schema.
-#[derive(Clone)]
-pub struct Tool {
-    spec: ToolSpec,
-    handler: Arc<dyn ErasedHandler>,
-}
-
-impl Tool {
-    fn new<H: Handler>(handler: H) -> Self {
-        let spec = ToolSpec {
-            name: handler.name().to_string(),
-            display_name: handler.display_name().map(str::to_string),
-            description: handler.description().to_string(),
-            input_schema: schema_for::<H::Input>(),
-            output_schema: schema_for::<H::Output>(),
-            hints: handler.hints(),
-        };
-        Self {
-            spec,
-            handler: Arc::new(HandlerAdapter(handler)),
-        }
-    }
-
-    /// The stable tool protocol descriptor.
-    pub fn spec(&self) -> &ToolSpec {
-        &self.spec
-    }
-}
-
-impl fmt::Debug for Tool {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Tool").field("spec", &self.spec).finish()
-    }
-}
+/// Adapt one neutral capability [`Tool`] onto the engine tool contract,
+/// bridging execution context, progress, cancellation, and structured errors.
+pub(crate) struct CoreToolAdapter(pub(crate) Tool);
 
 #[async_trait]
-impl CoreTool for Tool {
+impl CoreTool for CoreToolAdapter {
     fn name(&self) -> &str {
-        &self.spec.name
+        self.0.spec().name()
     }
 
     fn display_name(&self) -> Option<&str> {
-        self.spec.display_name.as_deref()
+        self.0.spec().display_name()
     }
 
     fn description(&self) -> &str {
-        &self.spec.description
+        self.0.spec().description()
     }
 
     fn parameters_schema(&self) -> Value {
-        self.spec.input_schema.clone()
+        self.0.spec().input_schema().clone()
     }
 
     fn hints(&self) -> ToolHints {
-        self.spec.hints.to_core()
+        hints_to_core(self.0.spec().hints())
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -374,8 +172,11 @@ impl CoreTool for Tool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let context = Context::from_core(self.spec.name.clone(), context.clone());
-        self.handler.call(arguments, context).await
+        let context = context_from_core(self.0.spec().name(), context);
+        match self.0.invoke(arguments, context).await {
+            Ok(output) => ToolExecutionResult::success(output),
+            Err(error) => error_into_execution_result(error),
+        }
     }
 
     fn requires_context(&self) -> bool {
@@ -383,360 +184,94 @@ impl CoreTool for Tool {
     }
 }
 
-#[async_trait]
-trait ErasedHandler: Send + Sync {
-    async fn call(&self, input: Value, context: Context) -> ToolExecutionResult;
-}
-
-struct HandlerAdapter<H>(H);
-
-#[async_trait]
-impl<H: Handler> ErasedHandler for HandlerAdapter<H> {
-    async fn call(&self, input: Value, context: Context) -> ToolExecutionResult {
-        let input = match serde_json::from_value::<H::Input>(input) {
-            Ok(input) => input,
-            Err(error) => {
-                return Error::user(
-                    "invalid_arguments",
-                    format!("tool arguments did not match the declared schema: {error}"),
-                )
-                .into_execution_result();
-            }
-        };
-        match self.0.execute(input, context).await {
-            Ok(output) => match serde_json::to_value(output) {
-                Ok(output) => ToolExecutionResult::success(output),
-                Err(error) => Error::internal(
-                    "result_serialization",
-                    format!("failed to serialize capability result: {error}"),
-                )
-                .into_execution_result(),
-            },
-            Err(error) => error.into().into_execution_result(),
-        }
+fn hints_to_core(hints: &Hints) -> ToolHints {
+    ToolHints {
+        readonly: hints.readonly,
+        destructive: hints.destructive,
+        idempotent: hints.idempotent,
+        open_world: hints.open_world,
+        long_running: hints.long_running,
+        concurrency_class: hints.concurrency_class.clone(),
+        metadata: hints.metadata.clone(),
+        ..ToolHints::default()
     }
 }
 
-fn schema_for<T: JsonSchema>() -> Value {
-    serde_json::to_value(schemars::schema_for!(T)).unwrap_or(Value::Null)
+/// Build the neutral execution [`Context`] from the engine's `ToolContext`.
+fn context_from_core(tool_name: &str, inner: &ToolContext) -> Context {
+    Context::new(
+        tool_name,
+        inner.session_id.to_string(),
+        inner.workspace_id.to_string(),
+    )
+    .with_locale(inner.locale.clone())
+    .with_progress_sink(Arc::new(CoreProgressSink {
+        tool_name: tool_name.to_string(),
+        inner: inner.clone(),
+    }))
+    .with_cancellation_signal(Arc::new(TokenCancellationSignal(
+        inner.cancellation.clone().unwrap_or_default(),
+    )))
 }
 
-/// Stable metadata and JSON schemas for one capability tool.
-#[derive(Clone, Debug)]
-pub struct ToolSpec {
-    name: String,
-    display_name: Option<String>,
-    description: String,
-    input_schema: Value,
-    output_schema: Value,
-    hints: Hints,
-}
-
-impl ToolSpec {
-    /// Stable model-facing name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-    /// Optional human-readable display name.
-    pub fn display_name(&self) -> Option<&str> {
-        self.display_name.as_deref()
-    }
-    /// Model-facing tool description.
-    pub fn description(&self) -> &str {
-        &self.description
-    }
-    /// Generated JSON Schema for [`Handler::Input`].
-    pub fn input_schema(&self) -> &Value {
-        &self.input_schema
-    }
-    /// Generated JSON Schema for [`Handler::Output`].
-    pub fn output_schema(&self) -> &Value {
-        &self.output_schema
-    }
-    /// Semantic and host-owned annotations.
-    pub fn hints(&self) -> &Hints {
-        &self.hints
-    }
-}
-
-/// Semantic and host-owned annotations for a capability tool.
-///
-/// Boolean values are `Option<bool>` so unspecified remains distinct from
-/// false. Hints inform scheduling and clients; they do not grant authority.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct Hints {
-    /// The tool does not modify state.
-    pub readonly: Option<bool>,
-    /// The tool may irreversibly delete or destroy state.
-    pub destructive: Option<bool>,
-    /// Repeating a call with the same arguments is safe.
-    pub idempotent: Option<bool>,
-    /// The tool interacts with systems outside the local process.
-    pub open_world: Option<bool>,
-    /// The tool may commonly take more than a few seconds.
-    pub long_running: Option<bool>,
-    /// Calls sharing this non-empty key execute sequentially.
-    pub concurrency_class: Option<String>,
-    /// Host-owned annotations. Never include credentials or sensitive data.
-    pub metadata: Option<Value>,
-}
-
-impl Hints {
-    /// Mark whether the tool is read-only.
-    pub fn readonly(mut self, value: bool) -> Self {
-        self.readonly = Some(value);
-        self
-    }
-    /// Mark whether the tool can destroy state.
-    pub fn destructive(mut self, value: bool) -> Self {
-        self.destructive = Some(value);
-        self
-    }
-    /// Mark whether identical calls are safe to repeat.
-    pub fn idempotent(mut self, value: bool) -> Self {
-        self.idempotent = Some(value);
-        self
-    }
-    /// Mark whether the tool reaches external systems.
-    pub fn open_world(mut self, value: bool) -> Self {
-        self.open_world = Some(value);
-        self
-    }
-    /// Mark whether the tool is commonly long-running.
-    pub fn long_running(mut self, value: bool) -> Self {
-        self.long_running = Some(value);
-        self
-    }
-    /// Serialize calls that share this scheduling class.
-    pub fn concurrency_class(mut self, value: impl Into<String>) -> Self {
-        self.concurrency_class = Some(value.into());
-        self
-    }
-    /// Attach host-owned JSON annotations.
-    pub fn metadata(mut self, value: impl Into<Value>) -> Self {
-        self.metadata = Some(value.into());
-        self
-    }
-
-    fn to_core(&self) -> ToolHints {
-        ToolHints {
-            readonly: self.readonly,
-            destructive: self.destructive,
-            idempotent: self.idempotent,
-            open_world: self.open_world,
-            long_running: self.long_running,
-            concurrency_class: self.concurrency_class.clone(),
-            metadata: self.metadata.clone(),
-            ..ToolHints::default()
-        }
-    }
-}
-
-/// Runtime context available to an advanced capability tool.
-///
-/// This is a narrow projection: identity, locale, progress, and cancellation.
-/// Backend stores, credentials, tenant objects, registries, and host extensions
-/// intentionally remain private implementation details.
-#[derive(Clone)]
-pub struct Context {
+struct CoreProgressSink {
     tool_name: String,
-    session_id: String,
-    workspace_id: String,
-    locale: Option<String>,
-    cancellation: CallCancellation,
     inner: ToolContext,
 }
 
-impl Context {
-    fn from_core(tool_name: String, inner: ToolContext) -> Self {
-        Self {
-            tool_name,
-            session_id: inner.session_id.to_string(),
-            workspace_id: inner.workspace_id.to_string(),
-            locale: inner.locale.clone(),
-            cancellation: CallCancellation {
-                inner: inner.cancellation.clone().unwrap_or_default(),
-            },
-            inner,
+#[async_trait]
+impl ProgressSink for CoreProgressSink {
+    async fn emit(&self, tool_name: &str, message: &str) {
+        // Prefer the tool name the context was armed with; the neutral layer
+        // passes the same value through.
+        let name = if tool_name.is_empty() {
+            &self.tool_name
+        } else {
+            tool_name
+        };
+        self.inner.emit_progress(name, message).await;
+    }
+}
+
+struct TokenCancellationSignal(tokio_util::sync::CancellationToken);
+
+impl CancellationSignal for TokenCancellationSignal {
+    fn is_cancelled(&self) -> bool {
+        self.0.is_cancelled()
+    }
+
+    fn cancelled<'a>(&'a self) -> everruns_capability::definition::BoxFuture<'a, ()> {
+        Box::pin(self.0.cancelled())
+    }
+}
+
+/// Serialize a structured capability [`Error`] onto the engine's tool result
+/// contract, preserving the model-visibility boundary: user errors keep code,
+/// message, and details; internal errors are logged and replaced with a
+/// generic model-visible message.
+fn error_into_execution_result(error: Error) -> ToolExecutionResult {
+    let (visibility, code, message, details) = error.into_parts();
+    match visibility {
+        ErrorVisibility::User => {
+            let payload = json!({
+                "code": code,
+                "message": message,
+                "details": details,
+            });
+            ToolExecutionResult::tool_error(payload.to_string())
         }
-    }
-
-    /// Opaque session identifier for correlation and application-side scoping.
-    pub fn session_id(&self) -> &str {
-        &self.session_id
-    }
-
-    /// Opaque identifier of the workspace attached to this session.
-    pub fn workspace_id(&self) -> &str {
-        &self.workspace_id
-    }
-
-    /// Resolved BCP 47 locale, when the host supplied one.
-    pub fn locale(&self) -> Option<&str> {
-        self.locale.as_deref()
-    }
-
-    /// Call-scoped cancellation signal for work that may outlive `execute`.
-    pub fn cancellation(&self) -> &CallCancellation {
-        &self.cancellation
-    }
-
-    /// Emit a best-effort, correlated `tool.progress` event.
-    ///
-    /// Delivery failure never fails the tool. Subscribe with
-    /// [`Session::events`](crate::Session::events) and match
-    /// [`SessionEventKind::ToolProgress`](crate::SessionEventKind::ToolProgress).
-    pub async fn progress(&self, message: impl AsRef<str>) {
-        self.inner
-            .emit_progress(&self.tool_name, message.as_ref())
-            .await;
+        // `ErrorVisibility` is non-exhaustive; treat anything unknown as
+        // internal so new variants never leak details to the model.
+        _ => ToolExecutionResult::internal_error_msg(format!(
+            "capability error [{}]: {}{}",
+            code,
+            message,
+            details
+                .map(|details| format!("; details={details}"))
+                .unwrap_or_default()
+        )),
     }
 }
-
-impl fmt::Debug for Context {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Context")
-            .field("tool_name", &self.tool_name)
-            .field("session_id", &self.session_id)
-            .field("workspace_id", &self.workspace_id)
-            .field("locale", &self.locale)
-            .field("cancelled", &self.cancellation.is_cancelled())
-            .finish()
-    }
-}
-
-/// Cancellation signal tied to one tool call's lifetime.
-///
-/// The engine cancels it when the call returns, fails, or is dropped because
-/// the turn was cancelled. Ordinary awaited work needs no special handling:
-/// its future is dropped with the call. Clone this signal into child tasks,
-/// processes, or watchers that could otherwise outlive `execute`.
-#[derive(Clone)]
-pub struct CallCancellation {
-    inner: tokio_util::sync::CancellationToken,
-}
-
-impl CallCancellation {
-    /// Whether the tool call has ended or been cancelled.
-    pub fn is_cancelled(&self) -> bool {
-        self.inner.is_cancelled()
-    }
-
-    /// Resolve when the tool call ends or is cancelled.
-    pub async fn cancelled(&self) {
-        self.inner.cancelled().await;
-    }
-}
-
-impl fmt::Debug for CallCancellation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CallCancellation")
-            .field("cancelled", &self.is_cancelled())
-            .finish()
-    }
-}
-
-/// Whether a capability error is safe to show to the model.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum ErrorVisibility {
-    /// Expected domain failure; code, message, and details are model-visible.
-    User,
-    /// Unexpected implementation failure; details are hidden from the model.
-    Internal,
-}
-
-/// A structured capability error with stable code, message, and JSON details.
-///
-/// Use [`Error::user`] for expected failures the model can act on and
-/// [`Error::internal`] for diagnostic details that are unsafe to show to the
-/// model. Internal messages are logged by the engine and replaced with a
-/// generic model-visible error, so they must not contain credentials or other
-/// secrets.
-#[derive(Debug)]
-pub struct Error {
-    visibility: ErrorVisibility,
-    code: String,
-    message: String,
-    details: Option<Value>,
-}
-
-impl Error {
-    /// Create an expected, model-visible domain error.
-    pub fn user(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            visibility: ErrorVisibility::User,
-            code: code.into(),
-            message: message.into(),
-            details: None,
-        }
-    }
-
-    /// Create an internal error whose details must not reach the model.
-    pub fn internal(code: impl Into<String>, message: impl Into<String>) -> Self {
-        Self {
-            visibility: ErrorVisibility::Internal,
-            code: code.into(),
-            message: message.into(),
-            details: None,
-        }
-    }
-
-    /// Attach structured JSON details.
-    pub fn details(mut self, details: impl Into<Value>) -> Self {
-        self.details = Some(details.into());
-        self
-    }
-
-    /// Stable machine-readable error code.
-    pub fn code(&self) -> &str {
-        &self.code
-    }
-
-    /// Human-readable error message.
-    pub fn message(&self) -> &str {
-        &self.message
-    }
-
-    /// Structured details, when present.
-    pub fn details_value(&self) -> Option<&Value> {
-        self.details.as_ref()
-    }
-
-    /// Whether the error is model-visible or internal.
-    pub fn visibility(&self) -> ErrorVisibility {
-        self.visibility
-    }
-
-    fn into_execution_result(self) -> ToolExecutionResult {
-        match self.visibility {
-            ErrorVisibility::User => {
-                let payload = json!({
-                    "code": self.code,
-                    "message": self.message,
-                    "details": self.details,
-                });
-                ToolExecutionResult::tool_error(payload.to_string())
-            }
-            ErrorVisibility::Internal => ToolExecutionResult::internal_error_msg(format!(
-                "capability error [{}]: {}{}",
-                self.code,
-                self.message,
-                self.details
-                    .map(|details| format!("; details={details}"))
-                    .unwrap_or_default()
-            )),
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}] {}", self.code, self.message)
-    }
-}
-
-impl std::error::Error for Error {}
 
 #[cfg(test)]
 mod tests {
@@ -831,7 +366,7 @@ mod tests {
 
     #[tokio::test]
     async fn typed_non_string_result_serializes_as_json() {
-        let tool = lookup_capability().tools()[0].clone();
+        let tool = CoreToolAdapter(lookup_capability().tools()[0].clone());
         let context = ToolContext::new(SessionId::new())
             .with_cancellation(tokio_util::sync::CancellationToken::new());
         let result = tool
@@ -873,8 +408,9 @@ mod tests {
     #[tokio::test]
     async fn structured_user_error_keeps_code_message_and_details() {
         let capability = Definition::new("failures", "Failures", "Error test.").tool(Failing);
+        let tool = CoreToolAdapter(capability.tools()[0].clone());
         let context = ToolContext::new(SessionId::new());
-        let result = capability.tools()[0]
+        let result = tool
             .execute_with_context(json!({ "city": "Atlantis" }), &context)
             .await;
 
@@ -889,10 +425,11 @@ mod tests {
 
     #[test]
     fn internal_error_details_do_not_cross_the_model_boundary() {
-        let result = Error::internal("upstream_failed", "private endpoint returned token=secret")
-            .details(json!({ "trace": "private-trace" }))
-            .into_execution_result()
-            .into_tool_result("call_private", "private_tool");
+        let result = error_into_execution_result(
+            Error::internal("upstream_failed", "private endpoint returned token=secret")
+                .details(json!({ "trace": "private-trace" })),
+        )
+        .into_tool_result("call_private", "private_tool");
 
         let visible = result.error.expect("generic model-visible error");
         assert_eq!(

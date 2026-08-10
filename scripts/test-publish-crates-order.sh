@@ -107,6 +107,8 @@ for crate in published:
 # Spot-check the edges this contract exists for (EVE-846), so a refactor that
 # drops a crate from the list fails loudly rather than silently passing.
 for earlier, later in (
+    ("everruns-capability", "everruns-core"),
+    ("everruns-capability", "everruns"),
     ("everruns-core", "everruns-engine"),
     ("everruns-core", "everruns-host"),
     ("everruns-engine", "everruns-host"),
@@ -124,6 +126,8 @@ for earlier, later in (
 
 # The workflow's own version verification must cover the same edges.
 for manifest_rel, dependency in (
+    ("crates/core/Cargo.toml", "everruns-capability"),
+    ("crates/everruns/Cargo.toml", "everruns-capability"),
     ("crates/engine/Cargo.toml", "everruns-core"),
     ("crates/host/Cargo.toml", "everruns-core"),
     ("crates/host/Cargo.toml", "everruns-engine"),
@@ -147,7 +151,7 @@ workspace_pins = re.search(r"WORKSPACE_PIN_DEPS:\s*list\[str\]\s*=\s*\[(.*?)\]",
 if workspace_pins is None:
     fail("could not find WORKSPACE_PIN_DEPS in scripts/sync-publish-pin-versions.py")
 else:
-    for dependency in ("everruns-engine", "everruns-macros"):
+    for dependency in ("everruns-capability", "everruns-engine", "everruns-macros"):
         if f'"{dependency}"' not in workspace_pins.group(1):
             fail(f"scripts/sync-publish-pin-versions.py does not sync the {dependency} workspace pin")
 

@@ -59,6 +59,7 @@ pub struct CreateAgentRequest {
     /// Each capability has a `ref` (capability ID) and optional `config`.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this agent.
     #[serde(default)]
@@ -129,6 +130,7 @@ pub struct UpdateAgentRequest {
     /// Replaces existing capabilities. Each has a `ref` (capability ID) and optional `config`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    #[schema(value_type = Option<Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// Starter files copied into each new session for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -242,6 +244,7 @@ pub struct PreviewAgentRequest {
     /// Capabilities to apply with per-agent configuration.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "test_math", "config": {}}]))]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools to include in the preview.
     #[serde(default)]

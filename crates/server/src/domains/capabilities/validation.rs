@@ -52,6 +52,27 @@ pub async fn validate_capability_refs(
     for cap in capabilities {
         let cap_id = cap.capability_id();
 
+        // Neutral contract checks first (EVE-873): the same open-ID grammar
+        // and JSON-object config boundary the Framework enforces at agent
+        // build time, so invalid IDs and non-object configs fail identically
+        // on product write paths.
+        if let Err(error) = everruns_capability::validate_capability_id(cap_id) {
+            return Err(BadRequestError::new(format!(
+                "Invalid capability reference '{cap_id}': {}",
+                error.reason()
+            ))
+            .into());
+        }
+        if let Err(error) =
+            everruns_capability::validate_capability_config(cap_id, cap.config_value())
+        {
+            return Err(BadRequestError::new(format!(
+                "Invalid capability config for '{cap_id}': {}",
+                error.reason()
+            ))
+            .into());
+        }
+
         if is_mcp_capability(cap_id) {
             let uuid = parse_mcp_capability_id(cap_id)
                 .ok_or_else(|| anyhow::anyhow!("Invalid MCP capability reference: {cap_id}"))?;
@@ -95,9 +116,11 @@ pub async fn validate_capability_refs(
             let Some(capability) = reg.get(cap_id) else {
                 return Err(ResourceNotFoundError::new("Capability").into());
             };
-            capability.validate_config(&cap.config).map_err(|message| {
-                BadRequestError::new(format!("Invalid capability config: {message}"))
-            })?;
+            capability
+                .validate_config(cap.config_value())
+                .map_err(|message| {
+                    BadRequestError::new(format!("Invalid capability config: {message}"))
+                })?;
         }
     }
 
@@ -137,7 +160,7 @@ pub async fn normalize_capability_refs(
         {
             normalized.push(AgentCapabilityConfig::with_config(
                 declarative_capability_id(&row.name),
-                cap.config,
+                cap.config_value().clone(),
             ));
             continue;
         }
@@ -173,6 +196,58 @@ mod tests {
             ..everruns_core::FeatureFlags::default()
         };
         validate_feature_gated_capability_refs(&enabled, &capabilities).unwrap();
+    }
+
+    #[tokio::test]
+    async fn invalid_capability_ids_fail_like_the_framework() {
+        // One rule set (EVE-873): every ID the Framework's AgentBuilder
+        // rejects must be rejected by the server write path with the same
+        // neutral reason.
+        let db = Arc::new(StorageBackend::in_memory());
+        for id in [
+            "",
+            "2fast",
+            "has space",
+            "vendor/custom",
+            "__everruns_private",
+        ] {
+            let framework_reason = everruns_capability::validate_capability_id(id)
+                .unwrap_err()
+                .reason();
+            let err =
+                validate_capability_refs(&db, DEFAULT_ORG_ID, &[AgentCapabilityConfig::new(id)])
+                    .await
+                    .unwrap_err();
+            assert!(err.downcast_ref::<BadRequestError>().is_some(), "{id:?}");
+            assert!(
+                err.to_string().contains(&framework_reason),
+                "{id:?}: server error {err} should carry framework reason {framework_reason:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn non_object_capability_config_fails_like_the_framework() {
+        let db = Arc::new(StorageBackend::in_memory());
+        for config in [
+            serde_json::json!("string"),
+            serde_json::json!(42),
+            serde_json::json!([1, 2]),
+        ] {
+            let err = validate_capability_refs(
+                &db,
+                DEFAULT_ORG_ID,
+                &[AgentCapabilityConfig::with_config("current_time", config)],
+            )
+            .await
+            .unwrap_err();
+            assert!(err.downcast_ref::<BadRequestError>().is_some());
+            assert!(
+                err.to_string()
+                    .contains("capability config must be a JSON object"),
+                "unexpected error: {err}"
+            );
+        }
     }
 
     #[tokio::test]

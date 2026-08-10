@@ -112,7 +112,7 @@ mod tests {
         let capabilities = definition
             .capabilities
             .iter()
-            .map(|capability| capability.id.as_str())
+            .map(|capability| capability.capability_id())
             .collect::<Vec<_>>();
         assert_eq!(
             capabilities,

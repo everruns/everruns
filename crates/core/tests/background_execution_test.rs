@@ -23,10 +23,10 @@ fn ctx() -> SystemPromptContext {
 }
 
 fn cap(id: &str) -> AgentCapabilityConfig {
-    AgentCapabilityConfig {
-        capability_ref: CapabilityId::new(id),
-        config: serde_json::Value::Object(serde_json::Map::new()),
-    }
+    AgentCapabilityConfig::with_config(
+        CapabilityId::new(id),
+        serde_json::Value::Object(serde_json::Map::new()),
+    )
 }
 
 /// Assemble the executor registry the same way the worker does:
