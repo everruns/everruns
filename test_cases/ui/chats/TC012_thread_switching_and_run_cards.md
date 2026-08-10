@@ -9,7 +9,6 @@ started a run renders an inline run card in the turn that started it.
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 - Two chat threads with different transcripts, one bound to an agent that can delegate work
   (subagent or background task)

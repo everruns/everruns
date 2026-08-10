@@ -11325,7 +11325,7 @@
           "sessions"
         ],
         "summary": "POST /v1/sessions/chat - Get or create global chat session",
-        "description": "Returns the user's singleton global chat session. Creates one if it doesn't exist.\nUses the Platform Chat harness and tags for per-user singleton management.\nGated by the `global_chat` feature flag; returns 404 when disabled.",
+        "description": "Returns the user's singleton global chat session. Creates one if it doesn't exist.\nUses the Platform Chat harness and tags for per-user singleton management.",
         "operationId": "get_or_create_chat_session",
         "requestBody": {
           "content": {
@@ -11357,9 +11357,6 @@
           "401": {
             "description": "Authentication required"
           },
-          "404": {
-            "description": "Platform Chat feature (global_chat) is disabled for the org"
-          },
           "500": {
             "description": "Internal server error"
           }
@@ -11371,7 +11368,7 @@
         "tags": [
           "voice"
         ],
-        "description": "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires both the `global_chat` and `voice` feature flags; returns 404 when either is disabled.",
+        "description": "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires the `voice` feature flag; returns 404 when disabled.",
         "operationId": "create_chat_voice_session",
         "requestBody": {
           "content": {
@@ -11395,7 +11392,7 @@
             }
           },
           "404": {
-            "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
+            "description": "Voice is disabled for the org"
           }
         }
       }

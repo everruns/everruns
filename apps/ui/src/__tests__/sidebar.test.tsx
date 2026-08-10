@@ -105,7 +105,6 @@ jest.mock("@/components/layout/notification-bell", () => ({
 
 // Mock feature flags provider
 const mockFeatureFlags = {
-  global_chat: true,
   notifications: true,
   evals: true,
   skills: true,
@@ -150,7 +149,6 @@ describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     Object.assign(mockFeatureFlags, {
-      global_chat: true,
       notifications: true,
       evals: true,
       skills: true,
@@ -366,6 +364,7 @@ describe("Sidebar", () => {
     expect(screen.queryByText("Knowledge indexes")).not.toBeInTheDocument();
     expect(screen.queryByText("Plugins")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Chats" })).toHaveAttribute("href", "/chats");
   });
 
   it("renders correct navigation links", () => {

@@ -20,14 +20,12 @@ import {
 } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ChatThreadHeader } from "@/components/chat/chat-thread-header";
-import { ChatsDisabled } from "@/components/chat/chats-disabled";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHarnesses, usePageTitle } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { threadTitle } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 function ThreadContent({ threadId }: { threadId: string }) {
   const { session, agent, agentId, sessionLoading } = useSessionContext();
@@ -110,10 +108,5 @@ function ThreadRoute({ params }: { params: Promise<{ threadId: string }> }) {
 }
 
 export default function ChatThreadPage({ params }: { params: Promise<{ threadId: string }> }) {
-  // The flag gate answers before the route params are awaited: a disabled Chats
-  // must not depend on resolving anything.
-  const chatsEnabled = useFeatureFlag("global_chat");
-  if (!chatsEnabled) return <ChatsDisabled />;
-
   return <ThreadRoute params={params} />;
 }

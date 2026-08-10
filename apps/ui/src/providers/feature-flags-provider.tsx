@@ -13,7 +13,6 @@ import type { FeatureFlags } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
-  global_chat: false,
   notifications: false,
   evals: false,
   skills: false,

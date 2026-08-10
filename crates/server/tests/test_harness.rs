@@ -279,7 +279,6 @@ impl TestServer {
         feature_flags.voice = true;
         feature_flags.agent_versions = true;
         feature_flags.app_budgets = true;
-        feature_flags.global_chat = true;
         feature_flags.skills = true;
         feature_flags.memory = true;
         feature_flags.knowledge = true;
@@ -303,7 +302,6 @@ impl TestServer {
             "agent_delegation",
             "agent_versions",
             "app_budgets",
-            "global_chat",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))

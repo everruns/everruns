@@ -124,12 +124,10 @@ async fn test_feature_flags_endpoint() {
 
     // Should return a JSON object with boolean flags
     assert!(body.is_object());
-    assert!(body.get("global_chat").is_some());
     assert!(body.get("notifications").is_some());
     assert!(body.get("mcp_endpoint").is_none());
     assert_eq!(body["machine_payments"], Value::Bool(false));
     // In test env (DEV_MODE=true), experimental flags are enabled
-    assert!(body["global_chat"].is_boolean());
     assert_eq!(body["notifications"], Value::Bool(false));
 }
 
@@ -146,6 +144,7 @@ async fn test_org_feature_flags_opt_in() {
 
     let flags = settings["flags"].as_array().expect("flags array");
     assert!(flags.iter().all(|flag| flag["name"] != "mcp_endpoint"));
+    assert!(flags.iter().all(|flag| flag["label"] != "Platform Chat"));
     let notifications = flags
         .iter()
         .find(|f| f["name"] == "notifications")
@@ -3618,7 +3617,7 @@ async fn test_capability_info_includes_features() {
 // ============================================
 
 #[tokio::test]
-async fn test_global_chat_creates_session() {
+async fn test_platform_chat_creates_session() {
     let server = TestServer::new().await;
 
     // First call should create a new chat session
@@ -3633,7 +3632,7 @@ async fn test_global_chat_creates_session() {
 }
 
 #[tokio::test]
-async fn test_global_chat_returns_same_session() {
+async fn test_platform_chat_returns_same_session() {
     let server = TestServer::new().await;
 
     // First call creates
@@ -3657,7 +3656,7 @@ async fn test_global_chat_returns_same_session() {
 }
 
 #[tokio::test]
-async fn test_global_chat_none_mode_reuse_accepts_messages_and_commands() {
+async fn test_platform_chat_none_mode_reuse_accepts_messages_and_commands() {
     let server = TestServer::in_memory().await;
 
     let first: Session = server
@@ -3701,7 +3700,7 @@ async fn test_global_chat_none_mode_reuse_accepts_messages_and_commands() {
 }
 
 #[tokio::test]
-async fn test_global_chat_has_chat_harness() {
+async fn test_platform_chat_has_chat_harness() {
     let server = TestServer::new().await;
 
     let session: Session = server
@@ -3718,27 +3717,33 @@ async fn test_global_chat_has_chat_harness() {
 }
 
 #[tokio::test]
-async fn test_global_chat_disabled_returns_not_found() {
+async fn test_platform_chat_is_unconditional_while_voice_remains_gated() {
     let server = TestServer::in_memory().await;
     let org_id = "org_00000000000000000000000000000001";
 
-    // Turn the Platform Chat feature off for the org (it is opted in by the
-    // harness by default). The backend must enforce the flag, not just the UI.
+    // Turning off voice leaves Chats available because it is core functionality,
+    // while voice remains independently hidden when disabled.
     server
         .patch(
             &format!("/v1/orgs/{org_id}/feature-flags"),
-            json!({ "flags": { "global_chat": false } }),
+            json!({ "flags": { "voice": false } }),
         )
         .await
         .assert_status(StatusCode::OK);
 
+    let effective_flags: Value = server
+        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(effective_flags["voice"], Value::Bool(false));
+
     server
         .post("/v1/sessions/chat", json!({}))
         .await
-        .assert_status(StatusCode::NOT_FOUND);
+        .assert_success();
 
-    // The voice variant is gated by the same flag and is rejected before any
-    // external provider call, so it also returns 404 when the flag is off.
+    // The voice gate rejects before any external provider call.
     server
         .post("/v1/sessions/chat/voice", json!({ "sdp": "v=0" }))
         .await
@@ -3746,7 +3751,7 @@ async fn test_global_chat_disabled_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
+async fn test_platform_chat_ignores_tag_match_owned_by_other_principal() {
     let server = TestServer::in_memory().await;
 
     let initial: Session = server
@@ -3797,7 +3802,7 @@ async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
     );
     assert_ne!(
         recreated.owner_principal_id, attacker_principal.id,
-        "new global chat should be owned by the authenticated user's principal"
+        "new Platform Chat should be owned by the authenticated user's principal"
     );
 
     server
@@ -3807,7 +3812,7 @@ async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
 }
 
 #[tokio::test]
-async fn test_global_chat_repairs_stale_harness_binding() {
+async fn test_platform_chat_repairs_stale_harness_binding() {
     let server = TestServer::in_memory().await;
 
     let original: Session = server

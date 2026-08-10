@@ -9,7 +9,6 @@ spinning, and that a new thread opens on the thread surface bound to the agent t
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled (`FEATURE_GLOBAL_CHAT=true`)
 - At least one agent exists, or the built-in Platform Chat harness is available
 
 ## Test Data

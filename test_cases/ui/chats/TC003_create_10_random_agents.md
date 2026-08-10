@@ -8,7 +8,6 @@ Verify that the global chat agent can create 10 distinct agents in a single conv
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 
 ## Test Data

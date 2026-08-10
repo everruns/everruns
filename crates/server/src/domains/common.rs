@@ -350,7 +350,6 @@ static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
 #[cfg(test)]
 pub(crate) fn all_feature_flags_for_test() -> FeatureFlags {
     FeatureFlags {
-        global_chat: true,
         notifications: true,
         evals: true,
         skills: true,

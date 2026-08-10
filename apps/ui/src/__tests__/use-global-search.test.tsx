@@ -96,7 +96,6 @@ jest.mock("@/hooks/use-reporting", () => ({
 }));
 
 const mockFeatureFlags = {
-  global_chat: true,
   evals: false,
   skills: true,
   memory: true,
@@ -142,7 +141,6 @@ describe("useGlobalSearch", () => {
     mockUseInstalledPlugins.mockClear();
     mockUseSavedReports.mockClear();
     Object.assign(mockFeatureFlags, {
-      global_chat: true,
       evals: false,
       skills: true,
       memory: true,
@@ -232,6 +230,7 @@ describe("useGlobalSearch", () => {
   });
 
   it.each([
+    ["chats", "/chats"],
     ["reports", "/reports"],
     ["knowledge indexes", "/knowledge-indexes"],
     ["plugins", "/plugins"],

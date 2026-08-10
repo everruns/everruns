@@ -8,7 +8,6 @@ Verify that the global chat agent can run a previously created agent by creating
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 - At least one agent exists (e.g., "Math Tutor" from TC003)
 

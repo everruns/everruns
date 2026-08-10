@@ -25,12 +25,6 @@ use crate::deployment::DeploymentGrade;
 /// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FeatureFlags {
-    /// Platform Chat: the per-user singleton assistant chat surface — sidebar
-    /// entry, the `/chat` page, and the `POST /v1/sessions/chat` (+ voice)
-    /// endpoints. When off, the whole Platform Chat feature is disabled
-    /// (UI hidden and APIs return 404); other chat surfaces (per-session,
-    /// agent, channel) are unaffected. Experimental.
-    pub global_chat: bool,
     /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
@@ -111,16 +105,6 @@ pub struct FeatureFlagDefinition {
 /// API-visible flags that organizations may opt into when the deployment allows them.
 /// Deployment-only UI gates such as `machine_payments` intentionally stay out of this catalog.
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
-    FeatureFlagDefinition {
-        name: "global_chat",
-        label: "Platform Chat",
-        description: "Adds a personal Platform Chat assistant you can open from the sidebar or the \
-             /chat page anywhere in the app. It's a quick scratchpad to talk to your agents \
-             without first setting up a dedicated app or channel. Turning it off disables the \
-             whole feature — the chat page, the sidebar entry, and its session and voice APIs all \
-             become unavailable.",
-        experimental: true,
-    },
     FeatureFlagDefinition {
         name: "notifications",
         label: "Notifications",
@@ -229,7 +213,6 @@ impl FeatureFlags {
             system_on && org_enabled.get(name).copied().unwrap_or(false)
         };
         Self {
-            global_chat: opt_in("global_chat", system.global_chat),
             notifications: opt_in("notifications", system.notifications),
             evals: opt_in("evals", system.evals),
             skills: opt_in("skills", system.skills),
@@ -250,7 +233,6 @@ impl FeatureFlags {
     /// Compute feature flags from environment variables and deployment grade.
     pub fn from_env(grade: &DeploymentGrade) -> Self {
         Self {
-            global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
             skills: experimental_flag("FEATURE_SKILLS", grade),
@@ -282,7 +264,6 @@ impl FeatureFlags {
     /// is irrelevant to JSON consumers.
     pub fn to_map(&self) -> FeatureFlagMap {
         FeatureFlagMap(BTreeMap::from([
-            ("global_chat".to_string(), self.global_chat),
             ("notifications".to_string(), self.notifications),
             ("evals".to_string(), self.evals),
             ("skills".to_string(), self.skills),
@@ -303,7 +284,6 @@ impl FeatureFlags {
     /// Look up a flag by name (for dynamic/string-based access).
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
-            "global_chat" => self.global_chat,
             "notifications" => self.notifications,
             "evals" => self.evals,
             "skills" => self.skills,
@@ -344,7 +324,6 @@ impl FeatureFlags {
     #[cfg(test)]
     pub fn all_enabled() -> Self {
         Self {
-            global_chat: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -452,7 +431,6 @@ mod tests {
     #[test]
     fn test_default_flags() {
         let flags = FeatureFlags::default();
-        assert!(!flags.global_chat);
         assert!(!flags.notifications);
     }
 
@@ -462,45 +440,40 @@ mod tests {
     #[test]
     fn test_experimental_enabled_in_dev() {
         let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
-        assert!(flags.global_chat);
         assert!(flags.evals);
     }
 
     #[test]
     fn test_experimental_disabled_in_prod() {
         let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
         unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
-        assert!(!flags.global_chat);
         assert!(!flags.evals);
     }
 
     #[test]
     fn test_env_override_enables_in_prod() {
         let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_GLOBAL_CHAT", "true") };
+        unsafe { std::env::set_var("FEATURE_EVALS", "true") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
-        assert!(flags.global_chat);
-        unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
+        assert!(flags.evals);
+        unsafe { std::env::remove_var("FEATURE_EVALS") };
     }
 
     #[test]
     fn test_env_override_disables_in_dev() {
         let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_GLOBAL_CHAT", "false") };
+        unsafe { std::env::set_var("FEATURE_EVALS", "false") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
-        assert!(!flags.global_chat);
-        unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
+        assert!(!flags.evals);
+        unsafe { std::env::remove_var("FEATURE_EVALS") };
     }
 
     #[test]
     fn test_is_enabled_dynamic() {
         let flags = FeatureFlags {
-            global_chat: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -516,7 +489,6 @@ mod tests {
             webmcp: true,
             machine_payments: true,
         };
-        assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("evals"));
         assert!(flags.is_enabled("skills"));
@@ -572,7 +544,6 @@ mod tests {
     #[test]
     fn test_serialization() {
         let flags = FeatureFlags {
-            global_chat: true,
             notifications: true,
             evals: true,
             skills: true,
@@ -589,7 +560,6 @@ mod tests {
             machine_payments: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
-        assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
         assert!(json.contains("\"app_budgets\":true"));
         assert!(json.contains("\"agent_versions\":true"));
@@ -686,20 +656,20 @@ mod tests {
     #[test]
     fn test_for_org_requires_system_and_opt_in() {
         let system = FeatureFlags {
-            global_chat: true,
             evals: true,
+            notifications: true,
             machine_payments: true,
             ..FeatureFlags::default()
         };
         let mut org = std::collections::HashMap::new();
-        org.insert("global_chat".to_string(), true);
+        org.insert("evals".to_string(), true);
         let effective = FeatureFlags::for_org(&system, &org);
-        assert!(effective.global_chat);
-        assert!(!effective.evals);
+        assert!(effective.evals);
+        assert!(!effective.notifications);
         assert!(effective.machine_payments);
 
         let effective_none = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
-        assert!(!effective_none.global_chat);
+        assert!(!effective_none.evals);
         assert!(effective_none.machine_payments);
     }
 
@@ -739,9 +709,9 @@ mod tests {
     fn test_for_org_cannot_enable_when_system_off() {
         let system = FeatureFlags::default();
         let mut org = std::collections::HashMap::new();
-        org.insert("global_chat".to_string(), true);
+        org.insert("evals".to_string(), true);
         let effective = FeatureFlags::for_org(&system, &org);
-        assert!(!effective.global_chat);
+        assert!(!effective.evals);
     }
 
     #[test]
