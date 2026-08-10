@@ -47,7 +47,7 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-local",
         "everruns-macros",
     ],
-    "crates/local/Cargo.toml": ["everruns-core", "everruns-runtime"],
+    "crates/local/Cargo.toml": ["everruns-core", "everruns-host", "everruns-platform"],
     "crates/openai/Cargo.toml": ["everruns-provider"],
     "crates/anthropic/Cargo.toml": ["everruns-provider"],
     "crates/openrouter/Cargo.toml": ["everruns-provider"],
