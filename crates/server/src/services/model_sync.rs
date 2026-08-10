@@ -337,7 +337,7 @@ mod tests {
 
         let db = Arc::new(StorageBackend::in_memory());
         let encryption = Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         );
         let registry = Arc::new(DriverRegistry::new());
@@ -512,7 +512,7 @@ mod tests {
 
         let db = Arc::new(StorageBackend::in_memory());
         let encryption = Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         );
         let registry = Arc::new(DriverRegistry::new());
@@ -585,7 +585,7 @@ mod tests {
         use everruns_core::DEFAULT_ORG_ID;
         let db = Arc::new(StorageBackend::in_memory());
         let encryption = Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         );
         let registry = Arc::new(DriverRegistry::new());
@@ -614,7 +614,7 @@ mod tests {
         use everruns_core::DEFAULT_ORG_ID;
         let db = Arc::new(StorageBackend::in_memory());
         let enc_v1 = Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         );
         let encrypted = enc_v1.encrypt_string("sk-secret").unwrap();

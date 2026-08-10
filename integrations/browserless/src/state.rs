@@ -594,8 +594,11 @@ mod tests {
     #[test]
     fn test_substitute_secrets_basic() {
         let mut resolved = std::collections::HashMap::new();
-        resolved.insert("pw".to_string(), "hunter2".to_string());
-        assert_eq!(substitute_secrets("${{secrets.pw}}", &resolved), "hunter2");
+        resolved.insert("pw".to_string(), "YExample0".to_string());
+        assert_eq!(
+            substitute_secrets("${{secrets.pw}}", &resolved),
+            "YExample0"
+        );
     }
 
     #[test]
@@ -647,10 +650,10 @@ mod tests {
             }),
         ];
         let mut resolved = std::collections::HashMap::new();
-        resolved.insert("pw".to_string(), "hunter2".to_string());
+        resolved.insert("pw".to_string(), "YExample0".to_string());
 
         let result = substitute_step_secrets(&steps, &resolved);
-        assert_eq!(result[0]["value"], "hunter2");
+        assert_eq!(result[0]["value"], "YExample0");
         assert_eq!(result[0]["selector"], "#password"); // untouched
         assert_eq!(result[1]["selector"], "#submit"); // untouched
     }

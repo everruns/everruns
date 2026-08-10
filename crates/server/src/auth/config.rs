@@ -860,15 +860,15 @@ mod tests {
         // Test that AdminConfig stores credentials correctly
         let admin = AdminConfig {
             email: "admin@example.com".to_string(),
-            password: "secret123".to_string(),
+            password: "YExample0".to_string(),
         };
 
         assert_eq!(admin.email, "admin@example.com");
-        assert_eq!(admin.password, "secret123");
+        assert_eq!(admin.password, "YExample0");
 
         // Simulate credential check (same logic as login handler)
         let test_email = "admin@example.com";
-        let test_password = "secret123";
+        let test_password = "YExample0";
         assert!(
             test_email == admin.email && test_password == admin.password,
             "Matching credentials should pass"

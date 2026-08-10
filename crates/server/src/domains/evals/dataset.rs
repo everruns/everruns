@@ -483,9 +483,9 @@ mod tests {
                 "content": [{
                     "type": "tool_call",
                     "arguments": {
-                        "api_key": "hunter2",
+                        "api_key": "YExampleApi0",
                         "access-key": "shorttok",
-                        "nested": { "password": "p@ssw0rd" }
+                        "nested": { "password": "YExamplePassword0" }
                     }
                 }],
                 "metadata": {
@@ -493,7 +493,7 @@ mod tests {
                     "openai_api_key": "raw-openai-value",
                     "client_secret": "raw-client-secret",
                     "refresh_token": "raw-refresh-token",
-                    "authorization": "Basic dXNlcjpwYXNz",
+                    "authorization": "Basic YExample0",
                     "input_tokens": 1234,
                     "safe": "keep me"
                 }
@@ -504,16 +504,16 @@ mod tests {
         sanitize_value(&mut value, false);
 
         let serialized = serde_json::to_string(&value).unwrap();
-        assert!(!serialized.contains("hunter2"));
+        assert!(!serialized.contains("YExampleApi0"));
         assert!(!serialized.contains("shorttok"));
-        assert!(!serialized.contains("p@ssw0rd"));
+        assert!(!serialized.contains("YExamplePassword0"));
         assert!(!serialized.contains("metasecret"));
         assert!(!serialized.contains("bearer-token-value"));
         // Compound credential key names must also be redacted.
         assert!(!serialized.contains("raw-openai-value"));
         assert!(!serialized.contains("raw-client-secret"));
         assert!(!serialized.contains("raw-refresh-token"));
-        assert!(!serialized.contains("dXNlcjpwYXNz"));
+        assert!(!serialized.contains("Basic YExample0"));
         assert!(serialized.contains("keep me"));
         // Token *count* metadata must survive (not a credential).
         assert_eq!(

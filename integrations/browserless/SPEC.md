@@ -174,7 +174,7 @@ Multi-step browser interactions.
 The `browserless_interact` tool supports `${{secrets.<name>}}` placeholders in step `value` fields. This allows agents to fill login forms and other sensitive inputs without ever seeing the plaintext credentials.
 
 **Flow:**
-1. User stores credentials via `secret_store set login_password hunter2`
+1. User stores credentials via `secret_store set login_password YExample0`
 2. Agent references them: `{ "action": "type", "selector": "#password", "value": "${{secrets.login_password}}" }`
 3. Tool resolves `login_password` from `session_secrets` at execution time, substitutes into the step, executes
 4. Plaintext never appears in tool arguments, agent messages, or tool results

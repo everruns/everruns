@@ -140,7 +140,7 @@ mod tests {
 
     fn encryption() -> Arc<EncryptionService> {
         Arc::new(
-            EncryptionService::new("test:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         )
     }

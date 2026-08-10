@@ -1594,7 +1594,7 @@ mod error_tests {
 
     #[test]
     fn http_adapter_redacts_internal_detail() {
-        let err = CommandError::internal(anyhow::anyhow!("db handle exhausted: secret=hunter2"));
+        let err = CommandError::internal(anyhow::anyhow!("db handle exhausted: secret=YExample0"));
         let (_status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
         // detail is the safe generic string, never the anyhow message.
         assert_eq!(body.0.detail.as_deref(), Some("Internal server error"));

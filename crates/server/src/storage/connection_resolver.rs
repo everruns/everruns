@@ -581,7 +581,7 @@ mod tests {
     use everruns_core::{DEFAULT_ORG_ID, PrincipalId};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    const TEST_KEY: &str = "kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=";
+    const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     struct FakeRefreshExchange {
         calls: AtomicUsize,
