@@ -54,7 +54,7 @@ federation handling are the only genuinely new logic.
 
 The shared schema and merge live in `everruns_core::ard_attachment` so the
 server can read/merge attachments without depending on this leaf crate. Both the
-hosted server (`GetTurnContext`) and the in-process runtime (`load_turn_context`)
+hosted server (`GetTurnContext`) and the in-process runtime (`load_resolved_turn`)
 call `apply_session_attachments` after loading the session and before resolving
 scoped MCP servers / capabilities. Because `GetTurnContext` reloads the session
 fresh each turn, an attachment becomes live on the **next** turn.

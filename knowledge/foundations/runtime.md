@@ -113,6 +113,19 @@ These APIs own phase-local orchestration, atom wiring, dependency blocker
 handling, lifecycle event emission, and generic turn-strategy planning for
 server-backed hosts.
 
+The host execution contract is value-first (EVE-872): turn execution consumes
+`everruns_core::ResolvedExecutionSnapshot` — a neutral, secret-free projection
+of the effective harness → agent → session configuration — never stored
+`Agent`/`Harness`/`Session` aggregates. `RuntimeHostAdapter::load_resolved_turn`
+returns that snapshot plus the turn's message and MCP tool inputs; adapters
+perform the platform projection (`ResolvedExecutionSnapshot::project`) so
+missing, mismatched, or inactive records fail before host execution begins.
+Session status mutation stays a separate host effect that exposes no session
+record. A source guard (`crates/host/tests/execution_contract_guard.rs`)
+prevents the contract module from naming the record types again; the
+`InProcessRuntimeBuilder` seeding APIs still accept records as host
+configuration until they are separately replaced.
+
 `RuntimeHostAdapter` also exposes an optional, per-session
 `reasoning_effort_handle(session_id)` seam (default `None`). When a host returns
 a stable handle for a session, `ReasonAtom` re-reads it on every LLM step and

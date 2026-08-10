@@ -23,11 +23,11 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, EventData, Harness, HarnessStatus, MountFs, Session,
-    SessionStatus, ToolCall, WorkspaceRootSet,
+    AgentCapabilityConfig, EventData, Harness, HarnessStatus, MountFs, Session, SessionStatus,
+    ToolCall, WorkspaceRootSet,
 };
 use everruns_host::{
-    InMemorySessionFileStore, RealDiskFileStore, RuntimeHostAdapter, RuntimeHostTurnContext,
+    InMemorySessionFileStore, RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter,
     execute_act_activity, multi_root_file_system,
 };
 use serde_json::{Value, json};
@@ -93,50 +93,35 @@ struct NarrationTestHost {
 
 #[async_trait]
 impl RuntimeHostAdapter for NarrationTestHost {
-    async fn get_agent(
-        &self,
-        _org_id: i64,
-        _agent_id: everruns_core::typed_id::AgentId,
-    ) -> everruns_core::error::Result<Option<Agent>> {
-        Ok(None)
-    }
-
-    async fn get_harness(
-        &self,
-        _org_id: i64,
-        harness_id: HarnessId,
-    ) -> everruns_core::error::Result<Option<Harness>> {
-        Ok(self
-            .harness_store
-            .get_harness_chain(harness_id)
-            .await?
-            .into_iter()
-            .last())
-    }
-
     async fn set_session_status(
         &self,
         _org_id: i64,
         session_id: SessionId,
         status: SessionStatus,
-    ) -> everruns_core::error::Result<Session> {
-        Ok(self.session_store.set_status(session_id, status).await)
+    ) -> everruns_core::error::Result<()> {
+        self.session_store.set_status(session_id, status).await;
+        Ok(())
     }
 
-    async fn load_turn_context(
+    async fn load_resolved_turn(
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<RuntimeHostTurnContext> {
-        Ok(RuntimeHostTurnContext {
-            agent: None,
-            session: self
-                .session_store
-                .get_session(session_id)
-                .await?
-                .expect("session exists"),
+    ) -> everruns_core::error::Result<ResolvedTurnInputs> {
+        let session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .expect("session exists");
+        let harness_chain = self
+            .harness_store
+            .get_harness_chain(session.harness_id)
+            .await?;
+        let snapshot =
+            everruns_core::ResolvedExecutionSnapshot::project(&harness_chain, None, &session)?;
+        Ok(ResolvedTurnInputs {
+            snapshot,
             messages: self.message_store.load(session_id).await?,
-            model: None,
             mcp_tool_definitions: vec![],
         })
     }

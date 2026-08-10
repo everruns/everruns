@@ -325,7 +325,7 @@ Landed:
   `McpAuthProvider`, `McpClient`, `McpExecutor`/`CompositeToolExecutor`, and
   free `http_*` functions for `&dyn EgressService` callers.
 - Runtime (D4): `InProcessRuntime` discovers scoped MCP tools in
-  `load_turn_context` and routes `mcp_*` calls via the `mcp_executor()` adapter
+  `load_resolved_turn` and routes `mcp_*` calls via the `mcp_executor()` adapter
   hook (default `None` → unchanged for the worker). Builder
   `mcp_auth_provider()`; off-by-default `mcp-stdio` feature.
 - stdio scoped config (D2): `ScopedMcpServer` gained `command`/`args`/`env` and

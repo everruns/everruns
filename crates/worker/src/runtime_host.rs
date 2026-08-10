@@ -9,12 +9,12 @@ use everruns_core::traits::{
     ProviderCredentialStore, ProviderStore, SessionCreationAuthority, SessionFileSystem,
     SessionMutator, SessionStore,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
+    CapabilityRegistry, DriverRegistry, EgressService, ResolvedExecutionSnapshot, SessionStatus,
     UtilityLlmService,
 };
-use everruns_host::{RuntimeHostAdapter, RuntimeHostTurnContext};
+use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
@@ -152,39 +152,51 @@ impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
-    async fn get_agent(&self, org_id: i64, agent_id: AgentId) -> Result<Option<Agent>> {
-        self.adapters.get_agent(org_id, agent_id.uuid()).await
-    }
-
-    async fn get_harness(&self, org_id: i64, harness_id: HarnessId) -> Result<Option<Harness>> {
-        self.adapters.get_harness(org_id, harness_id.uuid()).await
-    }
-
     async fn set_session_status(
         &self,
         org_id: i64,
         session_id: SessionId,
         status: SessionStatus,
-    ) -> Result<Session> {
+    ) -> Result<()> {
+        // WorkerAdapters still returns the stored record over the wire
+        // (compatibility adapter); the host contract keeps status mutation a
+        // record-free effect.
         self.adapters
             .set_session_status(org_id, session_id.uuid(), &status.to_string())
-            .await
+            .await?;
+        Ok(())
     }
 
-    async fn load_turn_context(
+    async fn load_resolved_turn(
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<RuntimeHostTurnContext> {
+    ) -> Result<ResolvedTurnInputs> {
+        // The batched control-plane call still ships stored records
+        // (compatibility adapter, see `WorkerAdapters::load_turn_context`).
+        // They are projected into the canonical resolved execution snapshot
+        // here, at the platform boundary, so host execution never sees them
+        // (EVE-872). The control plane returns the harness pre-merged, so the
+        // chain is a single element and precedence folds identically to the
+        // in-process runtime.
         let context = self
             .adapters
             .load_turn_context(org_id, session_id.uuid())
             .await?;
-        Ok(RuntimeHostTurnContext {
-            agent: context.agent,
-            session: context.session,
+        let harness_chain: Vec<_> = self
+            .adapters
+            .get_harness(org_id, context.session.harness_id.uuid())
+            .await?
+            .into_iter()
+            .collect();
+        let snapshot = ResolvedExecutionSnapshot::project(
+            &harness_chain,
+            context.agent.as_ref(),
+            &context.session,
+        )?;
+        Ok(ResolvedTurnInputs {
+            snapshot,
             messages: context.messages,
-            model: context.model,
             mcp_tool_definitions: context.mcp_tool_definitions,
         })
     }

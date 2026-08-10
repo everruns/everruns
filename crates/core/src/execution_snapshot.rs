@@ -1,0 +1,753 @@
+// Canonical resolved execution snapshot (EVE-872).
+//
+// Decision: host turn execution consumes this neutral, value-first projection
+// instead of stored Agent/Harness/Session aggregates. Both the Framework
+// in-process runtime and the hosted workers build the same value here, so
+// harness → agent → session precedence is applied by one code path
+// (`AgentConfigOverlay` merge semantics) regardless of which host executes the
+// turn. Credentials, database lifecycle fields, organization records,
+// timestamps, UI metadata, and CRUD status are excluded by construction, so
+// Debug/serialization of this value is secret-free without redaction logic.
+
+use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::agent::{Agent, AgentStatus};
+use crate::capability_types::AgentCapabilityConfig;
+use crate::config_layer::AgentConfigOverlay;
+use crate::error::{AgentLoopError, Result};
+use crate::harness::{Harness, HarnessStatus};
+use crate::mcp_server::{
+    McpProtocolMode, McpServerAuthMode, McpServerTransportType, ScopedMcpServer,
+};
+use crate::network_access::NetworkAccessList;
+use crate::session::Session;
+use crate::session_file::InitialFile;
+use crate::tool_types::ToolDefinition;
+use crate::traits::{AgentStore, HarnessStore, SessionStore};
+use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
+
+/// Non-secret MCP scope entry retained by the execution snapshot.
+///
+/// Scoped MCP server configs can carry literal credentials in header and env
+/// values (e.g. `Authorization: Bearer …`). The snapshot keeps the scope —
+/// which servers exist and how they authenticate — but only the *names* of
+/// headers and env vars. Execution resolves live connections (including
+/// credential material) through the host's MCP seam, never from this value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SnapshotMcpServer {
+    pub transport_type: McpServerTransportType,
+    pub url: String,
+    /// Header names only; header values never enter the snapshot.
+    pub header_names: Vec<String>,
+    /// Env var names only; env values never enter the snapshot.
+    pub env_names: Vec<String>,
+    pub command: Option<String>,
+    pub args: Vec<String>,
+    pub auth_mode: McpServerAuthMode,
+    pub protocol_mode: McpProtocolMode,
+    pub oauth_provider_id: Option<String>,
+    pub tool_discovery: bool,
+}
+
+impl From<&ScopedMcpServer> for SnapshotMcpServer {
+    fn from(server: &ScopedMcpServer) -> Self {
+        let mut header_names: Vec<String> = server.headers.keys().cloned().collect();
+        header_names.sort();
+        let mut env_names: Vec<String> = server.env.keys().cloned().collect();
+        env_names.sort();
+        Self {
+            transport_type: server.transport_type.clone(),
+            url: server.url.clone(),
+            header_names,
+            env_names,
+            command: server.command.clone(),
+            args: server.args.clone(),
+            auth_mode: server.auth_mode.clone(),
+            protocol_mode: server.protocol_mode,
+            oauth_provider_id: server.oauth_provider_id.clone(),
+            tool_discovery: server.tool_discovery,
+        }
+    }
+}
+
+/// Canonical resolved execution value for one session's turn execution.
+///
+/// Contains only turn-relevant configuration plus the typed correlation
+/// values execution needs. Produced by [`ResolvedExecutionSnapshot::project`]
+/// — the platform projection boundary where missing, mismatched, or inactive
+/// stored records fail before host execution begins.
+///
+/// Field order is fixed and map fields are `BTreeMap`s, so serialization of
+/// equal values is byte-identical (deterministic).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedExecutionSnapshot {
+    // --- Typed session correlation values required by execution ---
+    pub session_id: SessionId,
+    pub workspace_id: WorkspaceId,
+    pub harness_id: HarnessId,
+    pub agent_id: Option<AgentId>,
+    /// Public (`org_…`) organization id used for execution scoping. This is a
+    /// correlation value, not the organization record.
+    pub organization_id: String,
+
+    // --- Effective configuration (harness → agent → session, applied once) ---
+    /// Effective instructions (merged system prompt, session goal included).
+    pub instructions: Option<String>,
+    /// Effective model specification; `None` selects the host default model.
+    pub default_model_id: Option<ModelId>,
+    /// Configured capability references with per-layer config merged.
+    pub capabilities: Vec<AgentCapabilityConfig>,
+    /// Explicitly configured tools (client-side or capability-provided).
+    pub tools: Vec<ToolDefinition>,
+    /// Effective initial workspace files.
+    pub initial_files: Vec<InitialFile>,
+    /// Effective scoped MCP servers, credential values excluded.
+    pub mcp_servers: BTreeMap<String, SnapshotMcpServer>,
+    /// Effective workspace network policy.
+    pub network_access: Option<NetworkAccessList>,
+    /// Maximum reason iterations per turn.
+    pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference.
+    pub parallel_tool_calls: Option<bool>,
+
+    // --- Non-secret execution metadata ---
+    pub locale: Option<String>,
+    pub tags: Vec<String>,
+    pub blueprint_id: Option<String>,
+    pub blueprint_config: Option<serde_json::Value>,
+    /// Embedder metadata folded from the harness chain (root base, leaf wins).
+    pub embedder_metadata: BTreeMap<String, String>,
+}
+
+impl ResolvedExecutionSnapshot {
+    /// Project stored records into the canonical execution value.
+    ///
+    /// This is the platform projection boundary: it fails when the harness
+    /// chain is empty or does not terminate at the session's harness, when a
+    /// referenced agent is missing or does not match the session's agent id,
+    /// or when the leaf harness / agent is archived or deleted. Host execution
+    /// never sees a snapshot built from broken record wiring.
+    ///
+    /// Precedence is applied exactly once, through the same
+    /// [`AgentConfigOverlay`] merge semantics the runtime capability
+    /// resolution uses.
+    pub fn project(
+        harness_chain: &[Harness],
+        agent: Option<&Agent>,
+        session: &Session,
+    ) -> Result<Self> {
+        let Some(leaf) = harness_chain.last() else {
+            return Err(AgentLoopError::harness_not_found(session.harness_id));
+        };
+        if leaf.id != session.harness_id {
+            return Err(AgentLoopError::config(format!(
+                "harness chain terminates at {} but session {} references harness {}",
+                leaf.id, session.id, session.harness_id
+            )));
+        }
+        match leaf.status {
+            HarnessStatus::Active => {}
+            HarnessStatus::Archived | HarnessStatus::Deleted => {
+                return Err(AgentLoopError::config(format!(
+                    "harness {} is {} and cannot execute turns",
+                    leaf.id,
+                    if leaf.status == HarnessStatus::Archived {
+                        "archived"
+                    } else {
+                        "deleted"
+                    }
+                )));
+            }
+        }
+
+        let agent = match (session.agent_id, agent) {
+            (Some(agent_id), Some(agent)) => {
+                if agent.public_id != agent_id {
+                    return Err(AgentLoopError::config(format!(
+                        "session {} references agent {} but agent {} was provided",
+                        session.id, agent_id, agent.public_id
+                    )));
+                }
+                match agent.status {
+                    AgentStatus::Active => {}
+                    AgentStatus::Archived | AgentStatus::Deleted => {
+                        return Err(AgentLoopError::config(format!(
+                            "agent {} is {} and cannot execute turns",
+                            agent.public_id,
+                            if agent.status == AgentStatus::Archived {
+                                "archived"
+                            } else {
+                                "deleted"
+                            }
+                        )));
+                    }
+                }
+                Some(agent)
+            }
+            (Some(agent_id), None) => {
+                return Err(AgentLoopError::agent_not_found(agent_id));
+            }
+            (None, _) => None,
+        };
+
+        let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);
+        let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
+        let effective = AgentConfigOverlay::fold(
+            harness_layers
+                .chain(agent_layers)
+                .chain([AgentConfigOverlay::from(session)]),
+        );
+
+        let embedder_metadata = harness_chain
+            .iter()
+            .flat_map(|harness| harness.embedder_metadata.iter())
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+
+        Ok(Self {
+            session_id: session.id,
+            workspace_id: session.workspace_id,
+            harness_id: session.harness_id,
+            agent_id: session.agent_id,
+            organization_id: session.organization_id.clone(),
+            instructions: effective.system_prompt,
+            default_model_id: effective.default_model_id,
+            capabilities: effective.capabilities,
+            tools: effective.tools,
+            initial_files: effective.initial_files,
+            mcp_servers: effective
+                .mcp_servers
+                .iter()
+                .map(|(name, server)| (name.clone(), SnapshotMcpServer::from(server)))
+                .collect(),
+            network_access: effective.network_access,
+            max_iterations: effective.max_iterations,
+            parallel_tool_calls: effective.parallel_tool_calls,
+            locale: session.locale.clone(),
+            tags: session.tags.clone(),
+            blueprint_id: session.blueprint_id.clone(),
+            blueprint_config: session.blueprint_config.clone(),
+            embedder_metadata,
+        })
+    }
+}
+
+/// Load a session's records and project them into the canonical snapshot.
+///
+/// Store lookups are the cross-tenant boundary: org-scoped stores return
+/// `None` for records outside the caller's organization, which this loader
+/// turns into not-found projection failures before host execution.
+pub async fn load_execution_snapshot(
+    harness_store: &dyn HarnessStore,
+    agent_store: &dyn AgentStore,
+    session_store: &dyn SessionStore,
+    session_id: SessionId,
+) -> Result<ResolvedExecutionSnapshot> {
+    let session = session_store
+        .get_session(session_id)
+        .await?
+        .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+    load_execution_snapshot_for_session(harness_store, agent_store, &session).await
+}
+
+/// Project a snapshot for an already-loaded session record.
+///
+/// Hosts that fold runtime attachments or other session-scoped overlays into
+/// the record before resolution use this variant.
+pub async fn load_execution_snapshot_for_session(
+    harness_store: &dyn HarnessStore,
+    agent_store: &dyn AgentStore,
+    session: &Session,
+) -> Result<ResolvedExecutionSnapshot> {
+    let harness_chain = harness_store.get_harness_chain(session.harness_id).await?;
+    let agent = match session.agent_id {
+        Some(agent_id) => agent_store.get_agent(agent_id).await?,
+        None => None,
+    };
+    ResolvedExecutionSnapshot::project(&harness_chain, agent.as_ref(), session)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::in_memory::{InMemoryAgentStore, InMemoryHarnessStore};
+    use crate::network_access::NetworkAccessList;
+    use crate::session::SessionStatus;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    fn harness(harness_id: HarnessId) -> Harness {
+        Harness {
+            id: harness_id,
+            name: "base".into(),
+            display_name: Some("Base".into()),
+            description: None,
+            system_prompt: Some("Harness prompt.".into()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+            initial_files: vec![],
+            network_access: None,
+            parallel_tool_calls: None,
+            mcp_servers: Default::default(),
+            embedder_metadata: HashMap::new(),
+            is_built_in: false,
+            status: HarnessStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+        }
+    }
+
+    fn agent(agent_id: AgentId, harness_id: HarnessId) -> Agent {
+        Agent {
+            public_id: agent_id,
+            internal_id: Uuid::nil(),
+            name: "agent".into(),
+            display_name: Some("Agent".into()),
+            description: None,
+            system_prompt: "Agent prompt.".into(),
+            default_model_id: None,
+            harness_id,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: Some(8),
+            parallel_tool_calls: None,
+            tools: vec![],
+            mcp_servers: Default::default(),
+            status: AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        }
+    }
+
+    fn session(session_id: SessionId, harness_id: HarnessId, agent_id: Option<AgentId>) -> Session {
+        Session {
+            source: Default::default(),
+            activity: Default::default(),
+            id: session_id,
+            workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
+            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            harness_id,
+            agent_id,
+            agent_version_id: None,
+            agent_identity_id: None,
+            owner_principal_id: crate::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            title: Some("UI-TITLE-MARKER".into()),
+            goal: None,
+            locale: Some("en-US".into()),
+            preview: Some("UI-PREVIEW-MARKER".into()),
+            output_preview: None,
+            tags: vec!["tag-a".into()],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            status: SessionStatus::Started,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: None,
+            forked_from_session_id: None,
+            forked_from_sequence: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        }
+    }
+
+    fn ids() -> (HarnessId, AgentId, SessionId) {
+        (
+            HarnessId::from_seed(11),
+            AgentId::from_seed(11),
+            SessionId::from_seed(11),
+        )
+    }
+
+    fn file(path: &str, content: &str) -> InitialFile {
+        InitialFile {
+            path: path.into(),
+            content: content.into(),
+            encoding: "text".into(),
+            is_readonly: false,
+        }
+    }
+
+    // --- Precedence matrix: harness → agent → session, leaf wins ---
+
+    #[test]
+    fn precedence_instructions_concatenate_root_to_leaf() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let agent = agent(agent_id, harness_id);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.system_prompt = Some("Session prompt.".into());
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(
+            snapshot.instructions.as_deref(),
+            Some("Harness prompt.\n\nAgent prompt.\n\nSession prompt.")
+        );
+    }
+
+    #[test]
+    fn precedence_model_leaf_layer_wins() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.default_model_id = Some(ModelId::from_seed(1));
+        let mut agent = agent(agent_id, harness_id);
+        agent.default_model_id = Some(ModelId::from_seed(2));
+        let mut session = session(session_id, harness_id, Some(agent_id));
+
+        let snapshot = ResolvedExecutionSnapshot::project(
+            std::slice::from_ref(&harness),
+            Some(&agent),
+            &session,
+        )
+        .unwrap();
+        assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(2)));
+
+        session.model_id = Some(ModelId::from_seed(3));
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(3)));
+    }
+
+    #[test]
+    fn precedence_capabilities_override_by_id() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.capabilities = vec![AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({"enable_file_download": true}),
+        )];
+        let mut agent = agent(agent_id, harness_id);
+        agent.capabilities = vec![AgentCapabilityConfig::new("current_time")];
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.capabilities = vec![AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({"enable_file_download": false}),
+        )];
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.capabilities.len(), 2);
+        assert_eq!(
+            snapshot.capabilities[0],
+            AgentCapabilityConfig::with_config(
+                "web_fetch",
+                serde_json::json!({"enable_file_download": false})
+            )
+        );
+        assert_eq!(snapshot.capabilities[1].capability_id(), "current_time");
+    }
+
+    #[test]
+    fn precedence_initial_files_override_by_path() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.initial_files = vec![file("/config.txt", "harness"), file("/keep.txt", "keep")];
+        let mut agent = agent(agent_id, harness_id);
+        agent.initial_files = vec![file("config.txt", "agent")];
+        let session = session(session_id, harness_id, Some(agent_id));
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.initial_files.len(), 2);
+        assert_eq!(snapshot.initial_files[0].content, "agent");
+        assert_eq!(snapshot.initial_files[1].content, "keep");
+    }
+
+    #[test]
+    fn precedence_mcp_servers_override_by_name() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.mcp_servers.insert(
+            "docs".into(),
+            ScopedMcpServer {
+                url: "https://harness.example.com/mcp".into(),
+                ..Default::default()
+            },
+        );
+        let agent = agent(agent_id, harness_id);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.mcp_servers.insert(
+            "docs".into(),
+            ScopedMcpServer {
+                url: "https://session.example.com/mcp".into(),
+                ..Default::default()
+            },
+        );
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(
+            snapshot.mcp_servers.get("docs").map(|s| s.url.as_str()),
+            Some("https://session.example.com/mcp")
+        );
+    }
+
+    #[test]
+    fn precedence_network_access_narrows() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.network_access = Some(NetworkAccessList::allow_only([
+            "*.example.com",
+            "api.github.com",
+        ]));
+        let agent = agent(agent_id, harness_id);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.network_access = Some(NetworkAccessList::allow_only(["api.example.com"]));
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        let acl = snapshot.network_access.unwrap();
+        assert_eq!(acl.allowed, vec!["api.example.com".to_string()]);
+    }
+
+    #[test]
+    fn precedence_iteration_controls_leaf_wins() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let mut agent = agent(agent_id, harness_id);
+        agent.max_iterations = Some(40);
+        agent.parallel_tool_calls = Some(true);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.max_iterations = Some(5);
+        session.parallel_tool_calls = Some(false);
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.max_iterations, Some(5));
+        assert_eq!(snapshot.parallel_tool_calls, Some(false));
+    }
+
+    #[test]
+    fn correlation_values_are_copied() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.session_id, session_id);
+        assert_eq!(snapshot.workspace_id, session.workspace_id);
+        assert_eq!(snapshot.harness_id, harness_id);
+        assert_eq!(snapshot.agent_id, Some(agent_id));
+        assert_eq!(snapshot.organization_id, session.organization_id);
+        assert_eq!(snapshot.locale.as_deref(), Some("en-US"));
+        assert_eq!(snapshot.tags, vec!["tag-a".to_string()]);
+    }
+
+    // --- Platform projection failures ---
+
+    #[test]
+    fn projection_fails_on_empty_harness_chain() {
+        let (harness_id, agent_id, session_id) = ids();
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        assert!(ResolvedExecutionSnapshot::project(&[], Some(&agent), &session).is_err());
+    }
+
+    #[test]
+    fn projection_fails_on_chain_leaf_mismatch() {
+        let (harness_id, agent_id, session_id) = ids();
+        let other = harness(HarnessId::from_seed(99));
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        assert!(ResolvedExecutionSnapshot::project(&[other], Some(&agent), &session).is_err());
+    }
+
+    #[test]
+    fn projection_fails_on_missing_agent() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        assert!(ResolvedExecutionSnapshot::project(&[harness], None, &session).is_err());
+    }
+
+    #[test]
+    fn projection_fails_on_mismatched_agent() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let other_agent = agent(AgentId::from_seed(99), harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        assert!(
+            ResolvedExecutionSnapshot::project(&[harness], Some(&other_agent), &session).is_err()
+        );
+    }
+
+    #[test]
+    fn projection_fails_on_archived_or_deleted_records() {
+        let (harness_id, agent_id, session_id) = ids();
+        let session = session(session_id, harness_id, Some(agent_id));
+
+        for status in [HarnessStatus::Archived, HarnessStatus::Deleted] {
+            let mut archived = harness(harness_id);
+            archived.status = status.clone();
+            let agent = agent(agent_id, harness_id);
+            assert!(
+                ResolvedExecutionSnapshot::project(&[archived], Some(&agent), &session).is_err(),
+                "harness status {status:?} must fail projection"
+            );
+        }
+
+        for status in [AgentStatus::Archived, AgentStatus::Deleted] {
+            let harness = harness(harness_id);
+            let mut inactive = agent(agent_id, harness_id);
+            inactive.status = status.clone();
+            assert!(
+                ResolvedExecutionSnapshot::project(&[harness], Some(&inactive), &session).is_err(),
+                "agent status {status:?} must fail projection"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn loader_fails_on_missing_records_before_execution() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness_store = InMemoryHarnessStore::new();
+        let agent_store = InMemoryAgentStore::new();
+        let session_store = crate::in_memory::InMemorySessionStore::new();
+
+        // Missing session (also the cross-tenant shape: org-scoped stores
+        // return None for records outside the caller's org).
+        let error =
+            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
+                .await
+                .unwrap_err();
+        assert!(error.to_string().contains("not found"), "{error}");
+
+        // Session present but harness/agent missing.
+        session_store
+            .add_session(session(session_id, harness_id, Some(agent_id)))
+            .await;
+        assert!(
+            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
+                .await
+                .is_err()
+        );
+
+        harness_store.add_harness(harness(harness_id)).await;
+        assert!(
+            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
+                .await
+                .is_err()
+        );
+
+        agent_store.add_agent(agent(agent_id, harness_id)).await;
+        assert!(
+            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
+                .await
+                .is_ok()
+        );
+    }
+
+    // --- Secret-free, deterministic Debug/serialization ---
+
+    #[test]
+    fn snapshot_excludes_platform_metadata_and_credential_values() {
+        let (harness_id, agent_id, session_id) = ids();
+        let harness = harness(harness_id);
+        let agent = agent(agent_id, harness_id);
+        let mut session = session(session_id, harness_id, Some(agent_id));
+        session.mcp_servers.insert(
+            "docs".into(),
+            ScopedMcpServer {
+                url: "https://mcp.example.com".into(),
+                headers: [(
+                    "Authorization".to_string(),
+                    "Bearer SECRET-HEADER-MARKER".to_string(),
+                )]
+                .into_iter()
+                .collect(),
+                env: [("API_KEY".to_string(), "SECRET-ENV-MARKER".to_string())]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
+        );
+
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        let debugged = format!("{snapshot:?}");
+        for surface in [serialized.as_str(), debugged.as_str()] {
+            // Credential values from scoped MCP config never appear.
+            assert!(!surface.contains("SECRET-HEADER-MARKER"), "{surface}");
+            assert!(!surface.contains("SECRET-ENV-MARKER"), "{surface}");
+            // UI/platform-only session metadata never appears.
+            assert!(!surface.contains("UI-TITLE-MARKER"), "{surface}");
+            assert!(!surface.contains("UI-PREVIEW-MARKER"), "{surface}");
+        }
+
+        // Non-secret scope survives: server name, url, and header *names*.
+        let docs = snapshot.mcp_servers.get("docs").unwrap();
+        assert_eq!(docs.url, "https://mcp.example.com");
+        assert_eq!(docs.header_names, vec!["Authorization".to_string()]);
+        assert_eq!(docs.env_names, vec!["API_KEY".to_string()]);
+    }
+
+    #[test]
+    fn snapshot_serialization_is_deterministic_and_round_trips() {
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.embedder_metadata = HashMap::from([
+            ("zeta".to_string(), "z".to_string()),
+            ("alpha".to_string(), "a".to_string()),
+        ]);
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+
+        let first = ResolvedExecutionSnapshot::project(
+            std::slice::from_ref(&harness),
+            Some(&agent),
+            &session,
+        )
+        .unwrap();
+        let second =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+
+        let first_json = serde_json::to_string(&first).unwrap();
+        let second_json = serde_json::to_string(&second).unwrap();
+        assert_eq!(first_json, second_json);
+
+        let round_tripped: ResolvedExecutionSnapshot = serde_json::from_str(&first_json).unwrap();
+        assert_eq!(serde_json::to_string(&round_tripped).unwrap(), first_json);
+
+        // Map metadata serializes in sorted key order regardless of input order.
+        let alpha = first_json.find("alpha").unwrap();
+        let zeta = first_json.find("zeta").unwrap();
+        assert!(alpha < zeta);
+    }
+}

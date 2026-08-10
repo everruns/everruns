@@ -22,7 +22,7 @@ use everruns_core::session::SessionStatus;
 use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
-    LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
+    LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore,
     SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
     SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
     ToolContextServices, UserConnectionResolver,
@@ -30,22 +30,28 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::vector_store::KnowledgeIndexSearch;
 use everruns_core::{
-    Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
-    ErrorDisclosure, Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError,
-    UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
+    CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
+    ErrorDisclosure, ResolvedExecutionSnapshot, TokenUsage, ToolDefinition, ToolRegistry,
+    UserFacingError, UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
 };
 use everruns_platform::PlatformStore;
 use std::sync::Arc;
 use tracing::warn;
 
-/// Turn context loaded in one batched call for runtime host execution.
+/// Resolved inputs loaded in one batched call for runtime host execution.
+///
+/// This is the narrow load/resolve contract (EVE-872): hosts return the
+/// canonical [`ResolvedExecutionSnapshot`] plus the turn's message and
+/// MCP tool inputs. Stored Agent/Harness/Session aggregates never cross this
+/// boundary — platform projection happens inside the adapter.
 #[derive(Debug, Clone)]
-pub struct RuntimeHostTurnContext {
-    pub agent: Option<Agent>,
-    pub session: Session,
+pub struct ResolvedTurnInputs {
+    /// Canonical resolved execution value for the session.
+    pub snapshot: ResolvedExecutionSnapshot,
+    /// Conversation messages available to the turn.
     pub messages: Vec<Message>,
-    pub model: Option<ResolvedModel>,
+    /// MCP tool definitions discovered for the session's scoped servers.
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
 
@@ -61,30 +67,27 @@ pub struct RuntimeHostTurnContext {
 /// engine itself remains outside this crate.
 #[async_trait]
 pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
-    async fn get_agent(
-        &self,
-        org_id: i64,
-        agent_id: AgentId,
-    ) -> everruns_core::error::Result<Option<Agent>>;
-
-    async fn get_harness(
-        &self,
-        org_id: i64,
-        harness_id: HarnessId,
-    ) -> everruns_core::error::Result<Option<Harness>>;
-
+    /// Session status mutation is a host effect, separate from execution
+    /// inputs: it exposes no stored Session record to the engine.
     async fn set_session_status(
         &self,
         org_id: i64,
         session_id: SessionId,
         status: SessionStatus,
-    ) -> everruns_core::error::Result<Session>;
+    ) -> everruns_core::error::Result<()>;
 
-    async fn load_turn_context(
+    /// Load and resolve the turn's execution inputs.
+    ///
+    /// Implementations project their stored records into the canonical
+    /// [`ResolvedExecutionSnapshot`] (via
+    /// [`ResolvedExecutionSnapshot::project`]) so missing, mismatched, or
+    /// inactive records fail here — during platform projection — before host
+    /// execution.
+    async fn load_resolved_turn(
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<RuntimeHostTurnContext>;
+    ) -> everruns_core::error::Result<ResolvedTurnInputs>;
 
     fn capability_registry(&self) -> CapabilityRegistry;
 
@@ -1278,8 +1281,8 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .tool_registry
         .validate_context_services(&validation_services)?;
 
-    let mut turn_context = adapter
-        .load_turn_context(org_id, input.context.session_id)
+    let mut turn_inputs = adapter
+        .load_resolved_turn(org_id, input.context.session_id)
         .await?;
     if let Some(registry) = adapter.session_task_registry() {
         let session_store = adapter.session_store(org_id);
@@ -1290,7 +1293,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         )
         .await?
         {
-            turn_context.mcp_tool_definitions.push(tool.to_definition());
+            turn_inputs.mcp_tool_definitions.push(tool.to_definition());
         }
         if let Some(tool) = report_task_progress_tool_for_child_session(
             input.context.session_id,
@@ -1299,7 +1302,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         )
         .await?
         {
-            turn_context.mcp_tool_definitions.push(tool.to_definition());
+            turn_inputs.mcp_tool_definitions.push(tool.to_definition());
         }
     }
 
@@ -1356,7 +1359,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     }
 
     let input = ReasonInput {
-        mcp_tool_definitions: turn_context.mcp_tool_definitions,
+        mcp_tool_definitions: turn_inputs.mcp_tool_definitions,
         ..input
     };
 
