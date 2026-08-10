@@ -13,11 +13,11 @@
 //! # Example
 //!
 //! ```
-//! use everruns_host::{RuntimeHostAdapter, RuntimeHostTurnContext};
+//! use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 //!
 //! fn accepts_host<A: RuntimeHostAdapter>() {}
-//! fn accepts_context(_: RuntimeHostTurnContext) {}
-//! # let _ = accepts_context;
+//! fn accepts_inputs(_: ResolvedTurnInputs) {}
+//! # let _ = accepts_inputs;
 //! ```
 
 mod backends;
@@ -55,7 +55,7 @@ pub use file_store_decorators::{
 };
 
 pub use host::{
-    RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
+    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
     execute_reason_activity_with_prompt_messages,
 };

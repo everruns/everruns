@@ -8,7 +8,7 @@ use crate::backends::{
 use crate::builders::SingleSessionBuilder;
 use crate::events::{EventHistory, EventLog, EventReadLimit, EventReadRequest, HostEventEmitter};
 use crate::host::{
-    RuntimeHostAdapter, RuntimeHostTurnContext, execute_act_activity, execute_input_activity,
+    ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity, execute_input_activity,
     execute_reason_activity_with_prompt_messages,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
@@ -40,10 +40,11 @@ use everruns_core::traits::{
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::TurnStopReason;
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, OrgId, SessionId, TurnId};
+use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
-    SessionFileSystemFactoryContext, plugin_capability_id, resolve_runtime_capabilities,
+    AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
+    SessionFileSystem, SessionFileSystemFactoryContext, load_execution_snapshot_for_session,
+    plugin_capability_id, resolve_runtime_capabilities,
 };
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
@@ -1092,11 +1093,10 @@ impl InProcessRuntime {
         turn_id: TurnId,
         steering: TurnSteering,
     ) -> Result<TurnResult> {
-        let session = self
-            .session_store
-            .get_session(session_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        // EVE-872: construct the canonical resolved execution snapshot before
+        // turn planning. Missing or inactive records fail here, during
+        // platform projection, and stored records never feed planning.
+        let snapshot = self.resolved_execution_snapshot(session_id).await?;
 
         // The canonical input envelope is the only write. EventHistory rebuilds
         // the message projection from this accepted append.
@@ -1109,7 +1109,7 @@ impl InProcessRuntime {
             ))
             .await?;
 
-        let org_id = in_process_internal_org_id(&session.organization_id);
+        let org_id = in_process_internal_org_id(&snapshot.organization_id);
 
         // Engine-planned turn loop (EVE-842). Every reason-vs-act-vs-complete
         // decision comes from `everruns-engine`; this loop only executes the
@@ -1119,8 +1119,8 @@ impl InProcessRuntime {
         let mut state = RuntimeTurnState {
             org_id,
             session_id,
-            harness_id: session.harness_id,
-            agent_id: session.agent_id,
+            harness_id: snapshot.harness_id,
+            agent_id: snapshot.agent_id,
             input_message_id: input_message.id,
             turn_id: None,
             previous_response_id: None,
@@ -1137,7 +1137,7 @@ impl InProcessRuntime {
 
         let base_context = |exec: bool| {
             let context = AtomContext::new(session_id, turn_id, input_message.id)
-                .with_workspace_id(session.workspace_id);
+                .with_workspace_id(snapshot.workspace_id);
             if exec { context.next_exec() } else { context }
         };
 
@@ -1184,8 +1184,8 @@ impl InProcessRuntime {
                         org_id,
                         ReasonInput {
                             context: base_context(true),
-                            harness_id: session.harness_id,
-                            agent_id: session.agent_id,
+                            harness_id: snapshot.harness_id,
+                            agent_id: snapshot.agent_id,
                             org_id,
                             mcp_tool_definitions: vec![],
                             previous_response_id: state.previous_response_id.clone(),
@@ -1533,6 +1533,39 @@ impl InProcessRuntime {
         Ok(commands)
     }
 
+    /// Load a session record and fold runtime ARD attachments into its config
+    /// layer before capabilities / scoped MCP servers are resolved
+    /// (resource_discovery).
+    async fn attached_session(&self, session_id: SessionId) -> Result<Session> {
+        let mut session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        everruns_core::ard_attachment::apply_session_attachments(
+            self.storage_store.as_ref(),
+            &mut session,
+        )
+        .await;
+        Ok(session)
+    }
+
+    /// Project the canonical resolved execution snapshot for a session
+    /// (EVE-872). This is the same platform projection the hosted workers
+    /// apply, so Framework and hosted execution consume one execution value.
+    async fn resolved_execution_snapshot(
+        &self,
+        session_id: SessionId,
+    ) -> Result<ResolvedExecutionSnapshot> {
+        let session = self.attached_session(session_id).await?;
+        load_execution_snapshot_for_session(
+            self.harness_store.as_ref(),
+            self.agent_store.as_ref(),
+            &session,
+        )
+        .await
+    }
+
     async fn inspect_context_with_ids(
         &self,
         session_id: SessionId,
@@ -1559,53 +1592,42 @@ impl InProcessRuntime {
 
 #[async_trait]
 impl RuntimeHostAdapter for InProcessRuntime {
-    async fn get_agent(&self, _org_id: i64, agent_id: AgentId) -> Result<Option<Agent>> {
-        self.agent_store.get_agent(agent_id).await
-    }
-
-    async fn get_harness(&self, _org_id: i64, harness_id: HarnessId) -> Result<Option<Harness>> {
-        let chain = self.harness_store.get_harness_chain(harness_id).await?;
-        Ok(chain.into_iter().last())
-    }
-
     async fn set_session_status(
         &self,
         _org_id: i64,
         session_id: SessionId,
         _status: SessionStatus,
-    ) -> Result<Session> {
+    ) -> Result<()> {
         // The in-process runtime does not persist status. Lifecycle callers
         // still emit their events; downstream consumers in-process don't
-        // observe session.status.
+        // observe session.status. Keep the existence check so lifecycle
+        // warnings still surface a missing session.
         self.session_store
             .get_session(session_id)
             .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        Ok(())
     }
 
-    async fn load_turn_context(
+    async fn load_resolved_turn(
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> Result<RuntimeHostTurnContext> {
-        let mut session = self
-            .session_store
-            .get_session(session_id)
-            .await?
-            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
-        // Fold runtime ARD attachments into the session config layer before
-        // scoped MCP servers / capabilities are resolved (resource_discovery).
-        everruns_core::ard_attachment::apply_session_attachments(
-            self.storage_store.as_ref(),
-            &mut session,
-        )
-        .await;
+    ) -> Result<ResolvedTurnInputs> {
+        let session = self.attached_session(session_id).await?;
         let agent = match session.agent_id {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,
         };
+        let harness_chain = self
+            .harness_store
+            .get_harness_chain(session.harness_id)
+            .await?;
+        // Platform projection: stored records stop here; execution receives
+        // the canonical resolved value (EVE-872).
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&harness_chain, agent.as_ref(), &session)?;
         let messages = self.event_history.load(session_id).await?;
-        let model = self.provider_store.get_default_model().await?;
 
         // Discover tools from the session's scoped MCP servers so they appear
         // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
@@ -1622,11 +1644,9 @@ impl RuntimeHostAdapter for InProcessRuntime {
             .await
         };
 
-        Ok(RuntimeHostTurnContext {
-            agent,
-            session,
+        Ok(ResolvedTurnInputs {
+            snapshot,
             messages,
-            model,
             mcp_tool_definitions,
         })
     }

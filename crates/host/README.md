@@ -21,11 +21,11 @@ The pure, sans-I/O turn planner remains in
 ## Quick Example
 
 ```rust
-use everruns_host::{RuntimeHostAdapter, RuntimeHostTurnContext};
+use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 
 fn accepts_host<A: RuntimeHostAdapter>() {}
-fn accepts_context(_: RuntimeHostTurnContext) {}
-# let _ = accepts_context;
+fn accepts_inputs(_: ResolvedTurnInputs) {}
+# let _ = accepts_inputs;
 ```
 
 ## What It Provides

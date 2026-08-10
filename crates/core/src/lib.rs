@@ -49,6 +49,7 @@ pub mod deployment;
 pub mod egress;
 pub mod email;
 pub mod exec_tool_result;
+pub mod execution_snapshot;
 pub mod utility_llm;
 
 // Feature flags
@@ -218,6 +219,10 @@ pub use config_layer::{
 pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
+};
+pub use execution_snapshot::{
+    ResolvedExecutionSnapshot, SnapshotMcpServer, load_execution_snapshot,
+    load_execution_snapshot_for_session,
 };
 pub use llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
