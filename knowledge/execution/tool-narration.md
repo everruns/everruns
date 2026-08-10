@@ -62,6 +62,14 @@ So adding a tool that implements `Tool::narrate` "just works" — nothing to wir
 in the capability. A capability returns `None` for tools it does not provide, so
 other capabilities or the generic fallback can handle them.
 
+Ownership boundary (EVE-876): narration is an execution-semantic value — it is
+authored during tool execution and persisted on tool events — so it stays with
+the tool/capability contracts in `everruns-core`
+([`tool_narration`](../../crates/core/src/tool_narration.rs)). Observability
+exporters never author or re-format narration; they only export the `narration`
+field already carried by events (e.g. the Braintrust listener includes it in
+span payloads).
+
 ### Wiring
 
 During capability assembly, the framework wraps each applied capability in a

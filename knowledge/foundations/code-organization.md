@@ -66,7 +66,7 @@ Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
 protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
-heavy subtrees (telemetry/OTLP, `a2a` gRPC, web-fetch/fetchkit), so a
+heavy subtrees (`a2a` gRPC, web-fetch/fetchkit), so a
 standalone provider build never pulls them in. A provider is therefore a pure
 `ChatDriver` implementation with no dependency on core's agent-loop runtime;
 provider crates keep `everruns-core` (and, where needed,
@@ -80,6 +80,16 @@ math/weather, sample-data, noop). `everruns-core` carries no llmsim dependency
 or feature, product registries never register the fixtures, and
 `scripts/lib/check-test-support-isolation.sh` (pre-push + CI) enforces both.
 The facade's `Model::simulated` consumes only the crate's `sim` feature.
+
+Telemetry initialization and exporter implementations live in
+`everruns-observability` (EVE-876): OTLP exporter wiring, tracing-subscriber
+layers, `TelemetryConfig`/`init_telemetry`, the `CompositeEventListener`
+fan-out, and the OTel/Braintrust exporter listeners. `everruns-core` keeps only
+the neutral contracts (the `EventListener` trait, event types, and gen-AI span
+conventions) and carries no OpenTelemetry/exporter dependencies; server and
+worker binaries install telemetry explicitly through `everruns-observability`.
+`scripts/lib/check-observability-isolation.sh` (pre-push + CI) enforces the
+boundary and keeps Framework/provider dependency trees exporter-free.
 
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,

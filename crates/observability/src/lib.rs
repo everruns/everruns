@@ -1,21 +1,25 @@
-// Everruns Observability Exporters
+// Everruns Observability
 //
-// Event-listener backends that translate the agentic loop's events into
-// external observability systems. These were moved out of `everruns-core`
-// (EVE-651) so the core crate stays free of exporter-specific HTTP/telemetry
-// dependencies and so a misconfigured exporter can never panic core's init
-// path.
+// Runtime/exporter implementations behind the neutral observability contracts
+// in `everruns-core`. Core owns only the `EventListener` trait, event types,
+// and the vendor-neutral gen-AI span conventions; this crate owns everything
+// that talks to a vendor or wires up a subscriber (EVE-651, EVE-876):
 //
-// Backends:
+// - `telemetry`: OpenTelemetry initialization — OTLP exporter wiring,
+//   tracing-subscriber layers, `TelemetryConfig`/`TelemetryGuard`.
+// - `composite`: `CompositeEventListener` fan-out with panic isolation.
 // - `braintrust`: Braintrust tracing and logging (always-on `reqwest`).
 // - `otel`: OpenTelemetry spans following gen-AI semantic conventions. Emits
-//   plain `tracing` spans; the OTLP exporter wiring lives in
-//   `everruns_core::telemetry` behind core's `telemetry` feature.
+//   plain `tracing` spans; the OTLP exporter wiring lives in `telemetry`.
 //
-// All backends implement `everruns_core::EventListener`.
+// All listener backends implement `everruns_core::EventListener`.
 
 pub mod braintrust;
+pub mod composite;
 pub mod otel;
+pub mod telemetry;
 
 pub use braintrust::{BraintrustConfig, BraintrustListener};
+pub use composite::CompositeEventListener;
 pub use otel::OtelEventListener;
+pub use telemetry::{TelemetryConfig, TelemetryGuard, init_telemetry};

@@ -118,7 +118,8 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# OpenTelemetry
+# OpenTelemetry (exporter deps are declared only by crates/observability —
+# EVE-876; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-client"] }

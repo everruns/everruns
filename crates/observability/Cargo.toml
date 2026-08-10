@@ -1,8 +1,13 @@
-# Everruns Observability Exporters
+# Everruns Observability
 # Decision: Exporter event-listeners (Braintrust, OpenTelemetry) live outside
 # `everruns-core` (EVE-651) so core carries no exporter HTTP/telemetry deps and
 # an exporter cannot panic core's init path. Depends on core only for the
 # `EventListener` trait + event types.
+# Decision (EVE-876): OpenTelemetry initialization (OTLP exporter wiring,
+# tracing-subscriber layers, TelemetryConfig/TelemetryGuard) and the
+# CompositeEventListener fan-out also live here. Core keeps only the neutral
+# gen-AI span conventions; it carries no OTel SDK, OTLP, or subscriber deps.
+# Guard: scripts/lib/check-observability-isolation.sh.
 
 [package]
 name = "everruns-observability"
@@ -39,10 +44,19 @@ tokio = { workspace = true, features = ["sync", "rt", "time"] }
 # Tracing: OtelEventListener emits gen-AI spans; Braintrust logs delivery state
 tracing.workspace = true
 
+# OpenTelemetry SDK + OTLP exporter + tracing bridge (init_telemetry). Moved
+# from core's `telemetry` feature (EVE-876) — this crate is the only workspace
+# owner of the exporter dependency subtree.
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+
 # Internal: EventListener trait + event types + gen-AI attribute constants.
-# default-features = false sheds core's heavy optional subtrees (telemetry/OTLP,
-# a2a, web-fetch, llmsim) that the exporters do not need — they only use the
-# always-on event/trait/telemetry-conventions surface.
+# default-features = false sheds core's heavy optional subtrees (a2a,
+# web-fetch) that the exporters do not need — they only use the always-on
+# event/trait/telemetry-conventions surface.
 everruns-core = { path = "../core", version = "0.17.0", default-features = false }
 
 [dev-dependencies]

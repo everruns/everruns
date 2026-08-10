@@ -129,8 +129,11 @@ Messages are converted to OpenAI-compatible format using `Message::to_openai_for
 | File | Purpose |
 |------|---------|
 | `crates/observability/src/otel.rs` | `OtelEventListener` — all span creation/lifecycle |
-| `crates/core/src/telemetry.rs` | Gen-AI semantic conventions, config, init |
+| `crates/observability/src/telemetry.rs` | OTLP exporter wiring, tracing-subscriber layers, config, init |
+| `crates/core/src/telemetry.rs` | Neutral gen-AI semantic conventions and span-name helpers |
 | `crates/server/src/main.rs` | Listener registration |
+
+Ownership boundary (EVE-876): core holds only the neutral observability contracts — the `EventListener` trait, event types, and gen-AI span conventions. `everruns-observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out. The `check-observability-isolation.sh` guard (pre-push + CI) keeps exporter crates out of core and out of Framework/provider dependency trees, so default Framework builds stay offline.
 
 ---
 
