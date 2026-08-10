@@ -1,0 +1,294 @@
+//! Acceptance tests for the canonical event-log SPI, executed from outside the
+//! Everruns workspace. Everything here uses published public paths only.
+
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
+use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::message::Message;
+use everruns_core::typed_id::SessionId;
+use everruns_core::{DriverId, ResolvedModel};
+use everruns_host::{
+    EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,
+    EventReadRequest, EventReader, HostBackends, InProcessRuntimeBuilder,
+};
+use external_event_log::ExternalEventLog;
+
+fn input(session_id: SessionId, text: &str) -> EventRequest {
+    EventRequest::new(
+        session_id,
+        EventContext::empty(),
+        InputMessageData::new(Message::user(text)),
+    )
+}
+
+fn limit(value: usize) -> EventReadLimit {
+    EventReadLimit::new(value).expect("valid read limit")
+}
+
+fn sequences(page: &EventPage) -> Vec<i32> {
+    page.events
+        .iter()
+        .map(|event| event.sequence.expect("durable event"))
+        .collect()
+}
+
+#[tokio::test]
+async fn append_assigns_a_sequence_and_returns_the_finalized_event() {
+    let session = SessionId::new();
+    let log = ExternalEventLog::new();
+
+    let first = log.append(input(session, "one")).await.expect("append");
+    let second = log.append(input(session, "two")).await.expect("append");
+
+    assert_eq!(first.sequence, Some(1));
+    assert_eq!(second.sequence, Some(2));
+    assert_eq!(first.session_id, session);
+    assert_ne!(first.id, second.id);
+    assert_eq!(first.event_type, "input.message");
+    assert_eq!(log.durability(), EventDurability::Volatile);
+
+    // Read-your-accepted-writes: the append is visible to the next read.
+    let page = log
+        .read_page(EventReadRequest::new(session, limit(8)))
+        .await
+        .expect("read page");
+    assert_eq!(sequences(&page), vec![1, 2]);
+    assert_eq!(page.events[0].id, first.id);
+}
+
+#[tokio::test]
+async fn snapshot_pagination_excludes_concurrent_appends_and_polling_observes_them() {
+    let session = SessionId::new();
+    let log = ExternalEventLog::new();
+    for text in ["one", "two", "three"] {
+        log.append(input(session, text)).await.expect("append");
+    }
+
+    let first = log
+        .read_page(EventReadRequest::new(session, limit(2)))
+        .await
+        .expect("first page");
+    assert_eq!(first.snapshot_high_watermark(), 3);
+    assert_eq!(sequences(&first), vec![1, 2]);
+    let continuation = first.next_cursor.clone().expect("continuation");
+    assert_eq!(continuation.session_id(), session);
+    assert_eq!(continuation.after_sequence(), 2);
+    assert_eq!(continuation.snapshot_high_watermark(), Some(3));
+
+    // An append committed mid-pagination must stay outside the pinned snapshot.
+    log.append(input(session, "four")).await.expect("append");
+
+    let second = log
+        .read_page(EventReadRequest::from_cursor(continuation, limit(2)))
+        .await
+        .expect("second page");
+    assert_eq!(second.snapshot_high_watermark(), 3);
+    assert_eq!(sequences(&second), vec![3]);
+    assert!(second.next_cursor.is_none());
+
+    // Polling starts a new snapshot and does observe the later append.
+    let poll = EventCursor::after(session, second.snapshot_high_watermark()).expect("poll cursor");
+    assert_eq!(poll.snapshot_high_watermark(), None);
+    let polled = log
+        .read_page(EventReadRequest::from_cursor(poll, limit(2)))
+        .await
+        .expect("poll page");
+    assert_eq!(polled.snapshot_high_watermark(), 4);
+    assert_eq!(sequences(&polled), vec![4]);
+}
+
+#[tokio::test]
+async fn sequence_gaps_are_accepted_and_stay_ordered() {
+    let session = SessionId::new();
+    let log = ExternalEventLog::new();
+    log.append(input(session, "visible one")).await.expect("append");
+    log.append_hidden(input(session, "internal record"));
+    log.append_hidden(input(session, "internal record"));
+    log.append(input(session, "visible two")).await.expect("append");
+    log.append(input(session, "visible three"))
+        .await
+        .expect("append");
+
+    assert_eq!(log.physical_len(session), 5);
+
+    let first = log
+        .read_page(EventReadRequest::new(session, limit(2)))
+        .await
+        .expect("first page");
+    assert_eq!(first.snapshot_high_watermark(), 5);
+    assert_eq!(sequences(&first), vec![1, 4]);
+
+    let second = log
+        .read_page(EventReadRequest::from_cursor(
+            first.next_cursor.clone().expect("continuation"),
+            limit(2),
+        ))
+        .await
+        .expect("second page");
+    assert_eq!(sequences(&second), vec![5]);
+    assert!(second.next_cursor.is_none());
+}
+
+#[tokio::test]
+async fn cross_session_and_unavailable_snapshot_cursors_fail() {
+    let session = SessionId::new();
+    let other_session = SessionId::new();
+    let log = ExternalEventLog::new();
+    log.append(input(session, "one")).await.expect("append");
+
+    let foreign = EventCursor::continuation(other_session, 0, 1).expect("cursor");
+    let error = log
+        .read_page(EventReadRequest::new(session, limit(4)).with_cursor(foreign))
+        .await
+        .expect_err("cross-session cursor must fail");
+    assert!(matches!(error, EventLogError::CrossSessionCursor { .. }));
+
+    let unavailable = EventCursor::continuation(session, 0, 99).expect("cursor");
+    let error = log
+        .read_page(EventReadRequest::from_cursor(unavailable, limit(4)))
+        .await
+        .expect_err("unavailable snapshot must fail");
+    assert!(matches!(error, EventLogError::ExpiredCursor { .. }));
+}
+
+#[test]
+fn cursor_and_page_construction_reject_inconsistent_positions() {
+    let session = SessionId::new();
+
+    assert!(matches!(
+        EventCursor::continuation(session, -1, 4).expect_err("negative position"),
+        EventLogError::InvalidRead { .. }
+    ));
+    assert!(matches!(
+        EventCursor::continuation(session, 5, 4).expect_err("position beyond snapshot"),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(Vec::new(), None, -1).expect_err("negative watermark"),
+        EventLogError::InvalidRead { .. }
+    ));
+
+    // A continuation on an exhausted snapshot promises events that cannot exist.
+    let exhausted = EventCursor::continuation(session, 4, 4).expect("cursor");
+    assert!(matches!(
+        EventPage::new(Vec::new(), Some(exhausted), 4).expect_err("exhausted continuation"),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+
+    // A page may not return events beyond the snapshot it claims.
+    let event: Event = input(session, "one").into_event(everruns_core::EventId::new(), 5);
+    assert!(matches!(
+        EventPage::new(vec![event], None, 4).expect_err("sequence beyond snapshot"),
+        EventLogError::InvalidRead { .. }
+    ));
+}
+
+/// Reader that records the request shapes it is asked to serve, proving an
+/// external implementation can tell an initial read from a continuation.
+#[derive(Default)]
+struct RecordingReader {
+    seen: std::sync::Mutex<Vec<Option<(i32, Option<i32>)>>>,
+}
+
+#[async_trait]
+impl EventReader for RecordingReader {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        self.seen.lock().expect("recorder mutex").push(
+            request
+                .cursor()
+                .map(|cursor| (cursor.after_sequence(), cursor.snapshot_high_watermark())),
+        );
+        EventPage::new(Vec::new(), None, 0)
+    }
+}
+
+#[tokio::test]
+async fn a_reader_can_inspect_the_request_cursor() {
+    let session = SessionId::new();
+    let reader = RecordingReader::default();
+
+    reader
+        .read_page(EventReadRequest::new(session, limit(4)))
+        .await
+        .expect("initial read");
+    reader
+        .read_page(EventReadRequest::from_cursor(
+            EventCursor::continuation(session, 2, 7).expect("cursor"),
+            limit(4),
+        ))
+        .await
+        .expect("continuation read");
+    reader
+        .read_page(EventReadRequest::from_cursor(
+            EventCursor::after(session, 7).expect("cursor"),
+            limit(4),
+        ))
+        .await
+        .expect("poll read");
+
+    let seen = reader.seen.lock().expect("recorder mutex").clone();
+    assert_eq!(seen, vec![None, Some((2, Some(7))), Some((7, None))]);
+}
+
+#[tokio::test]
+async fn the_external_log_serves_host_composition_and_message_projection() {
+    let log = Arc::new(ExternalEventLog::new());
+    let runtime = InProcessRuntimeBuilder::new()
+        .llm_sim(LlmSimConfig::fixed("Four."))
+        .default_model(ResolvedModel {
+            model: "llmsim-model".into(),
+            provider_type: DriverId::LlmSim,
+            api_key: Some("obviously-not-a-real-key".into()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .backends(HostBackends::in_memory().with_event_log(log.clone()))
+        .single_session(|session| {
+            session
+                .harness("chat", "You are concise.")
+                .agent("chat-agent", "Answer directly.")
+                .session_title("External Event Log Session")
+        })
+        .build()
+        .await
+        .expect("build runtime");
+
+    let session_id = runtime.default_session_id().expect("single session id");
+    let turn = runtime
+        .run_text_turn(session_id, "What is 2 + 2?")
+        .await
+        .expect("run turn");
+    assert!(turn.success);
+    assert_eq!(turn.response, "Four.");
+
+    // The turn's canonical events landed in the external log ...
+    let page = log
+        .read_page(EventReadRequest::new(session_id, limit(64)))
+        .await
+        .expect("read external log");
+    assert!(page.snapshot_high_watermark() > 0);
+    assert!(
+        page.events
+            .iter()
+            .any(|event| event.event_type == "input.message")
+    );
+
+    // ... and the host's read-only projection rebuilds from it.
+    let messages = EventHistory::new(log.clone())
+        .read_page(everruns_host::EventHistoryReadRequest::new(
+            session_id,
+            everruns_host::EventHistoryReadLimit::new(16).expect("valid history limit"),
+        ))
+        .await
+        .expect("project history");
+    assert_eq!(
+        messages
+            .messages
+            .iter()
+            .filter_map(|message| message.text())
+            .collect::<Vec<_>>(),
+        vec!["What is 2 + 2?", "Four."]
+    );
+}

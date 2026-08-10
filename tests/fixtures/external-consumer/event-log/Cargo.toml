@@ -1,0 +1,13 @@
+[package]
+name = "external-event-log"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+everruns-core = { path = "../../../../crates/core" }
+everruns-host = { path = "../../../../crates/host" }
+
+[dev-dependencies]
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

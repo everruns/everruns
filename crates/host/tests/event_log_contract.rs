@@ -78,6 +78,138 @@ async fn snapshot_pages_do_not_skip_duplicate_or_include_concurrent_appends() {
 }
 
 #[tokio::test]
+async fn a_public_continuation_cursor_reads_the_same_pinned_snapshot() {
+    let session = SessionId::new();
+    let log = InMemoryEventLog::new();
+    for text in ["one", "two", "three"] {
+        log.append(input(session, text)).await.unwrap();
+    }
+    let limit = EventReadLimit::new(2).unwrap();
+    let first = log
+        .read_page(EventReadRequest::new(session, limit))
+        .await
+        .unwrap();
+    log.append(input(session, "four")).await.unwrap();
+
+    // A cursor rebuilt from the page's public parts behaves exactly like the
+    // one the reader returned: it stays pinned to the original snapshot.
+    let rebuilt = EventCursor::continuation(
+        session,
+        first.events.last().unwrap().sequence.unwrap(),
+        first.snapshot_high_watermark(),
+    )
+    .unwrap();
+    assert_eq!(Some(&rebuilt), first.next_cursor.as_ref());
+
+    let page = log
+        .read_page(EventReadRequest::from_cursor(rebuilt, limit))
+        .await
+        .unwrap();
+    assert_eq!(page.snapshot_high_watermark(), 3);
+    assert_eq!(page.events.len(), 1);
+    assert!(page.next_cursor.is_none());
+}
+
+#[test]
+fn public_cursor_and_page_constructors_validate_their_invariants() {
+    let session = SessionId::new();
+
+    assert!(matches!(
+        EventCursor::continuation(session, -1, 3).unwrap_err(),
+        EventLogError::InvalidRead { .. }
+    ));
+    assert!(matches!(
+        EventCursor::continuation(session, 1, -1).unwrap_err(),
+        EventLogError::InvalidRead { .. }
+    ));
+    assert!(matches!(
+        EventCursor::continuation(session, 4, 3).unwrap_err(),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+    assert_eq!(
+        EventCursor::continuation(session, 3, 3)
+            .unwrap()
+            .snapshot_high_watermark(),
+        Some(3)
+    );
+    assert_eq!(
+        EventCursor::after(session, 3)
+            .unwrap()
+            .snapshot_high_watermark(),
+        None
+    );
+
+    // Gaps are legitimate: a reader may project a filtered logical sequence.
+    let sparse = vec![
+        fixed_event(session, EventId::new(), 1, "one"),
+        fixed_event(session, EventId::new(), 4, "four"),
+    ];
+    let page = EventPage::new(sparse.clone(), None, 4).unwrap();
+    assert_eq!(page.snapshot_high_watermark(), 4);
+
+    // Out-of-order events, foreign sessions, and unpinned or exhausted
+    // continuations are rejected with typed errors.
+    let mut reversed = sparse.clone();
+    reversed.reverse();
+    assert!(matches!(
+        EventPage::new(reversed, None, 4).unwrap_err(),
+        EventLogError::Corruption { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(
+            vec![
+                sparse[0].clone(),
+                fixed_event(SessionId::new(), EventId::new(), 2, "other session"),
+            ],
+            None,
+            4,
+        )
+        .unwrap_err(),
+        EventLogError::Corruption { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(sparse.clone(), None, 3).unwrap_err(),
+        EventLogError::InvalidRead { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(
+            sparse.clone(),
+            Some(EventCursor::after(session, 4).unwrap()),
+            8,
+        )
+        .unwrap_err(),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(
+            sparse.clone(),
+            Some(EventCursor::continuation(SessionId::new(), 4, 8).unwrap()),
+            8,
+        )
+        .unwrap_err(),
+        EventLogError::CrossSessionCursor { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(
+            sparse.clone(),
+            Some(EventCursor::continuation(session, 2, 8).unwrap()),
+            8,
+        )
+        .unwrap_err(),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+    assert!(matches!(
+        EventPage::new(
+            sparse,
+            Some(EventCursor::continuation(session, 4, 4).unwrap()),
+            4,
+        )
+        .unwrap_err(),
+        EventLogError::IncompatibleCursor { .. }
+    ));
+}
+
+#[tokio::test]
 async fn empty_snapshot_is_pollable_and_cursor_is_session_bound() {
     let first_session = SessionId::new();
     let second_session = SessionId::new();

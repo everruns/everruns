@@ -295,6 +295,29 @@ backends. `everruns-worker` ships the first-party durable/server-backed host
 adapter (`WorkerRuntimeHost`) that bridges worker storage/adapters into the
 runtime host contract.
 
+### Canonical event log
+
+Conversation persistence is the one backend with a single write path: the
+canonical event log is the durable truth and message history is a rebuildable
+projection of it. Embedders replace it by implementing the `EventReader` and
+`EventLog` traits in `crates/host/src/events.rs` and supplying the result
+through the event-log backend slot.
+
+That pair is a supported public SPI, not an in-crate detail. A detached crate
+outside this workspace must be able to implement both — including stable
+snapshot pagination — from published paths alone, so the reader must be able to
+inspect a read request's cursor, build a snapshot-pinned continuation, and
+construct a result page. Construction is validated in one place so in-crate and
+external implementations expose the same observable invariants: per-session
+binding, monotonically increasing sequences that may contain gaps,
+continuations pinned to the snapshot their first page captured, and polling
+cursors that deliberately start a new snapshot. The log stays append-only;
+there is no truncate, rewind, or mutation contract.
+
+`tests/fixtures/external-consumer/event-log` is an out-of-workspace
+implementation exercised by CI, so the SPI cannot silently stop being
+externally implementable.
+
 ### Optional host-backend slots
 
 `RuntimeBackends` carries a uniform set of optional, additive backend slots that

@@ -99,6 +99,16 @@ impl Default for EventReadLimit {
 }
 
 /// Snapshot-bound continuation cursor for canonical event replay.
+///
+/// A cursor is always bound to one session and carries a replay position plus
+/// an optional pinned snapshot:
+///
+/// - [`EventCursor::continuation`] keeps an in-progress snapshot read pinned to
+///   the high-watermark the first page captured, so later appends stay
+///   invisible until that snapshot is exhausted.
+/// - [`EventCursor::after`] carries no watermark. The next read captures the
+///   then-current high-watermark, which is how a caller polls for appends made
+///   after a completed snapshot.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EventCursor {
     session_id: SessionId,
@@ -118,6 +128,9 @@ impl EventCursor {
     }
 
     /// Stable high-watermark captured by the first page.
+    ///
+    /// `Some` means the cursor stays pinned to that snapshot; `None` means the
+    /// next read starts a fresh snapshot (the polling form).
     pub fn snapshot_high_watermark(&self) -> Option<i32> {
         self.snapshot_high_watermark
     }
@@ -136,6 +149,45 @@ impl EventCursor {
             session_id,
             after_sequence,
             snapshot_high_watermark: None,
+        })
+    }
+
+    /// Continue reading inside an already captured snapshot.
+    ///
+    /// `after_sequence` is the last sequence the caller has consumed and
+    /// `snapshot_high_watermark` is the value the first page of that snapshot
+    /// reported through [`EventPage::snapshot_high_watermark`]. Reads resumed
+    /// from this cursor never observe appends committed after that watermark.
+    ///
+    /// This is the cursor an [`EventReader`] returns as
+    /// [`EventPage::next_cursor`]. Use [`EventCursor::after`] instead to start a
+    /// new snapshot once the pinned one is exhausted.
+    pub fn continuation(
+        session_id: SessionId,
+        after_sequence: i32,
+        snapshot_high_watermark: i32,
+    ) -> Result<Self, EventLogError> {
+        if after_sequence < 0 {
+            return Err(EventLogError::InvalidRead {
+                detail: "continuation cursor sequence cannot be negative".into(),
+            });
+        }
+        if snapshot_high_watermark < 0 {
+            return Err(EventLogError::InvalidRead {
+                detail: "snapshot high-watermark cannot be negative".into(),
+            });
+        }
+        if after_sequence > snapshot_high_watermark {
+            return Err(EventLogError::IncompatibleCursor {
+                detail: format!(
+                    "cursor position {after_sequence} exceeds its snapshot {snapshot_high_watermark}"
+                ),
+            });
+        }
+        Ok(Self {
+            session_id,
+            after_sequence,
+            snapshot_high_watermark: Some(snapshot_high_watermark),
         })
     }
 }
@@ -180,6 +232,16 @@ impl EventReadRequest {
         self.session_id
     }
 
+    /// Continuation this read resumes from, if any.
+    ///
+    /// `None` is an initial read: the reader captures a fresh snapshot
+    /// high-watermark. `Some` carries the caller's position and — when
+    /// [`EventCursor::snapshot_high_watermark`] is set — the snapshot the read
+    /// must stay pinned to.
+    pub fn cursor(&self) -> Option<&EventCursor> {
+        self.cursor.as_ref()
+    }
+
     /// Validated page bound.
     pub fn limit(&self) -> EventReadLimit {
         self.limit
@@ -187,6 +249,11 @@ impl EventReadRequest {
 }
 
 /// A page of full canonical event envelopes in persisted sequence order.
+///
+/// Construct pages with [`EventPage::new`], which enforces the invariants every
+/// [`EventReader`] must observe: sequences are positive, strictly increasing,
+/// and bounded by the page snapshot; all events belong to one session; and a
+/// continuation stays pinned to that same snapshot with more to return.
 #[derive(Clone, Debug)]
 pub struct EventPage {
     /// Full canonical envelopes, never projection records.
@@ -283,9 +350,154 @@ impl EventPage {
     pub fn snapshot_high_watermark(&self) -> i32 {
         self.snapshot_high_watermark
     }
+
+    /// Build a validated page of canonical events.
+    ///
+    /// This is the construction path for every [`EventReader`], in-crate or
+    /// external, so all implementations expose the same observable invariants:
+    ///
+    /// - `snapshot_high_watermark` is the sequence the snapshot is pinned to.
+    ///   `0` means the session has no durable events; such a page must be empty
+    ///   and must not offer a continuation.
+    /// - `events` are complete canonical envelopes carrying durable sequences.
+    ///   Sequences are positive, strictly increasing, and never exceed the
+    ///   snapshot. Gaps are allowed: a reader may project an append-only
+    ///   physical log into a filtered logical sequence.
+    /// - All events belong to one session.
+    /// - `next_cursor`, when present, promises more events inside this same
+    ///   snapshot. It must belong to the page's session, carry exactly this
+    ///   `snapshot_high_watermark`, and sit at or after the last returned
+    ///   sequence but strictly before the snapshot. Build it with
+    ///   [`EventCursor::continuation`]. Return `None` once the snapshot is
+    ///   exhausted; callers poll for later appends with [`EventCursor::after`].
+    ///
+    /// Violations return the typed [`EventLogError`] variant that describes the
+    /// inconsistency rather than panicking.
+    pub fn new(
+        events: Vec<Event>,
+        next_cursor: Option<EventCursor>,
+        snapshot_high_watermark: i32,
+    ) -> Result<Self, EventLogError> {
+        if snapshot_high_watermark < 0 {
+            return Err(EventLogError::InvalidRead {
+                detail: format!(
+                    "page snapshot high-watermark cannot be negative, got {snapshot_high_watermark}"
+                ),
+            });
+        }
+        let mut page_session: Option<SessionId> = None;
+        let mut previous = 0i32;
+        for event in &events {
+            let sequence = event.sequence.ok_or_else(|| EventLogError::Corruption {
+                detail: format!("event {} in a read page has no sequence", event.id),
+            })?;
+            if sequence <= 0 {
+                return Err(EventLogError::Corruption {
+                    detail: format!("event {} has non-positive sequence {sequence}", event.id),
+                });
+            }
+            if sequence <= previous {
+                return Err(EventLogError::Corruption {
+                    detail: format!(
+                        "page sequence {sequence} does not follow {previous} for event {}",
+                        event.id
+                    ),
+                });
+            }
+            if sequence > snapshot_high_watermark {
+                return Err(EventLogError::InvalidRead {
+                    detail: format!(
+                        "page sequence {sequence} exceeds its snapshot {snapshot_high_watermark}"
+                    ),
+                });
+            }
+            match page_session {
+                None => page_session = Some(event.session_id),
+                Some(session_id) if session_id != event.session_id => {
+                    return Err(EventLogError::Corruption {
+                        detail: format!(
+                            "page mixes sessions {session_id} and {}",
+                            event.session_id
+                        ),
+                    });
+                }
+                Some(_) => {}
+            }
+            previous = sequence;
+        }
+        if let Some(cursor) = &next_cursor {
+            if let Some(session_id) = page_session
+                && cursor.session_id != session_id
+            {
+                return Err(EventLogError::CrossSessionCursor {
+                    detail: format!(
+                        "continuation for session {} cannot follow a page of session {session_id}",
+                        cursor.session_id
+                    ),
+                });
+            }
+            if cursor.snapshot_high_watermark != Some(snapshot_high_watermark) {
+                return Err(EventLogError::IncompatibleCursor {
+                    detail: format!(
+                        "continuation must stay pinned to snapshot {snapshot_high_watermark}"
+                    ),
+                });
+            }
+            if cursor.after_sequence < previous {
+                return Err(EventLogError::IncompatibleCursor {
+                    detail: format!(
+                        "continuation position {} rewinds before the last returned sequence {previous}",
+                        cursor.after_sequence
+                    ),
+                });
+            }
+            if cursor.after_sequence >= snapshot_high_watermark {
+                return Err(EventLogError::IncompatibleCursor {
+                    detail: format!(
+                        "continuation position {} leaves nothing in snapshot {snapshot_high_watermark}",
+                        cursor.after_sequence
+                    ),
+                });
+            }
+        }
+        Ok(Self {
+            events,
+            next_cursor,
+            snapshot_high_watermark,
+        })
+    }
 }
 
 /// Bounded, ordered reader for canonical session events.
+///
+/// This trait is part of the public host SPI: an external crate can implement
+/// it against its own storage using only public APIs. Implementations answer
+/// three request shapes, distinguished through [`EventReadRequest::cursor`]:
+///
+/// - **Initial snapshot read** — no cursor. Capture the session's current
+///   high-watermark, return up to [`EventReadRequest::limit`] events from
+///   sequence `1` upward, and report the captured watermark as
+///   [`EventPage::snapshot_high_watermark`]. An empty session reports `0`.
+/// - **Continuation** — a cursor whose
+///   [`EventCursor::snapshot_high_watermark`] is `Some`. Stay pinned to that
+///   watermark and return events after [`EventCursor::after_sequence`] up to
+///   and including it. Appends committed after the snapshot was captured must
+///   remain invisible, so paging neither skips nor duplicates.
+/// - **Poll** — a cursor whose snapshot high-watermark is `None`, produced by
+///   [`EventCursor::after`]. Capture a fresh high-watermark and return events
+///   after the cursor position, which is how callers observe appends made since
+///   a completed snapshot.
+///
+/// A cursor is bound to one session: reject one presented for a different
+/// session with [`EventLogError::CrossSessionCursor`], a position that cannot
+/// belong to its snapshot with [`EventLogError::IncompatibleCursor`], and a
+/// snapshot this reader can no longer serve with
+/// [`EventLogError::ExpiredCursor`]. Build results with [`EventPage::new`],
+/// which validates those page and cursor invariants for every implementation.
+///
+/// Sequences increase monotonically per session but need not be contiguous:
+/// gaps are expected when a reader projects an append-only physical log into a
+/// filtered logical event sequence.
 #[async_trait]
 pub trait EventReader: Send + Sync {
     /// Read one page. The first page fixes a snapshot high-watermark; continuations
@@ -298,6 +510,18 @@ pub trait EventReader: Send + Sync {
 /// Implementations explicitly pair their reader and writer and guarantee
 /// read-your-accepted-writes, unique monotonic per-session sequences, and the
 /// declared durability class. There is deliberately no blanket implementation.
+///
+/// This trait is part of the public host SPI. An external crate implements
+/// [`EventReader`] plus [`EventLog::append`] and supplies the result to
+/// composition through [`HostBackends::with_event_log`](crate::HostBackends::with_event_log).
+/// The append side owns identity: the log assigns the [`EventId`] and the next
+/// per-session sequence, finalizes the request with
+/// [`EventRequest::into_event`], and returns that canonical [`Event`]. An
+/// accepted append must be visible to the next read of the same session.
+/// Ephemeral requests ([`EventRequest::is_ephemeral`]) never reach a durable
+/// log; reject them with [`EventLogError::InvalidAppend`].
+///
+/// The log is append-only. There is no truncate, rewind, or mutation contract.
 #[async_trait]
 pub trait EventLog: EventReader {
     /// Commit a durable request, assigning its event id and persisted sequence.
@@ -549,11 +773,7 @@ impl EventIndex {
             None => (0, current_high.unwrap_or(0)),
         };
         if snapshot == 0 {
-            return Ok(EventPage {
-                events: Vec::new(),
-                next_cursor: None,
-                snapshot_high_watermark: 0,
-            });
+            return EventPage::new(Vec::new(), None, 0);
         }
         let mut selected = events
             .iter()
@@ -569,19 +789,19 @@ impl EventIndex {
         if has_more {
             selected.pop();
         }
-        let next_cursor = has_more.then(|| EventCursor {
-            session_id: request.session_id,
-            after_sequence: selected
-                .last()
-                .and_then(|event| event.sequence)
-                .expect("a page with more events returned at least one event"),
-            snapshot_high_watermark: Some(snapshot),
-        });
-        Ok(EventPage {
-            events: selected,
-            next_cursor,
-            snapshot_high_watermark: snapshot,
-        })
+        let next_cursor = has_more
+            .then(|| {
+                EventCursor::continuation(
+                    request.session_id,
+                    selected
+                        .last()
+                        .and_then(|event| event.sequence)
+                        .expect("a page with more events returned at least one event"),
+                    snapshot,
+                )
+            })
+            .transpose()?;
+        EventPage::new(selected, next_cursor, snapshot)
     }
 }
 
@@ -1220,16 +1440,10 @@ mod tests {
                     .into_event(EventId::new(), sequence)
                 })
                 .collect();
-            let next_cursor = (end < high_watermark).then_some(EventCursor {
-                session_id: request.session_id,
-                after_sequence: end,
-                snapshot_high_watermark: Some(high_watermark),
-            });
-            Ok(EventPage {
-                events,
-                next_cursor,
-                snapshot_high_watermark: high_watermark,
-            })
+            let next_cursor = (end < high_watermark)
+                .then(|| EventCursor::continuation(request.session_id, end, high_watermark))
+                .transpose()?;
+            EventPage::new(events, next_cursor, high_watermark)
         }
     }
 
