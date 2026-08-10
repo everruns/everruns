@@ -108,7 +108,7 @@ test.describe("Sidebar navigation prefetch", () => {
     page.on("request", (request) => requests.push(request));
 
     await page.goto("/dashboard");
-    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
     await page.waitForLoadState("networkidle");
 
     const unrelatedRscRequests = requests.filter((request) => {
@@ -175,11 +175,11 @@ test.describe("Sidebar navigation prefetch", () => {
     });
 
     await page.goto("/dashboard");
-    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
     await page.waitForLoadState("networkidle");
 
     settingsRequests.length = 0;
-    await page.getByRole("link", { name: "Settings" }).click();
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
     await expect(page).toHaveURL(/\/settings\/organization$/);
     await page.waitForLoadState("networkidle");
 
