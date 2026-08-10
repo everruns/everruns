@@ -1125,6 +1125,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-capability",
  "everruns-core",
  "everruns-host",
  "everruns-macros",
@@ -1133,6 +1134,16 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "everruns-capability"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1150,6 +1161,7 @@ dependencies = [
  "cron",
  "ed25519-dalek 3.0.0",
  "eventsource-stream",
+ "everruns-capability",
  "everruns-provider",
  "fetchkit",
  "futures",
@@ -1280,10 +1292,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "external-capability-pack"
+version = "0.0.0"
+dependencies = [
+ "everruns-capability",
+ "serde_json",
+]
+
+[[package]]
 name = "external-consumer-app"
 version = "0.0.0"
 dependencies = [
  "everruns",
+ "external-capability-pack",
+ "serde_json",
  "tokio",
 ]
 

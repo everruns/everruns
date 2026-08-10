@@ -50,6 +50,7 @@ pub struct CreateHarnessRequest {
     /// Capabilities to enable with per-harness configuration.
     #[serde(default)]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.
     #[serde(default)]
@@ -99,6 +100,7 @@ pub struct UpdateHarnessRequest {
     /// Replace the capability list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
+    #[schema(value_type = Option<Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>>)]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// Replace the initial-files list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -140,6 +142,7 @@ pub struct PreviewHarnessRequest {
     /// Capability configurations to layer onto the preview. Empty list means none.
     #[serde(default)]
     #[schema(example = json!([{"ref": "web.search", "config": {}}, {"ref": "filesystem.read", "config": {"root": "/workspace"}}]))]
+    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// MCP servers scoped to this preview, keyed by scope (`shared` / per-agent / etc.).
     /// Use the camelCase key `mcpServers` (preferred) or the snake_case alias `mcp_servers`. Empty by default.

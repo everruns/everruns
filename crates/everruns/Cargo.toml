@@ -38,10 +38,13 @@ default = ["macros", "capabilities"]
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
 macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
-# Curated service-provider interface for code-defined capabilities. This shares
-# serde/schemars with `macros` but remains independently gateable so the bare
-# facade still compiles with `--no-default-features`.
-capabilities = ["dep:schemars", "dep:serde"]
+# Curated service-provider interface for code-defined capabilities. The
+# authoring types live in the neutral `everruns-capability` contract crate
+# (EVE-873); this feature turns on its `definition` surface plus the runtime
+# adapters here. It shares serde/schemars with `macros` but remains
+# independently gateable so the bare facade still compiles with
+# `--no-default-features`.
+capabilities = ["everruns-capability/definition", "dep:schemars", "dep:serde"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
@@ -63,6 +66,11 @@ local = ["dep:everruns-local"]
 openai = ["dep:everruns-openai"]
 
 [dependencies]
+# Neutral capability contract (EVE-873): `CapabilityId`/`CapabilityRef`,
+# `CapabilitySpec`/`IntoCapability`, and (behind `capabilities`) the
+# code-defined authoring surface. The facade re-exports this contract as its
+# application capability API.
+everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-host.workspace = true
 everruns-local = { workspace = true, optional = true }

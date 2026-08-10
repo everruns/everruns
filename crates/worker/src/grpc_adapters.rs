@@ -4414,6 +4414,27 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn worker_parses_the_neutral_capability_reference_shape() {
+        // EVE-873: worker resolution consumes the same `{"ref", "config"}`
+        // representation the Framework serializes and the control plane
+        // persists — no worker-side semantic model.
+        let framework_ref = everruns_capability::CapabilityRef::new("web_fetch")
+            .config(serde_json::json!({"enable_file_download": true}));
+        let wire = serde_json::to_string(&framework_ref).unwrap();
+
+        let parsed = serde_json::from_str::<everruns_core::AgentCapabilityConfig>(&wire).unwrap();
+        assert_eq!(parsed, framework_ref);
+        assert_eq!(parsed.capability_id(), "web_fetch");
+
+        // Legacy rows without a config payload load as `{}`.
+        let bare = serde_json::from_str::<everruns_core::AgentCapabilityConfig>(
+            r#"{"ref":"current_time"}"#,
+        )
+        .unwrap();
+        assert_eq!(bare.config_value(), &serde_json::json!({}));
+    }
+
+    #[test]
     fn resolved_model_proto_conversion_is_credential_free() {
         let resolved = proto_model_with_provider_to_model(proto::ResolvedModel {
             model: "custom-model".into(),
@@ -4466,7 +4487,7 @@ mod tests {
             harness.tags,
             vec!["chat".to_string(), "built-in".to_string()]
         );
-        assert_eq!(harness.capabilities[0].config["name"], "resend");
+        assert_eq!(harness.capabilities[0].config_value()["name"], "resend");
         assert!(harness.is_built_in);
     }
 

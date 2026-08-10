@@ -113,9 +113,46 @@ compile onto the streaming-output and pre/post-tool-hook seams. Guardrails are
 opt-in and removable like any capability — there is no org-mandated enforcement
 layer. See [guardrails.md](guardrails.md).
 
+### Neutral capability contract
+
+One open identity/configuration contract is shared by the Framework and the
+product (EVE-873), owned by `crates/capability` (`everruns-capability`):
+validated `CapabilityId`s, the `CapabilityRef` reference/config value,
+`CapabilitySpec` plus the non-sealed `IntoCapability` conversion seam, the
+code-defined capability authoring surface (`definition` feature), structured
+validation/execution errors, and registry identity bookkeeping with
+duplicate/collision rejection.
+
+Contract rules:
+
+- `AgentCapabilityConfig` (persisted attachment rows) and
+  `BuiltInCapabilityDefinition` (built-in harness provisioning) are the same
+  `CapabilityRef` type under historical names — there is no second semantic
+  model. The `{"ref", "config"}` wire shape round-trips unchanged through
+  Framework activation, persisted attachments, and worker resolution.
+- Validation is single-sourced: the Framework's `AgentBuilder::build` and the
+  server write paths (`crates/server/src/domains/capabilities/validation.rs`)
+  call the same ID grammar and JSON-object-config checks. Reserved namespaces
+  (`__everruns_`) and open string IDs are enforced there.
+- `CapabilityRef` redacts its config from `Debug`; attachment rows flowing
+  through logs never expose config payloads.
+- The contract crate depends on neither `everruns-core` nor `everruns-host`
+  and carries no Tokio/HTTP/SQLx/OpenAPI/inventory edge, so third-party
+  capability crates can depend on it alone
+  (`tests/fixtures/external-consumer/capability-pack/` proves this;
+  API/DB serialization adapters like the OpenAPI shadow schema in
+  `crates/core/src/capability_types.rs` stay thin).
+- Architecture guard: `scripts/lib/check-capability-contract.sh` (pre-push
+  step and CI job `capability-contract`) fails any new capability
+  ID/config/definition type in core, host, or platform.
+
+Capability *implementations* (the `Capability` trait and built-ins) remain in
+`everruns-core` and sibling crates; only identity/configuration moved.
+
 ### Architecture
 
-Capabilities are defined in **everruns-core** and resolved at the **API layer**:
+Capability implementations are defined in **everruns-core** (their identity
+contract comes from **everruns-capability**) and resolved at the **API layer**:
 
 ```
 ┌─────────────────────────────────────────────────────────┐

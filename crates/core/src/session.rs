@@ -479,6 +479,10 @@ pub struct Session {
     /// Session-level capabilities (additive to agent capabilities).
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<crate::capability_types::AgentCapabilityConfigSchema>)
+    )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

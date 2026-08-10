@@ -26,6 +26,11 @@ categories = ["development-tools", "asynchronous"]
 # modules at their original paths.
 everruns-provider = { workspace = true }
 
+# Neutral capability contract (EVE-873): capability identity, references, and
+# registry index. Only the identity surface — the code-defined authoring
+# surface (`definition` feature) is consumed by `everruns`, not core.
+everruns-capability = { workspace = true }
+
 # Core dependencies
 anyhow.workspace = true
 thiserror.workspace = true

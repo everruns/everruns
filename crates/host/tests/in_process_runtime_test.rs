@@ -1280,7 +1280,7 @@ async fn with_plugin_dir_compiles_and_loads_microsoft_docs() {
     assert_eq!(cap.capability_id(), "plugin:microsoft-docs");
     // The config must be a non-empty JSON object (the serialized definition).
     assert!(
-        cap.config.is_object() && !cap.config.as_object().unwrap().is_empty(),
+        cap.config_value().is_object() && !cap.config_value().as_object().unwrap().is_empty(),
         "hydrated config must be a non-empty JSON object"
     );
 }
@@ -1381,7 +1381,7 @@ async fn load_context_with_plugin_has_skill_mount() {
 
     // Deserialise the definition from the config.
     let definition: DeclarativeCapabilityDefinition =
-        serde_json::from_value(plugin_config.config.clone())
+        serde_json::from_value(plugin_config.config_value().clone())
             .expect("plugin config must deserialise as DeclarativeCapabilityDefinition");
 
     // At least one skill must be present.
@@ -1439,7 +1439,7 @@ async fn load_context_with_plugin_has_mcp_server_config() {
         .expect("plugin:microsoft-docs must appear in resolved_capability_configs");
 
     let definition: DeclarativeCapabilityDefinition =
-        serde_json::from_value(plugin_config.config.clone())
+        serde_json::from_value(plugin_config.config_value().clone())
             .expect("plugin config must deserialise as DeclarativeCapabilityDefinition");
 
     let mcp_servers = definition

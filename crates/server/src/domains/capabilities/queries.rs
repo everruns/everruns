@@ -76,7 +76,7 @@ pub async fn hydrate_declarative_capability_configs(
             };
             hydrated.push(AgentCapabilityConfig::with_config(
                 cap_id,
-                hydrate_declarative_capability_config(cap.config, &definition),
+                hydrate_declarative_capability_config(cap.config_value().clone(), &definition),
             ));
         } else if is_plugin_capability(&cap_id)
             && let Some(plugin_public_id) = parse_plugin_capability_id(&cap_id)
@@ -89,7 +89,7 @@ pub async fn hydrate_declarative_capability_configs(
                 serde_json::from_value(row.definition.clone()).unwrap_or_default();
             hydrated.push(AgentCapabilityConfig::with_config(
                 cap_id,
-                hydrate_plugin_capability_config(cap.config, &definition),
+                hydrate_plugin_capability_config(cap.config_value().clone(), &definition),
             ));
         } else {
             hydrated.push(cap);

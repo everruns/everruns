@@ -3083,7 +3083,11 @@ mod tests {
             .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
+        let cap_ids: Vec<&str> = generic
+            .capabilities
+            .iter()
+            .map(|c| c.capability_id())
+            .collect();
         assert_eq!(cap_ids.len(), 23);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
@@ -3112,18 +3116,18 @@ mod tests {
         let compaction_cap = generic
             .capabilities
             .iter()
-            .find(|c| c.id == "compaction")
+            .find(|c| c.capability_id() == "compaction")
             .expect("compaction capability should exist");
-        assert_eq!(compaction_cap.config["strategy"], "auto");
-        assert_eq!(compaction_cap.config["proactive"], true);
-        assert_eq!(compaction_cap.config["budget_percent"], 0.85);
+        assert_eq!(compaction_cap.config_value()["strategy"], "auto");
+        assert_eq!(compaction_cap.config_value()["proactive"], true);
+        assert_eq!(compaction_cap.config_value()["budget_percent"], 0.85);
         // The trusted default harness opts into detailed error disclosure.
         let error_disclosure_cap = generic
             .capabilities
             .iter()
-            .find(|c| c.id == "error_disclosure")
+            .find(|c| c.capability_id() == "error_disclosure")
             .expect("error_disclosure capability should exist");
-        assert_eq!(error_disclosure_cap.config["mode"], "detailed");
+        assert_eq!(error_disclosure_cap.config_value()["mode"], "detailed");
         assert!(generic.tags.iter().any(|tag| tag == "generic"));
         assert!(generic.tags.iter().any(|tag| tag == "default"));
     }
@@ -3143,9 +3147,9 @@ mod tests {
 
         for cap in &generic.capabilities {
             assert!(
-                registry.has(&cap.id),
+                registry.has(cap.capability_id()),
                 "Capability '{}' referenced by Generic harness must be registered",
-                cap.id
+                cap.capability_id()
             );
         }
     }
@@ -3169,9 +3173,9 @@ mod tests {
 
         for cap in &example.definition.capabilities {
             assert!(
-                registry.has(&cap.id),
+                registry.has(cap.capability_id()),
                 "Capability '{}' referenced by Coding (Container) example must be registered",
-                cap.id
+                cap.capability_id()
             );
         }
     }
@@ -3226,7 +3230,11 @@ mod tests {
             .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
+        let cap_ids: Vec<String> = generic
+            .capabilities
+            .iter()
+            .map(|s| s.capability_id().to_string())
+            .collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
@@ -3271,7 +3279,11 @@ mod tests {
             .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
+        let cap_ids: Vec<String> = generic
+            .capabilities
+            .iter()
+            .map(|s| s.capability_id().to_string())
+            .collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
@@ -3317,7 +3329,11 @@ mod tests {
             .find(|h| h.name == "generic")
             .expect("Generic harness should exist");
 
-        let cap_ids: Vec<String> = generic.capabilities.iter().map(|s| s.id.clone()).collect();
+        let cap_ids: Vec<String> = generic
+            .capabilities
+            .iter()
+            .map(|s| s.capability_id().to_string())
+            .collect();
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 

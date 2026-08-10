@@ -360,6 +360,21 @@ jobs:
           python3 scripts/check_okf.py knowledge
           okf-lint knowledge --max-line-length 10000
 
+  # Architecture guard (EVE-873): capability identity/config/definition types
+  # live in crates/capability only; core/host/platform must consume the
+  # neutral contract instead of growing a competing one.
+  capability-contract:
+    name: Capability Contract Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check capability contract ownership
+        run: bash scripts/lib/check-capability-contract.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest

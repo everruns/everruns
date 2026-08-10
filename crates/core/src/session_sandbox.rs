@@ -262,7 +262,7 @@ pub fn session_sandbox_config_from_capabilities(
         return Ok(None);
     };
 
-    let config: SessionSandboxConfig = serde_json::from_value(capability.config.clone())
+    let config: SessionSandboxConfig = serde_json::from_value(capability.config_value().clone())
         .map_err(|e| format!("Invalid session_sandbox config: {e}"))?;
 
     if config.provider.trim().is_empty() {

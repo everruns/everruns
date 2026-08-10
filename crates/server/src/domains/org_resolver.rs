@@ -17,6 +17,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
+use everruns_core::capabilities::{McpCapabilityIdExt, SkillCapabilityIdExt};
 use everruns_core::{
     CapabilityId,
     typed_id::{McpServerId, SessionId, SkillId},

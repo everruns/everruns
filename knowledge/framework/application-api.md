@@ -197,6 +197,7 @@ dependency while allowing focused host and sibling crates.
 ## Source index
 
 - `crates/everruns/src/agent.rs`
+- `crates/capability/src/lib.rs`
 - `crates/everruns/src/capability_config.rs`
 - `crates/everruns/src/tool_search.rs`
 - `crates/everruns/src/hooks.rs`

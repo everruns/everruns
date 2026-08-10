@@ -248,6 +248,10 @@ pub struct Agent {
     /// Capabilities enabled for this agent with per-agent configuration.
     /// Capabilities add tools and system prompt modifications.
     #[serde(default)]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<crate::capability_types::AgentCapabilityConfigSchema>)
+    )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this agent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

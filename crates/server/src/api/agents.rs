@@ -529,7 +529,7 @@ pub(crate) fn require_admin_for_high_risk(
     if caps.is_empty() || org.role.has_permission(OrgRole::Admin) {
         return Ok(());
     }
-    let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
+    let refs: Vec<&str> = caps.iter().map(|c| c.capability_id()).collect();
     let high = capability_service.high_risk_ids(&refs);
     if !high.is_empty() {
         return Err(ErrorResponse::new(format!(
@@ -1404,8 +1404,8 @@ fn agent_to_markdown(agent: &Agent) -> String {
         for cap in &agent.capabilities {
             // Export capabilities with ref and config (inline JSON for config)
             let config_json =
-                serde_json::to_string(&cap.config).unwrap_or_else(|_| "{}".to_string());
-            yaml_lines.push(format!("  - ref: {}", cap.capability_ref.as_str()));
+                serde_json::to_string(cap.config_value()).unwrap_or_else(|_| "{}".to_string());
+            yaml_lines.push(format!("  - ref: {}", cap.capability_id()));
             yaml_lines.push(format!("    config: {}", config_json));
         }
     }

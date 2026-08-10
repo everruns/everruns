@@ -482,7 +482,7 @@ async fn sync_harness_capabilities(
 ) -> Result<bool> {
     let current = db.get_harness_capabilities(harness_id).await?;
     let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
-    let desired_ids: Vec<&str> = desired.iter().map(|c| c.id.as_str()).collect();
+    let desired_ids: Vec<&str> = desired.iter().map(|c| c.capability_id()).collect();
 
     if current_ids == desired_ids {
         return Ok(false);
@@ -491,7 +491,13 @@ async fn sync_harness_capabilities(
     let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
         .iter()
         .enumerate()
-        .map(|(idx, cap)| (cap.id.clone(), idx as i32, cap.config.clone()))
+        .map(|(idx, cap)| {
+            (
+                cap.capability_id().to_string(),
+                idx as i32,
+                cap.config_value().clone(),
+            )
+        })
         .collect();
     db.set_harness_capabilities(harness_id, cap_tuples).await?;
     Ok(true)
@@ -758,7 +764,7 @@ mod tests {
         let expected_ids: Vec<&str> = generic_def
             .capabilities
             .iter()
-            .map(|c| c.id.as_str())
+            .map(|c| c.capability_id())
             .collect();
         assert_eq!(
             cap_ids, expected_ids,
