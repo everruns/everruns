@@ -40,7 +40,6 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-mcp",
         "everruns-platform",
     ],
-    "crates/runtime/Cargo.toml": ["everruns-core", "everruns-host"],
     "crates/everruns/Cargo.toml": [
         "everruns-core",
         "everruns-host",
@@ -68,7 +67,7 @@ INNER_PINS: dict[str, list[str]] = {
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
-WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-engine", "everruns-host", "everruns-platform", "everruns-provider", "everruns-mcp", "everruns-runtime", "everruns-local", "everruns-ard", "everruns", "everruns-macros"]
+WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-engine", "everruns-host", "everruns-platform", "everruns-provider", "everruns-mcp", "everruns-local", "everruns-ard", "everruns", "everruns-macros"]
 
 
 def workspace_version() -> str:

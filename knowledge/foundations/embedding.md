@@ -50,12 +50,12 @@ engine or control-plane server, should use the application-facing `everruns`
 crate and the Everruns Framework. This document owns the lower-level
 `PlatformDefinition` composition contract, not the normal application path.
 
-Advanced hosts and existing 0.17.x applications may use `everruns-runtime`. It
+Advanced hosts may use `everruns-host`, the only low-level host boundary. It
 consumes the same `PlatformDefinition` type and shared core turn execution,
 keeping low-level in-process hosts aligned with worker behavior.
 
 See [knowledge/framework/](../framework/) for application-facing ownership and
-[the runtime specification](runtime.md) for the low-level compatibility contract.
+[the runtime specification](runtime.md) for the low-level host contract.
 
 ### Built-in Harness Templates
 

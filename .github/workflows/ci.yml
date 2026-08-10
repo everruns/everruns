@@ -144,7 +144,7 @@ jobs:
             shell:
               - 'scripts/run-shell-tests.sh'
               - 'scripts/test-*.sh'
-              - 'tests/fixtures/runtime-migration/**'
+              - 'tests/fixtures/external-consumer/**'
               - 'scripts/check_okf.py'
               - 'scripts/lib/**'
               - 'scripts/sync-publish-pin-versions.py'
@@ -159,6 +159,9 @@ jobs:
               - 'integrations/*/README.md'
               - 'integrations/*/src/lib.rs'
               - 'docs/**'
+              # scripts/test-no-everruns-runtime.sh scans these trees too.
+              - 'knowledge/**'
+              - 'skills/**'
               - 'plugins/everruns-dev/**'
               - '.agents/plugins/**'
               - '.claude-plugin/**'
@@ -338,7 +341,6 @@ jobs:
             -p everruns-integrations-daytona \
             -p everruns-integrations-e2b \
             -p everruns-integrations-parallel \
-            -p everruns-runtime \
             -p everruns
 
   knowledge:
@@ -466,12 +468,12 @@ jobs:
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
-          # Run the whole runtime crate (lib unit tests incl. RealDiskFileStore /
+          # Run the whole host crate (lib unit tests incl. RealDiskFileStore /
           # in-memory store, ALL integration tests incl. the EVE-660 mount-resolver
           # conformance, and doctests). No per-test enumeration: new test files are
           # picked up automatically rather than silently skipped. `--features lua`
           # so the lua code-mode integration test compiles and runs in the same pass.
-          cargo test -p everruns-runtime --features lua -- --test-threads=1
+          cargo test -p everruns-host --features lua -- --test-threads=1
           # everruns facade (EVE-830): whole crate across every optional facade
           # feature, including local history/resume acceptance paths, plus a
           # bare-facade compile so public configuration cannot accidentally
@@ -481,9 +483,9 @@ jobs:
           # Dynamically inventories every crates/everruns/examples/*.rs target,
           # rejects internal-crate imports, and compiles the complete set offline.
           bash scripts/lib/check-everruns-examples.sh
-          cargo run -p everruns-runtime --features lua --example lua_code_mode_agent
+          cargo run -p everruns-host --features lua --example lua_code_mode_agent
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
-          cargo run -p everruns-runtime --example mount_fs_workspace
+          cargo run -p everruns-host --example mount_fs_workspace
           cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
           # Do not pass --all-features to integration crates: it enables their *-live-tests
           # features, which fail closed without real credentials. Live tests run in their

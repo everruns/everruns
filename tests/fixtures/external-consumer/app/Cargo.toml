@@ -1,0 +1,9 @@
+[package]
+name = "external-consumer-app"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+everruns = { path = "../../../../crates/everruns" }
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

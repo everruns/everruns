@@ -30,8 +30,9 @@ export default defineConfig({
     // generic-tool-search page renamed to tool-search
     "/capabilities/generic-tool-search/": "/capabilities/tool-search/",
     // Application users now enter through the Framework section. Keep the
-    // former runtime and embedding routes durable for inbound links.
-    "/features/runtime/": "/framework/runtime-compatibility/",
+    // former runtime, migration, and embedding routes durable for inbound links.
+    "/features/runtime/": "/framework/custom-backends/",
+    "/framework/runtime-compatibility/": "/framework/custom-backends/",
     "/advanced/embedding-everruns/": "/framework/custom-backends/",
   },
   vite: {
@@ -192,12 +193,6 @@ export default defineConfig({
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },
                     { label: "Runnable Examples", slug: "framework/examples" },
-                  ],
-                },
-                {
-                  label: "Compatibility",
-                  items: [
-                    { label: "Runtime Compatibility", slug: "framework/runtime-compatibility" },
                   ],
                 },
               ],

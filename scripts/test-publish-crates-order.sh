@@ -112,7 +112,6 @@ for earlier, later in (
     ("everruns-engine", "everruns-host"),
     ("everruns-mcp", "everruns-host"),
     ("everruns-platform", "everruns-host"),
-    ("everruns-host", "everruns-runtime"),
     ("everruns-host", "everruns"),
     ("everruns-macros", "everruns"),
 ):
@@ -130,7 +129,6 @@ for manifest_rel, dependency in (
     ("crates/host/Cargo.toml", "everruns-engine"),
     ("crates/host/Cargo.toml", "everruns-mcp"),
     ("crates/host/Cargo.toml", "everruns-platform"),
-    ("crates/runtime/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
 ):

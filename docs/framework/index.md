@@ -29,12 +29,11 @@ connection, and provider credential are not required.
 | --- | --- |
 | **Framework** | Rust applications that build and run agents in process through `everruns` |
 | **Advanced host crates** | Low-level execution-host composition through `everruns-host` and focused siblings |
-| **Runtime compatibility** | Migration of existing `everruns-runtime` 0.17.x applications only |
 | **SDKs** | Remote clients that call a running Everruns server |
 | **Platform** | The control plane, server, workers, UI, and durable deployment |
 
-Normal library users should start with the Framework. Existing 0.17 runtime
-users should follow the [runtime migration guide](/framework/runtime-compatibility/).
+Normal library users should start with the Framework. Hosts that must replace
+storage or orchestration cross into [custom backends](/framework/custom-backends/).
 
 ## Start here
 

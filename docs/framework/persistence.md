@@ -68,6 +68,5 @@ append-only event log is appropriate. Framework applications continue sessions
 with `Agent::resume` and traverse bounded event-derived pages from
 `Session::history`.
 
-Existing 0.17 runtime storage code should follow the
-[runtime migration guide](/framework/runtime-compatibility/). Do not design new
-application persistence around a legacy storage representation.
+Do not design new application persistence around a legacy storage
+representation.

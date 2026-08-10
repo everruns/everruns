@@ -3123,30 +3123,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-runtime"
-version = "0.17.26"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "everruns-engine",
- "everruns-host",
- "everruns-mcp",
- "everruns-openai",
- "everruns-platform",
- "futures",
- "ignore",
- "regex",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "tokio",
- "tracing",
- "uuid 1.24.0",
-]
-
-[[package]]
 name = "everruns-sdk"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

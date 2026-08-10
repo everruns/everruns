@@ -54,8 +54,7 @@ pub struct RuntimeHostTurnContext {
 /// `everruns-host` owns shared orchestration for both embedded and durable
 /// execution. That includes phase execution (`input -> reason -> act`),
 /// lifecycle emission, and the generic turn-strategy decisions used by durable
-/// or custom hosts. `everruns-runtime` only re-exports this contract for 0.17
-/// compatibility.
+/// or custom hosts.
 ///
 /// Host crates implement this trait to provide persistence, session-lifecycle
 /// plumbing, event delivery, and their own orchestration backend. The durable

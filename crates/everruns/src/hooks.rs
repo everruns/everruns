@@ -4,7 +4,7 @@
 //! not a second event subscription API. Applications register async closures
 //! on [`AgentBuilder`](crate::AgentBuilder); each closure receives a small,
 //! owned Framework context and may perform application work without importing
-//! `everruns-core` or `everruns-runtime`.
+//! `everruns-core` or `everruns-host`.
 //!
 //! The contract is intentionally non-mutating: hooks cannot rewrite prompts,
 //! tool arguments, tool results, or turn outcomes. A failing pre-effect hook

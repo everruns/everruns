@@ -473,7 +473,7 @@ and never block the task update.
 Webhook delivery is one consumer of a lower-level seam: a `SessionTaskRegistry`
 fires each real transition (terminal / awaiting_input / outbound message) once to
 every registered `TaskTransitionObserver`. The trait and its `TaskTransition`
-enum live in `everruns-core` (`task_observer`) so `everruns-runtime` embedders
+enum live in `everruns-core` (`task_observer`) so `everruns-host` embedders
 can observe task transitions in process — with the same filter semantics — without
 HTTP or a dependency on the control-plane server. The server's webhook dispatcher
 (`DirectTaskWebhookNotifier`) is one implementation registered via
@@ -581,7 +581,7 @@ No backward compatibility is required; data migrates forward once:
   seam; `ObservingTaskRegistry` (`crates/core/src/task_observer.rs`) is a
   storage-agnostic decorator that fans qualifying transitions to observers
   (the reusable form of `DbSessionTaskRegistry`'s inline fan-out). The
-  `everruns-runtime` in-process loop wraps its injected registry with this
+  `everruns-host` in-process loop wraps its injected registry with this
   decorator + queue and drains the queue at every reason iteration boundary
   (`InProcessRuntime::drain_and_inject_wakes`), injecting each wake as a user
   message before the LLM call and continuing a would-idle turn while wakes are

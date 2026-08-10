@@ -1,7 +1,7 @@
 //! Public-surface session events and cancellation (EVE-833).
 //!
 //! This file imports only `everruns::prelude::*` — no `everruns-core` or
-//! `everruns-runtime` — proving library code can render streaming output and
+//! `everruns-host` — proving library code can render streaming output and
 //! cancel a turn using facade types alone. Behaviors that need the in-process
 //! simulator's scripting/delay knobs (tool events, mid-flight cancellation) are
 //! covered by the crate's unit tests, which reach those internal test helpers.

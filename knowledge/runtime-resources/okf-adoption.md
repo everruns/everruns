@@ -247,7 +247,7 @@ knowledge. Implemented as a cross-crate slice:
 * Core trait `KnowledgeStore` + `KnowledgeSearchHit` result type
   (`crates/core/src/traits.rs`), with a `knowledge_store` field on `ToolContext`
   threaded through `ActAtom` (`crates/core/src/atoms/act.rs`) and the host
-  adapter (`crates/runtime/src/host.rs`, `WorkerAdapters` →
+  adapter (`crates/host/src/host.rs`, `WorkerAdapters` →
   `crates/worker/src/runtime_host.rs`).
 * Server impl over `StorageBackend`
   (`crates/server/src/knowledge_store.rs`), wired via `DirectWorkerAdapters`. It

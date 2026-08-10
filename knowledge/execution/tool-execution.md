@@ -339,7 +339,7 @@ Two sources feed the chain, in this order:
 1. **Capability hooks** — from active capabilities via `Capability::pre_tool_use_hooks()`. This is the seam for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
 2. **User-hook specs** — `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
 
-Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/runtime/src/host.rs` (`load_execution_capabilities`).
+Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/host/src/host.rs` (`load_execution_capabilities`).
 
 ### PostToolExecHook (per-tool hooks)
 

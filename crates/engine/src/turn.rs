@@ -1,7 +1,7 @@
 // The sans-IO turn planner (EVE-840, Sans-IO Turn State epic).
 //
 // This is the authoritative turn-planning brain, extracted verbatim from
-// `everruns-runtime`'s `plan_next_host_turn`. Every function here is pure and
+// `everruns-host`'s `plan_next_host_turn`. Every function here is pure and
 // deterministic: it reads only its arguments and returns a `TurnPlan` (plus, for
 // terminal outcomes, a list of `TurnLifecycleEffect`s the host must perform). It
 // never touches a store, socket, process, event bus, or `Utc::now()` — the host

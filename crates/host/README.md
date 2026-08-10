@@ -43,7 +43,6 @@ part of the maintained host API.
 ## Documentation
 
 - [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
-- [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
 - [API reference](https://docs.rs/everruns-host)
 
 ## License

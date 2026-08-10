@@ -10,8 +10,8 @@ tags:
 
 ## Abstract
 
-`everruns-runtime` is the low-level execution host and supported 0.17.x
-compatibility crate. The application-facing entrypoint is the `everruns` crate
+`everruns-host` is the low-level execution host and the only host boundary
+below the Framework. The application-facing entrypoint is the `everruns` crate
 and the Everruns Framework; its purpose and terminology are owned by
 [knowledge/framework/](../framework/).
 
@@ -39,12 +39,12 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Position in the Stack
 
-`everruns-runtime` sits above `everruns-core` and below Framework adaptation or
+`everruns-host` sits above `everruns-core` and below Framework adaptation or
 any host application.
 
 - `everruns-core` owns atoms, traits, capabilities, event types, and shared
   domain/runtime types.
-- `everruns-runtime` owns embedder-facing orchestration, in-memory stores, turn
+- `everruns-host` owns embedder-facing orchestration, in-memory stores, turn
   execution, runtime seeding helpers, reusable host-phase execution, and shared
   turn-strategy planning.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
@@ -55,7 +55,7 @@ any host application.
 ## Public Contract
 
 The public entrypoint is `InProcessRuntimeBuilder` in
-`crates/runtime/src/runtime.rs`.
+`crates/host/src/runtime.rs`.
 
 ### Builder responsibilities
 
@@ -70,7 +70,7 @@ The builder must allow an embedder to:
 - Optionally register `llmsim` for deterministic local examples and tests
 - Swap the default in-memory stores for custom backends via `RuntimeBackends`
 
-`everruns-runtime` also exposes `HarnessBuilder`, `AgentBuilder`, and
+`everruns-host` also exposes `HarnessBuilder`, `AgentBuilder`, and
 `SessionBuilder` as the supported embedder construction path for those seed
 models. The core structs remain public data models and may still be constructed
 directly, but embedders should prefer the builders so new optional core fields
@@ -100,7 +100,7 @@ without parsing provider strings.
 
 ### Host execution responsibilities
 
-`everruns-runtime` must also expose a reusable host contract for durable or
+`everruns-host` must also expose a reusable host contract for durable or
 server-backed execution:
 
 - `RuntimeHostAdapter`
@@ -151,7 +151,7 @@ and workflow resumption.
 
 ## Execution Semantics
 
-`everruns-runtime` must execute the shared `TurnStateMachine` from `everruns-core`.
+`everruns-host` must execute the shared `TurnStateMachine` from `everruns-core`.
 
 Required behavior:
 
@@ -167,7 +167,7 @@ Required behavior:
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
 7. Durable/server-backed workers must execute their per-phase host logic
-   through `everruns-runtime` instead of maintaining a separate copy of atom
+   through `everruns-host` instead of maintaining a separate copy of atom
    wiring in the worker crate.
 8. Durable/server-backed workers must use runtime-owned turn-strategy planning
    for `process_input -> reason -> act`, steering continuation,
@@ -198,12 +198,12 @@ Public API:
 - `everruns_core::inspect_turn_context(...)`
 - `everruns_core::AssembledTurnContext`
 
-`ReasonAtom` and `everruns-runtime` must use this shared path so embedded hosts
+`ReasonAtom` and `everruns-host` must use this shared path so embedded hosts
 and worker-backed hosts stay aligned.
 
 ## In-Memory Stores
 
-`everruns-runtime` ships reference in-memory stores for public embedding:
+`everruns-host` ships reference in-memory stores for public embedding:
 
 - Session store
 - Session virtual filesystem
@@ -222,7 +222,7 @@ These stores are intended to make embedded execution usable out of the box.
 Embedders that need persistence across process restarts may supply their own
 backend bundle through `RuntimeBackends`.
 
-`everruns-runtime` owns a small set of extension traits for mutable runtime
+`everruns-host` owns a small set of extension traits for mutable runtime
 domain stores:
 
 - `RuntimeHarnessStore`
@@ -290,7 +290,7 @@ and passes it to the selected platform factory before runtime seeding.
 This keeps `everruns-core` storage traits read-oriented where they already were,
 while making custom embedded backends a supported public path.
 
-`everruns-runtime` owns the public extension seam for embedder-supplied
+`everruns-host` owns the public extension seam for embedder-supplied
 backends. `everruns-worker` ships the first-party durable/server-backed host
 adapter (`WorkerRuntimeHost`) that bridges worker storage/adapters into the
 runtime host contract.
@@ -299,7 +299,7 @@ runtime host contract.
 
 `RuntimeBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
-`crates/runtime/src/runtime.rs` and `crates/runtime/src/host.rs`):
+`crates/host/src/runtime.rs` and `crates/host/src/host.rs`):
 
 - `session_task_registry` — persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
@@ -320,7 +320,7 @@ host-backend slots with local, file-backed implementations for embedded,
 single-process hosts (where Yolop and miy would otherwise each reinvent them).
 The runtime stays generic and owns only the seams; durable local storage choices
 live in this separate opt-in crate. It ships on crates.io alongside
-`everruns-runtime` so external embedders can depend on it directly.
+`everruns-host` so external embedders can depend on it directly.
 
 It provides SQLite-backed, restart-survivable stores —
 `LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore` — plus a
@@ -373,7 +373,7 @@ provider credentials, or knowledge stores. Embedders that provide those
 services can still build an explicit `PlatformDefinition` and register the
 larger platform capability set or any selected capability manually.
 
-`everruns-runtime` must provide the supporting stores those capabilities expect
+`everruns-host` must provide the supporting stores those capabilities expect
 through `ToolContext`, including:
 
 - filesystem access
@@ -398,16 +398,14 @@ Provider identity is an open string. The provider owns endpoint, headers,
 async authentication, and its protocol driver; the model remains
 credential-free.
 
-For the next `0.17.x` patch, these existing entry points remain compatibility
-inputs:
+These host entry points configure the default model:
 
 - explicit `InProcessRuntimeBuilder::default_model(...)`
 - helper configuration like `InProcessRuntimeBuilder::llm_sim(...)`
 
 They convert into the same direct provider registry and execution path before a
 turn runs. They do not retain a separate provider resolution algorithm or
-driver semantics. This compatibility surface is transitional; removing
-`everruns-runtime` or preparing the `0.18.0` cutover is outside this contract.
+driver semantics.
 
 If no default model is available at build time, `build()` must fail with a
 configuration error.
@@ -427,30 +425,30 @@ Those remain separate concerns outside the runtime host orchestration contract.
 ## Validation
 
 The in-process runtime contract is regression-tested in CI with the pure Rust
-test binaries in `crates/runtime/tests/`.
+test binaries in `crates/host/tests/`.
 
-- `crates/runtime/tests/in_process_runtime_test.rs` proves embedded runtimes
+- `crates/host/tests/in_process_runtime_test.rs` proves embedded runtimes
   can execute turns, persist message history, seed files, and emit the shared
   event shapes without PostgreSQL or worker infrastructure.
-- `crates/runtime/tests/runtime_host_test.rs` proves the reusable host adapter
+- `crates/host/tests/runtime_host_test.rs` proves the reusable host adapter
   contract drives `input -> reason -> act` planning and lifecycle state changes
   for server-backed or durable hosts.
 
 ## Source Index
 
-- `crates/runtime/src/lib.rs`
-- `crates/runtime/src/builders.rs`
-- `crates/runtime/src/runtime.rs`
-- `crates/runtime/src/host.rs`
-- `crates/runtime/src/in_memory.rs`
-- `crates/runtime/src/backends.rs`
+- `crates/host/src/lib.rs`
+- `crates/host/src/builders.rs`
+- `crates/host/src/runtime.rs`
+- `crates/host/src/host.rs`
+- `crates/host/src/in_memory.rs`
+- `crates/host/src/backends.rs`
 - `crates/local/` (`everruns-local`: SQLite-backed local host backends)
-- `crates/runtime/examples/in_process_runtime.rs`
-- `crates/runtime/examples/inspect_context.rs`
+- `crates/host/examples/in_process_runtime.rs`
+- `crates/host/examples/inspect_context.rs`
 - `examples/weekend-concierge-host/src/lib.rs`
 - `examples/weekend-concierge-host/src/main.rs`
-- `crates/runtime/tests/in_process_runtime_test.rs`
-- `crates/runtime/tests/runtime_host_test.rs`
+- `crates/host/tests/in_process_runtime_test.rs`
+- `crates/host/tests/runtime_host_test.rs`
 - `crates/worker/src/runtime_host.rs`
 - `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`

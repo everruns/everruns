@@ -1,6 +1,6 @@
 # A minimal coding agent that depends only on the public `everruns` library
 # (EVE-835): the executable acceptance test for the OSS library surface. It must
-# never depend on `everruns-core` or `everruns-runtime` directly — a dependency
+# never depend on `everruns-core` or `everruns-host` directly — a dependency
 # and a source scan in `tests/` enforce that.
 
 [package]

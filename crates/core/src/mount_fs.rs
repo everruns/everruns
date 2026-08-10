@@ -766,7 +766,7 @@ mod tests {
     }
 
     // A minimal `/`-rooted in-memory backend for resolver tests (kept local to
-    // avoid a dependency on everruns-runtime).
+    // avoid a dependency on everruns-host).
     #[derive(Default)]
     struct FlatStore {
         files: std::sync::Mutex<std::collections::HashMap<String, String>>,

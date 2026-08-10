@@ -21,10 +21,9 @@ use everruns_engine::{
     plan_next_turn, reason_schedules_act,
 };
 
-// Compat re-exports (EVE-840): existing callers keep importing the turn-planning
-// types from `everruns-runtime`. The types now live in `everruns-engine` and
-// dropped their `Runtime` prefix; these aliases preserve the old names so
-// pattern matches and signatures compile unchanged.
+// The turn-planning types live in `everruns-engine` without a `Runtime`
+// prefix. These aliases are the host's stable public names for them, used by
+// the in-process runtime and the durable worker.
 pub use everruns_engine::{
     ActPlan as RuntimeActPlan, TurnPlan as RuntimeTurnPlan, TurnState as RuntimeTurnState,
 };

@@ -173,9 +173,8 @@ Typed built-ins, dynamic third-party references, and reusable packages all use
 contract or use the curated
 [`everruns::capability`](https://docs.everruns.com/framework/advanced-capabilities/) authoring API.
 
-Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates.
-Existing `everruns-runtime` 0.17.x applications should follow the
-[runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
+Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates —
+see [Custom backends](https://docs.everruns.com/framework/custom-backends/).
 
 A CLI (`everruns-cli`) is also available for scripting against a deployment — see the [CLI](https://docs.everruns.com/features/cli/) guide.
 

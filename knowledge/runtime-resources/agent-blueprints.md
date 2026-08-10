@@ -29,7 +29,7 @@ do not introduce a second execution engine.
   governed-depth behavior.
 - [`crates/core/src/session.rs`](../../crates/core/src/session.rs) owns persisted
   session blueprint references.
-- [`crates/runtime/src/`](../../crates/runtime/src) owns runtime-agent assembly
+- [`crates/host/src/`](../../crates/host/src) owns runtime-agent assembly
   and execution for blueprint sessions.
 - [`integrations/github/`](../../integrations/github) and
   [`crates/core/src/capabilities/model_scout.rs`](../../crates/core/src/capabilities/model_scout.rs)

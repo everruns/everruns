@@ -1025,7 +1025,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
 3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
 4. Choose the registry preset deliberately:
-   - Register in `CapabilityRegistry::runtime_builtins()` only when the capability is usable with `everruns-runtime`'s default in-process host services.
+   - Register in `CapabilityRegistry::runtime_builtins()` only when the capability is usable with `everruns-host`'s default in-process host services.
    - Register in `CapabilityRegistry::with_builtins_for_grade()` when the capability is part of the hosted Everruns platform catalog, a product/demo capability, or requires optional host services not present in the runtime default.
    - Register in both only when both statements are true.
    - Use integration inventory registration for external integration crates that should appear only when their crate is linked.

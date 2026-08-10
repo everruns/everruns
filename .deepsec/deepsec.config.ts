@@ -10,7 +10,7 @@ export default defineConfig({
         "crates/server/",
         "crates/core/",
         "crates/worker/",
-        "crates/runtime/",
+        "crates/host/",
         "integrations/",
       ],
     },

@@ -37,7 +37,7 @@ tool returns result
 
 `DistillOutputHook` is a **capability** hook, so it runs **before** the final infrastructure hooks. For non-exec tools, `PersistOutputHook` does not fire (no `persist_output` hint), so distillation self-persists and the hard-limit hook only ever sees the already-distilled (smaller) result.
 
-Both the in-process host and the durable worker assemble hooks through the same `RuntimeHostAdapter`-generic path (`crates/runtime/src/host.rs::execute_act_activity` → `load_execution_capabilities`), so the hook runs identically in embedded and durable execution.
+Both the in-process host and the durable worker assemble hooks through the same `RuntimeHostAdapter`-generic path (`crates/host/src/host.rs::execute_act_activity` → `load_execution_capabilities`), so the hook runs identically in embedded and durable execution.
 
 ## Algorithm
 

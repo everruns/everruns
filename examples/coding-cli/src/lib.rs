@@ -2,12 +2,12 @@
 //!
 //! This example is the executable acceptance test for the OSS library surface
 //! (EVE-835): it depends on `everruns` alone — never on `everruns-core` or
-//! `everruns-runtime` — and exercises the exact import path an application uses.
+//! `everruns-host` — and exercises the exact import path an application uses.
 //! It builds an [`Agent`](everruns::Agent) with example-local file tools defined
 //! via [`#[everruns::tool]`](everruns::tool), opens a [`Session`], streams the
 //! session's events, and runs one or more prompts.
 //!
-//! The heavy TUI/MCP variant this replaced needed runtime internals the public
+//! The heavy TUI/MCP variant this replaced needed host internals the public
 //! facade intentionally does not expose. Keeping the example inside the facade
 //! keeps it honest about what a library user can actually build today.
 

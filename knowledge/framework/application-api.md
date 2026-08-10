@@ -1,12 +1,11 @@
 ---
 type: Specification
 title: "Framework Application API Boundaries"
-description: "Application-facing composition, low-level host boundaries, and runtime compatibility policy."
+description: "Application-facing composition, promotion decisions, and low-level host boundaries."
 tags:
   - everruns
   - framework
   - rust
-  - compatibility
 ---
 
 # Framework Application API Boundaries
@@ -22,9 +21,8 @@ but their durable source is the canonical event log rather than a writable
 message store.
 
 `everruns-host` is the neutral, non-application-facing implementation boundary
-for shared effectful orchestration. `everruns-runtime` remains a supported
-`0.17.x` compatibility adapter over that one implementation; it owns no
-provider registry, model resolution, turn semantics, or execution algorithm.
+for shared effectful orchestration, and the only low-level host boundary. There
+is no separate runtime compatibility crate.
 
 ## Promoted application concerns
 
@@ -54,9 +52,9 @@ The Framework owns value-first configuration for:
   stores or their file format into the application API.
 
 These APIs adapt into the same in-process host, provider registry, model
-selection, plugin compiler, MCP client, and engine execution used by the
-compatibility crate. The implementation and downstream acceptance fixtures are
-linked from the [source index](#source-index).
+selection, plugin compiler, MCP client, and engine execution that an advanced
+host composes directly. The implementation and downstream acceptance fixtures
+are linked from the [source index](#source-index).
 
 ## Supported dependency paths
 
@@ -66,20 +64,17 @@ intentionally stricter than the requirement for a complete execution host.
 
 An advanced system integrator may combine `everruns` with `everruns-host` and
 focused MCP, provider, and integration crates. That modular composition is
-healthy: success means the host no longer imports `everruns-runtime`, not that
-every transport, backend, or integration is re-exported by one facade. During
-the `0.17.x` transition, established runtime paths remain usable by re-exporting
-the same host implementation.
+healthy: success means the host composes focused crates deliberately, not that
+every transport, backend, or integration is re-exported by one facade.
 
 ## Audited application and host surfaces
 
 The inventory covers the public [repository README](../../README.md),
-[runtime README](../../crates/runtime/README.md),
-[runtime skill](../../skills/everruns-runtime/SKILL.md),
-[runtime guide](../../docs/features/runtime.mdx), and
+[host README](../../crates/host/README.md),
+[Everruns skill](../../skills/everruns/SKILL.md), and
 [embedding guide](../../docs/advanced/embedding-everruns.md). It also includes
-the in-process, provider, inspection, real-disk, plugin, mount, and Lua examples
-under [the runtime examples](../../crates/runtime/examples/in_process_runtime.rs)
+the in-process, inspection, real-disk, plugin, mount, and Lua examples
+under [the host examples](../../crates/host/examples/in_process_runtime.rs)
 and the provider-facing [OpenAI README](../../crates/openai/README.md).
 
 Repository consumers were audited separately because they exercise topologies
@@ -91,8 +86,8 @@ that examples do not: the offline
 [local host builder](../../crates/local/src/runtime_builder.rs), and the
 [live subagent host test](../../crates/llm-tests/tests/subagent_live_test.rs).
 The classification below is the durable decision for each family; individual
-implementation tests inside `crates/runtime` remain compatibility coverage, not
-additional application entrypoints.
+implementation tests inside `crates/host` remain host coverage, not additional
+application entrypoints.
 
 ## Deliberately low-level host concerns
 
@@ -114,17 +109,16 @@ application configuration:
 These are valid extension points for server, worker, evaluation, research, or
 specialized embedding hosts. Re-exporting their backend-oriented entities from
 the Framework would recreate the coupling the application API is intended to
-remove. Host implementations may continue using the compatibility crate in
-`0.17.x`, but new advanced integrations depend on `everruns-host` directly.
+remove. Advanced integrations depend on `everruns-host` directly.
 
 ## Classification of existing public use cases
 
 | Audited use case | Classification | Why / Framework mapping |
 |---|---|---|
-| Runtime README, skill, and documentation quickstarts | Promote | Ordinary agent/model/session execution is the Framework's primary path. |
+| Host README, skill, and documentation quickstarts | Promote | Ordinary agent/model/session execution is the Framework's primary path. |
 | Built-in simulation and real or custom model providers | Promote | Applications select a plain credential-free model id and attach one provider configuration or custom protocol driver without constructing a `ModelSpec` or platform registry. |
 | Application-defined function tools and initial files | Promote | These are agent behavior and workspace inputs, not host entities. |
-| In-process and OpenAI runtime examples | Promote | They map to normal agent construction and one or more Framework sessions. |
+| In-process and OpenAI host examples | Promote | They map to normal agent construction and one or more Framework sessions. |
 | Live message send, steering, and optional waiting | Promote | A Framework session is a live conversation: message acceptance is independent of turn completion, and routing to the active or next turn is decided atomically by the session. |
 | Context-inspection example and evaluation assertions | Promote | Applications receive a curated next-turn context rather than stored records or backend assembly types. |
 | Real-disk filesystem and agent-instruction examples | Promote | A single owned workspace root plus editable/read-only seed files is an application concern and retains the runtime filesystem boundary. |
@@ -133,7 +127,6 @@ remove. Host implementations may continue using the compatibility crate in
 | Weekend-concierge offline host | Promote | Its seeded harness/agent/session shape is ordinary Framework agent, tool, file, and session composition. |
 | Generic evaluation runner | Promote | A custom provider/model, fresh session per sample, workspace seeding/reads, events, and context assertions all have Framework equivalents. |
 | Event-derived local history and resume | Promote | Conversation identity and restart continuation are application behavior; canonical events are the durable truth and history is a rebuildable projection. |
-| Legacy writable message-store trait | Isolate for `0.17.x` compatibility | The deprecated runtime-only shim is non-authoritative and execution never calls it; maintained history uses event replay. |
 | Context compaction policy | Promote | Applications choose high-level strategy and proactive budget; durable checkpoint storage remains host-owned. |
 | Capability configuration and dynamic references | Promote | Every capability enters through one open conversion contract. Typed values expose stable built-in schemas; database/plugin catalogs use an ID plus JSON without a closed enum or host dependency. |
 | Local task/schedule state used by an agent | Promote | The local profile supplies the state behind activated Framework capabilities. |
@@ -147,9 +140,8 @@ remove. Host implementations may continue using the compatibility crate in
 | Worker, durable recovery, and phase-adapter tests | Host-only | They verify execution-host contracts below the application boundary. |
 | Local subagent tests with a custom platform store/task registry/session runner | Host-only | The public local profile does not claim to own that specialized topology or its runner lifecycle. |
 
-No audited use case is removed as obsolete in this compatibility unit. The
-classification changes the recommended entrypoint, not the availability of the
-runtime API.
+The classification names the owning entrypoint for each use case; host-only
+rows stay reachable through `everruns-host` and its focused siblings.
 
 ## Session work boundary
 
@@ -161,12 +153,10 @@ delivery observable without exposing runtime task records, store registries, or
 platform constants. Distributed route ownership, recurring schedule runners,
 and multi-host lifecycle management remain host concerns.
 
-## Compatibility constraints
+## Boundary constraints
 
-- The runtime compatibility surface remains published and usable throughout
-  `0.17.x`.
-- Old and new setup paths must converge before provider resolution and engine
-  execution; no parallel provider or turn semantics are allowed.
+- Application and host setup paths must converge before provider resolution and
+  engine execution; no parallel provider or turn semantics are allowed.
 - Canonical events are the sole durable conversation record. Message/context
   history is a read projection; new Framework profiles must not select or own a
   writable message store.
@@ -191,8 +181,6 @@ and multi-host lifecycle management remain host concerns.
   protections.
 - Local task/schedule state is opt-in. Schedule delivery remains an explicitly
   managed host lifecycle with at-least-once semantics.
-- Runtime transition and removal policy is owned by
-  [Runtime Compatibility and Deprecation Policy](runtime-compatibility.md).
 
 ## Success bar
 
@@ -226,5 +214,5 @@ dependency while allowing focused host and sibling crates.
 - `examples/coding-cli/tests/application_parity.rs`
 - `crates/host/src/runtime.rs`
 - `crates/host/src/events.rs`
-- `crates/runtime/src/lib.rs`
+- `crates/host/src/lib.rs`
 - `crates/local/`

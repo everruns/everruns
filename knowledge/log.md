@@ -1,5 +1,14 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-10
+
+* **Single low-level host boundary**: Deleted the `everruns-runtime`
+  compatibility crate for 0.18 and retired the runtime compatibility and
+  deprecation specification. `everruns-host` is now the only low-level host
+  boundary: ordinary applications use `everruns`, advanced hosts use `everruns`
+  plus `everruns-host` and focused siblings, and Framework, embedding,
+  provider, capability, Lua, and code-organization knowledge name it directly.
+
 ## 2026-08-09
 
 * **Live Framework sessions**: Made asynchronous message acceptance the primary

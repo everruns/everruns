@@ -3,7 +3,7 @@
 `ercode` is a small terminal coding agent built **only** on the public
 [`everruns`](../../crates/everruns) crate. It is the executable acceptance test
 for the OSS library surface: it depends on `everruns` alone — never on
-`everruns-core` or `everruns-runtime` — so it demonstrates the exact dependency
+`everruns-core` or `everruns-host` — so it demonstrates the exact dependency
 and import path an application uses to embed an agent.
 
 It shows the whole public loop:
@@ -42,10 +42,10 @@ cargo test -p everruns-coding-cli
 
 The tests cover the file tools (round-trip and traversal rejection), an offline
 turn and a two-prompt session, and a source/manifest scan that fails if the
-example ever reaches for `everruns-core`/`everruns-runtime`.
+example ever reaches for `everruns-core`/`everruns-host`.
 
 ## Scope
 
 This example favors a focused public-API loop over breadth. The previous
-ratatui TUI, local MCP servers, and provider-specific wiring depended on runtime
+ratatui TUI, local MCP servers, and provider-specific wiring depended on host
 internals the facade does not expose; they are intentionally omitted here.

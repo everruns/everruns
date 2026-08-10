@@ -276,9 +276,9 @@ metadata, or a protocol/vendor enum, so it is safe to serialize, persist, emit,
 and print with derived `Debug`.
 
 Persisted model rows resolve to a `ModelSpec`; the exact provider record resolves
-independently into a non-serializable runtime `Provider`. For the `0.17.x`
-patch, the public `everruns-runtime::ResolvedModel` input remains available as a
-transitional adapter and is converted immediately into these canonical parts.
+independently into a non-serializable runtime `Provider`. The public
+`everruns-host::ResolvedModel` input remains available as a host-level adapter
+and is converted immediately into these canonical parts.
 The high-level `everruns` facade accepts a plain provider-visible model id plus
 one runtime provider and constructs the `ModelSpec` internally.
 

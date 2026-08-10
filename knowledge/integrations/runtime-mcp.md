@@ -20,7 +20,7 @@ tags:
 
 > **Status: implemented.** The `everruns-mcp` crate exists and the runtime
 > builds `mcp_tool_definitions` from its scoped servers
-> (`crates/runtime/src/mcp.rs`, `crates/runtime/src/runtime.rs`). The paragraph
+> (`crates/host/src/mcp.rs`, `crates/host/src/runtime.rs`). The paragraph
 > below records the original problem state that motivated the extraction.
 
 The MCP client already works on the control plane: org-managed and scoped
@@ -169,7 +169,7 @@ auth provider can.
 
 ### D4 — Runtime wiring (discovery + execution)
 
-Two integration points in `crates/runtime`:
+Two integration points in `crates/host`:
 
 1. **Discovery** — replace `mcp_tool_definitions: vec![]`
    (`runtime.rs:524`). The runtime resolves effective scoped servers from the
@@ -233,7 +233,7 @@ Configuration is **only** the existing scoped `mcpServers` overlay from
 [mcp-servers.md](mcp-servers.md) — no new top-level surface (goal 4). Runtime
 embedders use the builder API that already exists
 (`HarnessBuilder`/`AgentBuilder`/`SessionBuilder::mcp_servers`,
-`crates/runtime/src/builders.rs`). Example, HTTP:
+`crates/host/src/builders.rs`). Example, HTTP:
 
 ```rust
 SessionBuilder::default().mcp_servers(serde_json::from_value(json!({
@@ -312,8 +312,8 @@ same shape) so users configure MCP the way every other MCP client expects.
 | stdio transport | `everruns-mcp`, `#[cfg(feature = "stdio")]` |
 | Auth provider trait | `everruns-mcp`; web-OAuth adapter in `server`/`worker` |
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/core/src/mcp_server.rs` |
-| Runtime discovery | `crates/runtime/src/runtime.rs` (replace `vec![]`), `crates/runtime/src/mcp.rs` (live per-turn discovery) |
-| Runtime execution | `crates/runtime/src/host.rs::execute_act_activity` (composite executor) |
+| Runtime discovery | `crates/host/src/runtime.rs` (replace `vec![]`), `crates/host/src/mcp.rs` (live per-turn discovery) |
+| Runtime execution | `crates/host/src/host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
 
