@@ -33,7 +33,6 @@ async function mockAppApi(page: Page) {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        global_chat: false,
         notifications: false,
         evals: false,
         app_budgets: false,

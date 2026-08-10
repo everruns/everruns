@@ -8,7 +8,6 @@ Verify that global chat supports multi-turn conversation for agent management: c
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 
 ## Test Data

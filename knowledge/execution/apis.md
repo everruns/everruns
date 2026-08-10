@@ -238,11 +238,13 @@ Session creation and any other assignment flow must reject archived or deleted h
 
 Returns the calling user's singleton global chat session. Creates one with the Platform Chat harness if none exists. Uses tag-based lookup (`global-chat` + `user:{user_id}`) for per-user singleton management.
 
-Gated by the org-effective `global_chat` feature flag (the same gate applies to the voice variant `POST /v1/sessions/chat/voice`). When the feature is disabled the endpoint returns `404 Not Found` so the surface is fully hidden — the UI gate is not the enforcement boundary.
-
 **Request:** `POST /v1/sessions/chat` (no body required)
 
-**Response:** `200 OK` with the `Session` object, or `404 Not Found` when `global_chat` is disabled.
+**Response:** `200 OK` with the `Session` object.
+
+Platform Chat is core functionality and requires no feature configuration. Its voice variant,
+`POST /v1/sessions/chat/voice`, remains independently gated by the org-effective `voice` flag and
+returns `404 Not Found` when voice is disabled.
 
 The UI no longer calls this endpoint. A chat thread is an ordinary session created with
 `POST /v1/sessions` bound to an agent (EVE-851), so the singleton has no surface left in the

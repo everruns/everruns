@@ -99,7 +99,7 @@ export interface SidebarConfig {
  * consult it before adding an entity to a group.
  */
 export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chats", href: "/chats", icon: MessageCircle, flag: "global_chat", experimental: true },
+  { name: "Chats", href: "/chats", icon: MessageCircle },
 ];
 
 export const defaultOperationalNavigation: NavigationItem[] = [
@@ -261,9 +261,7 @@ export function Sidebar({
         pathname={pathname}
         featureFlags={featureFlags}
         renderSectionExtra={(section) =>
-          section.id === "chats" && featureFlags.global_chat ? (
-            <SidebarChatThreads pathname={pathname} />
-          ) : null
+          section.id === "chats" ? <SidebarChatThreads pathname={pathname} /> : null
         }
       />
 

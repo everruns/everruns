@@ -8,7 +8,6 @@ Verify that global chat handles error cases gracefully: running a nonexistent ag
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 
 ## Test Data

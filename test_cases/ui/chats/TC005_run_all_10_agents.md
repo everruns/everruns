@@ -8,7 +8,6 @@ Verify that the global chat agent can run all 10 previously created agents seque
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 - All 10 agents from TC003 exist
 

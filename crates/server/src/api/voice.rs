@@ -552,13 +552,13 @@ pub async fn create_agent_voice_session(
 }
 
 #[utoipa::path(
-    description = "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires both the `global_chat` and `voice` feature flags; returns 404 when either is disabled.",
+    description = "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires the `voice` feature flag; returns 404 when disabled.",
     post,
     path = "/v1/sessions/chat/voice",
     request_body = VoiceCallRequest,
     responses(
         (status = 200, description = "Platform chat session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>),
-        (status = 404, description = "Platform Chat (global_chat) or voice feature is disabled for the org"),
+        (status = 404, description = "Voice is disabled for the org"),
     ),
     tag = "voice"
 )]
@@ -567,8 +567,6 @@ pub async fn create_chat_voice_session(
     State(state): State<AppState>,
     Json(req): Json<VoiceCallRequest>,
 ) -> Result<Json<VoiceSessionResponse<VoiceCallResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    // Platform Chat voice requires both the chat feature and voice to be enabled.
-    super::sessions::ensure_global_chat_enabled(&org)?;
     ensure_voice_enabled(&org)?;
     let session = GetOrCreateChatSession { locale: None }
         .run(&state.ctx(&org))

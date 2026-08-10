@@ -9,7 +9,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Plus } from "lucide-react";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
-import { ChatsDisabled } from "@/components/chat/chats-disabled";
 import { NewChatForm } from "@/components/chat/new-chat-form";
 import { EmptyState, PageContainer, PageMasthead } from "@/components/layout";
 import { buttonVariants } from "@/components/ui/button";
@@ -18,7 +17,6 @@ import { useAgents, useHarnesses } from "@/hooks";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { threadTitle } from "@/lib/chat-threads";
 import { formatRelativeTime } from "@/lib/formatting";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { Session } from "@/lib/api/types";
 
@@ -42,7 +40,7 @@ function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: str
   );
 }
 
-function ChatsContent() {
+export default function ChatsPageClient() {
   const { threads, isLoading } = useChatThreads();
   const { data: agents = [] } = useAgents();
   const { data: harnesses = [] } = useHarnesses();
@@ -95,10 +93,4 @@ function ChatsContent() {
       </div>
     </PageContainer>
   );
-}
-
-export default function ChatsPageClient() {
-  const chatsEnabled = useFeatureFlag("global_chat");
-  if (!chatsEnabled) return <ChatsDisabled />;
-  return <ChatsContent />;
 }

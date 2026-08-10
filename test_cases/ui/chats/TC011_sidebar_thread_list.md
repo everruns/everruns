@@ -9,7 +9,6 @@ that the list does not re-order under the cursor while the pointer is inside it.
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - At least seven chat threads exist for the current user
 
 ## Test Data

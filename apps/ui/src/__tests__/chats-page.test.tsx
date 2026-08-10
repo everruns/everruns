@@ -2,7 +2,6 @@ import { Suspense } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import ChatsPageClient from "@/app/(main)/chats/chats-page-client";
 import ChatThreadPage from "@/app/(main)/chats/[threadId]/page";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session } from "@/lib/api/types";
 
@@ -11,10 +10,6 @@ jest.mock("next/link", () => ({
   default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
     <a {...props}>{children}</a>
   ),
-}));
-
-jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: jest.fn(),
 }));
 
 jest.mock("@/hooks/use-chat-threads", () => ({
@@ -49,7 +44,6 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   useSessionContext: () => mockSessionContext(),
 }));
 
-const mockUseFeatureFlag = jest.mocked(useFeatureFlag);
 const mockUseChatThreads = jest.mocked(useChatThreads);
 
 function thread(overrides: Partial<Session> & { id: string }): Session {
@@ -76,22 +70,14 @@ describe("Chats surface", () => {
     mockUseChatThreads.mockReturnValue({ threads: [], isLoading: false, error: null });
   });
 
-  it("explains itself instead of rendering blank when global_chat is off", () => {
-    mockUseFeatureFlag.mockReturnValue(false);
-
+  it("renders the empty state without feature-flag configuration", () => {
     render(<ChatsPageClient />);
 
-    expect(screen.getByText("Chats is not enabled")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to Sessions" })).toHaveAttribute(
-      "href",
-      "/sessions",
-    );
-    expect(mockUseChatThreads).not.toHaveBeenCalled();
+    expect(screen.getByText("No chats yet")).toBeInTheDocument();
+    expect(mockUseChatThreads).toHaveBeenCalled();
   });
 
   it("offers a way to start a chat when there are no threads yet", () => {
-    mockUseFeatureFlag.mockReturnValue(true);
-
     render(<ChatsPageClient />);
 
     expect(screen.getByText("No chats yet")).toBeInTheDocument();
@@ -99,7 +85,6 @@ describe("Chats surface", () => {
   });
 
   it("lists threads, linking each to its thread route", () => {
-    mockUseFeatureFlag.mockReturnValue(true);
     mockUseChatThreads.mockReturnValue({
       threads: [thread({ id: "sess_1" }), thread({ id: "sess_2", title: "Latency" })],
       isLoading: false,
@@ -113,8 +98,6 @@ describe("Chats surface", () => {
   });
 
   it("keeps the starting form mounted when the new thread lands in the list", () => {
-    mockUseFeatureFlag.mockReturnValue(true);
-
     const { rerender } = render(<ChatsPageClient />);
     fireEvent.click(screen.getByText("new-chat-form"));
 
@@ -156,18 +139,14 @@ describe("Thread surface", () => {
     });
   }
 
-  it("does not load the thread when global_chat is off", async () => {
-    mockUseFeatureFlag.mockReturnValue(false);
-
+  it("loads the thread without feature-flag configuration", async () => {
     await renderThread();
 
-    expect(screen.getByText("Chats is not enabled")).toBeInTheDocument();
-    expect(mockSessionContext).not.toHaveBeenCalled();
+    expect(mockSessionContext).toHaveBeenCalled();
+    expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
   });
 
   it("shows the bound agent in the header and names it in the composer", async () => {
-    mockUseFeatureFlag.mockReturnValue(true);
-
     await renderThread();
 
     expect(screen.getByRole("button", { name: "Rename thread" })).toHaveTextContent("Standup");
@@ -180,7 +159,6 @@ describe("Thread surface", () => {
   });
 
   it("names the harness for a thread bound to one instead of an agent", async () => {
-    mockUseFeatureFlag.mockReturnValue(true);
     mockSessionContext.mockReturnValue({
       session: thread({ id: "sess_1", agent_id: null }),
       agent: undefined,
@@ -195,7 +173,6 @@ describe("Thread surface", () => {
   });
 
   it("titles an untitled thread from the list preview", async () => {
-    mockUseFeatureFlag.mockReturnValue(true);
     // The session endpoint carries no preview; the list does.
     mockUseChatThreads.mockReturnValue({
       threads: [thread({ id: "sess_1", title: null, preview: "what broke last night?" })],
@@ -217,7 +194,6 @@ describe("Thread surface", () => {
   });
 
   it("says so when the thread does not exist", async () => {
-    mockUseFeatureFlag.mockReturnValue(true);
     mockSessionContext.mockReturnValue({
       session: undefined,
       agent: undefined,

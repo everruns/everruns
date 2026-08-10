@@ -144,7 +144,6 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/chats",
     icon: MessageCircle,
     keywords: ["global chat", "thread"],
-    flag: "global_chat",
   },
   {
     title: "Agents",

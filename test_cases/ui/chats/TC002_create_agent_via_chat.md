@@ -8,7 +8,6 @@ Verify that the global chat agent can create a new agent when asked, using the `
 
 - Server running (`just start-dev`)
 - User logged in
-- Feature flag `global_chat` enabled
 - LLM API keys configured
 
 ## Test Data

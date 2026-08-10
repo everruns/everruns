@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Chats is now core functionality for every organization: it is always present in navigation and search, requires no feature opt-in, and retains voice as a separately controlled capability.
+
 ## [0.17.26] - 2026-08-10
 
 ### Highlights

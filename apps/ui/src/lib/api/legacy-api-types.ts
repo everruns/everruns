@@ -795,7 +795,6 @@ export interface UpdateChannelRequest {
 export type AuthMode = "none" | "admin" | "full" | "external";
 
 export interface FeatureFlags {
-  global_chat: boolean;
   notifications: boolean;
   evals: boolean;
   /** Skills registry management UI. Experimental. */

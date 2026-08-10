@@ -2754,7 +2754,6 @@ export interface paths {
      * POST /v1/sessions/chat - Get or create global chat session
      * @description Returns the user's singleton global chat session. Creates one if it doesn't exist.
      *     Uses the Platform Chat harness and tags for per-user singleton management.
-     *     Gated by the `global_chat` feature flag; returns 404 when disabled.
      */
     post: operations["get_or_create_chat_session"];
     delete?: never;
@@ -2772,7 +2771,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires both the `global_chat` and `voice` feature flags; returns 404 when either is disabled. */
+    /** @description Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires the `voice` feature flag; returns 404 when disabled. */
     post: operations["create_chat_voice_session"];
     delete?: never;
     options?: never;
@@ -27378,13 +27377,6 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description Platform Chat feature (global_chat) is disabled for the org */
-      404: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content?: never;
-      };
       /** @description Internal server error */
       500: {
         headers: {
@@ -27416,7 +27408,7 @@ export interface operations {
           "application/json": components["schemas"]["VoiceSessionResponse_VoiceCallResponse"];
         };
       };
-      /** @description Platform Chat (global_chat) or voice feature is disabled for the org */
+      /** @description Voice is disabled for the org */
       404: {
         headers: {
           [name: string]: unknown;

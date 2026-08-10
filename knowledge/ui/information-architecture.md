@@ -66,8 +66,9 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 
 ## Surface contracts
 
-* **Chats is the landing route.** It is the first thing in the sidebar and the default
-  destination for a user with no other intent.
+* **Chats is the unconditional landing route.** It is core functionality, requires no feature
+  opt-in, is the first thing in the sidebar, and is the default destination for every user with no
+  other intent. A fresh organization can open Chats and start a thread without configuration.
 * **A thread is bound to exactly one agent.** Switching agents starts a new thread rather
   than re-pointing an existing one; the thread's transcript is only meaningful against
   the agent that produced it.

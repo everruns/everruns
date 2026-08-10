@@ -27,7 +27,6 @@ async function mockAgentDetailApi(page: Page) {
       };
     } else if (pathname.endsWith("/feature-flags")) {
       json = {
-        global_chat: false,
         notifications: false,
         evals: true,
         app_budgets: false,

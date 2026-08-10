@@ -320,7 +320,6 @@ mod tests {
         discover(
             arguments,
             &everruns_core::FeatureFlags {
-                global_chat: true,
                 notifications: true,
                 evals: true,
                 skills: true,
