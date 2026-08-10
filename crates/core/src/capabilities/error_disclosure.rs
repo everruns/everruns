@@ -118,7 +118,8 @@ fn configured_mode(configs: &[AgentCapabilityConfig]) -> Option<ErrorDisclosure>
         .find(|config| config.capability_id() == ERROR_DISCLOSURE_CAPABILITY_ID)?;
     Some(
         config
-            .config
+            .config_value()
+            .clone()
             .get("mode")
             .and_then(|mode| mode.as_str())
             .and_then(ErrorDisclosure::parse)
@@ -150,10 +151,10 @@ mod tests {
     use super::*;
 
     fn cap_config(mode: &str) -> AgentCapabilityConfig {
-        AgentCapabilityConfig {
-            capability_ref: ERROR_DISCLOSURE_CAPABILITY_ID.into(),
-            config: serde_json::json!({ "mode": mode }),
-        }
+        AgentCapabilityConfig::with_config(
+            ERROR_DISCLOSURE_CAPABILITY_ID,
+            serde_json::json!({ "mode": mode }),
+        )
     }
 
     #[test]

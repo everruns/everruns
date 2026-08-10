@@ -85,6 +85,7 @@ tar.workspace = true
 
 bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
 
+everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
 everruns-platform = { path = "../platform", features = ["openapi"] }

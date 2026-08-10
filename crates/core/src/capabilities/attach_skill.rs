@@ -402,20 +402,30 @@ pub fn discover_skills_from_entries(
     results
 }
 
-/// CapabilityId helpers for skill capabilities
-impl CapabilityId {
+/// Skill-namespace helpers for [`CapabilityId`].
+///
+/// An extension trait because the ID type lives in the neutral
+/// `everruns-capability` contract crate while the `skill:` namespace is owned
+/// by this capability implementation.
+pub trait SkillCapabilityIdExt: Sized {
     /// Check if this capability ID is for a skill
-    pub fn is_skill(&self) -> bool {
+    fn is_skill(&self) -> bool;
+    /// Create a capability ID for a skill
+    fn skill(skill_id: Uuid) -> Self;
+    /// Parse skill UUID from this capability ID
+    fn skill_id(&self) -> Option<Uuid>;
+}
+
+impl SkillCapabilityIdExt for CapabilityId {
+    fn is_skill(&self) -> bool {
         is_skill_capability(self.as_str())
     }
 
-    /// Create a capability ID for a skill
-    pub fn skill(skill_id: Uuid) -> Self {
+    fn skill(skill_id: Uuid) -> Self {
         Self::new(skill_capability_id(skill_id))
     }
 
-    /// Parse skill UUID from this capability ID
-    pub fn skill_id(&self) -> Option<Uuid> {
+    fn skill_id(&self) -> Option<Uuid> {
         parse_skill_capability_id(self.as_str())
     }
 }

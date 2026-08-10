@@ -431,7 +431,7 @@ fn capability_conflict_message(
             .iter()
             .find(|host_cap| host_cap.capability_id() == guest_cap.capability_id())
             .and_then(|host_cap| {
-                (host_cap.config != guest_cap.config).then(|| {
+                (host_cap.config_value().clone() != guest_cap.config_value().clone()).then(|| {
                     format!(
                         "capability `{}` has different host and guest configuration",
                         guest_cap.capability_id()

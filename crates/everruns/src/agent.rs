@@ -277,7 +277,9 @@ impl CapabilityImplementation {
         match self {
             Self::Function(tool) => builder.capability(tool.clone().into_capability()),
             #[cfg(feature = "capabilities")]
-            Self::Definition(definition) => builder.capability(definition.runtime_adapter()),
+            Self::Definition(definition) => {
+                builder.capability(crate::capability::runtime_adapter(definition))
+            }
         }
     }
 }
@@ -1094,28 +1096,32 @@ impl AgentBuilder {
 
         let mut capabilities = Vec::new();
         let mut capability_implementations = Vec::new();
-        let mut seen_capability_ids = HashSet::new();
+        // Neutral duplicate/collision rejection shared with product registries.
+        let mut activated_capabilities = everruns_capability::ActivationSet::new();
 
         for input in self.capabilities {
             let parts = input.into_parts();
             let input_id = parts.reference.id().to_string();
-            crate::capability_config::validate_capability_id(&input_id).map_err(|reason| {
+            everruns_capability::validate_capability_id(&input_id).map_err(|error| {
                 BuildError::InvalidCapability {
                     id: input_id.clone(),
-                    reason,
+                    reason: error.reason(),
                 }
             })?;
-            crate::capability_config::validate_capability_config(parts.reference.config_value())
-                .map_err(|reason| BuildError::InvalidCapability {
-                    id: input_id.clone(),
-                    reason,
-                })?;
+            everruns_capability::validate_capability_config(
+                &input_id,
+                parts.reference.config_value(),
+            )
+            .map_err(|error| BuildError::InvalidCapability {
+                id: input_id.clone(),
+                reason: error.reason(),
+            })?;
 
             let canonical_id = capability_registry
                 .canonical_id(&input_id)
                 .unwrap_or(&input_id)
                 .to_string();
-            if seen_capability_ids.contains(&canonical_id) {
+            if activated_capabilities.contains(&canonical_id) {
                 return Err(BuildError::DuplicateCapability { id: canonical_id });
             }
 
@@ -1123,9 +1129,9 @@ impl AgentBuilder {
             if let Some(definition) = parts.definition {
                 definition
                     .validate()
-                    .map_err(|reason| BuildError::InvalidCapability {
+                    .map_err(|error| BuildError::InvalidCapability {
                         id: input_id.clone(),
-                        reason,
+                        reason: error.reason(),
                     })?;
                 if capability_registry.get(definition.id()).is_some() {
                     return Err(BuildError::DuplicateCapability {
@@ -1160,7 +1166,11 @@ impl AgentBuilder {
                 &canonical_id,
                 parts.reference.config_value(),
             )?;
-            seen_capability_ids.insert(canonical_id.clone());
+            activated_capabilities
+                .activate(canonical_id.clone())
+                .map_err(|error| BuildError::DuplicateCapability {
+                    id: error.id().to_string(),
+                })?;
             capabilities.push(AgentCapabilityConfig::with_config(
                 canonical_id,
                 parts.reference.config_value().clone(),
@@ -1169,13 +1179,15 @@ impl AgentBuilder {
 
         for function_tool in function_tools {
             let id = function_tool.name().to_string();
-            crate::capability_config::validate_capability_id(&id).map_err(|reason| {
+            everruns_capability::validate_capability_id(&id).map_err(|error| {
                 BuildError::InvalidCapability {
                     id: id.clone(),
-                    reason,
+                    reason: error.reason(),
                 }
             })?;
-            if capability_registry.get(&id).is_some() || !seen_capability_ids.insert(id.clone()) {
+            if capability_registry.get(&id).is_some()
+                || activated_capabilities.activate(id.clone()).is_err()
+            {
                 return Err(BuildError::DuplicateCapability { id });
             }
             capabilities.push(AgentCapabilityConfig::new(id.as_str()));

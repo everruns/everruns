@@ -471,6 +471,56 @@ mod tests {
     }
 
     #[test]
+    fn capability_ref_round_trips_framework_persistence_and_worker_resolution() {
+        // EVE-873: one neutral reference/config representation. A Framework
+        // `CapabilityRef` serializes to the persisted attachment shape, loads
+        // back as `AgentCapabilityConfig` (the same type), and survives
+        // snapshot projection (the worker resolution input) unchanged.
+        let framework_ref = everruns_capability::CapabilityRef::new("web_fetch")
+            .config(serde_json::json!({"enable_file_download": true}));
+        let persisted = serde_json::to_value(&framework_ref).unwrap();
+        assert_eq!(
+            persisted,
+            serde_json::json!({
+                "ref": "web_fetch",
+                "config": {"enable_file_download": true}
+            }),
+            "wire shape is the persisted attachment row shape"
+        );
+
+        let attachment: AgentCapabilityConfig = serde_json::from_value(persisted).unwrap();
+        assert_eq!(attachment, framework_ref);
+
+        let (harness_id, agent_id, session_id) = ids();
+        let mut harness = harness(harness_id);
+        harness.capabilities = vec![attachment.clone()];
+        let agent = agent(agent_id, harness_id);
+        let session = session(session_id, harness_id, Some(agent_id));
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        assert_eq!(snapshot.capabilities[0], framework_ref);
+        assert_eq!(
+            serde_json::to_value(&snapshot.capabilities[0]).unwrap(),
+            serde_json::to_value(&framework_ref).unwrap()
+        );
+    }
+
+    #[test]
+    fn persisted_capability_config_debug_redacts_values() {
+        // Attachment rows flow through logs and error contexts; their Debug
+        // output must never leak config payloads (which may carry handles or
+        // misplaced credentials).
+        let attachment = AgentCapabilityConfig::with_config(
+            "vendor.search",
+            serde_json::json!({"api_key": "sk-super-secret"}),
+        );
+        let debug = format!("{attachment:?}");
+        assert!(debug.contains("vendor.search"));
+        assert!(!debug.contains("sk-super-secret"));
+        assert!(!debug.contains("api_key"));
+    }
+
+    #[test]
     fn precedence_initial_files_override_by_path() {
         let (harness_id, agent_id, session_id) = ids();
         let mut harness = harness(harness_id);

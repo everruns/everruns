@@ -2398,6 +2398,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-capability",
  "everruns-core",
  "everruns-host",
  "everruns-local",
@@ -2467,6 +2468,16 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "everruns-capability"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "schemars",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -2547,6 +2558,7 @@ dependencies = [
  "ed25519-dalek 3.0.0",
  "eventsource-stream",
  "everruns-a2ui",
+ "everruns-capability",
  "everruns-openui",
  "everruns-provider",
  "fetchkit",
@@ -3165,6 +3177,7 @@ dependencies = [
  "ethers-core",
  "ethers-signers",
  "everruns-ard",
+ "everruns-capability",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
@@ -3285,6 +3298,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-ard",
  "everruns-bedrock",
+ "everruns-capability",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",

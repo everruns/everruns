@@ -136,19 +136,16 @@ fn merge_external_agent(session: &mut Session, agent: &serde_json::Value) {
         }
     };
 
-    if !cap.config.is_object() {
-        cap.config = serde_json::json!({ "agents": [] });
+    if !cap.config_value().is_object() {
+        cap.set_config(serde_json::json!({ "agents": [] }));
     }
-    let agents = cap.config["agents"].as_array_mut();
-    let agents = match agents {
-        Some(agents) => agents,
-        None => {
-            cap.config["agents"] = serde_json::Value::Array(Vec::new());
-            cap.config["agents"]
-                .as_array_mut()
-                .expect("just inserted agents array")
-        }
-    };
+    let config = cap.config_mut();
+    if !config["agents"].is_array() {
+        config["agents"] = serde_json::Value::Array(Vec::new());
+    }
+    let agents = config["agents"]
+        .as_array_mut()
+        .expect("agents array ensured above");
 
     let exists = agents
         .iter()
@@ -324,7 +321,7 @@ mod tests {
             .iter()
             .find(|c| c.capability_id() == "a2a_agent_delegation")
             .expect("a2a capability added");
-        let agents = cap.config["agents"].as_array().unwrap();
+        let agents = cap.config_value()["agents"].as_array().unwrap();
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0]["id"], "concierge");
     }
@@ -339,7 +336,7 @@ mod tests {
             .iter()
             .find(|c| c.capability_id() == "a2a_agent_delegation")
             .unwrap();
-        assert_eq!(cap.config["agents"].as_array().unwrap().len(), 1);
+        assert_eq!(cap.config_value()["agents"].as_array().unwrap().len(), 1);
         // And the capability itself is not duplicated.
         assert_eq!(
             session
@@ -366,7 +363,7 @@ mod tests {
             .iter()
             .find(|c| c.capability_id() == "a2a_agent_delegation")
             .unwrap();
-        let ids: Vec<&str> = cap.config["agents"]
+        let ids: Vec<&str> = cap.config_value()["agents"]
             .as_array()
             .unwrap()
             .iter()

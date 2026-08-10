@@ -109,6 +109,10 @@ pub struct Harness {
     pub tags: Vec<String>,
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(value_type = Vec<crate::capability_types::AgentCapabilityConfigSchema>)
+    )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

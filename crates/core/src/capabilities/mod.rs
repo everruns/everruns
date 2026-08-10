@@ -181,9 +181,9 @@ pub use agent_instructions::{
     MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
 };
 pub use attach_skill::{
-    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillContribution,
-    SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
-    parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
+    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapabilityIdExt,
+    SkillContribution, SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries,
+    is_skill_capability, parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
@@ -270,7 +270,7 @@ pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs, is_code_mode_eligible};
 pub use lua_code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
 pub use mcp::{
-    MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
+    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
 };
 pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
@@ -1336,8 +1336,10 @@ impl std::fmt::Debug for AgentBlueprint {
 #[derive(Clone)]
 pub struct CapabilityRegistry {
     capabilities: HashMap<String, Arc<dyn Capability>>,
-    /// Alias ID -> canonical ID (see [`Capability::aliases`]).
-    aliases: HashMap<String, String>,
+    /// Canonical-id/alias bookkeeping delegated to the neutral capability
+    /// contract so the Framework and product resolve identity identically
+    /// (see [`Capability::aliases`]).
+    index: everruns_capability::CapabilityIdIndex,
 }
 
 impl CapabilityRegistry {
@@ -1345,7 +1347,7 @@ impl CapabilityRegistry {
     pub fn new() -> Self {
         Self {
             capabilities: HashMap::new(),
-            aliases: HashMap::new(),
+            index: everruns_capability::CapabilityIdIndex::new(),
         }
     }
 
@@ -1595,20 +1597,34 @@ impl CapabilityRegistry {
         self.register_arc(Arc::from(capability));
     }
 
-    /// Register an Arc-wrapped capability
+    /// Register an Arc-wrapped capability.
+    ///
+    /// Re-registering the same canonical ID replaces the previous
+    /// implementation (legacy override semantics); use
+    /// [`CapabilityRegistry::try_register_arc`] to reject collisions instead.
     pub fn register_arc(&mut self, capability: Arc<dyn Capability>) {
         let canonical = capability.id().to_string();
-        for alias in capability.aliases() {
-            self.aliases.insert(alias.to_string(), canonical.clone());
-        }
+        self.index
+            .insert_or_replace(canonical.clone(), &capability.aliases());
         self.capabilities.insert(canonical, capability);
+    }
+
+    /// Register an Arc-wrapped capability, rejecting duplicate IDs and alias
+    /// collisions via the neutral contract's registry rules.
+    pub fn try_register_arc(
+        &mut self,
+        capability: Arc<dyn Capability>,
+    ) -> Result<(), everruns_capability::CapabilityError> {
+        let canonical = capability.id().to_string();
+        self.index
+            .insert(canonical.clone(), &capability.aliases())?;
+        self.capabilities.insert(canonical, capability);
+        Ok(())
     }
 
     /// Get a capability by ID or alias
     pub fn get(&self, id: &str) -> Option<&Arc<dyn Capability>> {
-        self.capabilities
-            .get(id)
-            .or_else(|| self.aliases.get(id).and_then(|c| self.capabilities.get(c)))
+        self.capabilities.get(self.index.canonical_of(id)?)
     }
 
     /// Resolve an ID or alias to the canonical capability ID.
@@ -1616,22 +1632,13 @@ impl CapabilityRegistry {
     /// Returns `None` for IDs that are neither registered nor an alias of a
     /// registered capability (e.g. declarative or MCP refs).
     pub fn canonical_id<'a>(&'a self, id: &'a str) -> Option<&'a str> {
-        if self.capabilities.contains_key(id) {
-            Some(id)
-        } else {
-            self.aliases
-                .get(id)
-                .filter(|c| self.capabilities.contains_key(*c))
-                .map(String::as_str)
-        }
+        self.index.canonical_of(id)
     }
 
     /// Remove a capability from the registry by ID or alias.
     pub fn unregister(&mut self, id: &str) -> Option<Arc<dyn Capability>> {
-        let canonical = self.canonical_id(id)?.to_string();
-        let removed = self.capabilities.remove(&canonical);
-        self.aliases.retain(|_, target| *target != canonical);
-        removed
+        let canonical = self.index.remove(id)?;
+        self.capabilities.remove(&canonical)
     }
 
     /// Check if a capability is registered (by ID or alias)
@@ -2230,9 +2237,9 @@ fn compaction_is_enabled(
     registry: &CapabilityRegistry,
 ) -> bool {
     capability_configs.iter().any(|cap_config| {
-        cap_config.capability_ref.as_str() == COMPACTION_CAPABILITY_ID
+        cap_config.capability_id() == COMPACTION_CAPABILITY_ID
             && registry
-                .get(cap_config.capability_ref.as_str())
+                .get(cap_config.capability_id())
                 .is_some_and(|cap| cap.status() == CapabilityStatus::Available)
     })
 }
@@ -2282,7 +2289,7 @@ pub fn collect_message_filters_only(
     let compaction_on = compaction_is_enabled(capability_configs, registry);
 
     for cap_config in capability_configs {
-        let cap_id = cap_config.capability_ref.as_str();
+        let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
             if capability.status() != CapabilityStatus::Available {
                 continue;
@@ -2293,7 +2300,8 @@ pub fn collect_message_filters_only(
                 .resolve_for_model(None)
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.message_filter_provider() {
-                let config = message_filter_config_for(cap_id, &cap_config.config, compaction_on);
+                let config =
+                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
         }
@@ -2320,7 +2328,7 @@ pub fn collect_model_view_providers(
     let mut model_view_providers: Vec<(Arc<dyn ModelViewProvider>, serde_json::Value)> = Vec::new();
 
     for cap_config in capability_configs {
-        let cap_id = cap_config.capability_ref.as_str();
+        let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
             if capability.status() != CapabilityStatus::Available {
                 continue;
@@ -2329,7 +2337,7 @@ pub fn collect_model_view_providers(
                 .resolve_for_model(model)
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.model_view_provider() {
-                model_view_providers.push((provider, cap_config.config.clone()));
+                model_view_providers.push((provider, cap_config.config_value().clone()));
             }
         }
     }
@@ -2354,7 +2362,7 @@ pub fn collect_dynamic_facts(
 ) -> Vec<Fact> {
     let mut dynamic = Vec::new();
     for cap_config in capability_configs {
-        let cap_id = cap_config.capability_ref.as_str();
+        let cap_id = cap_config.capability_id();
         if let Some(capability) = registry.get(cap_id) {
             if capability.status() != CapabilityStatus::Available {
                 continue;
@@ -2362,7 +2370,7 @@ pub fn collect_dynamic_facts(
             let effective: &dyn Capability = capability
                 .resolve_for_model(model)
                 .unwrap_or_else(|| capability.as_ref());
-            for fact in effective.facts(&cap_config.config, ctx) {
+            for fact in effective.facts(cap_config.config_value(), ctx) {
                 if fact.volatility == Volatility::Dynamic {
                     dynamic.push(fact);
                 }
@@ -2379,13 +2387,13 @@ pub fn collect_capability_mcp_servers(
     let mut servers = ScopedMcpServers::default();
 
     for cap_config in capability_configs {
-        let cap_id = cap_config.capability_ref.as_str();
+        let cap_id = cap_config.capability_id();
         // Both `declarative:` and `plugin:` carry a serialized
         // `DeclarativeCapabilityDefinition`; handle them the same way.
         if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
-            if let Ok(definition) =
-                serde_json::from_value::<DeclarativeCapabilityDefinition>(cap_config.config.clone())
-            {
+            if let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
+                cap_config.config_value().clone(),
+            ) {
                 if definition.status != CapabilityStatus::Available {
                     continue;
                 }
@@ -2401,7 +2409,7 @@ pub fn collect_capability_mcp_servers(
             }
             servers = merge_scoped_mcp_servers(
                 &servers,
-                &capability.mcp_servers_with_config(&cap_config.config),
+                &capability.mcp_servers_with_config(cap_config.config_value()),
             );
         }
     }
@@ -2552,8 +2560,9 @@ pub fn resolve_capability_configs(
         // config that may declare dependencies.
         if (is_declarative_capability(config.capability_id())
             || is_plugin_capability(config.capability_id()))
-            && let Ok(definition) =
-                serde_json::from_value::<DeclarativeCapabilityDefinition>(config.config.clone())
+            && let Ok(definition) = serde_json::from_value::<DeclarativeCapabilityDefinition>(
+                config.config_value().clone(),
+            )
         {
             selected_ids.extend(definition.dependencies);
         }
@@ -2568,7 +2577,7 @@ pub fn resolve_capability_configs(
         .map(|config| {
             let id = config.capability_id();
             let id = registry.canonical_id(id).unwrap_or(id);
-            (id.to_string(), config.config.clone())
+            (id.to_string(), config.config_value().clone())
         })
         .collect();
 
@@ -2734,9 +2743,11 @@ pub async fn collect_capabilities(
     // Convert to AgentCapabilityConfig with empty configs
     let configs: Vec<AgentCapabilityConfig> = resolved_ids
         .iter()
-        .map(|id| AgentCapabilityConfig {
-            capability_ref: CapabilityId::new(id),
-            config: serde_json::Value::Object(serde_json::Map::new()),
+        .map(|id| {
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(id),
+                serde_json::Value::Object(serde_json::Map::new()),
+            )
         })
         .collect();
 
@@ -2787,14 +2798,14 @@ pub async fn collect_capabilities_with_configs(
     let mut spawn_agent_providers: Vec<SpawnAgentTargetProvider> = Vec::new();
 
     for cap_config in capability_configs {
-        let cap_id = cap_config.capability_ref.as_str();
+        let cap_id = cap_config.capability_id();
         // `declarative:` and `plugin:` refs both carry a serialized
         // `DeclarativeCapabilityDefinition` in their config and execute through
         // the same runtime path. `plugin:` is handled first (more specific
         // prefix), then `declarative:`, then the registry lookup.
         if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
             match serde_json::from_value::<DeclarativeCapabilityDefinition>(
-                cap_config.config.clone(),
+                cap_config.config_value().clone(),
             ) {
                 Ok(definition) => {
                     if definition.status != CapabilityStatus::Available {
@@ -2855,12 +2866,12 @@ pub async fn collect_capabilities_with_configs(
                 };
             let effective_id = effective.id();
             if cap_id == AGENT_HANDOFF_CAPABILITY_ID {
-                agent_handoff_spawn_config = Some(cap_config.config.clone());
+                agent_handoff_spawn_config = Some(cap_config.config_value().clone());
             }
 
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
             if let Some(contribution) = effective
-                .system_prompt_contribution_with_config(ctx, &cap_config.config)
+                .system_prompt_contribution_with_config(ctx, cap_config.config_value())
                 .await
             {
                 system_prompt_attributions.push(SystemPromptAttribution {
@@ -2874,7 +2885,7 @@ pub async fn collect_capabilities_with_configs(
             // below; dynamic facts are re-collected per request by `ReasonAtom`
             // and appended at the conversation tail, so here we only note their
             // presence to add the explanatory system-prompt line.
-            for fact in effective.facts(&cap_config.config, &facts_ctx) {
+            for fact in effective.facts(cap_config.config_value(), &facts_ctx) {
                 match fact.volatility {
                     Volatility::Static => static_facts.push(fact),
                     Volatility::Dynamic => has_dynamic_facts = true,
@@ -2882,7 +2893,7 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
-            for tool in effective.tools_with_config(&cap_config.config) {
+            for tool in effective.tools_with_config(cap_config.config_value()) {
                 if cap_id == A2A_AGENT_DELEGATION_CAPABILITY_ID && tool.name() == "spawn_agent" {
                     spawn_agent_providers.push(SpawnAgentTargetProvider {
                         target_type: "external_a2a",
@@ -2892,8 +2903,9 @@ pub async fn collect_capabilities_with_configs(
                     tools.push(tool);
                 }
             }
-            tool_definition_hooks
-                .extend(effective.tool_definition_hooks_with_context(ctx, &cap_config.config));
+            tool_definition_hooks.extend(
+                effective.tool_definition_hooks_with_context(ctx, cap_config.config_value()),
+            );
             tool_call_hooks.extend(effective.tool_call_hooks());
             // Route this capability's `narrate()` through the hook channel.
             narration_hooks.push(Arc::new(CapabilityNarrationHook(capability.clone())));
@@ -2926,7 +2938,8 @@ pub async fn collect_capabilities_with_configs(
             {
                 // Parse threshold from config, fall back to default
                 let threshold = cap_config
-                    .config
+                    .config_value()
+                    .clone()
                     .get("threshold")
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
@@ -2939,7 +2952,8 @@ pub async fn collect_capabilities_with_configs(
 
             if cap_id == PROMPT_CACHING_CAPABILITY_ID {
                 let strategy = cap_config
-                    .config
+                    .config_value()
+                    .clone()
                     .get("strategy")
                     .and_then(|v| v.as_str())
                     .map(|value| match value {
@@ -2948,7 +2962,8 @@ pub async fn collect_capabilities_with_configs(
                     })
                     .unwrap_or(crate::driver_registry::PromptCacheStrategy::Auto);
                 let gemini_cached_content = cap_config
-                    .config
+                    .config_value()
+                    .clone()
                     .get("gemini_cached_content")
                     .and_then(|v| v.as_str())
                     .map(str::to_string);
@@ -2961,12 +2976,12 @@ pub async fn collect_capabilities_with_configs(
 
             if cap_id == PARALLEL_TOOL_CALLS_CAPABILITY_ID {
                 parallel_tool_calls =
-                    parallel_tool_calls::parallel_tool_calls_from_config(&cap_config.config);
+                    parallel_tool_calls::parallel_tool_calls_from_config(cap_config.config_value());
             }
 
             if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
                 let server_tools =
-                    openrouter_server_tools::server_tools_from_config(&cap_config.config);
+                    openrouter_server_tools::server_tools_from_config(cap_config.config_value());
                 if !server_tools.is_empty() {
                     openrouter_routing = Some(crate::driver_registry::OpenRouterRoutingConfig {
                         server_tools,
@@ -2980,7 +2995,7 @@ pub async fn collect_capabilities_with_configs(
 
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &effective.mcp_servers_with_config(&cap_config.config),
+                &effective.mcp_servers_with_config(cap_config.config_value()),
             );
 
             // Normalize capability-contributed skills into mount points under
@@ -2992,7 +3007,8 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect message filter provider
             if let Some(provider) = effective.message_filter_provider() {
-                let config = message_filter_config_for(cap_id, &cap_config.config, compaction_on);
+                let config =
+                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
 
@@ -4494,10 +4510,10 @@ mod tests {
     #[tokio::test]
     async fn test_collect_capabilities_with_configs_no_filter_providers() {
         let registry = CapabilityRegistry::with_builtins();
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("current_time"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("current_time"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -4510,10 +4526,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("filter_test"),
-            config: serde_json::json!({ "search": "hello" }),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("filter_test"),
+            serde_json::json!({ "search": "hello" }),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -4563,14 +4579,14 @@ mod tests {
 
         // Add in order: high priority first, low priority second
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("high_priority"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("low_priority"),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("high_priority"),
+                serde_json::json!({}),
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("low_priority"),
+                serde_json::json!({}),
+            ),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -4586,10 +4602,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("filter_test"),
-            config: serde_json::json!({ "search": "test_query" }),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("filter_test"),
+            serde_json::json!({ "search": "test_query" }),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -4665,18 +4681,9 @@ mod tests {
         });
 
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("cap_a"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("cap_b"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("cap_c"),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(CapabilityId::new("cap_a"), serde_json::json!({})),
+            AgentCapabilityConfig::with_config(CapabilityId::new("cap_b"), serde_json::json!({})),
+            AgentCapabilityConfig::with_config(CapabilityId::new("cap_c"), serde_json::json!({})),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -4714,10 +4721,10 @@ mod tests {
             "extra_field": 42
         });
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("filter_test"),
-            config: test_config.clone(),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("filter_test"),
+            test_config.clone(),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -4736,10 +4743,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("filter_test"),
-            config: serde_json::json!({ "search": "test_query" }),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("filter_test"),
+            serde_json::json!({ "search": "test_query" }),
+        )];
 
         let collected = collect_message_filters_only(&configs, &registry);
 
@@ -4790,10 +4797,10 @@ mod tests {
         });
 
         // Infinity context alone (tight budget): it trims and injects a notice.
-        let solo = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-            config: tight.clone(),
-        }];
+        let solo = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
+            tight.clone(),
+        )];
         let mut messages = vec![
             Message::user("task"),
             Message::assistant("old ".repeat(400)),
@@ -4809,14 +4816,14 @@ mod tests {
 
         // Infinity context + compaction: infinity context defers, no eviction.
         let both = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-                config: tight,
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
+                tight,
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(COMPACTION_CAPABILITY_ID),
+                serde_json::json!({}),
+            ),
         ];
         let mut messages = vec![
             Message::user("task"),
@@ -4838,16 +4845,16 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(CompactionCapability);
 
-        let with_compaction = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
-            config: serde_json::json!({}),
-        }];
+        let with_compaction = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new(COMPACTION_CAPABILITY_ID),
+            serde_json::json!({}),
+        )];
         assert!(compaction_is_enabled(&with_compaction, &registry));
 
-        let without = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("current_time"),
-            config: serde_json::json!({}),
-        }];
+        let without = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("current_time"),
+            serde_json::json!({}),
+        )];
         assert!(!compaction_is_enabled(&without, &registry));
     }
 
@@ -4855,10 +4862,10 @@ mod tests {
     fn test_collect_message_filters_only_skips_unknown_capabilities() {
         let registry = CapabilityRegistry::new();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("nonexistent"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("nonexistent"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_message_filters_only(&configs, &registry);
         assert!(collected.message_filter_providers.is_empty());
@@ -4924,18 +4931,9 @@ mod tests {
         });
 
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("gamma"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("alpha"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("beta"),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(CapabilityId::new("gamma"), serde_json::json!({})),
+            AgentCapabilityConfig::with_config(CapabilityId::new("alpha"), serde_json::json!({})),
+            AgentCapabilityConfig::with_config(CapabilityId::new("beta"), serde_json::json!({})),
         ];
 
         let collected = collect_message_filters_only(&configs, &registry);
@@ -4987,10 +4985,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(PostLoadCap);
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("post_load_test"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("post_load_test"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_message_filters_only(&configs, &registry);
 
@@ -5054,10 +5052,10 @@ mod tests {
         assert!(!first_tool_result_is_masked(&unmasked));
 
         let compaction = collect_model_view_providers(
-            &[AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
-                config: serde_json::json!({}),
-            }],
+            &[AgentCapabilityConfig::with_config(
+                CapabilityId::new(COMPACTION_CAPABILITY_ID),
+                serde_json::json!({}),
+            )],
             &registry,
             None,
         );
@@ -5122,10 +5120,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(outer);
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("delegating_filter"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("delegating_filter"),
+            serde_json::json!({}),
+        )];
 
         // Outer has no message_filter_provider; inner does. resolve_for_model
         // delegates to inner so the provider should be collected.
@@ -5202,10 +5200,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(outer);
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("delegating_mvp"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("delegating_mvp"),
+            serde_json::json!({}),
+        )];
 
         // Outer has no model_view_provider; inner does. resolve_for_model
         // delegates to inner so the provider should be collected.
@@ -5463,9 +5461,9 @@ mod tests {
         registry.register(AgentHandoffCapability);
         let agent_id = crate::typed_id::AgentId::new();
         let harness_id = crate::typed_id::HarnessId::new();
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-            config: serde_json::json!({
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+            serde_json::json!({
                 "targets": [{
                     "id": "aws_operator",
                     "name": "AWS Operator",
@@ -5473,7 +5471,7 @@ mod tests {
                     "harness_id": harness_id
                 }]
             }),
-        }];
+        )];
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         assert!(
@@ -5503,13 +5501,13 @@ mod tests {
         let agent_id = crate::typed_id::AgentId::new();
         let harness_id = crate::typed_id::HarnessId::new();
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-                config: serde_json::json!({
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
+                serde_json::json!({}),
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+                serde_json::json!({
                     "targets": [{
                         "id": "aws_operator",
                         "name": "AWS Operator",
@@ -5517,7 +5515,7 @@ mod tests {
                         "harness_id": harness_id
                     }]
                 }),
-            },
+            ),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -5564,20 +5562,20 @@ mod tests {
         registry.register(A2aAgentDelegationCapability);
 
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(A2A_AGENT_DELEGATION_CAPABILITY_ID),
-                config: serde_json::json!({
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
+                serde_json::json!({}),
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(A2A_AGENT_DELEGATION_CAPABILITY_ID),
+                serde_json::json!({
                     "agents": [{
                         "id": "local_app",
                         "name": "Local App",
                         "base_url": "https://example.com"
                     }]
                 }),
-            },
+            ),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -5721,9 +5719,9 @@ mod tests {
         let agent_id = crate::typed_id::AgentId::new();
         let harness_id = crate::typed_id::HarnessId::new();
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-                config: serde_json::json!({
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+                serde_json::json!({
                     "targets": [{
                         "id": "aws_operator",
                         "name": "AWS Operator",
@@ -5731,11 +5729,11 @@ mod tests {
                         "harness_id": harness_id
                     }]
                 }),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("existing_spawn_agent"),
-                config: serde_json::json!({}),
-            },
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("existing_spawn_agent"),
+                serde_json::json!({}),
+            ),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -5890,7 +5888,10 @@ mod tests {
             .iter()
             .find(|c| c.capability_id() == "bashkit_shell")
             .expect("alias must resolve to canonical bashkit_shell config");
-        assert_eq!(bash.config, serde_json::json!({"key": "value"}));
+        assert_eq!(
+            bash.config_value().clone(),
+            serde_json::json!({"key": "value"})
+        );
     }
 
     #[test]
@@ -6124,10 +6125,10 @@ mod tests {
     async fn test_collect_capabilities_tool_search_custom_threshold() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("openai_tool_search"),
-            config: serde_json::json!({"threshold": 5}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("openai_tool_search"),
+            serde_json::json!({"threshold": 5}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -6141,14 +6142,14 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
 
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("auto_tool_search"),
-                config: serde_json::json!({"threshold": 2}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("test_math"),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("auto_tool_search"),
+                serde_json::json!({"threshold": 2}),
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("test_math"),
+                serde_json::json!({}),
+            ),
         ];
 
         // No native support (pre-4 Claude) → resolves to the generic client-side
@@ -6191,10 +6192,10 @@ mod tests {
     async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_native() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("auto_tool_search"),
-            config: serde_json::json!({"threshold": 7}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("auto_tool_search"),
+            serde_json::json!({"threshold": 7}),
+        )];
 
         // Native support → resolves to the hosted OpenAI mechanism: a hosted
         // config (honoring the configured threshold) and no client-side tool/hook.
@@ -6224,10 +6225,10 @@ mod tests {
     async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_anthropic() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("auto_tool_search"),
-            config: serde_json::json!({"threshold": 9}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("auto_tool_search"),
+            serde_json::json!({"threshold": 9}),
+        )];
 
         // Native Claude support → resolves to the hosted Anthropic mechanism: a
         // hosted config (honoring the threshold) and no client-side tool/hook.
@@ -6257,10 +6258,10 @@ mod tests {
     async fn test_collect_capabilities_no_tool_search_without_capability() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("current_time"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("current_time"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -6273,14 +6274,14 @@ mod tests {
 
         // test_math capability has category "Testing"
         let configs = vec![
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("test_math"),
-                config: serde_json::json!({}),
-            },
-            AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("openai_tool_search"),
-                config: serde_json::json!({}),
-            },
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("test_math"),
+                serde_json::json!({}),
+            ),
+            AgentCapabilityConfig::with_config(
+                CapabilityId::new("openai_tool_search"),
+                serde_json::json!({}),
+            ),
         ];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
@@ -6335,13 +6336,13 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("openrouter_server_tools"),
-            config: serde_json::json!({
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("openrouter_server_tools"),
+            serde_json::json!({
                 "tools": ["web_search", "datetime"],
                 "web_search_max_results": 4,
             }),
-        }];
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
         let routing = collected
@@ -6374,10 +6375,10 @@ mod tests {
     async fn test_collect_capabilities_prompt_caching_custom_strategy() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("prompt_caching"),
-            config: serde_json::json!({"strategy": "auto"}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("prompt_caching"),
+            serde_json::json!({"strategy": "auto"}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -6394,13 +6395,13 @@ mod tests {
     async fn test_collect_capabilities_prompt_caching_gemini_cached_content() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("prompt_caching"),
-            config: serde_json::json!({
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("prompt_caching"),
+            serde_json::json!({
                 "strategy": "auto",
                 "gemini_cached_content": "cachedContents/demo-cache"
             }),
-        }];
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -6426,10 +6427,10 @@ mod tests {
 
         // avoid => Some(false).
         let collected = collect_capabilities_with_configs(
-            &[AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("parallel_tool_calls"),
-                config: serde_json::json!({"mode": "avoid"}),
-            }],
+            &[AgentCapabilityConfig::with_config(
+                CapabilityId::new("parallel_tool_calls"),
+                serde_json::json!({"mode": "avoid"}),
+            )],
             &registry,
             &test_ctx(),
         )
@@ -6438,10 +6439,10 @@ mod tests {
 
         // none => None (provider default).
         let collected = collect_capabilities_with_configs(
-            &[AgentCapabilityConfig {
-                capability_ref: CapabilityId::new("parallel_tool_calls"),
-                config: serde_json::json!({"mode": "none"}),
-            }],
+            &[AgentCapabilityConfig::with_config(
+                CapabilityId::new("parallel_tool_calls"),
+                serde_json::json!({"mode": "none"}),
+            )],
             &registry,
             &test_ctx(),
         )
@@ -6521,10 +6522,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(SkillContributingCapability);
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("contributes_skills"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("contributes_skills"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
@@ -6577,10 +6578,10 @@ mod tests {
         let mut registry = CapabilityRegistry::new();
         registry.register(FilterTestCapability { priority: 0 });
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("filter_test"),
-            config: serde_json::json!({}),
-        }];
+        let configs = vec![AgentCapabilityConfig::with_config(
+            CapabilityId::new("filter_test"),
+            serde_json::json!({}),
+        )];
 
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
         assert!(

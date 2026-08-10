@@ -389,7 +389,7 @@ fn check_unknown_tool_reference(
     let known: HashSet<&str> = tools
         .iter()
         .map(|t| t.name())
-        .chain(capabilities.iter().map(|c| c.capability_ref.as_str()))
+        .chain(capabilities.iter().map(|c| c.capability_id()))
         .collect();
     let mut reported: HashSet<&str> = HashSet::new();
     for caps in BACKTICKED_IDENT.captures_iter(authored) {
@@ -639,10 +639,7 @@ mod tests {
     }
 
     fn capability(r#ref: &str) -> AgentCapabilityConfig {
-        AgentCapabilityConfig {
-            capability_ref: r#ref.into(),
-            config: serde_json::Value::Null,
-        }
+        AgentCapabilityConfig::with_config(r#ref, serde_json::Value::Null)
     }
 
     fn rule_ids(findings: &[Finding]) -> Vec<&str> {

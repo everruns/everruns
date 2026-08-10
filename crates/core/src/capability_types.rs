@@ -1,13 +1,16 @@
 // Capability type definitions
 //
+// Design Decision (EVE-873): capability identity and per-agent configuration
+// are the neutral `everruns-capability` contract — `CapabilityId`,
+// `CapabilityRef`, validation, and registry index bookkeeping live there and
+// are re-exported here at their historical paths. Core owns only the
+// runtime-facing vocabulary that needs engine types (capability status,
+// mount points, virtual file trees).
+//
 // Design Decision: Capability IDs are String-based to allow adding new capabilities
 // without requiring database migrations or code changes. Each capability defines its
 // own ID via the Capability trait's id() method - no central registry of IDs needed.
 // Validation happens at the registry level (capability must be registered).
-//
-// Design Decision: AgentCapabilityConfig uses `ref` for the capability ID to avoid
-// confusion with `id` which typically refers to primary keys. The config field stores
-// per-agent configuration for the capability.
 //
 // Design Decision: Capabilities can declare mount points to populate files in the session
 // filesystem. Mount points specify a path, access mode (readonly/readwrite), and content
@@ -18,93 +21,44 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-// ============================================================================
-// Plugin capability ID helpers
-// ============================================================================
-//
-// Mirrors the `declarative_capability_id` / `is_declarative_capability` /
-// `parse_declarative_capability_id` trio in `capabilities/declarative.rs` for
-// the `plugin:` namespace.
-//
-// Server-managed plugin refs use stable installation public IDs. Standalone
-// Agent Plugins refs use manifest names of at most 64 ASCII bytes, so persisted
-// capability reference columns reserve 71 bytes including `plugin:`.
+pub use everruns_capability::{
+    CapabilityError, CapabilityId, CapabilityRef, PLUGIN_CAPABILITY_PREFIX,
+    RESERVED_CAPABILITY_ID_NAMESPACE, is_plugin_capability, parse_plugin_capability_id,
+    plugin_capability_id, validate_capability_config, validate_capability_id,
+};
 
-/// The `plugin:` prefix used to identify installed plugin capabilities.
-pub const PLUGIN_CAPABILITY_PREFIX: &str = "plugin:";
-
-/// Construct a plugin capability reference from its stable identity suffix.
+/// Per-agent capability configuration — the persisted attachment row shape.
 ///
-/// Server-managed plugins use the installation public ID. Standalone runtime
-/// plugins use the manifest name because they do not have an installation row.
-pub fn plugin_capability_id(identity: &str) -> String {
-    format!("{PLUGIN_CAPABILITY_PREFIX}{identity}")
-}
+/// This is the neutral [`CapabilityRef`] under its historical product name:
+/// one semantic model for "capability id + per-agent JSON config" shared by
+/// the Framework, persisted attachments, and worker resolution. It serializes
+/// as `{"ref": "<id>", "config": {…}}`.
+pub use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
-/// Return `true` if `capability_id` is a `plugin:…` reference.
-pub fn is_plugin_capability(capability_id: &str) -> bool {
-    capability_id.starts_with(PLUGIN_CAPABILITY_PREFIX)
-}
-
-/// Strip the `plugin:` prefix and return the identity suffix.
-pub fn parse_plugin_capability_id(capability_id: &str) -> Option<&str> {
-    capability_id.strip_prefix(PLUGIN_CAPABILITY_PREFIX)
-}
-
+// OpenAPI schema surrogate for `AgentCapabilityConfig`.
+//
+// The neutral contract crate carries no OpenAPI dependency, so this doc-only
+// shadow struct reproduces the wire shape (`ref` + optional `config`) for
+// `utoipa` derives. Fields embedding `AgentCapabilityConfig` reference it via
+// `#[schema(value_type = AgentCapabilityConfigSchema)]`; the emitted component
+// keeps the public name `AgentCapabilityConfig`. The doc comment below is the
+// published schema description — keep it byte-stable.
 #[cfg(feature = "openapi")]
-use utoipa::ToSchema;
-
-/// Capability identifier - a string-based ID for extensibility
+#[derive(serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[schema(as = AgentCapabilityConfig)]
+#[allow(dead_code)]
+/// Per-agent capability configuration
 ///
-/// This allows new capabilities to be added without database changes.
-/// The ID is validated at runtime against the capability registry.
-/// Capabilities define their own IDs via the Capability trait's id() method.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct CapabilityId(String);
-
-impl CapabilityId {
-    /// Create a new capability ID from a string
-    pub fn new(id: impl Into<String>) -> Self {
-        Self(id.into())
-    }
-
-    /// Get the ID as a string slice
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Display for CapabilityId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl std::str::FromStr for CapabilityId {
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::new(s))
-    }
-}
-
-impl From<&str> for CapabilityId {
-    fn from(s: &str) -> Self {
-        Self::new(s)
-    }
-}
-
-impl From<String> for CapabilityId {
-    fn from(s: String) -> Self {
-        Self(s)
-    }
-}
-
-impl AsRef<str> for CapabilityId {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
+/// Associates a capability with an agent, including optional per-agent configuration.
+/// The config field allows the same capability to behave differently per-agent.
+pub struct AgentCapabilityConfigSchema {
+    /// Reference to the capability ID
+    #[serde(rename = "ref")]
+    #[schema(value_type = String)]
+    pub capability_ref: String,
+    /// Per-agent configuration for this capability (capability-specific)
+    #[serde(default)]
+    pub config: serde_json::Value,
 }
 
 /// Capability status
@@ -126,63 +80,6 @@ impl std::fmt::Display for CapabilityStatus {
             CapabilityStatus::ComingSoon => write!(f, "coming_soon"),
             CapabilityStatus::Deprecated => write!(f, "deprecated"),
         }
-    }
-}
-
-/// Per-agent capability configuration
-///
-/// Associates a capability with an agent, including optional per-agent configuration.
-/// The config field allows the same capability to behave differently per-agent.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct AgentCapabilityConfig {
-    /// Reference to the capability ID
-    #[serde(rename = "ref")]
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
-    pub capability_ref: CapabilityId,
-    /// Per-agent configuration for this capability (capability-specific)
-    #[serde(default)]
-    pub config: serde_json::Value,
-}
-
-impl AgentCapabilityConfig {
-    /// Create a new capability config with the given ID and empty config
-    pub fn new(capability_id: impl Into<CapabilityId>) -> Self {
-        Self {
-            capability_ref: capability_id.into(),
-            config: serde_json::Value::Object(serde_json::Map::new()),
-        }
-    }
-
-    /// Create a new capability config with the given ID and config
-    pub fn with_config(capability_id: impl Into<CapabilityId>, config: serde_json::Value) -> Self {
-        Self {
-            capability_ref: capability_id.into(),
-            config,
-        }
-    }
-
-    /// Get the capability ID as a string reference
-    pub fn capability_id(&self) -> &str {
-        self.capability_ref.as_str()
-    }
-}
-
-impl From<CapabilityId> for AgentCapabilityConfig {
-    fn from(id: CapabilityId) -> Self {
-        Self::new(id)
-    }
-}
-
-impl From<&str> for AgentCapabilityConfig {
-    fn from(id: &str) -> Self {
-        Self::new(CapabilityId::new(id))
-    }
-}
-
-impl From<String> for AgentCapabilityConfig {
-    fn from(id: String) -> Self {
-        Self::new(CapabilityId::new(id))
     }
 }
 
@@ -550,7 +447,7 @@ mod tests {
     fn test_agent_capability_config_new() {
         let config = AgentCapabilityConfig::new("current_time");
         assert_eq!(config.capability_id(), "current_time");
-        assert_eq!(config.config, serde_json::json!({}));
+        assert_eq!(config.config_value(), &serde_json::json!({}));
     }
 
     #[test]
@@ -560,14 +457,14 @@ mod tests {
             serde_json::json!({"timeout_ms": 30000}),
         );
         assert_eq!(config.capability_id(), "web_fetch");
-        assert_eq!(config.config["timeout_ms"], 30000);
+        assert_eq!(config.config_value()["timeout_ms"], 30000);
     }
 
     #[test]
     fn test_agent_capability_config_from_capability_id() {
         let config: AgentCapabilityConfig = CapabilityId::new("current_time").into();
         assert_eq!(config.capability_id(), "current_time");
-        assert_eq!(config.config, serde_json::json!({}));
+        assert_eq!(config.config_value(), &serde_json::json!({}));
     }
 
     #[test]
@@ -594,7 +491,7 @@ mod tests {
 
         let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.capability_id(), "current_time");
-        assert_eq!(parsed.config["timezone"], "UTC");
+        assert_eq!(parsed.config_value()["timezone"], "UTC");
     }
 
     #[test]
@@ -605,7 +502,7 @@ mod tests {
 
         let parsed: AgentCapabilityConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.capability_id(), "noop");
-        assert_eq!(parsed.config, serde_json::json!({}));
+        assert_eq!(parsed.config_value(), &serde_json::json!({}));
     }
 
     #[test]

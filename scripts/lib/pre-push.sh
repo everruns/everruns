@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push checks: fast local validation to catch CI failures early (~30s).
-# Runs formatting, linting, lockfile, migration, test/example enumeration, knowledge, and attribution checks.
+# Runs formatting, linting, lockfile, migration, test/example enumeration, knowledge, capability-contract, and attribution checks.
 # Usage: just pre-push (or: bash scripts/lib/pre-push.sh)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -13,7 +13,7 @@ echo "🔒 Running pre-push checks..."
 echo ""
 
 # 1. Rust formatting
-echo "1/12 Rust formatting"
+echo "1/13 Rust formatting"
 if cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
@@ -21,7 +21,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/12 Rust linting"
+echo "2/13 Rust linting"
 if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
@@ -29,7 +29,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/12 Cargo.lock freshness"
+echo "3/13 Cargo.lock freshness"
 if cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
@@ -37,7 +37,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/12 UI formatting"
+echo "4/13 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
@@ -49,7 +49,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/12 UI linting"
+echo "5/13 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
@@ -61,7 +61,7 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/12 Migration ordering"
+echo "6/13 Migration ordering"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
@@ -72,7 +72,7 @@ else
 fi
 
 # 7. Migration immutability check
-echo "7/12 Migration immutability"
+echo "7/13 Migration immutability"
 if MIGRATION_IMMUTABILITY_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-immutability.sh" 2>&1
 )"; then
@@ -83,7 +83,7 @@ else
 fi
 
 # 8. Server integration test enumeration
-echo "8/12 Server test enumeration"
+echo "8/13 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-server-test-enumeration.sh" 2>&1
 )"; then
@@ -94,7 +94,7 @@ else
 fi
 
 # 9. Public everruns example inventory and compile check
-echo "9/12 Public everruns examples"
+echo "9/13 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
@@ -105,7 +105,7 @@ else
 fi
 
 # 10. Knowledge bundle conformance
-echo "10/12 Knowledge bundle conformance"
+echo "10/13 Knowledge bundle conformance"
 if KNOWLEDGE_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
@@ -116,7 +116,7 @@ else
 fi
 
 # 11. Published crate documentation contract
-echo "11/12 Published crate documentation"
+echo "11/13 Published crate documentation"
 if PUBLISHED_DOCS_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-published-crate-docs.sh" 2>&1
 )"; then
@@ -126,8 +126,19 @@ else
   fail "published crate documentation check failed"
 fi
 
-# 12. Commit author attribution check
-echo "12/12 Commit author attribution"
+# 12. Capability contract architecture guard (EVE-873)
+echo "12/13 Capability contract guard"
+if CAPABILITY_CONTRACT_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-capability-contract.sh" 2>&1
+)"; then
+  pass "$CAPABILITY_CONTRACT_OUTPUT"
+else
+  printf '%s\n' "$CAPABILITY_CONTRACT_OUTPUT" | sed 's/^/   /'
+  fail "capability contract guard failed"
+fi
+
+# 13. Commit author attribution check
+echo "13/13 Commit author attribution"
 if ! resolve_commit_git_identity; then
   fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
 elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then

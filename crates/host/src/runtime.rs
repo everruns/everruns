@@ -42,7 +42,7 @@ use everruns_core::traits::{
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
+    AgentCapabilityConfig, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
     SessionFileSystem, SessionFileSystemFactoryContext, load_execution_snapshot_for_session,
     plugin_capability_id, resolve_runtime_capabilities,
 };
@@ -967,13 +967,13 @@ impl InProcessRuntime {
             )));
         }
         registered
-            .validate_config(&capability.config)
+            .validate_config(capability.config_value())
             .map_err(|error| {
                 AgentLoopError::config(format!("invalid capability config: {error}"))
             })?;
 
         let canonical_id = registered.id().to_string();
-        capability.capability_ref = CapabilityId::new(canonical_id.clone());
+        capability.set_id(canonical_id.clone());
         let context = self.load_context(session_id).await?;
         if context
             .resolved_capability_configs
@@ -1791,9 +1791,10 @@ fn hydrate_plugin_refs(
             continue;
         }
         // Only replace if the config is missing / empty so explicit overrides are honoured.
-        let is_bare = cap.config.is_null()
+        let is_bare = cap.config_value().is_null()
             || cap
-                .config
+                .config_value()
+                .clone()
                 .as_object()
                 .map(|o| o.is_empty())
                 .unwrap_or(false);
@@ -1801,7 +1802,7 @@ fn hydrate_plugin_refs(
             continue;
         }
         if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
-            cap.config = hydrated.config.clone();
+            cap.set_config(hydrated.config_value().clone());
         }
     }
 }

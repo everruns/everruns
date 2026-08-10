@@ -92,7 +92,7 @@ pub fn resolve_usage_limit_auto_continue(
     configs
         .iter()
         .find(|config| config.capability_id() == USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID)
-        .map(|config| AutoContinueConfig::from_config_value(&config.config))
+        .map(|config| AutoContinueConfig::from_config_value(config.config_value()))
 }
 
 pub struct UsageLimitAutoContinueCapability;
@@ -254,10 +254,7 @@ mod tests {
     use super::*;
 
     fn cap_config(config: Value) -> AgentCapabilityConfig {
-        AgentCapabilityConfig {
-            capability_ref: USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID.into(),
-            config,
-        }
+        AgentCapabilityConfig::with_config(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, config)
     }
 
     #[test]

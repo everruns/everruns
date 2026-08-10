@@ -1,0 +1,14 @@
+[package]
+name = "external-capability-pack"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A third-party capability package built against the neutral capability
+# contract ALONE (EVE-873): no everruns, no everruns-core, no everruns-host,
+# no Tokio. The `external-consumer-app` installs it through the `everruns`
+# facade, proving the open `IntoCapability`/`Definition` seams need no
+# central enum or Everruns source edit.
+[dependencies]
+everruns-capability = { path = "../../../../crates/capability" }
+serde_json = "1"
