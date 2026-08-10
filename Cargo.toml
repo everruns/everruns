@@ -57,7 +57,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.25"
+version = "0.17.26"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -168,19 +168,19 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-core = { path = "crates/core", version = "0.17.25" }
-everruns-engine = { path = "crates/engine", version = "0.17.25" }
-everruns-host = { path = "crates/host", version = "0.17.25" }
-everruns-platform = { path = "crates/platform", version = "0.17.25" }
-everruns-provider = { path = "crates/provider", version = "0.17.25" }
+everruns-core = { path = "crates/core", version = "0.17.26" }
+everruns-engine = { path = "crates/engine", version = "0.17.26" }
+everruns-host = { path = "crates/host", version = "0.17.26" }
+everruns-platform = { path = "crates/platform", version = "0.17.26" }
+everruns-provider = { path = "crates/provider", version = "0.17.26" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.25" }
-everruns-ard = { path = "crates/ard", version = "0.17.25" }
+everruns-mcp = { path = "crates/mcp", version = "0.17.26" }
+everruns-ard = { path = "crates/ard", version = "0.17.26" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-runtime = { path = "crates/runtime", version = "0.17.25" }
-everruns-local = { path = "crates/local", version = "0.17.25" }
-everruns = { path = "crates/everruns", version = "0.17.25" }
-everruns-macros = { path = "crates/macros", version = "0.17.25" }
+everruns-runtime = { path = "crates/runtime", version = "0.17.26" }
+everruns-local = { path = "crates/local", version = "0.17.26" }
+everruns = { path = "crates/everruns", version = "0.17.26" }
+everruns-macros = { path = "crates/macros", version = "0.17.26" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
