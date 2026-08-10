@@ -174,7 +174,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         .map(|message| format!("[{}] {:?}", message.role, message.content))
         .collect();
     let mut event_types = Vec::new();
-    while let Some(event) = events.try_recv() {
+    while let Ok(Some(event)) = events.try_recv() {
         event_types.push(event.event_type().to_string());
     }
 
