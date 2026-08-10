@@ -86,7 +86,7 @@ impl Subject for GenericRuntimeSubject {
             Err(e) => return Transcript::infra_error(e),
         };
 
-        let mut handle = match build_session(sample, &cx.target, harness, config) {
+        let handle = match build_session(sample, &cx.target, harness, config) {
             Ok(handle) => handle,
             // The runtime failed to build before the model ran — scaffolding,
             // so attribute to infra (scored N/A, retried).
@@ -138,7 +138,7 @@ impl Subject for GenericRuntimeSubject {
         }
 
         // Normalize the Framework event stream: usage + ordered tool-call names.
-        while let Some(event) = events.try_recv() {
+        while let Ok(Some(event)) = events.try_recv() {
             transcript.events.push(event_value(event));
         }
         let (usage, _) = summarize_events(&transcript.events);

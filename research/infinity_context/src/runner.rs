@@ -218,10 +218,13 @@ fn get_provider_type(model: &str) -> DriverId {
 }
 
 fn get_api_key(provider_type: &DriverId) -> Result<String> {
-    let key_name = match provider_type {
-        DriverId::Anthropic => "ANTHROPIC_API_KEY",
-        DriverId::OpenAI | DriverId::OpenAICompletions => "OPENAI_API_KEY",
-        DriverId::LlmSim => return Ok(String::new()),
+    // `DriverId` consts are not structural-match patterns; compare canonical ids.
+    let key_name = match provider_type.as_str() {
+        id if id == DriverId::Anthropic.as_str() => "ANTHROPIC_API_KEY",
+        id if id == DriverId::OpenAI.as_str() || id == DriverId::OpenAICompletions.as_str() => {
+            "OPENAI_API_KEY"
+        }
+        id if id == DriverId::LlmSim.as_str() => return Ok(String::new()),
         // This research harness only drives the providers above.
         other => anyhow::bail!("unsupported provider for eval harness: {other}"),
     };
