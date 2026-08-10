@@ -20,7 +20,7 @@ help: the trait `everruns::capability::JsonSchema` is not implemented for `NotSe
              (T0, T1, T2, T3, T4, T5)
            and $N others
 note: required by a bound in `everruns::capability::Handler::Output`
-  --> src/capability.rs
+  --> $WORKSPACE/crates/capability/src/definition.rs
    |
    |     type Output: Serialize + JsonSchema + Send + 'static;
    |                              ^^^^^^^^^^ required by this bound in `Handler::Output`
@@ -49,7 +49,7 @@ help: the trait `everruns::capability::Serialize` is not implemented for `NotSer
              (T0, T1, T2, T3, T4)
            and $N others
 note: required by a bound in `everruns::capability::Handler::Output`
-  --> src/capability.rs
+  --> $WORKSPACE/crates/capability/src/definition.rs
    |
    |     type Output: Serialize + JsonSchema + Send + 'static;
    |                  ^^^^^^^^^ required by this bound in `Handler::Output`

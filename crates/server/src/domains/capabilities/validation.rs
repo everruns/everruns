@@ -63,7 +63,8 @@ pub async fn validate_capability_refs(
             ))
             .into());
         }
-        if let Err(error) = everruns_capability::validate_capability_config(cap_id, cap.config_value())
+        if let Err(error) =
+            everruns_capability::validate_capability_config(cap_id, cap.config_value())
         {
             return Err(BadRequestError::new(format!(
                 "Invalid capability config for '{cap_id}': {}",
@@ -213,13 +214,10 @@ mod tests {
             let framework_reason = everruns_capability::validate_capability_id(id)
                 .unwrap_err()
                 .reason();
-            let err = validate_capability_refs(
-                &db,
-                DEFAULT_ORG_ID,
-                &[AgentCapabilityConfig::new(id)],
-            )
-            .await
-            .unwrap_err();
+            let err =
+                validate_capability_refs(&db, DEFAULT_ORG_ID, &[AgentCapabilityConfig::new(id)])
+                    .await
+                    .unwrap_err();
             assert!(err.downcast_ref::<BadRequestError>().is_some(), "{id:?}");
             assert!(
                 err.to_string().contains(&framework_reason),
@@ -245,7 +243,8 @@ mod tests {
             .unwrap_err();
             assert!(err.downcast_ref::<BadRequestError>().is_some());
             assert!(
-                err.to_string().contains("capability config must be a JSON object"),
+                err.to_string()
+                    .contains("capability config must be a JSON object"),
                 "unexpected error: {err}"
             );
         }
