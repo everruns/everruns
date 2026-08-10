@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.26] - 2026-08-10
+
+### Highlights
+
+- **Live, steerable sessions** - Sessions are now live and steerable, with canonical session events, session history and resume, and a session work and wake API ([#3095](https://github.com/everruns/everruns/pull/3095), [#3090](https://github.com/everruns/everruns/pull/3090), [#3089](https://github.com/everruns/everruns/pull/3089), [#3083](https://github.com/everruns/everruns/pull/3083)).
+- **Sessions as the operational list** - The Sessions surface was rebuilt as the operational list, recording session source and offering a filterable list with facet counts ([#3078](https://github.com/everruns/everruns/pull/3078), [#3073](https://github.com/everruns/everruns/pull/3073)).
+- **Advanced capability authoring** - New advanced capability authoring API with typed lifecycle hooks, a workspace access policy, unified capability configuration, and separated provider and model configuration ([#3084](https://github.com/everruns/everruns/pull/3084), [#3086](https://github.com/everruns/everruns/pull/3086), [#3085](https://github.com/everruns/everruns/pull/3085), [#3096](https://github.com/everruns/everruns/pull/3096), [#3093](https://github.com/everruns/everruns/pull/3093)).
+- **Daytona workspace recovery** - Sandboxes recover Daytona workspaces after instance loss ([#3092](https://github.com/everruns/everruns/pull/3092)).
+
+### What's Changed
+
+- feat(framework)!: unify capability configuration ([#3096](https://github.com/everruns/everruns/pull/3096)) by [@chaliy](https://github.com/chaliy)
+- docs(runtime): add 0.17 migration path ([#3091](https://github.com/everruns/everruns/pull/3091)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): make sessions live and steerable ([#3095](https://github.com/everruns/everruns/pull/3095)) by [@chaliy](https://github.com/chaliy)
+- feat(sandbox): recover Daytona workspaces after instance loss ([#3092](https://github.com/everruns/everruns/pull/3092)) by [@chaliy](https://github.com/chaliy)
+- fix(framework): bundle simulated error provider ([#3094](https://github.com/everruns/everruns/pull/3094)) by [@chaliy](https://github.com/chaliy)
+- feat(framework)!: separate provider and model configuration ([#3093](https://github.com/everruns/everruns/pull/3093)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): expose canonical session events ([#3090](https://github.com/everruns/everruns/pull/3090)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add session history and resume ([#3089](https://github.com/everruns/everruns/pull/3089)) by [@chaliy](https://github.com/chaliy)
+- refactor(runtime): migrate first-party consumers off compatibility crate ([#3088](https://github.com/everruns/everruns/pull/3088)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add workspace access policy ([#3085](https://github.com/everruns/everruns/pull/3085)) by [@chaliy](https://github.com/chaliy)
+- refactor(runtime): make runtime a host compatibility adapter ([#3087](https://github.com/everruns/everruns/pull/3087)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add typed lifecycle hooks ([#3086](https://github.com/everruns/everruns/pull/3086)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add advanced capability authoring API ([#3084](https://github.com/everruns/everruns/pull/3084)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): add session work and wake API ([#3083](https://github.com/everruns/everruns/pull/3083)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): extract shared orchestration ([#3082](https://github.com/everruns/everruns/pull/3082)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): expose typed session identity by [@chaliy](https://github.com/chaliy)
+- docs(framework): establish primary library documentation by [@chaliy](https://github.com/chaliy)
+- feat(everruns): close application runtime API gaps ([#3079](https://github.com/everruns/everruns/pull/3079)) by [@chaliy](https://github.com/chaliy)
+- fix(features): hide disabled surfaces ([#3075](https://github.com/everruns/everruns/pull/3075)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): rebuild Sessions as the operational list ([#3078](https://github.com/everruns/everruns/pull/3078)) by [@chaliy](https://github.com/chaliy)
+- fix(security): resolve open Dependabot advisories in ui and docs ([#3076](https://github.com/everruns/everruns/pull/3076)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): port public everruns examples ([#3074](https://github.com/everruns/everruns/pull/3074)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): regenerate stale API types and gate the UI job on the spec ([#3077](https://github.com/everruns/everruns/pull/3077)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): redact reflected bound credentials ([#3062](https://github.com/everruns/everruns/pull/3062)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): record session source, filterable list with facet counts ([#3073](https://github.com/everruns/everruns/pull/3073)) by [@chaliy](https://github.com/chaliy)
+- chore(macros): move crate to concise path ([#3070](https://github.com/everruns/everruns/pull/3070)) by [@chaliy](https://github.com/chaliy)
+- fix(security): gate machine-payment custody surfaces ([#3069](https://github.com/everruns/everruns/pull/3069)) by [@chaliy](https://github.com/chaliy)
+- refactor(provider): separate providers from drivers ([#3072](https://github.com/everruns/everruns/pull/3072)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.25] - 2026-08-09
 
 ### What's Changed

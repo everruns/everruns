@@ -21,7 +21,7 @@ async-trait.workspace = true
 chrono.workspace = true
 reqwest.workspace = true
 serde.workspace = true
-everruns-provider = { path = "../provider", version = "0.17.25" }
+everruns-provider = { path = "../provider", version = "0.17.26" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
