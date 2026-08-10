@@ -27,6 +27,12 @@ there is no separate runtime crate. It is healthy for such a host to use
 low-level extension traits; the goal is not to re-export every backend through
 one facade.
 
+Conversation persistence is the one backend with a single write path. Replace it
+by implementing the canonical `EventLog`/`EventReader` SPI and passing it to
+`HostBackends::with_event_log`; the required snapshot, continuation, and polling
+behavior is specified in
+[Implementing a custom event log](/framework/canonical-events/#implementing-a-custom-event-log).
+
 ## Security boundary
 
 Backend replacement does not relax tenant, credential, filesystem, or tool

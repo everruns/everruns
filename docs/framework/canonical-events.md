@@ -107,6 +107,117 @@ should strip or escape control sequences, and web renderers should escape it as
 content rather than interpreting it as markup or commands. Provider credentials
 are not part of the event protocol.
 
+## Implementing a custom event log
+
+An advanced host can store canonical events itself. `everruns-host` exposes
+`EventReader` and `EventLog` as a public SPI: an external crate implements both
+against its own storage and supplies the result to composition through
+`HostBackends::with_event_log`. No in-crate access is required — cursors and
+pages are built with `EventCursor::continuation`, `EventCursor::after`, and
+`EventPage::new`, which validate the shared invariants.
+
+Three request shapes are distinguished by `EventReadRequest::cursor()`:
+
+- no cursor is an initial read that captures the session's current
+  high-watermark and reports it as `EventPage::snapshot_high_watermark()`;
+- a cursor whose `snapshot_high_watermark()` is `Some` is a continuation pinned
+  to that snapshot, so appends committed later stay invisible and paging neither
+  skips nor duplicates;
+- a cursor whose `snapshot_high_watermark()` is `None` — built by
+  `EventCursor::after` — is a poll that captures a fresh snapshot and therefore
+  does observe those later appends.
+
+```rust
+use async_trait::async_trait;
+use everruns_core::events::{Event, EventRequest};
+use everruns_core::typed_id::EventId;
+use everruns_host::{
+    EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest,
+    EventReader,
+};
+
+#[async_trait]
+impl EventReader for MyEventLog {
+    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+        let session_id = request.session_id();
+        let current_high = self.high_watermark(session_id);
+        let (after, snapshot) = match request.cursor() {
+            None => (0, current_high),
+            Some(cursor) => {
+                if cursor.session_id() != session_id {
+                    return Err(EventLogError::CrossSessionCursor {
+                        detail: "cursor belongs to another session".into(),
+                    });
+                }
+                match cursor.snapshot_high_watermark() {
+                    Some(snapshot) if snapshot > current_high => {
+                        return Err(EventLogError::ExpiredCursor {
+                            detail: "cursor snapshot is not available".into(),
+                        });
+                    }
+                    // Pinned continuation, then the polling form.
+                    Some(snapshot) => (cursor.after_sequence(), snapshot),
+                    None => (cursor.after_sequence(), current_high),
+                }
+            }
+        };
+
+        let limit = request.limit().get();
+        let mut events = self.events_in(session_id, after, snapshot, limit + 1);
+        let has_more = events.len() > limit;
+        if has_more {
+            events.pop();
+        }
+        let next_cursor = has_more
+            .then(|| {
+                let last = events.last().and_then(|event: &Event| event.sequence).unwrap_or(after);
+                EventCursor::continuation(session_id, last, snapshot)
+            })
+            .transpose()?;
+        EventPage::new(events, next_cursor, snapshot)
+    }
+}
+
+#[async_trait]
+impl EventLog for MyEventLog {
+    async fn append(&self, request: EventRequest) -> Result<Event, EventLogError> {
+        if request.is_ephemeral() {
+            return Err(EventLogError::InvalidAppend {
+                detail: "ephemeral events are sink-only".into(),
+            });
+        }
+        // The log owns identity: assign the event id and the next per-session
+        // sequence, persist, and return the finalized canonical envelope.
+        let sequence = self.next_sequence(request.session_id);
+        let event = request.into_event(EventId::new(), sequence);
+        self.persist(&event)?;
+        Ok(event)
+    }
+
+    fn durability(&self) -> EventDurability {
+        EventDurability::CrashDurable
+    }
+}
+```
+
+The contract an implementation must uphold:
+
+- an accepted append owns id and sequence assignment and returns the finalized
+  canonical `Event`, visible to the next read of that session;
+- durable sequences are unique and strictly increasing per session, and need not
+  be contiguous — gaps are expected when a reader projects an append-only
+  physical log into a filtered logical event sequence;
+- a continuation stays pinned to the first page's high-watermark and cannot
+  observe concurrent appends; a poll cursor can;
+- cursor/session mismatches and inconsistent positions return the typed
+  `EventLogError` variants above rather than panicking;
+- the log is append-only. There is no truncate, rewind, or mutation contract,
+  and `EventHistory` remains a read-only projection rather than a second
+  writable message store.
+
+`tests/fixtures/external-consumer/event-log` in the repository is a complete
+out-of-workspace implementation exercised by repository CI.
+
 ## Ordering and bounded delivery
 
 A subscriber receives events in channel arrival order and each session has its

@@ -68,5 +68,9 @@ append-only event log is appropriate. Framework applications continue sessions
 with `Agent::resume` and traverse bounded event-derived pages from
 `Session::history`.
 
+A host that needs its own storage implements the public `EventLog`/`EventReader`
+SPI and supplies it through `HostBackends::with_event_log`; see
+[Implementing a custom event log](/framework/canonical-events/#implementing-a-custom-event-log).
+
 Do not design new application persistence around a legacy storage
 representation.
