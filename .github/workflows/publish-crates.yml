@@ -151,10 +151,6 @@ jobs:
                   "everruns-mcp",
                   "everruns-platform",
               ],
-              "crates/runtime/Cargo.toml": [
-                  "everruns-core",
-                  "everruns-host",
-              ],
               "crates/everruns/Cargo.toml": [
                   "everruns-core",
                   "everruns-host",
@@ -274,7 +270,6 @@ jobs:
             everruns-integrations-deno
             everruns-integrations-docker
             everruns-integrations-sprites
-            everruns-runtime
             everruns-local
             # `everruns` enables its `macros` feature by default, so the facade
             # is only installable once everruns-macros is on crates.io.

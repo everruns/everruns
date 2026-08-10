@@ -96,11 +96,10 @@ Applications register concrete runtime providers in `ProviderRegistry`, keyed
 by open `ProviderKey`. Official integration crates expose ready-made provider
 assemblies; downstream code may construct the same public `Provider` directly.
 
-`DriverDescriptor`/`DriverRegistry` remain in `0.17.x` as the hosted
-provider-management catalog and the compatibility surface for
-`everruns-runtime`. Descriptor factories compose runtime providers and route
-into the same registry/execution path; they are not a second driver semantics
-layer.
+`DriverDescriptor`/`DriverRegistry` remain as the hosted provider-management
+catalog and the host-facing surface for `everruns-host`. Descriptor factories
+compose runtime providers and route into the same registry/execution path; they
+are not a second driver semantics layer.
 
 ### Host-Owned Transport
 

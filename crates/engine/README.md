@@ -33,7 +33,6 @@ fn accepts_plan(_state: &TurnState, _plan: &TurnPlan) {}
 ## Documentation
 
 - [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
-- [Runtime compatibility](https://docs.everruns.com/framework/runtime-compatibility/)
 - [API reference](https://docs.rs/everruns-engine)
 
 ## License

@@ -1342,7 +1342,7 @@ async fn spawn_create_and_wait(
 
     if mode == SpawnMode::Background {
         // The first message is sent inside the watcher: local/embedded hosts
-        // (everruns-runtime) run the child's turn synchronously inside
+        // (everruns-host) run the child's turn synchronously inside
         // send_message, so sending here would block the spawn call.
         spawn_background_watcher(
             context,
@@ -1622,7 +1622,7 @@ fn spawn_background_watcher(
                     }
                 };
 
-                // Local/embedded hosts (everruns-runtime) run the child's turn
+                // Local/embedded hosts (everruns-host) run the child's turn
                 // synchronously inside send_message and report a bare `idle`;
                 // hosted adapters never return it (they poll until a terminal
                 // turn event lands). Map it to completion so embedder tasks

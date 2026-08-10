@@ -76,8 +76,8 @@ core's agent-loop runtime; provider crates keep `everruns-core` only as a
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,
 `::error`, `::typed_id`, …), so application crates and embedders that import
-those paths are unaffected. Crates that pull in the runtime (e.g.
-`everruns-local` → `everruns-runtime`) still depend on full `everruns-core`.
+those paths are unaffected. Crates that pull in the host (e.g.
+`everruns-local` → `everruns-host`) still depend on full `everruns-core`.
 
 Two pin conventions follow from the publish set:
 
@@ -171,7 +171,7 @@ files, the Rust toolchain pin, or the CI workflow itself change.
 - `everruns-openai` - LLM client SDK, request/response parsing
 - `everruns-internal-protocol` - Protobuf definitions
 - `everruns-core` - Agent logic, tool handling, prompt building
-- `everruns-runtime` - in-process runtime and shared host-phase orchestration
+- `everruns-host` - in-process runtime and shared host-phase orchestration
 - `everruns-cli` - subprocess integration tests for help text, auth profile handling, and file-sync argument validation
 
 Note: `everruns-cli` is binary-only (no lib target). Keep its lightweight subprocess

@@ -6,9 +6,9 @@
 //! entrypoint; applications in the [Everruns](https://everruns.com) ecosystem
 //! should normally depend on `everruns`.
 //!
-//! The deprecated `everruns-runtime` package re-exports this implementation so
-//! its 0.17 public paths continue to use the same canonical code. Existing
-//! users should follow the [runtime migration guide](https://docs.everruns.com/framework/runtime-compatibility/).
+//! Advanced hosts — servers, evaluation harnesses, research runtimes, and
+//! specialized embedders — depend on `everruns` plus this crate and the
+//! focused sibling crates they actually need.
 //!
 //! # Example
 //!

@@ -1,6 +1,6 @@
 //! Facade smoke test (EVE-830): a clean program that depends only on `everruns`
 //! must be able to build one session and run one turn without importing
-//! `everruns-core` or `everruns-runtime`.
+//! `everruns-core` or `everruns-host`.
 
 use everruns::{Agent, Model};
 

@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking
+
+- **Removed the `everruns-runtime` crate.** It was a logic-free 0.17.x
+  compatibility layer over `everruns-host` and is no longer published. The
+  deprecated `everruns::runtime` module alias is removed with it.
+
+  Migrate as follows:
+
+  - **Ordinary applications** depend on `everruns` and use `Agent`, `Model`,
+    and `Session`:
+
+    ```bash
+    cargo remove everruns-runtime
+    cargo add everruns
+    ```
+
+    ```rust
+    use everruns::{Agent, Model};
+    ```
+
+  - **Custom execution hosts** depend on `everruns` plus `everruns-host` and
+    only the focused siblings they need (`everruns-engine`, `everruns-mcp`,
+    `everruns-local`, provider and integration crates):
+
+    ```bash
+    cargo remove everruns-runtime
+    cargo add everruns everruns-host
+    ```
+
+    ```rust
+    use everruns_host::{HostBackends, InProcessRuntimeBuilder};
+    ```
+
+  Every `everruns_runtime::` path maps to the identical `everruns_host::` path,
+  with one rename: `RuntimeBackends` is `everruns_host::HostBackends`. The two
+  deprecated legacy shims, `RuntimeMessageStore` and `EventBus`, have no
+  replacement — canonical events are the only maintained write path, so use
+  `everruns_host::EventLog` and `EventHistory` for history and
+  `everruns_host::EventSink` and `EventReader` for observation and replay.
+
 ### Changed
 
 - Chats is now core functionality for every organization: it is always present in navigation and search, requires no feature opt-in, and retains voice as a separately controlled capability.

@@ -1,7 +1,7 @@
 //! Acceptance tests for the coding-cli example (EVE-835).
 //!
 //! These prove the example works through the public `everruns` surface and,
-//! crucially, that it never reaches for `everruns-core`/`everruns-runtime` —
+//! crucially, that it never reaches for `everruns-core`/`everruns-host` —
 //! the whole point of the example.
 
 use std::path::Path;
@@ -51,12 +51,12 @@ async fn session_history_persists_across_two_prompts() {
 /// The example must depend only on `everruns`. Scan its own sources and manifest
 /// for any direct use of the internal crates and fail loudly if one creeps in.
 #[test]
-fn sources_do_not_reference_core_or_runtime() {
+fn sources_do_not_reference_core_or_host() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
 
     // Scan the example's own sources. This test file is excluded on purpose —
     // it necessarily contains the forbidden identifiers as the search needles.
-    let forbidden_in_rust = ["everruns_core", "everruns_runtime"];
+    let forbidden_in_rust = ["everruns_core", "everruns_host"];
     for file in ["src/lib.rs", "src/main.rs"] {
         let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
         for needle in forbidden_in_rust {
@@ -72,7 +72,7 @@ fn sources_do_not_reference_core_or_runtime() {
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     for line in manifest.lines() {
         let code = line.split('#').next().unwrap_or("");
-        for needle in ["everruns-core", "everruns-runtime", "everruns-anthropic"] {
+        for needle in ["everruns-core", "everruns-host", "everruns-anthropic"] {
             assert!(
                 !code.contains(needle),
                 "Cargo.toml declares `{needle}`; the example must depend only on `everruns`"

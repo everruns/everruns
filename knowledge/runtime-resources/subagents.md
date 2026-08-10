@@ -168,7 +168,7 @@ session creation.
 4. Detaches a watcher (same pattern as `spawn_background` runs) and returns immediately; the watcher sends `instructions` as the first user message — deferred so local hosts, where `send_message` runs the child turn synchronously, do not block the spawn call
 5. The task is created with `wake_policy: on_terminal`, or `on_activity` when `message_schema` is present; the watcher heartbeats the task registry (attempt-fenced) so the session task reaper can fail an orphaned watcher after worker loss
 6. The watcher waits in slices until the child reaches a terminal turn status (overall cap 6 h), then settles the task and the durable spawn handle; the registry-level wake policy delivers the completion message to the parent (knowledge/runtime-resources/session-tasks.md, Wake-ups)
-7. Local/embedded hosts (everruns-runtime) may report a bare `idle` after their synchronous turn — the watcher settles it as `completed`; hosted adapters never return bare `idle`
+7. Local/embedded hosts (everruns-host) may report a bare `idle` after their synchronous turn — the watcher settles it as `completed`; hosted adapters never return bare `idle`
 8. `SubagentTaskExecutor::reconcile` (invoked from `wait_task`'s poll loop) probes the child's terminal turn status and settles the task if the watcher died, so `wait_task` converges even after worker loss
 
 **Degradation:** background mode requires a session task registry (it is the only surface for the result). An explicit `mode: "background"` without one is a tool error; an unspecified mode degrades to foreground so embedders without background tracking keep blocking semantics.

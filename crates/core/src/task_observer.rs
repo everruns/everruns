@@ -6,7 +6,7 @@
 // process — the same seam the server's webhook dispatcher uses, minus HTTP.
 //
 // Design Decision: the enum + trait live in `everruns-core` (not the server) so
-// `everruns-runtime` embedders can observe task transitions without depending on
+// `everruns-host` embedders can observe task transitions without depending on
 // the control-plane server or making HTTP calls. The server webhook dispatcher
 // (`DirectTaskWebhookNotifier`) is one implementation of this trait; in-process
 // embedders provide their own. A `SessionTaskRegistry` fires each real
@@ -76,7 +76,7 @@ impl TaskTransition {
 /// observer still delays its own delivery.
 ///
 /// The server webhook dispatcher (`DirectTaskWebhookNotifier`) is one
-/// implementation. Embedders of `everruns-runtime` implement this trait to get
+/// implementation. Embedders of `everruns-host` implement this trait to get
 /// in-process callbacks with the same transition semantics, without HTTP.
 #[async_trait]
 pub trait TaskTransitionObserver: Send + Sync + 'static {
@@ -94,7 +94,7 @@ pub trait TaskTransitionObserver: Send + Sync + 'static {
 ///
 /// This is the reusable, storage-agnostic form of the fan-out the server's
 /// `DbSessionTaskRegistry` performs inline (EVE-729): it wraps *any* inner
-/// registry (in-memory, SQLite, gRPC) so an embedder — e.g. `everruns-runtime`
+/// registry (in-memory, SQLite, gRPC) so an embedder — e.g. `everruns-host`
 /// with a [`crate::wake_queue::SessionWakeQueue`] — gets the same transition
 /// notifications without depending on the control-plane server.
 ///

@@ -104,7 +104,7 @@ Production event routing therefore prefers:
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, egress service, internal system services, shared types). Depends on and re-exports `everruns-provider`.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
-   - `runtime/` → `everruns-runtime` - Low-level in-process execution host, reusable host-phase execution, and 0.17.x compatibility crate
+   - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
@@ -196,9 +196,9 @@ This keeps the existing OSS runtime as the default while allowing embedders to r
 ### Embedded Runtime
 
 Embedders who want to execute Everruns harnesses directly inside their own
-process should use `everruns-runtime`.
+process should use `everruns-host`.
 
-`everruns-runtime` provides:
+`everruns-host` provides:
 
 - `InProcessRuntimeBuilder`
 - in-memory session/filesystem/storage/message backends
@@ -285,7 +285,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcMessageRetriever` - Implements `MessageRetriever` trait via gRPC
    - `GrpcAgentStore` - Implements `AgentStore` trait via gRPC
    - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
-   - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-runtime` host execution
+   - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-host` host execution
    - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
    - `GrpcSessionFileStore` - Implements `SessionFileSystem` trait via gRPC
    - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
@@ -403,7 +403,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 
 **Benefits of Unified Architecture**:
 - Single codebase for activity implementations (input, reason, act)
-- `everruns-runtime` owns the shared turn-strategy planner, so in-process and gRPC-backed workers use the same reason/act continuation and tool-results pause/resume policy without coupling runtime to the durable engine
+- `everruns-host` owns the shared turn-strategy planner, so in-process and gRPC-backed workers use the same reason/act continuation and tool-results pause/resume policy without coupling runtime to the durable engine
 - Shared task scheduling logic
 - Easy to test with mock adapters
 - Consistent behavior across deployment modes

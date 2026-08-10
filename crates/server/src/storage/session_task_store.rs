@@ -41,7 +41,7 @@ pub trait SessionTaskWaker: Send + Sync {
 // ============================================================================
 
 // The transition enum and observer trait live in `everruns-core`
-// (`TaskTransition` / `TaskTransitionObserver`) so `everruns-runtime` embedders
+// (`TaskTransition` / `TaskTransitionObserver`) so `everruns-host` embedders
 // can observe transitions in process without depending on the server or HTTP.
 // The server's webhook dispatcher (`DirectTaskWebhookNotifier`) is one
 // implementation; the registry fires each transition once to every registered

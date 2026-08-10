@@ -22,11 +22,10 @@ The low-level crates expose focused contracts for:
 - platform/control-plane entities and durable deployment components.
 
 An advanced host depends on `everruns` plus `everruns-host` and the focused
-crates it actually needs. It is healthy for such a host to use low-level
-extension traits; the goal is not to re-export every backend through one
-facade. Existing 0.17 `everruns-runtime` users should follow the
-[runtime migration guide](/framework/runtime-compatibility/) to reach that
-maintained boundary.
+crates it actually needs. `everruns-host` is the only low-level host boundary:
+there is no separate runtime crate. It is healthy for such a host to use
+low-level extension traits; the goal is not to re-export every backend through
+one facade.
 
 ## Security boundary
 

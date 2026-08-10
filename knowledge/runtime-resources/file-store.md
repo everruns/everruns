@@ -30,7 +30,7 @@ workspace root with additional mounted roots in one model-facing namespace.
 
 ## Background
 
-The first non-server embedder of `everruns-runtime` (the `examples/coding-cli`
+The first non-server embedder of the in-process host (the `examples/coding-cli`
 TUI in PR #1839) revealed a real seam: `AgentInstructionsCapability` and
 `SkillsCapability` read project context (`AGENTS.md`,
 `.agents/skills/...`) from the session VFS via
@@ -162,7 +162,7 @@ Guarantees:
 
 `MountFs` is a pure *virtual* router with no host knowledge. The only place that
 needs to translate the virtual namespace onto a real directory is the host-backed
-store, so that logic is private to `everruns_runtime::RealDiskFileStore`
+store, so that logic is private to `everruns_host::RealDiskFileStore`
 (`HostPathMap`), not a shared abstraction:
 
 - It maps a session path to an absolute host path, accepts host-absolute inputs
@@ -270,7 +270,7 @@ persisted. Input compatibility is not model-visible identity.
 Tests use `everruns_core::path_identity` helpers (`assert_model_visible_value`,
 `assert_no_forbidden_prefixes`, `assert_tool_result_paths_conform`) and the
 runtime integration suite in
-`crates/runtime/tests/model_visible_path_identity_test.rs`. The harness
+`crates/host/tests/model_visible_path_identity_test.rs`. The harness
 recursively scans serialized JSON for absolute path-like strings rather than
 enumerating field names, so new model-visible fields cannot bypass the check.
 
@@ -366,7 +366,7 @@ The default backend bundled with `InProcessRuntime`. Per-session isolation,
 auto-detects text/binary, suitable for tests and embedded use without disk
 state.
 
-Source: `crates/runtime/src/in_memory.rs`.
+Source: `crates/host/src/in_memory.rs`.
 
 ### `RealDiskFileStore`
 
@@ -401,11 +401,11 @@ Implementation notes:
   field is `i64`). Files larger than 9 EiB are not realistically reachable
   through this code path.
 
-Source: `crates/runtime/src/real_disk.rs`.
+Source: `crates/host/src/real_disk.rs`.
 
 ### Multi-root host filesystems
 
-`everruns-runtime` exposes `multi_root_file_system(root_set)` and teaches
+`everruns-host` exposes `multi_root_file_system(root_set)` and teaches
 `RealDiskSessionFileSystemFactory` to read an optional
 `WorkspaceRootSet` from `SessionFileSystemFactoryContext::workspace_roots()`.
 When present, the factory builds a `MountFs` over one `RealDiskFileStore` per
@@ -512,9 +512,9 @@ endpoints.
 See the runnable examples for the full wiring against a real
 `InProcessRuntime`:
 
-- `crates/runtime/examples/real_disk_agent_instructions.rs` — proves
+- `crates/host/examples/real_disk_agent_instructions.rs` — proves
   `AgentInstructionsCapability` reads `AGENTS.md` from a real-disk root.
-- `crates/runtime/examples/real_disk_file_system_tools.rs` — proves the
+- `crates/host/examples/real_disk_file_system_tools.rs` — proves the
   `file_system` capability tools (`read_file`, `write_file`,
   `list_directory`) operate against a real-disk root.
 
@@ -606,9 +606,9 @@ APIs or the `SessionFileSystem` trait.
   `ApprovalGatingFileStore`, `FileApprovalGate`
 - `crates/host/src/in_memory.rs` — `InMemorySessionFileStore`
 - `crates/host/src/real_disk.rs` — `RealDiskFileStore`
-- `crates/runtime/examples/real_disk_agent_instructions.rs` — wiring
+- `crates/host/examples/real_disk_agent_instructions.rs` — wiring
   example for `AgentInstructionsCapability`
-- `crates/runtime/examples/real_disk_file_system_tools.rs` — wiring
+- `crates/host/examples/real_disk_file_system_tools.rs` — wiring
   example for `file_system` capability tools
 - `crates/server/src/storage/session_file_store.rs` — `DbSessionFileStore`
 - `knowledge/runtime-resources/workspace.md` — `/workspace` mount and session VFS

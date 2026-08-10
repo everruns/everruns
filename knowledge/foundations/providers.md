@@ -16,7 +16,7 @@ provider records; execution composes each record into a non-serializable runtime
 wire-protocol driver. Models name that provider through a credential-free
 `ModelSpec`.
 
-This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. The runtime provider model is canonical in `0.17.x`; persisted HTTP shapes and the published `everruns-runtime` model/driver setup remain compatible at the boundary and adapt into it. Removing that compatibility surface or preparing a `0.18.0` cutover is outside this contract.
+This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. The runtime provider model is canonical; persisted HTTP shapes and the published `everruns-host` model/driver setup adapt into it at the boundary.
 
 ## Motivation
 
@@ -78,9 +78,9 @@ registered keys when missing. Thus two service identities can share one
 protocol driver while differing in endpoint, auth, and headers, and downstream
 code adds either a service or a new protocol without a central enum edit.
 
-`DriverId`, `DriverDescriptor`, and `DriverRegistry` remain in `0.17.x` for the
-published `everruns-runtime` and hosted provider-management integration. They
-are a compatibility/catalog adapter: descriptor factories compose the same
+`DriverId`, `DriverDescriptor`, and `DriverRegistry` remain for the published
+`everruns-host` and the hosted provider-management integration. They are a
+catalog adapter: descriptor factories compose the same
 runtime `Provider`, and execution checks direct runtime providers first. They
 must not acquire an independent resolution or execution algorithm. The
 high-level `everruns` facade accepts a plain model id and one runtime `Provider`,

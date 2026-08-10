@@ -3,7 +3,7 @@
 //! Stage 1 of `knowledge/foundations/sans-io-turn-state.md`. The loop is currently implemented
 //! twice: [`TurnStateMachine`](crate::turn::TurnStateMachine) is a mutable
 //! in-memory machine for the in-process host, and `RuntimeTurnState` +
-//! `plan_next_host_turn` (in `everruns-runtime`) is a serializable state plus a
+//! `plan_next_host_turn` (in `everruns-host`) is a serializable state plus a
 //! parallel planner for the durable host. Same phases, same transitions, two
 //! shapes, no way to derive one from the other — so every semantics change is
 //! made twice and nothing notices when it is made once.

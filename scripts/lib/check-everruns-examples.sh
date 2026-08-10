@@ -44,7 +44,7 @@ for file in "$EXAMPLES_DIR"/*.rs; do
 done
 
 if grep -En \
-  'everruns[_-](core|runtime)|everruns::(core|runtime)(::|[^[:alnum:]_]|$)' \
+  'everruns[_-](core|host)|everruns::core(::|[^[:alnum:]_]|$)' \
   "$EXAMPLES_DIR"/*.rs; then
   echo "Public examples must not import internal crates or facade escape hatches." >&2
   exit 1

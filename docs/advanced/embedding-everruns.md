@@ -17,6 +17,4 @@ Those hosts compose `everruns` with `everruns-host` and the focused crates they
 need.
 
 The useful low-level boundary, security obligations, and crate-selection
-guidance now live in [Custom backends](/framework/custom-backends/). Existing
-0.17 runtime users should follow the
-[runtime migration guide](/framework/runtime-compatibility/).
+guidance now live in [Custom backends](/framework/custom-backends/).
