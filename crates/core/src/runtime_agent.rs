@@ -736,9 +736,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_capabilities_resolves_dependencies() {
+        // Local stand-in for the `sample_data` fixture (now in
+        // everruns-test-support, EVE-875): mounts + a dependency on
+        // session_file_system.
+        struct SampleDataFixture;
+
+        impl crate::capabilities::Capability for SampleDataFixture {
+            fn id(&self) -> &str {
+                "sample_data"
+            }
+            fn name(&self) -> &str {
+                "Sample Data"
+            }
+            fn description(&self) -> &str {
+                "Fixture: mounted sample files."
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Read-only sample files are mounted at `/samples`.")
+            }
+            fn dependencies(&self) -> Vec<&'static str> {
+                vec!["session_file_system"]
+            }
+        }
+
         // Sample Data depends on Session File System
         // When we request only Sample Data, we should get system prompt from both
-        let registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::with_builtins();
+        registry.register(SampleDataFixture);
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["sample_data".to_string()], &registry, &test_ctx())

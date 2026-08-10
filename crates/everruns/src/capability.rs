@@ -279,9 +279,9 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
-    use everruns_core::llmsim_driver::LlmSimConfig;
     use everruns_core::tools::Tool as _;
     use everruns_core::{SessionId, ToolCall, ToolContext};
+    use everruns_test_support::LlmSimConfig;
     use serde_json::{Value, json};
     use tokio::sync::Notify;
     use tokio::time::timeout;

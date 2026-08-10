@@ -11,7 +11,6 @@
 use async_trait::async_trait;
 use everruns_core::capabilities::UsageLimitAutoContinueCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::{LlmSimConfig, SimError, SimTurn};
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
@@ -19,6 +18,8 @@ use everruns_core::{
     AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimTurn};
 use std::sync::{Arc, Mutex};
 
 /// Codex/ChatGPT usage-limit 429 body. Classifies to

@@ -17,12 +17,12 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::{AgentCapabilityConfig, InitialFile, ModelSpec, Provider, SessionId};
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
 };
+use everruns_test_support::{LlmSimConfig, LlmSimDriver};
 use tokio::sync::OnceCell;
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};

@@ -11,17 +11,18 @@
 // Run with:
 //   cargo run -p everruns-host --example real_disk_agent_instructions
 
+use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use chrono::Utc;
 use everruns_core::capabilities::AgentInstructionsCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness,
     HarnessStatus, PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 use tempfile::TempDir;
 use uuid::Uuid;
 

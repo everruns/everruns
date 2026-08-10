@@ -9,7 +9,7 @@
 //! - `/samples/config.yaml` - Sample configuration
 //! - `/samples/README.md` - Documentation about the sample files
 
-use super::{
+use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
 };
 
@@ -163,7 +163,7 @@ impl Capability for SampleDataCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capability_types::MountSource;
+    use everruns_core::capability_types::MountSource;
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 

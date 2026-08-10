@@ -23,15 +23,15 @@ contracts instead of on server internals.
 
 ```rust
 use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
-use everruns_core::capabilities::TestMathCapability;
+use everruns_core::capabilities::CurrentTimeCapability;
 
 let mut capabilities = CapabilityRegistry::new();
-capabilities.register(TestMathCapability);
+capabilities.register(CurrentTimeCapability);
 
 let drivers = DriverRegistry::new();
 let platform = PlatformDefinition::new(capabilities, drivers);
 
-assert!(platform.capability_registry().get("test_math").is_some());
+assert!(platform.capability_registry().get("current_time").is_some());
 ```
 
 ## What It Provides
@@ -40,7 +40,7 @@ assert!(platform.capability_registry().get("test_math").is_some());
 - Capability and tool traits for extending what agents can do
 - An LLM driver registry and provider-neutral message, tool, and reasoning types
 - Context assembly shared by embedded, worker, and server execution paths
-- In-memory helpers and a deterministic LLM simulation driver for tests
+- Minimal in-memory store implementations for embedding and prototyping
 
 ## Documentation
 

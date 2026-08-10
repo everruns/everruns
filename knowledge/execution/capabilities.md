@@ -508,11 +508,12 @@ Capabilities can declare dependencies on other capabilities. When a capability i
 
 #### Example
 
-When `sample_data` is selected (it depends on `session_file_system`):
+When a capability that depends on `session_file_system` is selected (e.g. the
+`sample_data` fixture from `everruns-test-support`):
 1. `session_file_system` is added as a dependency (if not already selected)
 2. `session_file_system` tools and system prompt are applied first
-3. `sample_data` mounts and system prompt are applied second
-4. User cannot remove `session_file_system` while `sample_data` is selected
+3. The dependent capability's mounts and system prompt are applied second
+4. User cannot remove `session_file_system` while the dependent is selected
 
 #### Dependency Resolution API
 
@@ -522,7 +523,6 @@ See `crates/core/src/capabilities/mod.rs` for `resolve_dependencies()` and `Reso
 
 | Capability | Depends On | Features |
 |------------|-----------|----------|
-| `sample_data` | `session_file_system` | `file_system` |
 | `skills` | `session_file_system` | *(none)* |
 | `bashkit_shell` | `session_file_system` | `file_system` |
 | `gpt_image_gen` | `session_file_system`, `session_storage` | *(none)* |
@@ -554,7 +554,6 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 |------------|----------|
 | `session_file_system` | `file_system` |
 | `bashkit_shell` | `file_system` |
-| `sample_data` | `file_system` |
 | `session_storage` | `secrets`, `key_value` |
 | `session_schedule` | `schedules` |
 | `session_sandbox` | `managed_sandbox` |
@@ -1115,19 +1114,10 @@ Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `Virtual
 
 #### Built-in Capabilities with Mounts
 
-See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mounts()` implementation.
-
-##### SampleData
-
-- **Status**: Available
-- **ID**: `sample_data`
-- **Purpose**: Demonstrates capability mounting with sample data files
-- **Mounts**:
-  - `/samples/users.json` - Sample JSON user data (readonly)
-  - `/samples/config.yaml` - Sample YAML configuration (readonly)
-  - `/samples/README.md` - Documentation about sample files (readonly)
-- **Icon**: "database"
-- **Category**: "Data"
+See `crates/test-support/src/capabilities/sample_data.rs` (the `sample_data`
+demo fixture in `everruns-test-support`, EVE-875) for a concrete example of a
+`mounts()` implementation; `data_knowledge` is the registered built-in that
+carries mounts in product registries.
 
 #### Platform
 

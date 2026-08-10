@@ -17,12 +17,12 @@ use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     InMemorySessionStore,
 };
-use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
 use everruns_core::{CompactionCheckpointStore, Controls, Message, ToolCall};
+use everruns_test_support::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;

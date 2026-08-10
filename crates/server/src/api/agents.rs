@@ -1797,8 +1797,11 @@ mod high_risk_admin_gate_tests {
     #[test]
     fn member_allowed_for_low_risk_capability() {
         let svc = capability_service();
-        let result =
-            require_admin_for_high_risk(&org_with_role(OrgRole::Member), &caps(&["noop"]), &svc);
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Member),
+            &caps(&["current_time"]),
+            &svc,
+        );
         assert!(
             result.is_ok(),
             "low-risk capabilities must remain assignable by members"

@@ -6,6 +6,7 @@
 //! turn idling — and exactly once. The LLM is simulated, so the scenario is
 //! deterministic and runs without credentials.
 
+use everruns_test_support::LlmSimRuntimeExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -14,7 +15,6 @@ use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityStatus, InfinityContextCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
-use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskWakePolicy, apply_task_update,
@@ -28,6 +28,7 @@ use everruns_core::{
     ResolvedModel,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
 const CHILD_TASK_ID: &str = "task_wakedemo_child";
 
@@ -286,7 +287,7 @@ fn platform(policy: TaskWakePolicy) -> PlatformDefinition {
     caps.register(WakeDemoCapability { policy });
     caps.register(InfinityContextCapability);
     let mut drivers = DriverRegistry::new();
-    everruns_core::llmsim_driver::register_driver(&mut drivers);
+    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
     PlatformDefinition::new(caps, drivers)
 }
 

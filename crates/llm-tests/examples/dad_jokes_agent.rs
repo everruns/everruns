@@ -12,9 +12,9 @@
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
+use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 const DAD_JOKES_SYSTEM_PROMPT: &str = r#"You are a Dad Jokes Bot - the world's greatest purveyor of groan-worthy humor!
 

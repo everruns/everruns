@@ -11,10 +11,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::Event;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TaskLinks,
     TaskWakePolicy,
@@ -30,6 +28,7 @@ use everruns_host::{
     RealDiskFileStore, RuntimeHostAdapter, SessionBuilder,
 };
 use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
+use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt, TestMathCapability};
 
 // ---- Caller-supplied event bus decorator ----------------------------------
 

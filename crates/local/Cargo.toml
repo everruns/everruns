@@ -55,3 +55,6 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true
+# Deterministic simulator + fixtures for local runtime tests. Version-less
+# path dependency: stripped on publish.
+everruns-test-support = { path = "../test-support" }

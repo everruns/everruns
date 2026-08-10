@@ -10,11 +10,12 @@
 //! cargo run -p everruns-host --example in_process_runtime
 //! ```
 
-use everruns_core::capabilities::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::TestMathCapability;
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

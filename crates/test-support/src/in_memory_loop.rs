@@ -14,27 +14,27 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Utc;
 
-use crate::agent::{Agent, AgentStatus};
-use crate::atoms::{
+use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+use everruns_core::agent::{Agent, AgentStatus};
+use everruns_core::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
 };
-use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
-use crate::driver_registry::{DriverId, DriverRegistry};
-use crate::error::Result;
-use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
-use crate::in_memory::{
+use everruns_core::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
+use everruns_core::driver_registry::{DriverId, DriverRegistry};
+use everruns_core::error::Result;
+use everruns_core::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
+use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
     InMemoryProviderStore, InMemorySessionStore,
 };
-use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
-use crate::message::Message;
-use crate::message_retriever::{InputMessage, MessageRetriever};
-use crate::session::{Session, SessionStatus};
-use crate::tool_types::ToolCall;
-use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use crate::traits::{EventEmitter, ResolvedModel};
-use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
-use crate::typed_id::{AgentId, HarnessId, SessionId, TurnId};
+use everruns_core::message::Message;
+use everruns_core::message_retriever::{InputMessage, MessageRetriever};
+use everruns_core::session::{Session, SessionStatus};
+use everruns_core::tool_types::ToolCall;
+use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
+use everruns_core::traits::{EventEmitter, ResolvedModel};
+use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
+use everruns_core::typed_id::{AgentId, HarnessId, SessionId, TurnId};
 
 // ============================================================================
 // Bridging Event Emitter
@@ -202,7 +202,7 @@ pub struct InMemoryAgenticLoopBuilder {
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
     parallel_tool_calls: Option<bool>,
-    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
+    reasoning_effort_handle: Option<everruns_core::traits::ReasoningEffortHandle>,
 }
 
 impl Default for InMemoryAgenticLoopBuilder {
@@ -232,7 +232,10 @@ impl InMemoryAgenticLoopBuilder {
     /// `ReasonAtom` and `ActAtom`. Tools receive a clone via their
     /// `ToolContext` and can mutate it mid-turn so subsequent LLM steps in the
     /// same `run_turn` observe the new effort.
-    pub fn reasoning_effort_handle(mut self, handle: crate::traits::ReasoningEffortHandle) -> Self {
+    pub fn reasoning_effort_handle(
+        mut self,
+        handle: everruns_core::traits::ReasoningEffortHandle,
+    ) -> Self {
         self.reasoning_effort_handle = Some(handle);
         self
     }
@@ -375,7 +378,7 @@ impl InMemoryAgenticLoopBuilder {
         // Create harness
         let harness_id = HarnessId::new();
         let now = Utc::now();
-        let harness = crate::harness::Harness {
+        let harness = everruns_core::harness::Harness {
             id: harness_id,
             name: "in-memory".to_string(),
             display_name: Some("In-Memory Harness".to_string()),
@@ -391,7 +394,7 @@ impl InMemoryAgenticLoopBuilder {
             parallel_tool_calls: None,
             embedder_metadata: Default::default(),
             is_built_in: false,
-            status: crate::harness::HarnessStatus::Active,
+            status: everruns_core::harness::HarnessStatus::Active,
             created_at: now,
             updated_at: now,
             archived_at: None,
@@ -403,7 +406,7 @@ impl InMemoryAgenticLoopBuilder {
         // definitions so ReasonAtom returns them and ActAtom executes them
         // (rather than treating them as unknown). Capability-provided tools are
         // already surfaced through the capability registry.
-        let explicit_tool_definitions: Vec<crate::tool_types::ToolDefinition> =
+        let explicit_tool_definitions: Vec<everruns_core::tool_types::ToolDefinition> =
             self.tools.iter().map(|tool| tool.to_definition()).collect();
 
         // Create agent
@@ -444,13 +447,13 @@ impl InMemoryAgenticLoopBuilder {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
-            workspace_id: crate::WorkspaceId::from_uuid((session_id).uuid()),
-            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
+            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),
             agent_version_id: None,
             agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,
             effective_owner: None,
@@ -525,7 +528,7 @@ impl InMemoryAgenticLoopBuilder {
         let configured_model_ref = configured_model.as_deref();
         let mut tool_builder = ToolRegistryBuilder::new();
         for capability in &self.capabilities {
-            let effective: &dyn crate::Capability = capability
+            let effective: &dyn everruns_core::Capability = capability
                 .resolve_for_model(configured_model_ref)
                 .unwrap_or_else(|| capability.as_ref());
             for tool in effective.tools() {
@@ -595,7 +598,7 @@ impl InMemoryAgenticLoopBuilder {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+/// use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 ///
 /// // Simple usage with simulated LLM
 /// let mut loop_runner = InMemoryAgenticLoop::builder()
@@ -634,7 +637,7 @@ pub struct InMemoryAgenticLoop {
     reason_atom: Arc<ReasonAtom>,
     act_atom: Arc<ActAtom<ToolRegistry, BridgingEventEmitter>>,
     max_iterations: usize,
-    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
+    reasoning_effort_handle: Option<everruns_core::traits::ReasoningEffortHandle>,
 }
 
 impl InMemoryAgenticLoop {
@@ -704,7 +707,7 @@ impl InMemoryAgenticLoop {
         let mut state_machine = TurnStateMachine::new(turn_context, self.max_iterations);
 
         // Track last reason result for ActAtom
-        let mut last_reason_result: Option<crate::atoms::ReasonResult> = None;
+        let mut last_reason_result: Option<everruns_core::atoms::ReasonResult> = None;
         // Track response_id from last reason call for chaining
         let mut previous_response_id: Option<String> = None;
 

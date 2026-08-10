@@ -23,6 +23,10 @@ tracing.workspace = true
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
+# Deterministic `llmsim` provider (seeded LlmSim models, LLMSIM_DEMO
+# scenarios). `sim` only — the worker never links the demo fixture
+# capabilities; scripts/lib/check-test-support-isolation.sh guards this.
+everruns-test-support = { workspace = true, features = ["sim"] }
 everruns-platform = { path = "../platform", features = ["embedded-platform-docs"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }

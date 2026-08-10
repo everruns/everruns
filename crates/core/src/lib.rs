@@ -16,19 +16,23 @@
 //! - Capability and tool traits for composing agent behavior
 //! - Provider-neutral LLM messages, streams, and driver registration
 //! - Context assembly for the shared `input -> reason -> act` execution flow
-//! - In-memory helpers and `llmsim` for deterministic tests and examples
+//! - Minimal in-memory store implementations for embedding and prototyping
+//!
+//! Deterministic simulation (the `llmsim` driver, the in-memory agentic
+//! loop, and demo fixture capabilities) lives in the `everruns-test-support`
+//! crate; core carries no test implementations.
 //!
 //! # Example
 //!
 //! ```
 //! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
-//! use everruns_core::capabilities::TestMathCapability;
+//! use everruns_core::capabilities::CurrentTimeCapability;
 //!
 //! let mut capabilities = CapabilityRegistry::new();
-//! capabilities.register(TestMathCapability);
+//! capabilities.register(CurrentTimeCapability);
 //!
 //! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-//! assert!(platform.capability_registry().get("test_math").is_some());
+//! assert!(platform.capability_registry().get("current_time").is_some());
 //! ```
 
 // Runtime types (tool definitions, capability types)
@@ -187,17 +191,12 @@ pub mod traits;
 pub mod truncation_info;
 pub use everruns_provider::user_facing_error;
 
-// In-memory implementations for examples and testing
+// Minimal in-memory implementations of the core store traits. These back the
+// default `everruns-host` backend bundle and core's own unit tests. The
+// deterministic simulator (`llmsim`), the in-memory agentic loop, and the
+// mock/echo/failing test doubles live in the `everruns-test-support` crate
+// (EVE-875) so production builds carry no test implementations.
 pub mod in_memory;
-
-// LLM Simulator driver for testing (behind the `llmsim` feature)
-#[cfg(feature = "llmsim")]
-pub mod llmsim_driver;
-
-// In-memory agentic loop for testing and prototyping. Built on the llmsim
-// driver, so it follows the same feature gate.
-#[cfg(feature = "llmsim")]
-pub mod in_memory_loop;
 
 // Turn orchestration (state machine, context, outcomes)
 pub mod turn;
@@ -378,29 +377,27 @@ pub use session_sandbox::{
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
-    AUTO_TOOL_SEARCH_CAPABILITY_ID, AddTool, AgentBlueprint, AgentCapabilityConfig,
-    AppliedCapabilities, AutoToolSearchCapability, BlueprintModel,
-    CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability, CapabilityId, CapabilityRegistry,
-    CapabilityRegistryBuilder, CapabilityStatus, ClaudeToolSearchCapability, CollectedCapabilities,
-    CurrentTimeCapability, DECLARATIVE_CAPABILITY_PREFIX, DeleteFileTool, DependencyError,
-    DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool,
-    GetWeatherTool, GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability,
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, IntegrationPlugin,
-    ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
-    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
-    NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability, QueryHistoryTool,
-    ReadFileTool, ResearchCapability, ResolvedCapabilities, RiskLevel, SampleDataCapability,
-    SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
-    SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
-    SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
-    TestWeatherCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool, WriteSessionTitleTool,
-    WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
-    compute_features, declarative_capability_id, declarative_capability_info, get_dependencies,
-    hydrate_declarative_capability_config, hydrate_plugin_capability_config,
-    is_declarative_capability, is_mcp_capability, mcp_capability_id,
-    parse_declarative_capability_id, parse_mcp_capability_id, plugin_capability_info,
-    resolve_dependencies, session_title_updated_event, update_session_title_with_event,
-    validate_declarative_capability_definition,
+    AUTO_TOOL_SEARCH_CAPABILITY_ID, AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities,
+    AutoToolSearchCapability, BlueprintModel, CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability,
+    CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
+    ClaudeToolSearchCapability, CollectedCapabilities, CurrentTimeCapability,
+    DECLARATIVE_CAPABILITY_PREFIX, DeleteFileTool, DependencyError, FileSystemCapability,
+    GetCurrentTimeTool, GetSessionInfoTool, GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID,
+    HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
+    IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
+    McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
+    OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability, QueryHistoryTool, ReadFileTool,
+    ResearchCapability, ResolvedCapabilities, RiskLevel, SessionCapability,
+    SessionCapabilityConfig, SessionSandboxCapability, SessionSqlDatabaseCapability,
+    SessionTitleMutation, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
+    StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool,
+    WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
+    collect_capabilities_with_configs, compute_features, declarative_capability_id,
+    declarative_capability_info, get_dependencies, hydrate_declarative_capability_config,
+    hydrate_plugin_capability_config, is_declarative_capability, is_mcp_capability,
+    mcp_capability_id, parse_declarative_capability_id, parse_mcp_capability_id,
+    plugin_capability_info, resolve_dependencies, session_title_updated_event,
+    update_session_title_with_event, validate_declarative_capability_definition,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

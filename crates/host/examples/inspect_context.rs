@@ -11,15 +11,17 @@
 //! ```
 
 use chrono::Utc;
-use everruns_core::capabilities::TestMathCapability;
+use everruns_test_support::LlmSimRuntimeExt;
+use everruns_test_support::TestMathCapability;
+
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::provider::DriverId;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
     PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use everruns_host::InProcessRuntimeBuilder;
+use everruns_test_support::llmsim_driver::LlmSimConfig;
 use uuid::Uuid;
 
 #[tokio::main]

@@ -1087,12 +1087,15 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
+ "everruns-capability",
  "everruns-core",
  "everruns-host",
  "everruns-macros",
+ "everruns-test-support",
  "schemars",
  "serde",
  "serde_json",
@@ -1101,8 +1104,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-capability"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "everruns-core"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -1115,6 +1128,7 @@ dependencies = [
  "cron",
  "ed25519-dalek 3.0.0",
  "eventsource-stream",
+ "everruns-capability",
  "everruns-provider",
  "fetchkit",
  "futures",
@@ -1122,7 +1136,6 @@ dependencies = [
  "hex",
  "inventory",
  "jsonschema",
- "llmsim",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
@@ -1149,7 +1162,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -1159,7 +1172,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1181,7 +1194,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "proc-macro2 1.0.106",
  "quote 1.0.45",
@@ -1190,7 +1203,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1205,7 +1218,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-platform"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1220,7 +1233,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-provider"
-version = "0.17.25"
+version = "0.17.26"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1242,6 +1255,22 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "everruns-test-support"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "futures",
+ "inventory",
+ "llmsim",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

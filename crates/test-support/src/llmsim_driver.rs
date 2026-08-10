@@ -16,12 +16,12 @@ use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
-use crate::error::{AgentLoopError, Result};
-use crate::tool_types::ToolCall;
+use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message, Role, Usage};
@@ -285,7 +285,7 @@ impl SimError {
     }
 
     fn agent_error(&self) -> AgentLoopError {
-        use crate::error::LlmErrorKind;
+        use everruns_core::error::LlmErrorKind;
 
         match self {
             SimError::RateLimit => {
@@ -389,7 +389,7 @@ fn materialize_scripted_tool_calls(
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::llmsim_driver::{LlmSimDriver, LlmSimConfig};
+/// use everruns_test_support::llmsim_driver::{LlmSimDriver, LlmSimConfig};
 ///
 /// // Simple fixed response
 /// let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello!"));
@@ -662,7 +662,7 @@ impl LlmSimDriver {
 impl ChatDriver for LlmSimDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &crate::ProviderEndpoint,
+        _endpoint: &everruns_core::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -801,7 +801,7 @@ impl std::fmt::Debug for LlmSimDriver {
 ///
 /// ```ignore
 /// use everruns_core::DriverRegistry;
-/// use everruns_core::llmsim_driver::register_driver;
+/// use everruns_test_support::llmsim_driver::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
@@ -861,7 +861,7 @@ fn parse_ttft_from_model_name(model_name: &str) -> Option<std::time::Duration> {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::llmsim_driver::{create_chat_driver, LlmSimConfig};
+/// use everruns_test_support::llmsim_driver::{create_chat_driver, LlmSimConfig};
 ///
 /// let driver = create_chat_driver(
 ///     LlmSimConfig::fixed("I'll help you with that!")
@@ -1035,9 +1035,14 @@ mod tests {
             &self,
             messages: Vec<LlmMessage>,
             config: &LlmCallConfig,
-        ) -> Result<crate::driver_registry::LlmResponse> {
-            ChatDriver::chat_completion(self, &crate::ProviderEndpoint::default(), messages, config)
-                .await
+        ) -> Result<everruns_core::driver_registry::LlmResponse> {
+            ChatDriver::chat_completion(
+                self,
+                &everruns_core::ProviderEndpoint::default(),
+                messages,
+                config,
+            )
+            .await
         }
 
         async fn chat_completion_stream(
@@ -1047,7 +1052,7 @@ mod tests {
         ) -> Result<LlmResponseStream> {
             ChatDriver::chat_completion_stream(
                 self,
-                &crate::ProviderEndpoint::default(),
+                &everruns_core::ProviderEndpoint::default(),
                 messages,
                 config,
             )
@@ -1549,8 +1554,8 @@ mod tests {
         assert!(registry.has_driver(&DriverId::LlmSim));
 
         // Creating a driver should work (with any API key since it's simulated)
-        let config =
-            crate::driver_registry::ProviderConfig::new(DriverId::LlmSim).with_api_key("fake-key");
+        let config = everruns_core::driver_registry::ProviderConfig::new(DriverId::LlmSim)
+            .with_api_key("fake-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
     }

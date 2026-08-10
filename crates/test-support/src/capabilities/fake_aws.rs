@@ -18,15 +18,15 @@
 //! - `aws_list_security_groups`: List security groups
 //! - `aws_get_cloudwatch_metrics`: Get CloudWatch metrics
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::SessionId;
-use crate::connector::{
+use async_trait::async_trait;
+use everruns_core::SessionId;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::connector::{
     Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FormField,
 };
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, ToolContext};
-use async_trait::async_trait;
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{SessionFileSystem, ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
@@ -188,7 +188,7 @@ async fn persist<T: Serialize>(
     Ok(())
 }
 
-use super::util::require_file_store;
+use everruns_core::capabilities::util::require_file_store;
 
 // ============================================================================
 // Data model structs

@@ -40,15 +40,14 @@ gate as `bashkit_shell` and `web_fetch`).
 
 ## Muting a capability-contributed hook
 
-When a built-in capability ships a hook bundle (e.g. the
-`cloud-cost-security-auditor` seed agent's audit-log hook), users can
-mute individual entries via the `disabled_contributions` field on a
-sibling `user_hooks` capability config:
+When a built-in capability ships a hook bundle, users can mute
+individual entries via the `disabled_contributions` field on a sibling
+`user_hooks` capability config:
 
 ```json
 {
   "ref": "user_hooks",
-  "config": { "disabled_contributions": ["cloud_auditor:audit_tool_calls"] }
+  "config": { "disabled_contributions": ["some_capability:audit_tool_calls"] }
 }
 ```
 
@@ -64,15 +63,15 @@ the JSON from this directory into each agent's `user_hooks` config.
 - [`docs/capabilities/user-hooks.md`](../../docs/capabilities/user-hooks.md) — capability docs
 - [`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md) — full contract
 
-## Live end-to-end demo: Cloud Cost & Security Auditor
+## Live end-to-end demo: guarded bash
 
-The `cloud-cost-security-auditor` seed agent ships with the
-`audit-every-tool` bundle. To see the audit log get written end-to-end
-without any LLM API keys, run the server with the bundled scripted
-`LlmSim` driver:
+The `guarded-bash-demo` seed agent pairs the `block-rm-rf.json` bundle
+with a scripted `LlmSim` driver. To watch a `pre_tool_use` hook refuse a
+destructive command end-to-end without any LLM API keys, run the server
+with the bundled scripted driver:
 
 ```bash
-LLMSIM_DEMO=auditor \
+LLMSIM_DEMO=guarded \
 DEV_MODE=true DEPLOYMENT_GRADE=dev AUTH_MODE=none \
 HTTP_ADDR=127.0.0.1:9301 SERVER_GRPC_BIND_ADDR=127.0.0.1:9302 \
 SECRETS_ENCRYPTION_KEY="kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=" \
@@ -80,39 +79,15 @@ OTEL_SDK_DISABLED=true \
 cargo run -p everruns-server
 ```
 
-Then:
+The scripted model first attempts `rm -rf /`, then a safe `ls`. With the
+`pre_tool_use` block hook attached, the first tool call is refused before
+it ever reaches the sandbox and the second succeeds — the agent observes
+the difference in tool results.
 
-```bash
-API=http://127.0.0.1:9301/api/v1
+The `LLMSIM_DEMO=guarded` switch is opt-in. Without it, `LlmSim` returns
+its default canned response and never calls any tool.
 
-# Enable the LlmSim model
-LLMSIM=$(curl -s $API/llm-models | jq -r '.data[] | select(.model_id=="llmsim-default") | .id')
-curl -s -X PATCH -H "Content-Type: application/json" "$API/llm-models/$LLMSIM" -d '{"enabled":true}'
-
-# Import the auditor (carries the user_hooks bundle)
-AGENT=$(curl -s -X POST -H "Content-Type: application/json" \
-  "$API/agents/import?from-example=cloud-cost-security-auditor" -d '{}' \
-  | jq -r '.self_url | split("/") | last')
-
-# Start a session and send a kickoff message
-SESSION=$(curl -s -X POST -H "Content-Type: application/json" "$API/sessions" \
-  -d "{\"agent_id\":\"$AGENT\",\"model_id\":\"$LLMSIM\"}" | jq -r '.id')
-curl -s -X POST -H "Content-Type: application/json" \
-  "$API/sessions/$SESSION/messages" \
-  -d '{"message":{"content":[{"type":"text","text":"Run the audit."}]}}' >/dev/null
-
-# Read the hook-written audit log
-sleep 2
-curl -s "$API/sessions/$SESSION/fs/.audit.log" | jq -r .content
-```
-
-You should see two timestamped lines, one per tool call:
-
-```
-[2026-…Z] aws_list_ec2_instances:call_demo_ec2
-[2026-…Z] aws_list_s3_buckets:call_demo_s3
-```
-
-The `LLMSIM_DEMO=auditor` switch is opt-in. Without it, `LlmSim` returns
-its default canned response and never calls any tool — the audit log is
-empty.
+> The former `LLMSIM_DEMO=auditor` walkthrough (Cloud Cost & Security
+> Auditor over fake AWS tools) was retired with EVE-875: the fake demo
+> capabilities moved to `everruns-test-support` and are no longer
+> registered by product binaries.

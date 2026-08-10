@@ -772,17 +772,17 @@ mod tests {
         #[test]
         fn flags_both_bash_and_fetch_in_mixed_input() {
             let svc = make_service();
-            let high = svc.high_risk_ids(&["noop", "bashkit_shell", "web_fetch"]);
+            let high = svc.high_risk_ids(&["current_time", "bashkit_shell", "web_fetch"]);
             assert!(high.contains(&"bashkit_shell".to_string()));
             assert!(high.contains(&"web_fetch".to_string()));
-            assert!(!high.contains(&"noop".to_string()));
+            assert!(!high.contains(&"current_time".to_string()));
             assert_eq!(high.len(), 2);
         }
 
         #[test]
-        fn does_not_flag_noop_capability() {
+        fn does_not_flag_low_risk_capability() {
             let svc = make_service();
-            let high = svc.high_risk_ids(&["noop"]);
+            let high = svc.high_risk_ids(&["current_time"]);
             assert!(
                 high.is_empty(),
                 "default/low-risk capabilities must not be flagged as high-risk"

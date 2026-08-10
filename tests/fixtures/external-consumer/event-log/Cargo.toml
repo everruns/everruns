@@ -10,4 +10,5 @@ everruns-core = { path = "../../../../crates/core" }
 everruns-host = { path = "../../../../crates/host" }
 
 [dev-dependencies]
+everruns-test-support = { path = "../../../../crates/test-support" }
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

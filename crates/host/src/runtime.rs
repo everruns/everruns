@@ -28,7 +28,6 @@ use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
 };
 use everruns_core::harness::Harness;
-use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::Message;
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
@@ -310,7 +309,10 @@ fn finish_turn(
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
     platform_definition: PlatformDefinition,
-    llm_sim_config: Option<LlmSimConfig>,
+    /// Provider registered at build time (replacing any same-name provider)
+    /// whose named model becomes the runtime default when nothing else set one.
+    /// See [`Self::provider_with_default_model`].
+    default_provider: Option<(everruns_core::Provider, String)>,
     providers: Vec<everruns_core::Provider>,
     model_spec: Option<everruns_core::ModelSpec>,
     legacy_provider_config: Option<everruns_core::ProviderConfig>,
@@ -346,7 +348,9 @@ impl InProcessRuntimeBuilder {
     /// LLM driver.
     ///
     /// Embedders must either:
-    /// - call [`Self::llm_sim`] for deterministic local examples/tests, or
+    /// - call [`Self::provider_with_default_model`] (e.g. via the
+    ///   `everruns-test-support` `.llm_sim(...)` extension) for deterministic
+    ///   local examples/tests, or
     /// - register their own driver(s) on the platform definition and set a
     ///   default model via [`Self::default_model`].
     pub fn new() -> Self {
@@ -356,7 +360,7 @@ impl InProcessRuntimeBuilder {
                 .driver_registry(DriverRegistry::new())
                 .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
                 .build(),
-            llm_sim_config: None,
+            default_provider: None,
             providers: Vec::new(),
             model_spec: None,
             legacy_provider_config: None,
@@ -410,9 +414,19 @@ impl InProcessRuntimeBuilder {
         self
     }
 
-    /// Register the built-in `llmsim` driver for deterministic local execution.
-    pub fn llm_sim(mut self, config: LlmSimConfig) -> Self {
-        self.llm_sim_config = Some(config);
+    /// Register `provider` at build time — replacing any provider already
+    /// registered under the same name — and default the runtime model to
+    /// `model_id` on that provider when no other default was configured.
+    ///
+    /// This is the seam behind deterministic simulated runtimes: the
+    /// `everruns-test-support` crate's `.llm_sim(...)` extension builds an
+    /// `llmsim` provider and routes it through here.
+    pub fn provider_with_default_model(
+        mut self,
+        provider: everruns_core::Provider,
+        model_id: impl Into<String>,
+    ) -> Self {
+        self.default_provider = Some((provider, model_id.into()));
         self
     }
 
@@ -630,15 +644,15 @@ impl InProcessRuntimeBuilder {
             file_store = Arc::new(crate::PolicyFileStore::new(file_store, policy));
         }
 
-        if let Some(config) = self.llm_sim_config.take() {
-            let driver = LlmSimDriver::new(config);
-            // This legacy convenience adapts into the canonical provider path.
+        if let Some((provider, model_id)) = self.default_provider.take() {
+            let provider_key = provider.id().clone();
+            // This convenience adapts into the canonical provider path.
             self.platform_definition
                 .driver_registry_mut()
-                .replace_provider(everruns_core::Provider::new("llmsim", driver));
+                .replace_provider(provider);
 
             if self.model_spec.is_none() {
-                self.model_spec = Some(everruns_core::ModelSpec::on("llmsim", "llmsim-model"));
+                self.model_spec = Some(everruns_core::ModelSpec::on(provider_key, model_id));
             }
         }
 
@@ -652,7 +666,8 @@ impl InProcessRuntimeBuilder {
             AgentLoopError::config(
                 "in-process runtime requires a default model; call \
                  InProcessRuntimeBuilder::default_model(...) or \
-                 InProcessRuntimeBuilder::llm_sim(...)",
+                 InProcessRuntimeBuilder::provider_with_default_model(...) \
+                 (e.g. the everruns-test-support `.llm_sim(...)` extension)",
             )
         })?;
 

@@ -4372,7 +4372,7 @@ mod tests {
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
@@ -4712,7 +4712,7 @@ mod tests {
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            capabilities: vec![AgentCapabilityConfig::new("data_knowledge")],
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
@@ -4732,7 +4732,7 @@ mod tests {
             harness_id: None,
             harness_name: None,
             tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("sample_data")],
+            capabilities: vec![AgentCapabilityConfig::new("data_knowledge")],
             initial_files: vec![],
             tools: vec![],
             mcp_servers: Default::default(),
@@ -4792,7 +4792,7 @@ mod tests {
 
         assert!(
             file_service
-                .read_file(session_row.id.uuid(), "/samples/users.json")
+                .read_file(session_row.id.uuid(), "/knowledge/index.md")
                 .await
                 .unwrap()
                 .is_none(),

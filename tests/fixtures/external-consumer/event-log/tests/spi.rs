@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
-use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt};
 use everruns_core::message::Message;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{DriverId, ResolvedModel};

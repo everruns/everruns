@@ -101,7 +101,7 @@ fn platform() -> PlatformDefinition {
     let mut drivers = DriverRegistry::new();
     everruns_anthropic::register_driver(&mut drivers);
     everruns_openai::register_driver(&mut drivers);
-    everruns_core::llmsim_driver::register_driver(&mut drivers);
+    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
 
     PlatformDefinition::new(caps, drivers)
 }
