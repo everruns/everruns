@@ -759,7 +759,7 @@ mod tests {
     async fn test_secret_store_without_context() {
         let tool = SecretStoreTool;
         let result = tool
-            .execute(json!({"operation": "set", "name": "api_key", "value": "secret123"}))
+            .execute(json!({"operation": "set", "name": "api_key", "value": "YExample0"}))
             .await;
 
         if let ToolExecutionResult::ToolError(msg) = result {

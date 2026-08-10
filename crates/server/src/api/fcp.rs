@@ -954,11 +954,11 @@ mod tests {
     fn handshake_advertises_auth_when_token_configured() {
         let app = test_app("Secret", None);
         let mut config = default_config();
-        config.token = Some("hunter2".to_string());
+        config.token = Some("YExample0".to_string());
         let rendered = render_handshake(&app, &config);
         assert!(rendered.contains("Authorization: Bearer"));
         assert!(rendered.contains("X-Everruns-FCP-Token"));
-        assert!(!rendered.contains("hunter2"), "must never leak the token");
+        assert!(!rendered.contains("YExample0"), "must never leak the token");
     }
 
     #[test]
@@ -1131,16 +1131,16 @@ mod tests {
     fn check_token_required_rejects_missing() {
         let headers = HeaderMap::new();
         let mut config = default_config();
-        config.token = Some("hunter2".to_string());
+        config.token = Some("YExample0".to_string());
         assert!(check_token(&headers, &config).is_err());
     }
 
     #[test]
     fn check_token_required_accepts_matching_bearer() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, "Bearer hunter2".parse().unwrap());
+        headers.insert(AUTHORIZATION, "Bearer YExample0".parse().unwrap());
         let mut config = default_config();
-        config.token = Some("hunter2".to_string());
+        config.token = Some("YExample0".to_string());
         assert!(check_token(&headers, &config).is_ok());
     }
 
@@ -1149,7 +1149,7 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, "Bearer wrong".parse().unwrap());
         let mut config = default_config();
-        config.token = Some("hunter2".to_string());
+        config.token = Some("YExample0".to_string());
         assert!(check_token(&headers, &config).is_err());
     }
 

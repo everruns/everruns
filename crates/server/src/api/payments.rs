@@ -390,7 +390,7 @@ mod tests {
     fn test_app(machine_payments_enabled: bool) -> Router {
         let db = Arc::new(StorageBackend::in_memory());
         let encryption =
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap();
         routes(
             AppState::new(

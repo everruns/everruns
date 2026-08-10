@@ -905,7 +905,7 @@ mod tests {
 
     fn test_encryption() -> Arc<EncryptionService> {
         Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap(),
         )
     }

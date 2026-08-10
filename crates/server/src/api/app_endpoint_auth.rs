@@ -612,24 +612,29 @@ mod tests {
     use crate::storage::password::hash_password;
     use axum::http::HeaderValue;
 
+    const EXAMPLE_USERNAME: &str = "example";
+    const EXAMPLE_PASSWORD: &str = "YExample0";
+
+    fn example_basic_auth_header() -> HeaderValue {
+        let credentials = BASE64_STANDARD.encode(format!("{EXAMPLE_USERNAME}:{EXAMPLE_PASSWORD}"));
+        HeaderValue::from_bytes(format!("basic {credentials}").as_bytes()).unwrap()
+    }
+
     #[test]
     fn extracts_basic_credentials() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("basic YWxpY2U6c2VjcmV0"),
-        );
+        headers.insert(AUTHORIZATION, example_basic_auth_header());
         assert_eq!(
             extract_basic_credentials(&headers),
-            Some(("alice".to_string(), "secret".to_string()))
+            Some((EXAMPLE_USERNAME.to_string(), EXAMPLE_PASSWORD.to_string()))
         );
     }
 
     #[test]
     fn shared_secret_uses_bearer() {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, HeaderValue::from_static("bearer secret"));
-        assert!(verify_shared_secret(&headers, "secret").is_ok());
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("bearer YExample0"));
+        assert!(verify_shared_secret(&headers, EXAMPLE_PASSWORD).is_ok());
         assert_eq!(
             verify_shared_secret(&headers, "other").unwrap_err(),
             AppEndpointAuthError::Unauthorized
@@ -639,16 +644,13 @@ mod tests {
     #[test]
     fn basic_auth_verifies_argon2_password_hash() {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("basic YWxpY2U6c2VjcmV0"),
-        );
+        headers.insert(AUTHORIZATION, example_basic_auth_header());
         let auth = AppEndpointAuthConfig {
             mode: AppEndpointAuthMode::HttpBasic,
             provider: Some(AppEndpointAuthProviderConfig::HttpBasic {
-                username: "alice".to_string(),
+                username: EXAMPLE_USERNAME.to_string(),
                 password: None,
-                password_hash: Some(hash_password("secret").unwrap()),
+                password_hash: Some(hash_password(EXAMPLE_PASSWORD).unwrap()),
             }),
             requirements: AppEndpointAuthRequirements::default(),
         };

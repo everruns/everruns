@@ -637,7 +637,7 @@ mod tests {
 
     fn test_ctx() -> Ctx {
         let encryption =
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .unwrap();
         Ctx::minimal_for_test(
             Caller::internal(DEFAULT_ORG_ID),

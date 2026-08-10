@@ -222,7 +222,7 @@ impl TestServer {
 
         // Initialize encryption service (use test key)
         let encryption = Some(Arc::new(
-            EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+            EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
                 .expect("Invalid test encryption key"),
         ));
 

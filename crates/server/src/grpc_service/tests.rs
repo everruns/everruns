@@ -3,6 +3,7 @@ use tonic::service::Interceptor;
 
 // Env-var-mutating tests must not run in parallel.
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+const EXAMPLE_TOKEN: &str = "YExample0";
 
 async fn test_worker_service() -> WorkerServiceImpl {
     test_worker_service_with_runner(None).await
@@ -15,7 +16,7 @@ async fn test_worker_service_with_runner(
     let grade = everruns_core::DeploymentGrade::Dev;
     let platform_definition = crate::oss_platform_definition_for_grade(grade);
     let encryption = Some(Arc::new(
-        EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("valid test encryption key"),
     ));
 
@@ -115,7 +116,7 @@ async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
     let grade = everruns_core::DeploymentGrade::Dev;
     let platform_definition = crate::oss_platform_definition_for_grade(grade);
     let encryption = Some(Arc::new(
-        EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
+        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("valid test encryption key"),
     ));
 
@@ -199,17 +200,17 @@ fn test_interceptor_allows_when_no_token_configured() {
 
 #[test]
 fn test_interceptor_allows_valid_bearer_token() {
-    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut interceptor = GrpcAuthInterceptor::new(Some(EXAMPLE_TOKEN.to_string()));
     let mut request = Request::new(());
     request
         .metadata_mut()
-        .insert("authorization", "Bearer secret123".parse().unwrap());
+        .insert("authorization", "Bearer YExample0".parse().unwrap());
     assert!(interceptor.call(request).is_ok());
 }
 
 #[test]
 fn test_interceptor_rejects_missing_token() {
-    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut interceptor = GrpcAuthInterceptor::new(Some(EXAMPLE_TOKEN.to_string()));
     let request = Request::new(());
     let err = interceptor.call(request).unwrap_err();
     assert_eq!(err.code(), tonic::Code::Unauthenticated);
@@ -218,7 +219,7 @@ fn test_interceptor_rejects_missing_token() {
 
 #[test]
 fn test_interceptor_rejects_wrong_token() {
-    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut interceptor = GrpcAuthInterceptor::new(Some(EXAMPLE_TOKEN.to_string()));
     let mut request = Request::new(());
     request
         .metadata_mut()
@@ -232,11 +233,11 @@ fn test_interceptor_rejects_wrong_token() {
 fn test_interceptor_rejects_same_length_wrong_token() {
     // Same length as the expected token so the constant-time compare reaches
     // its byte-comparison branch rather than short-circuiting on length.
-    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut interceptor = GrpcAuthInterceptor::new(Some(EXAMPLE_TOKEN.to_string()));
     let mut request = Request::new(());
     request
         .metadata_mut()
-        .insert("authorization", "Bearer secret124".parse().unwrap());
+        .insert("authorization", "Bearer YExample1".parse().unwrap());
     let err = interceptor.call(request).unwrap_err();
     assert_eq!(err.code(), tonic::Code::Unauthenticated);
     assert!(err.message().contains("Invalid"));
@@ -244,11 +245,11 @@ fn test_interceptor_rejects_same_length_wrong_token() {
 
 #[test]
 fn test_interceptor_rejects_non_bearer_scheme() {
-    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut interceptor = GrpcAuthInterceptor::new(Some(EXAMPLE_TOKEN.to_string()));
     let mut request = Request::new(());
     request
         .metadata_mut()
-        .insert("authorization", "Basic secret123".parse().unwrap());
+        .insert("authorization", "Basic YExample0".parse().unwrap());
     let err = interceptor.call(request).unwrap_err();
     assert_eq!(err.code(), tonic::Code::Unauthenticated);
 }

@@ -2831,7 +2831,7 @@ mod tests {
     // --- DEFAULT_*_API_KEY materialization (single-tenant/dev) ---
 
     fn test_encryption() -> EncryptionService {
-        EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[]).unwrap()
+        EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[]).unwrap()
     }
 
     fn auth_config(mode: AuthMode, disable_signup: bool) -> AuthConfig {

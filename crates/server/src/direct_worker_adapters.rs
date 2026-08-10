@@ -4440,7 +4440,7 @@ mod tests {
     fn test_encryption() -> Arc<crate::storage::EncryptionService> {
         Arc::new(
             crate::storage::EncryptionService::new(
-                "kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=",
+                "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
                 &[],
             )
             .unwrap(),
