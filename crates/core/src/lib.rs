@@ -60,7 +60,7 @@ pub mod utility_llm;
 pub mod feature_flags;
 pub mod localization;
 
-// Telemetry (OpenTelemetry with gen-ai semantic conventions)
+// Telemetry conventions (neutral gen-ai span metadata contracts)
 pub mod telemetry;
 pub mod tool_narration;
 
@@ -70,10 +70,11 @@ pub mod event_listeners;
 // Error reporter (vendor-neutral embedder hook)
 pub mod error_reporter;
 
-// Observability exporters (Braintrust, OpenTelemetry) live in the
-// `everruns-observability` crate (EVE-651), depending on core only for the
-// `EventListener` trait + event types. The gen-AI span conventions and OTLP
-// init they build on stay here in `telemetry`.
+// Observability implementations live in the `everruns-observability` crate
+// (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
+// CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They
+// depend on core only for the `EventListener` trait, event types, and the
+// neutral gen-AI span conventions in `telemetry`.
 
 // Typed ID system (type-safe prefixed identifiers)
 // See knowledge/foundations/id-schema.md for specification
@@ -289,7 +290,7 @@ pub use subagent_delegation::{
 pub use background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
-pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListener};
+pub use event_listeners::{EventListener, NoopEventListener};
 
 // Error reporter re-exports
 pub use error_reporter::{

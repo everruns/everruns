@@ -394,6 +394,24 @@ jobs:
       - name: Check test-support isolation
         run: bash scripts/lib/check-test-support-isolation.sh
 
+  # Architecture guard (EVE-876): telemetry init and exporter implementations
+  # live in crates/observability. Core carries only the neutral observability
+  # contracts, and Framework/provider trees ship no OTLP/exporter subtree.
+  observability-isolation:
+    name: Observability Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check observability isolation
+        run: bash scripts/lib/check-observability-isolation.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest

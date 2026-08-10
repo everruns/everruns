@@ -23,6 +23,9 @@ tracing.workspace = true
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
+# Telemetry init (OTLP exporter + tracing-subscriber layers) — installed
+# explicitly by the worker binary; core no longer ships it (EVE-876).
+everruns-observability = { workspace = true }
 # Deterministic `llmsim` provider (seeded LlmSim models, LLMSIM_DEMO
 # scenarios). `sim` only — the worker never links the demo fixture
 # capabilities; scripts/lib/check-test-support-isolation.sh guards this.

@@ -2,6 +2,15 @@
 
 ## 2026-08-10
 
+* **Observability extraction**: Moved telemetry initialization (OTLP exporter
+  wiring, tracing-subscriber layers, `TelemetryConfig`/`TelemetryGuard`) and
+  the `CompositeEventListener` fan-out out of `everruns-core` into
+  `everruns-observability` (EVE-876). Core keeps only the neutral observability
+  contracts — the `EventListener` trait, event types, and gen-AI span
+  conventions — and carries no OpenTelemetry/exporter dependencies; a new
+  architecture guard enforces the isolation and keeps Framework/provider
+  builds free of the exporter subtree.
+
 * **Test-support extraction**: Moved deterministic simulation and demo-only
   behavior out of `everruns-core` into the new `everruns-test-support` crate
   (EVE-875): the `llmsim` driver, the in-memory agentic loop, mock test
