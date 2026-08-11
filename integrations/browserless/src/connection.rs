@@ -7,7 +7,7 @@
 //      401/403 means token lacks CDP access.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 use tracing::warn;

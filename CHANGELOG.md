@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved connector, OAuth, and system-email infrastructure out of
+  `everruns-core`.** The hosted connector catalog — `Connector`,
+  `ConnectorRegistry`, `ConnectorRegistryBuilder`, `ConnectorPlugin`,
+  `ConnectorType`, `ConnectorValidation`, `ConnectorFormSchema` — and the
+  system email contract with its concrete senders — `EmailSender`,
+  `EmailMessage`, the templates, `NoopEmailSender`/`DisabledEmailSender`,
+  `SystemEmailConfig`, `ResendEmailSender` — now live in `everruns-platform`;
+  the `everruns_core::connector` and `everruns_core::email` modules are gone.
+  The OAuth 2.1 protocol client (`everruns_core::oauth`: `OAuthClient`,
+  `TokenSet`, `PkcePair`, discovery/registration metadata types) moved to
+  `everruns_mcp::oauth::protocol`, its only consumer. `PlatformDefinition`
+  no longer carries `connectors`/`email_sender`; compose them on
+  `ServerAppBuilder` (`connector_registry`, `email_sender`, defaulting to the
+  OSS inventory preset and the env-configured sender). The
+  `CredentialProvider`/`EnvCredentialProvider`/`ProviderCredentials` seam
+  moved to `everruns-provider` and is re-exported by core at its previous
+  paths. Secret-bearing types (`TokenSet`, `PkcePair`, `ProviderCredentials`,
+  `ResendEmailConfig`) now redact credentials in `Debug` output. Core no
+  longer depends on `serde_urlencoded` or `eventsource-stream`. REST/gRPC
+  shapes and stored schema are unchanged.
+
 - **Moved the eval, observer, and feature-management records out of
   `everruns-core`.** The persisted eval aggregates (`Eval`, `EvalCase`,
   `EvalRun`, `EvalCaseResult`, `EvalRunDataset`, `EvalTarget`, `Scorer`,

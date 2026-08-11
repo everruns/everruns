@@ -32,6 +32,13 @@ tracing.workspace = true
 # OAuth token expiry bookkeeping and issuer/origin parsing (src/oauth.rs).
 chrono.workspace = true
 url = "2"
+# OAuth 2.1 protocol client (src/oauth/protocol.rs, moved from core in
+# EVE-879): PKCE hashing, URL-safe randoms, token-request form encoding.
+base64.workspace = true
+sha2.workspace = true
+rand.workspace = true
+serde_urlencoded = "0.7"
+thiserror.workspace = true
 
 [dev-dependencies]
 wiremock = "0.6"

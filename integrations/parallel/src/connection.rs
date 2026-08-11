@@ -5,10 +5,10 @@
 // storing any credential.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_core::{McpToolsListRequest, McpToolsListResponse};
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
-use everruns_core::{McpToolsListRequest, McpToolsListResponse};
 
 use crate::{PARALLEL_MCP_URL, PARALLEL_PROVIDER_ID};
 

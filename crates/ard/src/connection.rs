@@ -11,7 +11,7 @@
 //! capability config, so the connection only carries the token.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 

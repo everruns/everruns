@@ -143,7 +143,8 @@ trait McpAuthProvider {
 - The **runtime/coding-CLI** provides simpler implementations: a static
   bearer/header provider, an env-var provider, and `OAuthAuthProvider`.
 
-The OAuth half is shared rather than per-host. `everruns_core::oauth` owns the
+The OAuth half is shared inside the MCP crate. `everruns_mcp::oauth::protocol`
+(moved out of core in EVE-879) owns the
 protocol steps — RFC 9728 protected-resource discovery, RFC 8414/OpenID
 authorization-server metadata, RFC 7591 dynamic registration, PKCE, code
 exchange, refresh, and RFC 9207 issuer validation — with no browser, no

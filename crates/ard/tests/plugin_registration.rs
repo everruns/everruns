@@ -1,8 +1,8 @@
 //! Integration test: verify the ARD plugin and connector register via inventory.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
+use everruns_platform::connector::ConnectorPlugin;
 
 // Force linker to include the integration crate's inventory submissions.
 use everruns_ard as _;

@@ -382,7 +382,7 @@ pub struct Ctx {
     pub driver_registry: Arc<DriverRegistry>,
     /// Connection providers available to the deployment. Optional because most
     /// command contexts do not inspect connector discovery.
-    pub connector_registry: Option<everruns_core::connector::ConnectorRegistry>,
+    pub connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -533,7 +533,7 @@ impl Ctx {
 
     pub fn with_connector_registry(
         mut self,
-        connector_registry: everruns_core::connector::ConnectorRegistry,
+        connector_registry: everruns_platform::connector::ConnectorRegistry,
     ) -> Self {
         self.connector_registry = Some(connector_registry);
         self

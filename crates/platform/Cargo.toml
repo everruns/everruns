@@ -63,9 +63,24 @@ anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 
+# Connector plugin registration (EVE-879): integration crates submit
+# `ConnectorPlugin` entries the server discovers at startup.
+inventory.workspace = true
+
+# System email senders (EVE-879): typed EmailError plus the direct Resend HTTP
+# client. System email intentionally uses its own provider client outside the
+# runtime egress boundary — it is operator-owned deployment traffic.
+thiserror.workspace = true
+reqwest = { workspace = true, features = ["json", "rustls"] }
+
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }
 
 # Embeds the workspace docs tree for the platform-management docs tools when the
 # `embedded-platform-docs` feature is on (EVE-839; moved with the capability).
 include_dir = { version = "0.7", optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
+serde_json.workspace = true

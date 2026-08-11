@@ -245,7 +245,7 @@ resolve the six review questions and fix the premise of the auth screen.
   and monotonic local state (`crates/saas-server/src/auth/propelauth.rs`,
   `sync_user` / `resolve_email_verified`). Google/GitHub users arrive verified. No
   backend change needed — only the UI must treat Verify as conditional.
-- **Email infra exists.** OSS `crates/core/src/email.rs` (Resend behind `EmailSender`
+- **Email infra exists.** OSS `crates/platform/src/email/` (Resend behind `EmailSender`
   trait, `EmailMessage::basic`), already used by org-invite emails
   (`crates/server/src/api/org_invitations.rs`). SaaS `ManagementState` does *not* yet
   hold an `EmailSender` — wiring required. PropelAuth cannot send custom emails.
@@ -297,7 +297,7 @@ Why it's tractable: OSS already ships, production-hardened, in `crates/server/sr
 Net-new work (all general-purpose → build in OSS, SaaS inherits):
 - **Password reset / forgot-password** — DOES NOT EXIST today. Add `POST /v1/auth/forgot-password`
   + `POST /v1/auth/reset-password`, a `password_reset_tokens` migration (hashed token, TTL,
-  single-use), email via existing `crates/core/src/email.rs` `EmailSender`, and UI pages
+  single-use), email via existing `crates/platform/src/email/` `EmailSender`, and UI pages
   under OSS `apps/ui/src/app/(auth)/`.
 - **Email verification flow** — column exists, flow MISSING. Add send-verification +
   verify-token endpoints + email; this becomes our own Frame 3 (we own the email + token),

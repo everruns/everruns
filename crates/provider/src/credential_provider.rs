@@ -18,7 +18,10 @@ use crate::provider::DriverId;
 /// Credentials resolved for a single driver: the API key and an optional base
 /// URL override. This mirrors the credential fields a driver constructor or a
 /// `DriverConfig` accepts, decoupled from where they came from.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+///
+/// `Debug` redacts the API key (EVE-879): resolved credentials flow through
+/// host wiring that logs liberally, so the secret must never reach output.
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct ProviderCredentials {
     /// API key / secret for the provider account.
     pub api_key: Option<String>,
@@ -30,6 +33,15 @@ impl ProviderCredentials {
     /// Whether any credential value is present.
     pub fn is_empty(&self) -> bool {
         self.api_key.is_none() && self.base_url.is_none()
+    }
+}
+
+impl std::fmt::Debug for ProviderCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProviderCredentials")
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field("base_url", &self.base_url)
+            .finish()
     }
 }
 
@@ -172,6 +184,21 @@ mod tests {
         assert!(
             EnvCredentialProvider::resolve_with(&DriverId::Anthropic, lookup_from(&empty))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn debug_output_redacts_the_api_key() {
+        let creds = ProviderCredentials {
+            api_key: Some("sk-super-secret".to_string()),
+            base_url: Some("https://proxy.example/v1".to_string()),
+        };
+        let rendered = format!("{creds:?}");
+        assert!(!rendered.contains("sk-super-secret"), "{rendered}");
+        assert!(rendered.contains("[REDACTED]"));
+        assert!(
+            rendered.contains("https://proxy.example/v1"),
+            "base URL is not a secret: {rendered}"
         );
     }
 

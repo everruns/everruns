@@ -21,12 +21,12 @@
 use async_trait::async_trait;
 use everruns_core::SessionId;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
-use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FormField,
-};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{SessionFileSystem, ToolContext};
+use everruns_platform::connector::{
+    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FormField,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::OnceLock;

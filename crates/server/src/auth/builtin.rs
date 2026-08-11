@@ -58,8 +58,13 @@ pub struct BuiltinAuthBackend {
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
-    /// Platform definition (email sender, capability surface).
+    /// Platform definition (capability surface, built-in provisioning).
     pub platform_definition: Arc<PlatformDefinition>,
+    /// System email sender for account emails (verification, recovery,
+    /// anti-enumeration notices). Server composition threads the operator's
+    /// sender in via [`BuiltinAuthBackend::with_email_sender`] (EVE-879);
+    /// defaults to the environment-configured sender.
+    pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
     /// Operator-composed built-in harness set. Used by the signup safety-net
     /// in `register` / `oauth_callback` so a pre-seed signup still lands in
     /// an org with the correct (operator-chosen) harnesses.
@@ -108,6 +113,7 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::new(),
             platform_definition,
+            email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
         }
@@ -120,6 +126,16 @@ impl BuiltinAuthBackend {
         built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     ) -> Self {
         self.built_in_harnesses = built_in_harnesses;
+        self
+    }
+
+    /// Replace the system email sender used for account emails (EVE-879).
+    /// `ServerAppBuilder` calls this with its composed sender.
+    pub fn with_email_sender(
+        mut self,
+        email_sender: Arc<dyn everruns_platform::email::EmailSender>,
+    ) -> Self {
+        self.email_sender = email_sender;
         self
     }
 
@@ -137,6 +153,7 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
             platform_definition,
+            email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
         }

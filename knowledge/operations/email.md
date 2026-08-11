@@ -23,14 +23,19 @@ Email is not an agent capability, public API, or UI surface. It is a host servic
 
 ## Core Contract
 
-`everruns-core` owns the email abstraction:
+`everruns-platform` owns the email abstraction (moved out of `everruns-core`
+in EVE-879 — email is a hosted product side effect, never consumed during a
+turn, so the execution kernel carries none of it):
 
 - `EmailSender` is the async trait used by internal callers.
 - `EmailMessage` is the provider-neutral request shape.
 - `SentEmail` is the provider-neutral success result.
 - `EmailError` separates configuration, request validation, transport, and provider failures.
 - Platform/application state stores the sender as `Arc<dyn EmailSender>` when it must be shared across services.
-- `PlatformDefinition` carries the active system email sender as part of the platform profile.
+- The server composes the active system email sender on `ServerAppBuilder`
+  (`email_sender`, defaulting to the environment-configured
+  `SystemEmailConfig`); it is not part of the execution-facing
+  `PlatformDefinition`.
 - Concrete senders use direct provider HTTP clients; email remains a
   domain-specific host service outside the tenant/agent egress boundary.
 - System email is not governed by tenant/agent egress policy such as
@@ -51,7 +56,7 @@ At least one `to` recipient, a subject, and a valid template are required.
 
 Email sends use explicit templates. Callers select a template by constructing the matching `EmailTemplate` variant (or its `EmailMessage` constructor); there is no runtime template registry. Both templates accept a caller-supplied `text` and `html` body and require both to be non-empty.
 
-All templates share an app-styled HTML shell whose colors and shapes mirror `apps/ui/src/app/design-system.css` (grayscale surface, navy/gold brand accents, sharp 0px corners). Brand tokens are inlined as literals in `crates/core/src/email.rs` because email clients cannot load the app's webfont or CSS variables; keep them in sync if the palette changes.
+All templates share an app-styled HTML shell whose colors and shapes mirror `apps/ui/src/app/design-system.css` (grayscale surface, navy/gold brand accents, sharp 0px corners). Brand tokens are inlined as literals in `crates/platform/src/email/mod.rs` because email clients cannot load the app's webfont or CSS variables; keep them in sync if the palette changes.
 
 - `EmailTemplate::Minimal(MinimalEmailTemplate)`
   - app-styled shell, but **unbranded**: no wordmark, logo, or footer link
@@ -75,9 +80,9 @@ Email delivery is system-wide and configured from process environment:
 
 When `EMAIL_PROVIDER` is unset, the system email configuration is disabled. Production deployments that send email must set `EMAIL_PROVIDER=resend` and provide the Resend variables.
 
-The default OSS platform profile resolves `SystemEmailConfig::from_env()` during `oss_platform_definition_for_grade()` construction. Invalid email configuration fails startup when a provider is explicitly enabled.
+The default OSS server composition resolves `SystemEmailConfig::from_env()` via `crate::platform::system_email_sender()` when `ServerAppBuilder` runs without an explicit sender. Invalid email configuration fails startup when a provider is explicitly enabled.
 
-Embedders can bypass env-based setup by constructing a custom `PlatformDefinition` and calling `PlatformDefinition::builder().email_sender(...)` before passing it to `ServerAppBuilder::platform_definition(...)`. Reusable OSS helpers include `SystemEmailConfig::into_sender()`, `ResendEmailSender::new(...)`, and `ResendEmailSender::with_http_client(...)` for deployments that assemble their own platform profile.
+Embedders can bypass env-based setup by calling `ServerAppBuilder::email_sender(...)` with their own `Arc<dyn EmailSender>` (EVE-879). Reusable OSS helpers include `SystemEmailConfig::into_sender()`, `ResendEmailSender::new(...)`, and `ResendEmailSender::with_http_client(...)` for deployments that assemble their own sender.
 
 `ServerContext.email_sender` exposes the configured sender to internal background tasks and extension code. Request handlers should access the sender through their service/application state when a feature needs transactional email.
 

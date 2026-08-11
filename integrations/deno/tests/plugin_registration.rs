@@ -1,9 +1,9 @@
 //! Integration tests for Deno plugin registration and capability.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_integrations_deno as _;
+use everruns_platform::connector::ConnectorPlugin;
 
 #[test]
 fn test_deno_plugin_is_submitted() {

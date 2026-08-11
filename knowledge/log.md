@@ -2,6 +2,25 @@
 
 ## 2026-08-11
 
+* **Connection/auth/email infrastructure extraction**: Moved the hosted
+  connector catalog (`Connector` trait, `ConnectorRegistry`,
+  `ConnectorPlugin` inventory registration) and the system email contract
+  with its concrete senders (`EmailSender`, templates, `SystemEmailConfig`,
+  `ResendEmailSender`) out of `everruns-core` into `everruns-platform`, and
+  the OAuth 2.1 protocol client (`OAuthClient`, `TokenSet`, PKCE, discovery,
+  form-encoded token exchange) into `everruns-mcp` — its only consumer —
+  as `everruns_mcp::oauth::protocol` (EVE-879, breaking for direct core
+  consumers in 0.18). `PlatformDefinition` no longer carries a connector
+  registry or email sender; server composition owns both
+  (`ServerAppBuilder::connector_registry` / `::email_sender`, OSS presets in
+  `crates/server/src/platform.rs`). The `CredentialProvider` seam moved to
+  `everruns-provider` (re-exported by core unchanged). Secret-bearing types
+  (`TokenSet`, `PkcePair`, `ProviderCredentials`, `ResendEmailConfig`) now
+  redact credentials in `Debug`, with tests. Core dropped its
+  `serde_urlencoded` and `eventsource-stream` dependencies; REST/gRPC shapes
+  unchanged (OpenAPI byte-identical); the agent-record isolation guard now
+  also covers connector/OAuth/email types.
+
 * **Eval/observer/feature-management record extraction**: Moved the persisted
   eval aggregates (definitions, runs, results, dataset exports, targets,
   scorers), the observer records (match rules, judge configuration,

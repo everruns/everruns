@@ -51,7 +51,6 @@ pub mod user_hook_types;
 // Deployment configuration
 pub mod deployment;
 pub mod egress;
-pub mod email;
 pub mod exec_tool_result;
 pub mod execution_snapshot;
 pub mod utility_llm;
@@ -94,8 +93,7 @@ pub mod agent_definition;
 pub mod agent_identity;
 pub mod ard_attachment;
 pub mod capability_dto;
-pub mod connector;
-pub mod credential_provider;
+pub use everruns_provider::credential_provider;
 pub use everruns_provider::credential_schema;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
@@ -113,7 +111,9 @@ pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
-pub mod oauth;
+// EVE-879: the OAuth 2.1 protocol client moved to `everruns_mcp::oauth::protocol`
+// — MCP login/refresh is its only consumer, and the kernel carries no
+// token-exchange plumbing.
 // EVE-878: the observer records (`Observer`, `TraceScore`, judge
 // configuration, match rules and their lifecycle enums) moved to the
 // `everruns-platform` crate — online scoring watches completed turns from the
@@ -315,13 +315,11 @@ pub use egress::{
 };
 pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
 
-// System email re-exports
-pub use email::{
-    BasicEmailTemplate, DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult,
-    EmailSender, EmailTag, EmailTemplate, MinimalEmailTemplate, NoopEmailSender, RenderedEmail,
-    ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
-    system_email_from,
-};
+// EVE-879: the system email contract and its concrete senders (Resend,
+// disabled/noop, `SystemEmailConfig`) moved to the `everruns-platform` crate —
+// email delivery is a hosted product side effect, never consumed during a
+// turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
+// consumer), and the connector catalog moved to `everruns-platform`.
 pub use utility_llm::{
     DisabledUtilityLlmService, OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_LLM_MODEL,
     UTILITY_OPENAI_API_KEY_ENV, UtilityLlmReasoningEffort, UtilityLlmRequest, UtilityLlmService,
@@ -363,13 +361,9 @@ pub use credential_schema::{
 };
 
 // Pluggable provider credential source (drivers never read env directly).
+// EVE-879: the trait lives in `everruns-provider` (provider authentication is
+// a provider-crate contract); core re-exports it unchanged.
 pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
-
-// Connector plugin system (user-scoped API key / OAuth connections)
-pub use connector::{
-    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorRegistry, ConnectorRegistryBuilder,
-    ConnectorType, ConnectorValidation, FieldType, FormField,
-};
 // EVE-881: `BuiltInHarnessDefinition`, `BuiltInHarnessRole`, and
 // `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —
 // product provisioning templates are platform/server composition, not

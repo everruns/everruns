@@ -21,8 +21,8 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
+use everruns_platform::connector::ConnectorPlugin;
 
 use std::sync::LazyLock;
 

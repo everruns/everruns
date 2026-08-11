@@ -14,10 +14,21 @@ use super::{
 const RESEND_API_BASE_URL: &str = "https://api.resend.com";
 const RESEND_REQUEST_TIMEOUT_MS: u64 = 30_000;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// `Debug` redacts the API key (EVE-879): the config is deployment secrets,
+/// and it travels through startup wiring that logs its surroundings.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ResendEmailConfig {
     pub api_key: String,
     pub api_base_url: String,
+}
+
+impl std::fmt::Debug for ResendEmailConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResendEmailConfig")
+            .field("api_key", &"[REDACTED]")
+            .field("api_base_url", &self.api_base_url)
+            .finish()
+    }
 }
 
 impl ResendEmailConfig {
@@ -197,6 +208,22 @@ mod tests {
     }
 
     #[test]
+    fn resend_config_debug_redacts_the_api_key() {
+        let config = ResendEmailConfig {
+            api_key: "re_live_secret".to_string(),
+            api_base_url: "https://api.resend.com".to_string(),
+        };
+        let rendered = format!("{config:?}");
+        assert!(!rendered.contains("re_live_secret"), "{rendered}");
+        assert!(rendered.contains("[REDACTED]"));
+        assert!(rendered.contains("https://api.resend.com"));
+
+        let sender = ResendEmailSender::new(config);
+        let rendered = format!("{sender:?}");
+        assert!(!rendered.contains("re_live_secret"), "{rendered}");
+    }
+
+    #[test]
     fn resend_config_rejects_invalid_base_url() {
         let error = ResendEmailConfig {
             api_key: "re_test".to_string(),
@@ -267,7 +294,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let allowlist = crate::SystemAllowlist::from_toml(
+        let allowlist = everruns_core::SystemAllowlist::from_toml(
             r#"
             [groups.test]
             allowed = ["allowed.example.com"]

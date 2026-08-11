@@ -1633,8 +1633,8 @@ async fn deliver_account_email(
     text: String,
     html: String,
 ) {
-    use everruns_core::{EmailError, EmailMessage};
-    let sender = state.platform_definition.email_sender();
+    use everruns_platform::email::{EmailError, EmailMessage};
+    let sender = state.email_sender.clone();
     let message = EmailMessage::basic(to, subject, text, html);
     match sender.send_email(message).await {
         Ok(_) => {}
@@ -2449,7 +2449,8 @@ mod oauth_state_tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
     use async_trait::async_trait;
-    use everruns_core::{EmailMessage, EmailResult, EmailSender, PlatformDefinition, SentEmail};
+    use everruns_core::PlatformDefinition;
+    use everruns_platform::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
     use std::sync::Arc;
     use std::sync::Mutex;
 
@@ -2481,9 +2482,10 @@ mod oauth_state_tests {
         sender: Arc<dyn EmailSender>,
     ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
         let db = Arc::new(StorageBackend::in_memory());
-        let platform = PlatformDefinition::builder().email_sender(sender).build();
+        let platform = PlatformDefinition::builder().build();
         (
-            BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform)),
+            BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform))
+                .with_email_sender(sender),
             db,
         )
     }

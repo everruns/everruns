@@ -1,8 +1,9 @@
 //! OAuth for remote MCP servers: the login handshake and the auth provider
 //! that keeps its tokens fresh.
 //!
-//! The protocol steps are [`everruns_core::oauth`], shared with every other
-//! OAuth flow in the workspace. What is MCP-specific lives here:
+//! The protocol steps are [`protocol`] (moved out of `everruns-core` in
+//! EVE-879 — MCP login/refresh is their only consumer). What is MCP-specific
+//! lives in this module:
 //!
 //! - **Discovery starts at the server, not at an issuer.** An MCP server
 //!   publishes protected-resource metadata (RFC 9728) naming the authorization
@@ -29,10 +30,13 @@ use std::sync::Mutex;
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::egress::{EgressRequestKind, EgressService};
-use everruns_core::oauth::{
+
+pub mod protocol;
+
+pub use protocol::{
     AuthorizationServerMetadata, AuthorizeParams, ClientRegistration, DEFAULT_REFRESH_SKEW_SECONDS,
-    OAuthClient, PkcePair, RegisteredClient, TokenSet, authorize_url, random_state,
-    validate_callback_issuer,
+    OAuthClient, OAuthError, PkcePair, ProtectedResourceMetadata, RegisteredClient, TokenSet,
+    authorize_url, random_state, validate_callback_issuer,
 };
 
 use crate::auth::{McpAuthProvider, McpAuthRequest, McpCredential};

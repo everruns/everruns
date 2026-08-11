@@ -1,8 +1,9 @@
 // System email abstraction.
 //
-// Decision: Keep email delivery as a core, system-wide service rather than an
-// agent capability. Email sends are product/ops side effects owned by the host
-// application, not tools exposed to agents.
+// Decision (EVE-879): email delivery is a hosted product/ops side effect owned
+// by the host application — never a tool exposed to agents and never consumed
+// during a turn — so the contract and its concrete senders live in
+// `everruns-platform`, not `everruns-core`.
 // Decision: Keep provider details behind EmailSender so future SendGrid,
 // Cloudflare, SES, or SMTP implementations can reuse the same call sites.
 // Decision: Keep the sender fixed until product requirements justify

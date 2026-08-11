@@ -320,7 +320,7 @@ pub struct ServerContext {
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
     pub platform_definition: Arc<PlatformDefinition>,
     /// System-wide email sender from the platform profile.
-    pub email_sender: Arc<dyn everruns_core::EmailSender>,
+    pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
     /// System-wide outbound egress service from the platform profile.
     pub egress_service: Arc<dyn everruns_core::EgressService>,
     /// System-wide utility LLM service from the platform profile.
@@ -389,6 +389,8 @@ pub struct ServerAppBuilder {
     auth_factory: Option<AuthFactoryFn>,
     platform_definition: Option<PlatformDefinition>,
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
+    email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -407,6 +409,8 @@ impl ServerAppBuilder {
             auth_factory: None,
             platform_definition: None,
             built_in_harnesses: None,
+            connector_registry: None,
+            email_sender: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
             error_reporter: None,
@@ -453,6 +457,30 @@ impl ServerAppBuilder {
         harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
     ) -> Self {
         self.built_in_harnesses = Some(harnesses);
+        self
+    }
+
+    /// Replace the connector registry (user connections catalog, EVE-879).
+    ///
+    /// Defaults to the OSS preset (`crate::platform::oss_connector_registry`,
+    /// inventory-discovered). Connectors are hosted control-plane composition,
+    /// not part of the shared `PlatformDefinition` runtime surface.
+    pub fn connector_registry(
+        mut self,
+        registry: everruns_platform::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = Some(registry);
+        self
+    }
+
+    /// Replace the system email sender (EVE-879).
+    ///
+    /// Defaults to the environment-configured sender
+    /// (`crate::platform::system_email_sender`; disabled when no provider is
+    /// configured). Email delivery is hosted product composition, not part of
+    /// the shared `PlatformDefinition` runtime surface.
+    pub fn email_sender(mut self, sender: Arc<dyn everruns_platform::email::EmailSender>) -> Self {
+        self.email_sender = Some(sender);
         self
     }
 
@@ -580,6 +608,16 @@ impl ServerAppBuilder {
                 .clone()
                 .unwrap_or_else(crate::platform::oss_built_in_harnesses),
         );
+        // Connector registry and system email sender are hosted control-plane
+        // services (EVE-879): composed here, not on `PlatformDefinition`.
+        let connector_registry = self
+            .connector_registry
+            .clone()
+            .unwrap_or_else(crate::platform::oss_connector_registry);
+        let email_sender = self
+            .email_sender
+            .clone()
+            .unwrap_or_else(crate::platform::system_email_sender);
         let mut supervisor = TaskSupervisor::new();
 
         // =====================================================================
@@ -675,12 +713,14 @@ impl ServerAppBuilder {
                             platform_definition.clone(),
                             valkey,
                         )
-                        .with_built_in_harnesses(built_in_harnesses.clone()),
+                        .with_built_in_harnesses(built_in_harnesses.clone())
+                        .with_email_sender(email_sender.clone()),
                     )
                 } else {
                     Arc::new(
                         auth::BuiltinAuthBackend::new(cfg, db.clone(), platform_definition.clone())
-                            .with_built_in_harnesses(built_in_harnesses.clone()),
+                            .with_built_in_harnesses(built_in_harnesses.clone())
+                            .with_email_sender(email_sender.clone()),
                     )
                 }
             }
@@ -1132,7 +1172,7 @@ impl ServerAppBuilder {
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
-            platform_definition.connectors().clone(),
+            connector_registry.clone(),
         );
         let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
@@ -1391,7 +1431,7 @@ impl ServerAppBuilder {
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),
-            platform_definition.email_sender(),
+            email_sender.clone(),
             auth_config.frontend_url.clone(),
         );
         let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
@@ -1420,7 +1460,7 @@ impl ServerAppBuilder {
             encryption.clone(),
             auth_state.clone(),
             auth_config.clone(),
-            platform_definition.connectors().clone(),
+            connector_registry.clone(),
             mcp_server_service,
         );
         let session_schedule_service =
@@ -1461,6 +1501,7 @@ impl ServerAppBuilder {
             capability_service.clone(),
             Some(sqldb_store.clone()),
         )
+        .with_connector_registry(connector_registry.clone())
         .with_org_rate_limiter(org_rate_limiter.clone())
         .with_virtual_registry(virtual_registry.clone())
         .with_resource_metadata_url(mcp_resource_metadata_url)
@@ -1846,7 +1887,7 @@ impl ServerAppBuilder {
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
             platform_definition: platform_definition.clone(),
-            email_sender: platform_definition.email_sender(),
+            email_sender: email_sender.clone(),
             egress_service: platform_definition.egress_service(),
             utility_llm_service: platform_definition.utility_llm_service(),
             error_reporter: error_reporter.clone(),
@@ -1860,6 +1901,7 @@ impl ServerAppBuilder {
             let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
+            let grpc_connector_registry = connector_registry.clone();
             let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
             let grpc_org_rate_limiter = Arc::new(org_rate_limiter.clone());
@@ -1888,6 +1930,7 @@ impl ServerAppBuilder {
                     let grpc_encryption = grpc_encryption.clone();
                     let grpc_runner = grpc_runner.clone();
                     let grpc_platform_definition = grpc_platform_definition.clone();
+                    let grpc_connector_registry = grpc_connector_registry.clone();
                     let grpc_provider_resolver = grpc_provider_resolver.clone();
                     let grpc_permission_resolver = grpc_permission_resolver.clone();
                     let grpc_org_rate_limiter = grpc_org_rate_limiter.clone();
@@ -1909,6 +1952,7 @@ impl ServerAppBuilder {
                         if let Some(broadcaster) = grpc_task_broadcaster {
                             grpc_svc.set_task_broadcaster(broadcaster);
                         }
+                        grpc_svc.set_connector_registry(grpc_connector_registry);
                         grpc_svc.set_permission_resolver(grpc_permission_resolver);
                         grpc_svc.set_org_rate_limiter(grpc_org_rate_limiter);
                         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
@@ -2217,7 +2261,7 @@ impl ServerAppBuilder {
                     platform_definition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
-                .with_connector_registry(platform_definition.connectors().clone())
+                .with_connector_registry(connector_registry.clone())
                 .with_budget_service(budget_service.clone())
                 .with_encryption(encryption.clone())
                 .with_workflow_store(durable_store.clone())

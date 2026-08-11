@@ -30,8 +30,8 @@ pub mod payments;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::{McpServerAuthMode, ScopedMcpServer, ScopedMcpServers};
+use everruns_platform::connector::ConnectorPlugin;
 use serde_json::{Value, json};
 
 use connection::ParallelConnector;

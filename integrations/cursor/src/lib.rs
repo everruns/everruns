@@ -19,10 +19,10 @@ mod tools;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tool_narration::ToolNarrationPhase;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::tools::Tool;
+use everruns_platform::connector::ConnectorPlugin;
 
 use connection::CursorConnector;
 use tools::{

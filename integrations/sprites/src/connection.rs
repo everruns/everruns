@@ -4,7 +4,7 @@
 // Decision: Validate token by calling GET /v1/sprites — 200 means valid, 401 means invalid.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 

@@ -18,6 +18,7 @@
 //! assert_eq!(model.model, "assistant-v2");
 //! ```
 
+pub mod credential_provider;
 pub mod credential_schema;
 pub mod driver_helpers;
 pub mod driver_registry;
@@ -49,6 +50,7 @@ pub mod user_facing_error;
 // `everruns_core::<Symbol>`.
 // ============================================================================
 
+pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
 pub use credential_schema::{
     CredentialFormSchema, assemble_credential_document, parse_credential_document,
 };

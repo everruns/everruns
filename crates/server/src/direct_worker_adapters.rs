@@ -276,7 +276,7 @@ pub struct DirectWorkerAdapters {
     provider_resolver: Arc<ProviderResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
-    connector_registry: everruns_core::connector::ConnectorRegistry,
+    connector_registry: everruns_platform::connector::ConnectorRegistry,
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
     egress_service: Option<Arc<dyn EgressService>>,
@@ -315,7 +315,7 @@ impl DirectWorkerAdapters {
             provider_resolver,
             mcp_server_service,
             capability_registry,
-            connector_registry: everruns_core::connector::ConnectorRegistry::new(),
+            connector_registry: everruns_platform::connector::ConnectorRegistry::new(),
             driver_registry,
             utility_llm_service: None,
             egress_service: None,
@@ -477,7 +477,7 @@ impl DirectWorkerAdapters {
 
     pub fn with_connector_registry(
         mut self,
-        registry: everruns_core::connector::ConnectorRegistry,
+        registry: everruns_platform::connector::ConnectorRegistry,
     ) -> Self {
         self.connector_registry = registry;
         self
@@ -2656,7 +2656,7 @@ struct DirectPlatformStoreDeps {
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     capability_registry: CapabilityRegistry,
-    connector_registry: everruns_core::connector::ConnectorRegistry,
+    connector_registry: everruns_platform::connector::ConnectorRegistry,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -2675,7 +2675,7 @@ pub struct DirectPlatformStore {
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
-    connector_registry: everruns_core::connector::ConnectorRegistry,
+    connector_registry: everruns_platform::connector::ConnectorRegistry,
     resolved_caller: Arc<OnceCell<Caller>>,
 }
 

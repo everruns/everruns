@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-877, EVE-881, EVE-882, EVE-878): stored platform
-# persistence records — Agent/AgentVersion (lifecycle status,
+# Architecture guard (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879): stored
+# platform persistence records — Agent/AgentVersion (lifecycle status,
 # versioning/publication metadata, fork lineage), Harness (lifecycle status,
 # hierarchy identifiers, built-in flags, display metadata, timestamps) plus
 # the built-in harness provisioning templates, Session (product
@@ -9,7 +9,11 @@
 # aggregates (persisted eval definitions/runs/results/datasets, observer
 # records with judge configuration and trace-score lifecycle, org/product
 # feature-flag records and catalog) — live in crates/platform
-# (`everruns-platform`). The execution kernel consumes only the portable
+# (`everruns-platform`), as do the hosted connector catalog (Connector
+# trait/registry/plugin) and the system email contract with its concrete
+# senders (EVE-879). The OAuth 2.1 protocol client (TokenSet, PkcePair,
+# OAuthClient) lives in crates/mcp (`everruns-mcp`), its only consumer. The
+# execution kernel consumes only the portable
 # `everruns_core::AgentDefinition` / `everruns_core::HarnessDefinition` /
 # `everruns_core::ExecutionSession`, the resolved execution snapshot, and the
 # resolved `everruns_core::execution_features` decisions:
@@ -28,7 +32,9 @@
 #    SessionActivity, SessionParticipant and its enums, Eval, EvalCase,
 #    EvalRun, EvalCaseResult, EvalRunDataset, EvalTarget, Scorer, Observer,
 #    ObserverMatch, LlmJudgeConfig, TraceScore, FeatureFlags, FeatureFlagMap,
-#    FeatureFlagDefinition).
+#    FeatureFlagDefinition), nor the moved connector/email/OAuth
+#    infrastructure types (ConnectorRegistry, ConnectorPlugin, EmailMessage,
+#    SystemEmailConfig, ResendEmailSender, OAuthClient, TokenSet, ...).
 
 set -euo pipefail
 
@@ -52,17 +58,21 @@ if matches=$(grep -rnE 'everruns_platform(::|;)' "${KERNEL_TREES[@]}" --include=
   FAILED=1
 fi
 
-# 1b. Kernel sources: the moved stored-record, provisioning, and management
-#     types must not be re-declared inside the kernel (EVE-877 agents,
-#     EVE-881 harnesses, EVE-882 sessions, EVE-878 eval/observer/
-#     feature-management records).
+# 1b. Kernel sources: the moved stored-record, provisioning, management, and
+#     connector/OAuth/email infrastructure types must not be re-declared
+#     inside the kernel (EVE-877 agents, EVE-881 harnesses, EVE-882 sessions,
+#     EVE-878 eval/observer/feature-management records, EVE-879
+#     connector/OAuth/email infrastructure).
 RECORD_TYPES='Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|BuiltInHarnessDefinition|BuiltInHarnessRole|Session|SessionStatus|SessionSource|SessionActivity|SessionParticipant|SessionParticipantKind|SessionParticipantRole'
 RECORD_TYPES="${RECORD_TYPES}|Eval|EvalCase|EvalRun|EvalCaseResult|EvalRunDataset|EvalTarget|Scorer"
 RECORD_TYPES="${RECORD_TYPES}|Observer|ObserverMatch|LlmJudgeConfig|TraceScore"
 RECORD_TYPES="${RECORD_TYPES}|FeatureFlags|FeatureFlagMap|FeatureFlagDefinition"
+RECORD_TYPES="${RECORD_TYPES}|Connector|ConnectorPlugin|ConnectorRegistry|ConnectorRegistryBuilder|ConnectorType|ConnectorValidation"
+RECORD_TYPES="${RECORD_TYPES}|EmailAddress|EmailMessage|EmailTag|EmailTemplate|MinimalEmailTemplate|BasicEmailTemplate|RenderedEmail|SentEmail|NoopEmailSender|DisabledEmailSender|ResendEmailSender|ResendEmailConfig|SystemEmailConfig"
+RECORD_TYPES="${RECORD_TYPES}|OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration"
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (${RECORD_TYPES})[[:space:]{<(]" \
   "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
-  echo "Kernel crates must not declare stored platform record types (EVE-877, EVE-881, EVE-882, EVE-878):"
+  echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879):"
   echo "$matches"
   FAILED=1
 fi
@@ -104,8 +114,8 @@ for crate in "${PROVIDER_CRATES[@]}"; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records plus eval/observer/feature-management aggregates belong in crates/platform (EVE-877, EVE-881, EVE-882, EVE-878)."
+  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records plus eval/observer/feature-management aggregates — and the connector/email infrastructure — belong in crates/platform; the OAuth protocol client belongs in crates/mcp (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession and resolved execution features only; platform records stay in crates/platform."
+echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession and resolved execution features only; platform records and connector/OAuth/email infrastructure stay out of the kernel."

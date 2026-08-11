@@ -67,6 +67,14 @@ pub mod eval;
 pub mod feature_flags;
 pub mod observer;
 
+// Connector catalog (user-scoped API key / OAuth connections) and the system
+// email contract with its concrete senders, carved out of `everruns-core`
+// (EVE-879). Both are hosted control-plane services: the server renders
+// connector form schemas and resolves connections, and email delivery is a
+// product/ops side effect. Nothing consumes them during a turn.
+pub mod connector;
+pub mod email;
+
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
@@ -130,4 +138,18 @@ pub use audit::{
 pub use everruns_core::{
     DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, PrincipalKind, PrincipalSummary,
     org_public_id_from_internal,
+};
+
+// Connector plugin system re-exports (EVE-879).
+pub use connector::{
+    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorRegistry, ConnectorRegistryBuilder,
+    ConnectorType, ConnectorValidation, FieldType, FormField,
+};
+
+// System email re-exports (EVE-879).
+pub use email::{
+    BasicEmailTemplate, DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult,
+    EmailSender, EmailTag, EmailTemplate, MinimalEmailTemplate, NoopEmailSender, RenderedEmail,
+    ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
+    system_email_from,
 };

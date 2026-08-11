@@ -22,12 +22,12 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use everruns_core::connector::{
-    ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
-};
 use everruns_core::{
     Caller, EgressService, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
     validate_safe_url,
+};
+use everruns_platform::connector::{
+    ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use rand::RngExt;
 use reqwest::Url;
@@ -433,7 +433,7 @@ pub async fn create_api_key_connection(
     }
 
     // Validate all fields via the provider
-    let validation: everruns_core::connector::ConnectorValidation =
+    let validation: everruns_platform::connector::ConnectorValidation =
         provider.validate_fields(&fields).await.map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
@@ -1152,9 +1152,9 @@ fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResponse {
             .iter()
             .map(|f| {
                 let field_type = match f.field_type {
-                    everruns_core::connector::FieldType::Password => "password",
-                    everruns_core::connector::FieldType::Text => "text",
-                    everruns_core::connector::FieldType::Url => "url",
+                    everruns_platform::connector::FieldType::Password => "password",
+                    everruns_platform::connector::FieldType::Text => "text",
+                    everruns_platform::connector::FieldType::Url => "url",
                 };
                 FormFieldResponse {
                     name: f.name.clone(),
