@@ -64,6 +64,11 @@ pub mod harness;
 // to/from the stored `SessionStatus` at the adapter boundary.
 pub mod session;
 
+// Org-scoped Workspace record carved out of `everruns-core` (EVE-880). A turn
+// resolves workspace *paths* through core's roots/policy types; the stored
+// working-area row with its lifecycle status is control-plane state.
+pub mod workspace;
+
 // Management/reporting aggregates carved out of `everruns-core` (EVE-878):
 // persisted eval definitions/runs/results/datasets, observer records with
 // judge configuration and trace-score lifecycle, and the org/product

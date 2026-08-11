@@ -147,7 +147,6 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod task_observer;
 pub mod wake_queue;
-pub mod workspace;
 pub mod workspace_policy;
 pub mod workspace_roots;
 

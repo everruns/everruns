@@ -1,4 +1,9 @@
-// Workspace domain types
+// Workspace persistence record (EVE-880).
+//
+// The stored, org-scoped working area. Execution never loads this row: a turn
+// consumes only `WorkspaceId` plus the resolved roots/policy that stay in
+// `everruns-core`, so the record and its lifecycle live with the other
+// control-plane aggregates.
 //
 // Design intent lives in `knowledge/runtime-resources/workspace.md`.
 //
@@ -11,7 +16,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::WorkspaceId;
+use everruns_core::typed_id::WorkspaceId;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
