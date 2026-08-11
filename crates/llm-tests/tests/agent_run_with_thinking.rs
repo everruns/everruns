@@ -18,7 +18,7 @@ use everruns_core::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 
-use everruns_core::capabilities::CurrentTimeCapability;
+use everruns_builtins::CurrentTimeCapability;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};

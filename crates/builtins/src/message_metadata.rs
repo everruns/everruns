@@ -89,6 +89,10 @@ impl Capability for MessageMetadataCapability {
         "Annotates user and agent messages with metadata (message timestamp, UTC) when building the LLM request, so the model can reason about timing and gaps between messages. Stored messages are unchanged."
     }
 
+    fn filter_response_text(&self, text: String, _config: &serde_json::Value) -> String {
+        strip_leading_timestamp_annotations(&text)
+    }
+
     fn icon(&self) -> Option<&str> {
         Some("clock")
     }
@@ -274,7 +278,6 @@ fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
     use crate::message::ToolCallContentPart;
     use crate::typed_id::SessionId;
 
@@ -297,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = crate::portable_capability_registry().unwrap();
         let cap = registry.get(MESSAGE_METADATA_CAPABILITY_ID).unwrap();
         assert!(cap.model_view_provider().is_some());
     }

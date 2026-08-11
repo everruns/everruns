@@ -53,7 +53,7 @@ automatically once the limit resets; absent it, the copy stays generic.
 
 ## Disclosure modes
 
-The `error_disclosure` capability (`crates/core/src/capabilities/error_disclosure.rs`)
+The `error_disclosure` capability (`crates/builtins/src/error_disclosure.rs`)
 selects how the classified error surfaces in the session transcript and
 events:
 

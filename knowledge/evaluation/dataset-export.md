@@ -58,7 +58,7 @@ reporting.
 ### Model-view faithfulness
 
 Trajectories use the compaction **model-view masking**
-(`build_model_view_messages` in `crates/core/src/capabilities/compaction.rs`) so
+(`build_model_view_messages` in `crates/builtins/src/compaction.rs`) so
 the exported messages match training reality rather than a lossless log the
 model never read. Phase 1 applies the default `CompactionConfig`; honoring the
 exact per-run compaction config is a follow-up (see Follow-ups).

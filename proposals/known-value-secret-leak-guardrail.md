@@ -46,7 +46,7 @@ secret-leak classifier). A deterministic known-value redactor is a valuable
 
 ## The faithful match: `llm_judge` on `tool_use` (already shipped)
 
-Grounded in `crates/core/src/capabilities/guardrails.rs` and
+Grounded in `crates/builtins/src/guardrails.rs` and
 `crates/core/src/guardrail_checks.rs`:
 
 - `GuardrailRule::LlmJudge { prompt }` sends the stage name, tool name, and a

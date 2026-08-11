@@ -422,6 +422,19 @@ fn resolve_error_disclosure(
         .map_or(ceiling, |requested| requested.min(ceiling))
 }
 
+fn filter_response_text(
+    registry: &CapabilityRegistry,
+    configs: &[crate::AgentCapabilityConfig],
+    mut text: String,
+) -> String {
+    for config in configs {
+        if let Some(capability) = registry.get(config.capability_id()) {
+            text = capability.filter_response_text(text, config.config_value());
+        }
+    }
+    text
+}
+
 fn is_dynamic_error_placeholder(text: &str) -> bool {
     (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
@@ -1781,8 +1794,8 @@ impl ReasonAtom {
                             context,
                             partial,
                             iteration,
-                            runtime_agent.max_iterations,
-                            &runtime_agent.tools,
+                            &runtime_agent,
+                            &resolved_capability_configs,
                         )
                         .await;
                 }
@@ -1834,7 +1847,10 @@ impl ReasonAtom {
             &context.turn_id.to_string(),
         )
         .await;
-        let raw_tool_result_bytes = crate::capabilities::total_tool_result_bytes(&patched_messages);
+        let raw_tool_result_bytes = compaction_policy
+            .as_ref()
+            .map(|policy| policy.total_tool_result_bytes(&patched_messages))
+            .unwrap_or(0);
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -3301,10 +3317,13 @@ impl ReasonAtom {
             && !text.is_empty()
             && tool_calls.is_empty()
         {
-            // Strip the synthetic timestamp prefix first (idempotent with the
-            // later strip at message build) so annotation char offsets computed
-            // here stay valid against the finalized message text.
-            text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+            // Apply deterministic capability-owned response filters before
+            // annotation offsets are computed against the finalized text.
+            text = filter_response_text(
+                &self.capability_registry,
+                &resolved_capability_configs,
+                text,
+            );
             let collected = collect_annotations(
                 &annotation_providers,
                 &runtime_agent.system_prompt,
@@ -3428,13 +3447,9 @@ impl ReasonAtom {
             thinking.clear();
         }
 
-        // Tool-call repair seam (EVE-600). This is the smallest provider-agnostic
-        // hook where a malformed tool call can still be intercepted: `tool_calls`
-        // is finalized here but the assistant message and downstream events have
-        // not been built yet. The opt-in `tool_call_repair` capability runs
-        // deterministic local salvage on each call's `arguments` and emits a
-        // `tool.call_repaired` event per malformed call. When the capability is
-        // disabled (the default) this is a no-op and behavior is unchanged.
+        // Finalized tool-call policy seam. This is the smallest provider-neutral
+        // point where configured capabilities can normalize a complete call
+        // batch before the assistant message and downstream events are built.
         if !tool_calls.is_empty() {
             self.apply_finalized_tool_call_hooks(
                 session_id,
@@ -3587,10 +3602,13 @@ impl ReasonAtom {
         }
 
         // 18. Store and emit output.message.completed event with metadata and usage.
-        // Strip any synthetic `[time …]` annotation the model echoed from the
-        // message_metadata model view before persisting/returning it (EVE-710),
-        // so exact-output replies are not polluted by the injected prefix.
-        let text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+        // Apply capability-owned response filters before persisting/returning
+        // the finalized assistant text.
+        let text = filter_response_text(
+            &self.capability_registry,
+            &resolved_capability_configs,
+            text,
+        );
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -3685,8 +3703,8 @@ impl ReasonAtom {
         context: &AtomContext,
         partial: PartialStreamState,
         iteration: u32,
-        max_iterations: usize,
-        tool_definitions: &[ToolDefinition],
+        runtime_agent: &crate::RuntimeAgent,
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
     ) -> Result<ReasonResult> {
         let event_context = EventContext::from_atom_context(context);
         let turn_id = context.turn_id;
@@ -3710,10 +3728,13 @@ impl ReasonAtom {
             ))
             .await;
 
-        // Build the assistant message from accumulated text and persist via event.
-        // Strip any echoed `[time …]` annotation the model produced (EVE-710).
-        let accumulated =
-            crate::capabilities::strip_leading_timestamp_annotations(&partial.accumulated);
+        // Build the assistant message from capability-filtered accumulated text
+        // and persist it via the canonical event path.
+        let accumulated = filter_response_text(
+            &self.capability_registry,
+            resolved_capability_configs,
+            partial.accumulated,
+        );
         let assistant_message = Message::assistant(&accumulated).with_id(message_id);
         let output_message_id = message_id;
         self.event_emitter
@@ -3751,8 +3772,8 @@ impl ReasonAtom {
             text: accumulated,
             tool_calls: vec![],
             has_tool_calls: false,
-            tool_definitions: tool_definitions.to_vec(),
-            max_iterations,
+            tool_definitions: runtime_agent.tools.clone(),
+            max_iterations: runtime_agent.max_iterations,
             error: None,
             user_facing_error: None,
             error_disclosure: None,
@@ -4629,260 +4650,5 @@ mod tests {
             .await
             .unwrap();
         assert!(result.unwrap().accumulated.is_empty());
-    }
-
-    // ====================================================================
-    // Tool-call repair capability integration (EVE-600)
-    // ====================================================================
-
-    mod tool_call_repair_integration {
-        use super::*;
-        use crate::capabilities::{CapabilityRegistry, TOOL_CALL_REPAIR_CAPABILITY_ID};
-        use crate::events::{EventData, EventRequest};
-        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-        use crate::traits::EventEmitter;
-        use crate::typed_id::{MessageId, SessionId, TurnId};
-        use std::sync::Mutex;
-
-        /// EventEmitter that records every emitted request for assertions.
-        #[derive(Default)]
-        struct RecordingEmitter {
-            events: Mutex<Vec<EventRequest>>,
-        }
-
-        #[async_trait::async_trait]
-        impl EventEmitter for RecordingEmitter {
-            async fn emit(
-                &self,
-                request: EventRequest,
-            ) -> crate::error::Result<crate::events::Event> {
-                let event = request
-                    .clone()
-                    .into_event(crate::typed_id::EventId::new(), 0);
-                self.events.lock().unwrap().push(request);
-                Ok(event)
-            }
-        }
-
-        impl RecordingEmitter {
-            fn repaired_events(&self) -> Vec<(String, String)> {
-                self.events
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .filter_map(|r| match &r.data {
-                        EventData::ToolCallRepaired(d) => {
-                            Some((d.tool_call_id.clone(), d.outcome.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect()
-            }
-        }
-
-        fn ctx() -> AtomContext {
-            AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new())
-        }
-
-        fn read_file_tool() -> ToolDefinition {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "read_file".to_string(),
-                display_name: None,
-                description: "read".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": { "path": { "type": "string" } },
-                    "required": ["path"]
-                }),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: Default::default(),
-                hints: Default::default(),
-                full_parameters: None,
-            })
-        }
-
-        fn malformed_call() -> ToolCall {
-            // Driver passed the raw arg string through as a JSON string (could
-            // not parse it because of prose + single quotes).
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!("here you go: {'path': '/foo'}"),
-            }
-        }
-
-        fn enabled_configs() -> Vec<crate::AgentCapabilityConfig> {
-            vec![crate::AgentCapabilityConfig::new(
-                TOOL_CALL_REPAIR_CAPABILITY_ID,
-            )]
-        }
-
-        async fn run(
-            configs: &[crate::AgentCapabilityConfig],
-            tools: &[ToolDefinition],
-            calls: &mut [ToolCall],
-            emitter: &RecordingEmitter,
-        ) {
-            run_at(configs, tools, calls, emitter, 1).await;
-        }
-
-        async fn run_at(
-            configs: &[crate::AgentCapabilityConfig],
-            tools: &[ToolDefinition],
-            calls: &mut [ToolCall],
-            emitter: &RecordingEmitter,
-            iteration: u32,
-        ) {
-            let registry = CapabilityRegistry::with_builtins();
-            apply_finalized_tool_calls_hooks(
-                &registry,
-                emitter,
-                SessionId::new(),
-                &ctx(),
-                configs,
-                tools,
-                calls,
-                iteration,
-            )
-            .await;
-        }
-
-        #[tokio::test]
-        async fn malformed_call_is_repaired_and_turn_proceeds() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![malformed_call()];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            // Arguments are now a clean object: the act phase can proceed.
-            assert_eq!(calls[0].arguments, json!({ "path": "/foo" }));
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_1".to_string(), "local-salvage".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn observability_event_fires_with_outcome_label() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![malformed_call()];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            let repaired = emitter.repaired_events();
-            assert_eq!(repaired.len(), 1, "exactly one repair event");
-            assert_eq!(repaired[0].1, "local-salvage");
-        }
-
-        #[tokio::test]
-        async fn attempt_cap_honored_and_falls_through_to_error_path() {
-            // Un-salvageable garbage with max_reprompts=0 → gave-up, args unchanged.
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let original = json!("totally not json and no braces at all");
-            let mut calls = vec![ToolCall {
-                id: "call_2".to_string(),
-                name: "read_file".to_string(),
-                arguments: original.clone(),
-            }];
-            let configs = vec![crate::AgentCapabilityConfig::with_config(
-                TOOL_CALL_REPAIR_CAPABILITY_ID,
-                json!({ "max_reprompts": 0 }),
-            )];
-
-            run(&configs, &tools, &mut calls, &emitter).await;
-
-            // Arguments untouched: today's error path still applies downstream.
-            assert_eq!(calls[0].arguments, original);
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_2".to_string(), "gave-up".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn unsalvageable_with_remaining_attempts_labels_reprompt() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![ToolCall {
-                id: "call_3".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!("no json here"),
-            }];
-            // Default max_reprompts (1) → first failure is labelled re-prompt.
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_3".to_string(), "re-prompt".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn attempt_cap_transitions_to_gave_up_on_later_iteration() {
-            // The bounded re-prompt is driven by the per-turn reason iteration
-            // (prior_attempts = iteration - 1). With the default cap of 1, an
-            // unsalvageable call is `re-prompt` on iteration 1 but `gave-up` once
-            // the turn has already spent an iteration, so the cap actually engages.
-            let tools = vec![read_file_tool()];
-            let garbage = json!("no json here");
-
-            let first = RecordingEmitter::default();
-            let mut calls1 = vec![ToolCall {
-                id: "call_a".to_string(),
-                name: "read_file".to_string(),
-                arguments: garbage.clone(),
-            }];
-            run_at(&enabled_configs(), &tools, &mut calls1, &first, 1).await;
-            assert_eq!(
-                first.repaired_events(),
-                vec![("call_a".to_string(), "re-prompt".to_string())]
-            );
-
-            let later = RecordingEmitter::default();
-            let mut calls2 = vec![ToolCall {
-                id: "call_a".to_string(),
-                name: "read_file".to_string(),
-                arguments: garbage,
-            }];
-            run_at(&enabled_configs(), &tools, &mut calls2, &later, 2).await;
-            assert_eq!(
-                later.repaired_events(),
-                vec![("call_a".to_string(), "gave-up".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn disabled_capability_produces_no_drift() {
-            // No tool_call_repair in the resolved set: arguments are left exactly
-            // as the driver produced them and no event is emitted.
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let original = malformed_call().arguments;
-            let mut calls = vec![malformed_call()];
-
-            run(&[], &tools, &mut calls, &emitter).await;
-
-            assert_eq!(calls[0].arguments, original);
-            assert!(emitter.repaired_events().is_empty());
-        }
-
-        #[tokio::test]
-        async fn well_formed_call_is_untouched_and_silent() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![ToolCall {
-                id: "call_4".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!({ "path": "/already/good" }),
-            }];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            assert_eq!(calls[0].arguments, json!({ "path": "/already/good" }));
-            assert!(emitter.repaired_events().is_empty());
-        }
     }
 }

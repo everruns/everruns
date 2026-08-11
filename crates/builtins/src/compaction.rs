@@ -311,6 +311,10 @@ impl CompactionPolicy for ConfiguredCompactionPolicy {
         estimate_total_tokens(messages)
     }
 
+    fn total_tool_result_bytes(&self, messages: &[Message]) -> usize {
+        total_tool_result_bytes(messages)
+    }
+
     fn should_compact_proactively(&self, messages: &[LlmMessage], context_window: usize) -> bool {
         should_compact_proactively(messages, &self.config, context_window)
     }

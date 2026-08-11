@@ -7,6 +7,7 @@ use std::fs;
 
 use everruns::{Agent, Model};
 
+#[cfg(feature = "builtins")]
 #[tokio::test]
 async fn compaction_is_configured_without_checkpoint_store_types() {
     use everruns::{CompactionConfig, CompactionStrategy};

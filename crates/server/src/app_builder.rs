@@ -2383,7 +2383,7 @@ impl ServerAppBuilder {
         // Provide a built-in probe registry so monitors with a `spec["tool"]`
         // can run their probe directly without delegating to an agent turn.
         let probe_registry =
-            std::sync::Arc::new(everruns_core::ToolRegistry::with_monitor_probe_defaults());
+            std::sync::Arc::new(crate::session_scheduler::monitor_probe_tool_registry());
         supervisor.track(
             "session_scheduler",
             crate::session_scheduler::spawn_session_scheduler(

@@ -14,7 +14,7 @@
 use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
-use everruns_core::capabilities::AgentInstructionsCapability;
+use everruns_builtins::AgentInstructionsCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,

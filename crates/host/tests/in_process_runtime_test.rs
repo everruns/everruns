@@ -97,6 +97,7 @@ fn per_type_builders_produce_portable_execution_values() {
     assert_eq!(session.agent_id, Some(agent_id));
 }
 
+#[cfg(feature = "builtins")]
 #[tokio::test]
 async fn default_runtime_uses_runtime_safe_capability_preset() {
     let runtime = InProcessRuntimeBuilder::new()
@@ -750,7 +751,7 @@ async fn runtime_exposes_assembled_context() {
 
 #[tokio::test]
 async fn list_commands_returns_capability_commands_for_session() {
-    use everruns_core::capabilities::BtwCapability;
+    use everruns_builtins::BtwCapability;
     use everruns_core::command::CommandSource;
 
     let mut capabilities = CapabilityRegistry::new();
@@ -888,7 +889,7 @@ async fn execute_command_dispatches_to_capability_handler() {
 // store-backed command host — no host-specific executor.
 #[tokio::test]
 async fn execute_btw_command_returns_ephemeral_answer() {
-    use everruns_core::capabilities::BtwCapability;
+    use everruns_builtins::BtwCapability;
     use everruns_core::command::ExecuteCommandRequest;
 
     let mut capabilities = CapabilityRegistry::new();
