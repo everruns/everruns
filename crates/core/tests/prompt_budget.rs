@@ -12,10 +12,9 @@
 // always fine.
 
 use everruns_core::capabilities::{
-    BudgetingCapability, Capability, DataKnowledgeCapability, FileSystemCapability,
-    InfinityContextCapability, MemoryCapability, MessageMetadataCapability, SelfBudgetCapability,
-    SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability, SubagentCapability,
-    SystemPromptContext, WebFetchCapability,
+    BudgetingCapability, Capability, DataKnowledgeCapability, InfinityContextCapability,
+    MemoryCapability, MessageMetadataCapability, SelfBudgetCapability, SessionSandboxCapability,
+    SkillsCapability, StatelessTodoListCapability, SubagentCapability, SystemPromptContext,
 };
 use everruns_core::typed_id::SessionId;
 
@@ -38,17 +37,6 @@ async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
 #[tokio::test]
 async fn stateless_todo_list_prompt_within_budget() {
     assert_contribution_under(&StatelessTodoListCapability, 450).await;
-}
-
-#[tokio::test]
-async fn file_system_prompt_within_budget() {
-    // Bumped 950 → 1000: EVE-778 added the single-read/contextual-search
-    // policy for persisted output to READ_ECONOMY_HINT (read small files
-    // once, one contextual grep_files for large ones), taking the
-    // contribution to 961 bytes. The bullet exists to eliminate repeated
-    // overlapping reads of `/outputs/` logs, so it pays for itself in
-    // tool-result bytes; ratchet the cap up per this file's policy.
-    assert_contribution_under(&FileSystemCapability, 1000).await;
 }
 
 #[tokio::test]
@@ -114,36 +102,4 @@ async fn mounted_data_prompts_within_budget() {
     // bytes. The content is intentional first-turn guidance, so ratchet the cap up
     // per this file's policy rather than trimming it.
     assert_contribution_under(&DataKnowledgeCapability, 350).await;
-}
-
-#[tokio::test]
-async fn web_fetch_prompt_within_budget() {
-    // `web_fetch` uses the dynamic contribution path because its prompt
-    // depends on the `enable_file_download` flag. Check both branches —
-    // both go through `<capability id="…">…</capability>` wrapping.
-    let cap = WebFetchCapability::new(None);
-    let ctx = SystemPromptContext::without_file_store(SessionId::new());
-
-    let disabled = cap
-        .system_prompt_contribution_with_config(&ctx, &serde_json::json!({}))
-        .await
-        .expect("web_fetch contributes a prompt");
-    assert!(
-        disabled.len() <= 250,
-        "web_fetch (no file download): {} bytes",
-        disabled.len()
-    );
-
-    let enabled = cap
-        .system_prompt_contribution_with_config(
-            &ctx,
-            &serde_json::json!({"enable_file_download": true}),
-        )
-        .await
-        .expect("web_fetch contributes a prompt");
-    assert!(
-        enabled.len() <= 350,
-        "web_fetch (file download enabled): {} bytes",
-        enabled.len()
-    );
 }

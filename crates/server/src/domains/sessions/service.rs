@@ -36,13 +36,14 @@ use everruns_core::{
         AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
         collect_capabilities_with_configs, compute_features, resolve_capability_configs,
     },
-    is_declarative_capability, is_mcp_capability, is_plugin_capability, is_skill_capability,
+    is_declarative_capability, is_plugin_capability, is_skill_capability,
     memory::{MemoryConfig, MemoryMountAccess},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
     parse_declarative_capability_id, parse_skill_capability_id,
     typed_id::MemoryId,
 };
 use everruns_durable::UpdateField;
+use everruns_mcp::is_mcp_capability;
 use everruns_platform::AgentVersionPolicy;
 use everruns_platform::FeatureFlags;
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
@@ -2091,7 +2092,7 @@ impl SessionService {
             crate::domains::session_files::WorkspaceFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
-            Arc::new(everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(file_store));
+            Arc::new(everruns_integrations_bashkit::BashkitShellHookDispatcher::new(file_store));
         let hooks = everruns_core::lifecycle_hooks::build_session_lifecycle_hooks(
             &specs, event, dispatcher,
         );

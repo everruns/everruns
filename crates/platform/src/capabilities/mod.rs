@@ -35,6 +35,30 @@ pub fn register_platform_capabilities(
     registry.register(PlatformManagementCapability);
 }
 
+/// Register environment-backed capabilities compiled into the hosted product.
+#[cfg(feature = "environment-capabilities")]
+pub fn register_environment_capabilities(
+    registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+    registry.register(everruns_integrations_filesystem::FileSystemCapability);
+    registry.register(everruns_integrations_bashkit::BashkitShellCapability);
+    registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations_openrouter_workspace::ModelScoutCapability);
+    registry.register(everruns_integrations_openrouter_workspace::OpenRouterWorkspaceCapability);
+
+    #[cfg(feature = "lua")]
+    if everruns_core::InternalFeatureFlags::from_env().lua {
+        registry.register(everruns_integrations_lua::LuaCapability);
+        registry.register(everruns_integrations_lua::LuaCodeModeCapability);
+    }
+}
+
+#[cfg(not(feature = "environment-capabilities"))]
+fn register_environment_capabilities(
+    _registry: &mut everruns_core::capabilities::CapabilityRegistry,
+) {
+}
+
 /// Portable `everruns-core` builtins plus the hosted platform capabilities,
 /// grade-selected. The hosted registry server/worker use for catalog,
 /// validation, and execution (EVE-839).
@@ -43,6 +67,7 @@ pub fn hosted_capability_registry_for_grade(
 ) -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry =
         everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    register_environment_capabilities(&mut registry);
     register_platform_capabilities(&mut registry);
     registry
 }
@@ -51,6 +76,53 @@ pub fn hosted_capability_registry_for_grade(
 /// environment (mirrors `CapabilityRegistry::with_builtins`).
 pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins();
+    register_environment_capabilities(&mut registry);
     register_platform_capabilities(&mut registry);
     registry
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hosted_registry_always_contains_platform_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        assert!(registry.has(PLATFORM_CAPABILITY_ID));
+        assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
+    }
+
+    #[cfg(feature = "environment-capabilities")]
+    #[test]
+    fn hosted_registry_composes_product_environment_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "session_file_system",
+            "bashkit_shell",
+            "web_fetch",
+            "model_scout",
+            "openrouter_workspace",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "hosted product registry is missing `{capability_id}`"
+            );
+        }
+        assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
+    }
+
+    #[cfg(not(feature = "environment-capabilities"))]
+    #[test]
+    fn platform_default_does_not_link_environment_capabilities() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "session_file_system",
+            "bashkit_shell",
+            "web_fetch",
+            "model_scout",
+            "openrouter_workspace",
+        ] {
+            assert!(!registry.has(capability_id));
+        }
+    }
 }

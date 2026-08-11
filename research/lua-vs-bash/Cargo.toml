@@ -10,10 +10,11 @@ name = "lua-vs-bash"
 path = "src/main.rs"
 
 [dependencies]
-# Compiles the experimental Lua execution capability (mlua engine) into core.
-everruns-core = { path = "../../crates/core", features = ["lua"] }
+everruns-core = { path = "../../crates/core" }
 everruns-test-support = { path = "../../crates/test-support" }
 everruns-host = { path = "../../crates/host", features = ["lua"] }
+everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
+everruns-integrations-lua = { path = "../../integrations/lua" }
 everruns-anthropic = { path = "../../crates/anthropic" }
 everruns-openai = { path = "../../crates/openai" }
 tokio = { version = "1", features = ["full"] }

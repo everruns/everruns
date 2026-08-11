@@ -16,8 +16,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent = Agent::builder()
         .instructions("Return only the answer.")
         .model(Model::simulated("4"))
+        .capability("session_file_system")
         .build()?;
-    let turn = agent.session().run("What is 2 + 2?").await?;
+    let session = agent.session();
+    let context = session.inspect().await?;
+    assert!(
+        context.tools.iter().any(|tool| tool.name == "read_file"),
+        "the default Framework facade must compose its filesystem integration"
+    );
+    let turn = session.run("What is 2 + 2?").await?;
 
     assert!(turn.success);
     assert_eq!(turn.response, "4");

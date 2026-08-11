@@ -17,9 +17,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{AtomContext, InputAtomInput, ReasonInput};
+#[cfg(feature = "mcp")]
+use everruns_core::capabilities::collect_capability_mcp_servers;
 use everruns_core::capabilities::{
-    Capability, CapabilityRegistry, CapabilityStatus, collect_capability_mcp_servers,
-    resolve_capability_configs,
+    Capability, CapabilityRegistry, CapabilityStatus, resolve_capability_configs,
 };
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
@@ -31,6 +32,8 @@ use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
+#[cfg(feature = "mcp")]
+use everruns_core::resolve_runtime_capabilities;
 use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
@@ -43,7 +46,7 @@ use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
     SessionFileSystem, SessionFileSystemFactoryContext, load_execution_snapshot_for_session,
-    plugin_capability_id, resolve_runtime_capabilities,
+    plugin_capability_id,
 };
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
@@ -324,6 +327,7 @@ pub struct InProcessRuntimeBuilder {
     sessions: Vec<ExecutionSession>,
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
+    #[cfg(feature = "mcp")]
     mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
     provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
@@ -356,8 +360,9 @@ impl InProcessRuntimeBuilder {
     pub fn new() -> Self {
         Self {
             platform_definition: PlatformDefinition::builder()
-                .capability_registry(CapabilityRegistry::runtime_builtins())
+                .capability_registry(crate::runtime_capability_registry())
                 .driver_registry(DriverRegistry::new())
+                .egress_service(crate::runtime_egress_service())
                 .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
                 .build(),
             default_provider: None,
@@ -372,6 +377,7 @@ impl InProcessRuntimeBuilder {
             sessions: Vec::new(),
             default_session_id: None,
             seeded_files: Vec::new(),
+            #[cfg(feature = "mcp")]
             mcp_auth_provider: None,
             provider_retry_config: None,
             provider_stall_timeout: None,
@@ -383,6 +389,7 @@ impl InProcessRuntimeBuilder {
     /// Set the auth provider used to acquire credentials for scoped MCP
     /// servers (knowledge/integrations/runtime-mcp.md D3). Defaults to no credentials, suitable
     /// for unauthenticated servers or servers carrying literal auth headers.
+    #[cfg(feature = "mcp")]
     pub fn mcp_auth_provider(mut self, provider: Arc<dyn everruns_mcp::McpAuthProvider>) -> Self {
         self.mcp_auth_provider = Some(provider);
         self
@@ -809,11 +816,13 @@ impl InProcessRuntimeBuilder {
             session_wake_queue,
             schedule_store_factory: backends.schedule_store_factory,
             platform_store_factory: backends.platform_store_factory,
+            #[cfg(feature = "mcp")]
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
             provider_retry_config: self.provider_retry_config,
             provider_stall_timeout: self.provider_stall_timeout,
+            #[cfg(feature = "mcp")]
             mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
         };
@@ -866,9 +875,11 @@ pub struct InProcessRuntime {
     session_wake_queue: Option<Arc<everruns_core::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
     platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
+    #[cfg(feature = "mcp")]
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
+    #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
     /// Non-fatal warnings collected during plugin compilation (see
     /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
@@ -914,6 +925,7 @@ impl InProcessRuntime {
 
     /// Build the shared MCP client over the platform egress boundary and the
     /// configured auth provider.
+    #[cfg(feature = "mcp")]
     fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
         Arc::new(everruns_mcp::McpClient::new(
             self.platform_definition.egress_service(),
@@ -922,6 +934,7 @@ impl InProcessRuntime {
     }
 
     /// Resolve the effective scoped MCP servers for a session.
+    #[cfg(feature = "mcp")]
     async fn session_mcp_servers(
         &self,
         session: &ExecutionSession,
@@ -1020,6 +1033,7 @@ impl InProcessRuntime {
         self.session_store
             .upsert_session_capability(session_id, capability)
             .await?;
+        #[cfg(feature = "mcp")]
         self.mcp_discovery_cache
             .invalidate_session(session_id.uuid());
         Ok(CapabilityDelta {
@@ -1077,6 +1091,7 @@ impl InProcessRuntime {
         self.session_store
             .remove_session_capability(session_id, &session_capability_id)
             .await?;
+        #[cfg(feature = "mcp")]
         self.mcp_discovery_cache
             .invalidate_session(session_id.uuid());
         Ok(CapabilityDelta {
@@ -1420,11 +1435,14 @@ impl InProcessRuntime {
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        #[cfg(feature = "mcp")]
         let agent = match session.agent_id {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,
         };
+        #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        #[cfg(feature = "mcp")]
         let mcp_tool_definitions = if scoped_servers.is_empty() {
             vec![]
         } else {
@@ -1436,6 +1454,8 @@ impl InProcessRuntime {
             )
             .await
         };
+        #[cfg(not(feature = "mcp"))]
+        let mcp_tool_definitions = vec![];
         self.inspect_context_with_ids(
             session_id,
             session.harness_id,
@@ -1655,7 +1675,9 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
         // Discover tools from the session's scoped MCP servers so they appear
         // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
+        #[cfg(feature = "mcp")]
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        #[cfg(feature = "mcp")]
         let mcp_tool_definitions = if scoped_servers.is_empty() {
             vec![]
         } else {
@@ -1667,6 +1689,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
             )
             .await
         };
+        #[cfg(not(feature = "mcp"))]
+        let mcp_tool_definitions = vec![];
 
         Ok(ResolvedTurnInputs {
             snapshot,
@@ -1675,11 +1699,12 @@ impl RuntimeHostAdapter for InProcessRuntime {
         })
     }
 
+    #[cfg(feature = "mcp")]
     async fn mcp_executor(
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> Option<Arc<everruns_mcp::McpExecutor>> {
+    ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let session = self.session_store.get_session(session_id).await.ok()??;
         let agent = match session.agent_id {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await.ok().flatten(),
@@ -1687,6 +1712,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         };
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         crate::mcp::build_executor(self.mcp_client(), &scoped_servers)
+            .map(|executor| executor as Arc<dyn everruns_core::McpToolInvoker>)
     }
 
     fn capability_registry(&self) -> CapabilityRegistry {

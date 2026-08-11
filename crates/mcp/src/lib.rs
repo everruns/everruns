@@ -31,6 +31,7 @@
 //! ```
 
 pub mod auth;
+pub mod capability;
 pub mod client;
 pub mod executor;
 pub mod http;
@@ -44,6 +45,10 @@ pub mod stdio;
 
 pub use auth::{
     McpAuthProvider, McpAuthRequest, McpCredential, NoAuthProvider, StaticAuthProvider,
+};
+pub use capability::{
+    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, is_mcp_capability, mcp_capability_id,
+    parse_mcp_capability_id,
 };
 pub use client::McpClient;
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};

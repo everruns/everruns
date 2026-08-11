@@ -60,7 +60,7 @@ impl PlatformDefinition {
         Self {
             capability_registry,
             driver_registry,
-            egress_service: Arc::new(crate::DirectEgressService::default()),
+            egress_service: Arc::new(crate::DisabledEgressService),
             utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
             vector_store: Arc::new(InMemoryVectorStore::new()),

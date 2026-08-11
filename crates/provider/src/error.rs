@@ -540,7 +540,7 @@ impl<T, E: std::fmt::Display> StoreResultExt<T> for std::result::Result<T, E> {
 
 /// Typed classification of a `SessionFileSystem` failure.
 ///
-/// The file-system tools (`crates/core/src/capabilities/file_system.rs`) decide
+/// The file-system tools (`integrations/filesystem/src/lib.rs`) decide
 /// whether a failure is a *tool error* (surfaced to the agent verbatim — bad
 /// input it can correct) or an *internal error* (logged, generic copy). They
 /// previously made that call with `msg.contains("readonly")` / `"is a

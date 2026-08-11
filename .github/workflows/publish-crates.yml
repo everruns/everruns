@@ -142,15 +142,29 @@ jobs:
               ],
               "crates/platform/Cargo.toml": [
                   "everruns-core",
+                  "everruns-integrations-filesystem",
+                  "everruns-integrations-bashkit",
+                  "everruns-integrations-web-fetch",
+                  "everruns-integrations-lua",
+                  "everruns-integrations-openrouter-workspace",
+              ],
+              "crates/http/Cargo.toml": [
+                  "everruns-core",
               ],
               "crates/mcp/Cargo.toml": [
                   "everruns-core",
+                  "everruns-http",
               ],
               "crates/host/Cargo.toml": [
                   "everruns-core",
                   "everruns-engine",
+                  "everruns-http",
                   "everruns-mcp",
                   "everruns-platform",
+                  "everruns-integrations-filesystem",
+                  "everruns-integrations-bashkit",
+                  "everruns-integrations-web-fetch",
+                  "everruns-integrations-lua",
               ],
               "crates/everruns/Cargo.toml": [
                   "everruns-capability",
@@ -188,6 +202,21 @@ jobs:
                   "everruns-provider",
               ],
               "integrations/duckduckgo/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/filesystem/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/bashkit/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/web-fetch/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/lua/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/openrouter-workspace/Cargo.toml": [
                   "everruns-core",
               ],
               "integrations/github/Cargo.toml": [
@@ -258,10 +287,19 @@ jobs:
             # before core, which re-exports it.
             everruns-capability
             everruns-core
+            # Environment-backed capability implementations publish after
+            # their neutral core contracts and before their host composers.
+            everruns-http
+            everruns-integrations-filesystem
+            everruns-integrations-bashkit
+            everruns-integrations-web-fetch
+            everruns-integrations-lua
+            everruns-integrations-openrouter-workspace
             # The sans-I/O planner and backend entities publish before the host
             # implementation that composes them.
             everruns-engine
             everruns-platform
+            # MCP's HTTP transport depends on everruns-http.
             everruns-mcp
             everruns-host
             everruns-openai

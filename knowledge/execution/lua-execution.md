@@ -8,9 +8,10 @@ tags:
 ---
 # Lua Execution Capability (experimental)
 
-> **Status: EXPERIMENTAL — Phase 1 skeleton.** Gated behind the `lua` cargo
-> feature in `everruns-core` and the `FEATURE_LUA` internal feature flag at
-> registry build time. Not registered in production grades yet.
+> **Status: EXPERIMENTAL — Phase 1 skeleton.** Implemented by the opt-in
+> `everruns-integrations-lua` crate, selected by the Framework/host `lua`
+> feature, and gated by the `FEATURE_LUA` internal feature flag at registry
+> build time. Not registered in production grades yet.
 
 ## Why
 
@@ -59,9 +60,8 @@ Mirrors `bashkit_shell` so the proven scaffolding is reused:
   `SessionFileSystemAdapter`: absolute, forward-slash, `/workspace` stripped,
   traversal/outside-workspace rejected). This is what makes tenant isolation
   free — every path resolves through the already session-scoped store.
-- **Engine** — `LuaLimits` (data) + `engine::run(...)`, behind the `lua` cargo
-  feature; with it off, `engine::run` returns a "not compiled" error so the
-  default workspace build pulls in no interpreter.
+- **Engine** — `LuaLimits` (data) + `engine::run(...)` in the opt-in integration
+  crate. Builds that do not select the integration pull in no interpreter.
 
 ### Runtime choice
 
@@ -72,8 +72,8 @@ prototyped behind the same seam for its no-C appeal, but rejected: effectively
 unmaintained (no release since 2024-06) and a thin stdlib that would force us to
 reimplement ~19 functions plus a Lua-pattern engine on a dead base — and the eval
 below measured it failing tasks mlua passes. The pure-Rust safety win is moot
-when the dependency gets no security fixes. The engine seam was kept minimal (one
-`engine::run` + a not-compiled stub); there is no longer a second engine.
+when the dependency gets no security fixes. The engine seam was kept minimal
+(one `engine::run`); there is no longer a second engine.
 
 The mlua trade-off vs piccolo is that the sandbox is **in-process native code**,
 not memory-isolated like wasm/process boundaries. That is accepted for an
@@ -183,7 +183,7 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
 
 ## Code-mode routing capability (`lua_code_mode`)
 
-A separate, composable capability (`crates/core/src/capabilities/lua_code_mode.rs`)
+A separate, composable capability (`integrations/lua/src/code_mode.rs`)
 that turns code mode from an occasional optimization into the agent's default
 action path. It exists to satisfy three constraints:
 

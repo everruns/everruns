@@ -32,13 +32,26 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-a2ui",
     ],
     "crates/engine/Cargo.toml": ["everruns-core"],
-    "crates/platform/Cargo.toml": ["everruns-core"],
-    "crates/mcp/Cargo.toml": ["everruns-core"],
+    "crates/platform/Cargo.toml": [
+        "everruns-core",
+        "everruns-integrations-filesystem",
+        "everruns-integrations-bashkit",
+        "everruns-integrations-web-fetch",
+        "everruns-integrations-lua",
+        "everruns-integrations-openrouter-workspace",
+    ],
+    "crates/http/Cargo.toml": ["everruns-core"],
+    "crates/mcp/Cargo.toml": ["everruns-core", "everruns-http"],
     "crates/host/Cargo.toml": [
         "everruns-core",
         "everruns-engine",
+        "everruns-http",
         "everruns-mcp",
         "everruns-platform",
+        "everruns-integrations-filesystem",
+        "everruns-integrations-bashkit",
+        "everruns-integrations-web-fetch",
+        "everruns-integrations-lua",
     ],
     "crates/everruns/Cargo.toml": [
         "everruns-core",
@@ -56,6 +69,11 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/gemini/Cargo.toml": ["everruns-provider"],
     "crates/meta/Cargo.toml": ["everruns-provider"],
     "integrations/duckduckgo/Cargo.toml": ["everruns-core"],
+    "integrations/filesystem/Cargo.toml": ["everruns-core"],
+    "integrations/bashkit/Cargo.toml": ["everruns-core"],
+    "integrations/web-fetch/Cargo.toml": ["everruns-core"],
+    "integrations/lua/Cargo.toml": ["everruns-core"],
+    "integrations/openrouter-workspace/Cargo.toml": ["everruns-core"],
     "integrations/github/Cargo.toml": ["everruns-core"],
     "integrations/daytona/Cargo.toml": ["everruns-core"],
     "integrations/e2b/Cargo.toml": ["everruns-core"],
@@ -69,7 +87,26 @@ INNER_PINS: dict[str, list[str]] = {
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
-WORKSPACE_PIN_DEPS: list[str] = ["everruns-capability", "everruns-core", "everruns-engine", "everruns-host", "everruns-platform", "everruns-provider", "everruns-mcp", "everruns-local", "everruns-ard", "everruns", "everruns-macros", "everruns-test-support"]
+WORKSPACE_PIN_DEPS: list[str] = [
+    "everruns-capability",
+    "everruns-core",
+    "everruns-engine",
+    "everruns-host",
+    "everruns-http",
+    "everruns-platform",
+    "everruns-provider",
+    "everruns-mcp",
+    "everruns-local",
+    "everruns-ard",
+    "everruns",
+    "everruns-macros",
+    "everruns-test-support",
+    "everruns-integrations-filesystem",
+    "everruns-integrations-bashkit",
+    "everruns-integrations-web-fetch",
+    "everruns-integrations-lua",
+    "everruns-integrations-openrouter-workspace",
+]
 
 
 def workspace_version() -> str:

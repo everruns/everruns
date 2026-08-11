@@ -24,7 +24,8 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{Caller, DirectEgressService, EgressService};
+use everruns_core::{Caller, EgressService};
+use everruns_http::DirectEgressService;
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::IntoParams;

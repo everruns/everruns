@@ -468,19 +468,20 @@ A demo agent "Microsoft Learn Assistant" is also seeded, configured to use this 
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | MCP types (`McpServer`, `McpToolDefinition`), tool name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
+| `everruns-core` | Neutral MCP wire/config types (`McpServer`, `McpToolDefinition`) and transport-independent tool-name helpers (`mcp_tool_name`, `parse_mcp_tool_name`, `is_mcp_tool`) |
+| `everruns-mcp` | MCP client transports plus virtual-capability IDs and adapter (`McpCapability`) |
 | `everruns-server` | API routes, gRPC services, database operations |
-| `everruns-worker` | `McpToolExecutor` for HTTP calls, `CompositeToolExecutor` for routing |
+| `everruns-worker` | Runtime adapter and scoped server resolution injected into `everruns-mcp` |
 
 ### Key Components
 
-**McpToolExecutor** (`crates/worker/src/mcp_executor.rs`):
+**McpToolExecutor** (`crates/mcp/src/executor.rs`):
 - Executes MCP tools by calling remote HTTP endpoints
 - Parses tool names to extract server prefix and original tool name
 - Caches server info for efficiency
 - Handles both plain JSON and SSE response formats
 
-**CompositeToolExecutor** (`crates/worker/src/mcp_executor.rs`):
+**CompositeToolExecutor** (`crates/mcp/src/executor.rs`):
 - Routes tool calls to appropriate executor
 - MCP tools (prefixed with `mcp_`) → McpToolExecutor
 - Built-in tools → ToolRegistry

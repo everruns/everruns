@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::lua::is_code_mode_eligible;
+use super::is_code_mode_eligible;
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, ToolDefinitionHook};
 use crate::tool_types::ToolDefinition;
 

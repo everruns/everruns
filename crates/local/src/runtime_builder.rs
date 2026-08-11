@@ -133,8 +133,11 @@ impl LocalRuntimeBuilder {
                     ))
                 });
                 PlatformDefinition::builder()
-                    .capability_registry(everruns_core::CapabilityRegistry::with_builtins())
+                    .capability_registry(everruns_host::compose_runtime_capability_registry(
+                        everruns_core::CapabilityRegistry::with_builtins(),
+                    ))
                     .driver_registry(everruns_core::DriverRegistry::new())
+                    .egress_service(everruns_host::runtime_egress_service())
                     .session_file_system_factory(factory)
                     .build()
             }

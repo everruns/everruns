@@ -18,6 +18,12 @@
 //! - Context assembly for the shared `input -> reason -> act` execution flow
 //! - Minimal in-memory store implementations for embedding and prototyping
 //!
+//! Environment-backed implementations are intentionally separate: filesystem,
+//! Bashkit, web fetch, and Lua live in `everruns-integrations-*`; MCP adaptation
+//! lives in `everruns-mcp`; and concrete runtime HTTP transport lives in
+//! `everruns-http`. Hosts select those edges explicitly instead of inheriting
+//! them from this contract crate.
+//!
 //! Deterministic simulation (the `llmsim` driver, the in-memory agentic
 //! loop, and demo fixture capabilities) lives in the `everruns-test-support`
 //! crate; core carries no test implementations.
@@ -43,7 +49,6 @@ pub use everruns_provider::tool_types;
 
 // User-defined hooks (see knowledge/runtime-resources/user-hooks.md)
 pub mod hook_adapter;
-pub mod hook_dispatch;
 pub mod hook_executor;
 pub mod lifecycle_hooks;
 pub mod user_hook_types;
@@ -111,9 +116,9 @@ pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
-// EVE-879: the OAuth 2.1 protocol client moved to `everruns_mcp::oauth::protocol`
-// — MCP login/refresh is its only consumer, and the kernel carries no
-// token-exchange plumbing.
+// EVE-879: the OAuth 2.1 protocol client moved to the MCP adapter crate — MCP
+// login/refresh is its only consumer, and the kernel carries no token-exchange
+// plumbing.
 // EVE-878: the observer records (`Observer`, `TraceScore`, judge
 // configuration, match rules and their lifecycle enums) moved to the
 // `everruns-platform` crate — online scoring watches completed turns from the
@@ -309,9 +314,8 @@ pub use error_reporter::{
 
 // Outbound egress service re-exports
 pub use egress::{
-    DirectEgressService, DisabledEgressService, EgressByteStream, EgressError, EgressRequest,
-    EgressRequestKind, EgressResponse, EgressResult, EgressService, EgressSigning,
-    EgressStreamResponse,
+    DisabledEgressService, EgressByteStream, EgressError, EgressRequest, EgressRequestKind,
+    EgressResponse, EgressResult, EgressService, EgressSigning, EgressStreamResponse,
 };
 pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
 
@@ -387,21 +391,18 @@ pub use capabilities::{
     AutoToolSearchCapability, BlueprintModel, CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability,
     CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
     ClaudeToolSearchCapability, CollectedCapabilities, CurrentTimeCapability,
-    DECLARATIVE_CAPABILITY_PREFIX, DeleteFileTool, DependencyError, FileSystemCapability,
-    GetCurrentTimeTool, GetSessionInfoTool, GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID,
-    HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
-    IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
-    McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
-    OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability, QueryHistoryTool, ReadFileTool,
-    ResearchCapability, ResolvedCapabilities, RiskLevel, SessionCapability,
-    SessionCapabilityConfig, SessionSandboxCapability, SessionSqlDatabaseCapability,
-    SessionTitleMutation, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, StatFileTool,
-    StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool,
+    DECLARATIVE_CAPABILITY_PREFIX, DependencyError, GetCurrentTimeTool, GetSessionInfoTool,
+    HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
+    InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
+    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
+    OpenAiToolSearchCapability, QueryHistoryTool, ResearchCapability, ResolvedCapabilities,
+    RiskLevel, SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
+    SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool, StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook,
     WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
     collect_capabilities_with_configs, compute_features, declarative_capability_id,
     declarative_capability_info, get_dependencies, hydrate_declarative_capability_config,
-    hydrate_plugin_capability_config, is_declarative_capability, is_mcp_capability,
-    mcp_capability_id, parse_declarative_capability_id, parse_mcp_capability_id,
+    hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, resolve_dependencies, session_title_updated_event,
     update_session_title_with_event, validate_declarative_capability_definition,
 };

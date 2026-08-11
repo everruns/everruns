@@ -10,6 +10,7 @@ members = [
     "crates/core",
     "crates/engine",
     "crates/host",
+    "crates/http",
     "crates/test-support",
     "crates/platform",
     "crates/provider",
@@ -35,6 +36,11 @@ members = [
     "crates/observability",
     "crates/ard",
     "integrations/docker",
+    "integrations/filesystem",
+    "integrations/bashkit",
+    "integrations/web-fetch",
+    "integrations/lua",
+    "integrations/openrouter-workspace",
     "integrations/daytona",
     "integrations/deno",
     "integrations/brave-search",
@@ -174,6 +180,7 @@ everruns-capability = { path = "crates/capability", version = "0.17.26", default
 everruns-core = { path = "crates/core", version = "0.17.26" }
 everruns-engine = { path = "crates/engine", version = "0.17.26" }
 everruns-host = { path = "crates/host", version = "0.17.26" }
+everruns-http = { path = "crates/http", version = "0.17.26" }
 everruns-test-support = { path = "crates/test-support", version = "0.17.26", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.17.26" }
 everruns-provider = { path = "crates/provider", version = "0.17.26" }
@@ -184,6 +191,11 @@ everruns-openai = { path = "crates/openai", version = "0.17.0" }
 everruns-local = { path = "crates/local", version = "0.17.26" }
 everruns = { path = "crates/everruns", version = "0.17.26" }
 everruns-macros = { path = "crates/macros", version = "0.17.26" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.17.26" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.17.26" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.17.26" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.17.26" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.17.26" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

@@ -1847,6 +1847,62 @@ mod tests {
 
     struct ArgumentEchoTool;
 
+    struct NarratingGrepTool;
+
+    #[async_trait]
+    impl crate::tools::Tool for NarratingGrepTool {
+        fn name(&self) -> &str {
+            "grep_files"
+        }
+
+        fn description(&self) -> &str {
+            "Search files"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({"type": "object"})
+        }
+
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::success(json!({}))
+        }
+
+        fn narrate(
+            &self,
+            tool_call: &crate::ToolCall,
+            phase: crate::tool_narration::ToolNarrationPhase,
+            locale: Option<&str>,
+            _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        ) -> Option<String> {
+            Some(crate::tool_narration::narrate_grep_files(
+                &tool_call.arguments,
+                phase,
+                locale,
+            ))
+        }
+    }
+
+    struct NarratingCapability;
+
+    #[async_trait]
+    impl crate::Capability for NarratingCapability {
+        fn id(&self) -> &str {
+            "narrating_test"
+        }
+
+        fn name(&self) -> &str {
+            "Narrating test"
+        }
+
+        fn description(&self) -> &str {
+            "Test-only narration capability"
+        }
+
+        fn tools(&self) -> Vec<Box<dyn crate::Tool>> {
+            vec![Box::new(NarratingGrepTool)]
+        }
+    }
+
     #[async_trait]
     impl crate::tools::Tool for ArgumentEchoTool {
         fn name(&self) -> &str {
@@ -1873,9 +1929,9 @@ mod tests {
 
     #[test]
     fn grouped_headline_uses_tool_owned_narration_for_repeated_actions() {
-        use crate::capabilities::{Capability, CapabilityNarrationHook, FileSystemCapability};
+        use crate::capabilities::{Capability, CapabilityNarrationHook};
 
-        let capability: Arc<dyn Capability> = Arc::new(FileSystemCapability);
+        let capability: Arc<dyn Capability> = Arc::new(NarratingCapability);
         let tool_definitions = capability
             .tools()
             .into_iter()

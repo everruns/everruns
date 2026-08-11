@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Pre-push checks: fast local validation to catch CI failures early (~30s).
-# Runs formatting, linting, lockfile, migration, test/example enumeration, knowledge, capability-contract, test-support-isolation, observability-isolation, agent-record-isolation, provider-isolation, and attribution checks.
+# Runs formatting, linting, lockfile, migration, test/example enumeration, knowledge,
+# architecture isolation guards, and attribution checks.
 # Usage: just pre-push (or: bash scripts/lib/pre-push.sh)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -13,7 +14,7 @@ echo "🔒 Running pre-push checks..."
 echo ""
 
 # 1. Rust formatting
-echo "1/17 Rust formatting"
+echo "1/18 Rust formatting"
 if cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
@@ -21,7 +22,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/17 Rust linting"
+echo "2/18 Rust linting"
 if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
@@ -29,7 +30,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/17 Cargo.lock freshness"
+echo "3/18 Cargo.lock freshness"
 if cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
@@ -37,7 +38,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/17 UI formatting"
+echo "4/18 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
@@ -49,7 +50,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/17 UI linting"
+echo "5/18 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
@@ -61,7 +62,7 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/17 Migration ordering"
+echo "6/18 Migration ordering"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
@@ -72,7 +73,7 @@ else
 fi
 
 # 7. Migration immutability check
-echo "7/17 Migration immutability"
+echo "7/18 Migration immutability"
 if MIGRATION_IMMUTABILITY_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-immutability.sh" 2>&1
 )"; then
@@ -83,7 +84,7 @@ else
 fi
 
 # 8. Server integration test enumeration
-echo "8/17 Server test enumeration"
+echo "8/18 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-server-test-enumeration.sh" 2>&1
 )"; then
@@ -94,7 +95,7 @@ else
 fi
 
 # 9. Public everruns example inventory and compile check
-echo "9/17 Public everruns examples"
+echo "9/18 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
@@ -105,7 +106,7 @@ else
 fi
 
 # 10. Knowledge bundle conformance
-echo "10/17 Knowledge bundle conformance"
+echo "10/18 Knowledge bundle conformance"
 if KNOWLEDGE_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
@@ -116,7 +117,7 @@ else
 fi
 
 # 11. Published crate documentation contract
-echo "11/17 Published crate documentation"
+echo "11/18 Published crate documentation"
 if PUBLISHED_DOCS_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-published-crate-docs.sh" 2>&1
 )"; then
@@ -127,7 +128,7 @@ else
 fi
 
 # 12. Capability contract architecture guard (EVE-873)
-echo "12/17 Capability contract guard"
+echo "12/18 Capability contract guard"
 if CAPABILITY_CONTRACT_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-capability-contract.sh" 2>&1
 )"; then
@@ -138,7 +139,7 @@ else
 fi
 
 # 13. Test-support isolation guard (EVE-875)
-echo "13/17 Test-support isolation guard"
+echo "13/18 Test-support isolation guard"
 if TEST_SUPPORT_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-test-support-isolation.sh" 2>&1
 )"; then
@@ -149,7 +150,7 @@ else
 fi
 
 # 14. Observability isolation guard (EVE-876)
-echo "14/17 Observability isolation guard"
+echo "14/18 Observability isolation guard"
 if OBSERVABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-observability-isolation.sh" 2>&1
 )"; then
@@ -162,7 +163,7 @@ fi
 # 15. Agent-record isolation guard (EVE-877, EVE-881, EVE-882, EVE-878,
 #     EVE-879: Agent, Harness, Session, eval/observer/feature-management
 #     records, and connector/OAuth/email infrastructure)
-echo "15/17 Agent-record isolation guard"
+echo "15/18 Agent-record isolation guard"
 if AGENT_RECORD_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-agent-record-isolation.sh" 2>&1
 )"; then
@@ -173,7 +174,7 @@ else
 fi
 
 # 16. Provider isolation guard (EVE-874)
-echo "16/17 Provider isolation guard"
+echo "16/18 Provider isolation guard"
 if PROVIDER_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-provider-isolation.sh" 2>&1
 )"; then
@@ -183,8 +184,19 @@ else
   fail "provider isolation guard failed"
 fi
 
-# 17. Commit author attribution check
-echo "17/17 Commit author attribution"
+# 17. Effectful environment capability isolation guard (EVE-883)
+echo "17/18 Environment capability isolation guard"
+if ENVIRONMENT_CAPABILITY_ISOLATION_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-environment-capability-isolation.sh" 2>&1
+)"; then
+  pass "$ENVIRONMENT_CAPABILITY_ISOLATION_OUTPUT"
+else
+  printf '%s\n' "$ENVIRONMENT_CAPABILITY_ISOLATION_OUTPUT" | sed 's/^/   /'
+  fail "environment capability isolation guard failed"
+fi
+
+# 18. Commit author attribution check
+echo "18/18 Commit author attribution"
 if ! resolve_commit_git_identity; then
   fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
 elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then

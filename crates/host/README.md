@@ -35,6 +35,18 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Host adapter contracts for worker, local, and advanced integrations
 
+## Integration features
+
+`runtime_capability_registry()` starts from core's effect-neutral runtime
+built-ins and adds only the compiled integrations.
+`compose_runtime_capability_registry(registry)` applies that same feature-driven
+composition to a caller-selected core preset. `runtime_egress_service()`
+returns the matching direct, policy-aware transport when a network-capable
+integration is selected and a disabled service otherwise. `filesystem`,
+`bashkit`, `web-fetch`, `lua`, and `mcp` are independent host features;
+`mcp-stdio` additionally enables local-process MCP servers. The
+application-facing `everruns` crate selects the ordinary defaults.
+
 `everruns-engine` remains the sans-I/O planner. Canonical events are the sole
 history write path: host execution appends events, while `EventHistory` rebuilds
 messages from bounded, sequence-ordered replay. No writable message store is

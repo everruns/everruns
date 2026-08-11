@@ -12,12 +12,13 @@
 // - Tool execution is delegated to the MCP server via HTTP
 // - Tools are cached and refreshed periodically
 
-use crate::capability_types::{CapabilityId, CapabilityStatus};
-use crate::mcp_server::{McpToolDefinition, mcp_tool_name};
-use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
-use crate::tools::Tool;
-
-use super::Capability;
+use everruns_core::capabilities::Capability;
+use everruns_core::capability_types::{CapabilityId, CapabilityStatus};
+use everruns_core::mcp_server::{McpToolDefinition, mcp_tool_name};
+use everruns_core::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
+};
+use everruns_core::tools::Tool;
 use uuid::Uuid;
 
 /// MCP Virtual Capability ID prefix
@@ -156,17 +157,17 @@ impl Capability for McpCapability {
 
     fn narrate(
         &self,
-        _tool_def: Option<&crate::tool_types::ToolDefinition>,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_def: Option<&everruns_core::tool_types::ToolDefinition>,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Generic search narration for provider/MCP search tools (`*__search`).
         if !tool_call.name.ends_with("__search") {
             return None;
         }
-        Some(crate::tool_narration::narrate_provider_search(
+        Some(everruns_core::tool_narration::narrate_provider_search(
             &tool_call.arguments,
             phase,
             locale,

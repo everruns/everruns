@@ -17,11 +17,12 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use everruns_core::capabilities::{McpCapabilityIdExt, SkillCapabilityIdExt};
+use everruns_core::capabilities::SkillCapabilityIdExt;
 use everruns_core::{
     CapabilityId,
     typed_id::{McpServerId, SessionId, SkillId},
 };
+use everruns_mcp::McpCapabilityIdExt;
 use uuid::Uuid;
 
 use crate::storage::StorageBackend;
@@ -285,10 +286,8 @@ mod tests {
     #[tokio::test]
     async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
         use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
-        use everruns_core::{
-            capabilities::{mcp_capability_id, skill_capability_id},
-            typed_id::SkillId,
-        };
+        use everruns_core::{capabilities::skill_capability_id, typed_id::SkillId};
+        use everruns_mcp::mcp_capability_id;
 
         let db = StorageBackend::in_memory();
 

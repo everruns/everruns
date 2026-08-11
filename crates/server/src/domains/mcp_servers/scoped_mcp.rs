@@ -10,12 +10,11 @@ use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_ser
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
-    Capability, EgressService, McpCapability, McpServerAuthMode, ScopedMcpServers, SessionId,
-    ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities, validate_safe_url,
+    Capability, EgressService, McpServerAuthMode, ScopedMcpServers, SessionId, ToolDefinition,
+    merge_scoped_mcp_servers, resolve_runtime_capabilities, validate_safe_url,
 };
-use everruns_platform::Agent;
-use everruns_platform::Harness;
-use everruns_platform::Session;
+use everruns_mcp::McpCapability;
+use everruns_platform::{Agent, Harness, Session};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;

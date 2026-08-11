@@ -30,6 +30,8 @@ everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }
 everruns-meta = { path = "../meta" }
+everruns-integrations-filesystem = { path = "../../integrations/filesystem" }
+everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 
 anyhow.workspace = true
 async-trait.workspace = true

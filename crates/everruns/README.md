@@ -22,12 +22,20 @@ execution hosts.
 cargo add everruns
 ```
 
-Default features stay offline and include the typed tool macro. Opt into a live
-provider only when needed:
+Default features stay offline and include the typed tool macro plus the
+host-contained session filesystem. Opt into execution/network integrations only
+when needed:
 
 ```bash
 cargo add everruns --features openai
+cargo add everruns --features bashkit,web-fetch
+cargo add everruns --features lua
+cargo add everruns --features mcp        # HTTP MCP
+cargo add everruns --features mcp-stdio  # also permits local processes
 ```
+
+See [Capability integrations](https://docs.everruns.com/framework/capability-integrations/)
+for feature boundaries and advanced-host composition.
 
 ## Offline Quickstart
 

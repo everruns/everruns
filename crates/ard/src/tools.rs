@@ -26,7 +26,8 @@ use everruns_core::session_resource::{RegisterSessionResource, SessionResourceSt
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use everruns_core::{DirectEgressService, validate_safe_url, validate_url_dns_pinned};
+use everruns_core::{validate_safe_url, validate_url_dns_pinned};
+use everruns_http::DirectEgressService;
 
 use crate::client::{
     ArdRegistryClient, CatalogEntry, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER, SearchQuery,

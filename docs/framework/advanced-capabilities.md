@@ -10,6 +10,11 @@ accepts the public, non-sealed `IntoCapability` contract, so Framework built-ins
 and third-party packages compose without adding a method or enum variant to
 `AgentBuilder`.
 
+Cargo features determine which environment-backed implementations a Framework
+binary contains. See [Capability integrations](/framework/capability-integrations/)
+for filesystem, Bashkit, web-fetch, Lua, and MCP boundaries; this page covers
+agent-level configuration and authoring after an implementation is available.
+
 ## Configure capabilities
 
 Use typed values when the Framework exposes a stable configuration, a

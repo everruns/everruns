@@ -1,0 +1,33 @@
+[package]
+name = "everruns-integrations-filesystem"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-filesystem"
+description = "Session filesystem capability integration for Everruns agents"
+readme = "README.md"
+keywords = ["everruns", "filesystem", "agents", "tools"]
+categories = ["filesystem", "development-tools"]
+
+[features]
+default = []
+
+[dependencies]
+everruns-core.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+similar = "3"
+
+[dev-dependencies]
+chrono.workspace = true
+regex.workspace = true
+tokio = { workspace = true, features = ["full", "test-util"] }
+uuid.workspace = true

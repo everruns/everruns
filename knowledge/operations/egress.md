@@ -65,9 +65,10 @@ Reasoning:
 - `PlatformDefinition` carries the active `Arc<dyn EgressService>`.
 - Runtime tool execution threads the service into `ToolContext`.
 
-The default platform service is `DirectEgressService`, which performs outbound
-HTTP directly. `DisabledEgressService` is available for embedded hosts that want
-hard airgap behavior before installing a remote gateway implementation.
+The neutral `PlatformDefinition` default is `DisabledEgressService` and fails
+closed. Hosted server/worker composition explicitly installs
+`everruns_http::DirectEgressService`, which performs outbound HTTP directly;
+advanced embedders can install that implementation or a remote gateway.
 
 ## Required Usage
 
@@ -159,12 +160,12 @@ Deployment properties:
 1. Introduce `EgressService` and platform/runtime threading.
 2. Move fetchkit/web_fetch and bashkit HTTP onto it.
    *Done for web_fetch*: runtime contexts route through
-   `crates/core/src/capabilities/web_fetch/egress_transport.rs`; the fetchkit direct
+   `integrations/web-fetch/src/egress_transport.rs`; the fetchkit direct
    client remains only as the fallback for contexts without an egress service
    (see `knowledge/execution/fetchkit.md`).
    *Done for bashkit*: curl/wget (opt-in via the `bashkit_shell` capability's
    `enable_http` config) route through
-   `crates/core/src/capabilities/bashkit_shell/egress_transport.rs` with no
+   `integrations/bashkit/src/egress_transport.rs` with no
    direct-client fallback — without an egress service the shell stays offline
    (see `knowledge/operations/network-access.md`).
 3. Move tenant/agent-selected integration clients onto it.

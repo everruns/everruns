@@ -1,48 +1,25 @@
-//! Bashkit Shell Capability
+//! Sandboxed Bashkit shell capability for Everruns agents.
 //!
-//! This capability provides a sandboxed bash interpreter using bashkit.
-//! The bash environment uses a custom FileSystem adapter that bridges
-//! directly to the session file store.
+//! The capability bridges Bashkit to the host's session filesystem, enforces
+//! command and loop limits, and keeps outbound HTTP disabled unless capability
+//! configuration enables it and the host supplies an egress service.
 //!
-//! Design decisions:
-//! - SessionFileSystemAdapter implements bashkit's FileSystem trait
-//! - Direct delegation to SessionFileSystem - no sync overhead
-//! - Live visibility: files written by other tools are immediately visible
-//! - Resource limits prevent runaway scripts (max commands, loop iterations)
-//! - Context-aware tool that requires session filesystem access
-//! - SearchCapable impl delegates grep to SessionFileSystem::grep_files for
-//!   single-query indexed search instead of per-file linear scan
-//! - Outbound HTTP (curl/wget) is opt-in via per-capability config
-//!   `{"enable_http": true}` and only functions when the runtime provides an
-//!   `EgressService`: every request crosses the egress boundary through
-//!   `egress_transport::BashkitEgressTransport` (see `knowledge/operations/egress.md`).
-//!   Without the config flag - or without an egress service in context - the
-//!   shell has no network path at all, preserving the historical default.
+//! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
+//! `everruns-host` plus `everruns-integrations-filesystem`.
 //!
-//! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
-//! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`knowledge/execution/capabilities.md`, `knowledge/security/permissions.md`), assigning `bashkit_shell`
-//!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
-//!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
-//!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
-//!   `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper
-//!   in `crates/server/src/api/agents.rs` enforces the same contract on
-//!   agent-import / copy paths. Existing member-owned agents that already had
-//!   `bashkit_shell` before the elevation continue to run (gate is
-//!   creation/update only, not runtime). New assignments by non-admin members
-//!   are rejected with HTTP 403. The legacy `virtual_bash` alias resolves to
-//!   this capability through the registry, so the gate covers it too.
-//! - Rationale: `bashkit_shell` exposes scripted code execution. The bashkit
-//!   sandbox provides workspace-only filesystem access and no network by
-//!   default (outbound HTTP is opt-in config routed through the egress
-//!   boundary); still, the combination of arbitrary command composition +
-//!   LLM-driven invocation makes this a meaningful trust elevation versus
-//!   single-purpose tools. Org admins are the only principals expected to
-//!   accept that surface for shared agents.
+//! # Example
+//!
+//! ```
+//! use everruns_core::Capability;
+//! use everruns_integrations_bashkit::BashkitShellCapability;
+//!
+//! assert_eq!(BashkitShellCapability.id(), "bashkit_shell");
+//! assert_eq!(BashkitShellCapability.aliases(), vec!["virtual_bash"]);
+//! ```
 
 mod egress_transport;
+pub mod hook_dispatch;
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
@@ -59,8 +36,14 @@ use bashkit::{
     SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
     Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
+use everruns_core::*;
+pub use hook_dispatch::BashkitShellHookDispatcher;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::result::Result;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
@@ -1363,7 +1346,7 @@ mod tests {
     use crate::session_file::FileInfo;
     use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
-    use crate::{FileStat, GrepMatch, Result};
+    use crate::{FileStat, GrepMatch};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -1407,7 +1390,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> Result<Option<SessionFile>> {
+        ) -> everruns_core::Result<Option<SessionFile>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, encoding)) = files.get(&(session_id, path.clone())) {
@@ -1457,7 +1440,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> Result<SessionFile> {
+        ) -> everruns_core::Result<SessionFile> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             files.insert(
@@ -1484,13 +1467,17 @@ mod tests {
             session_id: SessionId,
             path: &str,
             _recursive: bool,
-        ) -> Result<bool> {
+        ) -> everruns_core::Result<bool> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             Ok(files.remove(&(session_id, path)).is_some())
         }
 
-        async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        async fn list_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_core::Result<Vec<FileInfo>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1583,7 +1570,11 @@ mod tests {
             Ok(entries)
         }
 
-        async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        async fn stat_file(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_core::Result<Option<FileStat>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -1606,7 +1597,7 @@ mod tests {
             session_id: SessionId,
             pattern: &str,
             path_pattern: Option<&str>,
-        ) -> Result<Vec<GrepMatch>> {
+        ) -> everruns_core::Result<Vec<GrepMatch>> {
             let regex = regex::Regex::new(pattern)
                 .map_err(|e| anyhow::anyhow!("invalid pattern: {}", e))?;
             let files = self.files.lock().unwrap();
@@ -1637,7 +1628,11 @@ mod tests {
             Ok(matches)
         }
 
-        async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        async fn create_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> everruns_core::Result<FileInfo> {
             let path = Self::normalize_path(path);
             let mut dirs = self.directories.lock().unwrap();
             dirs.insert((session_id, path.clone()), true);
@@ -3333,8 +3328,8 @@ mod tests {
 
     mod http_tests {
         use super::*;
-        use crate::capabilities::bashkit_shell::egress_transport::tests::MockEgress;
         use crate::egress::{EgressError, EgressRequestKind, EgressSigning};
+        use crate::egress_transport::tests::MockEgress;
         use crate::network_access::NetworkAccessList;
 
         fn http_context(egress: Option<Arc<MockEgress>>) -> ToolContext {

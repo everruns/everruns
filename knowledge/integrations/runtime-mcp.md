@@ -73,11 +73,11 @@ The end goals for this work, and how the design meets each:
 
 ### D1 — New `everruns-mcp` crate
 
-A new workspace crate `crates/mcp` (`everruns-mcp`) owns the transport-agnostic
-MCP client. It depends only on `everruns-core` (for the wire types in
-`mcp_server.rs`, `EgressService`, `validate_url_dns_pinned`, `ToolDefinition`,
-`ToolResult`, and the `ToolExecutor`/`ToolContext` traits). It is depended on
-by `runtime`, `worker`, and `server`.
+A workspace crate `crates/mcp` (`everruns-mcp`) owns the transport-agnostic MCP
+client and the MCP virtual-capability adapter/ID helpers. It depends on
+`everruns-core` for neutral wire, egress, tool, and invoker contracts, and on
+`everruns-http` for the concrete direct HTTP transport. It is depended on by
+host, worker, and server only when MCP is selected.
 
 What moves into `everruns-mcp` (deleted from `worker`/`server`):
 
@@ -88,7 +88,7 @@ What moves into `everruns-mcp` (deleted from `worker`/`server`):
 | `server/.../mcp_servers/service.rs::fetch_mcp_tools` (tools/list) | `everruns-mcp` discovery |
 
 The wire types (`McpToolCallRequest`, `McpToolsListRequest`, `McpContent`, the
-`McpError*` family, tool-name helpers) **stay in `everruns-core`** — they are
+`McpError*` family, transport-independent tool-name helpers) **stay in `everruns-core`** — they are
 already shared by API/OpenAPI and moving them would churn many call sites for
 no benefit (goal 6).
 
@@ -177,7 +177,7 @@ Two integration points in `crates/host`:
    harness→agent→session overlay (reusing `merge_scoped_mcp_servers`, already
    applied in `config_layer.rs`), runs `everruns-mcp` discovery for each server
    with `tool_discovery = true`, builds `McpCapability` tool definitions
-   (existing `crates/core/src/capabilities/mcp.rs`), and feeds them into
+   (`crates/mcp/src/capability.rs`), and feeds them into
    `ReasonInput.mcp_tool_definitions`. Discovery is **live** per turn (a
    `tools/list` per server), matching the control plane's scoped-server
    behavior, which keeps no persisted cache. A per-session TTL cache is a

@@ -23,7 +23,7 @@ path = "src/bin/export_openapi.rs"
 # Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
-lua = ["everruns-core/lua"]
+lua = ["everruns-platform/lua"]
 
 [dependencies]
 mimalloc.workspace = true
@@ -86,13 +86,16 @@ tar.workspace = true
 bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
 
 everruns-capability = { workspace = true }
-everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-core = { path = "../core", features = ["a2a", "embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-platform = { path = "../platform", features = ["openapi"] }
+everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
 # init these rely on stays in core's `telemetry` feature (on by default).
 everruns-observability = { workspace = true }
 everruns-mcp = { path = "../mcp" }
+everruns-http.workspace = true
+everruns-integrations-bashkit.workspace = true
+everruns-integrations-web-fetch.workspace = true
 everruns-ard = { path = "../ard" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }

@@ -93,7 +93,6 @@ mod agent_instructions;
 pub mod attach_skill;
 mod auto_tool_search;
 mod background_execution;
-mod bashkit_shell;
 mod btw;
 mod budgeting;
 mod citation_retrieval;
@@ -106,23 +105,17 @@ mod declarative;
 mod delegation_result;
 mod error_disclosure;
 pub mod facts;
-mod file_system;
 mod guardrails;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
 mod knowledge_index;
 mod loop_detection;
-mod lua;
-mod lua_code_mode;
-pub mod mcp;
 mod memory;
 mod message_metadata;
-mod model_scout;
 mod monitors;
 mod openai_tool_search;
 mod openrouter_server_tools;
-mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
 mod parallel_tool_calls;
@@ -150,8 +143,6 @@ mod tool_search;
 mod usage_limit_auto_continue;
 pub mod user_hooks;
 pub mod util;
-#[cfg(feature = "web-fetch")]
-mod web_fetch;
 
 // Re-export capabilities
 /// Capability ID for outbound A2A agent delegation. Defined ungated so session
@@ -219,10 +210,6 @@ pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
 };
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
-pub use file_system::{
-    DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
-    ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
-};
 pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
@@ -238,20 +225,10 @@ pub use knowledge_index::{
     validate_knowledge_index_config,
 };
 pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
-pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs, is_code_mode_eligible};
-pub use lua_code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
-pub use mcp::{
-    MCP_CAPABILITY_PREFIX, McpCapability, McpCapabilityIdExt, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id,
-};
 pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
     MessageMetadataField, render_annotation, strip_leading_timestamp_annotations,
-};
-pub use model_scout::{
-    MODEL_SCOUT_CAPABILITY_ID, ModelRanking, ModelScoutCapability, ProbeResult, ProbeTask,
-    RouterUpdateProposal, compute_score, rank_results,
 };
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
@@ -259,11 +236,6 @@ pub use openai_tool_search::{
 };
 pub use openrouter_server_tools::{
     OPENROUTER_SERVER_TOOLS_CAPABILITY_ID, OpenRouterServerToolsCapability,
-};
-pub use openrouter_workspace::{
-    OPENROUTER_WORKSPACE_CAPABILITY_ID, OpenRouterKeyInfo, OpenRouterRateLimit,
-    OpenRouterWorkspaceCapability, PolicyCompatibilityReport, WorkspacePolicyDrift,
-    detect_policy_drift,
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
@@ -316,9 +288,6 @@ pub use usage_limit_auto_continue::{
     resolve_usage_limit_auto_continue,
 };
 // Blueprint types are exported directly from the trait definitions above
-pub use bashkit_shell::{
-    BASHKIT_SHELL_CAPABILITY_ID, BashTool, BashkitShellCapability, SessionFileSystemAdapter,
-};
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
@@ -339,11 +308,6 @@ pub use tool_search::{
     TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
-#[cfg(feature = "web-fetch")]
-pub use web_fetch::{
-    BotAuthPublicKey, WEB_FETCH_CAPABILITY_ID, WebFetchCapability, WebFetchTool,
-    derive_bot_auth_public_key,
-};
 
 // ============================================================================
 // System Prompt Context
@@ -1339,13 +1303,9 @@ impl CapabilityRegistry {
         registry.register(HumanIntentCapability);
         registry.register(CurrentTimeCapability);
         registry.register(MessageMetadataCapability);
-        registry.register(FileSystemCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(StatelessTodoListCapability);
-        #[cfg(feature = "web-fetch")]
-        registry.register(WebFetchCapability::from_env());
-        registry.register(BashkitShellCapability);
         registry.register(BtwCapability);
         registry.register(InfinityContextCapability);
         registry.register(budgeting::BudgetingCapability);
@@ -1369,12 +1329,6 @@ impl CapabilityRegistry {
         registry.register(GuardrailsCapability);
         registry.register(user_hooks::UserHooksCapability);
 
-        let internal_flags = crate::InternalFeatureFlags::from_env();
-        if internal_flags.lua {
-            registry.register(LuaCapability);
-            registry.register(LuaCodeModeCapability);
-        }
-
         registry
     }
 
@@ -1391,18 +1345,12 @@ impl CapabilityRegistry {
         registry.register(CurrentTimeCapability);
         registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
-        registry.register(ModelScoutCapability);
-        registry.register(OpenRouterWorkspaceCapability);
         registry.register(OpenRouterServerToolsCapability);
-        registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
         registry.register(StatelessTodoListCapability);
-        #[cfg(feature = "web-fetch")]
-        registry.register(WebFetchCapability::from_env());
-        registry.register(BashkitShellCapability);
         registry.register(BackgroundExecutionCapability);
         registry.register(SessionScheduleCapability);
         registry.register(BtwCapability);
@@ -1523,15 +1471,6 @@ impl CapabilityRegistry {
             registry.register(SessionSandboxCapability);
         }
 
-        // Experimental sandboxed Lua execution (knowledge/execution/lua-execution.md). High
-        // risk, admin-gated. Gated by FEATURE_LUA; scripts only actually run
-        // when the `lua` cargo feature is also compiled in.
-        if internal_flags.lua {
-            registry.register(LuaCapability);
-            // Routes non-essential tool calls through the Lua sandbox by hiding
-            // them from the model's direct tool list. Depends on `lua`.
-            registry.register(LuaCodeModeCapability);
-        }
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin
@@ -3248,6 +3187,99 @@ mod tests {
         }
     }
 
+    struct BackgroundFixtureTool;
+
+    #[async_trait]
+    impl Tool for BackgroundFixtureTool {
+        fn name(&self) -> &str {
+            "bash"
+        }
+        fn description(&self) -> &str {
+            "Fixture background-capable shell tool."
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(serde_json::json!({"ok": true}))
+        }
+        fn hints(&self) -> crate::tool_types::ToolHints {
+            crate::tool_types::ToolHints {
+                supports_background: Some(true),
+                ..Default::default()
+            }
+        }
+    }
+
+    struct FileSystemFixture;
+
+    impl Capability for FileSystemFixture {
+        fn id(&self) -> &str {
+            "session_file_system"
+        }
+        fn name(&self) -> &str {
+            "Fixture Filesystem"
+        }
+        fn description(&self) -> &str {
+            "Fixture filesystem capability."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![
+                Box::new(FixtureTool("read_file")),
+                Box::new(FixtureTool("write_file")),
+            ]
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["file_system"]
+        }
+    }
+
+    struct BashFixture;
+
+    impl Capability for BashFixture {
+        fn id(&self) -> &str {
+            "bashkit_shell"
+        }
+        fn aliases(&self) -> Vec<&'static str> {
+            vec!["virtual_bash"]
+        }
+        fn name(&self) -> &str {
+            "Fixture Bash"
+        }
+        fn description(&self) -> &str {
+            "Fixture shell capability."
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![Box::new(BackgroundFixtureTool)]
+        }
+        fn dependencies(&self) -> Vec<&'static str> {
+            vec!["session_file_system"]
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["file_system"]
+        }
+        fn risk_level(&self) -> RiskLevel {
+            RiskLevel::High
+        }
+    }
+
+    struct WebFetchFixture;
+
+    impl Capability for WebFetchFixture {
+        fn id(&self) -> &str {
+            "web_fetch"
+        }
+        fn name(&self) -> &str {
+            "Fixture Web Fetch"
+        }
+        fn description(&self) -> &str {
+            "Fixture web capability."
+        }
+        fn risk_level(&self) -> RiskLevel {
+            RiskLevel::High
+        }
+    }
+
     /// Contributes four plain calculator-style tools and no prompt addition.
     struct MathFixture;
 
@@ -3330,6 +3362,9 @@ mod tests {
         registry.register(MathFixture);
         registry.register(WeatherFixture);
         registry.register(SampleDataFixture);
+        registry.register(FileSystemFixture);
+        registry.register(BashFixture);
+        registry.register(WebFetchFixture);
         registry
     }
 
@@ -3371,13 +3406,10 @@ mod tests {
             "self_budget",
             "current_time",
             "research",
-            "session_file_system",
             "session_storage",
             "session",
             "session_sql_database",
             "stateless_todo_list",
-            "web_fetch",
-            "bashkit_shell",
             "background_execution",
             "session_schedule",
             "btw",
@@ -3410,8 +3442,6 @@ mod tests {
             "prompt_canary_guardrail",
             "guardrails",
             "user_hooks",
-            "model_scout",
-            "openrouter_workspace",
             "openrouter_server_tools",
         ]
         .into_iter()
@@ -3425,17 +3455,15 @@ mod tests {
 
     /// Capabilities present in the default in-process runtime registry.
     fn expected_runtime_builtin_ids() -> BTreeSet<&'static str> {
-        let mut ids = [
+        [
             "agent_instructions",
             "human_intent",
             "budgeting",
             "self_budget",
             "current_time",
-            "session_file_system",
             "session_storage",
             "session",
             "stateless_todo_list",
-            "bashkit_shell",
             "btw",
             "infinity_context",
             "compaction",
@@ -3459,18 +3487,16 @@ mod tests {
             "user_hooks",
         ]
         .into_iter()
-        .collect::<BTreeSet<_>>();
-        if cfg!(feature = "web-fetch") {
-            ids.insert("web_fetch");
-        }
-        ids
+        .collect::<BTreeSet<_>>()
     }
 
     /// Full set for dev: base + experimental delegation capabilities.
     fn expected_dev_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = expected_core_builtin_ids();
         ids.insert("agent_handoff");
-        ids.insert("a2a_agent_delegation");
+        if cfg!(feature = "a2a") {
+            ids.insert("a2a_agent_delegation");
+        }
         ids
     }
 
@@ -3495,7 +3521,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
         assert_eq!(registry_ids(&registry), expected_dev_builtin_ids());
         assert!(registry.has("agent_handoff"));
-        assert!(registry.has("a2a_agent_delegation"));
+        assert_eq!(registry.has("a2a_agent_delegation"), cfg!(feature = "a2a"));
     }
 
     #[test]
@@ -3517,10 +3543,20 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_LUA") };
         let registry = CapabilityRegistry::runtime_builtins();
         assert_eq!(registry_ids(&registry), expected_runtime_builtin_ids());
-        assert!(registry.has("session_file_system"));
-        #[cfg(feature = "web-fetch")]
-        assert!(registry.has("web_fetch"));
-        assert!(registry.has("bashkit_shell"));
+        for environment_backed in [
+            "session_file_system",
+            "bashkit_shell",
+            "web_fetch",
+            "lua",
+            "lua_code_mode",
+            "model_scout",
+            "openrouter_workspace",
+        ] {
+            assert!(
+                !registry.has(environment_backed),
+                "`{environment_backed}` must be composed outside everruns-core"
+            );
+        }
 
         for platform_only in [
             "model_scout",
@@ -3550,7 +3586,7 @@ mod tests {
         unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         assert!(registry.has("agent_handoff"));
-        assert!(registry.has("a2a_agent_delegation"));
+        assert_eq!(registry.has("a2a_agent_delegation"), cfg!(feature = "a2a"));
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
     }
 
@@ -3600,12 +3636,12 @@ mod tests {
                 "capability `{id}` does not resolve by its own id"
             );
 
-            // Every declared dependency must resolve to a registered capability
-            // (or alias) in the same registry — a typo or removed dependency
-            // would otherwise silently break dependency resolution at runtime.
+            // Core may declare a dependency on an implementation supplied by
+            // the host composition layer. All other dependencies must resolve
+            // inside the core registry.
             for dep in cap.dependencies() {
                 assert!(
-                    registry.get(dep).is_some(),
+                    dep == "session_file_system" || registry.get(dep).is_some(),
                     "capability `{id}` depends on `{dep}`, which is not registered"
                 );
             }
@@ -3807,9 +3843,6 @@ mod tests {
     #[test]
     fn test_capability_icons_and_categories() {
         let registry = CapabilityRegistry::with_builtins();
-
-        let session = registry.get("session_file_system").unwrap();
-        assert!(session.icon().is_some());
 
         let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
@@ -4093,31 +4126,6 @@ mod tests {
         );
         assert!(applied.runtime_agent.system_prompt.contains("write_todos"));
         assert!(applied.tool_registry.has("write_todos"));
-        assert_eq!(applied.tool_registry.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_web_fetch() {
-        let registry = CapabilityRegistry::with_builtins();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["web_fetch".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // WebFetch has system prompt from fetchkit's TOOL_LLMTXT and 1 tool
-        assert!(
-            applied
-                .runtime_agent
-                .system_prompt
-                .contains(&base_runtime_agent.system_prompt)
-        );
-        assert!(applied.runtime_agent.system_prompt.contains("web_fetch"));
-        assert!(applied.tool_registry.has("web_fetch"));
         assert_eq!(applied.tool_registry.len(), 1);
     }
 
@@ -5305,7 +5313,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bashkit_shell_capability_produces_bash_tool() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected =
             collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
@@ -5341,7 +5349,7 @@ mod tests {
             "auto_tool_search".to_string(),
         ];
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected = collect_capabilities(&generic_harness_caps, &registry, &test_ctx()).await;
 
         let tool_names: Vec<&str> = collected
@@ -5360,7 +5368,7 @@ mod tests {
     async fn test_collect_capabilities_tool_count_matches_definitions() {
         // Ensure collected tools (implementations) match tool_definitions count.
         // A mismatch means some tools won't be executable at runtime.
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected =
             collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
@@ -5434,7 +5442,7 @@ mod tests {
     /// causes `spawn_background` to appear in both tool_definitions and tools.
     #[tokio::test]
     async fn test_background_execution_auto_activates_with_bashkit_shell() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected =
             collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
@@ -5899,7 +5907,7 @@ mod tests {
 
     #[test]
     fn test_file_system_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let fs = registry.get("session_file_system").unwrap();
         assert_eq!(fs.features(), vec!["file_system"]);
@@ -5907,7 +5915,7 @@ mod tests {
 
     #[test]
     fn test_bashkit_shell_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let bash = registry.get("bashkit_shell").unwrap();
         assert_eq!(bash.features(), vec!["file_system"]);
@@ -5915,7 +5923,7 @@ mod tests {
 
     #[test]
     fn test_alias_resolves_to_canonical_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Legacy `virtual_bash` ID (persisted agent configs) must keep working.
         let via_alias = registry.get("virtual_bash").unwrap();
@@ -5931,7 +5939,7 @@ mod tests {
 
     #[test]
     fn test_alias_dedupes_with_canonical_in_dependency_resolution() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Selecting both the alias and the canonical ID must resolve to a
         // single activation under the canonical ID.
@@ -5956,7 +5964,7 @@ mod tests {
 
     #[test]
     fn test_alias_preserves_explicit_config_in_resolution() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let configs = vec![AgentCapabilityConfig::with_config(
             "virtual_bash".to_string(),
@@ -5975,7 +5983,7 @@ mod tests {
 
     #[test]
     fn test_unregister_by_alias_removes_capability_and_aliases() {
-        let mut registry = CapabilityRegistry::with_builtins();
+        let mut registry = fixture_registry();
 
         assert!(registry.unregister("virtual_bash").is_some());
         assert!(!registry.has("bashkit_shell"));
@@ -6034,7 +6042,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_multiple_capabilities() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let features = compute_features(
             &[
@@ -6052,7 +6060,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_deduplicates() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Both session_file_system and bashkit_shell contribute "file_system"
         let features = compute_features(
@@ -6068,7 +6076,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_includes_dependency_features() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // bashkit_shell depends on session_file_system; both contribute "file_system"
         let features = compute_features(&["bashkit_shell".to_string()], &registry);
@@ -6077,7 +6085,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_generic_harness_set() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Typical Generic Harness capabilities
         let features = compute_features(

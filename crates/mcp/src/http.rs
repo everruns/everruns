@@ -19,10 +19,11 @@ use crate::transport::{McpConnection, McpEndpoint, McpTransport};
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::{
-    DirectEgressService, EgressRequest, EgressRequestKind, EgressService, McpProtocolMode,
-    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListResponse,
-    normalize_mcp_error_code, validate_url_dns_pinned,
+    EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpToolCallResponse,
+    McpToolCallResult, McpToolDefinition, McpToolsListResponse, normalize_mcp_error_code,
+    validate_url_dns_pinned,
 };
+use everruns_http::DirectEgressService;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};

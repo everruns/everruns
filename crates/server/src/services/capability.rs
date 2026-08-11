@@ -21,15 +21,14 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
-use everruns_core::capabilities::{
-    Capability, CapabilityRegistry, McpCapabilityIdExt, SkillCapabilityIdExt,
-};
+use everruns_core::capabilities::{Capability, CapabilityRegistry, SkillCapabilityIdExt};
 use everruns_core::{
     Caller, CapabilityId, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition,
-    McpCapability, RiskLevel, Skill, declarative_capability_info, is_declarative_capability,
-    is_plugin_capability, mcp_capability_id, parse_declarative_capability_id,
-    parse_plugin_capability_id, plugin_capability_info, skill_capability_id,
+    RiskLevel, Skill, declarative_capability_info, is_declarative_capability, is_plugin_capability,
+    parse_declarative_capability_id, parse_plugin_capability_id, plugin_capability_info,
+    skill_capability_id,
 };
+use everruns_mcp::{McpCapability, McpCapabilityIdExt, mcp_capability_id};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;

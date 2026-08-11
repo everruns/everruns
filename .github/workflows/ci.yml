@@ -412,6 +412,25 @@ jobs:
       - name: Check observability isolation
         run: bash scripts/lib/check-observability-isolation.sh
 
+  # Architecture guard (EVE-883): filesystem, shell, web, Lua, concrete HTTP,
+  # and MCP adapters live in focused integration crates. Core remains the
+  # neutral contract/kernel boundary and the default Framework avoids those
+  # opt-in execution stacks.
+  environment-capability-isolation:
+    name: Environment Capability Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check environment capability isolation
+        run: bash scripts/lib/check-environment-capability-isolation.sh
+
   # Architecture guard (EVE-877, EVE-881): stored Agent/AgentVersion and
   # Harness persistence records plus the built-in harness provisioning
   # templates live in crates/platform. Kernel crates (core, engine, provider,
@@ -566,9 +585,11 @@ jobs:
           # Run the whole host crate (lib unit tests incl. RealDiskFileStore /
           # in-memory store, ALL integration tests incl. the EVE-660 mount-resolver
           # conformance, and doctests). No per-test enumeration: new test files are
-          # picked up automatically rather than silently skipped. `--features lua`
-          # so the lua code-mode integration test compiles and runs in the same pass.
-          cargo test -p everruns-host --features lua -- --test-threads=1
+          # picked up automatically rather than silently skipped. Enable `lua` for
+          # code-mode coverage and `bashkit` for the moved user-hook dispatcher;
+          # the feature-specific MCP target runs immediately afterward.
+          cargo test -p everruns-host --features lua,bashkit -- --test-threads=1
+          cargo test -p everruns-host --features mcp --test mcp_runtime_test -- --test-threads=1
           # everruns facade (EVE-830): whole crate across every optional facade
           # feature, including local history/resume acceptance paths, plus a
           # bare-facade compile so public configuration cannot accidentally

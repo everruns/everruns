@@ -18,9 +18,10 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, DirectEgressService, EgressService, McpProtocolMode, McpServer, McpServerAuthMode,
-    McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    Caller, EgressService, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
+    McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
+use everruns_http::DirectEgressService;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};

@@ -39,6 +39,35 @@ use everruns_platform::PlatformStore;
 use std::sync::Arc;
 use tracing::warn;
 
+#[cfg(feature = "bashkit")]
+fn bash_hook_dispatcher(
+    file_store: Arc<dyn SessionFileSystem>,
+) -> Arc<dyn everruns_core::hook_executor::BashHookDispatcher> {
+    Arc::new(everruns_integrations_bashkit::BashkitShellHookDispatcher::new(file_store))
+}
+
+#[cfg(not(feature = "bashkit"))]
+fn bash_hook_dispatcher(
+    _file_store: Arc<dyn SessionFileSystem>,
+) -> Arc<dyn everruns_core::hook_executor::BashHookDispatcher> {
+    struct DisabledDispatcher;
+
+    #[async_trait]
+    impl everruns_core::hook_executor::BashHookDispatcher for DisabledDispatcher {
+        async fn dispatch(
+            &self,
+            _payload: &everruns_core::hook_executor::HookPayload,
+            _command: &str,
+            _extra_env: &std::collections::BTreeMap<String, String>,
+            _opts: &everruns_core::hook_executor::ExecutorOpts,
+        ) -> std::result::Result<everruns_core::hook_executor::BashExecOutput, String> {
+            Err("bash hooks require the everruns-host `bashkit` feature".to_string())
+        }
+    }
+
+    Arc::new(DisabledDispatcher)
+}
+
 /// Resolved inputs loaded in one batched call for runtime host execution.
 ///
 /// This is the narrow load/resolve contract (EVE-872): hosts return the
@@ -276,7 +305,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         _org_id: i64,
         _session_id: SessionId,
-    ) -> Option<Arc<everruns_mcp::McpExecutor>> {
+    ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         None
     }
 }
@@ -404,9 +433,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
         resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
     let specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
-    let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-        everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
-    );
+    let dispatcher = bash_hook_dispatcher(adapter.file_store());
     Ok((specs, dispatcher))
 }
 
@@ -550,9 +577,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         })
         .collect();
     if !user_hook_specs.is_empty() {
-        let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-            everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
-        );
+        let dispatcher = bash_hook_dispatcher(adapter.file_store());
         post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
             &user_hook_specs,
             dispatcher.clone(),

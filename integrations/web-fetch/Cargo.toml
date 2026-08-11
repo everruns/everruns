@@ -1,0 +1,35 @@
+[package]
+name = "everruns-integrations-web-fetch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-web-fetch"
+description = "FetchKit-backed web fetch capability integration for Everruns agents"
+readme = "README.md"
+keywords = ["everruns", "http", "fetch", "agents"]
+categories = ["web-programming", "development-tools"]
+
+[features]
+default = []
+
+[dependencies]
+everruns-core.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+bytes = "1"
+ed25519-dalek = { version = "3", features = ["rand_core"] }
+fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"] }
+serde_json.workspace = true
+futures.workspace = true
+sha2.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+tokio = { workspace = true, features = ["full", "test-util"] }
+uuid.workspace = true
+wiremock = "0.6"

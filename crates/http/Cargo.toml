@@ -1,0 +1,28 @@
+[package]
+name = "everruns-http"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-http"
+description = "Concrete HTTP egress transport for Everruns hosts"
+readme = "README.md"
+keywords = ["everruns", "http", "egress", "agents"]
+categories = ["web-programming::http-client", "asynchronous"]
+
+[features]
+default = []
+
+[dependencies]
+everruns-core.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

@@ -1553,7 +1553,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 vec![]
             } else {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
-                    Arc::new(everruns_core::DirectEgressService::for_runtime_traffic_from_env())
+                    Arc::new(everruns_http::DirectEgressService::for_runtime_traffic_from_env())
                 });
                 build_scoped_mcp_tool_definitions(
                     &effective,
@@ -2197,9 +2197,9 @@ impl DirectWorkerAdapters {
         org_id: i64,
         capability_rows: &[AgentCapabilityRow],
     ) -> Result<Vec<ToolDefinition>> {
-        use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
         use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_mcp::parse_mcp_capability_id;
 
         let mut mcp_tools = Vec::new();
 

@@ -9,9 +9,9 @@
 `everruns-core` defines the provider-neutral contracts that every other Everruns
 crate builds on: agents, harnesses, sessions, messages, events, typed IDs,
 capabilities and tools, the LLM driver registry, and the context assembly that
-drives the `input → reason → act` agent loop. It carries no server, database, or
-network runtime of its own — hosts and providers wire these abstractions
-together.
+drives the `input → reason → act` agent loop. It carries no filesystem, shell,
+web-fetch, Lua, MCP-client, concrete HTTP, server, or database runtime of its
+own — hosts and focused integration crates wire these abstractions together.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. Provider crates such as
@@ -41,6 +41,10 @@ assert!(platform.capability_registry().get("current_time").is_some());
 - An LLM driver registry and provider-neutral message, tool, and reasoning types
 - Context assembly shared by embedded, worker, and server execution paths
 - Minimal in-memory store implementations for embedding and prototyping
+
+Environment implementations live in `everruns-integrations-filesystem`,
+`everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,
+`everruns-integrations-lua`, `everruns-mcp`, and `everruns-http`.
 
 ## Documentation
 

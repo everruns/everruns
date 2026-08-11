@@ -17,13 +17,13 @@
 use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
-use everruns_core::capabilities::FileSystemCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
     HarnessDefinition, PlatformDefinition, ResolvedModel, SessionExecutionState, ToolCall,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
 use tempfile::TempDir;
 
