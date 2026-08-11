@@ -31,7 +31,7 @@ None.
 | Landing | `/` redirects to `/chats` |
 | Empty state | Shows "No chats yet" with an agent picker and **Start chat** — never a bare spinner |
 | Thread created | `POST /v1/sessions` returns 200/201 with the picked agent, and the browser lands on `/chats/{sessionId}` |
-| Thread header | Shows the agent avatar, the thread title, **Share**, and **Open session** |
+| Thread header | Shows the agent avatar, the thread title, **Pin chat**, **Share**, and **Open session** |
 | Composer | Placeholder names the bound agent; the model control shows the model in use |
 | Agent binding | Shown as text, with no control to change the agent on an existing thread |
 | Thread list | The new thread appears in `/chats` and under **Chats** in the sidebar |

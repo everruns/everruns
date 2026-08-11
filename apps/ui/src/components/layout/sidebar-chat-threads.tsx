@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Pin, Plus } from "lucide-react";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import { SIDEBAR_THREAD_LIMIT, threadTitle } from "@/lib/chat-threads";
 import type { Session } from "@/lib/api/types";
@@ -65,6 +65,9 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
             )}
           >
             <span className="truncate">{threadTitle(thread)}</span>
+            {thread.is_pinned === true && (
+              <Pin className="ml-auto size-3 shrink-0 text-primary" aria-label="Pinned" />
+            )}
           </Link>
         );
       })}

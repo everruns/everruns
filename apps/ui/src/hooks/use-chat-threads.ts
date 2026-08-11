@@ -23,7 +23,7 @@ export interface UseChatThreadsResult {
   error: Error | null;
 }
 
-/** This user's chat threads, most recently active first. */
+/** This user's chat threads, pinned first and then ordered by recent activity. */
 export function useChatThreads(options: { enabled?: boolean } = {}): UseChatThreadsResult {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const { user } = useAuth();
