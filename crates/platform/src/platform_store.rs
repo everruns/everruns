@@ -649,7 +649,13 @@ pub mod tests {
             if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
                 return Ok(Some(harness));
             }
-            Ok(Some(self.harness.clone()))
+            // An unregistered id resolves to the default harness *under the
+            // requested id*, so inheritance resolution (EVE-881) terminates at
+            // the harness the caller asked for instead of reporting a chain
+            // mismatch.
+            let mut harness = self.harness.clone();
+            harness.id = id;
+            Ok(Some(harness))
         }
         async fn create_harness(
             &self,

@@ -87,7 +87,10 @@ mod tests {
     #[test]
     fn composition_preserves_caller_selected_core_capabilities() {
         let registry = compose_runtime_capability_registry(CapabilityRegistry::with_builtins());
-        assert!(registry.has("session_schedule"));
+        // A core-owned capability the caller brought in survives composition.
+        // `session_schedule` used to stand in here; it is hosted and lives in
+        // everruns-platform now (EVE-885), so it is no longer in this preset.
+        assert!(registry.has("session_storage"));
         assert_eq!(
             registry.has("session_file_system"),
             cfg!(feature = "filesystem")

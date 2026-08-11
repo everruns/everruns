@@ -1844,6 +1844,7 @@ mod tests {
         // definition, so a capability inherited from a parent harness arrives
         // already folded into the child's configuration.
         let mut child_harness = store_value.harness.clone();
+        child_harness.id = child_harness_id;
         child_harness.capabilities = vec![everruns_core::AgentCapabilityConfig::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
