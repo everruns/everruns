@@ -540,10 +540,11 @@ pub use runtime_provider::{
     ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,
     StaticHeaderAuth,
 };
-pub use session::{
-    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
-    SessionSeedMode, SessionSource, SessionStatus, SubagentStatus,
-};
+// EVE-882: the persisted `Session` aggregate and its product lifecycle enums
+// (`SessionStatus`, `SessionSource`, `SessionActivity`, participants) moved to
+// the `everruns-platform` crate. Core keeps only the portable execution view
+// and the neutral execution state consumed during a turn.
+pub use session::{ExecutionSession, SessionExecutionState, SessionSeedMode, SubagentStatus};
 pub use session_file::{
     FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,
     GrepContextLine, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, InitialFile,

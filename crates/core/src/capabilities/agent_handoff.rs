@@ -493,7 +493,7 @@ async fn harness_chain_overlay(
 
 async fn invite_mode_overlays(
     store: &dyn crate::subagent_delegation::SubagentSessionDelegate,
-    parent_session: &crate::session::Session,
+    parent_session: &crate::session::ExecutionSession,
     target: &AgentHandoffTargetConfig,
 ) -> Result<(AgentConfigOverlay, AgentConfigOverlay), ToolExecutionResult> {
     let mut host_layers = vec![harness_chain_overlay(store, parent_session.harness_id).await?];
@@ -1012,16 +1012,16 @@ impl Tool for SpawnAgentHandoffTool {
                 ));
             }
 
-            let participant = match store
+            let participant_id = match store
                 .add_agent_session_participant(context.session_id, target.agent_id)
                 .await
             {
-                Ok(participant) => participant,
+                Ok(participant_id) => participant_id,
                 Err(error) => return ToolExecutionResult::internal_error(error),
             };
 
             return ToolExecutionResult::success(json!({
-                "participant_id": participant.id,
+                "participant_id": participant_id,
                 "target": target.id,
                 "target_agent_id": target.agent_id,
                 "name": name,
@@ -1796,11 +1796,7 @@ mod tests {
             .expect("participants lock")
             .clone();
         assert_eq!(participants.len(), 1);
-        assert_eq!(participants[0].agent_id, Some(store.agent.id));
-        assert_eq!(
-            participants[0].role,
-            crate::session::SessionParticipantRole::Member
-        );
+        assert_eq!(participants[0].1, Some(store.agent.id));
     }
 
     #[tokio::test]

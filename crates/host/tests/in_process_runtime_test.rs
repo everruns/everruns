@@ -1,12 +1,11 @@
 use async_trait::async_trait;
-use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::{InfinityContextCapability, SessionTasksCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, InitialFile, Message, MessageRole,
-    PlatformDefinition, ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, InitialFile, Message,
+    MessageRole, PlatformDefinition, ResolvedModel, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
 };
 use everruns_host::{
@@ -44,10 +43,10 @@ fn session(
     session_id: everruns_core::SessionId,
     harness_id: everruns_core::HarnessId,
     agent_id: Option<everruns_core::AgentId>,
-) -> Session {
+) -> ExecutionSession {
     let builder = SessionBuilder::new(harness_id)
         .id(session_id)
-        .title("Embedded Session");
+        .title("Embedded ExecutionSession");
     match agent_id {
         Some(agent_id) => builder.agent(agent_id).build(),
         None => builder.build(),
@@ -75,8 +74,7 @@ impl SessionFileSystemFactory for ContextRealDiskFactory {
 }
 
 #[test]
-fn per_type_builders_accept_explicit_timestamps() {
-    let timestamp = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+fn per_type_builders_produce_portable_execution_values() {
     let harness_id = everruns_core::HarnessId::from_seed(51);
     let agent_id = everruns_core::AgentId::from_seed(51);
     let session_id = everruns_core::SessionId::from_seed(51);
@@ -88,16 +86,14 @@ fn per_type_builders_accept_explicit_timestamps() {
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
-        .created_at(timestamp)
-        .updated_at(timestamp)
         .build();
 
-    // Harness/agent definitions are portable execution configuration
-    // (EVE-877, EVE-881); they carry no persistence timestamps.
+    // Harness/agent/session values are portable execution configuration
+    // (EVE-877, EVE-881, EVE-882); they carry no persistence timestamps.
     assert_eq!(harness.id, harness_id);
     assert_eq!(agent.id, agent_id);
-    assert_eq!(session.created_at, timestamp);
-    assert_eq!(session.updated_at, timestamp);
+    assert_eq!(session.id, session_id);
+    assert_eq!(session.agent_id, Some(agent_id));
 }
 
 #[tokio::test]
@@ -404,7 +400,7 @@ async fn single_session_builder_seeds_runnable_runtime() {
                 .with_capability("test_math")
                 .agent("math-agent", "Use tools when needed.")
                 .agent_max_iterations(8)
-                .session_title("Embedded Session")
+                .session_title("Embedded ExecutionSession")
         })
         .build()
         .await

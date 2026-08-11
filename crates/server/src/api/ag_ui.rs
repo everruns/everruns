@@ -707,7 +707,7 @@ fn forwarded_ag_ui_image_ids(forwarded_props: &Value) -> Result<Vec<ImageId>, Bo
 }
 
 struct SessionResolution {
-    session: everruns_core::Session,
+    session: everruns_platform::Session,
     is_new: bool,
 }
 
@@ -805,7 +805,7 @@ async fn find_or_create_session(
                     app.internal_id,
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
-                    everruns_core::SessionSource::AgUi,
+                    everruns_platform::SessionSource::AgUi,
                     CreateSessionRequest {
                         source: None,
                         workspace_id: None,

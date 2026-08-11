@@ -66,7 +66,7 @@ impl TaskStatus {
 
 /// Map an Everruns session status string to a Tasks lifecycle state.
 ///
-/// Session statuses (see `everruns_core::SessionStatus`):
+/// Session statuses (see `everruns_platform::SessionStatus`):
 /// - `started` / `active` → `working` (a turn is or will be running)
 /// - `waiting_for_tool_results` / `paused` → `input_required` (needs client
 ///   input: tool results, or a budget/limit action)

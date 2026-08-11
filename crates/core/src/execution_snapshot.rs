@@ -1,7 +1,7 @@
 // Canonical resolved execution snapshot (EVE-872).
 //
 // Decision: host turn execution consumes this neutral, value-first projection
-// instead of stored Agent/Harness/Session aggregates. Both the Framework
+// instead of stored Agent/Harness/Session aggregates (the session arrives as the portable `ExecutionSession` projection, EVE-882). Both the Framework
 // in-process runtime and the hosted workers build the same value here, so
 // harness → agent → session precedence is applied by one code path
 // (`AgentConfigOverlay` merge semantics) regardless of which host executes the
@@ -22,7 +22,7 @@ use crate::mcp_server::{
     McpProtocolMode, McpServerAuthMode, McpServerTransportType, ScopedMcpServer,
 };
 use crate::network_access::NetworkAccessList;
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
 use crate::traits::{AgentStore, HarnessStore, SessionStore};
@@ -140,7 +140,7 @@ impl ResolvedExecutionSnapshot {
     pub fn project(
         harness: &HarnessDefinition,
         agent: Option<&AgentDefinition>,
-        session: &Session,
+        session: &ExecutionSession,
     ) -> Result<Self> {
         let agent = match (session.agent_id, agent) {
             (Some(agent_id), Some(agent)) => {
@@ -227,7 +227,7 @@ pub async fn load_execution_snapshot(
 pub async fn load_execution_snapshot_for_session(
     harness_store: &dyn HarnessStore,
     agent_store: &dyn AgentStore,
-    session: &Session,
+    session: &ExecutionSession,
 ) -> Result<ResolvedExecutionSnapshot> {
     let harness = harness_store
         .get_harness(session.harness_id)
@@ -245,8 +245,6 @@ mod tests {
     use super::*;
     use crate::in_memory::{InMemoryAgentStore, InMemoryHarnessStore};
     use crate::network_access::NetworkAccessList;
-    use crate::session::SessionStatus;
-    use chrono::Utc;
     use std::collections::HashMap;
 
     fn harness() -> HarnessDefinition {
@@ -264,51 +262,17 @@ mod tests {
         }
     }
 
-    fn session(session_id: SessionId, harness_id: HarnessId, agent_id: Option<AgentId>) -> Session {
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
-            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id,
+    fn session(
+        session_id: SessionId,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
+    ) -> ExecutionSession {
+        ExecutionSession {
             agent_id,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: Some("UI-TITLE-MARKER".into()),
-            goal: None,
             locale: Some("en-US".into()),
-            preview: Some("UI-PREVIEW-MARKER".into()),
-            output_preview: None,
             tags: vec!["tag-a".into()],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
+            ..ExecutionSession::with_own_workspace(session_id, harness_id)
         }
     }
 

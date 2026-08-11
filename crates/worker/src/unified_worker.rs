@@ -1989,7 +1989,7 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _session_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::Session>> {
+            ) -> CoreResult<Option<everruns_core::ExecutionSession>> {
                 unimplemented!()
             }
             async fn set_session_status(
@@ -1997,7 +1997,7 @@ mod tests {
                 _org_id: i64,
                 _session_id: Uuid,
                 _status: &str,
-            ) -> CoreResult<everruns_core::Session> {
+            ) -> CoreResult<()> {
                 unimplemented!()
             }
             async fn set_session_title(
@@ -2005,7 +2005,7 @@ mod tests {
                 _org_id: i64,
                 _session_id: Uuid,
                 _title: String,
-            ) -> CoreResult<everruns_core::Session> {
+            ) -> CoreResult<everruns_core::ExecutionSession> {
                 unimplemented!()
             }
             async fn get_message(

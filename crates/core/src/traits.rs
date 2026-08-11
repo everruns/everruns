@@ -199,31 +199,41 @@ impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::leased_resource::{LeasedResource, UpsertLeasedResource};
-use crate::session::Session;
+use crate::session::ExecutionSession;
 
-/// Trait for retrieving session configurations
+/// Narrow session-loading seam for turn execution (EVE-872, EVE-882).
 ///
-/// Implementations can:
-/// - Load sessions from a database
-/// - Keep sessions in memory for testing
+/// Implementations project their stored session records into the portable
+/// [`ExecutionSession`] — the session correlation values, per-session
+/// configuration layer, and neutral execution state a turn consumes. The
+/// persisted `Session` aggregate (facets, participants, ownership summaries,
+/// timestamps, UI metadata) lives in `everruns-platform` and never crosses
+/// this boundary.
 #[async_trait]
 pub trait SessionStore: Send + Sync {
-    /// Get a session by ID
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
+    /// Get the portable execution view for a session by ID.
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>>;
 }
 
 #[async_trait]
 impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         (**self).get_session(session_id).await
     }
 }
 
 /// Trait for updating mutable session metadata.
+///
+/// Mutations acknowledge with the refreshed portable execution view, never a
+/// stored platform record (EVE-882).
 #[async_trait]
 pub trait SessionMutator: Send + Sync {
     /// Update a session's human-readable title.
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession>;
 
     /// Add or replace a session-scoped capability atomically.
     ///
@@ -234,7 +244,7 @@ pub trait SessionMutator: Send + Sync {
         &self,
         _session_id: SessionId,
         _capability: AgentCapabilityConfig,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(crate::error::AgentLoopError::store(
             "session backend does not support live capability reconfiguration",
         ))
@@ -245,7 +255,7 @@ pub trait SessionMutator: Send + Sync {
         &self,
         _session_id: SessionId,
         _capability_id: &str,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(crate::error::AgentLoopError::store(
             "session backend does not support live capability reconfiguration",
         ))
@@ -254,7 +264,11 @@ pub trait SessionMutator: Send + Sync {
 
 #[async_trait]
 impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession> {
         (**self).update_session_title(session_id, title).await
     }
 
@@ -262,7 +276,7 @@ impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
         &self,
         session_id: SessionId,
         capability: AgentCapabilityConfig,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         (**self)
             .upsert_session_capability(session_id, capability)
             .await
@@ -272,7 +286,7 @@ impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
         &self,
         session_id: SessionId,
         capability_id: &str,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         (**self)
             .remove_session_capability(session_id, capability_id)
             .await

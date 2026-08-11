@@ -24,8 +24,8 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    AgentDefinition, DriverRegistry, EgressService, HarnessDefinition, Message, MessageHistory,
-    MessageQuery, Session, ToolDefinition, UtilityLlmService,
+    AgentDefinition, DriverRegistry, EgressService, ExecutionSession, HarnessDefinition, Message,
+    MessageHistory, MessageQuery, ToolDefinition, UtilityLlmService,
 };
 // EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
@@ -64,24 +64,22 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // Session Operations
     // =========================================================================
 
-    /// Get session by ID
-    async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>>;
+    /// Get the portable execution view of a session by ID (EVE-882: the
+    /// stored Session record stays on the control plane).
+    async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<ExecutionSession>>;
 
-    /// Set session status (started, active, idle)
-    async fn set_session_status(
-        &self,
-        org_id: i64,
-        session_id: Uuid,
-        status: &str,
-    ) -> Result<Session>;
+    /// Set session status (started, active, idle). Acknowledgement only —
+    /// status mutation exposes no session record (EVE-882).
+    async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()>;
 
-    /// Set a session title.
+    /// Set a session title, acknowledging with the refreshed portable
+    /// execution view.
     async fn set_session_title(
         &self,
         org_id: i64,
         session_id: Uuid,
         title: String,
-    ) -> Result<Session>;
+    ) -> Result<ExecutionSession>;
 
     // =========================================================================
     // Message Operations
@@ -503,7 +501,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 #[derive(Debug, Clone)]
 pub struct TurnContext {
     pub agent: Option<Agent>,
-    pub session: Session,
+    pub session: ExecutionSession,
     pub messages: Vec<Message>,
     pub model: Option<ResolvedModel>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
@@ -635,7 +633,7 @@ impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::SessionStore for OrgAdapter<A> {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.adapters
             .get_session(self.org_id, session_id.uuid())
             .await
@@ -644,7 +642,11 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionStore for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession> {
         self.adapters
             .set_session_title(self.org_id, session_id.uuid(), title)
             .await

@@ -12,7 +12,10 @@ use async_trait::async_trait;
 use everruns_core::SessionContextReport;
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::Result;
-use everruns_core::session::{Session, SessionParticipant, SessionSeedMode};
+use everruns_core::session::SessionSeedMode;
+use everruns_core::typed_id::SessionParticipantId;
+
+use crate::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
@@ -380,19 +383,36 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
         &self,
         session_id: SessionId,
         agent_id: AgentId,
-    ) -> Result<SessionParticipant> {
-        self.0
+    ) -> Result<SessionParticipantId> {
+        // The stored participant record stays behind this adapter (EVE-882);
+        // portable orchestration only needs the correlation id.
+        Ok(self
+            .0
             .add_agent_session_participant(session_id, agent_id)
-            .await
+            .await?
+            .id)
     }
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
-    ) -> Result<Session> {
-        self.0.create_session_with_options(request).await
+    ) -> Result<everruns_core::ExecutionSession> {
+        // Project the stored aggregate into the portable execution view at
+        // the platform seam (EVE-882).
+        Ok(self
+            .0
+            .create_session_with_options(request)
+            .await?
+            .execution_session())
     }
-    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
-        self.0.get_session_by_id(id).await
+    async fn get_session_by_id(
+        &self,
+        id: SessionId,
+    ) -> Result<Option<everruns_core::ExecutionSession>> {
+        Ok(self
+            .0
+            .get_session_by_id(id)
+            .await?
+            .map(|session| session.execution_session()))
     }
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
         self.0.send_message(session_id, content).await
@@ -419,8 +439,8 @@ pub mod tests {
     use crate::agent::{Agent, AgentStatus};
     use crate::app::{App, AppChannel, AppStatus, ChannelType};
     use crate::harness::HarnessStatus;
+    use crate::session::{Session, SessionStatus};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::session::{Session, SessionStatus};
 
     /// Mock PlatformStore for unit tests.
     ///
@@ -934,12 +954,12 @@ pub mod tests {
             let participant = SessionParticipant {
                 id: everruns_core::typed_id::SessionParticipantId::new(),
                 session_id,
-                kind: everruns_core::session::SessionParticipantKind::Agent,
+                kind: crate::session::SessionParticipantKind::Agent,
                 agent_id: Some(agent_id),
                 agent_version_id: self.agent.default_version_id,
                 principal_id: self.session.owner_principal_id,
                 display_name: None,
-                role: everruns_core::session::SessionParticipantRole::Member,
+                role: crate::session::SessionParticipantRole::Member,
                 joined_at: chrono::Utc::now(),
                 left_at: None,
             };

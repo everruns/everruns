@@ -28,7 +28,7 @@ use crate::capability_types::AgentCapabilityConfig;
 use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::network_access::{self, NetworkAccessList};
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::ModelId;
@@ -215,8 +215,8 @@ impl From<&AgentDefinition> for AgentConfigOverlay {
     }
 }
 
-impl From<&Session> for AgentConfigOverlay {
-    fn from(s: &Session) -> Self {
+impl From<&ExecutionSession> for AgentConfigOverlay {
+    fn from(s: &ExecutionSession) -> Self {
         let goal_prompt = s
             .goal
             .as_ref()

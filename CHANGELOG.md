@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved the persisted `Session` aggregate and product lifecycle enums out of
+  `everruns-core`.** The database/API record — `Session`, `SessionStatus`,
+  `SessionSource`, `SessionActivity`, `SessionParticipant`,
+  `SessionParticipantKind`, `SessionParticipantRole` — now lives in
+  `everruns-platform`. Core keeps only the portable
+  `everruns_core::ExecutionSession` (session correlation values plus the
+  per-session configuration overlay a turn consumes) and the neutral
+  `everruns_core::SessionExecutionState` the host lifecycle drives;
+  `SessionStore`/`SessionMutator` implementations now return the execution
+  view, and status mutation acknowledges without exposing a stored record.
+  The stored record projects into the execution view via
+  `everruns_platform::Session::execution_session()` at the platform loading
+  seam (server repositories, worker adapters); `SessionId`, turn/message
+  correlation IDs, and portable event/message values stay in core. Framework
+  hosts seed `ExecutionSession` values (`SessionBuilder` now builds one, and
+  no longer takes owner/timestamp fields). Direct core consumers that touch
+  the stored record should depend on `everruns-platform` and import it from
+  there. REST/gRPC shapes and stored schema are unchanged.
+
 - **Moved the stored `Harness` record and built-in provisioning templates out
   of `everruns-core`.** The persistence record — `Harness`, `HarnessStatus`,
   `merge_harness`, `merge_harness_chain` — and the provisioning templates —

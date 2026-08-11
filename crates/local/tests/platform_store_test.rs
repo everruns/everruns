@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner};
 use everruns_platform::{PlatformMessage, PlatformStore};
@@ -23,7 +23,7 @@ impl LocalSessionRunner for FakeRunner {
         title: Option<&str>,
         _locale: Option<&str>,
         parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         let id = SessionId::new();
         let mut s = everruns_host::SessionBuilder::new(harness_id)
             .id(id)
@@ -46,11 +46,11 @@ impl LocalSessionRunner for FakeRunner {
         &self,
         _limit: Option<usize>,
         _agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         Ok(vec![])
     }
 
-    async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Ok(None)
     }
 

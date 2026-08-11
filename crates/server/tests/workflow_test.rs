@@ -16,8 +16,9 @@
 //! - Uses LlmSim for workflow tests, no real API keys needed
 
 use everruns_core::provider::Provider;
-use everruns_core::{Model, Session, SessionFile};
+use everruns_core::{Model, SessionFile};
 use everruns_platform::Agent;
+use everruns_platform::Session;
 use serde_json::{Value, json};
 
 const SERVER_BASE_URL: &str = "http://localhost:9000";

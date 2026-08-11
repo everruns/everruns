@@ -2,9 +2,8 @@ use super::super::models::*;
 use super::Database;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
-use everruns_core::{
-    SessionId, SessionParticipantId, SessionParticipantKind, SessionParticipantRole,
-};
+use everruns_core::{SessionId, SessionParticipantId};
+use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 
 impl Database {
     pub async fn create_session_participant(

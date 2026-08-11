@@ -12,7 +12,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use chrono::Utc;
 
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::agent_definition::AgentDefinition;
@@ -29,7 +28,7 @@ use everruns_core::in_memory::{
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
-use everruns_core::session::{Session, SessionStatus};
+use everruns_core::session::ExecutionSession;
 use everruns_core::tool_types::ToolCall;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use everruns_core::traits::{EventEmitter, ResolvedModel};
@@ -378,7 +377,6 @@ impl InMemoryAgenticLoopBuilder {
         // Create harness (portable execution configuration keyed by id; the
         // stored persistence record lives in everruns-platform, EVE-881).
         let harness_id = HarnessId::new();
-        let now = Utc::now();
         let harness =
             everruns_core::HarnessDefinition::new("in-memory", self.system_prompt.clone());
         harness_store.add_harness(harness_id, harness).await;
@@ -403,50 +401,10 @@ impl InMemoryAgenticLoopBuilder {
 
         // Create session
         let session_id = SessionId::new();
-        let session = Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
-            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id,
+        let session = ExecutionSession {
             agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: Some("In-Memory Session".to_string()),
-            goal: None,
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: now,
-            updated_at: now,
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
+            ..ExecutionSession::with_own_workspace(session_id, harness_id)
         };
         session_store.add_session(session).await;
 

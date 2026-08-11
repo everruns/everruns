@@ -18,9 +18,9 @@ use everruns_core::in_memory::{
     InMemorySessionStore,
 };
 use everruns_core::runtime_agent::RuntimeAgent;
-use everruns_core::session::{Session, SessionStatus};
+use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
-use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
+use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{CompactionCheckpointStore, Controls, Message, ToolCall};
 use everruns_test_support::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use futures::stream;
@@ -49,7 +49,6 @@ async fn setup_test_environment() -> (
 
     // Create a test harness
     let harness_id = HarnessId::from_seed(1);
-    let now = chrono::Utc::now();
     let harness = HarnessDefinition::new("test-harness", "You are a helpful assistant.");
     harness_store.add_harness(harness_id, harness).await;
 
@@ -67,27 +66,17 @@ async fn setup_test_environment() -> (
 
     // Create a test session
     let session_id = Uuid::now_v7();
-    let session = Session {
-        source: Default::default(),
-        activity: Default::default(),
+    let session = ExecutionSession {
         id: session_id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(agent_id.into()),
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
-        title: Some("Test Session".to_string()),
+        title: Some("Test ExecutionSession".to_string()),
         goal: None,
         locale: None,
-        preview: None,
-        output_preview: None,
         tags: vec![],
-        status: SessionStatus::Started,
+        status: SessionExecutionState::Started,
         model_id: None,
         capabilities: vec![],
         tools: vec![],
@@ -98,17 +87,9 @@ async fn setup_test_environment() -> (
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        created_at: now,
-        updated_at: now,
-        started_at: None,
-        finished_at: None,
         usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
         parent_session_id: None,
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: None,
         blueprint_config: None,
     };
@@ -2017,28 +1998,17 @@ async fn test_reason_atom_with_different_configs() {
 
     // Second test with a different configuration
     let session_id2 = Uuid::now_v7();
-    let now2 = chrono::Utc::now();
-    let session2 = Session {
-        source: Default::default(),
-        activity: Default::default(),
+    let session2 = ExecutionSession {
         id: session_id2.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id2),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(agent_id.into()),
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
-        title: Some("Test Session 2".to_string()),
+        title: Some("Test ExecutionSession 2".to_string()),
         goal: None,
         locale: None,
-        preview: None,
-        output_preview: None,
         tags: vec![],
-        status: SessionStatus::Started,
+        status: SessionExecutionState::Started,
         model_id: None,
         capabilities: vec![],
         tools: vec![],
@@ -2049,17 +2019,9 @@ async fn test_reason_atom_with_different_configs() {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        created_at: now2,
-        updated_at: now2,
-        started_at: None,
-        finished_at: None,
         usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
         parent_session_id: None,
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: None,
         blueprint_config: None,
     };
@@ -3818,29 +3780,18 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
 
     // Re-add the session with a session-level system prompt override
     {
-        let now = chrono::Utc::now();
         session_store
-            .add_session(Session {
-                source: Default::default(),
-                activity: Default::default(),
+            .add_session(ExecutionSession {
                 id: session_id.into(),
                 workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
                 harness_id,
                 agent_id: Some(agent_id.into()),
-                agent_version_id: None,
-                agent_identity_id: None,
-                owner_principal_id: PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                owner: None,
-                effective_owner: None,
-                title: Some("Test Session".to_string()),
+                title: Some("Test ExecutionSession".to_string()),
                 goal: None,
                 locale: None,
-                preview: None,
-                output_preview: None,
                 tags: vec![],
-                status: SessionStatus::Started,
+                status: SessionExecutionState::Started,
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -3853,17 +3804,9 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
-                created_at: now,
-                updated_at: now,
-                started_at: None,
-                finished_at: None,
                 usage: None,
-                is_pinned: None,
-                active_schedule_count: None,
-                features: vec![],
                 parent_session_id: None,
                 forked_from_session_id: None,
-                forked_from_sequence: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })
@@ -3920,7 +3863,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
         .expect("System message should have been captured");
     assert!(
         system_msg.contains("SESSION PREFIX: You must always respond in French."),
-        "Session system_prompt should be prepended to the system message, got: '{}'",
+        "ExecutionSession system_prompt should be prepended to the system message, got: '{}'",
         system_msg
     );
     // Also verify the agent's system prompt is still present
@@ -3948,29 +3891,18 @@ async fn test_empty_session_system_prompt_is_ignored() {
 
     // Re-add session with empty system_prompt (should be ignored)
     {
-        let now = chrono::Utc::now();
         session_store
-            .add_session(Session {
-                source: Default::default(),
-                activity: Default::default(),
+            .add_session(ExecutionSession {
                 id: session_id.into(),
                 workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
                 organization_id: "default".to_string(),
                 harness_id,
                 agent_id: Some(agent_id.into()),
-                agent_version_id: None,
-                agent_identity_id: None,
-                owner_principal_id: PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                owner: None,
-                effective_owner: None,
-                title: Some("Test Session".to_string()),
+                title: Some("Test ExecutionSession".to_string()),
                 goal: None,
                 locale: None,
-                preview: None,
-                output_preview: None,
                 tags: vec![],
-                status: SessionStatus::Started,
+                status: SessionExecutionState::Started,
                 model_id: None,
                 capabilities: vec![],
                 tools: vec![],
@@ -3981,17 +3913,9 @@ async fn test_empty_session_system_prompt_is_ignored() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
-                created_at: now,
-                updated_at: now,
-                started_at: None,
-                finished_at: None,
                 usage: None,
-                is_pinned: None,
-                active_schedule_count: None,
-                features: vec![],
                 parent_session_id: None,
                 forked_from_session_id: None,
-                forked_from_sequence: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })

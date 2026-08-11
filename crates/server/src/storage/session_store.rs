@@ -9,10 +9,10 @@
 use crate::max_iterations;
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, Result, SessionId, StoreResultExt, TokenUsage,
-    session::{Session, SessionStatus},
+    AgentLoopError, ExecutionSession, Result, SessionId, StoreResultExt, TokenUsage,
     traits::SessionStore,
 };
+use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 
 use super::repositories::Database;
 
@@ -41,9 +41,12 @@ impl DbSessionStore {
     }
 }
 
-#[async_trait]
-impl SessionStore for DbSessionStore {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+impl DbSessionStore {
+    /// Load the stored platform Session record (server-internal; EVE-882).
+    ///
+    /// The core `SessionStore` seam below projects this into the portable
+    /// [`ExecutionSession`] — host execution never sees the stored record.
+    pub async fn get_stored_session(&self, session_id: SessionId) -> Result<Option<Session>> {
         let session_row = self
             .db
             .get_session(self.org_id, session_id)
@@ -110,9 +113,9 @@ impl SessionStore for DbSessionStore {
                 let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
 
                 Ok(Some(Session {
-                    source: everruns_core::SessionSource::from(row.source.as_str()),
-                    activity: everruns_core::SessionActivity::derive(
-                        &everruns_core::SessionStatus::from(row.status.as_str()),
+                    source: SessionSource::from(row.source.as_str()),
+                    activity: SessionActivity::derive(
+                        &SessionStatus::from(row.status.as_str()),
                         row.last_turn_status.as_deref(),
                     ),
                     id: row.id,
@@ -162,6 +165,16 @@ impl SessionStore for DbSessionStore {
             }
             None => Ok(None),
         }
+    }
+}
+
+#[async_trait]
+impl SessionStore for DbSessionStore {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
+        Ok(self
+            .get_stored_session(session_id)
+            .await?
+            .map(|session| session.execution_session()))
     }
 }
 

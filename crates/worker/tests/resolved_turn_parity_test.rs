@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::error::Result as CoreResult;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot, Session};
+use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
 use everruns_host::{RuntimeHostAdapter, SessionBuilder};
 use everruns_platform::Harness;
 // EVE-877: the hosted adapters transport the stored platform record; the
@@ -18,7 +18,7 @@ use everruns_platform::{Agent, AgentStatus};
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
 use uuid::Uuid;
 
-fn fixture_records() -> (Harness, Agent, Session) {
+fn fixture_records() -> (Harness, Agent, ExecutionSession) {
     let harness_id = HarnessId::from_seed(872);
     let agent_id = AgentId::from_seed(872);
     let session_id = SessionId::from_seed(872);
@@ -88,7 +88,7 @@ fn fixture_records() -> (Harness, Agent, Session) {
 struct DirectMockAdapters {
     harness: Harness,
     agent: Agent,
-    session: Session,
+    session: ExecutionSession,
 }
 
 /// gRPC-style adapter: round-trips every record through serialization before
@@ -122,7 +122,7 @@ macro_rules! mock_worker_adapters {
                 &self,
                 _org_id: i64,
                 session_id: Uuid,
-            ) -> CoreResult<Option<Session>> {
+            ) -> CoreResult<Option<ExecutionSession>> {
                 let session = ($session)(self);
                 Ok((session.id.uuid() == session_id).then_some(session))
             }
@@ -131,15 +131,15 @@ macro_rules! mock_worker_adapters {
                 _org_id: i64,
                 _session_id: Uuid,
                 _status: &str,
-            ) -> CoreResult<Session> {
-                Ok(($session)(self))
+            ) -> CoreResult<()> {
+                Ok(())
             }
             async fn set_session_title(
                 &self,
                 _org_id: i64,
                 _session_id: Uuid,
                 _title: String,
-            ) -> CoreResult<Session> {
+            ) -> CoreResult<ExecutionSession> {
                 unimplemented!()
             }
             async fn get_message(
@@ -479,7 +479,7 @@ async fn worker_load_fails_for_archived_and_deleted_agents() {
 #[tokio::test]
 async fn worker_projection_fails_on_missing_records() {
     let (harness, agent, mut session) = fixture_records();
-    // Session referencing a harness outside the adapter's org scope resolves
+    // ExecutionSession referencing a harness outside the adapter's org scope resolves
     // to no records — the cross-tenant / missing shape.
     session.harness_id = HarnessId::from_seed(999);
     let host = WorkerRuntimeHost::new(DirectMockAdapters {

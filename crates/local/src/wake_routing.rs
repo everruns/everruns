@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -145,7 +145,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
         title: Option<&str>,
         locale: Option<&str>,
         parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         self.inner
             .create_session(harness_id, agent_id, title, locale, parent_session_id)
             .await
@@ -154,7 +154,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         self.inner.create_session_with_options(request).await
     }
 
@@ -162,11 +162,11 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
         &self,
         limit: Option<usize>,
         agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         self.inner.list_sessions(limit, agent_id).await
     }
 
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.inner.get_session(session_id).await
     }
 
@@ -204,7 +204,7 @@ mod tests {
             _title: Option<&str>,
             _locale: Option<&str>,
             _parent_session_id: Option<SessionId>,
-        ) -> Result<Session> {
+        ) -> Result<ExecutionSession> {
             let _ = harness_id;
             Err(AgentLoopError::tool("create_session unused in these tests"))
         }
@@ -223,11 +223,11 @@ mod tests {
             &self,
             _limit: Option<usize>,
             _agent_id: Option<AgentId>,
-        ) -> Result<Vec<Session>> {
+        ) -> Result<Vec<ExecutionSession>> {
             Ok(vec![])
         }
 
-        async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+        async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
             Ok(None)
         }
 
@@ -343,7 +343,7 @@ mod tests {
                 _title: Option<&str>,
                 _locale: Option<&str>,
                 _parent: Option<SessionId>,
-            ) -> Result<Session> {
+            ) -> Result<ExecutionSession> {
                 let _ = harness_id;
                 Err(AgentLoopError::tool("create_session unused in these tests"))
             }
@@ -354,10 +354,13 @@ mod tests {
                 &self,
                 _limit: Option<usize>,
                 _agent_id: Option<AgentId>,
-            ) -> Result<Vec<Session>> {
+            ) -> Result<Vec<ExecutionSession>> {
                 Ok(vec![])
             }
-            async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+            async fn get_session(
+                &self,
+                _session_id: SessionId,
+            ) -> Result<Option<ExecutionSession>> {
                 Ok(None)
             }
             async fn get_messages(

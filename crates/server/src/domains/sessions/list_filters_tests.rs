@@ -10,8 +10,8 @@ use crate::storage::{CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_core::typed_id::AgentId;
 use everruns_core::{
     Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole, PrincipalId, SessionId,
-    SessionSource,
 };
+use everruns_platform::SessionSource;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

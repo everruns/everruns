@@ -604,10 +604,11 @@ pub fn proto_harness_to_schema(
     serde_json::from_value(json).map_err(ConversionError::from)
 }
 
-/// Convert proto Session to schemas Session using JSON
+/// Convert proto Session to the stored platform Session record using JSON
+/// (EVE-882: the persisted aggregate lives in `everruns-platform`).
 pub fn proto_session_to_schema(
     value: proto::Session,
-) -> Result<everruns_core::Session, ConversionError> {
+) -> Result<everruns_platform::Session, ConversionError> {
     let tags = value.tags.clone();
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
@@ -726,7 +727,7 @@ pub fn proto_session_to_schema(
 }
 
 /// Convert schemas Session to proto Session
-pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session {
+pub fn schema_session_to_proto(value: &everruns_platform::Session) -> proto::Session {
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         agent_id: value.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
@@ -2169,7 +2170,7 @@ mod tests {
 
         let now = Utc::now();
         let session_id = everruns_core::SessionId::new();
-        let session = everruns_core::Session {
+        let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
@@ -2200,7 +2201,7 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: Some(true),
             mcp_servers: Default::default(),
-            status: everruns_core::SessionStatus::Idle,
+            status: everruns_platform::SessionStatus::Idle,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -2378,7 +2379,7 @@ mod tests {
 
         let now = Utc::now();
         let session_id = everruns_core::SessionId::new();
-        let session = everruns_core::Session {
+        let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
@@ -2408,7 +2409,7 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
             mcp_servers: Default::default(),
-            status: everruns_core::SessionStatus::Idle,
+            status: everruns_platform::SessionStatus::Idle,
             created_at: now,
             updated_at: now,
             started_at: None,

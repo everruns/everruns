@@ -298,7 +298,7 @@ async fn execute_case_inner(
             harness_id,
             agent_id,
             agent_id.map(everruns_core::typed_id::AgentId::from_uuid),
-            everruns_core::SessionSource::Eval,
+            everruns_platform::SessionSource::Eval,
             CreateSessionRequest {
                 source: None,
                 workspace_id: None,

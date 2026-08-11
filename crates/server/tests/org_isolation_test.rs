@@ -938,7 +938,7 @@ async fn create_second_org_backend(backend: &StorageBackend) -> i64 {
 async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everruns_core::SessionId {
     let row = backend
         .create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,

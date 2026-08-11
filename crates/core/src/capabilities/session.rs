@@ -7,7 +7,7 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{EventEmitter, SessionMutator, SessionStore, ToolContext};
@@ -37,7 +37,7 @@ impl SessionCapabilityConfig {
 #[derive(Debug, Clone)]
 pub struct SessionTitleMutation {
     /// Current session snapshot.
-    pub session: Session,
+    pub session: ExecutionSession,
     /// Whether the stored title changed and an event was emitted.
     pub changed: bool,
 }
@@ -387,28 +387,27 @@ mod tests {
     use super::*;
     use crate::AgentDefinition;
     use crate::events::{Event, EventRequest};
-    use crate::session::{Session, SessionStatus};
+    use crate::session::{ExecutionSession, SessionExecutionState};
     use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId};
     use crate::{AgentCapabilityConfig, Tool};
     use async_trait::async_trait;
-    use chrono::Utc;
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
     struct MockSessionStore {
-        session: Arc<Mutex<Option<Session>>>,
+        session: Arc<Mutex<Option<ExecutionSession>>>,
     }
 
     #[async_trait]
     impl crate::traits::SessionStore for MockSessionStore {
-        async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+        async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
             Ok(self.session.lock().expect("poisoned").clone())
         }
     }
 
     #[derive(Clone)]
     struct MockSessionMutator {
-        session: Arc<Mutex<Session>>,
+        session: Arc<Mutex<ExecutionSession>>,
     }
 
     #[async_trait]
@@ -417,7 +416,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             title: String,
-        ) -> Result<Session> {
+        ) -> Result<ExecutionSession> {
             let mut session = self.session.lock().expect("poisoned");
             session.title = Some(title);
             Ok(session.clone())
@@ -451,53 +450,13 @@ mod tests {
         }
     }
 
-    fn build_session(agent_id: Option<AgentId>) -> Session {
-        let session_id = SessionId::new();
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            // Default 1:1 session<->workspace: workspace.id mirrors the session id.
-            workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
-            organization_id: "org_00000000000000000000000000000001".to_string(),
-            harness_id: HarnessId::new(),
+    fn build_session(agent_id: Option<AgentId>) -> ExecutionSession {
+        ExecutionSession {
             agent_id,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: Some("Old title".to_string()),
-            goal: None,
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
             model_id: Some(ModelId::new()),
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Idle,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
+            status: SessionExecutionState::Idle,
+            ..ExecutionSession::with_own_workspace(SessionId::new(), HarnessId::new())
         }
     }
 

@@ -496,7 +496,7 @@ mod tests {
         org_id: i64,
     ) -> crate::storage::models::SessionRow {
         db.create_session(crate::storage::models::CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id,
             harness_id: None,

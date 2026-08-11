@@ -13,7 +13,7 @@ pub use service::*;
 
 pub(crate) fn platform_chat_owner_matches(
     caller: &everruns_core::Caller,
-    session: &everruns_core::Session,
+    session: &everruns_platform::Session,
     is_platform_chat: bool,
 ) -> bool {
     // THREAT[TM-AGENT-017]: Platform Chat can act with its persisted owner's authority,

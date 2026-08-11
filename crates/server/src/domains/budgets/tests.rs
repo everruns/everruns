@@ -40,7 +40,7 @@ async fn create_session_with_owner_and_tags(
     tags: Vec<String>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
-        source: everruns_core::SessionSource::Api,
+        source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id,
         app_id: None,
@@ -79,7 +79,7 @@ async fn create_child_session(
     agent_id: Option<AgentId>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
-        source: everruns_core::SessionSource::Api,
+        source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: parent.org_id,
         app_id: parent.app_id,
@@ -114,7 +114,7 @@ async fn create_child_session(
 
 async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) -> SessionRow {
     let input = CreateSessionRow {
-        source: everruns_core::SessionSource::Api,
+        source: everruns_platform::SessionSource::Api,
         workspace_id: None,
         org_id: origin.org_id,
         app_id: origin.app_id,

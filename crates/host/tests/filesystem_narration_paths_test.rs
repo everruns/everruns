@@ -2,7 +2,6 @@
 // display_path contract so transcript paths match tool results.
 
 use async_trait::async_trait;
-use chrono::Utc;
 use everruns_core::MessageRetriever;
 use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::capabilities::{
@@ -23,8 +22,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, EventData, HarnessDefinition, MountFs, Session, SessionStatus, ToolCall,
-    WorkspaceRootSet,
+    AgentCapabilityConfig, EventData, ExecutionSession, HarnessDefinition, MountFs,
+    SessionExecutionState, ToolCall, WorkspaceRootSet,
 };
 use everruns_host::{
     InMemorySessionFileStore, RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter,
@@ -39,19 +38,22 @@ use uuid::Uuid;
 
 #[derive(Clone, Default)]
 struct TestSessionStore {
-    sessions: Arc<RwLock<HashMap<SessionId, Session>>>,
+    sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
 }
 
 impl TestSessionStore {
-    async fn insert(&self, session: Session) {
+    async fn insert(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
     }
 
-    async fn set_status(&self, session_id: SessionId, status: SessionStatus) -> Session {
+    async fn set_status(
+        &self,
+        session_id: SessionId,
+        status: SessionExecutionState,
+    ) -> ExecutionSession {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.status = status;
-        session.updated_at = Utc::now();
         session.clone()
     }
 }
@@ -61,7 +63,7 @@ impl SessionStore for TestSessionStore {
     async fn get_session(
         &self,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<Option<Session>> {
+    ) -> everruns_core::error::Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
@@ -72,7 +74,7 @@ impl SessionMutator for TestSessionStore {
         &self,
         session_id: SessionId,
         title: String,
-    ) -> everruns_core::error::Result<Session> {
+    ) -> everruns_core::error::Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.title = Some(title);
@@ -97,7 +99,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
         &self,
         _org_id: i64,
         session_id: SessionId,
-        status: SessionStatus,
+        status: SessionExecutionState,
     ) -> everruns_core::error::Result<()> {
         self.session_store.set_status(session_id, status).await;
         Ok(())
@@ -174,26 +176,16 @@ fn harness() -> HarnessDefinition {
     }
 }
 
-fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
-    Session {
-        source: Default::default(),
-        activity: Default::default(),
+fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
+    ExecutionSession {
         id: session_id,
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: None,
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
         title: None,
         goal: None,
         locale: None,
-        preview: None,
-        output_preview: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![],
@@ -205,18 +197,10 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: SessionStatus::Started,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        started_at: None,
-        finished_at: None,
+        status: SessionExecutionState::Started,
         usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
         parent_session_id: None,
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: None,
         blueprint_config: None,
     }

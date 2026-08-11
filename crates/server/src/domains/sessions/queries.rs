@@ -1,8 +1,8 @@
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::storage::StorageBackend;
 use anyhow::Context;
-use everruns_core::Session;
 use everruns_core::typed_id::HarnessId;
+use everruns_platform::Session;
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 

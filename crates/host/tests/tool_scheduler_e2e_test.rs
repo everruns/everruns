@@ -17,8 +17,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel, Session,
-    ToolCall,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, PlatformDefinition,
+    ResolvedModel, ToolCall,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
@@ -170,11 +170,11 @@ fn session(
     session_id: everruns_core::SessionId,
     harness_id: everruns_core::HarnessId,
     agent_id: everruns_core::AgentId,
-) -> Session {
+) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
-        .title("Scheduler Session")
+        .title("Scheduler ExecutionSession")
         .build()
 }
 

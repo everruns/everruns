@@ -12,7 +12,7 @@ use crate::agent_definition::AgentDefinition;
 use crate::credential_provider::CredentialProvider;
 use crate::harness_definition::HarnessDefinition;
 use crate::provider::DriverId;
-use crate::session::Session;
+use crate::session::ExecutionSession;
 
 use crate::traits::ResolvedModel;
 use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId};
@@ -295,7 +295,7 @@ impl HarnessStore for InMemoryHarnessStore {
 /// Useful for testing and examples where you want to configure sessions without a database.
 #[derive(Debug, Default, Clone)]
 pub struct InMemorySessionStore {
-    sessions: Arc<RwLock<HashMap<SessionId, Session>>>,
+    sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
 }
 
 impl InMemorySessionStore {
@@ -307,7 +307,7 @@ impl InMemorySessionStore {
     }
 
     /// Add a session to the store
-    pub async fn add_session(&self, session: Session) {
+    pub async fn add_session(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
     }
 
@@ -324,7 +324,7 @@ impl InMemorySessionStore {
 
 #[async_trait]
 impl SessionStore for InMemorySessionStore {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }

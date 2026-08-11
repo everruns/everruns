@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::AgentCapabilityConfig;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
@@ -24,9 +24,11 @@ use uuid::Uuid;
 /// In-memory `SessionStore` + `SessionMutator` for embedded runtimes.
 ///
 /// This is the default session backend used by [`crate::InProcessRuntime`].
+/// Holds portable [`ExecutionSession`] values (EVE-882): no stored Session
+/// persistence records exist in the embedded host.
 #[derive(Debug, Default, Clone)]
 pub struct InMemorySessionStore {
-    sessions: Arc<RwLock<HashMap<SessionId, Session>>>,
+    sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
 }
 
 impl InMemorySessionStore {
@@ -38,27 +40,30 @@ impl InMemorySessionStore {
     }
 
     /// Insert or replace a session in the store.
-    pub async fn add_session(&self, session: Session) {
+    pub async fn add_session(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
     }
 }
 
 #[async_trait]
 impl SessionStore for InMemorySessionStore {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
 
 #[async_trait]
 impl SessionMutator for InMemorySessionStore {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
         session.title = Some(title);
-        session.updated_at = Utc::now();
         Ok(session.clone())
     }
 
@@ -66,7 +71,7 @@ impl SessionMutator for InMemorySessionStore {
         &self,
         session_id: SessionId,
         capability: AgentCapabilityConfig,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
@@ -80,7 +85,6 @@ impl SessionMutator for InMemorySessionStore {
         } else {
             session.capabilities.push(capability);
         }
-        session.updated_at = Utc::now();
         Ok(session.clone())
     }
 
@@ -88,7 +92,7 @@ impl SessionMutator for InMemorySessionStore {
         &self,
         session_id: SessionId,
         capability_id: &str,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions
             .get_mut(&session_id)
@@ -96,7 +100,6 @@ impl SessionMutator for InMemorySessionStore {
         session
             .capabilities
             .retain(|capability| capability.capability_id() != capability_id);
-        session.updated_at = Utc::now();
         Ok(session.clone())
     }
 }

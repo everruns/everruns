@@ -17,7 +17,7 @@ use everruns_core::command::{
 };
 use everruns_core::command_host::StoreCommandHost;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
-use everruns_core::traits::{AgentStore, SessionStore};
+use everruns_core::traits::AgentStore;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry};
 use everruns_platform::Harness;
@@ -81,10 +81,12 @@ impl SessionCommandService {
             .await?;
         authorize_platform_chat_owner(caller, &harness, &session)?;
         let harness_definition = harness.definition();
+        // EVE-882: capability resolution consumes the portable execution view.
+        let execution_session = session.execution_session();
         let resolved = resolve_runtime_capabilities(
             &harness_definition,
             agent.as_ref(),
-            &session,
+            &execution_session,
             &self.capability_registry,
         );
 
@@ -115,10 +117,12 @@ impl SessionCommandService {
             .await?;
         authorize_platform_chat_owner(caller, &harness, &session)?;
         let harness_definition = harness.definition();
+        // EVE-882: capability resolution consumes the portable execution view.
+        let execution_session = session.execution_session();
         let resolved = resolve_runtime_capabilities(
             &harness_definition,
             agent.as_ref(),
-            &session,
+            &execution_session,
             &self.capability_registry,
         );
 
@@ -198,13 +202,14 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(Harness, Option<AgentDefinition>, everruns_core::Session)> {
+    ) -> Result<(Harness, Option<AgentDefinition>, everruns_platform::Session)> {
         let adapters = self.adapters();
-        let session_store = AdapterSessionStore::new(adapters.clone(), org_id);
         let agent_store = AdapterAgentStore::new(adapters.clone(), org_id);
 
-        let session = session_store
-            .get_session(session_id)
+        // Stored record (EVE-882): owner authorization is a platform surface,
+        // so it reads the persisted Session rather than the execution view.
+        let session = adapters
+            .get_stored_session(org_id, session_id.uuid())
             .await?
             .ok_or(ResourceNotFoundError::new("Session"))?;
         // Stored (pre-merged) record: command listing/authorization are
@@ -226,7 +231,7 @@ impl SessionCommandService {
 fn authorize_platform_chat_owner(
     caller: &Caller,
     harness: &Harness,
-    session: &everruns_core::Session,
+    session: &everruns_platform::Session,
 ) -> Result<()> {
     // The adapters return the pre-merged record whose identity/built-in flag
     // are leaf-owned, matching the historical single-element chain check.

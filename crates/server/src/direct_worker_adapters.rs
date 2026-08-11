@@ -26,11 +26,12 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Caller, ContentPart, DriverId, DriverRegistry, EgressRequest, EgressRequestKind, EgressService,
-    EventData, Message, MessageRole, Session, SessionParticipant, SessionStatus, ToolDefinition,
-    ToolResultContentPart, UtilityLlmService, resolve_runtime_capabilities,
+    EventData, Message, MessageRole, ToolDefinition, ToolResultContentPart, UtilityLlmService,
+    resolve_runtime_capabilities,
 };
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Harness, HarnessStatus, merge_harness};
+use everruns_platform::{Session, SessionParticipant, SessionStatus};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -338,6 +339,100 @@ impl DirectWorkerAdapters {
         }
     }
 
+    /// Load the stored platform Session record (server-internal; EVE-882).
+    ///
+    /// `WorkerAdapters::get_session` projects this into the portable
+    /// `ExecutionSession`; internal paths that need platform-only fields
+    /// (agent version pinning, scoped-MCP wiring) read the record here.
+    pub(crate) async fn get_stored_session(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+    ) -> Result<Option<Session>> {
+        let session_id_typed = SessionId::from_uuid(session_id);
+        let row = self
+            .db
+            .get_session(org_id, session_id_typed)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                store_error("Failed to get session")
+            })?;
+
+        let Some(r) = row else {
+            return Ok(None);
+        };
+        let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
+        let capabilities =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                &self.db,
+                org_id,
+                capabilities,
+            )
+            .await
+            .unwrap_or_default();
+
+        Ok(Some({
+            // Parse capabilities from JSON
+            Session {
+                source: everruns_platform::SessionSource::from(r.source.as_str()),
+                activity: everruns_platform::SessionActivity::derive(
+                    &everruns_platform::SessionStatus::from(r.status.as_str()),
+                    r.last_turn_status.as_deref(),
+                ),
+                id: r.id,
+                organization_id: everruns_core::org_public_id_from_internal(org_id),
+                workspace_id: everruns_core::WorkspaceId::from_uuid(r.workspace_id),
+                harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
+                agent_id: r.agent_id,
+                agent_version_id: r.agent_version_id,
+                agent_identity_id: r.agent_identity_id,
+                owner_principal_id: r.owner_principal_id,
+                resolved_owner_user_id: r.resolved_owner_user_id,
+                owner: None,
+                effective_owner: None,
+                title: r.title,
+                goal: r.goal,
+                locale: r.locale,
+                preview: None,
+                output_preview: None,
+                tags: r.tags,
+                model_id: r.model_id,
+                capabilities,
+                tools: serde_json::from_value(r.tools).unwrap_or_default(),
+                mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
+                system_prompt: r.system_prompt,
+                initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
+                network_access: r
+                    .network_access
+                    .and_then(|v| serde_json::from_value(v).ok()),
+                hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
+                max_iterations: max_iterations::from_db(r.max_iterations),
+                parallel_tool_calls: r.parallel_tool_calls,
+                status: match r.status.as_str() {
+                    "started" => SessionStatus::Started,
+                    "active" => SessionStatus::Active,
+                    "idle" => SessionStatus::Idle,
+                    "running" => SessionStatus::Active,
+                    _ => SessionStatus::Started,
+                },
+                created_at: r.created_at,
+                updated_at: r.updated_at,
+                started_at: r.started_at,
+                finished_at: r.finished_at,
+                usage: None,
+                is_pinned: None,
+                active_schedule_count: None,
+                features: vec![],
+                parent_session_id: r.parent_session_id,
+                forked_from_session_id: r.forked_from_session_id,
+                forked_from_sequence: r.forked_from_sequence,
+                blueprint_id: r.blueprint_id,
+                blueprint_config: r.blueprint_config,
+            }
+        }))
+    }
+
     async fn load_turn_messages(
         &self,
         session: &Session,
@@ -350,10 +445,12 @@ impl DirectWorkerAdapters {
         // the effective configuration.
         let harness_definition = harness.map(|h| h.definition()).unwrap_or_default();
         let agent_definition = agent.map(|a| a.definition());
+        // EVE-882: capability resolution consumes the portable execution view.
+        let execution_session = session.execution_session();
         let resolved = resolve_runtime_capabilities(
             &harness_definition,
             agent_definition.as_ref(),
-            session,
+            &execution_session,
             &self.capability_registry,
         );
         let message_filters = collect_message_filters_only(
@@ -571,97 +668,20 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // Session Operations
     // =========================================================================
 
-    async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>> {
-        let session_id_typed = SessionId::from_uuid(session_id);
-        let row = self
-            .db
-            .get_session(org_id, session_id_typed)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to get session: {}", e);
-                store_error("Failed to get session")
-            })?;
-
-        let Some(r) = row else {
-            return Ok(None);
-        };
-        let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
-        let capabilities =
-            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
-                &self.db,
-                org_id,
-                capabilities,
-            )
-            .await
-            .unwrap_or_default();
-
-        Ok(Some({
-            // Parse capabilities from JSON
-            Session {
-                source: everruns_core::SessionSource::from(r.source.as_str()),
-                activity: everruns_core::SessionActivity::derive(
-                    &everruns_core::SessionStatus::from(r.status.as_str()),
-                    r.last_turn_status.as_deref(),
-                ),
-                id: r.id,
-                organization_id: everruns_core::org_public_id_from_internal(org_id),
-                workspace_id: everruns_core::WorkspaceId::from_uuid(r.workspace_id),
-                harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
-                agent_id: r.agent_id,
-                agent_version_id: r.agent_version_id,
-                agent_identity_id: r.agent_identity_id,
-                owner_principal_id: r.owner_principal_id,
-                resolved_owner_user_id: r.resolved_owner_user_id,
-                owner: None,
-                effective_owner: None,
-                title: r.title,
-                goal: r.goal,
-                locale: r.locale,
-                preview: None,
-                output_preview: None,
-                tags: r.tags,
-                model_id: r.model_id,
-                capabilities,
-                tools: serde_json::from_value(r.tools).unwrap_or_default(),
-                mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
-                system_prompt: r.system_prompt,
-                initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
-                network_access: r
-                    .network_access
-                    .and_then(|v| serde_json::from_value(v).ok()),
-                hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
-                max_iterations: max_iterations::from_db(r.max_iterations),
-                parallel_tool_calls: r.parallel_tool_calls,
-                status: match r.status.as_str() {
-                    "started" => SessionStatus::Started,
-                    "active" => SessionStatus::Active,
-                    "idle" => SessionStatus::Idle,
-                    "running" => SessionStatus::Active,
-                    _ => SessionStatus::Started,
-                },
-                created_at: r.created_at,
-                updated_at: r.updated_at,
-                started_at: r.started_at,
-                finished_at: r.finished_at,
-                usage: None,
-                is_pinned: None,
-                active_schedule_count: None,
-                features: vec![],
-                parent_session_id: r.parent_session_id,
-                forked_from_session_id: r.forked_from_session_id,
-                forked_from_sequence: r.forked_from_sequence,
-                blueprint_id: r.blueprint_id,
-                blueprint_config: r.blueprint_config,
-            }
-        }))
-    }
-
-    async fn set_session_status(
+    async fn get_session(
         &self,
         org_id: i64,
         session_id: Uuid,
-        status: &str,
-    ) -> Result<Session> {
+    ) -> Result<Option<everruns_core::ExecutionSession>> {
+        // Loading seam (EVE-882): project the stored record into the portable
+        // execution view before it reaches host execution.
+        Ok(self
+            .get_stored_session(org_id, session_id)
+            .await?
+            .map(|session| session.execution_session()))
+    }
+
+    async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         let session_id_typed = SessionId::from_uuid(session_id);
         let update = UpdateSession {
             status: Some(status.to_string()),
@@ -676,10 +696,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to update session status")
             })?;
 
-        // Fetch and return updated session
-        self.get_session(org_id, session_id)
-            .await?
-            .ok_or_else(|| store_error("Session not found after update"))
+        // Acknowledgement only (EVE-882): status mutation exposes no session
+        // record to the worker path.
+        Ok(())
     }
 
     async fn set_session_title(
@@ -687,7 +706,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         org_id: i64,
         session_id: Uuid,
         title: String,
-    ) -> Result<Session> {
+    ) -> Result<everruns_core::ExecutionSession> {
         let session_id_typed = SessionId::from_uuid(session_id);
         let update = UpdateSession {
             title: Some(title),
@@ -1372,7 +1391,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Result<McpServerInfo> {
         let mut runtime_agent_id = None;
         if let Some(session_id) = session_id
-            && let Some(session) = self.get_session(org_id, session_id).await?
+            && let Some(session) = self.get_stored_session(org_id, session_id).await?
             && let Some(harness) = self
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
@@ -1460,9 +1479,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // =========================================================================
 
     async fn load_turn_context(&self, org_id: i64, session_id: Uuid) -> Result<TurnContext> {
-        // Load session
+        // Load the stored record: the platform-only fields (agent version
+        // pinning, scoped-MCP wiring) are consumed here, at the loading seam,
+        // and only the projected execution view leaves in the TurnContext.
         let session = self
-            .get_session(org_id, session_id)
+            .get_stored_session(org_id, session_id)
             .await?
             .ok_or_else(|| store_error("Session not found"))?;
 
@@ -1599,7 +1620,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         Ok(TurnContext {
             agent,
-            session,
+            session: session.execution_session(),
             messages,
             model,
             mcp_tool_definitions,
@@ -3981,7 +4002,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         db.create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id,
             app_id: None,
@@ -4935,7 +4956,7 @@ mod tests {
         let row = adapters
             .db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 app_id: None,

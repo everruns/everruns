@@ -11,9 +11,9 @@ use everruns_core::provider::{Provider, ProviderTraceConfig};
 use everruns_core::{
     CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId, Event, EventContext,
     EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, McpServer,
-    McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus, Session,
-    SessionContextReport, SessionFile, SessionStatus, Skill, SkillContent, SkillFileEntry,
-    SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
+    McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus,
+    SessionContextReport, SessionFile, Skill, SkillContent, SkillFileEntry, SkillSourceType,
+    SkillStatus, SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -23,6 +23,7 @@ use everruns_core::{
     },
 };
 use everruns_platform::{Agent, AgentStatus};
+use everruns_platform::{Session, SessionStatus};
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
 use utoipa::openapi::{RefOr, Schema};

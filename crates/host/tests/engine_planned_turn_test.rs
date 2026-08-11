@@ -13,7 +13,8 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel, Session,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, PlatformDefinition,
+    ResolvedModel,
 };
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
@@ -52,11 +53,11 @@ fn session(
     session_id: everruns_core::SessionId,
     harness_id: everruns_core::HarnessId,
     agent_id: everruns_core::AgentId,
-) -> Session {
+) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
-        .title("Engine Planned Session")
+        .title("Engine Planned ExecutionSession")
         .build()
 }
 

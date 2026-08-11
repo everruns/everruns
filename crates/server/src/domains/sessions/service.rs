@@ -31,8 +31,7 @@ use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
-    PrincipalSummary, Rule, Session, SessionActivity, SessionFile, SessionId, SessionSeedMode,
-    SessionSource, SessionStatus, TokenUsage, WorkspaceId,
+    PrincipalSummary, Rule, SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
     capabilities::{
         AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
         collect_capabilities_with_configs, compute_features, resolve_capability_configs,
@@ -45,6 +44,7 @@ use everruns_core::{
 };
 use everruns_durable::UpdateField;
 use everruns_platform::AgentVersionPolicy;
+use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -3303,7 +3303,7 @@ mod tests {
         let missing_owner_id = PrincipalId::new();
         let missing_reference_session = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
@@ -4406,7 +4406,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
@@ -4746,7 +4746,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,

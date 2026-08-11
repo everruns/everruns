@@ -11,8 +11,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, EgressService, ResolvedExecutionSnapshot, SessionStatus,
-    UtilityLlmService,
+    CapabilityRegistry, DriverRegistry, EgressService, ResolvedExecutionSnapshot,
+    SessionExecutionState, UtilityLlmService,
 };
 use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 use everruns_mcp::{
@@ -156,11 +156,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         session_id: SessionId,
-        status: SessionStatus,
+        status: SessionExecutionState,
     ) -> Result<()> {
-        // WorkerAdapters still returns the stored record over the wire
-        // (compatibility adapter); the host contract keeps status mutation a
-        // record-free effect.
+        // Status mutation is an acknowledged effect end to end (EVE-882):
+        // neither the adapter nor the host contract exposes a session record.
         self.adapters
             .set_session_status(org_id, session_id.uuid(), &status.to_string())
             .await?;

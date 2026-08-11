@@ -387,7 +387,7 @@ fn get_session_store(
 
 async fn current_subagent_depth(
     session_store: &dyn SessionStore,
-    session: &crate::session::Session,
+    session: &crate::session::ExecutionSession,
     max_subagent_depth: u32,
 ) -> Result<u32, ToolExecutionResult> {
     let mut depth = 0_u32;
@@ -416,7 +416,7 @@ async fn current_subagent_depth(
 
 async fn root_session_for_subagent_tree(
     session_store: &dyn SessionStore,
-    session: &crate::session::Session,
+    session: &crate::session::ExecutionSession,
 ) -> Result<SessionId, ToolExecutionResult> {
     let mut root_id = session.id;
     let mut cursor = session.parent_session_id;
@@ -497,7 +497,7 @@ async fn descendant_subagent_task_counts(
 
 async fn enforce_subagent_task_caps(
     session_store: &dyn SessionStore,
-    session: &crate::session::Session,
+    session: &crate::session::ExecutionSession,
     context: &ToolContext,
 ) -> Result<(), ToolExecutionResult> {
     let Some(registry) = context.session_task_registry.as_ref() else {
@@ -613,7 +613,7 @@ async fn enforce_detached_spawn_caps(
 
 async fn enforce_subagent_depth_cap(
     session_store: &dyn SessionStore,
-    session: &crate::session::Session,
+    session: &crate::session::ExecutionSession,
     context: &ToolContext,
 ) -> Result<(), ToolExecutionResult> {
     let max_subagent_depth = context.subagent_nesting_policy.max_subagent_depth();
@@ -1151,7 +1151,7 @@ fn background_running_result(
 async fn spawn_create_and_wait(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    parent_session: &crate::session::Session,
+    parent_session: &crate::session::ExecutionSession,
     name: &str,
     goal: Option<&str>,
     instructions: &str,
@@ -2106,7 +2106,7 @@ mod tests {
         async fn get_session(
             &self,
             session_id: crate::typed_id::SessionId,
-        ) -> crate::error::Result<Option<crate::session::Session>> {
+        ) -> crate::error::Result<Option<crate::session::ExecutionSession>> {
             self.0.get_session_by_id(session_id).await
         }
     }

@@ -4,10 +4,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use everruns_core::AgentCapabilityConfig;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::traits::{SessionMutator, SessionStore};
 use everruns_core::typed_id::{HarnessId, SessionId};
 use everruns_host::{RuntimeSessionStore, SessionBuilder};
@@ -26,7 +25,7 @@ use crate::SqliteDb;
 #[derive(Clone)]
 pub struct LocalSessionStore {
     db: SqliteDb,
-    sessions: Arc<Mutex<HashMap<SessionId, Session>>>,
+    sessions: Arc<Mutex<HashMap<SessionId, ExecutionSession>>>,
 }
 
 impl LocalSessionStore {
@@ -46,7 +45,7 @@ impl LocalSessionStore {
         })
     }
 
-    fn load(&self, session_id: SessionId) -> Result<Option<Session>> {
+    fn load(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         if let Some(session) = self
             .sessions
             .lock()
@@ -71,12 +70,15 @@ impl LocalSessionStore {
         Ok(exists.then(|| SessionBuilder::new(HarnessId::new()).id(session_id).build()))
     }
 
-    fn mutate(&self, session_id: SessionId, update: impl FnOnce(&mut Session)) -> Result<Session> {
+    fn mutate(
+        &self,
+        session_id: SessionId,
+        update: impl FnOnce(&mut ExecutionSession),
+    ) -> Result<ExecutionSession> {
         let mut session = self
             .load(session_id)?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
         update(&mut session);
-        session.updated_at = Utc::now();
         self.sessions
             .lock()
             .map_err(|_| AgentLoopError::store("local session catalog lock poisoned"))?
@@ -87,14 +89,18 @@ impl LocalSessionStore {
 
 #[async_trait]
 impl SessionStore for LocalSessionStore {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.load(session_id)
     }
 }
 
 #[async_trait]
 impl SessionMutator for LocalSessionStore {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> Result<ExecutionSession> {
         self.mutate(session_id, |session| session.title = Some(title))
     }
 
@@ -102,7 +108,7 @@ impl SessionMutator for LocalSessionStore {
         &self,
         session_id: SessionId,
         capability: AgentCapabilityConfig,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         self.mutate(session_id, |session| {
             if let Some(existing) = session
                 .capabilities
@@ -120,7 +126,7 @@ impl SessionMutator for LocalSessionStore {
         &self,
         session_id: SessionId,
         capability_id: &str,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         self.mutate(session_id, |session| {
             session
                 .capabilities
@@ -131,7 +137,7 @@ impl SessionMutator for LocalSessionStore {
 
 #[async_trait]
 impl RuntimeSessionStore for LocalSessionStore {
-    async fn add_session(&self, session: Session) -> Result<()> {
+    async fn add_session(&self, session: ExecutionSession) -> Result<()> {
         let session_id = session.id;
         self.db
             .with_conn(|conn| {
