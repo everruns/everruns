@@ -50,7 +50,7 @@ const VISITOR_COOKIE: &str = "everruns_public_chat_visitor";
 /// regardless of any channel rows. Org-level opt-in additionally gates channel
 /// creation and the builder UI. Resolved once at startup from the env.
 static PUBLIC_CHAT_ENABLED: LazyLock<bool> =
-    LazyLock::new(|| everruns_core::FeatureFlags::current().public_chat);
+    LazyLock::new(|| everruns_platform::FeatureFlags::current().public_chat);
 
 pub fn routes(state: AgUiState) -> Router {
     Router::new()

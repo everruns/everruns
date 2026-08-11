@@ -9,9 +9,10 @@ use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
 use everruns_core::{
-    Caller, DriverRegistry, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError,
+    Caller, DriverRegistry, EgressService, PermissionResolver, Policy, PolicyError,
 };
 use everruns_durable::WorkflowEventStore;
+use everruns_platform::FeatureFlags;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;

@@ -2,6 +2,21 @@
 
 ## 2026-08-11
 
+* **Eval/observer/feature-management record extraction**: Moved the persisted
+  eval aggregates (definitions, runs, results, dataset exports, targets,
+  scorers), the observer records (match rules, judge configuration,
+  trace-score lifecycle), and the org/product feature-flag records with their
+  management catalog out of `everruns-core` into `everruns-platform`
+  (EVE-878, breaking for direct core consumers in 0.18). These are product
+  management/reporting aggregates that never participate in a turn. Core
+  keeps only `execution_features` — `InternalFeatureFlags` and the resolved
+  `ExecutionFeatureDecisions` snapshot consulted at capability-registration
+  time — while per-org effective feature decisions are resolved server-side
+  and applied by filtering the capability list handed to the worker.
+  REST/OpenAPI shapes and stored schema are unchanged; the agent-record
+  isolation guard now also covers eval/observer/feature-management records.
+  Updated evals, online-evals, citations, and feature-flags references.
+
 * **Session aggregate extraction**: Moved the persisted `Session`
   database/API aggregate — product status/source/activity facets,
   participants, ownership references, previews, timestamps, catalog

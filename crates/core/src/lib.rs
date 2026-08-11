@@ -56,8 +56,12 @@ pub mod exec_tool_result;
 pub mod execution_snapshot;
 pub mod utility_llm;
 
-// Feature flags
-pub mod feature_flags;
+// Execution feature decisions (EVE-878): the org/product feature-flag records
+// and management logic (`FeatureFlags`, `FeatureFlagMap`, the API catalog, org
+// opt-in resolution) moved to the `everruns-platform` crate. Core keeps only
+// the resolved registration-time decisions consumed by the capability
+// registry builders.
+pub mod execution_features;
 pub mod localization;
 
 // Telemetry conventions (neutral gen-ai span metadata contracts)
@@ -93,7 +97,10 @@ pub mod capability_dto;
 pub mod connector;
 pub mod credential_provider;
 pub use everruns_provider::credential_schema;
-pub mod eval;
+// EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
+// `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
+// enums) moved to the `everruns-platform` crate — they are product
+// management/reporting records that never participate in a turn.
 pub mod events;
 pub mod harness_definition;
 pub mod leased_resource;
@@ -107,7 +114,10 @@ pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
 pub mod oauth;
-pub mod observer;
+// EVE-878: the observer records (`Observer`, `TraceScore`, judge
+// configuration, match rules and their lifecycle enums) moved to the
+// `everruns-platform` crate — online scoring watches completed turns from the
+// hosted control plane and never participates in a turn.
 pub mod organization;
 pub mod payment;
 pub mod principal;
@@ -599,8 +609,7 @@ pub use url_validation::{
 // Deployment configuration
 pub use deployment::DeploymentGrade;
 
-// Feature flags
-pub use feature_flags::{
-    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
-    InternalFeatureFlags,
-};
+// Execution feature decisions (EVE-878): `FeatureFlags` and the management
+// catalog live in `everruns-platform`; core re-exports only the resolved
+// execution-facing values.
+pub use execution_features::{ExecutionFeatureDecisions, InternalFeatureFlags};

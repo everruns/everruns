@@ -21,7 +21,7 @@ tables, or UI component inventories.
 
 ## Sources of truth
 
-- [`crates/core/src/eval.rs`](../../crates/core/src/eval.rs) owns eval targets,
+- [`crates/platform/src/eval.rs`](../../crates/platform/src/eval.rs) owns eval targets,
   statuses, scorer variants, score/result models, summaries, datasets, and
   serialized field shapes.
 - [`crates/server/src/domains/evals/`](../../crates/server/src/domains/evals)
@@ -49,7 +49,7 @@ default, then the organization's default session setup. Validation follows the
 same rules as ordinary session creation so evals do not become a bypass around
 session policy.
 
-The exact target variants and fields live in `crates/core/src/eval.rs`.
+The exact target variants and fields live in `crates/platform/src/eval.rs`.
 
 ### Eval
 
@@ -101,7 +101,7 @@ human-readable reason. A case passes only when every required scorer passes.
 The case score is the weighted average of scorer values.
 
 The exhaustive scorer set and configuration are defined by the tagged `Scorer`
-enum in `crates/core/src/eval.rs`. Adding a scorer requires:
+enum in `crates/platform/src/eval.rs`. Adding a scorer requires:
 
 - a serialized variant and validation;
 - execution logic;

@@ -1744,7 +1744,7 @@ mod high_risk_admin_gate_tests {
             user_id: None,
             role,
             is_platform_user: false,
-            feature_flags: everruns_core::FeatureFlags::default(),
+            feature_flags: everruns_platform::FeatureFlags::default(),
         }
     }
 

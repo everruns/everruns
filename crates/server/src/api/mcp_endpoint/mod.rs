@@ -1412,7 +1412,7 @@ async fn resolve_org_by_id(
     )
     .await
     .unwrap_or_else(|_| {
-        everruns_core::FeatureFlags::for_org(
+        everruns_platform::FeatureFlags::for_org(
             &state.auth.system_feature_flags,
             &std::collections::HashMap::new(),
         )
@@ -1887,7 +1887,7 @@ mod org_override_scope_tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
             is_platform_user: false,
-            feature_flags: everruns_core::FeatureFlags::default(),
+            feature_flags: everruns_platform::FeatureFlags::default(),
         }
     }
 

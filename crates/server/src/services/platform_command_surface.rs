@@ -27,7 +27,7 @@ pub async fn invoke(
 
 fn discover(
     arguments: &Value,
-    feature_flags: &everruns_core::FeatureFlags,
+    feature_flags: &everruns_platform::FeatureFlags,
 ) -> Result<String, String> {
     let show_all = arguments
         .get("all")
@@ -319,7 +319,7 @@ mod tests {
     fn discover_for_test(arguments: &Value) -> Result<String, String> {
         discover(
             arguments,
-            &everruns_core::FeatureFlags {
+            &everruns_platform::FeatureFlags {
                 notifications: true,
                 evals: true,
                 skills: true,
@@ -506,7 +506,7 @@ mod tests {
     fn feature_gated_discovery_omits_operations_for_disabled_features() {
         let output = discover(
             &json!({ "query": "list_evals" }),
-            &everruns_core::FeatureFlags::default(),
+            &everruns_platform::FeatureFlags::default(),
         )
         .expect("discover disabled eval operation");
         let value: Value = serde_json::from_str(&output).expect("discover JSON");

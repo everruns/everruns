@@ -228,7 +228,7 @@ impl WorkerService for WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
-            &everruns_core::FeatureFlags::current(),
+            &everruns_platform::FeatureFlags::current(),
         )
         .await
         .map_err(|error| {
@@ -3782,7 +3782,7 @@ impl WorkerService for WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
-            &everruns_core::FeatureFlags::current(),
+            &everruns_platform::FeatureFlags::current(),
         )
         .await
         .map_err(|error| {
@@ -4515,7 +4515,7 @@ impl WorkerService for WorkerServiceImpl {
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
             req.org_id,
-            &everruns_core::FeatureFlags::current(),
+            &everruns_platform::FeatureFlags::current(),
         )
         .await
         .map_err(|error| {

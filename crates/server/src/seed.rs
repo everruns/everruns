@@ -2164,9 +2164,8 @@ async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedR
 
 /// Seed default-org feature flag opt-ins when none exist (dev-friendly bootstrap).
 async fn seed_default_org_feature_flags(db: &StorageBackend) -> anyhow::Result<SeedResult> {
-    use everruns_core::{
-        API_FEATURE_FLAG_DEFINITIONS, DEFAULT_ORG_ID, DeploymentGrade, FeatureFlags,
-    };
+    use everruns_core::{DEFAULT_ORG_ID, DeploymentGrade};
+    use everruns_platform::{API_FEATURE_FLAG_DEFINITIONS, FeatureFlags};
     use std::collections::HashMap;
 
     let mut result = SeedResult::default();

@@ -1,4 +1,11 @@
-// Eval domain types
+// Eval domain types (EVE-878).
+//
+// Decision: Evals are product management/reporting aggregates — persisted
+// definitions, runs, results, and dataset exports owned by the hosted control
+// plane. They configure and observe sessions but never participate directly
+// in a turn, so they moved here from `everruns-core`. The eval runner lives in
+// `crates/server/src/domains/evals/`; there is no focused eval crate in the
+// workspace, so the platform crate owns the records.
 //
 // Design Decision: Evals are user-facing behavioral tests for agents.
 // Each eval case creates a real session — same behavior as production, debuggable.
@@ -16,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use crate::typed_id::{
+use everruns_core::typed_id::{
     AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId, ModelId,
     SessionId,
 };

@@ -57,6 +57,16 @@ pub mod harness;
 // to/from the stored `SessionStatus` at the adapter boundary.
 pub mod session;
 
+// Management/reporting aggregates carved out of `everruns-core` (EVE-878):
+// persisted eval definitions/runs/results/datasets, observer records with
+// judge configuration and trace-score lifecycle, and the org/product
+// feature-flag records with their management logic. None of these participate
+// directly in a turn; execution keeps only the resolved decisions in
+// `everruns_core::execution_features`.
+pub mod eval;
+pub mod feature_flags;
+pub mod observer;
+
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
@@ -77,6 +87,20 @@ pub use principal::{Principal, PrincipalStatus};
 pub use session::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource, SessionStatus,
+};
+
+// Management/reporting aggregates (EVE-878).
+pub use eval::{
+    ArtifactSpec, CaseResultStatus, Eval, EvalCase, EvalCaseResult, EvalDatasetStatus,
+    EvalInputMessage, EvalRun, EvalRunDataset, EvalRunSource, EvalRunStatus, EvalRunSummaryView,
+    EvalStatus, EvalTarget, RunSummary, Score, Scorer,
+};
+pub use feature_flags::{
+    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
+};
+pub use observer::{
+    LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,
+    ScorerMethod, TraceScore, TraceScoreStatus,
 };
 
 // Hosted control-plane orchestration records (EVE-841).

@@ -686,7 +686,7 @@ impl ServerAppBuilder {
             }
         };
         let deployment_grade = everruns_core::DeploymentGrade::from_env();
-        let feature_flags = everruns_core::FeatureFlags::from_env(&deployment_grade);
+        let feature_flags = everruns_platform::FeatureFlags::from_env(&deployment_grade);
         let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
             .with_db(db.clone())
             .with_system_feature_flags(feature_flags.clone());

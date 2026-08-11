@@ -1542,7 +1542,7 @@ impl ResourceUrlable for everruns_core::AgentIdentity {
     }
 }
 
-impl ResourceUrlable for everruns_core::eval::Eval {
+impl ResourceUrlable for everruns_platform::eval::Eval {
     fn api_path() -> &'static str {
         "v1/evals"
     }

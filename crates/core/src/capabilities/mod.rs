@@ -1432,10 +1432,14 @@ impl CapabilityRegistry {
         // Session tasks (inspect/steer background work, all environments)
         registry.register(SessionTasksCapability);
 
+        // Deployment-level execution feature decisions (EVE-878): resolved once
+        // from env + grade; never reads org feature-management records.
+        let feature_decisions = crate::ExecutionFeatureDecisions::from_env(grade);
+
         // Outbound agent delegation — experimental (dev-only by default).
         // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
         // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
-        if crate::FeatureFlags::from_env(&grade).agent_delegation {
+        if feature_decisions.agent_delegation {
             registry.register(AgentHandoffCapability);
             // Additionally compile-gated behind the `a2a` cargo feature: in
             // provider builds that disable core defaults the delegation
@@ -1512,8 +1516,7 @@ impl CapabilityRegistry {
         // explicitly by tests and examples, never by product registries.
 
         // External integration plugins (registered via inventory::submit! in integration crates)
-        let internal_flags = crate::InternalFeatureFlags::from_env();
-        let feature_flags = crate::FeatureFlags::from_env(&grade);
+        let internal_flags = &feature_decisions.internal;
         if internal_flags.session_sandbox {
             registry.register(SessionSandboxCapability);
         }
@@ -1531,7 +1534,7 @@ impl CapabilityRegistry {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin
                     .feature_flag
-                    .is_none_or(|f| internal_flags.is_enabled(f) || feature_flags.is_enabled(f))
+                    .is_none_or(|f| feature_decisions.is_enabled(f))
             {
                 registry.register_boxed((plugin.factory)());
             }

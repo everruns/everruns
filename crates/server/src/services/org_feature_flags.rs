@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use everruns_core::FeatureFlags;
+use everruns_platform::FeatureFlags;
 
 use crate::storage::StorageBackend;
 
@@ -19,7 +19,7 @@ pub fn build_org_feature_flag_settings(
     system: &FeatureFlags,
     org_enabled: &HashMap<String, bool>,
 ) -> Vec<OrgFeatureFlagSetting> {
-    everruns_core::API_FEATURE_FLAG_DEFINITIONS
+    everruns_platform::API_FEATURE_FLAG_DEFINITIONS
         .iter()
         .map(|def| {
             let system_enabled = system.is_enabled(def.name);
@@ -64,7 +64,7 @@ pub fn validate_org_feature_flag_updates(
     updates: &HashMap<String, bool>,
 ) -> Result<(), String> {
     for (name, enabled) in updates {
-        let known = everruns_core::API_FEATURE_FLAG_DEFINITIONS
+        let known = everruns_platform::API_FEATURE_FLAG_DEFINITIONS
             .iter()
             .any(|d| d.name == name.as_str());
         if !known {

@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use everruns_core::eval::Score;
-use everruns_core::observer::{ObserverScorerConfig, ScorerMethod};
 use everruns_core::typed_id::SessionId;
+use everruns_platform::eval::Score;
+use everruns_platform::observer::{ObserverScorerConfig, ScorerMethod};
 use tracing::{debug, error, warn};
 
 use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
@@ -265,11 +265,11 @@ mod tests {
     use crate::storage::models::{
         CreateEventRow, CreateObserverRow, CreateSessionRow, CreateTraceScoreRow,
     };
-    use everruns_core::observer::{
-        LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
-    };
     use everruns_core::typed_id::{
         AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
+    };
+    use everruns_platform::observer::{
+        LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
     };
     use uuid::Uuid;
 
@@ -385,7 +385,7 @@ mod tests {
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
             description: None,
-            match_config: serde_json::to_value(everruns_core::observer::ObserverMatch {
+            match_config: serde_json::to_value(everruns_platform::observer::ObserverMatch {
                 agent_ids: Some(vec![agent]),
                 ..Default::default()
             })
@@ -402,7 +402,7 @@ mod tests {
                 key: key.to_string(),
                 scope: ObserverScope::Turn,
                 method: ScorerMethod::Rule {
-                    rule: everruns_core::eval::Scorer::Contains {
+                    rule: everruns_platform::eval::Scorer::Contains {
                         text: text.to_string(),
                         weight: 1.0,
                     },

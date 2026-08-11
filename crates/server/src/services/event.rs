@@ -27,8 +27,8 @@ use crate::storage::{
 use anyhow::{Result, bail};
 use everruns_core::events::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest, FeatureFlags};
-use everruns_platform::SessionParticipantKind;
+use everruns_core::{Event, EventListener, EventRequest};
+use everruns_platform::{FeatureFlags, SessionParticipantKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;

@@ -761,7 +761,7 @@ mod tests {
 
         // Flag on (org opted in): app-scoped subjects are accepted.
         let enabled =
-            ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_core::FeatureFlags {
+            ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_platform::FeatureFlags {
                 app_budgets: true,
                 ..Default::default()
             });
