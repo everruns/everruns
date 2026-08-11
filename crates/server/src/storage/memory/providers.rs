@@ -234,7 +234,10 @@ impl InMemoryDatabase {
 
     pub async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProviderRow>> {
         let org_settings = self.org_settings.read();
-        let default_model_id = org_settings.get(&org_id).and_then(|s| s.default_model_id);
+        let default_model_id = org_settings
+            .get(&org_id)
+            .and_then(|s| s.default_model_id)
+            .or_else(|| crate::platform::platform_default_model_id(org_id).map(ModelId::from_uuid));
         let default_model_id = match default_model_id {
             Some(id) => id,
             None => return Ok(None),

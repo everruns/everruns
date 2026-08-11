@@ -9,10 +9,24 @@
 use everruns_core::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
-    DirectEgressService, PlatformDefinition, SystemEmailConfig, SystemUtilityLlmConfig,
+    DEFAULT_ORG_ID, DirectEgressService, PlatformDefinition, SystemEmailConfig,
+    SystemUtilityLlmConfig,
 };
 use everruns_platform::BuiltInHarnessDefinition;
 use std::sync::Arc;
+use uuid::Uuid;
+
+/// The platform fallback when an organization has not selected a model.
+pub(crate) const PLATFORM_DEFAULT_MODEL_ID: Uuid =
+    Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000227);
+
+pub(crate) const fn platform_default_model_id(org_id: i64) -> Option<Uuid> {
+    if org_id == DEFAULT_ORG_ID {
+        Some(PLATFORM_DEFAULT_MODEL_ID)
+    } else {
+        None
+    }
+}
 
 /// Build the default OSS `PlatformDefinition` for the current deployment grade.
 pub fn oss_platform_definition() -> PlatformDefinition {

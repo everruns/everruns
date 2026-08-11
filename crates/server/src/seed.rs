@@ -1589,6 +1589,7 @@ const SEED_MODELS: &[SeedModel] = &[
         is_favorite: true, // Favorite model
     },
     SeedModel {
+        // Platform default model (see `platform::PLATFORM_DEFAULT_MODEL_ID`).
         id: seed_ids::GPT_5_6_TERRA,
         provider_id: seed_ids::OPENAI_PROVIDER,
         model_id: "gpt-5.6-terra",
@@ -1902,8 +1903,7 @@ const SEED_MODELS: &[SeedModel] = &[
     },
     // Anthropic current-gen (Opus 5, Sonnet 5, Opus 4.8)
     SeedModel {
-        // Platform default model (see `DEFAULT_MODEL_ID`). Opus 5 is the current
-        // Opus flagship — the recommended Anthropic model.
+        // Opus 5 is the current Opus flagship — the recommended Anthropic model.
         id: seed_ids::CLAUDE_OPUS_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-5",
@@ -2138,29 +2138,6 @@ const SEED_MODELS: &[SeedModel] = &[
         is_favorite: false,
     },
 ];
-
-/// Default model ID for org settings seeding (Claude Opus 5)
-const DEFAULT_MODEL_ID: Uuid = seed_ids::CLAUDE_OPUS_5;
-
-/// Seed organization settings (default model, etc.)
-async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedResult> {
-    let mut result = SeedResult::default();
-
-    match db.get_organization_settings(DEFAULT_ORG_ID).await? {
-        Some(existing) if existing.default_model_id.is_some() => {
-            tracing::debug!("Organization settings up to date");
-            result.unchanged += 1;
-        }
-        _ => {
-            db.upsert_organization_settings(DEFAULT_ORG_ID, Some(DEFAULT_MODEL_ID))
-                .await?;
-            tracing::info!("Seeded organization settings with default model");
-            result.created += 1;
-        }
-    }
-
-    Ok(result)
-}
 
 /// Seed default-org feature flag opt-ins when none exist (dev-friendly bootstrap).
 async fn seed_default_org_feature_flags(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -2662,16 +2639,6 @@ pub async fn seed_all_with_platform_definition(
         "Models seeded"
     );
     result.merge(model_result);
-
-    // Seed organization settings (depends on models for default_model_id)
-    let org_settings_result = seed_organization_settings(db).await?;
-    tracing::debug!(
-        created = org_settings_result.created,
-        updated = org_settings_result.updated,
-        unchanged = org_settings_result.unchanged,
-        "Organization settings seeded"
-    );
-    result.merge(org_settings_result);
 
     let org_flags_result = seed_default_org_feature_flags(db).await?;
     tracing::debug!(
@@ -3333,49 +3300,32 @@ mod tests {
             .id;
         assert_eq!(settings.default_harness_id, Some(generic_id));
         assert_eq!(settings.base_harness_id, Some(base_id));
-        assert_eq!(
-            settings.default_model_id,
-            Some(everruns_core::ModelId::from_uuid(DEFAULT_MODEL_ID))
-        );
+        assert_eq!(settings.default_model_id, None);
     }
 
     #[tokio::test]
-    async fn test_seed_all_sets_default_and_seeds_opus_5() {
+    async fn test_seed_all_leaves_the_org_model_override_unset() {
         let db = make_db();
         seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
 
-        // Platform default model is Claude Opus 5.
+        // GPT-5.6 Terra is platform-owned, not an organization override.
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(
-            settings.default_model_id,
-            Some(everruns_core::ModelId::from_uuid(seed_ids::CLAUDE_OPUS_5)),
-        );
+        assert_eq!(settings.default_model_id, None);
 
-        // Claude Opus 5 is seeded for the Anthropic provider, enabled and marked
-        // favorite (the recommended Anthropic model, and the platform default).
-        let opus = db
-            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_5)
+        let terra = db
+            .get_model(DEFAULT_ORG_ID, seed_ids::GPT_5_6_TERRA)
             .await
             .unwrap()
-            .expect("claude-opus-5 should be seeded");
-        assert_eq!(opus.model_id, "claude-opus-5");
-        assert!(opus.enabled, "claude-opus-5 should be enabled");
-        assert!(opus.is_favorite, "claude-opus-5 should be favorite");
-
-        // The 1M-context twin is seeded and enabled alongside the 200K base.
-        let opus_1m = db
-            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_5_1M)
-            .await
-            .unwrap()
-            .expect("claude-opus-5[1m] should be seeded");
-        assert_eq!(opus_1m.model_id, "claude-opus-5[1m]");
-        assert!(opus_1m.enabled, "claude-opus-5[1m] should be enabled");
+            .expect("gpt-5.6-terra should be seeded");
+        assert_eq!(terra.model_id, "gpt-5.6-terra");
+        assert!(terra.enabled, "gpt-5.6-terra should be enabled");
+        assert!(terra.is_favorite, "gpt-5.6-terra should be favorite");
     }
 
     #[tokio::test]
@@ -3604,7 +3554,7 @@ mod tests {
         assert_eq!(
             anthropic.get("claude-opus-5"),
             Some(&(true, true)),
-            "Opus 5 must be the enabled favorite Opus (platform default)"
+            "Opus 5 must be the enabled favorite Opus"
         );
         assert_eq!(
             anthropic.get("claude-opus-5[1m]"),

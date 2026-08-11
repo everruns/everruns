@@ -202,7 +202,7 @@ impl Database {
     }
 
     /// Get the default LLM model with provider info.
-    /// Reads from organization_settings.default_model_id.
+    /// Uses the organization selection when present, otherwise the platform fallback.
     ///
     /// Fail-closed: filters to providers that are administratively active *and*
     /// to models with `enabled = TRUE`, so disabling a model — even if it is
@@ -215,13 +215,15 @@ impl Database {
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
-            FROM organization_settings os
-            JOIN models m ON m.id = os.default_model_id AND m.org_id = os.org_id
+            FROM models m
+            LEFT JOIN organization_settings os ON os.org_id = m.org_id
             JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND p.status = 'active' AND m.enabled = TRUE
+            WHERE m.org_id = $1 AND m.id = COALESCE(os.default_model_id, $2)
+              AND p.status = 'active' AND m.enabled = TRUE
             "#,
         )
         .bind(org_id)
+        .bind(crate::platform::platform_default_model_id(org_id))
         .fetch_optional(&self.pool)
         .await?;
 
