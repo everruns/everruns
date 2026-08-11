@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::{Map, Value};
 
-use everruns_core::eval::*;
 use everruns_core::typed_id::EvalResultId;
+use everruns_platform::eval::*;
 
 use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};

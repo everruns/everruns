@@ -3,7 +3,7 @@
 // trace (file_contains reads the session filesystem) return None and are
 // handled by the caller.
 
-use everruns_core::eval::{Score, Scorer};
+use everruns_platform::eval::{Score, Scorer};
 
 /// Evaluate a scorer rule against extracted trace data.
 ///

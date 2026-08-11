@@ -31,9 +31,10 @@ use everruns_core::message::ExecutionPhase;
 use everruns_core::traits::LeasedResourceStore;
 use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
-    Caller, ContentPart, Event, FeatureFlags, InputContentPart, LeasedResource, ServiceKind,
-    ToolCall, UpsertLeasedResource,
+    Caller, ContentPart, Event, InputContentPart, LeasedResource, ServiceKind, ToolCall,
+    UpsertLeasedResource,
 };
+use everruns_platform::FeatureFlags;
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};

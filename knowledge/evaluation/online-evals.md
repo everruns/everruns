@@ -10,7 +10,7 @@ tags:
 
 Status: **Phase 1 implemented** (behind the `observers` feature flag) — turn-scope rule **and LLM-judge** scoring of production sessions, with the design options below recording the broader direction. Session/tool scopes, aggregation/alerting, judge usage metering into budgets, and the Phase 2 improvement loop remain proposed.
 
-Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/core/src/observer.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migrations `059_observers.sql` + `070_observer_llm_judge.sql`. API under `/v1/observers`.
+Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/platform/src/observer.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migrations `059_observers.sql` + `070_observer_llm_judge.sql`. API under `/v1/observers`.
 
 Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Judge usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up.
 
@@ -85,7 +85,7 @@ The building blocks exist; Observers are mostly composition:
 |-----------|-------|--------------------|
 | Persisted immutable event log | `events` table, `crates/core/src/events.rs`, `knowledge/execution/events.md` | Traces are already durable and queryable after the fact (messages, tool calls with results, `llm.generation`, `turn.completed` with usage, `session.idled`). No new capture needed — including tool outputs. |
 | `EventListener` | `crates/core/src/event_listeners.rs` | In-process async tap after persistence; how OTel/Braintrust exporters and usage tracking hook in today. Where observer matching runs. |
-| Eval scorer rules | `crates/core/src/eval.rs` | The embedded `Scorer` enum (`contains`, `tool_called`, `turns_within`, …) supplies the rule-method vocabulary for observer scorers too. `llm_judge` is specced (Phase 2 of evals) but not implemented — Observers are the forcing function to build it once, shared by both systems. |
+| Eval scorer rules | `crates/platform/src/eval.rs` | The embedded `Scorer` enum (`contains`, `tool_called`, `turns_within`, …) supplies the rule-method vocabulary for observer scorers too. `llm_judge` is specced (Phase 2 of evals) but not implemented — Observers are the forcing function to build it once, shared by both systems. |
 | Durable engine + scheduler | `knowledge/operations/durable-execution-engine.md`, `knowledge/operations/scheduled-tasks.md` | At-least-once background work, multi-instance safe (SKIP LOCKED), cron schedules — production scoring backend. Existing precedent for dev/full duality: the task worker runs with direct in-process stores in dev and gRPC stores in full mode. |
 | Tool output distillation | `knowledge/execution/tool-output-distillation.md` | Large tool results are already distilled at capture time — reuse as judge-input truncation for tool-scope scoring. |
 | Utility LLM | `knowledge/operations/utility-llm.md` | Candidate judge-model path for platform-internal scoring. |
@@ -131,7 +131,7 @@ Tool scope is where "observe not only results" lives: failures often originate i
 
 One Observer can mix scopes: e.g. a "Support Agent quality" observer with a turn-scope answer-completeness judge, a session-scope goal-completion judge, and a tool-scope retrieval-relevance judge on the KB search tool.
 
-**Naming collision.** `crates/core/src/eval.rs` already has an embedded `pub enum Scorer` (the per-case scoring rules). The two share the rule vocabulary on purpose, but code needs distinct names — e.g. rename the enum to `ScorerRule`, shared by both eval cases and observers. Decide at implementation time; no backward-compat constraint on internal code.
+**Naming collision.** `crates/platform/src/eval.rs` already has an embedded `pub enum Scorer` (the per-case scoring rules). The two share the rule vocabulary on purpose, but code needs distinct names — e.g. rename the enum to `ScorerRule`, shared by both eval cases and observers. Decide at implementation time; no backward-compat constraint on internal code.
 
 ### TraceScore
 

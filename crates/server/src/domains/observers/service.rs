@@ -12,9 +12,9 @@ use crate::storage::models::{
     CreateObserverRow, ListTraceScoresParams, ObserverRow, TraceScoreRow, UpdateObserverRow,
 };
 use anyhow::Result;
-use everruns_core::observer::*;
 use everruns_core::typed_id::{ObserverId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
+use everruns_platform::observer::*;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -102,7 +102,7 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
             ScorerMethod::Rule { rule } => {
                 // file_contains needs the session filesystem, which is not part
                 // of the observable trace contract. Reject it for observers.
-                if matches!(rule, everruns_core::eval::Scorer::FileContains { .. }) {
+                if matches!(rule, everruns_platform::eval::Scorer::FileContains { .. }) {
                     anyhow::bail!(BadRequestError::new(
                         "file_contains scorer is not supported by observers"
                     ));
@@ -371,15 +371,15 @@ mod tests {
     use super::*;
     use crate::api::observers::CreateObserverRequest;
     use crate::storage::models::CreateTraceScoreRow;
-    use everruns_core::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
     use everruns_core::typed_id::TraceScoreId;
+    use everruns_platform::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
 
     fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {
         ObserverScorerConfig {
             key: key.into(),
             scope: ObserverScope::Turn,
             method: ScorerMethod::Rule {
-                rule: everruns_core::eval::Scorer::Contains {
+                rule: everruns_platform::eval::Scorer::Contains {
                     text: text.into(),
                     weight: 1.0,
                 },
@@ -474,8 +474,8 @@ mod tests {
     }
 
     use crate::storage::models::{CreateModelRow, CreateProviderRow};
-    use everruns_core::observer::LlmJudgeConfig;
     use everruns_core::typed_id::ModelId;
+    use everruns_platform::observer::LlmJudgeConfig;
 
     /// Create a model in `org_id` and return its id. `enabled` controls whether
     /// it is usable (disabled models are invisible to `get_model`).

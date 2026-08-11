@@ -9,7 +9,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use everruns_core::Caller;
-use everruns_core::observer::{
+use everruns_platform::observer::{
     Observer, ObserverMatch, ObserverScorerConfig, ObserverStatus, TraceScore,
 };
 

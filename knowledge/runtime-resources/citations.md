@@ -163,7 +163,7 @@ keep `snippet` for display but never rely on it for prompt reconstruction.
 Because each feed is a capability with the same output contract, a citation
 eval is two agents identical except for the enabled `citation_*` capability,
 scored on citation faithfulness and coverage. The `Scorer::CitationFaithful`
-rule (`crates/core/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
+rule (`crates/platform/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
 reads the `TextAnnotation`s off the final message — they already ride in the
 event log the runner fetches — and scores coverage (min citations) plus
 faithfulness (fraction verified `entailed`), so it composes with

@@ -29,9 +29,9 @@ use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
-    DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
-    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
-    PrincipalSummary, Rule, SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
+    DeclarativeCapabilityDefinition, HarnessId, InitialFile, ModelId, MountAccess, MountEntry,
+    MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, PrincipalSummary, Rule,
+    SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
     capabilities::{
         AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
         collect_capabilities_with_configs, compute_features, resolve_capability_configs,
@@ -44,6 +44,7 @@ use everruns_core::{
 };
 use everruns_durable::UpdateField;
 use everruns_platform::AgentVersionPolicy;
+use everruns_platform::FeatureFlags;
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

@@ -1,18 +1,26 @@
-// Feature flags system
+// Feature flags system (EVE-878: moved from `everruns-core`).
+//
+// Decision: org/product feature flags are hosted control-plane management
+// state: the server computes system-level flags from env vars + deployment
+// grade, layers org opt-in records on top (`org_feature_flags` storage), and
+// exposes the result via `GET /v1/feature-flags`. None of that participates
+// in a turn, so the records and management logic live here. The execution
+// kernel keeps only `everruns_core::execution_features` — the resolved
+// registration-time decisions — and receives per-org effective decisions as
+// an already-filtered capability list at the server loading seam.
 //
 // Decision: Feature flags are system-level, computed from env vars + deployment grade.
 // Decision: Flags marked "experimental" auto-enable in dev (DeploymentGrade::Dev).
 // Decision: Explicit env var (FEATURE_<NAME>=true/false) always takes priority.
 // Decision: Struct-based for type safety; `is_enabled(&str)` for dynamic lookup.
-// Decision: Two structs — FeatureFlags (API-visible) and InternalFeatureFlags (backend-only).
 // Decision: Future extensibility: per-org/per-user flags, external providers (LaunchDarkly).
-// Decision: No database storage needed yet — env vars + deployment grade suffice.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::deployment::DeploymentGrade;
+use everruns_core::deployment::DeploymentGrade;
+use everruns_core::execution_features::{experimental_flag, standard_flag};
 
 /// Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.
 ///
@@ -342,73 +350,6 @@ impl FeatureFlags {
     }
 }
 
-/// Backend-only feature flags. Not exposed via API or frontend.
-///
-/// Used for internal gating (capability registration, infrastructure behavior).
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct InternalFeatureFlags {
-    /// Docker container capability. Disabled by default on all envs.
-    /// Enable via `FEATURE_DOCKER_CAPABILITY=true`.
-    pub docker_capability: bool,
-    /// Self-hosted container sandbox capability and coding harness.
-    /// Disabled by default on all envs.
-    /// Enable via `FEATURE_CONTAINER_SANDBOX=true`, or via the legacy
-    /// fallback `FEATURE_DOCKER_CAPABILITY=true` when
-    /// `FEATURE_CONTAINER_SANDBOX` is unset.
-    pub container_sandbox: bool,
-    /// Managed session-owned sandbox capability and lifecycle orchestration.
-    /// Experimental and disabled by default.
-    pub session_sandbox: bool,
-    /// Experimental sandboxed Lua execution capability (`knowledge/execution/lua-execution.md`).
-    /// Disabled by default; requires the `lua` cargo feature to be compiled in to
-    /// actually run scripts. Enable via `FEATURE_LUA=true`.
-    pub lua: bool,
-}
-
-impl InternalFeatureFlags {
-    /// Compute internal feature flags from environment variables.
-    pub fn from_env() -> Self {
-        let docker_capability = standard_flag("FEATURE_DOCKER_CAPABILITY", false);
-
-        Self {
-            docker_capability,
-            container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
-            session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
-            lua: standard_flag("FEATURE_LUA", false),
-        }
-    }
-
-    /// Look up a flag by name (for dynamic/string-based access).
-    pub fn is_enabled(&self, flag: &str) -> bool {
-        match flag {
-            "docker_capability" => self.docker_capability,
-            "container_sandbox" => self.container_sandbox,
-            "session_sandbox" => self.session_sandbox,
-            "lua" => self.lua,
-            _ => false,
-        }
-    }
-}
-
-/// Resolve an experimental flag.
-///
-/// Priority: explicit env var > experimental default (enabled in dev) > false.
-fn experimental_flag(env_var: &str, grade: &DeploymentGrade) -> bool {
-    if let Ok(val) = std::env::var(env_var) {
-        return val == "true" || val == "1";
-    }
-    grade.experimental_features_enabled()
-}
-
-/// Resolve a standard (non-experimental) flag.
-///
-/// Priority: explicit env var > default.
-fn standard_flag(env_var: &str, default: bool) -> bool {
-    std::env::var(env_var)
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(default)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -626,18 +567,6 @@ mod tests {
     }
 
     #[test]
-    fn test_standard_flag() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_TEST_STD") };
-        assert!(!standard_flag("FEATURE_TEST_STD", false));
-        assert!(standard_flag("FEATURE_TEST_STD", true));
-
-        unsafe { std::env::set_var("FEATURE_TEST_STD", "1") };
-        assert!(standard_flag("FEATURE_TEST_STD", false));
-        unsafe { std::env::remove_var("FEATURE_TEST_STD") };
-    }
-
-    #[test]
     fn test_notifications_enabled_in_dev() {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
@@ -744,81 +673,5 @@ mod tests {
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(flags.machine_payments);
         restore_env("FEATURE_MACHINE_PAYMENTS", prev);
-    }
-
-    // =========================================================================
-    // InternalFeatureFlags tests
-    // =========================================================================
-
-    #[test]
-    fn test_internal_default_flags() {
-        let flags = InternalFeatureFlags::default();
-        assert!(!flags.docker_capability);
-        assert!(!flags.container_sandbox);
-        assert!(!flags.session_sandbox);
-    }
-
-    #[test]
-    fn test_docker_capability_flag_disabled_by_default_in_dev() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(
-            !flags.docker_capability,
-            "docker_capability should be disabled by default even in dev"
-        );
-    }
-
-    #[test]
-    fn test_docker_capability_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.docker_capability);
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-    }
-
-    #[test]
-    fn test_container_sandbox_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.container_sandbox);
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-    }
-
-    #[test]
-    fn test_container_sandbox_flag_falls_back_to_legacy_docker_flag() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
-        unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.container_sandbox);
-        unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-    }
-
-    #[test]
-    fn test_internal_is_enabled_dynamic() {
-        let flags = InternalFeatureFlags {
-            docker_capability: true,
-            container_sandbox: true,
-            session_sandbox: true,
-            lua: true,
-        };
-        assert!(flags.is_enabled("docker_capability"));
-        assert!(flags.is_enabled("container_sandbox"));
-        assert!(flags.is_enabled("session_sandbox"));
-        assert!(flags.is_enabled("lua"));
-        assert!(!flags.is_enabled("nonexistent"));
-    }
-
-    #[test]
-    fn test_session_sandbox_flag_enabled_by_env_override() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
-        let flags = InternalFeatureFlags::from_env();
-        assert!(flags.session_sandbox);
-        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
     }
 }

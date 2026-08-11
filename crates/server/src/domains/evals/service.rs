@@ -20,11 +20,11 @@ use crate::storage::models::{
     UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
-use everruns_core::eval::*;
 use everruns_core::typed_id::{
     EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, SessionId,
 };
 use everruns_core::{Caller, Permission, Policy, Rule};
+use everruns_platform::eval::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use url::Url;

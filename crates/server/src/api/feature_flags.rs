@@ -5,7 +5,7 @@
 // Decision: Flags computed once at startup and served from memory (no DB query).
 
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::{FeatureFlagMap, FeatureFlags};
+use everruns_platform::{FeatureFlagMap, FeatureFlags};
 
 #[derive(Clone)]
 pub struct AppState {

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved the eval, observer, and feature-management records out of
+  `everruns-core`.** The persisted eval aggregates (`Eval`, `EvalCase`,
+  `EvalRun`, `EvalCaseResult`, `EvalRunDataset`, `EvalTarget`, `Scorer`,
+  `Score`, and their lifecycle enums), the observer records (`Observer`,
+  `TraceScore`, `ObserverMatch`, `LlmJudgeConfig`, scorer configs and
+  lifecycle enums), and the org/product feature-flag management surface
+  (`FeatureFlags`, `FeatureFlagMap`, `FeatureFlagDefinition`,
+  `API_FEATURE_FLAG_DEFINITIONS`, org opt-in resolution) now live in
+  `everruns-platform`; the `everruns_core::eval`, `everruns_core::observer`,
+  and `everruns_core::feature_flags` modules are gone. Core keeps only the
+  resolved execution feature decisions in
+  `everruns_core::execution_features` (`InternalFeatureFlags` plus the new
+  `ExecutionFeatureDecisions` snapshot consulted at capability-registration
+  time); per-org effective decisions are resolved by the server and applied
+  as an already-filtered capability list before worker execution.
+  REST/OpenAPI shapes and stored schema are unchanged. (EVE-878)
+
 - **Moved the persisted `Session` aggregate and product lifecycle enums out of
   `everruns-core`.** The database/API record — `Session`, `SessionStatus`,
   `SessionSource`, `SessionActivity`, `SessionParticipant`,

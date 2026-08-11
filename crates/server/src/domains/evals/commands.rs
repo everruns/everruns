@@ -5,7 +5,7 @@ use super::types::{
     ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::common::*;
-use everruns_core::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
+use everruns_platform::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -697,7 +697,7 @@ pub struct ExportEvalRunDataset {
 }
 
 impl Command for ExportEvalRunDataset {
-    type Output = everruns_core::eval::EvalRunDataset;
+    type Output = everruns_platform::eval::EvalRunDataset;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -742,7 +742,7 @@ pub struct GetEvalRunDataset {
 }
 
 impl Command for GetEvalRunDataset {
-    type Output = everruns_core::eval::EvalRunDataset;
+    type Output = everruns_platform::eval::EvalRunDataset;
 
     fn meta() -> CommandMeta {
         CommandMeta {

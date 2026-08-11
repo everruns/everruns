@@ -1,4 +1,10 @@
-// Observer domain types — online scoring of production sessions.
+// Observer domain types — online scoring of production sessions (EVE-878).
+//
+// Decision: Observers, their judge configuration, and the hosted trace-score
+// lifecycle are product management/reporting aggregates. They watch completed
+// turns from the outside and never participate in a turn, so they moved here
+// from `everruns-core`. Matching/scoring workers live in
+// `crates/server/src/domains/observers/`.
 //
 // Design Decision: Observers watch real production traffic instead of creating
 // synthetic sessions (that is what Evals do). An Observer holds match rules
@@ -16,7 +22,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::eval::Scorer;
-use crate::typed_id::{AgentId, AgentVersionId, HarnessId, ObserverId, SessionId, TraceScoreId};
+use everruns_core::typed_id::{
+    AgentId, AgentVersionId, HarnessId, ObserverId, SessionId, TraceScoreId,
+};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -155,7 +163,7 @@ pub struct LlmJudgeConfig {
     /// Judge calls go through the org's own providers and are billed to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub model_id: Option<crate::typed_id::ModelId>,
+    pub model_id: Option<everruns_core::typed_id::ModelId>,
     /// Score value at/above which `pass` is true.
     #[serde(default = "default_pass_threshold")]
     pub pass_threshold: f64,

@@ -271,7 +271,7 @@ impl TestServer {
             event_delivery.clone(),
             vec![],
         ));
-        let mut feature_flags = everruns_core::FeatureFlags::from_env(&grade);
+        let mut feature_flags = everruns_platform::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
         // System side of the experimental gates exercised by integration tests.

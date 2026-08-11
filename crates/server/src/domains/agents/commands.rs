@@ -1926,9 +1926,10 @@ mod tests {
     use async_trait::async_trait;
     use everruns_core::{
         AgentLoopError, Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver,
-        FeatureFlags, LlmResponse, LlmResponseStream, OrgRole, Result as CoreResult,
-        UtilityLlmRequest, UtilityLlmService,
+        LlmResponse, LlmResponseStream, OrgRole, Result as CoreResult, UtilityLlmRequest,
+        UtilityLlmService,
     };
+    use everruns_platform::FeatureFlags;
     use std::sync::Arc;
     use uuid::Uuid;
 
