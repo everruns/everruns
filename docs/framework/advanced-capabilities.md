@@ -87,6 +87,21 @@ impl IntoCapability for VendorSearch {
 
 No `everruns-core`, registry, store, or host dependency is needed.
 
+## Choose the standard policy bundle
+
+The Framework's default `builtins` feature links `everruns-builtins`, the
+backend-neutral implementation bundle for compaction, tool search, budgeting,
+loop/progress safeguards, prompt caching, tool-call repair, output handling,
+and guardrails. Linking the package has no registration side effect: each host
+constructs its registry explicitly, so a custom registry cannot be changed by
+dependency order.
+
+Applications that want only the open Framework contracts can disable default
+features and add the integrations they need. The policy bundle owns no network
+client, process runner, interpreter, database, or hosted service. Output
+persistence and distillation declare `session_file_system` as a host-provided
+dependency; enable them only in a composition that supplies that capability.
+
 ## Choose an authoring level
 
 Use the smallest extension contract that fits the behavior you own.
