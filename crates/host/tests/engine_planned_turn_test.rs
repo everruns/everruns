@@ -13,7 +13,8 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel, Session,
+    AgentDefinition, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel,
+    Session,
 };
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
@@ -41,7 +42,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId, max_iterations: usize) -> Agent {
+fn agent(agent_id: everruns_core::AgentId, max_iterations: usize) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")

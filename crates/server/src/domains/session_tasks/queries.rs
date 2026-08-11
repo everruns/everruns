@@ -103,7 +103,8 @@ pub async fn tool_context_for_ctx(
     let harness_layers: Vec<Harness> = load_harness_chain(&ctx.db, org_id, harness_id).await?;
 
     // --- Load agent (if any) ---
-    let agent_layer: Option<everruns_core::Agent> = if let Some(agent_id) = session_row.agent_id {
+    let agent_layer: Option<everruns_platform::Agent> = if let Some(agent_id) = session_row.agent_id
+    {
         let agent_row = ctx
             .db
             .get_agent(org_id, agent_id)

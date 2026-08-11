@@ -9,8 +9,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::error::Result as CoreResult;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, ResolvedExecutionSnapshot, Session};
-use everruns_host::{AgentBuilder, HarnessBuilder, RuntimeHostAdapter, SessionBuilder};
+use everruns_core::{DEFAULT_ORG_ID, Harness, ResolvedExecutionSnapshot, Session};
+use everruns_host::{HarnessBuilder, RuntimeHostAdapter, SessionBuilder};
+// EVE-877: the hosted adapters transport the stored platform record; the
+// loading seam projects it into the portable execution definition.
+use everruns_platform::{Agent, AgentStatus};
 use everruns_worker::{WorkerAdapters, WorkerRuntimeHost, WorkerTurnContext};
 use uuid::Uuid;
 
@@ -22,11 +25,34 @@ fn fixture_records() -> (Harness, Agent, Session) {
     let harness = HarnessBuilder::new("hoster", "Harness instructions.")
         .id(harness_id)
         .build();
-    let agent = AgentBuilder::new("hosted-agent", "Agent instructions.")
-        .id(agent_id)
-        .harness_id(harness_id)
-        .max_iterations(9)
-        .build();
+    let agent = Agent {
+        public_id: agent_id,
+        internal_id: agent_id.uuid(),
+        name: "hosted-agent".into(),
+        display_name: None,
+        description: None,
+        system_prompt: "Agent instructions.".into(),
+        default_model_id: None,
+        harness_id,
+        default_version_id: None,
+        forked_from_agent_id: None,
+        forked_from_version_id: None,
+        root_agent_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        initial_files: vec![],
+        network_access: None,
+        max_iterations: Some(9),
+        parallel_tool_calls: None,
+        tools: vec![],
+        mcp_servers: Default::default(),
+        status: AgentStatus::Active,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+        usage: None,
+    };
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
@@ -370,9 +396,12 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 
     // The canonical projection is the reference: hosted adapters built from
     // equivalent configuration produce equivalent snapshots.
-    let reference =
-        ResolvedExecutionSnapshot::project(std::slice::from_ref(&harness), Some(&agent), &session)
-            .expect("reference projection");
+    let reference = ResolvedExecutionSnapshot::project(
+        std::slice::from_ref(&harness),
+        Some(&agent.execution_definition().expect("active agent projects")),
+        &session,
+    )
+    .expect("reference projection");
 
     let direct_json = serde_json::to_value(&direct_inputs.snapshot).unwrap();
     let wire_json = serde_json::to_value(&wire_inputs.snapshot).unwrap();
@@ -398,6 +427,29 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
 
     // Platform-only session metadata (UI title) never enters the snapshot.
     assert!(!wire_json.to_string().contains("UI-TITLE-MARKER"));
+}
+
+#[tokio::test]
+async fn worker_load_fails_for_archived_and_deleted_agents() {
+    // EVE-877: lifecycle validation happens at the worker loading seam, before
+    // the resolved snapshot is built and before host execution.
+    for status in [AgentStatus::Archived, AgentStatus::Deleted] {
+        let (harness, mut agent, session) = fixture_records();
+        agent.status = status.clone();
+        let host = WorkerRuntimeHost::new(DirectMockAdapters {
+            harness,
+            agent,
+            session: session.clone(),
+        });
+        let error = host
+            .load_resolved_turn(DEFAULT_ORG_ID, session.id)
+            .await
+            .expect_err("inactive agent must fail the loading seam");
+        assert!(
+            error.to_string().contains("cannot execute turns"),
+            "unexpected error for {status:?}: {error}"
+        );
+    }
 }
 
 #[tokio::test]

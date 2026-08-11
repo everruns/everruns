@@ -80,7 +80,7 @@ impl LocalRuntimeBuilder {
     }
 
     /// Seed an agent.
-    pub fn agent(mut self, agent: everruns_core::Agent) -> Self {
+    pub fn agent(mut self, agent: everruns_core::AgentDefinition) -> Self {
         self.inner = self.inner.agent(agent);
         self
     }

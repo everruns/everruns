@@ -846,7 +846,7 @@ async fn manage_agents_impl(
     Ok(match operation {
         "create" => {
             let name = require_str(&arguments, "name")?;
-            if let Err(msg) = everruns_core::agent::validate_addressable_name(name) {
+            if let Err(msg) = crate::agent::validate_addressable_name(name) {
                 return Ok(ToolExecutionResult::tool_error(format!(
                     "Invalid agent name: {msg}"
                 )));
@@ -892,7 +892,7 @@ async fn manage_agents_impl(
             let id: everruns_core::typed_id::AgentId = parse_id(id_str, "agent_id")?;
             let name = get_str(&arguments, "name");
             if let Some(n) = name
-                && let Err(msg) = everruns_core::agent::validate_addressable_name(n)
+                && let Err(msg) = crate::agent::validate_addressable_name(n)
             {
                 return Ok(ToolExecutionResult::tool_error(format!(
                     "Invalid agent name: {msg}"

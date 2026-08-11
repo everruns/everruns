@@ -596,8 +596,9 @@ impl Agent {
         let harness_id = harness.harness_id();
         let harness = harness.build();
 
+        // EVE-877: the builder produces a portable AgentDefinition; the
+        // harness link lives on the session, not the definition.
         let mut agent = RuntimeAgentBuilder::new(&self.name, &self.instructions)
-            .harness_id(harness_id)
             .capabilities(capabilities.clone());
         if let Some(parallel) = self.parallel_tool_calls {
             agent = agent.parallel_tool_calls(parallel);

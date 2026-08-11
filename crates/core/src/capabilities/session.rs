@@ -385,7 +385,7 @@ fn usage_json(usage: &TokenUsage) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{Agent, AgentStatus};
+    use crate::AgentDefinition;
     use crate::events::{Event, EventRequest};
     use crate::session::{Session, SessionStatus};
     use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId};
@@ -425,7 +425,7 @@ mod tests {
     }
 
     struct MockAgentStore {
-        agent: Option<Agent>,
+        agent: Option<AgentDefinition>,
     }
 
     #[derive(Clone, Default)]
@@ -446,7 +446,7 @@ mod tests {
 
     #[async_trait]
     impl crate::traits::AgentStore for MockAgentStore {
-        async fn get_agent(&self, _agent_id: AgentId) -> Result<Option<Agent>> {
+        async fn get_agent(&self, _agent_id: AgentId) -> Result<Option<AgentDefinition>> {
             Ok(self.agent.clone())
         }
     }
@@ -645,34 +645,11 @@ mod tests {
         let session = build_session(Some(agent_id));
         let session_id = session.id;
 
-        let agent = Agent {
-            public_id: agent_id,
-            internal_id: agent_id.uuid(),
-            name: "research-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Research Agent".to_string()),
             description: Some("desc".to_string()),
-            system_prompt: "prompt".to_string(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("session")],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(agent_id, "research-agent", "prompt")
         };
 
         let context = ToolContext::new(session_id)

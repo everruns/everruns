@@ -6,7 +6,7 @@
 use crate::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
 use crate::in_memory::{InMemorySessionStorageStore, InMemorySessionStore};
 use async_trait::async_trait;
-use everruns_core::agent::Agent;
+use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::error::Result;
 use everruns_core::harness::Harness;
 use everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore};
@@ -31,10 +31,13 @@ pub type ScheduleStoreFactory = Arc<dyn Fn(i64) -> Arc<dyn SessionScheduleStore>
 pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
 
 /// Agent store contract for runtime seeding and lookup.
+///
+/// Seeds portable [`AgentDefinition`] values (EVE-877): the embedded host
+/// carries no stored Agent persistence records.
 #[async_trait]
 pub trait RuntimeAgentStore: AgentStore + Send + Sync {
     /// Insert or replace an agent definition.
-    async fn add_agent(&self, agent: Agent) -> Result<()>;
+    async fn add_agent(&self, agent: AgentDefinition) -> Result<()>;
 }
 
 /// Harness store contract for runtime seeding and lookup.
@@ -205,7 +208,7 @@ impl HostBackends {
 
 #[async_trait]
 impl RuntimeAgentStore for InMemoryAgentStore {
-    async fn add_agent(&self, agent: Agent) -> Result<()> {
+    async fn add_agent(&self, agent: AgentDefinition) -> Result<()> {
         InMemoryAgentStore::add_agent(self, agent).await;
         Ok(())
     }

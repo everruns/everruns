@@ -86,7 +86,7 @@ pub mod budget;
 
 // Domain entity types
 // These are DB-agnostic entity types used by both API and worker
-pub mod agent;
+pub mod agent_definition;
 pub mod agent_identity;
 pub mod ard_attachment;
 pub mod capability_dto;
@@ -437,10 +437,11 @@ pub use capability_types::{
 
 // Domain entity re-exports
 // Note: Provider entity is in the provider module. Import as: everruns_core::provider::Provider
-pub use agent::{
-    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
-    generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
-};
+// EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
+// lifecycle/versioning enums, and the public-name/persistence helpers moved to
+// the `everruns-platform` crate. Core keeps only the portable authored
+// execution configuration consumed during a turn.
+pub use agent_definition::AgentDefinition;
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 // EVE-841: the app and agent-trigger control-plane records moved to the
 // `everruns-platform` crate. They are hosted orchestration records not consumed

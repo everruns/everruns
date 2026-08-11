@@ -5,7 +5,7 @@
 // - Database implementations for production
 // - Channel-based implementations for streaming
 
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::harness::Harness;
 use crate::provider::DriverId;
 use crate::session_file::{
@@ -88,25 +88,52 @@ impl std::fmt::Debug for ReasoningEffortHandle {
 }
 
 // ============================================================================
-// AgentStore - For retrieving agent configurations
+// AgentStore - For retrieving agent execution configurations
 // ============================================================================
 
-/// Trait for retrieving agent configurations
+/// Narrow agent-loading seam for turn execution (EVE-872, EVE-877).
 ///
-/// Implementations can:
-/// - Load agents from a database
-/// - Keep agents in memory for testing
-/// - Load agents from a configuration file
+/// Implementations project their stored agent records into the portable
+/// [`AgentDefinition`] — the authored execution configuration. Stored
+/// `Agent`/`AgentVersion` persistence records live in `everruns-platform` and
+/// never cross this boundary.
+///
+/// Contract: records that exist but cannot execute (archived or deleted) must
+/// yield an error from [`AgentStore::get_agent`], so lifecycle validation is
+/// enforced at the loading seam before host execution begins.
 #[async_trait]
 pub trait AgentStore: Send + Sync {
-    /// Get an agent by ID
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
+    /// Get the portable execution definition for an agent by public id.
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>>;
+
+    /// Execution-availability probe for dependency-blocker detection.
+    ///
+    /// Returns `None` when the agent exists and can execute. Hosted stores
+    /// override this to report [`DependencyBlocker::AgentArchived`] /
+    /// [`DependencyBlocker::AgentDeleted`] from the stored lifecycle status;
+    /// the default treats a missing record as deleted.
+    async fn get_agent_blocker(
+        &self,
+        agent_id: AgentId,
+    ) -> Result<Option<crate::dependency_blocker::DependencyBlocker>> {
+        Ok(match self.get_agent(agent_id).await? {
+            Some(_) => None,
+            None => Some(crate::dependency_blocker::DependencyBlocker::AgentDeleted),
+        })
+    }
 }
 
 #[async_trait]
 impl<T: AgentStore + ?Sized> AgentStore for std::sync::Arc<T> {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
         (**self).get_agent(agent_id).await
+    }
+
+    async fn get_agent_blocker(
+        &self,
+        agent_id: AgentId,
+    ) -> Result<Option<crate::dependency_blocker::DependencyBlocker>> {
+        (**self).get_agent_blocker(agent_id).await
     }
 }
 

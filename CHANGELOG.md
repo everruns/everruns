@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved the stored `Agent` and `AgentVersion` records out of
+  `everruns-core`.** The persistence records — `Agent`, `AgentVersion`,
+  `AgentStatus`, `AgentVersionChangeKind`, `MAX_ADDRESSABLE_NAME_LEN`,
+  `validate_addressable_name`, `generate_agent_public_id`, and
+  `validate_agent_public_id` — now live in `everruns-platform`; the
+  `everruns_core::agent` module is gone. Core keeps only the portable
+  `everruns_core::AgentDefinition` (the authored execution configuration),
+  which `AgentStore` implementations now return, and archived or deleted
+  agents fail at that loading seam instead of inside snapshot projection.
+  Direct core consumers that touch the stored records should depend on
+  `everruns-platform` and import them from there; execution-side code should
+  consume `AgentDefinition` or the resolved execution snapshot. REST/gRPC
+  shapes and stored schema are unchanged.
+
 - **Removed the `everruns-runtime` crate.** It was a logic-free 0.17.x
   compatibility layer over `everruns-host` and is no longer published. The
   deprecated `everruns::runtime` module alias is removed with it.

@@ -19,7 +19,9 @@ use everruns_core::command_host::StoreCommandHost;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_core::traits::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::typed_id::SessionId;
-use everruns_core::{Agent, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness};
+use everruns_core::{
+    AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness,
+};
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
     AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore,
@@ -195,7 +197,11 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(Vec<Harness>, Option<Agent>, everruns_core::Session)> {
+    ) -> Result<(
+        Vec<Harness>,
+        Option<AgentDefinition>,
+        everruns_core::Session,
+    )> {
         let adapters = self.adapters();
         let session_store = AdapterSessionStore::new(adapters.clone(), org_id);
         let harness_store = AdapterHarnessStore::new(adapters.clone(), org_id);

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use crate::AgentCapabilityConfig;
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::capabilities::{
     COMPACTION_CAPABILITY_ID, CapabilityRegistry, CompactionConfig, SystemPromptContext,
     resolve_capability_configs,
@@ -33,8 +33,8 @@ use std::sync::Arc;
 pub struct AssembledTurnContext {
     /// Full root-to-leaf harness chain.
     pub harness_chain: Vec<Harness>,
-    /// Optional agent attached to the session.
-    pub agent: Option<Agent>,
+    /// Optional agent execution definition attached to the session.
+    pub agent: Option<AgentDefinition>,
     /// Session being executed.
     pub session: Session,
     /// Effective overlay after merging harness chain → agent → session.
@@ -280,7 +280,7 @@ async fn assemble_turn_context_with_mode(
 /// Resolve the merged overlay and dependency-expanded capability configs for a runtime session.
 pub fn resolve_runtime_capabilities(
     harness_chain: &[Harness],
-    agent: Option<&Agent>,
+    agent: Option<&AgentDefinition>,
     session: &Session,
     capability_registry: &CapabilityRegistry,
 ) -> ResolvedRuntimeCapabilities {
@@ -406,7 +406,7 @@ fn extract_locale_override(messages: &[Message]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::{Agent, AgentStatus};
+
     use crate::capabilities::{AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry};
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
@@ -419,7 +419,6 @@ mod tests {
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::typed_id::{AgentId, HarnessId};
     use chrono::Utc;
-    use uuid::Uuid;
 
     /// Local stand-in for the `test_math` fixture capability, which lives in
     /// `everruns-test-support` (EVE-875). These tests only need a registered
@@ -494,35 +493,11 @@ mod tests {
         }
     }
 
-    fn agent(agent_id: AgentId) -> Agent {
-        Agent {
-            public_id: agent_id,
-            internal_id: Uuid::nil(),
-            name: "math-agent".into(),
+    fn agent(agent_id: AgentId) -> crate::AgentDefinition {
+        crate::AgentDefinition {
             display_name: Some("Math Agent".into()),
-            description: None,
-            system_prompt: "Use tools.".into(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
             max_iterations: Some(8),
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..crate::AgentDefinition::new(agent_id, "math-agent", "Use tools.")
         }
     }
 

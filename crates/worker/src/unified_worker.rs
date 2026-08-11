@@ -1975,7 +1975,7 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _agent_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::Agent>> {
+            ) -> CoreResult<Option<everruns_platform::Agent>> {
                 unimplemented!()
             }
             async fn get_harness(

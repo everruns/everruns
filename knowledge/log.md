@@ -1,5 +1,18 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-11
+
+* **Agent record extraction**: Moved the stored `Agent` and `AgentVersion`
+  persistence records — lifecycle status, versioning and publication metadata,
+  fork lineage, public-name validation, and persistence helpers — out of
+  `everruns-core` into `everruns-platform` (EVE-877, breaking for direct core
+  consumers in 0.18). Core keeps only the portable `AgentDefinition` (authored
+  execution configuration); the `AgentStore` loading seam projects stored
+  records into it and enforces archived/deleted validation before host
+  execution, which consumes the resolved execution snapshot only. REST/gRPC
+  and stored schema are unchanged, and a new architecture guard keeps kernel
+  crates (core, engine, provider, capability) free of platform record imports.
+
 ## 2026-08-10
 
 * **Observability extraction**: Moved telemetry initialization (OTLP exporter

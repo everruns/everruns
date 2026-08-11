@@ -34,7 +34,7 @@ fn scoped_server_with_secret_header() -> ScopedMcpServer {
 struct Fixture {
     runtime: everruns_host::InProcessRuntime,
     harness: everruns_core::Harness,
-    agent: everruns_core::Agent,
+    agent: everruns_core::AgentDefinition,
     session: everruns_core::Session,
 }
 
@@ -48,7 +48,6 @@ async fn fixture() -> Fixture {
         .build();
     let agent = AgentBuilder::new("hosted-agent", "Agent instructions.")
         .id(agent_id)
-        .harness_id(harness_id)
         .max_iterations(7)
         .mcp_servers(
             [("docs".to_string(), scoped_server_with_secret_header())]
@@ -104,7 +103,7 @@ async fn framework_load_resolved_turn_matches_direct_projection() {
 
     assert_eq!(inputs.snapshot.session_id, fixture.session.id);
     assert_eq!(inputs.snapshot.harness_id, fixture.harness.id);
-    assert_eq!(inputs.snapshot.agent_id, Some(fixture.agent.public_id));
+    assert_eq!(inputs.snapshot.agent_id, Some(fixture.agent.id));
     assert_eq!(inputs.snapshot.max_iterations, Some(7));
     assert_eq!(
         inputs.snapshot.instructions.as_deref(),
@@ -157,50 +156,83 @@ async fn turn_execution_and_events_stay_free_of_secrets_and_platform_metadata() 
     }
 }
 
+/// EVE-877: archived/deleted lifecycle validation lives at the platform
+/// loading seam (`everruns_platform::Agent::execution_definition`), not in the
+/// portable definition the embedded host seeds. This adapter stands in for a
+/// hosted store whose stored record is archived: the loading seam errors and
+/// execution never starts.
+#[derive(Clone)]
+struct ArchivedAtSeamAgentStore;
+
+#[async_trait::async_trait]
+impl everruns_core::traits::AgentStore for ArchivedAtSeamAgentStore {
+    async fn get_agent(
+        &self,
+        agent_id: AgentId,
+    ) -> everruns_core::Result<Option<everruns_core::AgentDefinition>> {
+        Err(everruns_core::AgentLoopError::config(format!(
+            "agent {agent_id} is archived and cannot execute turns"
+        )))
+    }
+}
+
+#[async_trait::async_trait]
+impl everruns_host::RuntimeAgentStore for ArchivedAtSeamAgentStore {
+    async fn add_agent(&self, _agent: everruns_core::AgentDefinition) -> everruns_core::Result<()> {
+        Ok(())
+    }
+}
+
 #[tokio::test]
-async fn inactive_agent_fails_during_projection_before_execution() {
+async fn inactive_agent_fails_at_loading_seam_before_execution() {
+    use everruns_host::{EventReadLimit, EventReadRequest};
+
     let harness_id = HarnessId::from_seed(873);
     let agent_id = AgentId::from_seed(873);
     let session_id = SessionId::from_seed(873);
     let harness = HarnessBuilder::new("orphan", "Prompt.")
         .id(harness_id)
         .build();
-    let agent = AgentBuilder::new("archived-agent", "Prompt.")
-        .id(agent_id)
-        .harness_id(harness_id)
-        .status(everruns_core::AgentStatus::Archived)
-        .build();
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
         .agent(agent_id)
         .build();
 
+    // Keep a handle on the session store so the session can be added after
+    // build: builder-time seeding also walks the agent loading seam, and this
+    // test wants the failure to surface at turn time.
+    let session_store = std::sync::Arc::new(everruns_host::InMemorySessionStore::new());
+    let backends = everruns_host::HostBackends::in_memory()
+        .with_agent_store(std::sync::Arc::new(ArchivedAtSeamAgentStore))
+        .with_session_store(session_store.clone());
     let runtime = InProcessRuntimeBuilder::new()
         .llm_sim(LlmSimConfig::fixed("unused"))
+        .backends(backends)
         .harness(harness)
-        .agent(agent)
-        .session(session)
         .build()
         .await
         .expect("runtime builds");
+    everruns_host::RuntimeSessionStore::add_session(session_store.as_ref(), session)
+        .await
+        .expect("session seeds");
 
     let error = runtime
         .run_text_turn(session_id, "hello")
         .await
-        .expect_err("projection fails before execution");
+        .expect_err("loading seam fails before execution");
     assert!(error.to_string().contains("archived"), "{error}");
 
-    // No turn events were emitted: the failure happened during platform
-    // projection, before host execution began.
-    let events = runtime.events().await.expect("events load");
+    // No turn events were emitted: the failure happened at the platform
+    // loading seam, before host execution began.
+    let page = runtime
+        .event_log()
+        .read_page(EventReadRequest::new(session_id, EventReadLimit::default()))
+        .await
+        .expect("events load");
     assert!(
-        events
+        page.events
             .iter()
             .all(|event| !event.event_type.starts_with("turn.")),
-        "no turn lifecycle events expected, got {:?}",
-        events
-            .iter()
-            .map(|e| e.event_type.clone())
-            .collect::<Vec<_>>()
+        "no turn lifecycle events expected"
     );
 }

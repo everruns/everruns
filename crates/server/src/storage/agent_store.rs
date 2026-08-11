@@ -1,7 +1,9 @@
 // Database-backed AgentStore implementation
 //
-// This module implements the core AgentStore trait for retrieving
-// agent configurations from the database.
+// This module implements the core AgentStore trait — the narrow agent-loading
+// seam for turn execution (EVE-872, EVE-877). The stored platform record is
+// hydrated here and projected into the portable execution definition;
+// archived/deleted agents fail at this seam, before host execution.
 //
 // Decision: org_id is baked into the struct at construction time,
 // matching the Grpc/Adapter store pattern. Callers must provide
@@ -10,11 +12,10 @@
 use crate::max_iterations;
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, Result, StoreResultExt,
-    agent::{Agent, AgentStatus},
-    from_json,
-    traits::AgentStore,
+    AgentCapabilityConfig, AgentDefinition, AgentId, DependencyBlocker, Result, StoreResultExt,
+    from_json, traits::AgentStore,
 };
+use everruns_platform::{Agent, AgentStatus};
 
 use super::repositories::Database;
 
@@ -36,11 +37,9 @@ impl DbAgentStore {
     pub fn new(db: Database, org_id: i64) -> Self {
         Self { db, org_id }
     }
-}
 
-#[async_trait]
-impl AgentStore for DbAgentStore {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    /// Hydrate the stored platform record (row + capabilities).
+    async fn load_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         let agent_row = self.db.get_agent(self.org_id, agent_id).await.store_err()?;
 
         match agent_row {
@@ -93,6 +92,25 @@ impl AgentStore for DbAgentStore {
             }
             None => Ok(None),
         }
+    }
+}
+
+#[async_trait]
+impl AgentStore for DbAgentStore {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
+        // Loading seam (EVE-877): archived/deleted records fail here, before
+        // host execution.
+        self.load_record(agent_id)
+            .await?
+            .map(|agent| agent.execution_definition())
+            .transpose()
+    }
+
+    async fn get_agent_blocker(&self, agent_id: AgentId) -> Result<Option<DependencyBlocker>> {
+        Ok(match self.load_record(agent_id).await? {
+            Some(agent) => agent.dependency_blocker(),
+            None => Some(DependencyBlocker::AgentDeleted),
+        })
     }
 }
 

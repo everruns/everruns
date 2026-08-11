@@ -189,9 +189,17 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             .await?
             .into_iter()
             .collect();
+        // Loading seam (EVE-877): project the stored record into the portable
+        // execution definition; archived/deleted agents fail here, before the
+        // snapshot is built.
+        let agent_definition = context
+            .agent
+            .as_ref()
+            .map(|agent| agent.execution_definition())
+            .transpose()?;
         let snapshot = ResolvedExecutionSnapshot::project(
             &harness_chain,
-            context.agent.as_ref(),
+            agent_definition.as_ref(),
             &context.session,
         )?;
         Ok(ResolvedTurnInputs {

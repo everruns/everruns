@@ -8,7 +8,7 @@
 // the deterministic simulator live in the `everruns-test-support` crate
 // (EVE-875), not here.
 
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::credential_provider::CredentialProvider;
 use crate::harness::Harness;
 use crate::provider::DriverId;
@@ -215,7 +215,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
 /// Useful for testing and examples where you want to configure agents without a database.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryAgentStore {
-    agents: Arc<RwLock<HashMap<AgentId, Agent>>>,
+    agents: Arc<RwLock<HashMap<AgentId, AgentDefinition>>>,
 }
 
 impl InMemoryAgentStore {
@@ -227,8 +227,8 @@ impl InMemoryAgentStore {
     }
 
     /// Add an agent to the store
-    pub async fn add_agent(&self, agent: Agent) {
-        self.agents.write().await.insert(agent.public_id, agent);
+    pub async fn add_agent(&self, agent: AgentDefinition) {
+        self.agents.write().await.insert(agent.id, agent);
     }
 
     /// Get all agent IDs
@@ -244,7 +244,7 @@ impl InMemoryAgentStore {
 
 #[async_trait]
 impl AgentStore for InMemoryAgentStore {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
     }
 }

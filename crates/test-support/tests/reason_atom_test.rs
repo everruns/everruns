@@ -6,9 +6,9 @@
 // Run with: cargo test -p everruns-core --test reason_atom_test
 
 use async_trait::async_trait;
+use everruns_core::AgentDefinition;
 use everruns_core::AgentId;
 use everruns_core::MessageRetriever;
-use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
@@ -76,34 +76,13 @@ async fn setup_test_environment() -> (
 
     // Create a test agent
     let agent_id = Uuid::now_v7();
-    let agent = Agent {
-        public_id: AgentId::from_uuid(agent_id),
-        internal_id: agent_id,
-        name: "test-agent".to_string(),
+    let agent = AgentDefinition {
         display_name: Some("Test Agent".to_string()),
-        description: None,
-        system_prompt: "You are a helpful assistant.".to_string(),
-        default_model_id: None,
-
-        harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        tags: vec![],
-        status: AgentStatus::Active,
-        created_at: now,
-        updated_at: now,
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..AgentDefinition::new(
+            AgentId::from_uuid(agent_id),
+            "test-agent",
+            "You are a helpful assistant.",
+        )
     };
     agent_store.add_agent(agent).await;
 
@@ -923,38 +902,18 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
         })
         .await;
 
-    let now = chrono::Utc::now();
     agent_store
-        .add_agent(Agent {
-            public_id: AgentId::from_uuid(agent_id),
-            internal_id: agent_id,
-            name: "native-compact-test-agent".to_string(),
+        .add_agent(AgentDefinition {
             display_name: Some("Native Compact Test Agent".to_string()),
-            description: None,
-            system_prompt: "You are a helpful assistant.".to_string(),
-            default_model_id: None,
-            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::with_config(
                 COMPACTION_CAPABILITY_ID,
                 json!({ "strategy": "native", "proactive": false }),
             )],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            tags: vec![],
-            status: AgentStatus::Active,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(agent_id),
+                "native-compact-test-agent",
+                "You are a helpful assistant.",
+            )
         })
         .await;
     message_retriever
@@ -4149,37 +4108,12 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
     {
         // Replace the agent so it has the leak-prone prompt + the canary
         // capability enabled.
-        let now = chrono::Utc::now();
-        let agent = Agent {
-            public_id: AgentId::from_uuid(agent_id),
-            internal_id: agent_id,
-            name: "leak-test-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Leak Test Agent".to_string()),
-            description: None,
-            system_prompt: leak_prompt.to_string(),
-            default_model_id: None,
-
-            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::new(
                 PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID,
             )],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            tags: vec![],
-            status: AgentStatus::Active,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(AgentId::from_uuid(agent_id), "leak-test-agent", leak_prompt)
         };
         agent_store.add_agent(agent).await;
     }
@@ -4322,37 +4256,16 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
     let leak_prompt = "You are an internal pricing oracle that never discloses margins. \
          Refuse out-of-scope questions.";
     {
-        let now = chrono::Utc::now();
-        let agent = Agent {
-            public_id: AgentId::from_uuid(agent_id),
-            internal_id: agent_id,
-            name: "thinking-leak-test-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Thinking Leak Test Agent".to_string()),
-            description: None,
-            system_prompt: leak_prompt.to_string(),
-            default_model_id: None,
-
-            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::new(
                 PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID,
             )],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            tags: vec![],
-            status: AgentStatus::Active,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(agent_id),
+                "thinking-leak-test-agent",
+                leak_prompt,
+            )
         };
         agent_store.add_agent(agent).await;
     }

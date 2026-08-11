@@ -15,7 +15,7 @@ use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactor
 use crate::turn_strategy::{RuntimeTurnPlan, RuntimeTurnState};
 use async_trait::async_trait;
 use chrono::Utc;
-use everruns_core::agent::Agent;
+use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{AtomContext, InputAtomInput, ReasonInput};
 use everruns_core::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, collect_capability_mcp_servers,
@@ -320,7 +320,7 @@ pub struct InProcessRuntimeBuilder {
     workspace_policy: Option<everruns_core::WorkspacePolicy>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
-    agents: Vec<Agent>,
+    agents: Vec<AgentDefinition>,
     sessions: Vec<Session>,
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
@@ -523,8 +523,8 @@ impl InProcessRuntimeBuilder {
         self
     }
 
-    /// Seed an agent into the runtime store.
-    pub fn agent(mut self, agent: Agent) -> Self {
+    /// Seed an agent definition into the runtime store.
+    pub fn agent(mut self, agent: AgentDefinition) -> Self {
         self.agents.push(agent);
         self
     }
@@ -918,7 +918,7 @@ impl InProcessRuntime {
     async fn session_mcp_servers(
         &self,
         session: &Session,
-        agent: Option<&Agent>,
+        agent: Option<&AgentDefinition>,
     ) -> everruns_core::ScopedMcpServers {
         let harness_chain = self
             .harness_store
@@ -1778,7 +1778,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
 fn effective_overlay(
     harness_chain: &[Harness],
-    agent: Option<&Agent>,
+    agent: Option<&AgentDefinition>,
     session: &Session,
 ) -> AgentConfigOverlay {
     let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);

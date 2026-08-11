@@ -10,7 +10,7 @@
 //! The request/message DTOs live here (not in `everruns-platform`) because the
 //! trait signature needs them and core cannot depend on platform.
 
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::error::Result;
 use crate::harness::Harness;
 use crate::session::{Session, SessionParticipant, SessionSeedMode};
@@ -51,8 +51,10 @@ pub struct PlatformCreateSessionRequest {
 /// carried on [`ToolContext`](crate::ToolContext) as an optional service.
 #[async_trait]
 pub trait SubagentSessionDelegate: Send + Sync {
-    /// Look up an agent by id (target validation for handoff/spawn).
-    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<Agent>>;
+    /// Look up an agent's execution definition by id (target validation for
+    /// handoff/spawn). Stored persistence records stay behind the hosted
+    /// platform adapter (EVE-877).
+    async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<AgentDefinition>>;
 
     /// Look up a harness by id (parent harness resolution).
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
@@ -119,7 +121,6 @@ pub trait SubagentSessionDelegate: Send + Sync {
 pub mod tests {
     use super::*;
     use crate::AgentCapabilityConfig;
-    use crate::agent::AgentStatus;
     use crate::harness::HarnessStatus;
     use crate::session::{SessionParticipant, SessionStatus};
 
@@ -131,7 +132,7 @@ pub mod tests {
     pub struct MockSubagentDelegate {
         pub harness: Harness,
         pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
-        pub agent: Agent,
+        pub agent: AgentDefinition,
         pub session: Session,
         pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
         pub joined_participants: std::sync::Mutex<Vec<SessionParticipant>>,
@@ -173,33 +174,14 @@ pub mod tests {
                     deleted_at: None,
                 },
                 extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
-                agent: Agent {
-                    public_id: crate::typed_id::AgentId::new(),
-                    internal_id: uuid::Uuid::now_v7(),
-                    name: "test-agent".to_string(),
+                agent: AgentDefinition {
                     display_name: Some("Test Agent".to_string()),
                     description: Some("test agent".to_string()),
-                    system_prompt: "You are helpful.".to_string(),
-                    default_model_id: None,
-                    harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-                    default_version_id: None,
-                    forked_from_agent_id: None,
-                    forked_from_version_id: None,
-                    root_agent_id: None,
-                    tags: vec![],
-                    capabilities: vec![],
-                    initial_files: vec![],
-                    network_access: None,
-                    max_iterations: None,
-                    parallel_tool_calls: None,
-                    tools: vec![],
-                    mcp_servers: Default::default(),
-                    status: AgentStatus::Active,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                    archived_at: None,
-                    deleted_at: None,
-                    usage: None,
+                    ..AgentDefinition::new(
+                        crate::typed_id::AgentId::new(),
+                        "test-agent",
+                        "You are helpful.",
+                    )
                 },
                 session: {
                     let session_id = SessionId::new();
@@ -290,7 +272,10 @@ pub mod tests {
 
     #[async_trait]
     impl SubagentSessionDelegate for MockSubagentDelegate {
-        async fn get_agent_by_id(&self, _id: crate::typed_id::AgentId) -> Result<Option<Agent>> {
+        async fn get_agent_by_id(
+            &self,
+            _id: crate::typed_id::AgentId,
+        ) -> Result<Option<AgentDefinition>> {
             Ok(Some(self.agent.clone()))
         }
 
@@ -304,7 +289,7 @@ pub mod tests {
                 session_id,
                 kind: crate::session::SessionParticipantKind::Agent,
                 agent_id: Some(agent_id),
-                agent_version_id: self.agent.default_version_id,
+                agent_version_id: None,
                 principal_id: self.session.owner_principal_id,
                 display_name: None,
                 role: crate::session::SessionParticipantRole::Member,

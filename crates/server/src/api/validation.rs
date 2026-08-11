@@ -134,7 +134,7 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
 /// Used for both harness and agent names. Delegates to core's shared
 /// `validate_addressable_name` and wraps the error as an HTTP 400.
 fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    everruns_core::validate_addressable_name(name).map_err(|msg| {
+    everruns_platform::validate_addressable_name(name).map_err(|msg| {
         ErrorResponse::new(format!("{entity} {msg}")).into_response(StatusCode::BAD_REQUEST)
     })
 }

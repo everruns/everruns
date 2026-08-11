@@ -5,7 +5,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
+    AgentDefinition, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
     PlatformDefinition, ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
 };
@@ -33,7 +33,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId) -> Agent {
+fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")
@@ -89,8 +89,6 @@ fn per_type_builders_accept_explicit_timestamps() {
         .build();
     let agent = AgentBuilder::new("math-agent", "prompt")
         .id(agent_id)
-        .created_at(timestamp)
-        .updated_at(timestamp)
         .build();
     let session = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -101,8 +99,9 @@ fn per_type_builders_accept_explicit_timestamps() {
 
     assert_eq!(harness.created_at, timestamp);
     assert_eq!(harness.updated_at, timestamp);
-    assert_eq!(agent.created_at, timestamp);
-    assert_eq!(agent.updated_at, timestamp);
+    // Agent definitions are portable execution configuration (EVE-877); they
+    // carry no persistence timestamps.
+    assert_eq!(agent.id, agent_id);
     assert_eq!(session.created_at, timestamp);
     assert_eq!(session.updated_at, timestamp);
 }
@@ -732,7 +731,7 @@ async fn runtime_exposes_assembled_context() {
     assert!(initial_context.messages.is_empty());
     assert_eq!(initial_context.session.id, session_id);
     assert_eq!(
-        initial_context.agent.as_ref().map(|agent| agent.public_id),
+        initial_context.agent.as_ref().map(|agent| agent.id),
         Some(agent_id)
     );
 

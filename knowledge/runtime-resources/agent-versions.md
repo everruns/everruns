@@ -63,7 +63,7 @@ When disabled:
 
 ## References
 
-- Core types: `crates/core/src/agent.rs`, `crates/platform/src/app.rs`, `crates/core/src/session.rs`
+- Core types: `crates/platform/src/agent.rs`, `crates/platform/src/app.rs`, `crates/core/src/session.rs`
 - Storage models: `crates/server/src/storage/models.rs`
 - API commands: `crates/server/src/domains/agents/commands.rs`
 - Migration: `crates/server/migrations/037_agent_versions.sql`

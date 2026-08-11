@@ -1,23 +1,29 @@
-// Agent domain types
+// Stored Agent and AgentVersion persistence records (EVE-877).
+//
+// Decision: Agent persistence and lifecycle are a platform concern. These
+// records — lifecycle status, versioning and publication metadata, fork
+// lineage, timestamps, usage — moved here from `everruns-core`. The execution
+// kernel consumes only the portable `everruns_core::AgentDefinition`, produced
+// at the loading seam by [`Agent::execution_definition`], which enforces
+// archived/deleted validation before host execution.
 //
 // Design Decision: Dual-ID pattern (see knowledge/foundations/id-schema.md)
 // - public_id: AgentId (external, API-facing, client-supplied or auto-generated)
 // - internal_id: Uuid (internal PK, used for FK references, never exposed in API)
-//
-// These types represent the Agent entity and its status.
-// Used by both API and worker crates.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::capability_types::AgentCapabilityConfig;
-use crate::events::TokenUsage;
-use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
-use crate::network_access::NetworkAccessList;
-use crate::session_file::InitialFile;
-use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
+use everruns_core::AgentDefinition;
+use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_core::error::AgentLoopError;
+use everruns_core::events::TokenUsage;
+use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
+use everruns_core::network_access::NetworkAccessList;
+use everruns_core::session_file::InitialFile;
+use everruns_core::tool_types::ToolDefinition;
+use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -180,6 +186,10 @@ impl From<&str> for AgentStatus {
     }
 }
 
+// Stored Agent record: authored configuration plus platform persistence
+// metadata (lifecycle status, versioning, fork lineage, timestamps, usage).
+// The doc comment below is part of the public OpenAPI schema description and
+// intentionally unchanged by the EVE-877 move.
 /// Agent configuration for agentic loop.
 /// An agent defines the behavior and capabilities of an AI assistant.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -250,7 +260,7 @@ pub struct Agent {
     #[serde(default)]
     #[cfg_attr(
         feature = "openapi",
-        schema(value_type = Vec<crate::capability_types::AgentCapabilityConfigSchema>)
+        schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this agent.
@@ -306,6 +316,63 @@ pub struct Agent {
     pub usage: Option<TokenUsage>,
 }
 
+impl Agent {
+    /// Project this stored record into the portable authored execution
+    /// configuration, without lifecycle validation.
+    ///
+    /// Use [`Agent::execution_definition`] at execution loading seams; this
+    /// plain projection serves non-execution consumers (e.g. handoff target
+    /// overlay assembly) that historically saw the record regardless of
+    /// status.
+    pub fn definition(&self) -> AgentDefinition {
+        AgentDefinition {
+            id: self.public_id,
+            name: self.name.clone(),
+            display_name: self.display_name.clone(),
+            description: self.description.clone(),
+            system_prompt: self.system_prompt.clone(),
+            default_model_id: self.default_model_id,
+            capabilities: self.capabilities.clone(),
+            initial_files: self.initial_files.clone(),
+            network_access: self.network_access.clone(),
+            max_iterations: self.max_iterations,
+            parallel_tool_calls: self.parallel_tool_calls,
+            tools: self.tools.clone(),
+            mcp_servers: self.mcp_servers.clone(),
+        }
+    }
+
+    /// Project this stored record into the execution definition, enforcing
+    /// lifecycle validation at the platform loading seam (EVE-877).
+    ///
+    /// Archived and deleted records fail here — before host execution — with
+    /// the same error the snapshot projection historically produced.
+    pub fn execution_definition(&self) -> everruns_core::Result<AgentDefinition> {
+        match self.status {
+            AgentStatus::Active => Ok(self.definition()),
+            AgentStatus::Archived | AgentStatus::Deleted => Err(AgentLoopError::config(format!(
+                "agent {} is {} and cannot execute turns",
+                self.public_id, self.status
+            ))),
+        }
+    }
+
+    /// Dependency-blocker probe answer for this record's lifecycle status.
+    pub fn dependency_blocker(&self) -> Option<everruns_core::DependencyBlocker> {
+        match self.status {
+            AgentStatus::Active => None,
+            AgentStatus::Archived => Some(everruns_core::DependencyBlocker::AgentArchived),
+            AgentStatus::Deleted => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        }
+    }
+}
+
+impl From<&Agent> for everruns_core::AgentConfigOverlay {
+    fn from(agent: &Agent) -> Self {
+        (&agent.definition()).into()
+    }
+}
+
 /// Maximum length for an addressable name (agent, harness, etc.).
 pub const MAX_ADDRESSABLE_NAME_LEN: usize = 64;
 
@@ -350,6 +417,37 @@ pub fn validate_agent_public_id(s: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_agent() -> Agent {
+        Agent {
+            public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),
+            internal_id: Uuid::nil(),
+            name: "test".to_string(),
+            display_name: Some("Test".to_string()),
+            description: None,
+            system_prompt: "test".to_string(),
+            default_model_id: None,
+            harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            tools: vec![],
+            mcp_servers: ScopedMcpServers::default(),
+            status: AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        }
+    }
 
     #[test]
     fn test_generate_agent_public_id() {
@@ -406,35 +504,7 @@ mod tests {
 
     #[test]
     fn test_agent_serde_public_id_as_id() {
-        let agent = Agent {
-            public_id: "agent_01933b5a000070008000000000000001".parse().unwrap(),
-            internal_id: Uuid::nil(),
-            name: "test".to_string(),
-            display_name: Some("Test".to_string()),
-            description: None,
-            system_prompt: "test".to_string(),
-            default_model_id: None,
-            harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: ScopedMcpServers::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
-        };
-
+        let agent = test_agent();
         let json = serde_json::to_value(&agent).unwrap();
         // public_id should serialize as "id"
         assert_eq!(json["id"], "agent_01933b5a000070008000000000000001");
@@ -463,5 +533,57 @@ mod tests {
         );
         // internal_id defaults to nil when not present in JSON
         assert_eq!(agent.internal_id, Uuid::nil());
+    }
+
+    #[test]
+    fn definition_projects_authored_execution_configuration() {
+        let mut agent = test_agent();
+        agent.max_iterations = Some(7);
+        agent.capabilities = vec![AgentCapabilityConfig::new("current_time")];
+
+        let definition = agent.definition();
+        assert_eq!(definition.id, agent.public_id);
+        assert_eq!(definition.name, "test");
+        assert_eq!(definition.system_prompt, "test");
+        assert_eq!(definition.max_iterations, Some(7));
+        assert_eq!(definition.capabilities.len(), 1);
+
+        // Persistence metadata never enters the portable definition.
+        let json = serde_json::to_value(&definition).unwrap();
+        for field in ["status", "created_at", "default_version_id", "usage"] {
+            assert!(json.get(field).is_none(), "{field} leaked into definition");
+        }
+    }
+
+    #[test]
+    fn execution_definition_fails_for_archived_and_deleted_records() {
+        // EVE-877: lifecycle validation moved from snapshot projection to this
+        // platform loading seam. The error text is unchanged.
+        for status in [AgentStatus::Archived, AgentStatus::Deleted] {
+            let mut agent = test_agent();
+            agent.status = status.clone();
+            let error = agent.execution_definition().unwrap_err().to_string();
+            assert!(
+                error.contains(&format!("is {status} and cannot execute turns")),
+                "unexpected error for {status:?}: {error}"
+            );
+        }
+        assert!(test_agent().execution_definition().is_ok());
+    }
+
+    #[test]
+    fn dependency_blocker_distinguishes_archived_from_deleted() {
+        let mut agent = test_agent();
+        assert!(agent.dependency_blocker().is_none());
+        agent.status = AgentStatus::Archived;
+        assert!(matches!(
+            agent.dependency_blocker(),
+            Some(everruns_core::DependencyBlocker::AgentArchived)
+        ));
+        agent.status = AgentStatus::Deleted;
+        assert!(matches!(
+            agent.dependency_blocker(),
+            Some(everruns_core::DependencyBlocker::AgentDeleted)
+        ));
     }
 }

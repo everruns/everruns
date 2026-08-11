@@ -474,7 +474,7 @@ impl HasAuditTargetId for everruns_core::Harness {
     }
 }
 
-impl HasAuditTargetId for everruns_core::Agent {
+impl HasAuditTargetId for crate::agent::Agent {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.public_id.to_string())
     }

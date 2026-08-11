@@ -9,10 +9,10 @@ use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
 use everruns_core::provider::{Provider, ProviderTraceConfig};
 use everruns_core::{
-    Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId,
-    Event, EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource,
-    McpServer, McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus,
-    Session, SessionContextReport, SessionFile, SessionStatus, Skill, SkillContent, SkillFileEntry,
+    CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId, Event, EventContext,
+    EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, McpServer,
+    McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus, Session,
+    SessionContextReport, SessionFile, SessionStatus, Skill, SkillContent, SkillFileEntry,
     SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
@@ -22,6 +22,7 @@ use everruns_core::{
         TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
+use everruns_platform::{Agent, AgentStatus};
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
 use utoipa::openapi::{RefOr, Schema};
@@ -440,7 +441,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
     ),
     components(
         schemas(
-            Agent, AgentStatus, everruns_core::AgentVersion, everruns_core::AgentVersionChangeKind,
+            Agent, AgentStatus, everruns_platform::AgentVersion, everruns_platform::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
             everruns_core::typed_id::EventId,
             // Event data types

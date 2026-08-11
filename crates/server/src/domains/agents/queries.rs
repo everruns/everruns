@@ -6,10 +6,8 @@ use crate::domains::common::CommandError;
 use crate::max_iterations;
 use crate::storage::StorageBackend;
 use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId};
-use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, AgentVersion, AgentVersionChangeKind, InitialFile,
-    TokenUsage, is_declarative_capability,
-};
+use everruns_core::{AgentCapabilityConfig, InitialFile, TokenUsage, is_declarative_capability};
+use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use uuid::Uuid;
 
 use super::types::AgentRow;

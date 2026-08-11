@@ -24,9 +24,13 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    Agent, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery, Session,
-    ToolDefinition, UtilityLlmService,
+    AgentDefinition, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
+    Session, ToolDefinition, UtilityLlmService,
 };
+// EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
+// still transports it between control plane and worker; host/engine only ever
+// see the projected `AgentDefinition` / resolved execution snapshot.
+use everruns_platform::Agent;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -49,7 +53,8 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // Agent Operations
     // =========================================================================
 
-    /// Get agent by ID
+    /// Get the stored agent record by ID (platform-side transport; never
+    /// handed to host execution — see `AgentStore for OrgAdapter`).
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>>;
 
     /// Get harness by ID
@@ -570,8 +575,31 @@ pub type AdapterSessionFileStore<A> = SessionAdapter<A>;
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
-        self.adapters.get_agent(self.org_id, agent_id.uuid()).await
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
+        // Loading seam (EVE-877): project the stored record into the portable
+        // execution definition; archived/deleted records fail here, before
+        // host execution.
+        self.adapters
+            .get_agent(self.org_id, agent_id.uuid())
+            .await?
+            .map(|agent| agent.execution_definition())
+            .transpose()
+    }
+
+    async fn get_agent_blocker(
+        &self,
+        agent_id: AgentId,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(
+            match self
+                .adapters
+                .get_agent(self.org_id, agent_id.uuid())
+                .await?
+            {
+                Some(agent) => agent.dependency_blocker(),
+                None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+            },
+        )
     }
 }
 

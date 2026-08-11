@@ -17,8 +17,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel, Session,
-    ToolCall,
+    AgentDefinition, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel,
+    Session, ToolCall,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
@@ -159,7 +159,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId) -> Agent {
+fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
     AgentBuilder::new("sched-agent", "Use the tools provided.")
         .id(agent_id)
         .display_name("Scheduler Agent")

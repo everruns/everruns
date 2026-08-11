@@ -23,7 +23,7 @@
 // - parallel_tool_calls: overlay wins if set, else inherit base
 // - mcp_servers: overlay overrides base by logical server name (last wins)
 
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::harness::Harness;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
@@ -199,8 +199,8 @@ impl From<&Harness> for AgentConfigOverlay {
     }
 }
 
-impl From<&Agent> for AgentConfigOverlay {
-    fn from(a: &Agent) -> Self {
+impl From<&AgentDefinition> for AgentConfigOverlay {
+    fn from(a: &AgentDefinition) -> Self {
         AgentConfigOverlay {
             system_prompt: Some(a.system_prompt.clone()),
             capabilities: a.capabilities.clone(),

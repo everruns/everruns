@@ -24,8 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    EnvCredentialProvider, Harness, HarnessStatus, InputMessage, MessageRetriever,
-    agent::{Agent, AgentStatus},
+    AgentDefinition, EnvCredentialProvider, Harness, HarnessStatus, InputMessage, MessageRetriever,
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
     },
@@ -139,33 +138,14 @@ async fn main() -> anyhow::Result<()> {
     harness_store.add_harness(harness).await;
 
     // Create an agent in the store
-    let agent = Agent {
-        public_id: AgentId::from_uuid(agent_id),
-        internal_id: agent_id,
-        name: "weather-assistant".to_string(),
+    let agent = AgentDefinition {
         display_name: Some("Weather Assistant".to_string()),
         description: Some("A helpful weather assistant".to_string()),
-        system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
-        default_model_id: None,
-        harness_id,
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: None,
-        parallel_tool_calls: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        created_at: now,
-        updated_at: now,
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..AgentDefinition::new(
+            AgentId::from_uuid(agent_id),
+            "weather-assistant",
+            "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.",
+        )
     };
     agent_store.add_agent(agent).await;
 
