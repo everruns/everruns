@@ -5,10 +5,9 @@
 
 #![cfg(feature = "filesystem")]
 
+use everruns_builtins::{DistillOutputHook, PersistOutputHook, ToolSearchCapability};
 use everruns_core::atoms::PostToolExecHook;
-use everruns_core::capabilities::{
-    DistillOutputHook, PersistOutputHook, SystemPromptContext, collect_capabilities,
-};
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
     assert_system_prompt, assert_tool_result_paths_conform, collect_absolute_paths,
@@ -303,6 +302,68 @@ async fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
     for def in &tools {
         assert_no_forbidden_prefixes(def.parameters(), &expectations, def.name());
     }
+}
+
+#[tokio::test]
+async fn filesystem_root_rewrite_precedes_deferred_schema_capture() {
+    let root = TempDir::new().unwrap();
+    let store: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
+    let expectations = PathIdentityExpectations::for_store(store.as_ref());
+    let ctx = SystemPromptContext {
+        session_id: SessionId::from_seed(7508),
+        locale: None,
+        file_store: Some(store),
+        model: None,
+    };
+
+    let filesystem_hooks =
+        FileSystemCapability.tool_definition_hooks_with_context(&ctx, &json!({}));
+    assert_eq!(filesystem_hooks.len(), 1);
+    let read_file = ToolDefinition::Builtin(BuiltinTool {
+        name: "read_file".to_string(),
+        display_name: None,
+        description: "Read file".to_string(),
+        parameters: ReadFileTool.parameters_schema(),
+        policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::Automatic,
+        hints: ToolHints::default(),
+        full_parameters: None,
+    });
+
+    let eager = filesystem_hooks[0].transform(vec![read_file.clone()]);
+    assert_no_forbidden_prefixes(
+        eager[0].full_parameters(),
+        &expectations,
+        "eager read_file schema",
+    );
+
+    let tool_search = ToolSearchCapability::with_threshold(1);
+    let tool_search_hooks =
+        tool_search.tool_definition_hooks_with_context(&ctx, &json!({ "threshold": 1 }));
+    let deferred = tool_search_hooks[0].transform(filesystem_hooks[0].transform(vec![
+        read_file,
+        ToolDefinition::Builtin(BuiltinTool {
+            name: "other_tool".to_string(),
+            display_name: None,
+            description: "Other".to_string(),
+            parameters: json!({ "type": "object" }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::Automatic,
+            hints: ToolHints::default(),
+            full_parameters: None,
+        }),
+    ]));
+    let read = deferred
+        .iter()
+        .find(|tool| tool.name() == "read_file")
+        .expect("read_file present");
+    assert_no_forbidden_prefixes(
+        read.full_parameters(),
+        &expectations,
+        "deferred read_file schema",
+    );
 }
 
 async fn run_backend_suite(store: Arc<dyn SessionFileSystem>, wrap_mount: bool) {

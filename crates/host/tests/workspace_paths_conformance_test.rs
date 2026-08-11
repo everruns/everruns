@@ -7,8 +7,8 @@
 // cwd-relative resolution all agree on the same root — and that repointing the
 // host root (the worktree-switch scenario) moves every surface together.
 
+use everruns_builtins::{DistillOutputHook, PersistOutputHook};
 use everruns_core::atoms::PostToolExecHook;
-use everruns_core::capabilities::{DistillOutputHook, PersistOutputHook};
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };

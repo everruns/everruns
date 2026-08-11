@@ -457,8 +457,8 @@ mod tests {
         assert!(info.features.contains(&"key_value".to_string()));
 
         // Capability with no features
-        let time_cap = registry.get("current_time").unwrap();
-        let info = CapabilityInfo::from_core(time_cap.as_ref());
+        let neutral_cap = registry.get("human_intent").unwrap();
+        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
         assert!(info.features.is_empty());
     }
 
@@ -511,9 +511,9 @@ mod tests {
         let info = CapabilityInfo::from_core(hooks_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 
-        // current_time is Low risk (default)
-        let time_cap = registry.get("current_time").unwrap();
-        let info = CapabilityInfo::from_core(time_cap.as_ref());
+        // human_intent is Low risk (default)
+        let neutral_cap = registry.get("human_intent").unwrap();
+        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::Low);
     }
 

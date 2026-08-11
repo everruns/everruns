@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::driver_registry::LlmMessage;
 use crate::events::TokenUsage;
+use crate::message::Message;
 
 /// Strategy selected by a configured compaction policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -51,6 +52,7 @@ pub struct ObservationMaskingResult {
 pub trait CompactionPolicy: Send + Sync + Debug {
     fn settings(&self) -> CompactionSettings;
     fn estimate_total_tokens(&self, messages: &[LlmMessage]) -> usize;
+    fn total_tool_result_bytes(&self, messages: &[Message]) -> usize;
     fn should_compact_proactively(&self, messages: &[LlmMessage], context_window: usize) -> bool;
     fn should_compact_for_cost(
         &self,

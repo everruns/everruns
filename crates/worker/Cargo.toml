@@ -30,7 +30,7 @@ everruns-observability = { workspace = true }
 # scenarios). `sim` only — the worker never links the demo fixture
 # capabilities; scripts/lib/check-test-support-isolation.sh guards this.
 everruns-test-support = { workspace = true, features = ["sim"] }
-everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities"] }
+everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-openai-image = { path = "../../integrations/openai-image" }

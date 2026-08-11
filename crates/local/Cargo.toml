@@ -26,6 +26,7 @@ libc = "0.2"
 # full host integration rather than a thin provider crate, so it uses the same
 # core feature surface as everruns-host.
 everruns-core.workspace = true
+everruns-builtins.workspace = true
 everruns-host.workspace = true
 everruns-platform.workspace = true
 

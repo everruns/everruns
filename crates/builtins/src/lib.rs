@@ -22,8 +22,7 @@ use std::sync::Arc;
 
 use everruns_capability::CapabilityError;
 
-// Preserve the source modules while the bundle is extracted from core. Public
-// modules make focused imports possible; the root re-exports below are the
+// Public modules support focused imports; the root re-exports below are the
 // curated common surface.
 pub mod agent_instructions;
 pub mod auto_tool_search;
@@ -53,17 +52,21 @@ pub mod usage_limit_auto_continue;
 
 // Compatibility paths used by the collocated implementation tests. These are
 // aliases of core's provider-neutral execution modules, not copied contracts.
-pub use everruns_core::capabilities::{
+pub(crate) use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityRegistry, CapabilityStatus, Fact, FactsContext,
     ModelViewContext, ModelViewProvider, RiskLevel, SystemPromptContext, ToolDefinitionHook,
     Volatility,
 };
-pub use everruns_core::{
+#[allow(unused_imports)]
+// Collocated unit tests use a wider compatibility subset than the library.
+pub(crate) use everruns_core::{
     AgentLoopError, DEFAULT_ORG_PUBLIC_ID, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
     LlmResponse, LlmResponseStream, McpToolInvoker, PrincipalId, Result, UtilityLlmService,
     WorkspaceId, retain_complete_llm_tool_exchanges, user_facing_error_codes,
 };
-pub use everruns_core::{
+#[allow(unused_imports)]
+// Collocated unit tests use a wider compatibility subset than the library.
+pub(crate) use everruns_core::{
     atoms, budget, capability_types, command, command_host, driver_registry, error, events,
     guardrail_checks, llm_error_hook, mcp_server, message, message_filter, model_profiles,
     output_guardrail, provider, session, session_file, session_schedule, tool_fingerprint,
@@ -141,17 +144,17 @@ pub use usage_limit_auto_continue::{
     resolve_usage_limit_auto_continue,
 };
 
-/// Compatibility namespace for implementation tests and downstream code
-/// transitioning from `everruns_core::capabilities`.
-pub mod capabilities {
-    pub use crate::{
-        AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability, CURRENT_TIME_CAPABILITY_ID,
-        CurrentTimeCapability, DEFAULT_TOOL_SEARCH_THRESHOLD, FactsContext,
-        OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
+/// Internal compatibility namespace for the collocated implementations.
+#[allow(unused_imports)] // Individual implementation and test builds use different subsets.
+pub(crate) mod capabilities {
+    pub(crate) use crate::{
+        AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability, CLAUDE_TOOL_SEARCH_CAPABILITY_ID,
+        CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, DEFAULT_TOOL_SEARCH_THRESHOLD,
+        FactsContext, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
         STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, TOOL_SEARCH_CAPABILITY_ID,
         TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool, Volatility,
     };
-    pub use everruns_core::capabilities::*;
+    pub(crate) use everruns_core::capabilities::*;
 }
 
 /// Register the runtime-safe portable policy capabilities in stable order.
@@ -161,24 +164,19 @@ pub mod capabilities {
 pub fn register_runtime_capabilities(
     registry: &mut CapabilityRegistry,
 ) -> std::result::Result<(), CapabilityError> {
-    for capability in runtime_capabilities() {
-        registry.try_register_arc(capability)?;
-    }
-    Ok(())
+    register_capabilities_atomically(registry, runtime_capabilities())
 }
 
 /// Register every portable policy capability in stable product order.
 ///
 /// Registration is explicit: linking this crate has no inventory side effect.
 /// Existing IDs and alias collisions are rejected rather than silently
-/// replacing an application-provided implementation.
+/// replacing an application-provided implementation. A rejected bundle leaves
+/// the caller's registry unchanged.
 pub fn register_portable_capabilities(
     registry: &mut CapabilityRegistry,
 ) -> std::result::Result<(), CapabilityError> {
-    for capability in portable_capabilities() {
-        registry.try_register_arc(capability)?;
-    }
-    Ok(())
+    register_capabilities_atomically(registry, portable_capabilities())
 }
 
 /// Build a registry containing only portable policy capabilities.
@@ -188,10 +186,38 @@ pub fn portable_capability_registry() -> std::result::Result<CapabilityRegistry,
     Ok(registry)
 }
 
+/// Add the portable context-free tools that belong in a host's default
+/// executor registry.
+///
+/// Capability collection contributes the same tools when their owning
+/// capability is configured. Hosts also install these two legacy defaults so
+/// executor behavior remains compatible for blueprints and seed-time tooling.
+pub fn register_default_tools(registry: &mut everruns_core::ToolRegistry) {
+    registry.register(GetCurrentTimeTool);
+    registry.register(WriteTodosTool);
+}
+
+/// Add portable context-free tools safe for scheduled monitor probes.
+pub fn register_monitor_tools(registry: &mut everruns_core::ToolRegistry) {
+    registry.register(GetCurrentTimeTool);
+}
+
 fn portable_capabilities() -> Vec<Arc<dyn Capability>> {
     let mut capabilities = runtime_capabilities();
     capabilities.push(Arc::new(UsageLimitAutoContinueCapability));
     capabilities
+}
+
+fn register_capabilities_atomically(
+    registry: &mut CapabilityRegistry,
+    capabilities: Vec<Arc<dyn Capability>>,
+) -> std::result::Result<(), CapabilityError> {
+    let mut candidate = registry.clone();
+    for capability in capabilities {
+        candidate.try_register_arc(capability)?;
+    }
+    *registry = candidate;
+    Ok(())
 }
 
 fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
@@ -288,12 +314,30 @@ mod bundle_tests {
     }
 
     #[test]
+    fn late_collision_does_not_partially_register_the_bundle() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(GuardrailsCapability);
+
+        let error = register_portable_capabilities(&mut registry).unwrap_err();
+
+        assert!(error.is_duplicate());
+        assert_eq!(error.id(), GUARDRAILS_CAPABILITY_ID);
+        assert_eq!(registry.len(), 1);
+        assert!(registry.has(GUARDRAILS_CAPABILITY_ID));
+        assert!(!registry.has(CURRENT_TIME_CAPABILITY_ID));
+    }
+
+    #[test]
     fn dependencies_are_portable_or_explicit_host_seams() {
         let registry = portable_capability_registry().unwrap();
         let host_dependencies = ["session_file_system"];
+        let mut external_dependencies = std::collections::BTreeSet::new();
 
         for capability in registry.list() {
             for dependency in capability.dependencies() {
+                if !registry.has(dependency) {
+                    external_dependencies.insert(dependency);
+                }
                 assert!(
                     registry.has(dependency) || host_dependencies.contains(&dependency),
                     "{} has an undeclared external dependency on {dependency}",
@@ -301,5 +345,11 @@ mod bundle_tests {
                 );
             }
         }
+
+        assert_eq!(
+            external_dependencies,
+            host_dependencies.into_iter().collect(),
+            "host-provided capability dependencies are an explicit structural boundary"
+        );
     }
 }

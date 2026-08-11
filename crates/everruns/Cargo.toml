@@ -51,7 +51,7 @@ a2a = ["everruns-core/a2a"]
 # Curated typed values plus the backend-neutral implementation bundle. Kept
 # optional so `default-features = false` Framework consumers compile no built-in
 # implementation package.
-builtins = ["dep:everruns-builtins"]
+builtins = ["dep:everruns-builtins", "everruns-host/builtins"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.

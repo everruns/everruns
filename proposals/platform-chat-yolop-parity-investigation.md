@@ -113,7 +113,7 @@ act could execute. `read_models` was absent, then act failed closed at
 hallucination against an incomplete surface, not evidence that reason advertised
 a tool act lacked.
 
-`crates/core/src/capabilities/tool_search.rs` preserves the full registered
+`crates/builtins/src/tool_search.rs` preserves the full registered
 schema behind deferred disclosure. `ToolCallRepair` only repairs malformed
 arguments; it does not map unknown names. Yolop latest has no host-level
 unknown-tool alias or semantic repair either; it also relies on exact dispatch.
@@ -275,7 +275,7 @@ similar searches with changing arguments/results need semantic state, so this
 incident stayed outside its contract.
 
 Commit `fa3da598` (`feat(capabilities): progress guard (#2930)`) ported Yolop's
-semantic guard into `crates/core/src/capabilities/progress_guard.rs`. It detects
+semantic guard into `crates/builtins/src/progress_guard.rs`. It detects
 repeated exploration and unchanged observations, warns at 24 tool calls, and
 requests a checkpoint at 48. `knowledge/execution/capabilities.md`
 intentionally makes it
@@ -311,7 +311,7 @@ long-running-agent data.
 exist; harness cache activation is genuinely missing; provider-native compaction
 difference is intentional.**
 
-Everruns has `crates/core/src/capabilities/prompt_caching.rs` and Anthropic
+Everruns has `crates/builtins/src/prompt_caching.rs` and Anthropic
 `cache_control` support/tests in `crates/anthropic/src/driver.rs`. Generic does
 not include `prompt_caching`, so every incident generation recorded zero cache
 reads and creations. Yolop always registers `PromptCachingCapability::new()` in
@@ -319,7 +319,7 @@ reads and creations. Yolop always registers `PromptCachingCapability::new()` in
 
 Commit `92fe74ea` (`feat(compaction): trigger checkpoints from cumulative cost
 (#2933)`) already added uncached cumulative-cost thresholds in
-`crates/core/src/capabilities/compaction.rs` and the reason atom. It corresponds
+`crates/builtins/src/compaction.rs` and the reason atom. It corresponds
 to Yolop commit `54fe36d`. The incident trace shows no context-compaction event.
 The reason path only requests durable proactive compaction when the driver
 supports compact; Anthropic does not expose that provider-native operation.

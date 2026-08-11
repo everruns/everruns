@@ -621,7 +621,79 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::atoms::AtomContext;
+    use everruns_core::events::{EventData, EventRequest};
+    use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+    use everruns_core::traits::EventEmitter;
+    use everruns_core::{Event, EventId, MessageId, SessionId, TurnId};
     use serde_json::json;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingEmitter {
+        requests: Mutex<Vec<EventRequest>>,
+    }
+
+    #[async_trait]
+    impl EventEmitter for RecordingEmitter {
+        async fn emit(&self, request: EventRequest) -> everruns_core::Result<Event> {
+            let event = request.clone().into_event(EventId::new(), 0);
+            self.requests.lock().unwrap().push(request);
+            Ok(event)
+        }
+    }
+
+    impl RecordingEmitter {
+        fn repaired_events(&self) -> Vec<(String, String)> {
+            self.requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|request| match &request.data {
+                    EventData::ToolCallRepaired(data) => {
+                        Some((data.tool_call_id.clone(), data.outcome.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+    }
+
+    fn read_file_definition() -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: None,
+            description: "Read a file".to_string(),
+            parameters: schema(),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: Default::default(),
+            hints: Default::default(),
+            full_parameters: None,
+        })
+    }
+
+    async fn apply_capability_hook(
+        config: &Value,
+        iteration: u32,
+        calls: &mut [ToolCall],
+        emitter: &RecordingEmitter,
+    ) {
+        let capability = ToolCallRepairCapability;
+        let hook = capability
+            .finalized_tool_calls_hook(config)
+            .expect("tool-call repair contributes its finalized-call hook");
+        let atom_context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let definitions = [read_file_definition()];
+        let context = FinalizedToolCallsContext {
+            event_emitter: emitter,
+            session_id: SessionId::new(),
+            atom_context: &atom_context,
+            tool_definitions: &definitions,
+            iteration,
+        };
+        hook.apply(&context, calls).await;
+    }
 
     fn schema() -> Value {
         json!({
@@ -634,6 +706,40 @@ mod tests {
             },
             "required": ["path"]
         })
+    }
+
+    #[tokio::test]
+    async fn finalized_call_hook_repairs_arguments_and_emits_stable_outcome() {
+        let emitter = RecordingEmitter::default();
+        let mut calls = [ToolCall {
+            id: "call_1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!("here you go: {'path': '/foo'}"),
+        }];
+
+        apply_capability_hook(&json!({}), 1, &mut calls, &emitter).await;
+
+        assert_eq!(calls[0].arguments, json!({ "path": "/foo" }));
+        assert_eq!(
+            emitter.repaired_events(),
+            vec![("call_1".to_string(), "local-salvage".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn finalized_call_hook_leaves_valid_arguments_untouched_and_silent() {
+        let emitter = RecordingEmitter::default();
+        let original = json!({ "path": "/already/good" });
+        let mut calls = [ToolCall {
+            id: "call_2".to_string(),
+            name: "read_file".to_string(),
+            arguments: original.clone(),
+        }];
+
+        apply_capability_hook(&json!({}), 1, &mut calls, &emitter).await;
+
+        assert_eq!(calls[0].arguments, original);
+        assert!(emitter.repaired_events().is_empty());
     }
 
     // ---- Salvage: table-driven across each malformation class ----

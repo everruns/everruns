@@ -25,9 +25,10 @@ pub use platform_management::{
 
 /// Register the hosted platform-management capabilities on a registry (EVE-839).
 ///
-/// Server/worker call this after building the portable `everruns-core` builtins
-/// so hosted deployments keep the `platform` and `platform_management`
-/// capabilities that were previously registered inside core.
+/// Server/worker call this after composing the neutral core preset, portable
+/// policy bundle, and environment integrations so hosted deployments keep the
+/// `platform` and `platform_management` capabilities that were previously
+/// registered inside core.
 pub fn register_platform_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
@@ -59,14 +60,17 @@ fn register_environment_capabilities(
 ) {
 }
 
-/// Portable `everruns-core` builtins plus the hosted platform capabilities,
-/// grade-selected. The hosted registry server/worker use for catalog,
-/// validation, and execution (EVE-839).
+/// Grade-selected neutral core preset, optional portable policy bundle,
+/// environment integrations, and hosted platform capabilities. This is the
+/// registry server/worker use for catalog, validation, and execution (EVE-839).
 pub fn hosted_capability_registry_for_grade(
     grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry =
         everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    #[cfg(feature = "portable-builtins")]
+    everruns_builtins::register_portable_capabilities(&mut registry)
+        .expect("core and portable built-in catalogs must not collide");
     register_environment_capabilities(&mut registry);
     register_platform_capabilities(&mut registry);
     registry
@@ -76,6 +80,9 @@ pub fn hosted_capability_registry_for_grade(
 /// environment (mirrors `CapabilityRegistry::with_builtins`).
 pub fn hosted_capability_registry() -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry = everruns_core::capabilities::CapabilityRegistry::with_builtins();
+    #[cfg(feature = "portable-builtins")]
+    everruns_builtins::register_portable_capabilities(&mut registry)
+        .expect("core and portable built-in catalogs must not collide");
     register_environment_capabilities(&mut registry);
     register_platform_capabilities(&mut registry);
     registry
@@ -90,6 +97,23 @@ mod tests {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
         assert!(registry.has(PLATFORM_CAPABILITY_ID));
         assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
+    }
+
+    #[cfg(feature = "portable-builtins")]
+    #[test]
+    fn hosted_registry_contains_full_portable_policy_catalog() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "current_time",
+            "compaction",
+            "tool_call_repair",
+            "usage_limit_auto_continue",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "hosted product registry is missing `{capability_id}`"
+            );
+        }
     }
 
     #[cfg(feature = "environment-capabilities")]

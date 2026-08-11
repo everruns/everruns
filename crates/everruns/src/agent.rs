@@ -657,15 +657,13 @@ impl Agent {
             let registry = {
                 #[cfg(feature = "local")]
                 if self.local.is_some() {
-                    everruns_host::compose_runtime_capability_registry(
-                        everruns_core::CapabilityRegistry::with_builtins(),
-                    )
+                    framework_capability_registry(true)
                 } else {
-                    everruns_host::runtime_capability_registry()
+                    framework_capability_registry(false)
                 }
                 #[cfg(not(feature = "local"))]
                 {
-                    everruns_host::runtime_capability_registry()
+                    framework_capability_registry(false)
                 }
             };
             let platform = everruns_core::PlatformDefinition::builder()
@@ -1088,15 +1086,13 @@ impl AgentBuilder {
         let capability_registry = {
             #[cfg(feature = "local")]
             if self.local.is_some() {
-                everruns_host::compose_runtime_capability_registry(
-                    everruns_core::CapabilityRegistry::with_builtins(),
-                )
+                framework_capability_registry(true)
             } else {
-                everruns_host::runtime_capability_registry()
+                framework_capability_registry(false)
             }
             #[cfg(not(feature = "local"))]
             {
-                everruns_host::runtime_capability_registry()
+                framework_capability_registry(false)
             }
         };
 
@@ -1222,6 +1218,27 @@ impl AgentBuilder {
     }
 }
 
+fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
+    let registry = if hosted_base {
+        everruns_core::CapabilityRegistry::with_builtins()
+    } else {
+        everruns_core::CapabilityRegistry::runtime_builtins()
+    };
+    #[cfg(feature = "builtins")]
+    let registry = {
+        let mut registry = registry;
+        if hosted_base {
+            everruns_builtins::register_portable_capabilities(&mut registry)
+                .expect("core and portable built-in catalogs must not collide");
+        } else {
+            everruns_builtins::register_runtime_capabilities(&mut registry)
+                .expect("core and portable runtime catalogs must not collide");
+        }
+        registry
+    };
+    everruns_host::compose_runtime_capability_registry(registry)
+}
+
 fn validate_registered_capability_config(
     registry: &everruns_core::CapabilityRegistry,
     id: &str,
@@ -1236,7 +1253,8 @@ fn validate_registered_capability_config(
             })?;
     }
 
-    if id == everruns_core::AUTO_TOOL_SEARCH_CAPABILITY_ID {
+    #[cfg(feature = "builtins")]
+    if id == everruns_builtins::AUTO_TOOL_SEARCH_CAPABILITY_ID {
         validate_tool_search_config(config).map_err(|reason| BuildError::InvalidCapability {
             id: id.to_string(),
             reason,
@@ -1261,6 +1279,7 @@ fn validate_registered_capability_config(
     Ok(())
 }
 
+#[cfg(feature = "builtins")]
 fn validate_tool_search_config(config: &serde_json::Value) -> Result<(), String> {
     let object = config
         .as_object()

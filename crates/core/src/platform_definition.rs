@@ -41,7 +41,7 @@ use std::sync::Arc;
 ///
 /// let platform = PlatformDefinition::builder()
 ///     .driver_registry(drivers)
-///     .capability(everruns_core::CurrentTimeCapability)
+///     .capability(everruns_core::HumanIntentCapability)
 ///     .build();
 /// ```
 #[derive(Clone)]
@@ -209,7 +209,7 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityStatus, CurrentTimeCapability};
+    use crate::{CapabilityStatus, HumanIntentCapability};
     use async_trait::async_trait;
 
     /// Chat driver stub: registration-only, never invoked in these tests.
@@ -239,10 +239,10 @@ mod tests {
 
         let platform = PlatformDefinition::builder()
             .driver_registry(drivers.clone())
-            .capability(CurrentTimeCapability)
+            .capability(HumanIntentCapability)
             .build();
 
-        assert!(platform.capability_registry().has("current_time"));
+        assert!(platform.capability_registry().has("human_intent"));
         assert!(
             platform
                 .driver_registry()
@@ -255,13 +255,13 @@ mod tests {
         let mut platform = PlatformDefinition::default();
         platform
             .capability_registry_mut()
-            .register(CurrentTimeCapability);
+            .register(HumanIntentCapability);
 
         let info = crate::CapabilityInfo::from_core(
             platform
                 .capability_registry()
-                .get("current_time")
-                .expect("current_time registered")
+                .get("human_intent")
+                .expect("human_intent registered")
                 .as_ref(),
         );
         assert_eq!(info.status, CapabilityStatus::Available);

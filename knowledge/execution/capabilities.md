@@ -879,7 +879,7 @@ Following the agentskills.io specification:
 - **Purpose**: Detects repeated tool loops and injects a warning to break the loop
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
 - **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
-- **Source**: `crates/core/src/capabilities/loop_detection.rs`
+- **Source**: `crates/builtins/src/loop_detection.rs`
 
 #### ToolApproval
 
@@ -898,7 +898,7 @@ Following the agentskills.io specification:
 - **Status**: Registered, opt-in per agent. Behavior-only.
 - **Tools**: None (contributes a `PostToolExecHook`)
 - **Config**: None
-- **Source**: `crates/core/src/capabilities/progress_guard.rs`
+- **Source**: `crates/builtins/src/progress_guard.rs`
 - **Behavior**: Observes tool traffic per session and appends a warning to the *next* tool result when a threshold trips, naming the situation and the required next action. Runtime-enforced rather than prompt-only, and contributes no system prompt text: a warning that usually never fires should not be paid for on every turn. Complements `loop_detection`, which catches literal repeats of the same call; this catches activity that varies but goes nowhere. Ported from yolop.
 
 #### ToolCallRepair
@@ -908,7 +908,7 @@ Following the agentskills.io specification:
 - **Status**: Opt-in. Registered but **disabled by default** — contributes nothing unless an agent explicitly enables it; with it off, behavior is byte-for-byte unchanged.
 - **Tools**: None (intercepts in the `reason` atom, after tool calls are finalized and before the assistant message is built)
 - **Config**: `{"max_reprompts": N}` — corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
-- **Source**: `crates/core/src/capabilities/tool_call_repair.rs`
+- **Source**: `crates/builtins/src/tool_call_repair.rs`
 - **Behavior**: Runs a pure, table-tested `salvage_tool_arguments` over each call's `arguments`: unwraps fenced ```json blocks and surrounding prose, strips trailing commas, normalizes single quotes, and coerces string-typed known keys against the tool's JSON schema (`"42"` → `42`). The already-valid case is a no-op. When local salvage fails the bounded re-prompt path applies (capped by `max_reprompts`), then falls through to today's exact error. Emits one `tool.call_repaired` event per malformed call with an outcome label (`local-salvage` | `re-prompt` | `gave-up`). Salvage parses untrusted model output and is bounded: inputs over 256 KiB are rejected and all scanning is linear and non-recursive.
 
 #### MessageMetadata
@@ -917,7 +917,7 @@ Following the agentskills.io specification:
 - **Purpose**: Annotates user and agent messages with metadata (message timestamp, UTC) in the prompt-facing model view so the model can reason about timing and gaps between messages
 - **Tools**: None (uses `ModelViewProvider` only; priority 100, after compaction masking)
 - **Config**: `{"fields": ["timestamp"]}` — which metadata fields to render, in order (default `["timestamp"]`; `[]` disables annotations). User and agent messages are always annotated; system and tool-result messages never are.
-- **Source**: `crates/core/src/capabilities/message_metadata.rs`
+- **Source**: `crates/builtins/src/message_metadata.rs`
 - **Behavior**: Prefixes the first text part of each user/agent message with one bracketed segment per configured field (e.g. `[time <RFC3339 UTC>]` from `Message::created_at`); tool-call-only agent messages get the annotation as a leading text part. Fields are an extensible enum (`MessageMetadataField`); future fields (e.g. the LLM model behind an agent message, once stored messages record it) render their own segment and may skip messages that lack the data. Stored messages are unchanged, and `created_at` is immutable, so annotations are deterministic across turns and do not invalidate provider prompt caches. A small system prompt addition explains the annotation and forbids the model from emitting it.
 
 #### PromptCanaryGuardrail
@@ -927,7 +927,7 @@ Following the agentskills.io specification:
 - **Tools**: None (uses `output_guardrails()` only)
 - **Config**: `{"replacement": "..."}` — optional replacement text shown in place of the leak (default: a generic "withheld" message)
 - **Risk**: `Low` — read-only inspection of model output
-- **Source**: `crates/core/src/capabilities/prompt_canary_guardrail.rs`
+- **Source**: `crates/builtins/src/prompt_canary_guardrail.rs`
 - **Behavior**: At stream arm time, extracts the first sentence of the assembled system prompt whose normalized form is ≥ 30 chars and uses it as a substring needle (lowercased, whitespace-collapsed). Each batched delta runs the substring check; on hit, the stream is aborted and `output.message.replaced` is emitted. The original tokens are never persisted or replayed. See [Output Guardrails](#output-guardrails).
 
 ### MCP Virtual Capabilities

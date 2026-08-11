@@ -32,13 +32,13 @@
 //!
 //! ```
 //! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
-//! use everruns_core::capabilities::CurrentTimeCapability;
+//! use everruns_core::capabilities::HumanIntentCapability;
 //!
 //! let mut capabilities = CapabilityRegistry::new();
-//! capabilities.register(CurrentTimeCapability);
+//! capabilities.register(HumanIntentCapability);
 //!
 //! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-//! assert!(platform.capability_registry().get("current_time").is_some());
+//! assert!(platform.capability_registry().get("human_intent").is_some());
 //! ```
 
 // Runtime types (tool definitions, capability types)
@@ -390,19 +390,16 @@ pub use session_sandbox::{
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
-    AUTO_TOOL_SEARCH_CAPABILITY_ID, AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities,
-    AutoToolSearchCapability, BlueprintModel, CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability,
+    AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel, Capability,
     CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    ClaudeToolSearchCapability, CollectedCapabilities, CurrentTimeCapability,
-    DECLARATIVE_CAPABILITY_PREFIX, DependencyError, GetCurrentTimeTool, GetSessionInfoTool,
+    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError, GetSessionInfoTool,
     HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
     InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
-    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
-    OpenAiToolSearchCapability, QueryHistoryTool, ResearchCapability, ResolvedCapabilities,
-    RiskLevel, SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
-    SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
-    SqlSchemaTool, StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook,
-    WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
+    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, QueryHistoryTool,
+    ResearchCapability, ResolvedCapabilities, RiskLevel, SessionCapability,
+    SessionCapabilityConfig, SessionSandboxCapability, SessionSqlDatabaseCapability,
+    SessionTitleMutation, SqlExecuteTool, SqlQueryTool, SqlSchemaTool, ToolCallHook,
+    ToolDefinitionHook, WriteSessionTitleTool, apply_capabilities, collect_capabilities,
     collect_capabilities_with_configs, compute_features, declarative_capability_id,
     declarative_capability_info, get_dependencies, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,

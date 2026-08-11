@@ -131,7 +131,7 @@ mod tests {
     use crate::command_host::{
         CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
     };
-    use crate::session::{Session, SessionStatus};
+    use crate::session::ExecutionSession;
     use crate::typed_id::{HarnessId, SessionId};
     use crate::user_facing_error::UserFacingErrorContext;
     use std::sync::{Arc, Mutex};
@@ -150,52 +150,8 @@ mod tests {
         assert!(commands[0].args[0].required);
     }
 
-    fn test_session(session_id: SessionId) -> Session {
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            workspace_id: crate::WorkspaceId::from_uuid((session_id).uuid()),
-            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id: HarnessId::new(),
-            agent_id: None,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: None,
-            goal: None,
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
-        }
+    fn test_session(session_id: SessionId) -> ExecutionSession {
+        ExecutionSession::with_own_workspace(session_id, HarnessId::new())
     }
 
     struct StubHost {

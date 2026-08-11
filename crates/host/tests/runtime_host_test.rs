@@ -293,6 +293,61 @@ async fn build_registry(
 
 struct OverlayEchoTool;
 
+#[cfg(feature = "builtins")]
+struct PersistedOutputTool;
+
+#[cfg(feature = "builtins")]
+#[async_trait]
+impl Tool for PersistedOutputTool {
+    fn name(&self) -> &str {
+        "persisted_output_fixture"
+    }
+
+    fn description(&self) -> &str {
+        "Returns output large enough to exercise final persistence and hard limits."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({ "type": "object", "additionalProperties": false })
+    }
+
+    fn hints(&self) -> everruns_core::ToolHints {
+        everruns_core::ToolHints::default().with_persist_output(true)
+    }
+
+    async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+        let stdout = format!("{}final-marker", "x".repeat(70 * 1024));
+        ToolExecutionResult::success(json!({
+            "stdout": stdout,
+            "stderr": "",
+            "exit_code": 0,
+            "success": true,
+        }))
+    }
+}
+
+#[cfg(feature = "builtins")]
+struct PersistedOutputCapability;
+
+#[cfg(feature = "builtins")]
+impl Capability for PersistedOutputCapability {
+    fn id(&self) -> &str {
+        "persisted_output_fixture"
+    }
+
+    fn name(&self) -> &str {
+        "Persisted Output Fixture"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability for the host-owned final persistence hook."
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(PersistedOutputTool)]
+    }
+}
+
 #[async_trait]
 impl Tool for OverlayEchoTool {
     fn name(&self) -> &str {
@@ -896,6 +951,76 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.error_count, 0);
     assert_eq!(result.results.len(), 1);
+}
+
+#[cfg(feature = "builtins")]
+#[tokio::test]
+async fn act_activity_persists_full_output_before_the_hard_limit() {
+    let mut adapter = mock_host();
+    adapter
+        .capability_registry
+        .register(PersistedOutputCapability);
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+    let capability = AgentCapabilityConfig::new("persisted_output_fixture");
+    let mut test_harness = harness();
+    test_harness.capabilities = vec![capability.clone()];
+    adapter
+        .harness_store
+        .add_harness(harness_id, test_harness)
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let tool_definitions = build_registry(
+        &adapter.capability_registry,
+        session_id,
+        std::slice::from_ref(&capability),
+    )
+    .await
+    .unwrap()
+    .tool_definitions();
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_persisted_output".into(),
+                name: "persisted_output_fixture".into(),
+                arguments: json!({}),
+            }],
+            tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let payload = result.results[0].result.result.as_ref().unwrap();
+    assert_eq!(
+        payload["full_output"],
+        json!("/workspace/outputs/call_persisted_output.stdout")
+    );
+    let persisted = adapter
+        .file_store
+        .read_file(session_id, "/outputs/call_persisted_output.stdout")
+        .await
+        .unwrap()
+        .expect("full output persisted before hard limiting");
+    assert!(persisted.content.unwrap().ends_with("final-marker"));
 }
 
 #[tokio::test]
@@ -2166,11 +2291,13 @@ async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_i
 /// The bash command is run for real through the in-process `bashkit_shell`
 /// dispatcher, so these tests exercise the full collect -> build -> dispatch
 /// -> decision path, not a mock.
+#[cfg(feature = "bashkit")]
 struct LifecycleHookCapability {
     event: everruns_core::user_hook_types::HookEvent,
     command: String,
 }
 
+#[cfg(feature = "bashkit")]
 impl Capability for LifecycleHookCapability {
     fn id(&self) -> &str {
         "lifecycle_hook_test"
@@ -2209,6 +2336,7 @@ impl Capability for LifecycleHookCapability {
 /// returning a non-success result with the `blocked_by_user_prompt_hook`
 /// error, without ever consulting an LLM (the mock host has no usable driver
 /// for a real reason step, so reaching it would surface a different error).
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_blocks_turn_before_reason() {
     use everruns_core::atoms::ReasonInput;
@@ -2277,6 +2405,7 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
 
 /// Synthetic user messages injected between iterations must cross the same
 /// prompt-policy boundary as the turn's original input.
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
     use everruns_core::atoms::ReasonInput;
@@ -2345,6 +2474,7 @@ async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
 /// A `user_prompt_submit` hook that emits `allow` (empty stdout, exit 0) must
 /// not block — `execute_reason_activity` proceeds past the hook to the reason
 /// step. We only assert the hook did not short-circuit with the block error.
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_allow_does_not_block() {
     use everruns_core::atoms::ReasonInput;
@@ -2410,6 +2540,7 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
 
 /// A `user_prompt_submit` hook that emits `mutate` must rewrite the prompt
 /// before the provider-bound reason call, without changing persisted history.
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_core::atoms::ReasonInput;
@@ -2679,6 +2810,7 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
 /// A `turn_end` hook fires (advisory) when a turn completes. We drive a full
 /// in-process turn and assert the hook's side effect: a sentinel file written
 /// to the session VFS by the hook command.
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn turn_end_hook_fires_on_turn_completion() {
     use everruns_core::user_hook_types::HookEvent;

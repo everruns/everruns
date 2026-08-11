@@ -296,6 +296,15 @@ where
         self
     }
 
+    /// Add a runtime-owned final post-tool hook. Hosts use this for portable
+    /// policies that must run after capability hooks but before the hard output
+    /// limit.
+    pub fn with_final_post_tool_hook(mut self, hook: Arc<dyn act_hooks::PostToolExecHook>) -> Self {
+        let hard_limit_index = self.final_post_tool_hooks.len().saturating_sub(1);
+        self.final_post_tool_hooks.insert(hard_limit_index, hook);
+        self
+    }
+
     /// Default hooks: ConnectionSetup (synthetic setup_connection calls)
     /// and ClientSideTool (emit tool.call_requested for client-side tools).
     fn default_hooks() -> Vec<Box<dyn PostActHook>> {
@@ -308,10 +317,7 @@ where
     /// Default final post-tool-exec hooks (infrastructure, always-on).
     /// These run after all capability-contributed hooks and cannot be removed.
     fn default_final_hooks() -> Vec<Arc<dyn act_hooks::PostToolExecHook>> {
-        vec![
-            Arc::new(crate::capabilities::PersistOutputHook),
-            Arc::new(act_hooks::OutputHardLimitHook),
-        ]
+        vec![Arc::new(act_hooks::OutputHardLimitHook)]
     }
 
     /// Set the SQL database store on this atom
@@ -2240,182 +2246,6 @@ mod tests {
         let payload = result.results[0].result.result.as_ref().unwrap();
         assert_eq!(payload["utility_llm_service"], true);
         assert_eq!(payload["configured"], false);
-    }
-
-    /// Tool that returns a large structured (non-exec) result, simulating an
-    /// MCP tool whose output would otherwise enter history verbatim.
-    struct BigOutputTool;
-
-    #[async_trait]
-    impl crate::tools::Tool for BigOutputTool {
-        fn name(&self) -> &str {
-            "mcp__server__big_query"
-        }
-        fn description(&self) -> &str {
-            "returns a large structured result"
-        }
-        fn parameters_schema(&self) -> serde_json::Value {
-            json!({ "type": "object", "properties": {} })
-        }
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
-            let rows: Vec<serde_json::Value> = (0..3000)
-                .map(|i| json!({ "id": i, "name": format!("row-number-{i}") }))
-                .collect();
-            crate::ToolExecutionResult::success(json!({ "rows": rows }))
-        }
-    }
-
-    /// Minimal in-memory SessionFileSystem for integration tests.
-    #[derive(Default)]
-    struct IntegrationFileStore {
-        files: std::sync::Mutex<std::collections::HashMap<String, String>>,
-    }
-
-    #[async_trait]
-    impl SessionFileSystem for IntegrationFileStore {
-        fn is_mount_resolver(&self) -> bool {
-            false
-        }
-
-        async fn read_file(
-            &self,
-            _s: SessionId,
-            _p: &str,
-        ) -> crate::error::Result<Option<crate::session_file::SessionFile>> {
-            Ok(None)
-        }
-        async fn write_file(
-            &self,
-            _s: SessionId,
-            path: &str,
-            content: &str,
-            _encoding: &str,
-        ) -> crate::error::Result<crate::session_file::SessionFile> {
-            self.files
-                .lock()
-                .unwrap()
-                .insert(path.to_string(), content.to_string());
-            Ok(crate::session_file::SessionFile {
-                id: uuid::Uuid::new_v4(),
-                session_id: uuid::Uuid::nil(),
-                path: path.to_string(),
-                name: path.rsplit('/').next().unwrap_or("").to_string(),
-                content: Some(content.to_string()),
-                encoding: "utf-8".to_string(),
-                is_directory: false,
-                is_readonly: false,
-                size_bytes: content.len() as i64,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            })
-        }
-        async fn delete_file(
-            &self,
-            _s: SessionId,
-            _p: &str,
-            _r: bool,
-        ) -> crate::error::Result<bool> {
-            Ok(false)
-        }
-        async fn list_directory(
-            &self,
-            _s: SessionId,
-            _p: &str,
-        ) -> crate::error::Result<Vec<crate::session_file::FileInfo>> {
-            Ok(vec![])
-        }
-        async fn stat_file(
-            &self,
-            _s: SessionId,
-            _p: &str,
-        ) -> crate::error::Result<Option<crate::session_file::FileStat>> {
-            Ok(None)
-        }
-        async fn grep_files(
-            &self,
-            _s: SessionId,
-            _pat: &str,
-            _pp: Option<&str>,
-        ) -> crate::error::Result<Vec<crate::session_file::GrepMatch>> {
-            Ok(vec![])
-        }
-        async fn create_directory(
-            &self,
-            _s: SessionId,
-            _p: &str,
-        ) -> crate::error::Result<crate::session_file::FileInfo> {
-            Err(anyhow::anyhow!("not implemented").into())
-        }
-    }
-
-    /// Runtime path: a large non-exec tool result is distilled by the
-    /// `tool_output_distillation` capability hook as it flows through ActAtom,
-    /// with the full original persisted to the session VFS. This exercises the
-    /// real act loop (capability hook → final PersistOutputHook/HardLimit hooks),
-    /// not just the hook in isolation.
-    #[tokio::test]
-    async fn test_act_atom_distills_large_non_exec_tool_result() {
-        let mut executor = ToolRegistry::new();
-        executor.register(BigOutputTool);
-        let store = Arc::new(IntegrationFileStore::default());
-
-        let atom = ActAtom::with_file_store(executor, NoopEventEmitter, store.clone())
-            .with_post_tool_hooks(vec![Arc::new(crate::capabilities::DistillOutputHook)]);
-
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
-        let input = ActInput {
-            org_id: Some(1),
-            context,
-            harness_id: HarnessId::from_seed(1),
-            agent_id: Some(AgentId::new()),
-            tool_calls: vec![ToolCall {
-                id: "call_big".to_string(),
-                name: "mcp__server__big_query".to_string(),
-                arguments: json!({}),
-            }],
-            // No persist_output hint → this is the non-exec path distillation targets.
-            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
-                name: "mcp__server__big_query".to_string(),
-                display_name: None,
-                description: "big query".to_string(),
-                parameters: json!({ "type": "object", "properties": {} }),
-                policy: Default::default(),
-                category: None,
-                deferrable: Default::default(),
-                hints: crate::tool_types::ToolHints::default(),
-                full_parameters: None,
-            })],
-            locale: None,
-            blueprint_id: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        };
-
-        let result = atom.execute(input).await.unwrap();
-
-        assert_eq!(result.success_count, 1);
-        let payload = result.results[0].result.result.as_ref().unwrap();
-
-        // The inline view the model sees is distilled and points back to the VFS.
-        assert_eq!(payload["distilled"], json!(true));
-        assert_eq!(
-            payload["output_files"],
-            json!(["/workspace/outputs/call_big.stdout"])
-        );
-        let rows = payload["rows"]
-            .as_array()
-            .expect("rows preserved as sample");
-        assert!(rows.len() < 3000, "array should be sampled down");
-
-        // The full original is recoverable from the session VFS.
-        let persisted = store
-            .files
-            .lock()
-            .unwrap()
-            .get("/outputs/call_big.stdout")
-            .cloned()
-            .expect("full original persisted");
-        assert!(persisted.contains("row-number-2999"));
     }
 
     /// End-to-end ActAtom scheduling: a single batch with two same-class tools

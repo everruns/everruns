@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, LazyLock};
 
-use everruns_core::capabilities::compaction::{CompactionConfig, build_model_view_messages};
+use everruns_builtins::{RuntimeCompactionConfig, build_model_view_messages};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_platform::eval::EvalRun;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -62,7 +62,7 @@ pub async fn build_dataset_ndjson(
     // the raw event log, which is a debug/backup surface. See
     // knowledge/evaluation/dataset-export.md (Model-view faithfulness) and knowledge/evaluation/atif-adoption.md.
     let retriever = DbMessageRetriever::new(db.clone());
-    let compaction = CompactionConfig::default();
+    let compaction = RuntimeCompactionConfig::default();
 
     let mut body = String::new();
     let mut count: u64 = 0;
