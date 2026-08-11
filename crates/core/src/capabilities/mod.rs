@@ -791,6 +791,39 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Provider-facing deferred tool-loading configuration contributed by
+    /// this capability. The execution engine consumes this generically and
+    /// does not match on implementation-owned capability IDs.
+    fn tool_search_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::driver_registry::ToolSearchConfig> {
+        None
+    }
+
+    /// Provider-facing prompt-cache configuration contributed by this
+    /// capability.
+    fn prompt_cache_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::driver_registry::PromptCacheConfig> {
+        None
+    }
+
+    /// Request-level parallel tool-call preference contributed by this
+    /// capability. `None` leaves the runtime/provider default unchanged.
+    fn parallel_tool_calls_preference(&self, _config: &serde_json::Value) -> Option<bool> {
+        None
+    }
+
+    /// User-facing terminal-error disclosure selected by this capability.
+    fn error_disclosure(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::user_facing_error::ErrorDisclosure> {
+        None
+    }
+
     /// Returns key/value [`Fact`]s this capability contributes to the model.
     ///
     /// Facts are routed by their [`Volatility`] so prompt caching is preserved:
@@ -2751,9 +2784,9 @@ pub async fn collect_capabilities_with_configs(
             // Every contribution below is collected from `effective` (system prompt,
             // tools, hooks, tool definitions, mounts, MCP servers, skills, message
             // filters); for the common non-delegating case `effective` is just
-            // `capability`. The tool_search special case below therefore keys on
-            // `effective.id()` rather than the configured `cap_id`, so a resolved
-            // `auto_tool_search` is treated as whichever mechanism it became.
+            // `capability`. Driver preferences are also contributed through the
+            // effective implementation's neutral trait methods, so a resolved
+            // `auto_tool_search` behaves as whichever mechanism it became.
             // Attribution stays on the configured `cap_id`/`capability` so tools
             // surface under the capability the user actually configured.
             let effective: &dyn Capability =
@@ -2761,7 +2794,6 @@ pub async fn collect_capabilities_with_configs(
                     Some(inner) => inner,
                     None => capability.as_ref(),
                 };
-            let effective_id = effective.id();
             if cap_id == AGENT_HANDOFF_CAPABILITY_ID {
                 agent_handoff_spawn_config = Some(cap_config.config_value().clone());
             }
@@ -2823,58 +2855,15 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect a hosted tool_search mechanism (OpenAI or Anthropic). Both
-            // hosted capabilities produce the same provider-agnostic
-            // `ToolSearchConfig`; the driver that handles the request picks the
-            // wire format. `auto_tool_search` resolves to one of these ids only on
-            // models with native support; on every other model it resolves to the
-            // generic `tool_search`, which sets no hosted config and instead
-            // contributes the hook + tool above.
-            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
-                || effective_id == CLAUDE_TOOL_SEARCH_CAPABILITY_ID
-            {
-                // Parse threshold from config, fall back to default
-                let threshold = cap_config
-                    .config_value()
-                    .clone()
-                    .get("threshold")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize)
-                    .unwrap_or(DEFAULT_TOOL_SEARCH_THRESHOLD);
-                tool_search = Some(crate::driver_registry::ToolSearchConfig {
-                    enabled: true,
-                    threshold,
-                });
-            }
-
-            if cap_id == PROMPT_CACHING_CAPABILITY_ID {
-                let strategy = cap_config
-                    .config_value()
-                    .clone()
-                    .get("strategy")
-                    .and_then(|v| v.as_str())
-                    .map(|value| match value {
-                        "auto" => crate::driver_registry::PromptCacheStrategy::Auto,
-                        _ => crate::driver_registry::PromptCacheStrategy::Auto,
-                    })
-                    .unwrap_or(crate::driver_registry::PromptCacheStrategy::Auto);
-                let gemini_cached_content = cap_config
-                    .config_value()
-                    .clone()
-                    .get("gemini_cached_content")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
-                    enabled: true,
-                    strategy,
-                    gemini_cached_content,
-                });
-            }
-
-            if cap_id == PARALLEL_TOOL_CALLS_CAPABILITY_ID {
-                parallel_tool_calls =
-                    parallel_tool_calls::parallel_tool_calls_from_config(cap_config.config_value());
-            }
+            tool_search = effective
+                .tool_search_config(cap_config.config_value())
+                .or(tool_search);
+            prompt_cache = effective
+                .prompt_cache_config(cap_config.config_value())
+                .or(prompt_cache);
+            parallel_tool_calls = effective
+                .parallel_tool_calls_preference(cap_config.config_value())
+                .or(parallel_tool_calls);
 
             if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
                 let server_tools =
