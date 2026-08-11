@@ -570,6 +570,7 @@ fn materially_reduced(before: u64, after: u64) -> bool {
 #[allow(clippy::too_many_arguments)]
 async fn try_apply_native_compaction(
     chat_driver: &dyn crate::ChatDriver,
+    compaction_policy: &dyn crate::compaction_policy::CompactionPolicy,
     checkpoint_store: Option<&Arc<dyn crate::CompactionCheckpointStore>>,
     session_id: SessionId,
     source_sequence: Option<i64>,
@@ -602,7 +603,7 @@ async fn try_apply_native_compaction(
     standalone_input.extend(messages_to_compact_input(messages_to_compact));
     let input_items_before = standalone_input.len();
     let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
-        .then(|| crate::capabilities::estimate_total_tokens(messages_to_compact) as u64);
+        .then(|| compaction_policy.estimate_total_tokens(messages_to_compact) as u64);
     let bytes_before = (!stateful_response_continuation || has_prior_opaque_context)
         .then(|| {
             serde_json::to_vec(&standalone_input)
@@ -1492,7 +1493,7 @@ impl ReasonAtom {
         let model_with_provider = assembled.model_with_provider;
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
-        let compaction_config = assembled.compaction_config;
+        let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
@@ -1610,7 +1611,7 @@ impl ReasonAtom {
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
         let mut checkpoint_suffix_message_count = 0usize;
 
-        if compaction_config.is_some()
+        if compaction_policy.is_some()
             && let Some(store) = self.compaction_checkpoint_store.as_ref()
             && let Some(checkpoint) = store
                 .get_latest(
@@ -2114,8 +2115,9 @@ impl ReasonAtom {
         // the request delta, so its reconstructed transcript is not a valid
         // pressure signal. A restored checkpoint also stays disarmed until a
         // meaningful raw suffix has accumulated.
-        if let Some(ref config) = compaction_config {
-            use crate::capabilities::CompactionStrategy;
+        if let Some(ref policy) = compaction_policy {
+            use crate::compaction_policy::CompactionStrategy;
+            let settings = policy.settings();
             let context_window = chat_driver
                 .effective_context_window(&model_with_provider.model)
                 .or_else(|| {
@@ -2129,13 +2131,13 @@ impl ReasonAtom {
             let checkpoint_rearmed = restored_checkpoint.is_none()
                 || checkpoint_suffix_message_count >= CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES;
             let native_strategy = matches!(
-                config.strategy,
+                settings.strategy,
                 CompactionStrategy::Auto | CompactionStrategy::Native
             );
             let durable_source_available =
                 self.compaction_checkpoint_store.is_some() && message_source_sequence.is_some();
             let estimated_tokens_before =
-                crate::capabilities::estimate_total_tokens(&llm_messages_for_call) as u64;
+                policy.estimate_total_tokens(&llm_messages_for_call) as u64;
             let native_attempt_rearmed = if let (Some(store), Some(source_sequence)) = (
                 self.compaction_checkpoint_store.as_ref(),
                 message_source_sequence,
@@ -2181,15 +2183,11 @@ impl ReasonAtom {
             } else {
                 true
             };
-            let window_pressure = crate::capabilities::should_compact_proactively(
-                &llm_messages_for_call,
-                config,
-                context_window,
-            );
-            let cost_pressure = crate::capabilities::should_compact_for_cost(
+            let window_pressure =
+                policy.should_compact_proactively(&llm_messages_for_call, context_window);
+            let cost_pressure = policy.should_compact_for_cost(
                 estimated_tokens_before as usize,
                 raw_tool_result_bytes,
-                config,
                 prior_usage.as_ref(),
             );
             let local_pressure = !stateful_response_continuation
@@ -2244,7 +2242,7 @@ impl ReasonAtom {
                         streaming_event_context.clone(),
                         ContextCompactingData {
                             reason: CompactionReason::ProactiveBudget,
-                            strategy: config.strategy.to_string(),
+                            strategy: settings.strategy.to_string(),
                             messages_before,
                             tokens_before: Some(estimated_tokens_before),
                             bytes_before: None,
@@ -2254,6 +2252,7 @@ impl ReasonAtom {
 
                 if let Some(applied) = try_apply_native_compaction(
                     chat_driver.as_ref(),
+                    policy.as_ref(),
                     self.compaction_checkpoint_store.as_ref(),
                     session_id,
                     message_source_sequence,
@@ -2306,7 +2305,7 @@ impl ReasonAtom {
             // claim a successful durable compaction event.
             if local_pressure && !native_applied {
                 if matches!(
-                    config.strategy,
+                    settings.strategy,
                     CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
                 ) {
                     let conversation = if has_system_prompt {
@@ -2314,10 +2313,7 @@ impl ReasonAtom {
                     } else {
                         &llm_messages_for_call[..]
                     };
-                    let masked = crate::capabilities::apply_observation_masking(
-                        conversation,
-                        &config.observation_masking,
-                    );
+                    let masked = policy.apply_observation_masking(conversation);
                     if masked.masked_count > 0 {
                         let mut model_view = Vec::new();
                         if has_system_prompt {
@@ -2327,11 +2323,9 @@ impl ReasonAtom {
                         llm_messages_for_call = model_view;
                     }
                 }
-                let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
-                if crate::capabilities::estimate_total_tokens(&llm_messages_for_call)
-                    > budget_tokens
-                {
-                    llm_messages_for_call = crate::capabilities::aggressive_trim(
+                let budget_tokens = (context_window as f32 * settings.budget_percent) as usize;
+                if policy.estimate_total_tokens(&llm_messages_for_call) > budget_tokens {
+                    llm_messages_for_call = policy.aggressive_trim(
                         &llm_messages_for_call,
                         budget_tokens,
                         has_system_prompt,
@@ -2399,13 +2393,13 @@ impl ReasonAtom {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
                     // Context too large — run compaction cascade
-                    use crate::capabilities::{CompactionStrategy, apply_observation_masking};
+                    use crate::compaction_policy::CompactionStrategy;
                     use crate::events::{
                         CompactionReason, CompactionStepData, ContextCompactedData,
                         ContextCompactingData,
                     };
 
-                    let Some(config) = compaction_config.clone() else {
+                    let Some(policy) = compaction_policy.clone() else {
                         tracing::warn!(
                             session_id = %session_id,
                             turn_id = %context.turn_id,
@@ -2413,12 +2407,13 @@ impl ReasonAtom {
                         );
                         return Err(e);
                     };
+                    let settings = policy.settings();
                     let messages_before = llm_messages_for_call.len();
 
                     tracing::info!(
                         session_id = %session_id,
                         turn_id = %context.turn_id,
-                        strategy = %config.strategy,
+                        strategy = %settings.strategy,
                         messages = messages_before,
                         "ReasonAtom: context too large, attempting compaction"
                     );
@@ -2431,11 +2426,11 @@ impl ReasonAtom {
                             streaming_event_context.clone(),
                             ContextCompactingData {
                                 reason: CompactionReason::RequestTooLarge,
-                                strategy: config.strategy.to_string(),
+                                strategy: settings.strategy.to_string(),
                                 messages_before,
-                                tokens_before: Some(crate::capabilities::estimate_total_tokens(
-                                    &llm_messages_for_call,
-                                ) as u64),
+                                tokens_before: Some(
+                                    policy.estimate_total_tokens(&llm_messages_for_call) as u64,
+                                ),
                                 bytes_before: None,
                             },
                         ))
@@ -2445,24 +2440,23 @@ impl ReasonAtom {
                     let mut steps: Vec<CompactionStepData> = Vec::new();
                     let mut strategies_used: Vec<String> = Vec::new();
                     let mut checkpoint_id: Option<String> = None;
-                    let mut tokens_before = Some(crate::capabilities::estimate_total_tokens(
-                        &llm_messages_for_call,
-                    ) as u64);
+                    let mut tokens_before =
+                        Some(policy.estimate_total_tokens(&llm_messages_for_call) as u64);
                     let mut tokens_after = None;
                     let mut bytes_before = None;
                     let mut bytes_after = None;
 
                     // Determine which strategies to run based on config
                     let run_masking = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
                     );
                     let run_native = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Native
                     ) && chat_driver.supports_compact();
                     let run_summarization = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Summarization
                     );
 
@@ -2475,10 +2469,7 @@ impl ReasonAtom {
                             &llm_messages_for_call[..]
                         };
 
-                        let masking_result = apply_observation_masking(
-                            conversation_msgs,
-                            &config.observation_masking,
-                        );
+                        let masking_result = policy.apply_observation_masking(conversation_msgs);
 
                         if masking_result.masked_count > 0 {
                             let mut new_messages = Vec::new();
@@ -2509,6 +2500,7 @@ impl ReasonAtom {
                     if run_native
                         && let Some(applied) = try_apply_native_compaction(
                             chat_driver.as_ref(),
+                            policy.as_ref(),
                             self.compaction_checkpoint_store.as_ref(),
                             session_id,
                             message_source_sequence,
@@ -2544,11 +2536,6 @@ impl ReasonAtom {
                     // Step 3: Summarization (if configured, and native didn't run or isn't available)
                     // Only run if we haven't done native compaction (which already compressed everything)
                     if run_summarization && !strategies_used.contains(&"native".to_string()) {
-                        use crate::capabilities::{
-                            build_summarization_prompt, compose_summary_with_recent,
-                            format_messages_for_summarization,
-                        };
-
                         let step_start = Instant::now();
                         let conversation_msgs = if has_system_prompt {
                             &llm_messages_for_call[1..]
@@ -2563,8 +2550,9 @@ impl ReasonAtom {
                         let recent = &conversation_msgs[conversation_msgs.len() - keep_recent..];
 
                         if !to_summarize.is_empty() {
-                            let summary_prompt = build_summarization_prompt(&config.summarization);
-                            let messages_text = format_messages_for_summarization(to_summarize);
+                            let summary_prompt = policy.summarization_prompt();
+                            let messages_text =
+                                policy.format_messages_for_summarization(to_summarize);
 
                             // Use the LLM to generate a summary
                             let summary_messages = vec![
@@ -2591,9 +2579,8 @@ impl ReasonAtom {
                             let summary_config = crate::driver_registry::LlmCallConfig {
                                 speed: None,
                                 verbosity: None,
-                                model: config
-                                    .summarization
-                                    .model
+                                model: settings
+                                    .summarization_model
                                     .clone()
                                     .unwrap_or_else(|| runtime_agent.model.clone()),
                                 temperature: Some(0.0),
@@ -2622,7 +2609,7 @@ impl ReasonAtom {
                                     let summary_text = response.text;
                                     let system_message =
                                         has_system_prompt.then(|| llm_messages_for_call[0].clone());
-                                    llm_messages_for_call = compose_summary_with_recent(
+                                    llm_messages_for_call = policy.compose_summary_with_recent(
                                         system_message,
                                         &summary_text,
                                         recent,
@@ -2660,14 +2647,15 @@ impl ReasonAtom {
                     if strategies_used.is_empty()
                         || llm_messages_for_call.len() > messages_before / 2
                     {
-                        use crate::capabilities::aggressive_trim;
                         let step_start = Instant::now();
                         // Target: keep roughly half the messages by token budget
-                        let estimated_total =
-                            crate::capabilities::estimate_total_tokens(&llm_messages_for_call);
+                        let estimated_total = policy.estimate_total_tokens(&llm_messages_for_call);
                         let target = estimated_total / 2;
-                        let trimmed =
-                            aggressive_trim(&llm_messages_for_call, target, has_system_prompt);
+                        let trimmed = policy.aggressive_trim(
+                            &llm_messages_for_call,
+                            target,
+                            has_system_prompt,
+                        );
                         if trimmed.len() < llm_messages_for_call.len() {
                             llm_messages_for_call = trimmed;
                             let step_duration = step_start.elapsed().as_millis() as u64;
@@ -2688,9 +2676,8 @@ impl ReasonAtom {
                     let cascade_duration = cascade_start.elapsed().as_millis() as u64;
                     let messages_after = llm_messages_for_call.len();
                     if tokens_after.is_none() {
-                        tokens_after = Some(crate::capabilities::estimate_total_tokens(
-                            &llm_messages_for_call,
-                        ) as u64);
+                        tokens_after =
+                            Some(policy.estimate_total_tokens(&llm_messages_for_call) as u64);
                     }
                     let effective = match (tokens_before, tokens_after) {
                         (Some(before), Some(after)) => materially_reduced(before, after),

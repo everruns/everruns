@@ -171,6 +171,7 @@ pub mod capabilities;
 pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
+pub mod compaction_policy;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
@@ -463,6 +464,10 @@ pub use ard_attachment::{
     merge_attachment_into_session, urn_slug,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
+pub use compaction_policy::{
+    CompactionPolicy, CompactionSettings, CompactionStrategy as PolicyCompactionStrategy,
+    ObservationMaskingResult as PolicyObservationMaskingResult,
+};
 pub use context_report::{
     ContextReportContribution, ContextReportSection, SessionContextReport,
     build_session_context_report, build_session_context_report_from_generation,
