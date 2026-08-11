@@ -92,6 +92,19 @@ impl Capability for PromptCachingCapability {
         Some("Optimization")
     }
 
+    fn prompt_cache_config(&self, config: &serde_json::Value) -> Option<PromptCacheConfig> {
+        let gemini_cached_content = config
+            .get("gemini_cached_content")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .or_else(|| self.gemini_cached_content.clone());
+        Some(PromptCacheConfig {
+            enabled: true,
+            strategy: self.strategy,
+            gemini_cached_content,
+        })
+    }
+
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
         None
     }

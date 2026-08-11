@@ -462,6 +462,30 @@ fn error_disclosure_override(messages: &[Message]) -> Option<String> {
         .clone()
 }
 
+/// Resolve the message-requested disclosure against the ceiling contributed
+/// by the active capability set. The engine consumes the contribution through
+/// the neutral `Capability` contract and does not know the implementation ID.
+fn resolve_error_disclosure(
+    registry: &CapabilityRegistry,
+    configs: &[crate::AgentCapabilityConfig],
+    requested: Option<&str>,
+) -> ErrorDisclosure {
+    let ceiling = configs
+        .iter()
+        .find_map(|config| {
+            registry
+                .get(config.capability_id())?
+                .error_disclosure(config.config_value())
+        })
+        .unwrap_or_default();
+
+    // THREAT[TM-LLM-024]: client controls may narrow disclosure but never
+    // widen it beyond the operator-selected capability ceiling.
+    requested
+        .and_then(ErrorDisclosure::parse)
+        .map_or(ceiling, |requested| requested.min(ceiling))
+}
+
 fn is_dynamic_error_placeholder(text: &str) -> bool {
     (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
@@ -1294,7 +1318,8 @@ impl ReasonAtom {
 
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let error_disclosure = crate::capabilities::resolve_error_disclosure(
+                let error_disclosure = resolve_error_disclosure(
+                    &self.capability_registry,
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );

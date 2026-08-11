@@ -111,6 +111,18 @@ impl Capability for ClaudeToolSearchCapability {
         Some("Optimization")
     }
 
+    fn tool_search_config(&self, config: &serde_json::Value) -> Option<ToolSearchConfig> {
+        let threshold = config
+            .get("threshold")
+            .and_then(serde_json::Value::as_u64)
+            .map(|value| value as usize)
+            .unwrap_or(self.threshold);
+        Some(ToolSearchConfig {
+            enabled: true,
+            threshold,
+        })
+    }
+
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
         None // No system prompt needed — deferral is handled server-side.
     }

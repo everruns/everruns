@@ -112,6 +112,10 @@ impl Capability for ParallelToolCallsCapability {
         Some("Optimization")
     }
 
+    fn parallel_tool_calls_preference(&self, config: &serde_json::Value) -> Option<bool> {
+        parallel_tool_calls_from_config(config)
+    }
+
     fn config_schema(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({
             "type": "object",

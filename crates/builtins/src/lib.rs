@@ -154,6 +154,19 @@ pub mod capabilities {
     pub use everruns_core::capabilities::*;
 }
 
+/// Register the runtime-safe portable policy capabilities in stable order.
+///
+/// This excludes [`UsageLimitAutoContinueCapability`], whose error hook needs
+/// a schedule store and poller that the default embedded host does not supply.
+pub fn register_runtime_capabilities(
+    registry: &mut CapabilityRegistry,
+) -> std::result::Result<(), CapabilityError> {
+    for capability in runtime_capabilities() {
+        registry.try_register_arc(capability)?;
+    }
+    Ok(())
+}
+
 /// Register every portable policy capability in stable product order.
 ///
 /// Registration is explicit: linking this crate has no inventory side effect.
@@ -176,6 +189,12 @@ pub fn portable_capability_registry() -> std::result::Result<CapabilityRegistry,
 }
 
 fn portable_capabilities() -> Vec<Arc<dyn Capability>> {
+    let mut capabilities = runtime_capabilities();
+    capabilities.push(Arc::new(UsageLimitAutoContinueCapability));
+    capabilities
+}
+
+fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
     vec![
         Arc::new(AgentInstructionsCapability),
         Arc::new(CurrentTimeCapability),
@@ -200,7 +219,6 @@ fn portable_capabilities() -> Vec<Arc<dyn Capability>> {
         Arc::new(ToolCallRepairCapability),
         Arc::new(PromptCanaryGuardrailCapability),
         Arc::new(GuardrailsCapability),
-        Arc::new(UsageLimitAutoContinueCapability),
     ]
 }
 
@@ -243,6 +261,15 @@ mod bundle_tests {
             .map(|capability| capability.id())
             .collect();
         assert_eq!(ids, PORTABLE_IDS);
+    }
+
+    #[test]
+    fn runtime_bundle_excludes_schedule_backed_auto_continue() {
+        let mut registry = CapabilityRegistry::new();
+        register_runtime_capabilities(&mut registry).unwrap();
+
+        assert_eq!(registry.len(), PORTABLE_IDS.len() - 1);
+        assert!(!registry.has(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID));
     }
 
     #[test]
