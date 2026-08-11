@@ -14,10 +14,11 @@ use axum::{
     routing::get,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_core::capabilities::{A2aAgentDelegationCapability, Capability};
+use everruns_core::capabilities::Capability;
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
+use everruns_platform::capabilities::A2aAgentDelegationCapability;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};

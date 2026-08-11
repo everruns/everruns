@@ -86,9 +86,9 @@ tar.workspace = true
 bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
 
 everruns-capability = { workspace = true }
-everruns-core = { path = "../core", features = ["a2a", "embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities"] }
+everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "a2a"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
 # init these rely on stays in core's `telemetry` feature (on by default).
 everruns-observability = { workspace = true }

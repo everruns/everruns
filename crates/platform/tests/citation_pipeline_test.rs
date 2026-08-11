@@ -13,12 +13,13 @@
 use everruns_core::annotation_hook::{
     AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
 };
-use everruns_core::capabilities::{
-    Capability, CitationRetrievalCapability, CitationVerificationCapability,
-};
+use everruns_core::capabilities::Capability;
 use everruns_core::message::{
     ContentPart, Message, MessageRole, ToolCallContentPart, ToolResultContentPart,
     VerificationStatus,
+};
+use everruns_platform::capabilities::{
+    CitationRetrievalCapability, CitationVerificationCapability,
 };
 use serde_json::json;
 

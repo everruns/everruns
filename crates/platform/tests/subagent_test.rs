@@ -3,7 +3,8 @@
 // Direct subagent creation tools were retired in favor of the unified
 // spawn_agent dispatcher; this file keeps capability metadata coverage.
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, SubagentCapability};
+use everruns_core::capabilities::{Capability, CapabilityStatus};
+use everruns_platform::capabilities::SubagentCapability;
 
 // =============================================================================
 // 1. Capability registration

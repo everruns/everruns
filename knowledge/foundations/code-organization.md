@@ -66,7 +66,7 @@ Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
 protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
-heavy subtrees (`a2a` gRPC, web-fetch/fetchkit), so a
+hosted subtrees (`a2a` gRPC, knowledge/vector stores, platform delegation), so a
 standalone provider build never pulls them in. A provider is therefore a pure
 `ChatDriver` implementation with no dependency on core's agent-loop runtime.
 Since EVE-874 provider crates carry **no** `everruns-core` edge at all — not
@@ -108,6 +108,16 @@ composes the complete hosted-product catalog. The
 `scripts/lib/check-environment-capability-isolation.sh` pre-push/CI guard keeps
 the implementation modules and their shell/interpreter/transport dependencies
 out of core and the default Framework dependency tree.
+
+Hosted capability implementations live in `everruns-platform` (EVE-885):
+Knowledge Bases and Indexes, Memories, subagent/agent/A2A delegation,
+background and scheduled session work, user hooks, citations, model scouting,
+OpenRouter workspace management, and platform-management tools. Core retains
+the neutral `Capability`/tool/event/task/delegation contracts, generic
+collection hooks, and type-keyed extension bag. Product server/worker/local
+presets compose the hosted registry explicitly; the Framework preset does not
+advertise service-backed product capabilities. The capability-isolation guard
+keeps these implementations and their service contracts out of core.
 
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,

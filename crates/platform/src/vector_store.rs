@@ -14,11 +14,17 @@
 //! namespace.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+
+/// Type-keyed wrapper installed on a [`everruns_core::PlatformDefinition`] by
+/// hosted presets. Core carries the generic extension bag but does not name the
+/// Knowledge Index service.
+#[derive(Clone)]
+pub struct VectorStoreExt(pub Arc<dyn VectorStore>);
 
 /// Reciprocal-rank-fusion constant for hybrid (vector + text) queries.
 const RRF_K: f32 = 60.0;

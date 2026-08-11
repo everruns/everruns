@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::user_hook_types::{HookSource, UserHookSpec};
+use everruns_core::user_hook_types::{HookSource, UserHookSpec};
 
 /// Config shape parsed from `AgentCapabilityConfig.config` for the
 /// `user_hooks` capability. Both fields default to empty so an
@@ -388,7 +388,7 @@ pub fn disabled_contributions(config: &serde_json::Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::user_hook_types::HookEvent;
+    use everruns_core::user_hook_types::HookEvent;
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -546,5 +546,26 @@ mod tests {
         assert!(empty.is_empty());
         let none = cap.user_hooks_with_config(&serde_json::json!({}));
         assert!(none.is_empty());
+    }
+
+    #[test]
+    fn all_example_bundles_validate_against_user_hooks_schema() {
+        let dir = format!("{}/../../examples/hook-bundles", env!("CARGO_MANIFEST_DIR"));
+        let cap = UserHooksCapability;
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            let raw = std::fs::read_to_string(&path).unwrap();
+            let config: serde_json::Value = serde_json::from_str(&raw)
+                .unwrap_or_else(|error| panic!("{}: invalid JSON: {error}", path.display()));
+            cap.validate_config(&config).unwrap_or_else(|error| {
+                panic!("{}: failed user_hooks validation: {error}", path.display())
+            });
+            checked += 1;
+        }
+        assert!(checked >= 6, "expected shipped bundles, saw {checked}");
     }
 }

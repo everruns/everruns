@@ -139,6 +139,12 @@ validate their own schemas. Duplicate IDs and code-implementation collisions
 are errors, never silent overwrites. Third-party crates can implement the
 non-sealed `IntoCapability` trait without importing `everruns-core`.
 
+The default Framework registry advertises only portable capabilities. Hosted
+knowledge, delegation, session-task, user-hook, and platform-management IDs
+remain valid open references but require a product host that explicitly
+registers their implementations and services. See the
+[portable and hosted capability boundary](https://docs.everruns.com/framework/capability-boundaries/).
+
 Keep ordinary functions on `#[everruns::tool]` and `.tool(...)`; a function
 tool is not a capability reference.
 

@@ -14,16 +14,6 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SESSION_TASKS_CAPABILITY_ID,
     SpawnMode, SystemPromptContext,
 };
-use crate::network_access::NetworkAccessList;
-use crate::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
-    TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
-    TaskLinks, TaskMessage, TaskWakePolicy, task_message_text,
-};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionStorageStore, ToolContext};
-use crate::{Result, validate_safe_url};
 use a2a::{
     AgentCard, CancelTaskRequest, GetTaskRequest, Message, Part, PartContent, Role,
     SendMessageConfiguration, SendMessageRequest, SendMessageResponse, Task, TaskState,
@@ -33,6 +23,16 @@ use a2a_client::agent_card::AgentCardResolver;
 use a2a_client::middleware::CallInterceptor;
 use a2a_client::transport::ServiceParams;
 use async_trait::async_trait;
+use everruns_core::network_access::NetworkAccessList;
+use everruns_core::session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
+    TaskLinks, TaskMessage, TaskWakePolicy, task_message_text,
+};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{SessionStorageStore, ToolContext};
+use everruns_core::{Result, validate_safe_url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -249,12 +249,24 @@ impl Capability for A2aAgentDelegationCapability {
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        let config = A2aDelegationConfig::from_value(config).unwrap_or_default();
-        vec![Box::new(SpawnAgentTool::new(config))]
+        let _ = A2aDelegationConfig::from_value(config).unwrap_or_default();
+        vec![]
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         self.tools_with_config(&Value::Null)
+    }
+
+    fn delegation_target_with_config(
+        &self,
+        config: &Value,
+    ) -> Option<super::DelegationTargetProvider> {
+        Some(super::DelegationTargetProvider {
+            target_type: "external_a2a",
+            tool: Box::new(SpawnAgentTool::new(
+                A2aDelegationConfig::from_value(config).unwrap_or_default(),
+            )),
+        })
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -644,7 +656,7 @@ fn run_key(run_id: &str) -> String {
 #[cfg(test)]
 async fn list_run_ids(
     storage: &dyn SessionStorageStore,
-    session_id: crate::typed_id::SessionId,
+    session_id: everruns_core::typed_id::SessionId,
 ) -> Vec<String> {
     storage
         .list_keys(session_id)
@@ -667,7 +679,7 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
         return Ok(());
     };
     let serialized = serde_json::to_string(record).map_err(|e| {
-        crate::error::AgentLoopError::store(format!("failed to serialize agent run: {e}"))
+        everruns_core::error::AgentLoopError::store(format!("failed to serialize agent run: {e}"))
     })?;
     storage
         .set_value(context.session_id, &run_key(&record.run_id), &serialized)
@@ -1335,12 +1347,12 @@ impl SpawnAgentTool {
 impl Tool for SpawnAgentTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_subagent_spawn(
+        Some(everruns_core::tool_narration::narrate_subagent_spawn(
             &tool_call.arguments,
             phase,
             locale,
@@ -1677,10 +1689,14 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
     ///   resumes the background poll loop with `heartbeat_attempt = task.attempt`
     ///   (the NEW attempt number after the reaper bumped it) so stale writes from
     ///   the superseded executor are rejected.
-    async fn start(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+    async fn start(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> everruns_core::error::Result<()> {
         let record = load_run_for_task(context, task)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
         let context = context
             .clone()
             .with_network_access(reattach_network_access(&record, context));
@@ -1694,13 +1710,13 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         // Missing remote_task_id means we never sent to the remote agent —
         // there is nothing to poll; caller will fail this as orphaned.
         if record.remote_task_id.is_none() {
-            return Err(crate::error::AgentLoopError::tool(format!(
+            return Err(everruns_core::error::AgentLoopError::tool(format!(
                 "external_agent task {} has no remote_task_id; cannot re-attach",
                 task.id
             )));
         }
 
-        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
 
         // Resume the background poll loop. Use the NEW attempt (bumped by the
         // reaper) for heartbeating so the superseded executor's stale writes
@@ -1724,11 +1740,11 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> crate::error::Result<()> {
+    ) -> everruns_core::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
-        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
+        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
         let text = task_message_text(&message.content);
         let remote_task_id = record.remote_task_id.clone();
         let remote_context_id = record.remote_context_id.clone();
@@ -1743,13 +1759,17 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             remote_context_id,
         )
         .await
-        .map_err(crate::error::AgentLoopError::tool)
+        .map_err(everruns_core::error::AgentLoopError::tool)
     }
 
-    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+    async fn cancel(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> everruns_core::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
@@ -1759,10 +1779,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             save_run(context, &record).await?;
             return Ok(());
         };
-        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
         let remote = client
             .cancel_task(&CancelTaskRequest {
                 id: remote_task_id,
@@ -1771,7 +1791,7 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             })
             .await
             .map_err(|e| {
-                crate::error::AgentLoopError::tool(format!("A2A cancel_task failed: {e}"))
+                everruns_core::error::AgentLoopError::tool(format!("A2A cancel_task failed: {e}"))
             })?;
         apply_task(&mut record, &remote);
         save_run(context, &record).await?;
@@ -1782,20 +1802,20 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> crate::error::Result<()> {
+    ) -> everruns_core::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
         let Some(remote_task_id) = record.remote_task_id.clone() else {
             return Ok(());
         };
-        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(crate::error::AgentLoopError::tool)?;
+            .map_err(everruns_core::error::AgentLoopError::tool)?;
         let remote = client
             .get_task(&GetTaskRequest {
                 id: remote_task_id,
@@ -1803,7 +1823,9 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
                 tenant: None,
             })
             .await
-            .map_err(|e| crate::error::AgentLoopError::tool(format!("A2A get_task failed: {e}")))?;
+            .map_err(|e| {
+                everruns_core::error::AgentLoopError::tool(format!("A2A get_task failed: {e}"))
+            })?;
         apply_task(&mut record, &remote);
         if record.status.is_terminal() {
             let _ = write_result_artifact(context, &mut record).await;
@@ -1822,10 +1844,6 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::session_task::SessionTaskRegistry;
-    use crate::traits::SessionFileSystem;
-    use crate::typed_id::SessionId;
     use a2a::StreamResponse;
     use a2a::{AgentCapabilities, AgentInterface, Artifact, TaskStatus, TaskStatusUpdateEvent};
     use a2a_server::agent_card::agent_card_router;
@@ -1833,6 +1851,10 @@ mod tests {
         DefaultRequestHandler, InMemoryTaskStore, StaticAgentCard, jsonrpc::jsonrpc_router,
     };
     use axum::Router;
+    use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use everruns_core::session_task::SessionTaskRegistry;
+    use everruns_core::traits::SessionFileSystem;
+    use everruns_core::typed_id::SessionId;
     use futures::stream;
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Mutex;
@@ -1843,7 +1865,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionStorageStore for TestStorageStore {
+    impl everruns_core::traits::SessionStorageStore for TestStorageStore {
         async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
             self.values
                 .lock()
@@ -1860,14 +1882,14 @@ mod tests {
             Ok(self.values.lock().unwrap().remove(key).is_some())
         }
 
-        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<crate::KeyInfo>> {
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<everruns_core::KeyInfo>> {
             let now = chrono::Utc::now();
             Ok(self
                 .values
                 .lock()
                 .unwrap()
                 .keys()
-                .map(|key| crate::KeyInfo {
+                .map(|key| everruns_core::KeyInfo {
                     key: key.clone(),
                     created_at: now,
                     updated_at: now,
@@ -1892,7 +1914,10 @@ mod tests {
             Ok(false)
         }
 
-        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<crate::SecretInfo>> {
+        async fn list_secrets(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Vec<everruns_core::SecretInfo>> {
             Ok(Vec::new())
         }
     }
@@ -2077,7 +2102,7 @@ mod tests {
     }
 
     async fn spawn_real_a2a_agent() -> String {
-        crate::telemetry::install_crypto_provider();
+        everruns_core::telemetry::install_crypto_provider();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let base_url = format!("http://{addr}");
@@ -2225,7 +2250,7 @@ mod tests {
         };
         assert_eq!(value["status"], "completed");
         let task_id = value["task_id"].as_str().expect("task_id");
-        let expected_path = crate::session_task::task_result_path(task_id);
+        let expected_path = everruns_core::session_task::task_result_path(task_id);
         assert_eq!(value["result_path"], expected_path);
         let content = file_store
             .files
@@ -2378,7 +2403,7 @@ mod tests {
 
     #[test]
     fn reattach_network_access_prefers_persisted_run_policy() {
-        use crate::SessionId;
+        use everruns_core::SessionId;
 
         let config = ExternalA2aAgentConfig {
             id: "echo".to_string(),
@@ -2422,8 +2447,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_blocks_disallowed_base_url() {
-        use crate::SessionId;
-        use crate::network_access::NetworkAccessList;
+        use everruns_core::SessionId;
+        use everruns_core::network_access::NetworkAccessList;
 
         let agent = ExternalA2aAgentConfig {
             id: "a".to_string(),
@@ -2476,8 +2501,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_blocks_disallowed_interface_url() {
-        use crate::SessionId;
-        use crate::network_access::NetworkAccessList;
+        use everruns_core::SessionId;
+        use everruns_core::network_access::NetworkAccessList;
 
         let card = AgentCard {
             name: "a".to_string(),
@@ -2512,8 +2537,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_pre_resolve_skips_when_inline_card_present() {
-        use crate::SessionId;
-        use crate::network_access::NetworkAccessList;
+        use everruns_core::SessionId;
+        use everruns_core::network_access::NetworkAccessList;
 
         // base_url not on the allowlist, but agent_card is supplied inline so
         // resolve_card never performs discovery against base_url. The pre-resolve
@@ -2582,16 +2607,16 @@ mod tests {
     /// Minimal in-memory task registry for executor tests.
     #[derive(Default, Clone)]
     struct InMemRegistry {
-        tasks: Arc<Mutex<HashMap<String, crate::session_task::SessionTask>>>,
+        tasks: Arc<Mutex<HashMap<String, everruns_core::session_task::SessionTask>>>,
     }
 
     #[async_trait]
-    impl crate::session_task::SessionTaskRegistry for InMemRegistry {
+    impl everruns_core::session_task::SessionTaskRegistry for InMemRegistry {
         async fn create(
             &self,
-            input: crate::session_task::CreateSessionTask,
-        ) -> crate::error::Result<crate::session_task::SessionTask> {
-            let task = crate::session_task::new_session_task(input, chrono::Utc::now());
+            input: everruns_core::session_task::CreateSessionTask,
+        ) -> everruns_core::error::Result<everruns_core::session_task::SessionTask> {
+            let task = everruns_core::session_task::new_session_task(input, chrono::Utc::now());
             self.tasks
                 .lock()
                 .unwrap()
@@ -2601,58 +2626,63 @@ mod tests {
 
         async fn get(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             task_id: &str,
-        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        {
             Ok(self.tasks.lock().unwrap().get(task_id).cloned())
         }
 
         async fn list(
             &self,
-            _session_id: crate::typed_id::SessionId,
-            _filter: Option<&crate::session_task::SessionTaskFilter>,
-        ) -> crate::error::Result<Vec<crate::session_task::SessionTask>> {
+            _session_id: everruns_core::typed_id::SessionId,
+            _filter: Option<&everruns_core::session_task::SessionTaskFilter>,
+        ) -> everruns_core::error::Result<Vec<everruns_core::session_task::SessionTask>> {
             Ok(self.tasks.lock().unwrap().values().cloned().collect())
         }
 
         async fn update(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             task_id: &str,
-            update: crate::session_task::SessionTaskUpdate,
-        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+            update: everruns_core::session_task::SessionTaskUpdate,
+        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
                 return Ok(None);
             };
-            crate::session_task::apply_task_update(task, update, chrono::Utc::now());
+            everruns_core::session_task::apply_task_update(task, update, chrono::Utc::now());
             Ok(Some(task.clone()))
         }
 
         async fn request_cancel(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             _task_id: &str,
-        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        {
             Ok(None)
         }
 
         async fn record_message(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             _task_id: &str,
-            _message: crate::session_task::NewTaskMessage,
-        ) -> crate::error::Result<crate::session_task::TaskMessage> {
-            Err(crate::error::AgentLoopError::tool("not implemented"))
+            _message: everruns_core::session_task::NewTaskMessage,
+        ) -> everruns_core::error::Result<everruns_core::session_task::TaskMessage> {
+            Err(everruns_core::error::AgentLoopError::tool(
+                "not implemented",
+            ))
         }
 
         async fn list_messages(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             _task_id: &str,
             _limit: Option<u32>,
             _after_id: Option<&str>,
-        ) -> crate::error::Result<Vec<crate::session_task::TaskMessage>> {
+        ) -> everruns_core::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
             Ok(vec![])
         }
     }
@@ -2750,12 +2780,12 @@ mod tests {
 
     /// Build a SessionTask snapshot for testing (not persisted in any store).
     fn fake_task_with_spec(
-        session_id: crate::typed_id::SessionId,
+        session_id: everruns_core::typed_id::SessionId,
         run_id: &str,
         attempt: i32,
-    ) -> crate::session_task::SessionTask {
+    ) -> everruns_core::session_task::SessionTask {
         let now = chrono::Utc::now();
-        crate::session_task::SessionTask {
+        everruns_core::session_task::SessionTask {
             id: format!("task_{run_id}"),
             session_id,
             root_session_id: None,
@@ -2788,7 +2818,7 @@ mod tests {
     async fn external_agent_executor_start_mirrors_terminal_run() {
         let storage = Arc::new(TestStorageStore::default());
         let registry = Arc::new(InMemRegistry::default());
-        let session_id = crate::typed_id::SessionId::new();
+        let session_id = everruns_core::typed_id::SessionId::new();
 
         let run_id = "run-terminal".to_string();
         let config = ExternalA2aAgentConfig {
@@ -2827,7 +2857,7 @@ mod tests {
 
         // Create the session task in the registry so mirror_run_to_task can update it.
         registry
-            .create(crate::session_task::CreateSessionTask {
+            .create(everruns_core::session_task::CreateSessionTask {
                 session_id,
                 id: Some(task_id.clone()),
                 kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
@@ -2841,7 +2871,9 @@ mod tests {
             .unwrap();
 
         let ctx = ToolContext::new(session_id)
-            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>)
+            .with_storage_store_arc(
+                storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
+            )
             .with_session_task_registry(registry.clone());
 
         let task = fake_task_with_spec(session_id, &run_id, 2);
@@ -2866,7 +2898,7 @@ mod tests {
     async fn wait_for_run_exits_superseded_on_fence_miss() {
         let storage = Arc::new(TestStorageStore::default());
         let registry = Arc::new(InMemRegistry::default());
-        let session_id = crate::typed_id::SessionId::new();
+        let session_id = everruns_core::typed_id::SessionId::new();
 
         let run_id = "run-superseded".to_string();
         // Inline card so build_client performs no network discovery; the
@@ -2921,7 +2953,7 @@ mod tests {
 
         // Task in the registry already at attempt 2 (reaper superseded us).
         registry
-            .create(crate::session_task::CreateSessionTask {
+            .create(everruns_core::session_task::CreateSessionTask {
                 session_id,
                 id: Some(task_id.clone()),
                 kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
@@ -2937,7 +2969,7 @@ mod tests {
             .update(
                 session_id,
                 &task_id,
-                crate::session_task::SessionTaskUpdate {
+                everruns_core::session_task::SessionTaskUpdate {
                     increment_attempt: true,
                     ..Default::default()
                 },
@@ -2946,7 +2978,9 @@ mod tests {
             .unwrap();
 
         let ctx = ToolContext::new(session_id)
-            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>)
+            .with_storage_store_arc(
+                storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
+            )
             .with_session_task_registry(registry.clone());
 
         // Poll as the old executor (attempt 1): the first heartbeat reveals
@@ -2989,7 +3023,7 @@ mod tests {
     #[tokio::test]
     async fn external_agent_executor_start_errors_on_missing_remote_task_id() {
         let storage = Arc::new(TestStorageStore::default());
-        let session_id = crate::typed_id::SessionId::new();
+        let session_id = everruns_core::typed_id::SessionId::new();
 
         let run_id = "run-no-remote".to_string();
         let config = ExternalA2aAgentConfig {
@@ -3021,8 +3055,9 @@ mod tests {
             .await
             .unwrap();
 
-        let ctx = ToolContext::new(session_id)
-            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>);
+        let ctx = ToolContext::new(session_id).with_storage_store_arc(
+            storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
+        );
 
         let task = fake_task_with_spec(session_id, &run_id, 2);
         let executor = ExternalAgentTaskExecutor;

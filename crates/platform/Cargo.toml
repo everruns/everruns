@@ -50,6 +50,8 @@ environment-capabilities = [
     "dep:everruns-integrations-openrouter-workspace",
 ]
 lua = ["dep:everruns-integrations-lua"]
+# Outbound A2A delegation is product-owned and optional for lightweight hosts.
+a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
 
 [dependencies]
 # Cross-cutting value types (OrgRole, PrincipalKind/PrincipalSummary, Caller, the
@@ -74,6 +76,12 @@ async-trait.workspace = true
 anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+jsonschema = { version = "0.49.2", default-features = false }
+
+# Outbound A2A delegation (optional).
+a2a = { workspace = true, optional = true }
+a2a-client = { workspace = true, optional = true }
+url = { version = "2", optional = true }
 
 # Connector plugin registration (EVE-879): integration crates submit
 # `ConnectorPlugin` entries the server discovers at startup.
@@ -93,6 +101,9 @@ utoipa = { workspace = true, optional = true }
 include_dir = { version = "0.7", optional = true }
 
 [dev-dependencies]
+a2a-server.workspace = true
+axum.workspace = true
+futures.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"
 serde_json.workspace = true

@@ -6,10 +6,10 @@
 //! - `list_schedules`: List all schedules for the current session
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
 
 pub const SESSION_SCHEDULE_CAPABILITY_ID: &str = "session_schedule";
@@ -79,12 +79,12 @@ pub struct CreateScheduleTool;
 impl Tool for CreateScheduleTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_session_schedule(
+        everruns_core::tool_narration::narrate_session_schedule(
             self.name(),
             &tool_call.arguments,
             phase,
@@ -195,10 +195,10 @@ impl Tool for CreateScheduleTool {
                 "enabled": schedule.enabled,
                 "created": true,
             })),
-            Err(crate::session_schedule::ScheduleLimitError::Store(e)) => {
+            Err(everruns_core::session_schedule::ScheduleLimitError::Store(e)) => {
                 ToolExecutionResult::internal_error(e)
             }
-            Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+            Err(everruns_core::session_schedule::ScheduleLimitError::Rejected(msg)) => {
                 ToolExecutionResult::tool_error(msg)
             }
         }
@@ -215,12 +215,12 @@ pub struct CancelScheduleTool;
 impl Tool for CancelScheduleTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_session_schedule(
+        everruns_core::tool_narration::narrate_session_schedule(
             self.name(),
             &tool_call.arguments,
             phase,
@@ -274,7 +274,7 @@ impl Tool for CancelScheduleTool {
             _ => return ToolExecutionResult::tool_error("Missing required parameter: schedule_id"),
         };
 
-        let schedule_id = match schedule_id_str.parse::<crate::typed_id::ScheduleId>() {
+        let schedule_id = match schedule_id_str.parse::<everruns_core::typed_id::ScheduleId>() {
             Ok(id) => id,
             Err(_) => {
                 return ToolExecutionResult::tool_error(format!(
@@ -309,12 +309,12 @@ pub struct ListSchedulesTool;
 impl Tool for ListSchedulesTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_session_schedule(
+        everruns_core::tool_narration::narrate_session_schedule(
             self.name(),
             &tool_call.arguments,
             phase,
@@ -396,12 +396,34 @@ impl Tool for ListSchedulesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session_schedule::SessionSchedule;
-    use crate::traits::SessionScheduleStore;
-    use crate::typed_id::{ScheduleId, SessionId};
     use async_trait::async_trait;
     use chrono::Utc;
+    use everruns_core::session_schedule::SessionSchedule;
+    use everruns_core::traits::SessionScheduleStore;
+    use everruns_core::typed_id::{ScheduleId, SessionId};
     use std::sync::{Arc, Mutex};
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn unset(key: &'static str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe { std::env::remove_var(key) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => unsafe { std::env::set_var(self.key, value) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
+    }
 
     #[derive(Clone)]
     struct MockScheduleStore {
@@ -425,11 +447,11 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<Utc>>,
             timezone: String,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             let schedule = SessionSchedule {
                 id: ScheduleId::new(),
                 session_id,
-                owner_principal_id: crate::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 owner: None,
                 effective_owner: None,
@@ -453,12 +475,12 @@ mod tests {
             &self,
             _session_id: SessionId,
             schedule_id: ScheduleId,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             let mut schedules = self.schedules.lock().unwrap();
             let schedule = schedules
                 .iter_mut()
                 .find(|s| s.id == schedule_id)
-                .ok_or_else(|| crate::error::AgentLoopError::tool("Schedule not found"))?;
+                .ok_or_else(|| everruns_core::error::AgentLoopError::tool("Schedule not found"))?;
             schedule.enabled = false;
             Ok(schedule.clone())
         }
@@ -466,7 +488,7 @@ mod tests {
         async fn list_schedules(
             &self,
             session_id: SessionId,
-        ) -> crate::error::Result<Vec<SessionSchedule>> {
+        ) -> everruns_core::error::Result<Vec<SessionSchedule>> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules
                 .iter()
@@ -475,7 +497,10 @@ mod tests {
                 .collect())
         }
 
-        async fn count_active_schedules(&self, session_id: SessionId) -> crate::error::Result<u32> {
+        async fn count_active_schedules(
+            &self,
+            session_id: SessionId,
+        ) -> everruns_core::error::Result<u32> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules
                 .iter()
@@ -483,7 +508,7 @@ mod tests {
                 .count() as u32)
         }
 
-        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_core::error::Result<u32> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules.iter().filter(|s| s.enabled).count() as u32)
         }
@@ -600,8 +625,7 @@ mod tests {
     async fn create_schedule_rejects_frequent_cron() {
         // Uses the default minimum interval (300s); the guard restores whatever
         // value the suite was launched with.
-        let _g =
-            crate::session_schedule::EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
+        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         let store = MockScheduleStore::new();
         let session_id = SessionId::new();
         let mut context = ToolContext::new(session_id);
@@ -633,10 +657,8 @@ mod tests {
         // guard still restores any externally-set value on drop. Fill the cap
         // across many sessions (5 each, under the per-session cap) so the per-org
         // cap, not the per-session cap, is what rejects the final create.
-        let _g = crate::session_schedule::EnvVarGuard::unset(
-            "RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG",
-        );
-        let cap = crate::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG as usize;
+        let _g = EnvVarGuard::unset("RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG");
+        let cap = everruns_core::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG as usize;
 
         let store = MockScheduleStore::new();
         let tool = CreateScheduleTool;
@@ -646,7 +668,7 @@ mod tests {
         while created < cap {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.schedule_store = Some(Arc::new(store.clone()));
-            for _ in 0..crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION {
+            for _ in 0..everruns_core::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION {
                 if created >= cap {
                     break;
                 }

@@ -61,7 +61,7 @@ struct SessionBackgroundPermit {
 ///
 /// This combines the worker-wide guard with the per-session guard so all
 /// background execution paths share the same admission control.
-pub(crate) struct BackgroundRunPermit {
+pub struct BackgroundRunPermit {
     _worker: tokio::sync::SemaphorePermit<'static>,
     _session: SessionBackgroundPermit,
 }
@@ -103,7 +103,9 @@ fn try_acquire_session_background_permit(
     })
 }
 
-pub(crate) fn try_acquire_background_run_permit(
+/// Acquire the shared worker- and session-scoped admission permit used by
+/// detached tool implementations.
+pub fn try_acquire_background_run_permit(
     session_id: SessionId,
 ) -> std::result::Result<BackgroundRunPermit, String> {
     let worker = ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire().map_err(|_| {
@@ -1803,8 +1805,8 @@ fn is_canceled_outcome(
 
 /// Re-attach a `background_tool` task after worker loss.
 ///
-/// Called by `BackgroundToolTaskExecutor::start()` when the reaper decides the
-/// task is safe to restart. Reads `spec["tool"]` and `spec["arguments"]` from
+/// Called by a host-owned task executor when the reaper decides the task is
+/// safe to restart. Reads `spec["tool"]` and `spec["arguments"]` from
 /// the task, looks up the tool in the built-in default registry, and spawns a
 /// fresh background run with `task.attempt` as the heartbeat fence. New artifact
 /// paths are generated so old partial artifacts do not conflict.
@@ -1816,7 +1818,7 @@ fn is_canceled_outcome(
 /// - the tool does not implement `BackgroundExecutable`
 /// - the tool's current hints are not `idempotent` or `readonly`
 /// - per-worker or per-session background concurrency caps are exhausted
-pub(crate) async fn reattach_background_run(
+pub async fn reattach_background_run(
     task: &crate::session_task::SessionTask,
     context: &crate::traits::ToolContext,
 ) -> crate::error::Result<()> {

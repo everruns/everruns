@@ -354,7 +354,7 @@ pub struct PlatformStoreExt(pub std::sync::Arc<dyn PlatformStore>);
 
 /// Adapter implementing core's narrow
 /// [`SubagentSessionDelegate`](everruns_core::subagent_delegation::SubagentSessionDelegate)
-/// over a full `PlatformStore`, so portable subagent/handoff orchestration can
+/// over a full `PlatformStore`, so hosted subagent/handoff orchestration can
 /// drive child sessions without depending on the hosted seam.
 pub struct PlatformStoreSubagentDelegate(pub std::sync::Arc<dyn PlatformStore>);
 

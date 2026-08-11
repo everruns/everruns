@@ -30,7 +30,6 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
@@ -47,6 +46,7 @@ use everruns_host::{
     RuntimeSessionStore, SessionBuilder,
 };
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_platform::{PlatformMessage, PlatformStore};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{

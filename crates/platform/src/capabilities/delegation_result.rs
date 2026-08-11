@@ -1,11 +1,11 @@
-use crate::session_task::{
+use async_trait::async_trait;
+use everruns_core::session_task::{
     NewTaskMessage, SessionTask, SessionTaskUpdate, TaskMessageDirection, TaskMessagePart,
     task_result_path,
 };
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, SessionStore, ToolContext};
-use crate::typed_id::{SessionId, WorkspaceId};
-use async_trait::async_trait;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{SessionFileSystem, SessionStore, ToolContext};
+use everruns_core::typed_id::{SessionId, WorkspaceId};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -89,8 +89,8 @@ pub(crate) fn truncate_summary(text: &str) -> String {
 pub(crate) async fn task_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<(SessionTask, WorkspaceId)>> {
+    task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
+) -> everruns_core::error::Result<Option<(SessionTask, WorkspaceId)>> {
     let Some(child) = session_store.get_session(child_session_id).await? else {
         return Ok(None);
     };
@@ -145,12 +145,12 @@ impl ReportResultTool {
 impl Tool for ReportResultTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
+        everruns_core::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -292,12 +292,12 @@ impl ReportTaskProgressTool {
 impl Tool for ReportTaskProgressTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
+        everruns_core::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -372,8 +372,8 @@ impl Tool for ReportTaskProgressTool {
 pub async fn report_result_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportResultTool>> {
+    task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
+) -> everruns_core::error::Result<Option<ReportResultTool>> {
     let Some((task, parent_workspace_id)) =
         task_for_child_session(child_session_id, session_store, task_registry).await?
     else {
@@ -394,8 +394,8 @@ pub async fn report_result_tool_for_child_session(
 pub async fn report_task_progress_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportTaskProgressTool>> {
+    task_registry: &dyn everruns_core::session_task::SessionTaskRegistry,
+) -> everruns_core::error::Result<Option<ReportTaskProgressTool>> {
     let Some((task, _)) =
         task_for_child_session(child_session_id, session_store, task_registry).await?
     else {
@@ -460,13 +460,15 @@ pub(crate) async fn write_task_result_value(
     context: &ToolContext,
     task_id: &str,
     value: &Value,
-) -> crate::error::Result<Option<String>> {
+) -> everruns_core::error::Result<Option<String>> {
     let Some(file_store) = context.file_store.as_ref() else {
         return Ok(None);
     };
     let path = task_result_path(task_id);
     let content = serde_json::to_string_pretty(value).map_err(|error| {
-        crate::error::AgentLoopError::store(format!("failed to serialize task result: {error}"))
+        everruns_core::error::AgentLoopError::store(format!(
+            "failed to serialize task result: {error}"
+        ))
     })?;
     file_store
         .write_file(context.workspace_fs_key(), &path, &content, "utf-8")
