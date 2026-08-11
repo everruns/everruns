@@ -94,10 +94,6 @@ mod infinity_context;
 mod openrouter_server_tools;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
-mod session;
-mod session_sandbox;
-mod session_sql_database;
-mod session_storage;
 mod skills;
 mod skills_scoped;
 mod tool_approval;
@@ -141,23 +137,6 @@ pub use openrouter_server_tools::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use session::{
-    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
-    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
-    update_session_title_with_event,
-};
-pub use session_sandbox::{
-    SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
-    SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
-};
-pub use session_sql_database::{
-    SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
-    SqlSchemaTool,
-};
-pub use session_storage::{
-    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
-    is_internal_session_kv_key, is_internal_session_secret_name,
-};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
@@ -1240,8 +1219,6 @@ impl CapabilityRegistry {
         let mut registry = Self::new();
 
         registry.register(HumanIntentCapability);
-        registry.register(SessionStorageCapability);
-        registry.register(SessionCapability);
         registry.register(InfinityContextCapability);
         registry.register(SkillsCapability);
 
@@ -1258,9 +1235,6 @@ impl CapabilityRegistry {
         // Core capabilities (all environments)
         registry.register(HumanIntentCapability);
         registry.register(OpenRouterServerToolsCapability);
-        registry.register(SessionStorageCapability);
-        registry.register(SessionCapability);
-        registry.register(SessionSqlDatabaseCapability);
         registry.register(InfinityContextCapability);
 
         // Skills (filesystem-based discovery + activation, all environments)
@@ -1284,9 +1258,7 @@ impl CapabilityRegistry {
 
         // External integration plugins (registered via inventory::submit! in integration crates)
         let internal_flags = &feature_decisions.internal;
-        if internal_flags.session_sandbox {
-            registry.register(SessionSandboxCapability);
-        }
+        if internal_flags.session_sandbox {}
 
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
@@ -2974,6 +2946,27 @@ mod tests {
         }
     }
 
+    /// Stands in for the product `session_storage` capability, which moved to
+    /// `everruns-platform` with the other service-backed families (EVE-886).
+    /// Feature computation is core's mechanism, so it is exercised here against
+    /// a fixture rather than a product implementation.
+    struct StorageFixture;
+
+    impl Capability for StorageFixture {
+        fn id(&self) -> &str {
+            "session_storage"
+        }
+        fn name(&self) -> &str {
+            "Fixture Storage"
+        }
+        fn description(&self) -> &str {
+            "Fixture session storage capability."
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["secrets", "key_value"]
+        }
+    }
+
     struct BashFixture;
 
     impl Capability for BashFixture {
@@ -3185,6 +3178,7 @@ mod tests {
         registry.register(WeatherFixture);
         registry.register(SampleDataFixture);
         registry.register(FileSystemFixture);
+        registry.register(StorageFixture);
         registry.register(BashFixture);
         registry.register(WebFetchFixture);
         registry.register(DynamicFactFixture);
@@ -3227,9 +3221,6 @@ mod tests {
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = [
             "human_intent",
-            "session_storage",
-            "session",
-            "session_sql_database",
             "infinity_context",
             "skills",
             "openrouter_server_tools",
@@ -3245,15 +3236,9 @@ mod tests {
 
     /// Capabilities present in the default in-process runtime registry.
     fn expected_runtime_builtin_ids() -> BTreeSet<&'static str> {
-        [
-            "human_intent",
-            "session_storage",
-            "session",
-            "infinity_context",
-            "skills",
-        ]
-        .into_iter()
-        .collect::<BTreeSet<_>>()
+        ["human_intent", "infinity_context", "skills"]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
     }
 
     fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {
@@ -3315,7 +3300,13 @@ mod tests {
             "session_schedule",
             "subagents",
             "background_execution",
+            // Session-service capabilities moved to the product crate with the
+            // rest of the service-backed families (EVE-886); hosts that can
+            // serve them compose them back in.
+            "session",
+            "session_storage",
             "session_sql_database",
+            "session_sandbox",
             "knowledge_base",
             "knowledge_index",
             "data_knowledge",
@@ -3588,11 +3579,14 @@ mod tests {
 
     #[test]
     fn test_capability_icons_and_categories() {
+        // `session` used to stand in here; it moved to the product crate with
+        // the service-backed families (EVE-886). Icons and categories are a
+        // kernel-owned projection, so a kernel capability covers it.
         let registry = CapabilityRegistry::with_builtins();
 
-        let session = registry.get("session").unwrap();
-        assert_eq!(session.icon(), Some("panel-left"));
-        assert_eq!(session.category(), Some("Session"));
+        let skills = registry.get("skills").unwrap();
+        assert_eq!(skills.icon(), SkillsCapability.icon());
+        assert_eq!(skills.category(), SkillsCapability.category());
     }
 
     #[test]
@@ -5160,21 +5154,18 @@ mod tests {
     }
 
     #[test]
-    fn test_session_storage_capability_features() {
+    fn kernel_capability_features_are_declared_on_the_capability() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let storage = registry.get("session_storage").unwrap();
-        let features = storage.features();
-        assert!(features.contains(&"secrets"));
-        assert!(features.contains(&"key_value"));
-    }
-
-    #[test]
-    fn test_session_sql_database_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let sql = registry.get("session_sql_database").unwrap();
-        assert_eq!(sql.features(), vec!["sql_database"]);
+        // `session_storage`/`session_sql_database` moved to the product crate
+        // (EVE-886); their feature declarations are covered there. What core
+        // owns is the mechanism: a registered capability's `features()` is what
+        // `compute_features` reports.
+        let skills = registry.get("skills").expect("skills is kernel-owned");
+        assert_eq!(
+            compute_features(&["skills".to_string()], &registry),
+            skills.features()
+        );
     }
 
     #[test]
@@ -5197,8 +5188,8 @@ mod tests {
     fn test_compute_features_single_capability() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let features = compute_features(&["session_storage".to_string()], &registry);
-        assert_eq!(features, vec!["secrets", "key_value"]);
+        let features = compute_features(&["skills".to_string()], &registry);
+        assert_eq!(features, registry.get("skills").expect("skills").features());
     }
 
     #[test]
@@ -5263,7 +5254,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_unknown_capability_ignored() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let features = compute_features(
             &["unknown_cap".to_string(), "session_storage".to_string()],

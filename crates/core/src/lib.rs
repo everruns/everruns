@@ -395,19 +395,16 @@ pub use capabilities::SystemPromptContext;
 pub use capabilities::{
     AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel, Capability,
     CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError, GetSessionInfoTool,
+    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError,
     HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
     InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
     MountDirectoryBuilder, MountEntry, MountPoint, MountSource, QueryHistoryTool,
-    ResolvedCapabilities, RiskLevel, SessionCapability, SessionCapabilityConfig,
-    SessionSandboxCapability, SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool,
-    SqlQueryTool, SqlSchemaTool, ToolCallHook, ToolDefinitionHook, WriteSessionTitleTool,
-    apply_capabilities, collect_capabilities, collect_capabilities_with_configs, compute_features,
+    ResolvedCapabilities, RiskLevel, ToolCallHook, ToolDefinitionHook, apply_capabilities,
+    collect_capabilities, collect_capabilities_with_configs, compute_features,
     declarative_capability_id, declarative_capability_info, get_dependencies,
     hydrate_declarative_capability_config, hydrate_plugin_capability_config,
     is_declarative_capability, parse_declarative_capability_id, plugin_capability_info,
-    resolve_dependencies, session_title_updated_event, update_session_title_with_event,
-    validate_declarative_capability_definition,
+    resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,

@@ -12,10 +12,10 @@
 // always fine.
 
 use everruns_core::capabilities::{
-    Capability, InfinityContextCapability, SessionSandboxCapability, SkillsCapability,
-    SystemPromptContext,
+    Capability, InfinityContextCapability, SkillsCapability, SystemPromptContext,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_platform::capabilities::SessionSandboxCapability;
 use everruns_platform::capabilities::{
     DataKnowledgeCapability, MemoryCapability, SubagentCapability,
 };
