@@ -9,6 +9,7 @@
 // - The side answer reuses the session's merged context, disables tools, and
 //   persists nothing, behaving like Claude Code's ephemeral overlay answer.
 
+use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::command::{
     CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
@@ -17,7 +18,6 @@ use everruns_core::command::{
 use everruns_core::command_host::SessionCompletionRequest;
 use everruns_core::error::AgentLoopError;
 use everruns_core::message::Message;
-use async_trait::async_trait;
 use std::collections::HashMap;
 
 pub const BTW_CAPABILITY_ID: &str = "btw";
@@ -127,7 +127,7 @@ impl Capability for BtwCapability {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::command_host::{
         CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
     };

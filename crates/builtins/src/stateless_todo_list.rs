@@ -39,10 +39,7 @@
 //! growth becomes an issue in long-running sessions.
 
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
-use everruns_core::tool_types::ToolHints;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use async_trait::async_trait;
-use serde_json::Value;
+use everruns_core::tools::Tool;
 
 pub const STATELESS_TODO_LIST_CAPABILITY_ID: &str = "stateless_todo_list";
 
@@ -111,181 +108,9 @@ pass, no unresolved errors)."#;
 // ============================================================================
 
 /// Tool for creating and updating a task list
-pub struct WriteTodosTool;
-
-#[async_trait]
-impl Tool for WriteTodosTool {
-    fn narrate(
-        &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
-    ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_write_todos(phase, locale))
-    }
-
-    fn name(&self) -> &str {
-        "write_todos"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Write Todos")
-    }
-
-    fn description(&self) -> &str {
-        "Create or update a task list for tracking multi-step work. Each task must have 'content' (imperative form like 'Run tests'), 'activeForm' (present continuous like 'Running tests'), and 'status' (pending/in_progress/completed). Exactly one task should be 'in_progress' at a time."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "todos": {
-                    "type": "array",
-                    "description": "Complete list of tasks (replaces any existing tasks)",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "content": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Imperative form of the task (e.g., 'Run tests', 'Fix the bug', 'Build the project')"
-                            },
-                            "activeForm": {
-                                "type": "string",
-                                "minLength": 1,
-                                "description": "Present continuous form shown during execution (e.g., 'Running tests', 'Fixing the bug', 'Building the project')"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "completed"],
-                                "description": "Current status of the task"
-                            }
-                        },
-                        "required": ["content", "activeForm", "status"]
-                    }
-                }
-            },
-            "required": ["todos"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        // Each call replaces the entire shared todo list; serialize concurrent
-        // writes within a batch so one does not clobber another.
-        ToolHints::default()
-            .with_idempotent(true)
-            .with_concurrency_class("session_todos")
-    }
-
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        // Parse the todos array
-        let todos = match arguments.get("todos") {
-            Some(Value::Array(arr)) => arr,
-            Some(_) => {
-                return ToolExecutionResult::tool_error("Invalid 'todos' field: expected an array");
-            }
-            None => {
-                return ToolExecutionResult::tool_error("Missing required field: 'todos'");
-            }
-        };
-
-        // Validate each todo item
-        let mut pending_count = 0;
-        let mut in_progress_count = 0;
-        let mut completed_count = 0;
-        let mut validated_todos = Vec::new();
-
-        for (idx, todo) in todos.iter().enumerate() {
-            // Validate content
-            let content = match todo.get("content").and_then(|v| v.as_str()) {
-                Some(s) if !s.is_empty() => s,
-                _ => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Task {} is missing or has empty 'content' field",
-                        idx + 1
-                    ));
-                }
-            };
-
-            // Validate activeForm
-            let active_form = match todo.get("activeForm").and_then(|v| v.as_str()) {
-                Some(s) if !s.is_empty() => s,
-                _ => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Task {} is missing or has empty 'activeForm' field",
-                        idx + 1
-                    ));
-                }
-            };
-
-            // Validate status
-            let status = match todo.get("status").and_then(|v| v.as_str()) {
-                Some("pending") => {
-                    pending_count += 1;
-                    "pending"
-                }
-                Some("in_progress") => {
-                    in_progress_count += 1;
-                    "in_progress"
-                }
-                Some("completed") => {
-                    completed_count += 1;
-                    "completed"
-                }
-                Some(other) => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Task {} has invalid status '{}'. Must be 'pending', 'in_progress', or 'completed'",
-                        idx + 1,
-                        other
-                    ));
-                }
-                None => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Task {} is missing 'status' field",
-                        idx + 1
-                    ));
-                }
-            };
-
-            validated_todos.push(serde_json::json!({
-                "content": content,
-                "activeForm": active_form,
-                "status": status
-            }));
-        }
-
-        // Warn if no task is in progress (but don't fail - this can happen at the end of a workflow)
-        let warning = if in_progress_count == 0 && pending_count > 0 {
-            Some("No task is marked as 'in_progress'. Consider marking one task as in_progress.")
-        } else if in_progress_count > 1 {
-            Some(
-                "Multiple tasks are marked as 'in_progress'. Best practice is to have exactly one in_progress task at a time.",
-            )
-        } else {
-            None
-        };
-
-        let total = validated_todos.len();
-
-        let mut result = serde_json::json!({
-            "success": true,
-            "total_tasks": total,
-            "pending": pending_count,
-            "in_progress": in_progress_count,
-            "completed": completed_count,
-            "todos": validated_todos
-        });
-
-        if let Some(warn_msg) = warning {
-            result["warning"] = serde_json::json!(warn_msg);
-        }
-
-        ToolExecutionResult::success(result)
-    }
-}
+// EVE-884: the tool itself is part of the kernel default tool set, so it
+// lives in core; this capability advertises and documents it.
+pub use everruns_core::default_tools::WriteTodosTool;
 
 // ============================================================================
 // Tests
@@ -293,7 +118,8 @@ impl Tool for WriteTodosTool {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

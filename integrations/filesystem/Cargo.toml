@@ -27,6 +27,8 @@ hex.workspace = true
 similar = "3"
 
 [dev-dependencies]
+# Tool-search interplay coverage uses the portable bundle (EVE-884).
+everruns-builtins = { workspace = true }
 chrono.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

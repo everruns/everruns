@@ -58,6 +58,7 @@
 // round-trip before its first read/edit/shell call. Equivalent in effect to
 // marking those tools `DeferrablePolicy::Never`, but settable from outside.
 
+use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
@@ -65,12 +66,11 @@ use everruns_core::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::SessionId;
-use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-pub use everruns_core::capabilities::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
+pub use crate::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
 /// Capability ID for the generic (provider-agnostic) tool search.
 pub const TOOL_SEARCH_CAPABILITY_ID: &str = "tool_search";
@@ -635,7 +635,7 @@ impl Tool for ToolSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
 
     fn builtin(name: &str, description: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
@@ -1189,9 +1189,9 @@ mod tests {
     /// `docs/capabilities/tool-search.md`; re-run this test to refresh them.
     #[test]
     fn benchmark_prompt_size_reduction() {
+        use crate::{CurrentTimeCapability, StatelessTodoListCapability};
         use everruns_core::capabilities::{
-            Capability, CurrentTimeCapability, SessionCapability, SessionStorageCapability,
-            SkillsCapability, StatelessTodoListCapability,
+            Capability, SessionCapability, SessionStorageCapability, SkillsCapability,
         };
 
         // A representative core surface. Environment-backed integration

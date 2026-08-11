@@ -10,11 +10,11 @@
 //
 // See knowledge/security/budgeting.md (Phase 4: Agent awareness)
 
+use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use async_trait::async_trait;
 use serde_json::Value;
 
 pub const BUDGETING_CAPABILITY_ID: &str = "budgeting";
@@ -92,7 +92,9 @@ impl Tool for CheckBudgetTool {
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_check_budget(phase, locale))
+        Some(everruns_core::tool_narration::narrate_check_budget(
+            phase, locale,
+        ))
     }
 
     fn name(&self) -> &str {
@@ -158,7 +160,7 @@ impl Tool for CheckBudgetTool {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

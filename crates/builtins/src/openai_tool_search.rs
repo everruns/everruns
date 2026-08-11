@@ -11,9 +11,11 @@
 // If the model does not support tool_search (tool_search=false in profile),
 // this capability is silently ignored — no error, no crash.
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use everruns_core::driver_registry::ToolSearchConfig;
 use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext,
+};
+use everruns_core::driver_registry::ToolSearchConfig;
 
 /// Default minimum tool count to activate tool_search.
 /// Below this threshold, full schemas are sent even when capability is enabled.
@@ -60,8 +62,11 @@ impl OpenAiToolSearchCapability {
 /// lookup is against the OpenAI provider profile regardless of how the model is
 /// otherwise routed.
 pub fn model_supports_native_tool_search(model: &str) -> bool {
-    everruns_core::model_profiles::get_model_profile(&everruns_core::provider::DriverId::OpenAI, model)
-        .is_some_and(|profile| profile.tool_search)
+    everruns_core::model_profiles::get_model_profile(
+        &everruns_core::provider::DriverId::OpenAI,
+        model,
+    )
+    .is_some_and(|profile| profile.tool_search)
 }
 
 impl Default for OpenAiToolSearchCapability {
@@ -108,7 +113,7 @@ impl Capability for OpenAiToolSearchCapability {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

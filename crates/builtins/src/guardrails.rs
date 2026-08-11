@@ -661,12 +661,14 @@ impl OutputGuardrailRun for DeclarativeOutputRun {
                         reason_code = %hit.reason_code,
                         "guardrails: blocking model output"
                     );
-                    return GuardrailDecision::Block(everruns_core::output_guardrail::GuardrailBlock {
-                        reason_code: hit.reason_code,
-                        replacement: hit
-                            .replacement
-                            .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
-                    });
+                    return GuardrailDecision::Block(
+                        everruns_core::output_guardrail::GuardrailBlock {
+                            reason_code: hit.reason_code,
+                            replacement: hit
+                                .replacement
+                                .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
+                        },
+                    );
                 }
                 GuardrailAction::Log => {
                     tracing::warn!(
@@ -742,13 +744,15 @@ impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
                         reason_code = "guardrail.moderation",
                         "guardrails: blocking model output (moderation)"
                     );
-                    return GuardrailDecision::Block(everruns_core::output_guardrail::GuardrailBlock {
-                        reason_code: "guardrail.moderation".to_string(),
-                        replacement: check
-                            .replacement
-                            .clone()
-                            .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
-                    });
+                    return GuardrailDecision::Block(
+                        everruns_core::output_guardrail::GuardrailBlock {
+                            reason_code: "guardrail.moderation".to_string(),
+                            replacement: check
+                                .replacement
+                                .clone()
+                                .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
+                        },
+                    );
                 }
                 GuardrailAction::Log => {
                     tracing::warn!(
@@ -1125,11 +1129,11 @@ impl PostToolExecHook for GuardrailPostToolHook {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
+    use async_trait::async_trait;
     use everruns_core::typed_id::SessionId;
     use everruns_core::utility_llm::UtilityLlmService;
     use everruns_core::{AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream};
-    use async_trait::async_trait;
     use serde_json::json;
     use std::sync::Arc;
 

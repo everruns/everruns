@@ -22,8 +22,8 @@
 // scheduler). An explicit `parallel_tool_calls` field on harness/agent/session
 // is a lower-level escape hatch and takes precedence over this capability.
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, SystemPromptContext};
 use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, SystemPromptContext};
 
 /// Capability ID for the request-level parallel tool calls preference.
 pub const PARALLEL_TOOL_CALLS_CAPABILITY_ID: &str = "parallel_tool_calls";
@@ -186,7 +186,7 @@ impl Capability for ParallelToolCallsCapability {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
 
     #[test]
     fn parse_known_modes() {

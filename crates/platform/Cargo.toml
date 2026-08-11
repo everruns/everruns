@@ -59,6 +59,10 @@ a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
 # (Harness/Agent/Session), and the DEFAULT_ORG_* constants live in core; the
 # platform aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
+# Portable policy built-ins (EVE-884): the product catalog composes the bundle
+# rather than inheriting it from the kernel.
+everruns-builtins = { workspace = true }
+
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }

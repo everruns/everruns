@@ -1329,8 +1329,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         // Keep Infinity Context's message filter active: persisted history may
         // contain raw text removed by earlier prompt hooks. Replace only its
         // model-visible prompt/tool contributions.
-        reason_capability_registry
-            .register(everruns_core::capabilities::InfinityContextFilterOnlyCapability);
+        reason_capability_registry.register(everruns_builtins::InfinityContextFilterOnlyCapability);
     }
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),

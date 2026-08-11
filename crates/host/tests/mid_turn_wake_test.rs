@@ -12,7 +12,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{Capability, CapabilityStatus, InfinityContextCapability};
+use everruns_builtins::InfinityContextCapability;
+use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
 use everruns_core::session_task::{

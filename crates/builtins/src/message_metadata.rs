@@ -11,7 +11,9 @@ use std::sync::Arc;
 use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider,
+};
 use everruns_core::message::{ContentPart, Message, MessageRole};
 
 pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
@@ -204,40 +206,9 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
         100
     }
 }
-
-/// Strip synthetic leading `[time <RFC3339 UTC>]` annotations from generated
-/// assistant text before it is persisted.
-///
-/// The model view prepends `[time …]` to messages so the model can reason about
-/// timing, with a system-prompt instruction never to emit it. Models
-/// nevertheless echo the annotation into their replies (EVE-710); the echoed
-/// text is then stored and shown to the user, breaking exact-output prompts.
-/// This removes only the exact synthetic pattern — one or more leading
-/// `[time <timestamp>]` segments, each followed by an optional single space —
-/// validating the bracket contents as a real RFC3339 timestamp so legitimate
-/// user-authored text like `[time to go]` is left untouched. Only leading
-/// occurrences are removed; a bracketed timestamp later in the text is treated
-/// as authored content and preserved.
-pub fn strip_leading_timestamp_annotations(text: &str) -> String {
-    let mut rest = text;
-    while let Some(after) = strip_one_timestamp_annotation(rest) {
-        rest = after;
-    }
-    rest.to_string()
-}
-
-/// Strip a single leading `[time <rfc3339>]` (plus one optional following space)
-/// from `text`, returning the remainder when it matches the synthetic format.
-fn strip_one_timestamp_annotation(text: &str) -> Option<&str> {
-    const PREFIX: &str = "[time ";
-    let rest = text.strip_prefix(PREFIX)?;
-    let close = rest.find(']')?;
-    // Only strip when the bracket holds a real RFC3339 timestamp — the exact
-    // synthetic format produced by `MessageMetadataField::Timestamp::render`.
-    chrono::DateTime::parse_from_rfc3339(&rest[..close]).ok()?;
-    let after = &rest[close + 1..];
-    Some(after.strip_prefix(' ').unwrap_or(after))
-}
+// EVE-884: the kernel strips the synthetic `[time …]` prefix before persisting
+// assistant text, so the stripper lives in core and is re-exported here.
+pub use everruns_core::message_annotations::strip_leading_timestamp_annotations;
 
 /// Render the combined metadata annotation for a message, e.g.
 /// `[time 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
@@ -273,7 +244,7 @@ fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::capabilities::CapabilityRegistry;
     use everruns_core::message::ToolCallContentPart;
     use everruns_core::typed_id::SessionId;

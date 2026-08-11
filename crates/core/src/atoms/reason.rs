@@ -642,7 +642,7 @@ async fn try_apply_native_compaction(
     standalone_input.extend(messages_to_compact_input(messages_to_compact));
     let input_items_before = standalone_input.len();
     let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
-        .then(|| crate::capabilities::estimate_total_tokens(messages_to_compact) as u64);
+        .then(|| crate::token_estimate::estimate_total_tokens(messages_to_compact) as u64);
     let bytes_before = (!stateful_response_continuation || has_prior_opaque_context)
         .then(|| {
             serde_json::to_vec(&standalone_input)
@@ -1294,7 +1294,7 @@ impl ReasonAtom {
 
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let error_disclosure = crate::capabilities::resolve_error_disclosure(
+                let error_disclosure = crate::error_disclosure_policy::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
@@ -2180,7 +2180,7 @@ impl ReasonAtom {
             let durable_source_available =
                 self.compaction_checkpoint_store.is_some() && message_source_sequence.is_some();
             let estimated_tokens_before =
-                crate::capabilities::estimate_total_tokens(&llm_messages_for_call) as u64;
+                crate::token_estimate::estimate_total_tokens(&llm_messages_for_call) as u64;
             let native_attempt_rearmed = if let (Some(store), Some(source_sequence)) = (
                 self.compaction_checkpoint_store.as_ref(),
                 message_source_sequence,
@@ -2373,7 +2373,7 @@ impl ReasonAtom {
                     }
                 }
                 let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
-                if crate::capabilities::estimate_total_tokens(&llm_messages_for_call)
+                if crate::token_estimate::estimate_total_tokens(&llm_messages_for_call)
                     > budget_tokens
                 {
                     llm_messages_for_call = crate::capabilities::aggressive_trim(
@@ -2478,7 +2478,7 @@ impl ReasonAtom {
                                 reason: CompactionReason::RequestTooLarge,
                                 strategy: config.strategy.to_string(),
                                 messages_before,
-                                tokens_before: Some(crate::capabilities::estimate_total_tokens(
+                                tokens_before: Some(crate::token_estimate::estimate_total_tokens(
                                     &llm_messages_for_call,
                                 ) as u64),
                                 bytes_before: None,
@@ -2490,7 +2490,7 @@ impl ReasonAtom {
                     let mut steps: Vec<CompactionStepData> = Vec::new();
                     let mut strategies_used: Vec<String> = Vec::new();
                     let mut checkpoint_id: Option<String> = None;
-                    let mut tokens_before = Some(crate::capabilities::estimate_total_tokens(
+                    let mut tokens_before = Some(crate::token_estimate::estimate_total_tokens(
                         &llm_messages_for_call,
                     ) as u64);
                     let mut tokens_after = None;
@@ -2709,7 +2709,7 @@ impl ReasonAtom {
                         let step_start = Instant::now();
                         // Target: keep roughly half the messages by token budget
                         let estimated_total =
-                            crate::capabilities::estimate_total_tokens(&llm_messages_for_call);
+                            crate::token_estimate::estimate_total_tokens(&llm_messages_for_call);
                         let target = estimated_total / 2;
                         let trimmed =
                             aggressive_trim(&llm_messages_for_call, target, has_system_prompt);
@@ -2733,7 +2733,7 @@ impl ReasonAtom {
                     let cascade_duration = cascade_start.elapsed().as_millis() as u64;
                     let messages_after = llm_messages_for_call.len();
                     if tokens_after.is_none() {
-                        tokens_after = Some(crate::capabilities::estimate_total_tokens(
+                        tokens_after = Some(crate::token_estimate::estimate_total_tokens(
                             &llm_messages_for_call,
                         ) as u64);
                     }
@@ -3362,7 +3362,7 @@ impl ReasonAtom {
             // Strip the synthetic timestamp prefix first (idempotent with the
             // later strip at message build) so annotation char offsets computed
             // here stay valid against the finalized message text.
-            text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+            text = crate::message_annotations::strip_leading_timestamp_annotations(&text);
             let collected = collect_annotations(
                 &annotation_providers,
                 &runtime_agent.system_prompt,
@@ -3648,7 +3648,7 @@ impl ReasonAtom {
         // Strip any synthetic `[time …]` annotation the model echoed from the
         // message_metadata model view before persisting/returning it (EVE-710),
         // so exact-output replies are not polluted by the injected prefix.
-        let text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+        let text = crate::message_annotations::strip_leading_timestamp_annotations(&text);
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -3771,7 +3771,7 @@ impl ReasonAtom {
         // Build the assistant message from accumulated text and persist via event.
         // Strip any echoed `[time …]` annotation the model produced (EVE-710).
         let accumulated =
-            crate::capabilities::strip_leading_timestamp_annotations(&partial.accumulated);
+            crate::message_annotations::strip_leading_timestamp_annotations(&partial.accumulated);
         let assistant_message = Message::assistant(&accumulated).with_id(message_id);
         let output_message_id = message_id;
         self.event_emitter

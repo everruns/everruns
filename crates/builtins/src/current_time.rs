@@ -1,10 +1,10 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, Fact, FactsContext};
-use everruns_core::tool_types::ToolHints;
-use everruns_core::tools::{Tool, ToolExecutionResult};
-use async_trait::async_trait;
 use chrono::SecondsFormat;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, Fact, FactsContext,
+};
+use everruns_core::tools::Tool;
 use serde_json::Value;
 
 pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
@@ -65,96 +65,14 @@ impl Capability for CurrentTimeCapability {
 // ============================================================================
 
 /// Tool that returns the current date and time
-pub struct GetCurrentTimeTool;
-
-#[async_trait]
-impl Tool for GetCurrentTimeTool {
-    fn narrate(
-        &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
-    ) -> Option<String> {
-        Some(everruns_core::tool_narration::narrate_current_time(phase, locale))
-    }
-
-    fn name(&self) -> &str {
-        "get_current_time"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Get Current Time")
-    }
-
-    fn description(&self) -> &str {
-        "Get the current date and time. Can return time in different formats and timezones."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "timezone": {
-                    "type": "string",
-                    "description": "Timezone to return the time in (e.g., 'UTC', 'America/New_York', 'Europe/London'). Defaults to UTC."
-                },
-                "format": {
-                    "type": "string",
-                    "enum": ["iso8601", "unix", "human"],
-                    "description": "Output format: 'iso8601' for ISO 8601 format, 'unix' for Unix timestamp, 'human' for human-readable format. Defaults to 'iso8601'."
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default()
-            .with_readonly(true)
-            .with_idempotent(true)
-    }
-
-    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
-        let format = arguments
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("iso8601");
-
-        let _timezone = arguments
-            .get("timezone")
-            .and_then(|v| v.as_str())
-            .unwrap_or("UTC");
-
-        // Note: For simplicity, we're using UTC. Full timezone support would require
-        // the chrono-tz crate which adds significant dependencies.
-        let now = chrono::Utc::now();
-
-        let result = match format {
-            "unix" => serde_json::json!({
-                "timestamp": now.timestamp(),
-                "format": "unix",
-                "timezone": "UTC"
-            }),
-            "human" => serde_json::json!({
-                "datetime": now.format("%A, %B %d, %Y at %H:%M:%S UTC").to_string(),
-                "format": "human",
-                "timezone": "UTC"
-            }),
-            _ => serde_json::json!({
-                "datetime": now.to_rfc3339(),
-                "format": "iso8601",
-                "timezone": "UTC"
-            }),
-        };
-
-        ToolExecutionResult::success(result)
-    }
-}
+// EVE-884: the tool itself is part of the kernel default tool set, so it
+// lives in core; this capability advertises and documents it.
+pub use everruns_core::default_tools::GetCurrentTimeTool;
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

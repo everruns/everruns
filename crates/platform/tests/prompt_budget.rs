@@ -11,10 +11,12 @@
 // same PR and explain why in the commit message. Lowering a cap is
 // always fine.
 
+use everruns_builtins::{
+    BudgetingCapability, InfinityContextCapability, MessageMetadataCapability,
+    SelfBudgetCapability, StatelessTodoListCapability,
+};
 use everruns_core::capabilities::{
-    BudgetingCapability, Capability, InfinityContextCapability, MessageMetadataCapability,
-    SelfBudgetCapability, SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability,
-    SystemPromptContext,
+    Capability, SessionSandboxCapability, SkillsCapability, SystemPromptContext,
 };
 use everruns_core::typed_id::SessionId;
 use everruns_platform::capabilities::{

@@ -40,7 +40,7 @@ use std::sync::Arc;
 ///
 /// let platform = PlatformDefinition::builder()
 ///     .driver_registry(drivers)
-///     .capability(everruns_core::CurrentTimeCapability)
+///     .capability(everruns_builtins::CurrentTimeCapability)
 ///     .build();
 /// ```
 #[derive(Clone)]
@@ -207,7 +207,28 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityStatus, CurrentTimeCapability};
+    use crate::CapabilityStatus;
+    use crate::capabilities::Capability;
+
+    /// Minimal in-crate capability: the portable built-ins live in
+    /// `everruns-builtins`, which depends on core, so core's own tests compose
+    /// with a local one instead (EVE-884).
+    struct TestCapability;
+
+    impl Capability for TestCapability {
+        fn id(&self) -> &str {
+            "test_capability"
+        }
+
+        fn name(&self) -> &str {
+            "Test Capability"
+        }
+
+        fn description(&self) -> &str {
+            "Registration-only capability used by platform composition tests."
+        }
+    }
+
     use async_trait::async_trait;
 
     /// Chat driver stub: registration-only, never invoked in these tests.
@@ -237,10 +258,10 @@ mod tests {
 
         let platform = PlatformDefinition::builder()
             .driver_registry(drivers.clone())
-            .capability(CurrentTimeCapability)
+            .capability(TestCapability)
             .build();
 
-        assert!(platform.capability_registry().has("current_time"));
+        assert!(platform.capability_registry().has("test_capability"));
         assert!(
             platform
                 .driver_registry()
@@ -251,15 +272,13 @@ mod tests {
     #[test]
     fn test_platform_definition_mutation() {
         let mut platform = PlatformDefinition::default();
-        platform
-            .capability_registry_mut()
-            .register(CurrentTimeCapability);
+        platform.capability_registry_mut().register(TestCapability);
 
         let info = crate::CapabilityInfo::from_core(
             platform
                 .capability_registry()
-                .get("current_time")
-                .expect("current_time registered")
+                .get("test_capability")
+                .expect("test capability registered")
                 .as_ref(),
         );
         assert_eq!(info.status, CapabilityStatus::Available);

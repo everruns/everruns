@@ -88,6 +88,7 @@ pub use crate::capability_types::{
 mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
+pub mod compaction;
 mod declarative;
 pub mod facts;
 #[cfg(feature = "ui-capabilities")]
@@ -98,6 +99,8 @@ mod session_sql_database;
 mod session_storage;
 mod skills;
 mod skills_scoped;
+mod tool_call_repair;
+pub mod tool_output_persistence;
 pub mod util;
 
 // Re-export capabilities
@@ -124,6 +127,17 @@ pub use attach_skill::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapabilityIdExt,
     SkillContribution, SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries,
     is_skill_capability, parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
+};
+pub use compaction::{
+    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
+    CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
+    MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
+    SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
+    apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
+    build_summarization_prompt, build_summary_message, classify_memory_tiers,
+    compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
+    format_messages_for_summarization, should_compact_for_cost, should_compact_proactively,
+    total_tool_result_bytes,
 };
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
@@ -153,6 +167,15 @@ pub use session_storage::{
     is_internal_session_kv_key, is_internal_session_secret_name,
 };
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
+pub use tool_call_repair::{
+    DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
+    TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairCapability, ToolCallRepairConfig,
+    salvage_tool_arguments, tool_call_repair_capability,
+};
+pub use tool_output_persistence::{
+    PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
+};
+
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
 };
@@ -507,6 +530,28 @@ pub trait Capability: Send + Sync {
         _config: &serde_json::Value,
     ) -> Option<DelegationTargetProvider> {
         None
+    }
+
+    /// Provider-neutral model-request settings this capability contributes
+    /// when it is enabled with `config`.
+    ///
+    /// Capability implementations live outside the kernel (EVE-884), so
+    /// collection merges what each capability declares here instead of matching
+    /// capability ids. Every field defaults to "no opinion"; the last enabled
+    /// capability that sets a field wins, matching the previous id-keyed order.
+    fn model_request_contribution(&self, _config: &serde_json::Value) -> ModelRequestContribution {
+        ModelRequestContribution::default()
+    }
+
+    /// Whether this capability wants the `compaction_active` signal folded into
+    /// its message-filter configuration when compaction is enabled.
+    ///
+    /// Compaction and history filtering are otherwise independent, but a filter
+    /// that evicts history before compaction can summarize it leaves compaction
+    /// seeing only the recent window. A filter capability that can defer
+    /// reduction to compaction opts in here.
+    fn consumes_compaction_signal(&self) -> bool {
+        false
     }
 
     /// Whether this capability should be activated from the tools collected so
@@ -1168,33 +1213,12 @@ impl CapabilityRegistry {
         let mut registry = Self::new();
 
         registry.register(AgentInstructionsCapability);
-        registry.register(HumanIntentCapability);
-        registry.register(CurrentTimeCapability);
-        registry.register(MessageMetadataCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
-        registry.register(StatelessTodoListCapability);
-        registry.register(BtwCapability);
-        registry.register(InfinityContextCapability);
-        registry.register(budgeting::BudgetingCapability);
-        registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
-        registry.register(ErrorDisclosureCapability);
-        registry.register(OpenAiToolSearchCapability::new());
-        registry.register(ClaudeToolSearchCapability::new());
-        registry.register(ToolSearchCapability::new());
-        registry.register(AutoToolSearchCapability::new());
-        registry.register(PromptCachingCapability::new());
-        registry.register(ParallelToolCallsCapability);
         registry.register(SkillsCapability);
-        registry.register(SystemCommandsCapability);
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
-        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
-        registry.register(LoopDetectionCapability);
-        registry.register(ProgressGuardCapability::new());
         registry.register(ToolCallRepairCapability);
-        registry.register(PromptCanaryGuardrailCapability);
-        registry.register(GuardrailsCapability);
 
         registry
     }
@@ -1208,33 +1232,17 @@ impl CapabilityRegistry {
 
         // Core capabilities (all environments)
         registry.register(AgentInstructionsCapability);
-        registry.register(HumanIntentCapability);
-        registry.register(CurrentTimeCapability);
-        registry.register(MessageMetadataCapability);
-        registry.register(OpenRouterServerToolsCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
-        registry.register(StatelessTodoListCapability);
-        registry.register(BtwCapability);
-        registry.register(InfinityContextCapability);
-        registry.register(budgeting::BudgetingCapability);
-        registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
-        registry.register(ErrorDisclosureCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
-        registry.register(OpenAiToolSearchCapability::new());
         // Claude (Anthropic) tool_search (hosted deferred tool loading)
-        registry.register(ClaudeToolSearchCapability::new());
         // Generic, provider-agnostic tool_search (client-side deferred loading)
-        registry.register(ToolSearchCapability::new());
         // Model-adaptive tool_search (hosted on capable models, generic elsewhere)
-        registry.register(AutoToolSearchCapability::new());
-        registry.register(PromptCachingCapability::new());
 
         // Request-level parallel tool calls preference (none/prefer/avoid).
-        registry.register(ParallelToolCallsCapability);
 
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
@@ -1244,19 +1252,15 @@ impl CapabilityRegistry {
         let feature_decisions = crate::ExecutionFeatureDecisions::from_env(grade);
 
         // System commands (/clear, /status, /compact, /model)
-        registry.register(SystemCommandsCapability);
 
         // Tool output persistence (EVE-222: persist exec output to VFS)
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
-        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
-        registry.register(LoopDetectionCapability);
 
         // Progress guard: warns when tool traffic is investigation without
         // edits or validation. Complements loop detection, which only catches
         // literal repeats. Behavior-only (no tools), opt-in per agent.
-        registry.register(ProgressGuardCapability::new());
 
         // Auto-continue after an LLM usage limit resets: resumes interrupted
         // work once the provider limit clears. Behavior-only (no tools).
@@ -1264,7 +1268,6 @@ impl CapabilityRegistry {
         // `schedule_store` host service to create the continuation and a schedule
         // poller to fire it — neither is in the default in-process runtime — so it
         // sits with `session_schedule` rather than the runtime-safe preset.
-        registry.register(UsageLimitAutoContinueCapability);
 
         // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
         // arguments. Disabled by default — registered so agents can enable it,
@@ -1273,11 +1276,9 @@ impl CapabilityRegistry {
 
         // Prompt canary guardrail: replace assistant output if it leaks the
         // first sentence of the system prompt. Streaming-output guardrail.
-        registry.register(PromptCanaryGuardrailCapability);
 
         // Declarative guardrails (knowledge/execution/guardrails.md): config-driven
         // deterministic checks over model output and tool calls.
-        registry.register(GuardrailsCapability);
 
         // OpenUI/A2UI prompt helpers are product features, not required by embedders.
         #[cfg(feature = "ui-capabilities")]
@@ -1589,6 +1590,24 @@ impl CollectedCapabilities {
     pub fn has_message_filters(&self) -> bool {
         !self.message_filter_providers.is_empty()
     }
+}
+
+/// Provider-neutral model-request settings contributed by an enabled
+/// capability (EVE-884).
+///
+/// These used to be derived inside collection by matching built-in capability
+/// ids. The implementations now live in `everruns-builtins`, so each one
+/// declares its own contribution and the kernel merges them.
+#[derive(Debug, Default, Clone)]
+pub struct ModelRequestContribution {
+    /// Provider-side (hosted) tool search configuration.
+    pub tool_search: Option<crate::driver_registry::ToolSearchConfig>,
+    /// Prompt caching configuration.
+    pub prompt_cache: Option<crate::driver_registry::PromptCacheConfig>,
+    /// Preference for parallel tool calls on the model request.
+    pub parallel_tool_calls: Option<bool>,
+    /// OpenRouter routing configuration (server-side tools).
+    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
 }
 
 pub struct DelegationTargetProvider {
@@ -1976,11 +1995,11 @@ fn compaction_is_enabled(
 /// window. The flag tells infinity context to anchor + provide `query_history`
 /// and let compaction own reduction.
 fn message_filter_config_for(
-    cap_id: &str,
+    capability: &dyn Capability,
     base: &serde_json::Value,
     compaction_on: bool,
 ) -> serde_json::Value {
-    if cap_id != INFINITY_CONTEXT_CAPABILITY_ID || !compaction_on {
+    if !compaction_on || !capability.consumes_compaction_signal() {
         return base.clone();
     }
     let mut config = base.clone();
@@ -2024,7 +2043,7 @@ pub fn collect_message_filters_only(
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.message_filter_provider() {
                 let config =
-                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
+                    message_filter_config_for(effective, cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
         }
@@ -2586,7 +2605,6 @@ pub async fn collect_capabilities_with_configs(
                     Some(inner) => inner,
                     None => capability.as_ref(),
                 };
-            let effective_id = effective.id();
             let delegation_target =
                 effective.delegation_target_with_config(cap_config.config_value());
 
@@ -2638,68 +2656,22 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect a hosted tool_search mechanism (OpenAI or Anthropic). Both
-            // hosted capabilities produce the same provider-agnostic
-            // `ToolSearchConfig`; the driver that handles the request picks the
-            // wire format. `auto_tool_search` resolves to one of these ids only on
-            // models with native support; on every other model it resolves to the
-            // generic `tool_search`, which sets no hosted config and instead
-            // contributes the hook + tool above.
-            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
-                || effective_id == CLAUDE_TOOL_SEARCH_CAPABILITY_ID
-            {
-                // Parse threshold from config, fall back to default
-                let threshold = cap_config
-                    .config_value()
-                    .clone()
-                    .get("threshold")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize)
-                    .unwrap_or(DEFAULT_TOOL_SEARCH_THRESHOLD);
-                tool_search = Some(crate::driver_registry::ToolSearchConfig {
-                    enabled: true,
-                    threshold,
-                });
+            // Provider-neutral model-request settings. Capabilities declare
+            // what they contribute (hosted tool search, prompt caching,
+            // parallel-tool preference, OpenRouter routing); collection merges
+            // them without knowing which built-in produced which setting.
+            let contribution = effective.model_request_contribution(cap_config.config_value());
+            if let Some(config) = contribution.tool_search {
+                tool_search = Some(config);
             }
-
-            if cap_id == PROMPT_CACHING_CAPABILITY_ID {
-                let strategy = cap_config
-                    .config_value()
-                    .clone()
-                    .get("strategy")
-                    .and_then(|v| v.as_str())
-                    .map(|value| match value {
-                        "auto" => crate::driver_registry::PromptCacheStrategy::Auto,
-                        _ => crate::driver_registry::PromptCacheStrategy::Auto,
-                    })
-                    .unwrap_or(crate::driver_registry::PromptCacheStrategy::Auto);
-                let gemini_cached_content = cap_config
-                    .config_value()
-                    .clone()
-                    .get("gemini_cached_content")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
-                    enabled: true,
-                    strategy,
-                    gemini_cached_content,
-                });
+            if let Some(config) = contribution.prompt_cache {
+                prompt_cache = Some(config);
             }
-
-            if cap_id == PARALLEL_TOOL_CALLS_CAPABILITY_ID {
-                parallel_tool_calls =
-                    parallel_tool_calls::parallel_tool_calls_from_config(cap_config.config_value());
+            if let Some(preference) = contribution.parallel_tool_calls {
+                parallel_tool_calls = Some(preference);
             }
-
-            if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
-                let server_tools =
-                    openrouter_server_tools::server_tools_from_config(cap_config.config_value());
-                if !server_tools.is_empty() {
-                    openrouter_routing = Some(crate::driver_registry::OpenRouterRoutingConfig {
-                        server_tools,
-                        ..Default::default()
-                    });
-                }
+            if let Some(routing) = contribution.openrouter_routing {
+                openrouter_routing = Some(routing);
             }
 
             // Collect mount points
@@ -2720,7 +2692,7 @@ pub async fn collect_capabilities_with_configs(
             // Collect message filter provider
             if let Some(provider) = effective.message_filter_provider() {
                 let config =
-                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
+                    message_filter_config_for(effective, cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
 
@@ -3183,8 +3155,8 @@ mod tests {
 
     #[test]
     fn capability_metadata_is_an_opt_in_host_hatch() {
-        // Core capabilities carry none, so nothing changes for them.
-        assert!(CurrentTimeCapability.metadata().is_none());
+        // Kernel capabilities carry none, so nothing changes for them.
+        assert!(SessionStorageCapability.metadata().is_none());
 
         let metadata = HostAnnotatedCapability.metadata().expect("metadata");
         assert_eq!(metadata["icon"], "sparkles");
@@ -3572,18 +3544,21 @@ mod tests {
     #[test]
     fn test_capability_registry_builder() {
         let registry = CapabilityRegistry::builder()
-            .capability(HumanIntentCapability)
-            .capability(CurrentTimeCapability)
+            .capability(SessionCapability)
+            .capability(SessionStorageCapability)
             .build();
 
-        assert!(registry.has("human_intent"));
-        assert!(registry.has("current_time"));
+        assert!(registry.has("session"));
+        assert!(registry.has("session_storage"));
         assert_eq!(registry.len(), 2);
     }
 
     #[test]
     fn test_capability_status() {
-        assert_eq!(CurrentTimeCapability.status(), CapabilityStatus::Available);
+        assert_eq!(
+            SessionStorageCapability.status(),
+            CapabilityStatus::Available
+        );
 
         struct ComingSoonFixture;
         impl Capability for ComingSoonFixture {
@@ -4621,85 +4596,55 @@ mod tests {
     }
 
     #[test]
-    fn test_message_filter_config_injects_compaction_active_for_infinity_context() {
+    fn test_message_filter_config_injects_compaction_active_for_opt_in_capability() {
+        /// Stands in for a history-filter capability (e.g. `infinity_context`,
+        /// now in `everruns-builtins`) that defers reduction to compaction.
+        struct DeferringFilter;
+        impl Capability for DeferringFilter {
+            fn id(&self) -> &str {
+                "deferring_filter"
+            }
+            fn name(&self) -> &str {
+                "Deferring Filter"
+            }
+            fn description(&self) -> &str {
+                "History filter that defers reduction to compaction."
+            }
+            fn consumes_compaction_signal(&self) -> bool {
+                true
+            }
+        }
+
+        struct PlainFilter;
+        impl Capability for PlainFilter {
+            fn id(&self) -> &str {
+                "plain_filter"
+            }
+            fn name(&self) -> &str {
+                "Plain Filter"
+            }
+            fn description(&self) -> &str {
+                "History filter with no compaction composition."
+            }
+        }
+
         let base = serde_json::json!({ "context_budget_tokens": 1000 });
 
-        // Infinity context gets the derived flag only when compaction is enabled.
-        let with = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, true);
+        // The opt-in capability gets the derived flag only when compaction is on.
+        let with = message_filter_config_for(&DeferringFilter, &base, true);
         assert_eq!(with["compaction_active"], serde_json::json!(true));
         assert_eq!(with["context_budget_tokens"], serde_json::json!(1000));
 
-        let without = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, false);
+        let without = message_filter_config_for(&DeferringFilter, &base, false);
         assert!(without.get("compaction_active").is_none());
 
-        // Other capabilities are never touched.
-        let other = message_filter_config_for("other", &base, true);
+        // Capabilities that did not opt in are never touched.
+        let other = message_filter_config_for(&PlainFilter, &base, true);
         assert!(other.get("compaction_active").is_none());
 
         // A null base is upgraded to an object carrying the flag.
-        let null_base = message_filter_config_for(
-            INFINITY_CONTEXT_CAPABILITY_ID,
-            &serde_json::Value::Null,
-            true,
-        );
+        let null_base = message_filter_config_for(&DeferringFilter, &serde_json::Value::Null, true);
         assert_eq!(null_base["compaction_active"], serde_json::json!(true));
-    }
-
-    #[test]
-    fn test_infinity_context_defers_to_compaction_end_to_end() {
-        use crate::message::Message;
-
-        let mut registry = CapabilityRegistry::new();
-        registry.register(InfinityContextCapability);
-        registry.register(CompactionCapability);
-
-        let tight = serde_json::json!({
-            "context_budget_tokens": 1,
-            "min_recent_messages": 1
-        });
-
-        // Infinity context alone (tight budget): it trims and injects a notice.
-        let solo = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-            tight.clone(),
-        )];
-        let mut messages = vec![
-            Message::user("task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent"),
-        ];
-        collect_message_filters_only(&solo, &registry).apply_post_load_filters(&mut messages);
-        assert!(
-            messages
-                .iter()
-                .any(|m| m.text().is_some_and(|t| t.contains("NOT visible"))),
-            "infinity context alone should trim and notice"
-        );
-
-        // Infinity context + compaction: infinity context defers, no eviction.
-        let both = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-                tight,
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(COMPACTION_CAPABILITY_ID),
-                serde_json::json!({}),
-            ),
-        ];
-        let mut messages = vec![
-            Message::user("task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent"),
-        ];
-        collect_message_filters_only(&both, &registry).apply_post_load_filters(&mut messages);
-        assert_eq!(messages.len(), 3, "compaction owns reduction; no eviction");
-        assert!(
-            messages
-                .iter()
-                .all(|m| !m.text().is_some_and(|t| t.contains("NOT visible"))),
-            "no hidden-history notice when compaction is the active reducer"
-        );
     }
 
     #[test]
@@ -5460,63 +5405,6 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn test_apply_capabilities_openai_tool_search() {
-        let registry = CapabilityRegistry::with_builtins();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["openai_tool_search".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // OpenAiToolSearchCapability provides no tools and no system prompt
-        assert_eq!(
-            applied.runtime_agent.system_prompt,
-            base_runtime_agent.system_prompt
-        );
-        assert!(applied.tool_registry.is_empty());
-        assert_eq!(applied.applied_ids, vec!["openai_tool_search"]);
-
-        // tool_search config should be set on the runtime agent
-        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_openai_tool_search_with_other_capabilities() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let applied = apply_capabilities(
-            base_runtime_agent,
-            &[
-                "current_time".to_string(),
-                "openai_tool_search".to_string(),
-                "test_math".to_string(),
-            ],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // Should have tools from current_time and test_math
-        assert!(applied.tool_registry.has("get_current_time"));
-        assert!(applied.tool_registry.has("add"));
-        assert!(applied.tool_registry.has("subtract"));
-        assert!(applied.tool_registry.has("multiply"));
-        assert!(applied.tool_registry.has("divide"));
-
-        // tool_search should still be configured
-        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
-    }
-
-    #[tokio::test]
     async fn test_collect_capabilities_tool_search_custom_threshold() {
         let registry = CapabilityRegistry::with_builtins();
 
@@ -5530,123 +5418,6 @@ mod tests {
         let ts = collected.tool_search.as_ref().unwrap();
         assert!(ts.enabled);
         assert_eq!(ts.threshold, 5);
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_generic_off_native() {
-        let registry = fixture_registry();
-
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("auto_tool_search"),
-                serde_json::json!({"threshold": 2}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("test_math"),
-                serde_json::json!({}),
-            ),
-        ];
-
-        // No native support (pre-4 Claude) → resolves to the generic client-side
-        // mechanism: no hosted config, but the tool_search tool + DeferSchemaHook
-        // are collected.
-        let ctx = test_ctx().with_model("claude-3-5-haiku");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        assert!(
-            collected.tool_search.is_none(),
-            "auto_tool_search must not set a hosted config on a non-native model"
-        );
-        assert!(
-            collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "auto_tool_search must contribute the client-side tool_search tool"
-        );
-        assert!(
-            !collected.tool_definition_hooks.is_empty(),
-            "auto_tool_search must contribute a client-side deferral hook"
-        );
-
-        let mut transformed = collected.tool_definitions.clone();
-        for hook in &collected.tool_definition_hooks {
-            transformed = hook.transform(transformed);
-        }
-        let add_tool = transformed
-            .iter()
-            .find(|tool| tool.name() == "add")
-            .expect("test_math contributes add");
-        assert!(
-            add_tool.parameters().get("properties").is_none(),
-            "generic auto_tool_search must honor the configured threshold"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_native() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("auto_tool_search"),
-            serde_json::json!({"threshold": 7}),
-        )];
-
-        // Native support → resolves to the hosted OpenAI mechanism: a hosted
-        // config (honoring the configured threshold) and no client-side tool/hook.
-        let ctx = test_ctx().with_model("gpt-5.4");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        let ts = collected
-            .tool_search
-            .as_ref()
-            .expect("auto_tool_search must set a hosted config on a native model");
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, 7);
-        assert!(
-            !collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "hosted mechanism must not contribute the client-side tool_search tool"
-        );
-        assert!(
-            collected.tool_definition_hooks.is_empty(),
-            "hosted mechanism must not contribute a client-side deferral hook"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_anthropic() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("auto_tool_search"),
-            serde_json::json!({"threshold": 9}),
-        )];
-
-        // Native Claude support → resolves to the hosted Anthropic mechanism: a
-        // hosted config (honoring the threshold) and no client-side tool/hook.
-        let ctx = test_ctx().with_model("claude-opus-4-8");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        let ts = collected
-            .tool_search
-            .as_ref()
-            .expect("auto_tool_search must set a hosted config on a native Claude model");
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, 9);
-        assert!(
-            !collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "hosted mechanism must not contribute the client-side tool_search tool"
-        );
-        assert!(
-            collected.tool_definition_hooks.is_empty(),
-            "hosted mechanism must not contribute a client-side deferral hook"
-        );
     }
 
     #[tokio::test]

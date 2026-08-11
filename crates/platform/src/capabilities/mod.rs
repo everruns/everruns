@@ -121,6 +121,7 @@ pub fn register_hosted_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
     grade: everruns_core::DeploymentGrade,
 ) {
+    everruns_builtins::register_product_builtins(registry);
     registry.register(ResearchCapability);
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);

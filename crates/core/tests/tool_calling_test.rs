@@ -4,11 +4,12 @@
 // the ToolExecutor trait work correctly together.
 
 use async_trait::async_trait;
+use everruns_core::default_tools::GetCurrentTimeTool;
 use everruns_core::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResultImage,
 };
 use everruns_core::{
-    GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
+    Message, MessageRetriever, MessageRole, SessionId,
     in_memory::InMemoryMessageRetriever,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,

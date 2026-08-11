@@ -13,7 +13,7 @@ use std::collections::HashSet;
 /// Stateful Responses requests may legitimately carry a result whose call lives in
 /// `previous_response_id`; `allow_unmatched_results` preserves that delta shape.
 /// Calls without visible results are always removed rather than synthesized.
-pub(crate) fn retain_complete_message_tool_exchanges(
+pub fn retain_complete_message_tool_exchanges(
     messages: &[Message],
     allow_unmatched_results: bool,
 ) -> Vec<Message> {
@@ -82,7 +82,7 @@ pub(crate) fn retain_complete_llm_tool_exchanges(messages: Vec<LlmMessage>) -> V
 ///
 /// `allow_unmatched_results` is reserved for stateful Responses continuations,
 /// where the matching call is stored behind `previous_response_id`.
-pub(crate) fn retain_complete_llm_tool_exchanges_for_request(
+pub fn retain_complete_llm_tool_exchanges_for_request(
     messages: Vec<LlmMessage>,
     allow_unmatched_results: bool,
 ) -> Vec<LlmMessage> {

@@ -469,7 +469,7 @@ fn is_read_file_tool_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::message::{ContentPart, ToolCallContentPart};
 
     /// Helper: build an agent message with the given tool calls.

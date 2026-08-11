@@ -77,6 +77,7 @@ openai = ["dep:everruns-openai"]
 # application capability API.
 everruns-capability.workspace = true
 everruns-core.workspace = true
+everruns-builtins.workspace = true
 everruns-host.workspace = true
 # Deterministic in-process simulator backing `Model::simulated` (EVE-875).
 # `sim` only: the facade never links the demo fixture capabilities, so

@@ -250,7 +250,7 @@ fn normalize(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use serde_json::json;
 
     fn arm_with(prompt: &str) -> Option<Box<dyn OutputGuardrailRun>> {

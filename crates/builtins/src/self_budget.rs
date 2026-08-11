@@ -66,7 +66,7 @@ const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed s
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

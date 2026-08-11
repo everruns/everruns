@@ -2398,6 +2398,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-builtins",
  "everruns-capability",
  "everruns-core",
  "everruns-host",
@@ -2470,6 +2471,24 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "everruns-builtins"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+ "uuid 1.24.0",
 ]
 
 [[package]]
@@ -2662,6 +2681,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-engine",
  "everruns-http",
@@ -2879,6 +2899,7 @@ dependencies = [
  "async-trait",
  "base64 0.23.1",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "hex",
  "regex",
@@ -3032,6 +3053,7 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-bedrock",
+ "everruns-builtins",
  "everruns-core",
  "everruns-fireworks",
  "everruns-gemini",
@@ -3207,6 +3229,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
@@ -3405,6 +3428,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-host",
  "everruns-platform",

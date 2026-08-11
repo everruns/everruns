@@ -3985,11 +3985,11 @@ async fn test_empty_session_system_prompt_is_ignored() {
 /// persists the replacement (not the leak) in `output.message.completed`.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_output() {
-    use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{
+    use everruns_builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
         REASON_CODE_SYSTEM_PROMPT_LEAK,
     };
+    use everruns_core::AgentCapabilityConfig;
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     // Reuse the standard test environment, then patch the agent to (a) carry
@@ -4139,10 +4139,10 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
 /// delta contains the guarded prompt canary.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
-    use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{
+    use everruns_builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
+    use everruns_core::AgentCapabilityConfig;
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (

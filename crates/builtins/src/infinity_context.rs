@@ -3,6 +3,7 @@
 //! Keeps recent conversation turns in prompt context while exposing a
 //! `query_history` tool for older messages that fell out of the active window.
 
+use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::message_filter::{
@@ -11,7 +12,6 @@ use everruns_core::message_filter::{
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{ToolContext, ToolContextService};
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
@@ -322,8 +322,9 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
                 .map(|message| message.id.to_string())
                 .collect();
             let count_before_integrity = messages.len();
-            *messages =
-                everruns_core::tool_call_integrity::retain_complete_message_tool_exchanges(messages, true);
+            *messages = everruns_core::tool_call_integrity::retain_complete_message_tool_exchanges(
+                messages, true,
+            );
             total_excluded_count = total_excluded_count
                 .saturating_add(count_before_integrity.saturating_sub(messages.len()));
             let retained_head_len = messages
@@ -790,7 +791,7 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::in_memory::InMemoryMessageRetriever;
     use everruns_core::typed_id::SessionId;
 

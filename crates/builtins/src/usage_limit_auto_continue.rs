@@ -20,10 +20,12 @@
 // other capability's hook — new error-recovery extensions are built the same
 // way, without touching the atom.
 
-use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
 use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome};
-use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -251,7 +253,7 @@ impl LlmErrorHook for UsageLimitAutoContinueHook {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
 
     fn cap_config(config: Value) -> AgentCapabilityConfig {
         AgentCapabilityConfig::with_config(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, config)

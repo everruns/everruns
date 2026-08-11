@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use everruns_core::capabilities::InfinityContextCapability;
+use everruns_builtins::InfinityContextCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
@@ -750,7 +750,7 @@ async fn runtime_exposes_assembled_context() {
 
 #[tokio::test]
 async fn list_commands_returns_capability_commands_for_session() {
-    use everruns_core::capabilities::BtwCapability;
+    use everruns_builtins::BtwCapability;
     use everruns_core::command::CommandSource;
 
     let mut capabilities = CapabilityRegistry::new();
@@ -888,7 +888,7 @@ async fn execute_command_dispatches_to_capability_handler() {
 // store-backed command host — no host-specific executor.
 #[tokio::test]
 async fn execute_btw_command_returns_ephemeral_answer() {
-    use everruns_core::capabilities::BtwCapability;
+    use everruns_builtins::BtwCapability;
     use everruns_core::command::ExecuteCommandRequest;
 
     let mut capabilities = CapabilityRegistry::new();

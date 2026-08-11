@@ -5,10 +5,9 @@
 
 #![cfg(feature = "filesystem")]
 
+use everruns_builtins::DistillOutputHook;
 use everruns_core::atoms::PostToolExecHook;
-use everruns_core::capabilities::{
-    DistillOutputHook, PersistOutputHook, SystemPromptContext, collect_capabilities,
-};
+use everruns_core::capabilities::{PersistOutputHook, SystemPromptContext, collect_capabilities};
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
     assert_system_prompt, assert_tool_result_paths_conform, collect_absolute_paths,

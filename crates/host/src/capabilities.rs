@@ -1,17 +1,20 @@
 //! Capability composition for embedded hosts.
 //!
-//! `everruns-core` owns only effect-neutral capability contracts and built-ins.
-//! This module is the opt-in host composition boundary for environment-backed
-//! implementations.
+//! `everruns-core` owns the neutral capability contract and the kernel-invoked
+//! implementations. Portable policy built-ins live in `everruns-builtins`
+//! (EVE-884) and environment-backed ones in the integration crates; this module
+//! is the host composition boundary for both.
 
 use std::sync::Arc;
 
 use everruns_core::{CapabilityRegistry, EgressService};
 
-/// Return the runtime-safe core built-ins plus integrations enabled as host
-/// Cargo features.
+/// Return the runtime-safe built-ins — the kernel preset plus the portable
+/// policy bundle — with integrations enabled as host Cargo features.
 pub fn runtime_capability_registry() -> CapabilityRegistry {
-    compose_runtime_capability_registry(CapabilityRegistry::runtime_builtins())
+    let mut registry = CapabilityRegistry::runtime_builtins();
+    everruns_builtins::register_runtime_builtins(&mut registry);
+    compose_runtime_capability_registry(registry)
 }
 
 /// Add host integrations selected by Cargo features to an existing registry.

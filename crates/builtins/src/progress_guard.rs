@@ -4,11 +4,11 @@
 // tool traffic and injects a warning into the next tool result when the turn is
 // spending many tools on investigation without edits or validation.
 
+use async_trait::async_trait;
 use everruns_core::atoms::{PostToolExecHook, PostToolExecHookPriority};
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_core::traits::ToolContext;
-use async_trait::async_trait;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher};
@@ -798,8 +798,10 @@ fn inject_warning(result: &mut ToolResult, warning: String) {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
-    use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy, ToolResult};
+    use super::*;
+    use everruns_core::tool_types::{
+        BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy, ToolResult,
+    };
     use everruns_core::typed_id::SessionId;
 
     fn call(name: &str, arguments: Value) -> ToolCall {

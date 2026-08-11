@@ -681,7 +681,7 @@ impl ToolRegistry {
     /// the `everruns-test-support` crate (EVE-875) and are registered
     /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
-        use crate::capabilities::{GetCurrentTimeTool, WriteTodosTool};
+        use crate::default_tools::{GetCurrentTimeTool, WriteTodosTool};
         use crate::progress_reporting::ReportProgressTool;
 
         let builder = ToolRegistry::builder()
@@ -711,7 +711,7 @@ impl ToolRegistry {
     /// controls such as network ACLs, egress routing, storage, or filesystem
     /// mediation.
     pub fn with_monitor_probe_defaults() -> Self {
-        use crate::capabilities::GetCurrentTimeTool;
+        use crate::default_tools::GetCurrentTimeTool;
 
         ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
@@ -2079,7 +2079,7 @@ impl Tool for FailingTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::GetCurrentTimeTool;
+    use crate::default_tools::GetCurrentTimeTool;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_task::SessionTaskRegistry;
     use crate::subagent_delegation::SubagentSessionDelegate;

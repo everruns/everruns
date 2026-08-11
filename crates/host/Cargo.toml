@@ -37,6 +37,7 @@ everruns-core.workspace = true
 everruns-engine.workspace = true
 everruns-http = { workspace = true, optional = true }
 everruns-mcp = { workspace = true, optional = true }
+everruns-builtins.workspace = true
 everruns-platform.workspace = true
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }

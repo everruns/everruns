@@ -296,7 +296,7 @@ impl PreToolUseHook for ToolApprovalHook {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
     use everruns_core::tool_types::{BuiltinTool, ToolHints};
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};

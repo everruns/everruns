@@ -20,10 +20,13 @@
 // metadata (`error_disclosure`, `source_error_code`) for tracking.
 
 use everruns_core::capabilities::{Capability, CapabilityLocalization};
-use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::user_facing_error::ErrorDisclosure;
 
-pub const ERROR_DISCLOSURE_CAPABILITY_ID: &str = "error_disclosure";
+// EVE-884: the kernel applies the resolved mode when a turn fails, so the
+// resolver and the id it keys on are owned by core and re-exported here.
+pub use everruns_core::error_disclosure_policy::{
+    ERROR_DISCLOSURE_CAPABILITY_ID, resolve_error_disclosure,
+};
 
 pub struct ErrorDisclosureCapability;
 
@@ -110,45 +113,10 @@ impl Capability for ErrorDisclosureCapability {
     }
 }
 
-/// Disclosure mode configured on the enabled `error_disclosure` capability,
-/// or `None` when the capability is not enabled for the agent.
-fn configured_mode(configs: &[AgentCapabilityConfig]) -> Option<ErrorDisclosure> {
-    let config = configs
-        .iter()
-        .find(|config| config.capability_id() == ERROR_DISCLOSURE_CAPABILITY_ID)?;
-    Some(
-        config
-            .config_value()
-            .clone()
-            .get("mode")
-            .and_then(|mode| mode.as_str())
-            .and_then(ErrorDisclosure::parse)
-            .unwrap_or_default(),
-    )
-}
-
-/// Resolve the effective error-disclosure mode for a turn.
-///
-/// Precedence: per-message `controls.error_disclosure` override, clamped to
-/// the capability-configured ceiling (capability absent => `standard`).
-///
-/// THREAT[TM-LLM-024]: the clamp is the security boundary — message controls
-/// are client-supplied, so they may only narrow disclosure, never widen it
-/// beyond what the agent operator configured.
-pub fn resolve_error_disclosure(
-    configs: &[AgentCapabilityConfig],
-    requested: Option<&str>,
-) -> ErrorDisclosure {
-    let ceiling = configured_mode(configs).unwrap_or_default();
-    match requested.and_then(ErrorDisclosure::parse) {
-        Some(requested) => requested.min(ceiling),
-        None => ceiling,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
+    use super::*;
+    use everruns_core::capability_types::AgentCapabilityConfig;
 
     fn cap_config(mode: &str) -> AgentCapabilityConfig {
         AgentCapabilityConfig::with_config(

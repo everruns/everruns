@@ -4049,8 +4049,8 @@ mod tests {
 
     #[tokio::test]
     async fn tool_definition_hook_applies_host_root_to_eager_and_deferred_schemas() {
-        use crate::capabilities::ToolSearchCapability;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition};
+        use everruns_builtins::ToolSearchCapability;
 
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         let ctx = SystemPromptContext {

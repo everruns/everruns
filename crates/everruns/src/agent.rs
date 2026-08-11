@@ -1234,7 +1234,7 @@ fn validate_registered_capability_config(
             })?;
     }
 
-    if id == everruns_core::AUTO_TOOL_SEARCH_CAPABILITY_ID {
+    if id == everruns_builtins::AUTO_TOOL_SEARCH_CAPABILITY_ID {
         validate_tool_search_config(config).map_err(|reason| BuildError::InvalidCapability {
             id: id.to_string(),
             reason,

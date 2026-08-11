@@ -25,18 +25,18 @@
 // Use this instead of the individual capabilities when a harness must work well
 // across providers.
 
-use everruns_core::capabilities::claude_tool_search::{
+use crate::claude_tool_search::{
     ClaudeToolSearchCapability,
     model_supports_native_tool_search as model_supports_native_claude_tool_search,
 };
-use everruns_core::capabilities::openai_tool_search::{
+use crate::openai_tool_search::{
     OpenAiToolSearchCapability,
     model_supports_native_tool_search as model_supports_native_openai_tool_search,
 };
-use everruns_core::capabilities::tool_search::ToolSearchCapability;
+use crate::tool_search::ToolSearchCapability;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 
-pub use everruns_core::capabilities::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
+pub use crate::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
 /// Capability ID for the model-adaptive tool search.
 pub const AUTO_TOOL_SEARCH_CAPABILITY_ID: &str = "auto_tool_search";
@@ -136,8 +136,8 @@ impl Capability for AutoToolSearchCapability {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::capabilities::*;
-    use everruns_core::capabilities::{
+    use super::*;
+    use crate::{
         CLAUDE_TOOL_SEARCH_CAPABILITY_ID, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
         TOOL_SEARCH_CAPABILITY_ID,
     };
