@@ -455,6 +455,7 @@ pub(crate) async fn required_result_is_missing(
         .is_some_and(|task| declared_result_schema(&task).is_some() && task.result_path.is_none())
 }
 
+#[cfg(feature = "a2a")]
 pub(crate) async fn write_task_result_value(
     context: &ToolContext,
     task_id: &str,

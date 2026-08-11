@@ -924,8 +924,8 @@ impl WorkerServiceImpl {
         org_id: i64,
         agent: &everruns_platform::Agent,
     ) -> Vec<McpToolDef> {
-        use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;
+        use everruns_mcp::parse_mcp_capability_id;
 
         // Collect unique MCP server IDs from capabilities
         let server_ids: Vec<uuid::Uuid> = agent

@@ -8,19 +8,25 @@
 // host root (the worktree-switch scenario) moves every surface together.
 
 use everruns_core::atoms::PostToolExecHook;
-use everruns_core::capabilities::{BashTool, DistillOutputHook, PersistOutputHook, WriteFileTool};
+use everruns_core::capabilities::{DistillOutputHook, PersistOutputHook};
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
+#[cfg(any(feature = "bashkit", feature = "filesystem"))]
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
 use everruns_host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
+#[cfg(feature = "bashkit")]
+use everruns_integrations_bashkit::BashTool;
+#[cfg(feature = "filesystem")]
+use everruns_integrations_filesystem::WriteFileTool;
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 /// Run `pwd` through the bash tool and return the reported working directory.
+#[cfg(feature = "bashkit")]
 async fn bash_pwd(ctx: &ToolContext) -> String {
     match BashTool::default()
         .execute_with_context(json!({ "commands": "pwd" }), ctx)
@@ -164,6 +170,7 @@ async fn persisted_output_paths_follow_store_display_identity() {
     assert_distillation_pointer_follows_store(memory).await;
 }
 
+#[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn all_surfaces_agree_on_root_across_worktree_switch() {
     let session = SessionId::from_seed(660);
@@ -304,6 +311,7 @@ fn backend_native_display_keeps_literal_workspace_segment() {
     );
 }
 
+#[cfg(feature = "filesystem")]
 #[tokio::test]
 async fn direct_real_disk_write_reports_workspace_alias_target() {
     let root = TempDir::new().unwrap();

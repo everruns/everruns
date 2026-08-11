@@ -17,6 +17,7 @@ use everruns_core::capabilities::{
 };
 use everruns_core::tools::ToolRegistry;
 use everruns_core::typed_id::SessionId;
+use everruns_integrations_bashkit::BashkitShellCapability;
 
 fn ctx() -> SystemPromptContext {
     SystemPromptContext::without_file_store(SessionId::new())
@@ -39,7 +40,8 @@ async fn assemble(
     Vec<everruns_core::tool_types::ToolDefinition>,
     Vec<String>,
 ) {
-    let registry = CapabilityRegistry::with_builtins();
+    let mut registry = CapabilityRegistry::with_builtins();
+    registry.register(BashkitShellCapability);
     let configs: Vec<AgentCapabilityConfig> = cap_ids.iter().map(|id| cap(id)).collect();
     let collected = collect_capabilities_with_configs(&configs, &registry, &ctx()).await;
 

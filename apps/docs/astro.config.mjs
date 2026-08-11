@@ -189,6 +189,7 @@ export default defineConfig({
                   label: "Extend",
                   items: [
                     { label: "Advanced Capabilities", slug: "framework/advanced-capabilities" },
+                    { label: "Capability Integrations", slug: "framework/capability-integrations" },
                     { label: "Custom Providers", slug: "framework/custom-providers" },
                     { label: "Custom Backends", slug: "framework/custom-backends" },
                     { label: "Testing and Simulation", slug: "framework/testing-and-simulation" },

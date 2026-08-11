@@ -22,9 +22,9 @@ use everruns_core::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 
-use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::traits::ResolvedModel;
+use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 // ============================================================================

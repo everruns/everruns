@@ -388,7 +388,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     /// calling them through the shared MCP client over the platform egress
     /// boundary (SSRF-guarded). Returns `None` when no egress service is
     /// available, in which case MCP tools are not registered for execution.
-    async fn mcp_executor(&self, org_id: i64, session_id: SessionId) -> Option<Arc<McpExecutor>> {
+    async fn mcp_executor(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::McpToolInvoker>> {
         let egress = self.adapters.egress_service()?;
         let client = Arc::new(McpClient::new(egress, Arc::new(NoAuthProvider)));
         let resolver = Arc::new(WorkerMcpResolver {

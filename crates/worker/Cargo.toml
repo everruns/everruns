@@ -10,7 +10,7 @@ license.workspace = true
 # Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
-lua = ["everruns-core/lua", "everruns-host/lua"]
+lua = ["everruns-platform/lua", "everruns-host/lua"]
 
 [dependencies]
 mimalloc.workspace = true
@@ -22,7 +22,7 @@ anyhow.workspace = true
 tracing.workspace = true
 
 everruns-capability = { workspace = true }
-everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-core = { path = "../core", features = ["a2a", "embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
 # Telemetry init (OTLP exporter + tracing-subscriber layers) — installed
 # explicitly by the worker binary; core no longer ships it (EVE-876).
 everruns-observability = { workspace = true }
@@ -30,7 +30,7 @@ everruns-observability = { workspace = true }
 # scenarios). `sim` only — the worker never links the demo fixture
 # capabilities; scripts/lib/check-test-support-isolation.sh guards this.
 everruns-test-support = { workspace = true, features = ["sim"] }
-everruns-platform = { path = "../platform", features = ["embedded-platform-docs"] }
+everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-openai-image = { path = "../../integrations/openai-image" }
@@ -54,8 +54,9 @@ everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
+everruns-http.workspace = true
 everruns-ard.workspace = true
-everruns-host.workspace = true
+everruns-host = { workspace = true, features = ["bashkit", "mcp"] }
 # Note: Workers don't need direct DB access - all DB operations go through gRPC
 # The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
 everruns-durable = { path = "../durable" }

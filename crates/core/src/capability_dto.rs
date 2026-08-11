@@ -506,14 +506,9 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // bashkit_shell is High risk (code execution)
-        let bash_cap = registry.get("bashkit_shell").unwrap();
-        let info = CapabilityInfo::from_core(bash_cap.as_ref());
-        assert_eq!(info.risk_level, RiskLevel::High);
-
-        // web_fetch is High risk (network access)
-        let fetch_cap = registry.get("web_fetch").unwrap();
-        let info = CapabilityInfo::from_core(fetch_cap.as_ref());
+        // user_hooks is a core-owned High-risk policy capability.
+        let hooks_cap = registry.get("user_hooks").unwrap();
+        let info = CapabilityInfo::from_core(hooks_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 
         // current_time is Low risk (default)

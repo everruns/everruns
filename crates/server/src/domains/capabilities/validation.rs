@@ -13,10 +13,11 @@ use crate::storage::StorageBackend;
 use anyhow::Result;
 use everruns_core::capabilities::{
     AgentCapabilityConfig, CapabilityRegistry, declarative_capability_id,
-    is_declarative_capability, is_mcp_capability, is_skill_capability,
-    parse_declarative_capability_id, parse_mcp_capability_id, parse_skill_capability_id,
+    is_declarative_capability, is_skill_capability, parse_declarative_capability_id,
+    parse_skill_capability_id,
 };
 use everruns_core::{is_plugin_capability, parse_plugin_capability_id};
+use everruns_mcp::{is_mcp_capability, parse_mcp_capability_id};
 
 use crate::domains::common::CommandError;
 

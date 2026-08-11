@@ -24,7 +24,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bashkit::{Bash, ExecutionLimits, TraceMode};
 
-use crate::capabilities::SessionFileSystemAdapter;
+use crate::SessionFileSystemAdapter;
 use crate::hook_executor::{
     BashExecOutput, BashHookDispatcher, ExecutorOpts, HOOK_PAYLOAD_DIR, HOOK_PAYLOAD_WORKSPACE_DIR,
     HookPayload, payload_filename, standard_hook_env,

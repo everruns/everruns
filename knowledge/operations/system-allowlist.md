@@ -111,12 +111,12 @@ allowlist always wins for the request kinds it governs.
 
 When `ToolContext.egress_service` is present (always true in the runtime),
 `web_fetch` injects the egress boundary as fetchkit's HTTP transport
-(`crates/core/src/capabilities/web_fetch/egress_transport.rs`), so the allowlist is
+(`integrations/web-fetch/src/egress_transport.rs`), so the allowlist is
 enforced at the boundary for every hop like any other egress traffic.
 
 On both paths the tool pre-checks the initial URL and returns the distinct
 "Endpoint blocked by system policy: …" error before any request is made
-(`crates/core/src/capabilities/web_fetch/mod.rs`). A denial raised at the egress
+(`integrations/web-fetch/src/lib.rs`). A denial raised at the egress
 boundary itself (e.g. a redirect hop) surfaces as "Outbound request blocked by
 network policy: …". On the direct path (contexts without an egress service,
 e.g. embedded hosts) the pre-flight check is the only enforcement.

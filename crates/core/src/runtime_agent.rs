@@ -535,6 +535,23 @@ mod tests {
         SystemPromptContext::without_file_store(crate::typed_id::SessionId::new())
     }
 
+    struct FileSystemFixture;
+
+    impl crate::capabilities::Capability for FileSystemFixture {
+        fn id(&self) -> &str {
+            "session_file_system"
+        }
+        fn name(&self) -> &str {
+            "Fixture Filesystem"
+        }
+        fn description(&self) -> &str {
+            "Fixture for host-supplied filesystem composition."
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("The workspace root is `/workspace`.")
+        }
+    }
+
     #[test]
     fn test_runtime_agent_new() {
         let runtime_agent = RuntimeAgent::new("You are helpful.", "gpt-5.2");
@@ -653,7 +670,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_capabilities_keeps_base_prompt_first() {
-        let registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::with_builtins();
+        registry.register(FileSystemFixture);
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&["session_file_system".to_string()], &registry, &test_ctx())
@@ -741,6 +759,7 @@ mod tests {
         // Sample Data depends on Session File System
         // When we request only Sample Data, we should get system prompt from both
         let mut registry = CapabilityRegistry::with_builtins();
+        registry.register(FileSystemFixture);
         registry.register(SampleDataFixture);
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")

@@ -9,7 +9,7 @@
 // See: draft-meunier-http-message-signatures-directory-05
 
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::capabilities::{BotAuthPublicKey, derive_bot_auth_public_key};
+use everruns_integrations_web_fetch::{BotAuthPublicKey, derive_bot_auth_public_key};
 use serde::Serialize;
 
 #[derive(Clone)]

@@ -17,8 +17,8 @@
 //! cargo run -p everruns-host --example lua_code_mode_agent --features lua
 //! ```
 //!
-//! Without the `lua` feature the engine is not compiled in and the script would
-//! return a "not compiled" error, so the example is gated behind it.
+//! Without the `lua` feature the host does not link the Lua integration, so the
+//! example is gated behind it.
 
 #[cfg(not(feature = "lua"))]
 fn main() {
@@ -31,13 +31,13 @@ fn main() {
 #[cfg(feature = "lua")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use everruns_core::capabilities::{LuaCapability, LuaCodeModeCapability};
     use everruns_core::driver_registry::DriverRegistry;
     use everruns_core::{
         AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
         SessionId,
     };
     use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+    use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
     use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
     use everruns_test_support::{LlmSimRuntimeExt, TestMathCapability};
 

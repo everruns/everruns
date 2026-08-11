@@ -5,9 +5,8 @@
 //! The worker default only includes capabilities and LLM drivers because
 //! connection providers and harness templates are server-owned by default.
 
-use everruns_core::{
-    DeploymentGrade, DirectEgressService, PlatformDefinition, SystemUtilityLlmConfig,
-};
+use everruns_core::{DeploymentGrade, PlatformDefinition, SystemUtilityLlmConfig};
+use everruns_http::DirectEgressService;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.

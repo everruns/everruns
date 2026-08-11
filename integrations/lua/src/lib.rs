@@ -1,25 +1,28 @@
-//! Lua Execution Capability (experimental)
+//! Sandboxed Lua execution and code-mode integration for Everruns agents.
 //!
-//! Provides a sandboxed Lua interpreter over the session virtual filesystem.
-//! See `knowledge/execution/lua-execution.md` for motivation, sandbox model, threat model
-//! (TM-LUA-*), and the phased roadmap (the goal is to supersede `bashkit_shell`).
+//! Scripts run in a fresh vendored Lua 5.4 VM with bounded memory,
+//! instructions, time, output, and standard-library access. Filesystem and tool
+//! calls cross host-provided contracts rather than reaching the machine.
 //!
-//! Design (parallels `bashkit_shell`):
-//! - `LuaCapability` is `High` risk and admin-gated, exactly like `bashkit_shell`.
-//! - `LuaVfs` is the single seam to the (already session-scoped)
-//!   `SessionFileSystem`; it delegates path resolution to the store (a `MountFs`
-//!   in production), so `/workspace` is just the default cwd. Tenant isolation
-//!   falls out of routing every path through that session-scoped store.
-//! - The engine is `mlua` (vendored Lua 5.4), behind the `lua` cargo feature so
-//!   the default build doesn't compile the C sources. `LuaLimits` is plain data;
-//!   `engine::run` enforces it (memory limit, instruction+deadline hook, scrubbed
-//!   stdlib). With the feature off the tool returns a "not compiled" error.
+//! It is part of the [Everruns](https://everruns.com) ecosystem and is an
+//! opt-in high-risk integration for `everruns-host`.
 //!
-//! Trust boundary (TM-LUA-001..008): `risk_level()` returns `High`; assigning
-//! this capability requires `OrgRole::Admin` via the same gates as
-//! `bashkit_shell` (`check_high_risk_caps` / `require_admin_for_high_risk`).
+//! # Example
+//!
+//! ```
+//! use everruns_core::Capability;
+//! use everruns_integrations_lua::LuaCapability;
+//!
+//! assert_eq!(LuaCapability.id(), "lua");
+//! ```
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
+use everruns_core::*;
+use std::result::Result;
+
+mod code_mode;
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
@@ -27,6 +30,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+pub use code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
@@ -387,10 +391,7 @@ fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
 
 /// Resource limits enforced by the engine (TM-LUA-002/003/008).
 ///
-/// All fields but `timeout` are consumed only by the `mlua` engine, so they
-/// read as dead code in the default (feature-off) build.
 #[derive(Debug, Clone)]
-#[cfg_attr(not(feature = "lua"), allow(dead_code))]
 pub struct LuaLimits {
     pub memory_bytes: usize,
     pub max_instructions: u64,
@@ -574,29 +575,6 @@ impl LuaVfs {
 // Engine (mlua)
 // ============================================================================
 
-#[cfg(not(feature = "lua"))]
-mod engine {
-    use super::{LuaLimits, LuaOutcome, LuaVfs, ToolContext};
-    use std::sync::Arc;
-
-    /// Stub used when the `lua` feature is off (default). Keeps the default
-    /// build from compiling the vendored Lua C sources.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) async fn run(
-        _script: &str,
-        _vfs: Arc<LuaVfs>,
-        _ctx: ToolContext,
-        _allowed_tools: Vec<String>,
-        _http_enabled: bool,
-        _limits: &LuaLimits,
-        _output: tokio::sync::mpsc::UnboundedSender<String>,
-    ) -> LuaOutcome {
-        LuaOutcome::engine_error(
-            "Lua engine is not compiled in this build (enable the `lua` cargo feature).",
-        )
-    }
-}
-
 // The engine: mlua (vendored Lua 5.4, never LuaJIT). mlua loads the full stdlib,
 // so the sandbox works by *scrubbing* the dangerous surface
 // (io/os.execute/package/require/load/dofile/string.dump) rather than by
@@ -615,7 +593,6 @@ mod engine {
 // - code mode: `tools.<name>(args)` re-enters only Auto, non-destructive,
 //   non-execution tools; the child context has no tool_registry, so code mode
 //   cannot recurse (TM-LUA-009).
-#[cfg(feature = "lua")]
 mod engine {
     use super::{LuaLimits, LuaOutcome, LuaVfs, ToolContext, VfsEntry, VfsGrepHit};
     use mlua::{
@@ -1265,23 +1242,7 @@ mod tests {
         );
     }
 
-    // When the engine is not compiled in (default build), the tool surfaces a
-    // clear error rather than silently succeeding.
-    #[cfg(not(feature = "lua"))]
-    #[tokio::test]
-    async fn engine_disabled_reports_not_compiled() {
-        let mut ctx = ToolContext::new(SessionId::new());
-        ctx.file_store = Some(Arc::new(EmptyFileStore));
-        let result = LuaTool
-            .execute_with_context(json!({"script": "return 1"}), &ctx)
-            .await;
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("not compiled"))
-        );
-    }
-
-    /// Minimal file store: enough to populate `ToolContext::file_store` so the
-    /// tool reaches the engine seam. The engine-off path never touches it.
+    /// Minimal file store used by engine tests.
     struct EmptyFileStore;
 
     #[async_trait]
@@ -1294,7 +1255,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> crate::Result<Option<SessionFile>> {
+        ) -> everruns_core::Result<Option<SessionFile>> {
             Ok(None)
         }
 
@@ -1304,7 +1265,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> crate::Result<SessionFile> {
+        ) -> everruns_core::Result<SessionFile> {
             Ok(SessionFile {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.into(),
@@ -1325,7 +1286,7 @@ mod tests {
             _session_id: SessionId,
             _path: &str,
             _recursive: bool,
-        ) -> crate::Result<bool> {
+        ) -> everruns_core::Result<bool> {
             Ok(false)
         }
 
@@ -1333,7 +1294,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> crate::Result<Vec<crate::session_file::FileInfo>> {
+        ) -> everruns_core::Result<Vec<crate::session_file::FileInfo>> {
             Ok(vec![])
         }
 
@@ -1341,7 +1302,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _path: &str,
-        ) -> crate::Result<Option<crate::FileStat>> {
+        ) -> everruns_core::Result<Option<crate::FileStat>> {
             Ok(None)
         }
 
@@ -1350,7 +1311,7 @@ mod tests {
             _session_id: SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> crate::Result<Vec<crate::GrepMatch>> {
+        ) -> everruns_core::Result<Vec<crate::GrepMatch>> {
             Ok(vec![])
         }
 
@@ -1358,7 +1319,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> crate::Result<crate::session_file::FileInfo> {
+        ) -> everruns_core::Result<crate::session_file::FileInfo> {
             Ok(crate::session_file::FileInfo {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.into(),
@@ -1377,7 +1338,6 @@ mod tests {
     // End-to-end engine tests (run for whichever engine feature is enabled).
     // ========================================================================
 
-    #[cfg(feature = "lua")]
     mod engine_tests {
         use super::*;
         use std::collections::HashMap;
@@ -1427,8 +1387,7 @@ mod tests {
             }
         }
 
-        // os.* is a mlua-only safe subset; piccolo's core() loads no os library.
-        #[cfg(feature = "lua")]
+        // The sandbox retains the safe os.* subset.
         #[tokio::test]
         async fn safe_os_subset_available() {
             let v = run("return type(os.time())", Arc::new(EmptyFileStore)).await;
@@ -1520,7 +1479,7 @@ mod tests {
         async fn http_denies_allowlisted_loopback_ip_before_egress() {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
-            ctx.egress_service = Some(Arc::new(crate::egress::DirectEgressService::new()));
+            ctx.egress_service = Some(Arc::new(everruns_http::DirectEgressService::new()));
             ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
                 "127.0.0.1",
             ]));
@@ -1708,7 +1667,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> crate::Result<Option<SessionFile>> {
+            ) -> everruns_core::Result<Option<SessionFile>> {
                 let files = self.files.lock().unwrap();
                 Ok(files.get(path).map(|content| SessionFile {
                     id: uuid::Uuid::new_v4(),
@@ -1731,7 +1690,7 @@ mod tests {
                 path: &str,
                 content: &str,
                 encoding: &str,
-            ) -> crate::Result<SessionFile> {
+            ) -> everruns_core::Result<SessionFile> {
                 self.files
                     .lock()
                     .unwrap()
@@ -1756,7 +1715,7 @@ mod tests {
                 _session_id: SessionId,
                 path: &str,
                 _recursive: bool,
-            ) -> crate::Result<bool> {
+            ) -> everruns_core::Result<bool> {
                 Ok(self.files.lock().unwrap().remove(path).is_some())
             }
 
@@ -1764,7 +1723,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> crate::Result<Vec<crate::session_file::FileInfo>> {
+            ) -> everruns_core::Result<Vec<crate::session_file::FileInfo>> {
                 let prefix = if path == "/" {
                     "/".to_string()
                 } else {
@@ -1792,7 +1751,7 @@ mod tests {
                 &self,
                 _session_id: SessionId,
                 path: &str,
-            ) -> crate::Result<Option<crate::FileStat>> {
+            ) -> everruns_core::Result<Option<crate::FileStat>> {
                 let files = self.files.lock().unwrap();
                 Ok(files.get(path).map(|c| crate::FileStat {
                     path: path.to_string(),
@@ -1810,7 +1769,7 @@ mod tests {
                 _session_id: SessionId,
                 pattern: &str,
                 path_pattern: Option<&str>,
-            ) -> crate::Result<Vec<crate::GrepMatch>> {
+            ) -> everruns_core::Result<Vec<crate::GrepMatch>> {
                 let re = regex::Regex::new(pattern)
                     .map_err(|e| crate::error::AgentLoopError::store(e.to_string()))?;
                 let files = self.files.lock().unwrap();
@@ -1838,7 +1797,7 @@ mod tests {
                 &self,
                 session_id: SessionId,
                 path: &str,
-            ) -> crate::Result<crate::session_file::FileInfo> {
+            ) -> everruns_core::Result<crate::session_file::FileInfo> {
                 Ok(crate::session_file::FileInfo {
                     id: uuid::Uuid::new_v4(),
                     session_id: session_id.into(),

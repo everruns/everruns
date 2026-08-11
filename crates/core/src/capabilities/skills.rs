@@ -25,17 +25,14 @@
 // such a signal: both the session-files API and `InitialFile` accept
 // `is_readonly = true` from user input.
 //
-// Therefore the trust gate in `ActivateSkillFromVfsTool::execute_with_context`
-// is conservative: `is_trusted_source = false` for every source, so
-// `preprocess_command_injections` is never invoked at runtime. This preserves
-// PR #1449's RCE fix while keeping the execution pipeline wired up
-// (`ProcessCommandExecutor`, `preprocess_command_injections`, unit tests) so a
-// follow-up can flip the gate once a non-user-spoofable provenance signal
+// Therefore `ActivateSkillFromVfsTool::execute_with_context` never invokes
+// `preprocess_command_injections`; command placeholders remain literal. This
+// preserves PR #1449's RCE fix while keeping the neutral parsing logic and its
+// unit tests available for a follow-up once a non-user-spoofable provenance signal
 // (e.g. a `mount_capability_id` column populated only by mount application
 // code) is added to `SessionFile` / `SessionFileSystem`. See EVE-388.
 //
-// Re-enable must ALSO replace `ProcessCommandExecutor` (which spawns worker-host
-// `bash -c`) with a session-sandbox-backed executor: execution MUST run against
+// Re-enable must supply a session-sandbox-backed executor: execution MUST run against
 // the bashkit shell (managed session sandbox) and the session virtual
 // filesystem, not the worker host. Adding provenance alone would still be RCE
 // against the worker. See threat-model TM-TOOL-020 step 6.
@@ -617,7 +614,6 @@ impl Tool for ActivateSkillFromVfsTool {
         // `file` is still read above so future trust checks can look at
         // provenance metadata once it exists; for now the decision is fixed.
         let _ = &file;
-        let is_trusted_source: bool = false;
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
                 // Apply substitution pipeline:
@@ -633,12 +629,7 @@ impl Tool for ActivateSkillFromVfsTool {
                     &session_id_str,
                     &skill_dir,
                 );
-                let preprocessed = if is_trusted_source {
-                    let executor = crate::skill::ProcessCommandExecutor::default();
-                    crate::skill::preprocess_command_injections(&substituted, &executor).await
-                } else {
-                    substituted
-                };
+                let preprocessed = substituted;
                 let instructions = format!(
                     "<skill name=\"{}\">\n{}\n</skill>",
                     parsed.name, preprocessed
@@ -716,6 +707,20 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    struct FileSystemDependencyFixture;
+
+    impl Capability for FileSystemDependencyFixture {
+        fn id(&self) -> &str {
+            "session_file_system"
+        }
+        fn name(&self) -> &str {
+            "Fixture Filesystem"
+        }
+        fn description(&self) -> &str {
+            "Host-supplied filesystem dependency fixture."
+        }
+    }
 
     // ========================================================================
     // MockFileStore for testing skill discovery
@@ -1574,7 +1579,8 @@ mod tests {
     fn test_skills_dependency_resolution() {
         use crate::capabilities::resolve_dependencies;
 
-        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let mut registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        registry.register(FileSystemDependencyFixture);
         let resolved = resolve_dependencies(&["skills".to_string()], &registry).unwrap();
 
         // Should auto-include session_file_system as dependency
@@ -1602,7 +1608,8 @@ mod tests {
         use crate::capabilities::SystemPromptContext;
         use crate::runtime_agent::RuntimeAgentBuilder;
 
-        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let mut registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        registry.register(FileSystemDependencyFixture);
         let ctx = SystemPromptContext::without_file_store(crate::typed_id::SessionId::new());
         // Use builder pattern which resolves dependencies automatically
         let runtime_agent = RuntimeAgentBuilder::new()
@@ -1632,13 +1639,11 @@ mod tests {
             "Should include skills capability in XML tags"
         );
 
-        // Should include file system tools (from dependency) + skills tools
+        // The filesystem implementation is host-owned; this core fixture only
+        // proves the dependency participates in composition.
         let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
         assert!(tool_names.contains(&"list_skills"));
         assert!(tool_names.contains(&"activate_skill"));
-        // Dependency tools (from session_file_system)
-        assert!(tool_names.contains(&"read_file"));
-        assert!(tool_names.contains(&"write_file"));
     }
 
     // ========================================================================

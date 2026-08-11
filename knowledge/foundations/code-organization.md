@@ -98,6 +98,17 @@ worker binaries install telemetry explicitly through `everruns-observability`.
 `scripts/lib/check-observability-isolation.sh` (pre-push + CI) enforces the
 boundary and keeps Framework/provider dependency trees exporter-free.
 
+Environment-backed capability implementations live outside `everruns-core`.
+Core owns the capability, tool, filesystem, egress, and MCP-neutral contracts;
+focused integration crates own filesystem, Bashkit, web fetch, Lua, and
+OpenRouter workspace behavior, while `everruns-mcp` owns the MCP capability
+adapter and `everruns-http` owns concrete HTTP transports. `everruns-host`
+composes feature-selected integrations for embedders, and `everruns-platform`
+composes the complete hosted-product catalog. The
+`scripts/lib/check-environment-capability-isolation.sh` pre-push/CI guard keeps
+the implementation modules and their shell/interpreter/transport dependencies
+out of core and the default Framework dependency tree.
+
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,
 `::error`, `::typed_id`, …), so application crates and embedders that import

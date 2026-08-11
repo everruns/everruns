@@ -1,0 +1,27 @@
+[package]
+name = "everruns-integrations-openrouter-workspace"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-openrouter-workspace"
+description = "OpenRouter workspace policy and model-scout capabilities for Everruns agents"
+readme = "README.md"
+keywords = ["everruns", "openrouter", "models", "agents"]
+categories = ["api-bindings", "development-tools"]
+
+[features]
+default = []
+
+[dependencies]
+everruns-core.workspace = true
+async-trait.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

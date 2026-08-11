@@ -68,7 +68,7 @@ Merged `NetworkAccessList` flows through:
 5. `EgressService` denies blocked/disallowed URLs before making the outbound
    request (THREAT[TM-AGENT-018])
 
-`web_fetch` follows this path (`crates/core/src/capabilities/web_fetch/egress_transport.rs`),
+`web_fetch` follows this path (`integrations/web-fetch/src/egress_transport.rs`),
 re-checking the list on every redirect hop. Tools may additionally pre-check the
 requested URL for a clearer user-facing error; the egress boundary remains the
 final enforcement point.
@@ -78,7 +78,7 @@ final enforcement point.
 Outbound HTTP for `bashkit_shell` is opt-in via per-capability config
 `{"enable_http": true}` and follows the same path as `web_fetch`: bashkit's
 `HttpTransport` is backed by `EgressService`
-(`crates/core/src/capabilities/bashkit_shell/egress_transport.rs`), which
+(`integrations/bashkit/src/egress_transport.rs`), which
 receives `ToolContext.network_access` and enforces it on every hop —
 curl/wget follow redirects manually, so redirect targets are re-checked too.
 With the config flag off (the default) or no egress service in context, the

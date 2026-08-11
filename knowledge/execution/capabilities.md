@@ -146,28 +146,32 @@ Contract rules:
   step and CI job `capability-contract`) fails any new capability
   ID/config/definition type in core, host, or platform.
 
-Capability *implementations* (the `Capability` trait and built-ins) remain in
-`everruns-core` and sibling crates; only identity/configuration moved.
+The effect-neutral `Capability` trait and kernel built-ins remain in
+`everruns-core`. Environment-backed implementations are owned by focused
+sibling crates: filesystem, Bashkit, web fetch, Lua, OpenRouter workspace,
+MCP, and concrete HTTP. `scripts/lib/check-environment-capability-isolation.sh`
+guards that dependency direction and the Framework's opt-in feature edges.
 
 ### Architecture
 
-Capability implementations are defined in **everruns-core** (their identity
-contract comes from **everruns-capability**) and resolved at the **API layer**:
+Capability identity comes from **everruns-capability**. Effect-neutral built-ins
+and contracts live in **everruns-core**; environment implementations live in
+focused crates and are composed by the selected host:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     everruns-core                        │
+│ everruns-capability + everruns-core                      │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │ CapabilityRegistry + Capability trait impls     │   │
-│  │ (single source of truth for capability defs)   │   │
+│  │ Identity/config + CapabilityRegistry/traits     │   │
+│  │ + effect-neutral built-in implementations       │   │
 │  └─────────────────────────────────────────────────┘   │
 └───────────────────────────┬─────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│                     API / Service Layer                  │
+│ Focused integrations + host/platform composition         │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │ CapabilityService (uses core registry directly) │   │
-│  │ Capability::from_core() converts to DTOs        │   │
+│  │ filesystem/bashkit/web/lua/MCP/HTTP implementations │
+│  │ runtime_capability_registry / hosted registry   │   │
 │  └─────────────────────────────────────────────────┘   │
 └───────────────────────────┬─────────────────────────────┘
                             ↓
@@ -177,8 +181,10 @@ contract comes from **everruns-capability**) and resolved at the **API layer**:
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Capabilities are defined in **everruns-core** (trait implementations)
-- The API layer uses the core registry and converts to DTOs for responses
+- Core owns the registry and the implementations that need no environment edge.
+- `everruns-host::runtime_capability_registry()` adds feature-selected embedded integrations.
+- `everruns-platform::capabilities::hosted_capability_registry_for_grade()` adds the hosted integration catalog and platform-management capabilities.
+- The API layer uses the hosted registry and converts it to response DTOs.
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
 
@@ -1057,13 +1063,13 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 
 ### Adding New Capabilities
 
-1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for trait definition)
-2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
-3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
+1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for the neutral trait definition) in the crate that owns the implementation's effects.
+2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in that owner and return it from `fn id()` (see **Built-in Capability ID Constants** above).
+3. Re-export the constant and struct from the owning crate's public root.
 4. Choose the registry preset deliberately:
-   - Register in `CapabilityRegistry::runtime_builtins()` only when the capability is usable with `everruns-host`'s default in-process host services.
-   - Register in `CapabilityRegistry::with_builtins_for_grade()` when the capability is part of the hosted Everruns platform catalog, a product/demo capability, or requires optional host services not present in the runtime default.
-   - Register in both only when both statements are true.
+   - Register effect-neutral kernel capabilities in `CapabilityRegistry::runtime_builtins()` and/or `CapabilityRegistry::with_builtins_for_grade()`.
+   - Register environment-backed embedded capabilities in `everruns_host::runtime_capability_registry()` behind a Cargo feature.
+   - Register environment-backed hosted capabilities through `everruns_platform::capabilities::hosted_capability_registry_for_grade()` and its explicit product feature set.
    - Use integration inventory registration for external integration crates that should appear only when their crate is linked.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 6. No database migration required — capability ID validated at runtime

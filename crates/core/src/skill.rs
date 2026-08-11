@@ -704,14 +704,13 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 // via the session-files HTTP API and via `InitialFile` configuration. A
 // future platform-controlled provenance field (for example, a
 // `mount_capability_id` populated only by mount application code) is needed
-// before this function can be re-enabled for any source. Until then, the
-// single caller (`ActivateSkillFromVfsTool::execute_with_context`) keeps the
-// gate forced off; the function itself is preserved for its unit tests and
-// to simplify a future re-enable PR.
+// before this function can be used for any runtime source. Until then,
+// `ActivateSkillFromVfsTool::execute_with_context` leaves command placeholders
+// literal; this neutral helper is preserved for its unit tests and a future
+// sandbox-backed integration.
 //
-// The default `ProcessCommandExecutor` spawns `bash -c` on the worker host.
-// That is deliberately dormant: when command substitution is re-enabled, the
-// executor MUST be replaced with a session-sandbox-backed implementation so
+// When command substitution is re-enabled, its executor MUST be a
+// session-sandbox-backed implementation so
 // commands run against the bashkit shell (managed session sandbox) and
 // the session virtual filesystem rather than the worker. Flipping the trust
 // gate without that replacement would still be RCE against the worker host.
@@ -735,59 +734,6 @@ pub struct CommandResult {
 #[async_trait::async_trait]
 pub trait CommandExecutor: Send + Sync {
     async fn execute_command(&self, command: &str) -> CommandResult;
-}
-
-/// Default executor using `tokio::process::Command` with bash.
-pub struct ProcessCommandExecutor {
-    /// Timeout per command in seconds (default: 30).
-    pub timeout_secs: u64,
-}
-
-impl Default for ProcessCommandExecutor {
-    fn default() -> Self {
-        Self { timeout_secs: 30 }
-    }
-}
-
-#[async_trait::async_trait]
-impl CommandExecutor for ProcessCommandExecutor {
-    async fn execute_command(&self, command: &str) -> CommandResult {
-        let timeout = std::time::Duration::from_secs(self.timeout_secs);
-        let child = tokio::process::Command::new("bash")
-            .arg("-c")
-            .arg(command)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn();
-
-        let child = match child {
-            Ok(c) => c,
-            Err(_) => {
-                return CommandResult {
-                    stdout: String::new(),
-                    exit_code: -1,
-                };
-            }
-        };
-
-        match tokio::time::timeout(timeout, child.wait_with_output()).await {
-            Ok(Ok(output)) => CommandResult {
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                exit_code: output.status.code().unwrap_or(-1),
-            },
-            Ok(Err(_)) => CommandResult {
-                stdout: String::new(),
-                exit_code: -1,
-            },
-            Err(_) => CommandResult {
-                stdout: format!(
-                    "[Command timed out after {}s: {command}]",
-                    self.timeout_secs
-                ),
-                exit_code: -1,
-            },
-        }
-    }
 }
 
 /// Maximum number of `!`command`` placeholders expanded per activation.
@@ -1607,15 +1553,6 @@ Body.
         let content = "Use `code` and !`echo hi` here.";
         let result = preprocess_command_injections(content, &exec).await;
         assert_eq!(result, "Use `code` and hi here.");
-    }
-
-    #[tokio::test]
-    async fn test_preprocess_with_process_executor() {
-        let exec = ProcessCommandExecutor::default();
-
-        let content = "Result: !`echo hello world`";
-        let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Result: hello world");
     }
 
     #[tokio::test]

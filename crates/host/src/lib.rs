@@ -10,6 +10,15 @@
 //! specialized embedders — depend on `everruns` plus this crate and the
 //! focused sibling crates they actually need.
 //!
+//! [`runtime_capability_registry`] composes the effect-neutral core registry
+//! with only the integrations selected by this crate's `filesystem`, `bashkit`,
+//! `web-fetch`, and `lua` features. MCP transport wiring is separately enabled
+//! by `mcp`; local-process MCP additionally requires `mcp-stdio`.
+//! [`compose_runtime_capability_registry`] applies the selected integrations to
+//! a caller-supplied core registry when a broader preset is required.
+//! [`runtime_egress_service`] supplies the matching direct transport only when
+//! a network-capable integration is selected.
+//!
 //! # Example
 //!
 //! ```
@@ -22,13 +31,18 @@
 
 mod backends;
 mod builders;
+mod capabilities;
 pub mod events;
 mod file_store_decorators;
 mod grep_limits;
 mod host;
 mod in_memory;
+#[cfg(feature = "mcp")]
 mod mcp;
+#[cfg(feature = "mcp")]
 mod mcp_cache;
+#[cfg(feature = "process")]
+mod process_command;
 mod real_disk;
 mod runtime;
 mod turn_strategy;
@@ -56,6 +70,9 @@ pub use file_store_decorators::{
     WriteBlocklistFileStore,
 };
 
+pub use capabilities::{
+    compose_runtime_capability_registry, runtime_capability_registry, runtime_egress_service,
+};
 pub use host::{
     ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
@@ -65,6 +82,8 @@ pub use in_memory::{
     InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
     InMemorySessionStore,
 };
+#[cfg(feature = "process")]
+pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
     AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,

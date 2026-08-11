@@ -1,20 +1,21 @@
-//! Session File System Capability
+//! Session-scoped filesystem capability for Everruns agents.
 //!
-//! This capability provides tools for interacting with the session file system.
-//! Each session has its own isolated filesystem stored in the database.
+//! This crate adapts Everruns' neutral filesystem and tool contracts into the
+//! `session_file_system` capability. Its read, write, edit, list, grep, delete,
+//! and stat tools operate only through the filesystem supplied by the host.
 //!
-//! Tools provided:
-//! - `read_file`: Read file content
-//! - `write_file`: Create or update a file
-//! - `edit_file`: Apply surgical text replacements to an existing file
-//! - `list_directory`: List files in a directory
-//! - `grep_files`: Search files by regex pattern
-//! - `delete_file`: Delete a file or directory
-//! - `stat_file`: Get file metadata
+//! It is part of the [Everruns](https://everruns.com) ecosystem and is the
+//! default offline integration selected by the `everruns` Framework facade.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::Capability;
+//! use everruns_integrations_filesystem::FileSystemCapability;
+//!
+//! assert_eq!(FileSystemCapability.id(), "session_file_system");
+//! ```
 
-use super::{
-    Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
-};
 use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
@@ -23,9 +24,14 @@ use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::{SessionFileSystem, ToolContext, ToolContextService};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
+};
+use everruns_core::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
+use std::result::Result;
 use std::sync::Arc;
 
 /// Detect the MIME type of an image format supported by model providers.
@@ -2181,6 +2187,19 @@ mod tests {
     use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use crate::tool_types::ToolCall;
 
+    #[tokio::test]
+    async fn system_prompt_stays_within_budget() {
+        let contribution = FileSystemCapability
+            .system_prompt_contribution(&SystemPromptContext::without_file_store(SessionId::new()))
+            .await
+            .expect("filesystem contributes a prompt");
+        assert!(
+            contribution.len() <= 1000,
+            "filesystem prompt grew to {} bytes",
+            contribution.len()
+        );
+    }
+
     #[test]
     fn capability_narrates_its_own_tools_only() {
         let cap = FileSystemCapability;
@@ -4012,7 +4031,8 @@ mod tests {
             file_store: Some(store),
             model: None,
         };
-        let registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::with_builtins();
+        registry.register(FileSystemCapability);
         let collected = collect_capabilities_with_configs(
             &[AgentCapabilityConfig::new(
                 SESSION_FILE_SYSTEM_CAPABILITY_ID,
@@ -4029,7 +4049,7 @@ mod tests {
 
     #[tokio::test]
     async fn tool_definition_hook_applies_host_root_to_eager_and_deferred_schemas() {
-        use crate::capabilities::tool_search::ToolSearchCapability;
+        use crate::capabilities::ToolSearchCapability;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition};
 
         let store = Arc::new(MockFileStore::with_display_root("/repo"));

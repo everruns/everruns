@@ -3,12 +3,11 @@
 // Exercises tool results, system prompts, persistence hooks, and the recursive
 // path scanner across in-memory and mounted real-disk backends.
 
+#![cfg(feature = "filesystem")]
+
 use everruns_core::atoms::PostToolExecHook;
 use everruns_core::capabilities::{
-    CapabilityRegistry, DeleteFileTool, DistillOutputHook, EditFileTool, FileSystemCapability,
-    GrepFilesTool, ListDirectoryTool, PersistOutputHook, ReadFileTool,
-    SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, SystemPromptContext, WriteFileTool,
-    collect_capabilities,
+    DistillOutputHook, PersistOutputHook, SystemPromptContext, collect_capabilities,
 };
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
@@ -21,7 +20,14 @@ use everruns_core::tool_types::{
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::{Capability, MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
-use everruns_host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
+use everruns_host::{
+    InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system,
+    runtime_capability_registry,
+};
+use everruns_integrations_filesystem::{
+    DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
+    ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -283,7 +289,7 @@ async fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
         file_store: Some(store),
         model: None,
     };
-    let registry = CapabilityRegistry::runtime_builtins();
+    let registry = runtime_capability_registry();
     let collected = collect_capabilities(
         &[SESSION_FILE_SYSTEM_CAPABILITY_ID.to_string()],
         &registry,
@@ -403,7 +409,7 @@ async fn collected_capability_prompt_uses_store_root() {
         file_store: Some(store),
         model: None,
     };
-    let registry = CapabilityRegistry::runtime_builtins();
+    let registry = runtime_capability_registry();
     let collected = collect_capabilities(
         &[SESSION_FILE_SYSTEM_CAPABILITY_ID.to_string()],
         &registry,

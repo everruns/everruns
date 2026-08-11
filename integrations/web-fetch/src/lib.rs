@@ -1,43 +1,35 @@
-//! WebFetch Capability — fetches web content via fetchkit
+//! FetchKit-backed web fetch capability for Everruns agents.
 //!
-//! Design decisions:
-//! - All metadata (description, schema, llmtxt) comes from fetchkit::ToolBuilder
-//! - File download (`save_to_file`) auto-enabled when `session_file_system` is a sibling
-//! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via server-wide env vars
-//! - Binary content accepted for file downloads, rejected for inline responses
-//! - See knowledge/execution/fetchkit.md for design details
+//! Requests cross the host egress contract, downloads use the session
+//! filesystem, and optional bot-auth signs requests with Ed25519 HTTP message
+//! signatures. Inline binary responses are rejected.
 //!
-//! Trust boundary (TM-AGENT-013, TM-AGENT-018, TM-API-008):
-//! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`knowledge/execution/capabilities.md`, `knowledge/security/permissions.md`), assigning `web_fetch`
-//!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
-//!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
-//!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
-//!   `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper
-//!   in `crates/server/src/api/agents.rs` enforces the same contract on
-//!   agent-import / copy paths. Existing member-owned agents that already had
-//!   `web_fetch` before the elevation continue to run (gate is creation/update
-//!   only, not runtime). New assignments by non-admin members are rejected
-//!   with HTTP 403.
-//! - Rationale: outbound HTTP from an agent doubles as both a data-exfiltration
-//!   channel (TM-AGENT-013) and an SSRF vector if egress is not strictly
-//!   isolated. TM-API-008 is mitigated by SSRF validation (DNS-pinned on the
-//!   egress path, `DnsPolicy::block_private_ips()` on the legacy path);
-//!   TM-AGENT-018 is mitigated by the per-layer `NetworkAccessList` plus the
-//!   deployment-wide system allowlist enforced at the egress boundary.
-//!   Admin assignment remains the explicit trust gate for enabling the
-//!   capability at all.
+//! It is part of the [Everruns](https://everruns.com) ecosystem and is an
+//! opt-in network integration for `everruns-host`.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::Capability;
+//! use everruns_integrations_web_fetch::WebFetchCapability;
+//!
+//! assert_eq!(WebFetchCapability::new(None).id(), "web_fetch");
+//! ```
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use base64::Engine as _;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
+};
+use everruns_core::*;
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
 use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
+use std::result::Result;
 use std::sync::Arc;
 
 mod egress_transport;
@@ -204,7 +196,7 @@ impl Capability for WebFetchCapability {
 
     async fn system_prompt_contribution_with_config(
         &self,
-        _ctx: &super::SystemPromptContext,
+        _ctx: &SystemPromptContext,
         config: &serde_json::Value,
     ) -> Option<String> {
         // Behavioral note only — parameter details live in the tool's JSON
@@ -753,6 +745,35 @@ impl Tool for WebFetchTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn system_prompt_variants_stay_within_budget() {
+        let cap = WebFetchCapability::new(None);
+        let ctx = SystemPromptContext::without_file_store(SessionId::new());
+
+        let disabled = cap
+            .system_prompt_contribution_with_config(&ctx, &serde_json::json!({}))
+            .await
+            .expect("web fetch contributes a prompt");
+        assert!(
+            disabled.len() <= 250,
+            "web fetch prompt without downloads grew to {} bytes",
+            disabled.len()
+        );
+
+        let enabled = cap
+            .system_prompt_contribution_with_config(
+                &ctx,
+                &serde_json::json!({"enable_file_download": true}),
+            )
+            .await
+            .expect("web fetch contributes a download prompt");
+        assert!(
+            enabled.len() <= 350,
+            "web fetch download prompt grew to {} bytes",
+            enabled.len()
+        );
+    }
     use crate::typed_id::SessionId;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -2165,7 +2186,7 @@ mod tests {
     #[tokio::test]
     async fn test_web_fetch_system_prompt_adapts_to_config() {
         let cap = WebFetchCapability::new(None);
-        let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
+        let ctx = SystemPromptContext::without_file_store(SessionId::new());
 
         // Without file download: no save_to_file mention in prompt
         let prompt = cap

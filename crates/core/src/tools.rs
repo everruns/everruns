@@ -674,19 +674,12 @@ impl ToolRegistry {
     /// - `echo`: Echoes back the provided message
     /// - `report_progress`: Emits deterministic external progress updates
     /// - TaskList tools: write_todos
-    /// - FileSystem tools: read_file, write_file, edit_file, list_directory, grep_files, delete_file, stat_file
-    /// - WebFetch tools: web_fetch — only when the `web-fetch` cargo feature is
-    ///   enabled (on by default; absent in provider builds that disable core
-    ///   default features)
     ///
     /// Test fixture tools (test math/weather) are NOT included: they moved to
     /// the `everruns-test-support` crate (EVE-875) and are registered
     /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
-        use crate::capabilities::{
-            DeleteFileTool, EditFileTool, GetCurrentTimeTool, GrepFilesTool, ListDirectoryTool,
-            ReadFileTool, StatFileTool, WriteFileTool, WriteTodosTool,
-        };
+        use crate::capabilities::{GetCurrentTimeTool, WriteTodosTool};
         use crate::progress_reporting::ReportProgressTool;
 
         let builder = ToolRegistry::builder()
@@ -703,20 +696,7 @@ impl ToolRegistry {
             // can also see it.
             .tool(ReportProgressTool)
             // TaskList capability tools
-            .tool(WriteTodosTool)
-            // FileSystem capability tools
-            .tool(ReadFileTool)
-            .tool(WriteFileTool)
-            .tool(EditFileTool)
-            .tool(ListDirectoryTool)
-            .tool(GrepFilesTool)
-            .tool(DeleteFileTool)
-            .tool(StatFileTool);
-
-        // WebFetch capability tools (gated behind the `web-fetch` feature so
-        // provider crates that opt out of core defaults skip the fetchkit tree).
-        #[cfg(feature = "web-fetch")]
-        let builder = builder.tool(crate::capabilities::WebFetchTool::default());
+            .tool(WriteTodosTool);
 
         builder.build()
     }
@@ -2936,20 +2916,12 @@ mod tests {
         // TaskList capability tools
         assert!(registry.has("write_todos"), "should have write_todos");
 
-        // FileSystem capability tools
-        assert!(registry.has("read_file"), "should have read_file");
-        assert!(registry.has("write_file"), "should have write_file");
-        assert!(registry.has("edit_file"), "should have edit_file");
-        assert!(registry.has("list_directory"), "should have list_directory");
-        assert!(registry.has("grep_files"), "should have grep_files");
-        assert!(registry.has("delete_file"), "should have delete_file");
-        assert!(registry.has("stat_file"), "should have stat_file");
+        // Environment-backed tools are composed by the host, not core defaults.
+        for tool in ["read_file", "write_file", "bash", "web_fetch"] {
+            assert!(!registry.has(tool), "`{tool}` must not be a core default");
+        }
 
-        // WebFetch capability tools
-        assert!(registry.has("web_fetch"), "should have web_fetch");
-
-        // Total count: 19 - 1 (spawn_background, moved to capability) = 18
-        assert_eq!(registry.len(), 12, "should have 12 default tools");
+        assert_eq!(registry.len(), 4, "should have four neutral default tools");
     }
 
     #[tokio::test]

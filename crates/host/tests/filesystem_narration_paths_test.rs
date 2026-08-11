@@ -1,12 +1,13 @@
 // EVE-749: filesystem tool narration must use the active SessionFileSystem
 // display_path contract so transcript paths match tool results.
 
+#![cfg(feature = "filesystem")]
+
 use async_trait::async_trait;
 use everruns_core::MessageRetriever;
 use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::capabilities::{
-    CapabilityRegistry, FileSystemCapability, SystemPromptContext,
-    collect_capabilities_with_configs,
+    CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::in_memory::{
@@ -29,6 +30,7 @@ use everruns_host::{
     InMemorySessionFileStore, RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter,
     execute_act_activity, multi_root_file_system,
 };
+use everruns_integrations_filesystem::FileSystemCapability;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;

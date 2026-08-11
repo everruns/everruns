@@ -43,6 +43,13 @@ embedded-platform-docs = ["dep:include_dir", "everruns-core/embedded-platform-do
 # SQLx support for the typed IDs embedded in these entities. Passthrough to core,
 # kept for parity with server builds that enable `everruns-core/sqlx`.
 sqlx = ["everruns-core/sqlx"]
+environment-capabilities = [
+    "dep:everruns-integrations-filesystem",
+    "dep:everruns-integrations-bashkit",
+    "dep:everruns-integrations-web-fetch",
+    "dep:everruns-integrations-openrouter-workspace",
+]
+lua = ["dep:everruns-integrations-lua"]
 
 [dependencies]
 # Cross-cutting value types (OrgRole, PrincipalKind/PrincipalSummary, Caller, the
@@ -50,6 +57,11 @@ sqlx = ["everruns-core/sqlx"]
 # (Harness/Agent/Session), and the DEFAULT_ORG_* constants live in core; the
 # platform aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
+everruns-integrations-filesystem = { workspace = true, optional = true }
+everruns-integrations-bashkit = { workspace = true, optional = true }
+everruns-integrations-web-fetch = { workspace = true, optional = true }
+everruns-integrations-lua = { workspace = true, optional = true }
+everruns-integrations-openrouter-workspace = { workspace = true, optional = true }
 
 serde.workspace = true
 serde_json.workspace = true

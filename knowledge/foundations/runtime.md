@@ -397,11 +397,14 @@ that unavoidable external-delivery window.
 
 ## Context and Capabilities
 
-Capabilities continue to live in `everruns-core`.
+Effect-neutral capability contracts and built-ins live in `everruns-core`.
+Environment-backed implementations live in focused integration crates and are
+selected by the host's Cargo features.
 
 `InProcessRuntimeBuilder::new()` starts from
-`CapabilityRegistry::runtime_builtins()`, a curated registry containing only
-capabilities usable with the runtime's default in-process host services. The
+`everruns_host::runtime_capability_registry()`: core runtime built-ins plus
+only the filesystem, Bashkit, web-fetch, and Lua integrations compiled into
+the host. The
 default registry intentionally excludes hosted Everruns product capabilities,
 demos/tests, and capabilities whose tools require optional host backends such as
 `platform_store`, `session_task_registry`, `schedule_store`, SQL databases,

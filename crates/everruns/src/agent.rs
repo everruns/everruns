@@ -657,18 +657,21 @@ impl Agent {
             let registry = {
                 #[cfg(feature = "local")]
                 if self.local.is_some() {
-                    everruns_core::CapabilityRegistry::with_builtins()
+                    everruns_host::compose_runtime_capability_registry(
+                        everruns_core::CapabilityRegistry::with_builtins(),
+                    )
                 } else {
-                    everruns_core::CapabilityRegistry::runtime_builtins()
+                    everruns_host::runtime_capability_registry()
                 }
                 #[cfg(not(feature = "local"))]
                 {
-                    everruns_core::CapabilityRegistry::runtime_builtins()
+                    everruns_host::runtime_capability_registry()
                 }
             };
             let platform = everruns_core::PlatformDefinition::builder()
                 .capability_registry(registry)
                 .driver_registry(everruns_core::DriverRegistry::new())
+                .egress_service(everruns_host::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
                     everruns_host::RealDiskSessionFileSystemFactory::new(root),
                 ))
@@ -1085,13 +1088,15 @@ impl AgentBuilder {
         let capability_registry = {
             #[cfg(feature = "local")]
             if self.local.is_some() {
-                everruns_core::CapabilityRegistry::with_builtins()
+                everruns_host::compose_runtime_capability_registry(
+                    everruns_core::CapabilityRegistry::with_builtins(),
+                )
             } else {
-                everruns_core::CapabilityRegistry::runtime_builtins()
+                everruns_host::runtime_capability_registry()
             }
             #[cfg(not(feature = "local"))]
             {
-                everruns_core::CapabilityRegistry::runtime_builtins()
+                everruns_host::runtime_capability_registry()
             }
         };
 

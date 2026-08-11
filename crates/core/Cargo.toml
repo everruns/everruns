@@ -38,7 +38,7 @@ async-trait.workspace = true
 
 # Async runtime
 # Note: "rt" is needed for tokio::spawn (background tools, parallel act atom)
-tokio = { workspace = true, features = ["sync", "rt", "process", "time", "net"] }
+tokio = { workspace = true, features = ["sync", "rt", "time", "net"] }
 # `CancellationToken` for cooperative tool-call cancellation (ToolContext).
 tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
@@ -73,27 +73,8 @@ hex.workspace = true
 regex.workspace = true
 globset.workspace = true
 
-# Text diff rendering for edit_file previews
-similar = "3"
-
 # URL parsing
 url = "2"
-
-# Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
-# ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
-bytes = "1"
-fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"], optional = true }
-
-# Ed25519 key derivation (bot-auth public key registration)
-ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
-
-# Bash interpreter backing the bashkit_shell capability
-bashkit = { version = "0.16.0", features = ["jq", "http_client", "bot-auth"] }
-
-# Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
-# 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
-# build does not compile the C sources. See knowledge/execution/lua-execution.md.
-mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
 tree-sitter = { version = "0.26", optional = true }
@@ -112,12 +93,6 @@ sqlx = { workspace = true, optional = true }
 
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 # Tool types are defined locally in this crate
-
-# HTTP client backing the egress boundary (DirectEgressService) and the
-# bashkit/model-scout transports. "default" features keep system proxy
-# detection from environment variables. OAuth token exchange and the system
-# email senders moved out of core in EVE-879 (everruns-mcp, everruns-platform).
-reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"] }
 
 # Plugin system for external integrations
 inventory.workspace = true
@@ -147,15 +122,10 @@ include_dir = { version = "0.7", optional = true }
 # on core with `default-features = false` to shed them — see crates/openrouter.
 # Note: OTLP telemetry moved to `everruns-observability` (EVE-876); no core
 # build — default or otherwise — carries exporter dependencies.
-default = ["llm-tests", "a2a", "web-fetch"]
+default = ["llm-tests"]
 # Outbound A2A agent delegation (tonic/prost gRPC stack).
 a2a = ["dep:a2a", "dep:a2a-client"]
-# WebFetch capability (fetchkit HTTP pipeline + ed25519 bot-auth).
-web-fetch = ["dep:fetchkit", "dep:ed25519-dalek"]
 embedded-platform-docs = ["dep:include_dir"]
-# Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
-# Off by default; enabling compiles the C sources. See knowledge/execution/lua-execution.md.
-lua = ["dep:mlua"]
 openapi = ["utoipa", "everruns-provider/openapi"]
 sqlx = ["dep:sqlx", "everruns-provider/sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]

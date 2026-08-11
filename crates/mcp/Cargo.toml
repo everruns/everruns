@@ -23,6 +23,7 @@ stdio = []
 [dependencies]
 # Versioned workspace dep (not a bare path) so the crate is publishable.
 everruns-core.workspace = true
+everruns-http.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -39,6 +40,7 @@ sha2.workspace = true
 rand.workspace = true
 serde_urlencoded = "0.7"
 thiserror.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 wiremock = "0.6"

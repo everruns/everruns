@@ -4,8 +4,9 @@
 # Decision (EVE-830): the first public `everruns` crate is a compatibility facade
 # over `everruns-core` and `everruns-host`. It moves no engine code and only
 # re-exports the minimum needed to construct and run the in-process runtime.
-# Default features stay offline — no provider, MCP, filesystem, SQLx, server, or
-# worker integrations are activated by default. The `everruns::runtime` module
+# Default features stay offline — the contained session filesystem is included,
+# while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
+# remain opt-in. The `everruns::runtime` module
 # remains only as a deprecated 0.17 alias for canonical host re-exports;
 # advanced hosts should depend on `everruns-host` directly.
 
@@ -29,11 +30,12 @@ name = "lifecycle_hooks"
 required-features = ["macros", "openai"]
 
 [features]
-# Default features stay offline: the facade activates no provider, MCP,
-# filesystem, SQLx, server, or worker integrations. The `macros` surface is the
+# Default features stay offline: the facade includes the contained session
+# filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
+# worker integrations. The `macros` surface is the
 # default surfaces beyond the bare re-exports — macros and typed capabilities —
 # pull in no network or I/O edge, only async adaptation and schema generation.
-default = ["macros", "capabilities"]
+default = ["macros", "capabilities", "filesystem"]
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
@@ -45,16 +47,20 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # independently gateable so the bare facade still compiles with
 # `--no-default-features`.
 capabilities = ["everruns-capability/definition", "dep:schemars", "dep:serde"]
+a2a = ["everruns-core/a2a"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
 jsonl = []
-# Compile the experimental sandboxed Lua execution engine into the host.
-# Mirrors `everruns-host/lua`; off by default so the standard facade build
-# pulls in no interpreter.
+filesystem = ["everruns-host/filesystem"]
+# Environment-backed execution integrations. Filesystem is default and stays
+# inside the host-provided session filesystem; the others are explicit opt-ins.
+bashkit = ["everruns-host/bashkit"]
+web-fetch = ["everruns-host/web-fetch"]
 lua = ["everruns-host/lua"]
+mcp = ["everruns-host/mcp"]
 # Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
-mcp-stdio = ["everruns-host/mcp-stdio"]
+mcp-stdio = ["mcp", "everruns-host/mcp-stdio"]
 # Enable a crash-durable canonical event log, SQLite-backed session catalog and
 # task/schedule state, and real workspaces through `LocalConfig`. Conversation
 # history is derived from canonical events rather than selecting a writable

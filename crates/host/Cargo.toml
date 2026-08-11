@@ -35,13 +35,35 @@ uuid.workspace = true
 
 everruns-core.workspace = true
 everruns-engine.workspace = true
-everruns-mcp.workspace = true
+everruns-http = { workspace = true, optional = true }
+everruns-mcp = { workspace = true, optional = true }
 everruns-platform.workspace = true
+everruns-integrations-filesystem = { workspace = true, optional = true }
+everruns-integrations-bashkit = { workspace = true, optional = true }
+everruns-integrations-web-fetch = { workspace = true, optional = true }
+everruns-integrations-lua = { workspace = true, optional = true }
 
 [features]
 default = []
-mcp-stdio = ["everruns-mcp/stdio"]
-lua = ["everruns-core/lua"]
+mcp = ["dep:everruns-mcp", "dep:everruns-http"]
+mcp-stdio = ["mcp", "everruns-mcp/stdio"]
+filesystem = ["dep:everruns-integrations-filesystem"]
+bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "dep:everruns-http"]
+web-fetch = ["dep:everruns-integrations-web-fetch", "dep:everruns-http"]
+lua = ["dep:everruns-integrations-lua", "dep:everruns-http"]
+process = []
+
+[[example]]
+name = "real_disk_file_system_tools"
+required-features = ["filesystem"]
+
+[[example]]
+name = "lua_code_mode_agent"
+required-features = ["lua"]
+
+[[test]]
+name = "mcp_runtime_test"
+required-features = ["mcp"]
 
 [dev-dependencies]
 tempfile.workspace = true

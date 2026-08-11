@@ -21,7 +21,7 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 - **Egress path (default in the runtime)**: when `ToolContext.egress_service`
   is present, fetchkit's `HttpTransport` (fetchkit >= 0.4) is injected via
   `ToolBuilder::transport` with `EgressHttpTransport`
-  (`crates/core/src/capabilities/web_fetch/egress_transport.rs`). fetchkit keeps the
+  (`integrations/web-fetch/src/egress_transport.rs`). fetchkit keeps the
   whole pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
   via `DnsPolicy` (resolve-then-check; pinned addresses forwarded to
   `EgressRequest.pinned_addrs`), per-hop redirect validation, bot-auth
@@ -34,7 +34,7 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
   cannot re-check policy for discovered pages.
 - The system allowlist and network access list are pre-checked on the initial
   URL in the tool for clear user-facing errors on both paths.
-- See `crates/core/src/capabilities/web_fetch/mod.rs`
+- See `integrations/web-fetch/src/lib.rs`
 
 ## Agent-oriented fetching
 
@@ -117,7 +117,7 @@ Returns a JWKS (RFC 7517) with the server's Ed25519 public key. The `Signature-A
 
 - **Endpoint**: public, no auth, derived from `BOT_AUTH_SIGNING_KEY_SEED` at startup
 - **Key derivation**: `derive_bot_auth_public_key(seed) -> BotAuthPublicKey`
-- See `crates/server/src/api/http_signing_keys.rs`, `crates/core/src/capabilities/web_fetch/mod.rs`
+- See `crates/server/src/api/http_signing_keys.rs`, `integrations/web-fetch/src/lib.rs`
 
 ## Future: archive extraction (`FilesSaver`)
 

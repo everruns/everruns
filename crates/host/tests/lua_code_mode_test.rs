@@ -11,12 +11,12 @@
 
 #![cfg(feature = "lua")]
 
-use everruns_core::capabilities::{LuaCapability, LuaCodeModeCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel, SessionId,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
