@@ -17,14 +17,13 @@ use everruns_core::command::{
 };
 use everruns_core::command_host::StoreCommandHost;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
-use everruns_core::traits::{AgentStore, HarnessStore, SessionStore};
+use everruns_core::traits::{AgentStore, SessionStore};
 use everruns_core::typed_id::SessionId;
-use everruns_core::{
-    AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness,
-};
+use everruns_core::{AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry};
+use everruns_platform::Harness;
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
-    AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore,
+    AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore, WorkerAdapters,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -77,12 +76,13 @@ impl SessionCommandService {
         caller: &Caller,
         session_id: SessionId,
     ) -> Result<Vec<CommandDescriptor>> {
-        let (harness_chain, agent, session) = self
+        let (harness, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
-        authorize_platform_chat_owner(caller, &harness_chain, &session)?;
+        authorize_platform_chat_owner(caller, &harness, &session)?;
+        let harness_definition = harness.definition();
         let resolved = resolve_runtime_capabilities(
-            &harness_chain,
+            &harness_definition,
             agent.as_ref(),
             &session,
             &self.capability_registry,
@@ -110,12 +110,13 @@ impl SessionCommandService {
         session_id: SessionId,
         req: ExecuteCommandRequest,
     ) -> Result<CommandResult> {
-        let (harness_chain, agent, session) = self
+        let (harness, agent, session) = self
             .load_session_components(caller.org_id, session_id)
             .await?;
-        authorize_platform_chat_owner(caller, &harness_chain, &session)?;
+        authorize_platform_chat_owner(caller, &harness, &session)?;
+        let harness_definition = harness.definition();
         let resolved = resolve_runtime_capabilities(
-            &harness_chain,
+            &harness_definition,
             agent.as_ref(),
             &session,
             &self.capability_registry,
@@ -197,41 +198,39 @@ impl SessionCommandService {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Result<(
-        Vec<Harness>,
-        Option<AgentDefinition>,
-        everruns_core::Session,
-    )> {
+    ) -> Result<(Harness, Option<AgentDefinition>, everruns_core::Session)> {
         let adapters = self.adapters();
         let session_store = AdapterSessionStore::new(adapters.clone(), org_id);
-        let harness_store = AdapterHarnessStore::new(adapters.clone(), org_id);
-        let agent_store = AdapterAgentStore::new(adapters, org_id);
+        let agent_store = AdapterAgentStore::new(adapters.clone(), org_id);
 
         let session = session_store
             .get_session(session_id)
             .await?
             .ok_or(ResourceNotFoundError::new("Session"))?;
-        let harness_chain = harness_store.get_harness_chain(session.harness_id).await?;
-        if harness_chain.is_empty() {
-            return Err(ResourceNotFoundError::new("Harness").into());
-        }
+        // Stored (pre-merged) record: command listing/authorization are
+        // status-agnostic platform surfaces, so they read the record rather
+        // than the execution-validated definition (EVE-881).
+        let harness = adapters
+            .get_harness(org_id, session.harness_id.uuid())
+            .await?
+            .ok_or(ResourceNotFoundError::new("Harness"))?;
         let agent = match session.agent_id {
             Some(agent_id) => agent_store.get_agent(agent_id).await?,
             None => None,
         };
 
-        Ok((harness_chain, agent, session))
+        Ok((harness, agent, session))
     }
 }
 
 fn authorize_platform_chat_owner(
     caller: &Caller,
-    harness_chain: &[Harness],
+    harness: &Harness,
     session: &everruns_core::Session,
 ) -> Result<()> {
-    let is_platform_chat = harness_chain
-        .iter()
-        .any(|harness| harness.is_built_in && harness.name == "platform-chat");
+    // The adapters return the pre-merged record whose identity/built-in flag
+    // are leaf-owned, matching the historical single-element chain check.
+    let is_platform_chat = harness.is_built_in && harness.name == "platform-chat";
     if !crate::domains::sessions::platform_chat_owner_matches(caller, session, is_platform_chat) {
         return Err(
             everruns_core::PolicyError::denied("platform_chat_owner", "session owner").into(),

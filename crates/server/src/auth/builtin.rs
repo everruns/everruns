@@ -47,20 +47,23 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 ///
 /// PR #1462 removed an earlier safety-net call that used
 /// `oss_built_in_harnesses()`, because that could override an operator's
-/// custom `PlatformDefinition`. The fix is to keep the safety net but
-/// drive it from `platform_definition.built_in_harnesses()` instead, so a
-/// custom platform definition is never overwritten. `platform_definition`
-/// is owned by this backend for that purpose.
+/// custom harness set. The fix is to keep the safety net but drive it from
+/// the operator-composed `built_in_harnesses` set owned by this backend
+/// (EVE-881: the templates moved off `PlatformDefinition` into server
+/// composition; `ServerAppBuilder` threads its resolved set in via
+/// [`BuiltinAuthBackend::with_built_in_harnesses`]).
 #[derive(Clone)]
 pub struct BuiltinAuthBackend {
     pub config: AuthConfig,
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
-    /// Platform-defined harness set. Used by the signup safety-net in
-    /// `register` / `oauth_callback` so a pre-seed signup still lands in an
-    /// org with the correct (operator-chosen) harnesses.
+    /// Platform definition (email sender, capability surface).
     pub platform_definition: Arc<PlatformDefinition>,
+    /// Operator-composed built-in harness set. Used by the signup safety-net
+    /// in `register` / `oauth_callback` so a pre-seed signup still lands in
+    /// an org with the correct (operator-chosen) harnesses.
+    pub built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
     personal_access_token_cache: Cache<String, AuthUser>,
 }
@@ -105,8 +108,19 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::new(),
             platform_definition,
+            built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
         }
+    }
+
+    /// Replace the built-in harness set used by the signup safety net.
+    /// `ServerAppBuilder` calls this with its resolved (operator-chosen) set.
+    pub fn with_built_in_harnesses(
+        mut self,
+        built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    ) -> Self {
+        self.built_in_harnesses = built_in_harnesses;
+        self
     }
 
     /// Create with Valkey-backed distributed rate limiting.
@@ -123,6 +137,7 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
             platform_definition,
+            built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
         }
     }

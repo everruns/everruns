@@ -22,9 +22,10 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, EventData, Harness,
-    HarnessStatus, InputMessage, ResolvedModel, Session, SessionStatus, TokenUsage, Tool, ToolCall,
-    ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context, user_facing_error_codes,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, EventData,
+    HarnessDefinition, InputMessage, ResolvedModel, Session, SessionStatus, TokenUsage, Tool,
+    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
+    user_facing_error_codes,
 };
 use everruns_host::{
     InMemorySessionFileStore, ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle,
@@ -121,15 +122,13 @@ impl RuntimeHostAdapter for MockHostAdapter {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,
         };
-        let harness_chain = self
+        let harness = self
             .harness_store
-            .get_harness_chain(session.harness_id)
-            .await?;
-        let snapshot = everruns_core::ResolvedExecutionSnapshot::project(
-            &harness_chain,
-            agent.as_ref(),
-            &session,
-        )?;
+            .get_harness(session.harness_id)
+            .await?
+            .expect("harness exists");
+        let snapshot =
+            everruns_core::ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
         Ok(ResolvedTurnInputs {
             snapshot,
             messages: self.message_store.load(session_id).await?,
@@ -663,28 +662,10 @@ impl Capability for ExplicitNarrationCapability {
     }
 }
 
-fn harness(harness_id: HarnessId) -> Harness {
-    Harness {
-        id: harness_id,
-        name: "math".into(),
-        display_name: Some("Math".into()),
-        description: None,
-        system_prompt: Some("You are a math harness.".into()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
+fn harness() -> HarnessDefinition {
+    HarnessDefinition {
         capabilities: vec![AgentCapabilityConfig::new("test_math")],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
+        ..HarnessDefinition::new("math", "You are a math harness.")
     }
 }
 
@@ -826,7 +807,10 @@ async fn input_activity_emits_lifecycle_events_and_marks_session_active() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -881,7 +865,10 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -936,9 +923,12 @@ async fn runtime_host_services_reach_final_tool_context_in_parity() {
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
-    let mut test_harness = harness(harness_id);
+    let mut test_harness = harness();
     test_harness.capabilities = vec![AgentCapabilityConfig::new("context_parity")];
-    adapter.harness_store.add_harness(test_harness).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, test_harness)
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1004,10 +994,13 @@ async fn act_activity_uses_capability_tool_narration_on_act_path() {
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("narrating")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("narrating")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -1090,10 +1083,13 @@ async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
     let input_message_id = MessageId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("explicit_narration")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("explicit_narration")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -1163,10 +1159,13 @@ async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_p
 
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
+                ..harness()
+            },
+        )
         .await;
     adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
     adapter
@@ -1231,10 +1230,13 @@ async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
 
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("overlay_alias")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("overlay_alias")],
+                ..harness()
+            },
+        )
         .await;
     adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
     adapter
@@ -1298,10 +1300,13 @@ async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
 
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("overlay_echo")],
+                ..harness()
+            },
+        )
         .await;
     adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
     adapter
@@ -1366,13 +1371,16 @@ async fn act_activity_runs_capability_pre_tool_hook_and_blocks() {
 
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![
-                AgentCapabilityConfig::new("overlay_echo"),
-                AgentCapabilityConfig::new("gate"),
-            ],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![
+                    AgentCapabilityConfig::new("overlay_echo"),
+                    AgentCapabilityConfig::new("gate"),
+                ],
+                ..harness()
+            },
+        )
         .await;
     adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
     adapter
@@ -1450,13 +1458,16 @@ async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
 
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![
-                AgentCapabilityConfig::new("overlay_echo"),
-                AgentCapabilityConfig::new("coming_soon_gate"),
-            ],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![
+                    AgentCapabilityConfig::new("overlay_echo"),
+                    AgentCapabilityConfig::new("coming_soon_gate"),
+                ],
+                ..harness()
+            },
+        )
         .await;
     adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
     adapter
@@ -1514,7 +1525,10 @@ async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1538,7 +1552,10 @@ async fn plan_next_host_turn_schedules_reason_after_process_input() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1569,7 +1586,10 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1625,7 +1645,10 @@ async fn plan_next_host_turn_surfaces_max_turn_requests_before_another_act() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1678,7 +1701,10 @@ async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
         let adapter = mock_host();
         let harness_id = HarnessId::from_uuid(Uuid::now_v7());
         let session_id = SessionId::from_uuid(Uuid::now_v7());
-        adapter.harness_store.add_harness(harness(harness_id)).await;
+        adapter
+            .harness_store
+            .add_harness(harness_id, harness())
+            .await;
         adapter
             .session_store
             .insert(session(session_id, harness_id))
@@ -1731,7 +1757,10 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(Session {
@@ -1786,7 +1815,10 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1834,7 +1866,10 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     let final_message_id = MessageId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1908,7 +1943,10 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -1971,7 +2009,10 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -2032,7 +2073,10 @@ async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     adapter
         .session_store
         .insert(session(session_id, harness_id))
@@ -2091,7 +2135,10 @@ async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_i
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
 
     let mut host_session = session(session_id, harness_id);
     host_session.hints = Some(std::collections::HashMap::from([(
@@ -2194,10 +2241,13 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -2260,10 +2310,13 @@ async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -2326,10 +2379,13 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -2399,16 +2455,19 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![
-                AgentCapabilityConfig::new("lifecycle_hook_test"),
-                AgentCapabilityConfig::with_config(
-                    "infinity_context",
-                    json!({ "max_recent_messages": 1 }),
-                ),
-            ],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![
+                    AgentCapabilityConfig::new("lifecycle_hook_test"),
+                    AgentCapabilityConfig::with_config(
+                        "infinity_context",
+                        json!({ "max_recent_messages": 1 }),
+                    ),
+                ],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store
@@ -2501,7 +2560,10 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let parent_id = SessionId::from_uuid(Uuid::now_v7());
     let child_id = SessionId::from_uuid(Uuid::now_v7());
-    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .harness_store
+        .add_harness(harness_id, harness())
+        .await;
     let parent = session(parent_id, harness_id);
     let mut child = session(child_id, harness_id);
     child.parent_session_id = Some(parent_id);
@@ -2649,10 +2711,13 @@ async fn turn_end_hook_fires_on_turn_completion() {
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
-            ..harness(harness_id)
-        })
+        .add_harness(
+            harness_id,
+            HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+                ..harness()
+            },
+        )
         .await;
     adapter
         .session_store

@@ -21,7 +21,7 @@ use chrono::Utc;
 use everruns_core::capabilities::FileSystemCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, Harness, HarnessStatus,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, HarnessDefinition,
     PlatformDefinition, ResolvedModel, Session, SessionStatus, ToolCall,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
@@ -83,27 +83,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             base_url: None,
             provider_metadata: None,
         })
-        .harness(Harness {
+        .harness(everruns_host::SeededHarness {
             id: harness_id,
-            name: "files".into(),
-            display_name: Some("Files".into()),
-            description: Some("Harness exposing file_system tools".into()),
-            system_prompt: Some("Use the file_system tools.".into()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            mcp_servers: Default::default(),
-            embedder_metadata: Default::default(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
+            definition: HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+                ..HarnessDefinition::new("files", "Use the file_system tools.")
+            },
         })
         .agent(AgentDefinition {
             display_name: Some("Files Agent".into()),

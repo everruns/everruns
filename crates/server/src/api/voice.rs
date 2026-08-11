@@ -94,6 +94,7 @@ impl AppState {
         feature_flags: FeatureFlags,
         dependencies: AppDependencies,
         platform_definition: &everruns_core::PlatformDefinition,
+        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
     ) -> Self {
         let registry = Arc::new(DbSessionResourceRegistry::new(db.clone()));
         let leased_resource_store =
@@ -112,15 +113,21 @@ impl AppState {
             leased_resource_store,
             feature_flags,
             runner: dependencies.runner,
-            fallback_default_harness_name: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
-                .map(|h| h.name.clone()),
-            chat_harness_name: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
-                .map(|h| h.name.clone()),
-            chat_session_title: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
-                .map(|h| h.display_name.clone()),
+            fallback_default_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Default,
+            )
+            .map(|h| h.name.clone()),
+            chat_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.name.clone()),
+            chat_session_title: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.display_name.clone()),
         }
     }
 

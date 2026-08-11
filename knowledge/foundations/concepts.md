@@ -116,13 +116,14 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session; `HarnessStore::get_harness_chain()` returns that harness's full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session. Since EVE-881 the inheritance chain is resolved behind the platform loading seam: `HarnessStore::get_harness()` returns one effective `HarnessDefinition` (the stored chain is folded root-to-leaf with the same overlay merge semantics inside `everruns-platform`), which becomes the base overlay folded alongside the optional agent and session overlays.
 
 ```
- harness_root   harness_child   harness_leaf     agent       session
-      │               │               │            │             │
-      ▼               ▼               ▼            ▼             ▼
-   overlay ──► overlay ──► overlay ──► overlay ──► overlay
+ harness_root ─► harness_child ─► harness_leaf      agent       session
+      (folded at the platform seam, EVE-881)          │             │
+                      │                               ▼             ▼
+                      ▼
+          effective HarnessDefinition ──► overlay ──► overlay ──► overlay
                                                        │
                                           AgentConfigOverlay::fold()
                                                        │

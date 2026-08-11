@@ -43,9 +43,20 @@ pub mod app;
 // by `Agent::execution_definition` at the platform loading seam.
 pub mod agent;
 
+// Stored Harness persistence records and built-in provisioning templates
+// carved out of `everruns-core` (EVE-881). Execution consumes only
+// `everruns_core::HarnessDefinition`, produced by `Harness::execution_definition`
+// after `merge_harness_chain` resolves parent inheritance at the platform
+// loading seam.
+pub mod harness;
+
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
+};
+pub use harness::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
+    HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,
 };
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership, Organization,

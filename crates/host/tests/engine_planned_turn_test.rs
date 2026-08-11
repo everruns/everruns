@@ -13,8 +13,7 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel,
-    Session,
+    AgentDefinition, CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel, Session,
 };
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
@@ -34,10 +33,9 @@ fn math_platform() -> PlatformDefinition {
     PlatformDefinition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> Harness {
+fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
-        .display_name("Math")
         .capability("test_math")
         .build()
 }

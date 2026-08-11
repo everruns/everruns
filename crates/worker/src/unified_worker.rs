@@ -1982,7 +1982,7 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _harness_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::Harness>> {
+            ) -> CoreResult<Option<everruns_platform::Harness>> {
                 unimplemented!()
             }
             async fn get_session(

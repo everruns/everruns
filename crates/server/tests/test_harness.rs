@@ -216,6 +216,7 @@ impl TestServer {
         let grade = everruns_core::DeploymentGrade::from_env();
         let platform_definition =
             Arc::new(everruns_server::oss_platform_definition_for_grade(grade));
+        let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
             .expect("Failed to seed test data");
@@ -322,6 +323,7 @@ impl TestServer {
             runner.clone(),
             auth_state.clone(),
             &platform_definition,
+            &built_in_harnesses,
             event_delivery.clone(),
         );
         let mut messages_state = api::messages::AppState::new(
@@ -430,6 +432,7 @@ impl TestServer {
             auth_state.clone(),
             grade,
             platform_definition.clone(),
+            built_in_harnesses.clone(),
         );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
@@ -476,7 +479,7 @@ impl TestServer {
         let organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
-            platform_definition.built_in_harnesses().to_vec(),
+            built_in_harnesses.as_ref().clone(),
         );
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
@@ -609,6 +612,7 @@ impl TestServer {
             runner.clone(),
             auth_state.clone(),
             &platform_definition,
+            &built_in_harnesses,
             feature_flags.notifications,
             event_delivery.clone(),
             encryption.clone(),

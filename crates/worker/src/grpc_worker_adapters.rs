@@ -18,10 +18,10 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
-    PlatformDefinition, Session, UtilityLlmService,
+    DriverRegistry, EgressService, Message, MessageHistory, MessageQuery, PlatformDefinition,
+    Session, UtilityLlmService,
 };
-use everruns_platform::Agent;
+use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -119,13 +119,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
         let store = GrpcHarnessStore::new(self.client.clone(), org_id);
-        let chain = everruns_core::traits::HarnessStore::get_harness_chain(
-            &store,
-            HarnessId::from_uuid(harness_id),
-        )
-        .await?;
-        // GrpcHarnessStore returns a single pre-merged harness; take it
-        Ok(chain.into_iter().last())
+        // The server returns a single pre-merged stored record (EVE-881).
+        store
+            .fetch_harness_record(HarnessId::from_uuid(harness_id))
+            .await
     }
 
     // =========================================================================

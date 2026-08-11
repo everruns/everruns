@@ -12,7 +12,7 @@ use everruns_core::MessageRetriever;
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
-use everruns_core::harness::{Harness, HarnessStatus};
+use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     InMemorySessionStore,
@@ -50,29 +50,8 @@ async fn setup_test_environment() -> (
     // Create a test harness
     let harness_id = HarnessId::from_seed(1);
     let now = chrono::Utc::now();
-    let harness = Harness {
-        id: harness_id,
-        name: "test-harness".to_string(),
-        display_name: Some("Test Harness".to_string()),
-        description: None,
-        system_prompt: Some("You are a helpful assistant.".to_string()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: now,
-        updated_at: now,
-        archived_at: None,
-        deleted_at: None,
-    };
-    harness_store.add_harness(harness).await;
+    let harness = HarnessDefinition::new("test-harness", "You are a helpful assistant.");
+    harness_store.add_harness(harness_id, harness).await;
 
     // Create a test agent
     let agent_id = Uuid::now_v7();

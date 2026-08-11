@@ -116,7 +116,7 @@ async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64
         .capability(capability)
         .build();
     if let Some(path) = task.seed_path {
-        harness.initial_files.push(InitialFile {
+        harness.definition.initial_files.push(InitialFile {
             path: path.to_string(),
             content: task.seed_content.to_string(),
             encoding: "text".to_string(),

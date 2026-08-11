@@ -386,15 +386,11 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     Arc<dyn everruns_core::hook_executor::BashHookDispatcher>,
 )> {
     let capability_registry = adapter.capability_registry();
-    let harness_chain = adapter
+    let harness = adapter
         .harness_store(org_id)
-        .get_harness_chain(harness_id)
-        .await?;
-    if harness_chain.is_empty() {
-        return Err(everruns_core::error::AgentLoopError::harness_not_found(
-            harness_id,
-        ));
-    }
+        .get_harness(harness_id)
+        .await?
+        .ok_or_else(|| everruns_core::error::AgentLoopError::harness_not_found(harness_id))?;
     let session = adapter
         .session_store(org_id)
         .get_session(session_id)
@@ -404,12 +400,8 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
         Some(agent_id) => adapter.agent_store(org_id).get_agent(agent_id).await?,
         None => None,
     };
-    let resolved = resolve_runtime_capabilities(
-        &harness_chain,
-        agent.as_ref(),
-        &session,
-        &capability_registry,
-    );
+    let resolved =
+        resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
     let specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
     let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
@@ -447,15 +439,11 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         });
     }
 
-    let harness_chain = adapter
+    let harness = adapter
         .harness_store(org_id)
-        .get_harness_chain(harness_id)
-        .await?;
-    if harness_chain.is_empty() {
-        return Err(everruns_core::error::AgentLoopError::harness_not_found(
-            harness_id,
-        ));
-    }
+        .get_harness(harness_id)
+        .await?
+        .ok_or_else(|| everruns_core::error::AgentLoopError::harness_not_found(harness_id))?;
 
     let session = adapter
         .session_store(org_id)
@@ -474,12 +462,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         None => None,
     };
 
-    let resolved = resolve_runtime_capabilities(
-        &harness_chain,
-        agent.as_ref(),
-        &session,
-        &capability_registry,
-    );
+    let resolved =
+        resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
     // Executor (act) path: this builds the worker-side tool registry, not the
     // model-visible tool list. The model is left unset, so a model-adaptive
     // capability like `auto_tool_search` resolves to its provider-agnostic

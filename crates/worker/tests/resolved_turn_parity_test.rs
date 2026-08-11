@@ -9,8 +9,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::error::Result as CoreResult;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{DEFAULT_ORG_ID, Harness, ResolvedExecutionSnapshot, Session};
-use everruns_host::{HarnessBuilder, RuntimeHostAdapter, SessionBuilder};
+use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot, Session};
+use everruns_host::{RuntimeHostAdapter, SessionBuilder};
+use everruns_platform::Harness;
 // EVE-877: the hosted adapters transport the stored platform record; the
 // loading seam projects it into the portable execution definition.
 use everruns_platform::{Agent, AgentStatus};
@@ -22,9 +23,30 @@ fn fixture_records() -> (Harness, Agent, Session) {
     let agent_id = AgentId::from_seed(872);
     let session_id = SessionId::from_seed(872);
 
-    let harness = HarnessBuilder::new("hoster", "Harness instructions.")
-        .id(harness_id)
-        .build();
+    // Stored (pre-merged) platform record, as transported by WorkerAdapters
+    // (EVE-881): the host itself only ever sees the projected definition.
+    let harness = Harness {
+        id: harness_id,
+        name: "hoster".into(),
+        display_name: None,
+        description: None,
+        system_prompt: Some("Harness instructions.".into()),
+        parent_harness_id: None,
+        default_model_id: None,
+        tags: vec![],
+        capabilities: vec![],
+        initial_files: vec![],
+        network_access: None,
+        parallel_tool_calls: None,
+        mcp_servers: Default::default(),
+        embedder_metadata: Default::default(),
+        is_built_in: false,
+        status: everruns_platform::HarnessStatus::Active,
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        deleted_at: None,
+    };
     let agent = Agent {
         public_id: agent_id,
         internal_id: agent_id.uuid(),
@@ -397,7 +419,9 @@ async fn direct_and_wire_adapters_project_the_same_snapshot() {
     // The canonical projection is the reference: hosted adapters built from
     // equivalent configuration produce equivalent snapshots.
     let reference = ResolvedExecutionSnapshot::project(
-        std::slice::from_ref(&harness),
+        &harness
+            .execution_definition()
+            .expect("active harness projects"),
         Some(&agent.execution_definition().expect("active agent projects")),
         &session,
     )

@@ -343,6 +343,7 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         platform_definition: &PlatformDefinition,
+        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -374,18 +375,26 @@ impl AppState {
             org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
-            fallback_base_harness_name: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
-                .map(|h| h.name.clone()),
-            fallback_default_harness_name: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
-                .map(|h| h.name.clone()),
-            chat_harness_name: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
-                .map(|h| h.name.clone()),
-            chat_session_title: platform_definition
-                .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
-                .map(|h| h.display_name.clone()),
+            fallback_base_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Base,
+            )
+            .map(|h| h.name.clone()),
+            fallback_default_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Default,
+            )
+            .map(|h| h.name.clone()),
+            chat_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.name.clone()),
+            chat_session_title: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                everruns_platform::BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.display_name.clone()),
             sqldb_store,
             utility_llm_service: platform_definition.utility_llm_service(),
             health_check_service: None,

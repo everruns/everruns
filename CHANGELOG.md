@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved the stored `Harness` record and built-in provisioning templates out
+  of `everruns-core`.** The persistence record — `Harness`, `HarnessStatus`,
+  `merge_harness`, `merge_harness_chain` — and the provisioning templates —
+  `BuiltInHarnessDefinition`, `BuiltInHarnessRole`,
+  `BuiltInCapabilityDefinition` — now live in `everruns-platform`; the
+  `everruns_core::harness` module is gone and `PlatformDefinition` no longer
+  carries built-in harness templates (compose them on `ServerAppBuilder`
+  instead). Core keeps only the portable `everruns_core::HarnessDefinition`
+  (the effective, inheritance-resolved environment configuration), which
+  `HarnessStore` implementations now return: parent-chain loading,
+  cycle/error handling, and archived/deleted validation happen at that
+  loading seam, before host execution, so the host never requests or
+  receives a stored Harness. The Framework host seeds `HarnessDefinition`
+  values under an embedder-chosen id (`everruns_host::SeededHarness`).
+  REST/gRPC shapes and stored schema are unchanged.
+
 - **Moved the stored `Agent` and `AgentVersion` records out of
   `everruns-core`.** The persistence records — `Agent`, `AgentVersion`,
   `AgentStatus`, `AgentVersionChangeKind`, `MAX_ADDRESSABLE_NAME_LEN`,

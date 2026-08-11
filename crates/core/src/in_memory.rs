@@ -10,7 +10,7 @@
 
 use crate::agent_definition::AgentDefinition;
 use crate::credential_provider::CredentialProvider;
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::provider::DriverId;
 use crate::session::Session;
 
@@ -255,11 +255,13 @@ impl AgentStore for InMemoryAgentStore {
 
 /// In-memory harness store
 ///
-/// Stores harnesses in a HashMap keyed by harness ID.
-/// Useful for testing and examples where you want to configure harnesses without a database.
+/// Stores effective harness execution definitions in a HashMap keyed by
+/// harness ID (EVE-881: the id keys the association with sessions; the value
+/// itself is the portable, id-free configuration). Useful for testing and
+/// examples where you want to configure harnesses without a database.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryHarnessStore {
-    harnesses: Arc<RwLock<HashMap<HarnessId, Harness>>>,
+    harnesses: Arc<RwLock<HashMap<HarnessId, HarnessDefinition>>>,
 }
 
 impl InMemoryHarnessStore {
@@ -270,23 +272,16 @@ impl InMemoryHarnessStore {
         }
     }
 
-    /// Add a harness to the store
-    pub async fn add_harness(&self, harness: Harness) {
-        self.harnesses.write().await.insert(harness.id, harness);
+    /// Add a harness definition to the store under the given id.
+    pub async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) {
+        self.harnesses.write().await.insert(harness_id, harness);
     }
 }
 
 #[async_trait]
 impl HarnessStore for InMemoryHarnessStore {
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
-        Ok(self
-            .harnesses
-            .read()
-            .await
-            .get(&harness_id)
-            .cloned()
-            .into_iter()
-            .collect())
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        Ok(self.harnesses.read().await.get(&harness_id).cloned())
     }
 }
 

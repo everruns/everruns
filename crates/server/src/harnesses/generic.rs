@@ -1,7 +1,8 @@
 //! Generic harness — batteries-included default for most use cases.
 
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
-
+use everruns_platform::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",

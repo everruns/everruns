@@ -4,8 +4,7 @@
 //! visualization, task tracking, and a structured analysis pipeline inspired
 //! by OpenAI's Kepler data agent and the open-source Dash project.
 
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
-
+use everruns_platform::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "data-analyst",

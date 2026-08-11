@@ -9,9 +9,9 @@
 use everruns_core::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
-    BuiltInHarnessDefinition, DirectEgressService, PlatformDefinition, SystemEmailConfig,
-    SystemUtilityLlmConfig,
+    DirectEgressService, PlatformDefinition, SystemEmailConfig, SystemUtilityLlmConfig,
 };
+use everruns_platform::BuiltInHarnessDefinition;
 use std::sync::Arc;
 
 /// Build the default OSS `PlatformDefinition` for the current deployment grade.
@@ -37,7 +37,6 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
         .connectors(connectors)
-        .built_in_harnesses(oss_built_in_harnesses())
         .egress_service(egress_service)
         .email_sender(email_sender)
         .utility_llm_service(utility_llm_service)

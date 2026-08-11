@@ -10,11 +10,12 @@ use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_ser
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
-    Capability, EgressService, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers,
-    Session, SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
+    Capability, EgressService, McpCapability, McpServerAuthMode, ScopedMcpServers, Session,
+    SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
     validate_safe_url,
 };
 use everruns_platform::Agent;
+use everruns_platform::Harness;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -71,10 +72,11 @@ pub fn merge_effective_scoped_mcp_servers_with_capabilities(
 ) -> ScopedMcpServers {
     let explicit = merge_effective_scoped_mcp_servers(harness, agent, session);
     // Status-agnostic projection: scoped-MCP wiring historically saw the
-    // stored record regardless of lifecycle status (EVE-877).
+    // stored records regardless of lifecycle status (EVE-877, EVE-881).
     let agent_definition = agent.map(|a| a.definition());
+    let harness_definition = harness.definition();
     let resolved = resolve_runtime_capabilities(
-        std::slice::from_ref(harness),
+        &harness_definition,
         agent_definition.as_ref(),
         session,
         capability_registry,
@@ -314,9 +316,7 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use everruns_core::{
-        Harness, HarnessId, HarnessStatus, ScopedMcpServer, Session, SessionId, SessionStatus,
-    };
+    use everruns_core::{HarnessId, ScopedMcpServer, Session, SessionId, SessionStatus};
     use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 
     struct MutableConnectionResolver {
@@ -412,7 +412,7 @@ mod tests {
             mcp_servers: Default::default(),
             embedder_metadata: Default::default(),
             is_built_in: false,
-            status: HarnessStatus::Active,
+            status: everruns_platform::HarnessStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,

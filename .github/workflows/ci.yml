@@ -412,10 +412,11 @@ jobs:
       - name: Check observability isolation
         run: bash scripts/lib/check-observability-isolation.sh
 
-  # Architecture guard (EVE-877): stored Agent/AgentVersion persistence records
-  # live in crates/platform. Kernel crates (core, engine, provider, capability)
-  # consume only the portable AgentDefinition and the resolved execution
-  # snapshot, and carry no everruns-platform edge.
+  # Architecture guard (EVE-877, EVE-881): stored Agent/AgentVersion and
+  # Harness persistence records plus the built-in harness provisioning
+  # templates live in crates/platform. Kernel crates (core, engine, provider,
+  # capability) consume only the portable AgentDefinition/HarnessDefinition and
+  # the resolved execution snapshot, and carry no everruns-platform edge.
   agent-record-isolation:
     name: Agent-Record Isolation Guard
     runs-on: ubuntu-latest

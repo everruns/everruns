@@ -1,17 +1,22 @@
 // Database-backed HarnessStore implementation
 //
-// Implements the core HarnessStore trait for retrieving
-// harness configurations from the database.
+// Implements the core HarnessStore loading seam for retrieving harness
+// execution configurations from the database.
 //
 // Decision: org_id is baked into the struct at construction time,
 // matching the Grpc/Adapter store pattern.
+//
+// EVE-881: parent-chain loading, cycle detection, and archived/deleted
+// validation live here, at the platform seam. The core trait surface returns
+// only the effective `HarnessDefinition`; the stored chain remains available
+// to server-side callers via the inherent `get_harness_chain`.
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, HarnessId, Result, StoreResultExt, from_json,
-    harness::{Harness, HarnessStatus},
-    traits::HarnessStore,
+    AgentCapabilityConfig, AgentLoopError, HarnessDefinition, HarnessId, Result, StoreResultExt,
+    from_json, traits::HarnessStore,
 };
+use everruns_platform::{Harness, HarnessStatus, resolve_execution_harness};
 use std::collections::HashSet;
 
 use super::repositories::Database;
@@ -34,11 +39,13 @@ impl DbHarnessStore {
     pub fn new(db: Database, org_id: i64) -> Self {
         Self { db, org_id }
     }
-}
 
-#[async_trait]
-impl HarnessStore for DbHarnessStore {
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
+    /// Load the stored harness inheritance chain, root-to-leaf.
+    ///
+    /// Returns `Ok(vec![])` if the harness does not exist. Detects inheritance
+    /// cycles and missing parents. Server-side platform callers use this raw
+    /// chain; execution goes through the projected [`HarnessStore`] seam.
+    pub async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
         let mut visited = HashSet::new();
         let mut chain = Vec::new();
         let mut cursor = Some(harness_id);
@@ -107,6 +114,30 @@ impl HarnessStore for DbHarnessStore {
         // Chain is leaf-to-root; reverse to root-to-leaf for overlay folding
         chain.reverse();
         Ok(chain)
+    }
+}
+
+#[async_trait]
+impl HarnessStore for DbHarnessStore {
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        // Loading seam (EVE-881): resolve inheritance and lifecycle before the
+        // definition can reach host execution.
+        let chain = self.get_harness_chain(harness_id).await?;
+        if chain.is_empty() {
+            return Ok(None);
+        }
+        resolve_execution_harness(&chain, harness_id).map(Some)
+    }
+
+    async fn get_harness_blocker(
+        &self,
+        harness_id: HarnessId,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        let chain = self.get_harness_chain(harness_id).await?;
+        Ok(match chain.last() {
+            Some(leaf) => leaf.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        })
     }
 }
 

@@ -17,7 +17,7 @@ use everruns_test_support::TestMathCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, Harness, HarnessStatus,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, HarnessDefinition,
     PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use everruns_host::InProcessRuntimeBuilder;
@@ -43,27 +43,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             base_url: None,
             provider_metadata: None,
         })
-        .harness(Harness {
+        .harness(everruns_host::SeededHarness {
             id: harness_id,
-            name: "math".into(),
-            display_name: Some("Math".into()),
-            description: Some("Minimal harness for context inspection".into()),
-            system_prompt: Some("You are a math harness.".into()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("test_math")],
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            mcp_servers: Default::default(),
-            embedder_metadata: Default::default(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
+            definition: HarnessDefinition {
+                capabilities: vec![AgentCapabilityConfig::new("test_math")],
+                ..HarnessDefinition::new("math", "You are a math harness.")
+            },
         })
         .agent(AgentDefinition {
             display_name: Some("Math Agent".into()),

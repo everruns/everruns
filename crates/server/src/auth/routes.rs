@@ -864,7 +864,7 @@ pub async fn register(
         if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
-            state.platform_definition.built_in_harnesses(),
+            state.built_in_harnesses.as_slice(),
         )
         .await
         {
@@ -1468,7 +1468,7 @@ async fn oauth_callback_inner(
                 if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
                     &state.db,
                     DEFAULT_ORG_ID,
-                    state.platform_definition.built_in_harnesses(),
+                    state.built_in_harnesses.as_slice(),
                 )
                 .await
                 {
@@ -2004,7 +2004,7 @@ async fn get_or_create_admin_user(
         if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
-            state.platform_definition.built_in_harnesses(),
+            state.built_in_harnesses.as_slice(),
         )
         .await
         {

@@ -6,7 +6,7 @@
 // - Channel-based implementations for streaming
 
 use crate::agent_definition::AgentDefinition;
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::provider::DriverId;
 use crate::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
@@ -138,32 +138,58 @@ impl<T: AgentStore + ?Sized> AgentStore for std::sync::Arc<T> {
 }
 
 // ============================================================================
-// HarnessStore - For retrieving harness configurations
+// HarnessStore - For retrieving harness execution configurations
 // ============================================================================
 
-/// Trait for retrieving harness configurations
+/// Narrow harness-loading seam for turn execution (EVE-872, EVE-881).
 ///
-/// Implementations can:
-/// - Load harnesses from a database
-/// - Keep harnesses in memory for testing
+/// Implementations project their stored harness records into the portable
+/// [`HarnessDefinition`] — the effective execution environment configuration.
+/// Parent-chain inheritance is resolved *behind* this seam (root-to-leaf, via
+/// the same overlay merge semantics the runtime uses), so callers receive one
+/// effective layer. Stored `Harness` persistence records live in
+/// `everruns-platform` and never cross this boundary.
 ///
-/// Returns the harness inheritance chain (root-to-leaf) so the caller
-/// can fold each harness as an `AgentConfigOverlay`. DB-backed stores
-/// return the raw chain; gRPC-backed stores may return a single
-/// pre-merged harness (functionally equivalent when folded).
+/// Contract: records that exist but cannot execute (archived or deleted) must
+/// yield an error from [`HarnessStore::get_harness`], so lifecycle validation
+/// is enforced at the loading seam before host execution begins.
 #[async_trait]
 pub trait HarnessStore: Send + Sync {
-    /// Get the harness inheritance chain, root-to-leaf.
+    /// Get the effective (inheritance-resolved) execution definition for a
+    /// harness by id. Returns `Ok(None)` if the harness does not exist.
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>>;
+
+    /// Execution-availability probe for dependency-blocker detection.
     ///
-    /// Returns `Ok(vec![])` if the harness does not exist.
-    /// A harness with no parent returns a single-element vec.
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>>;
+    /// Returns `None` when the harness exists and can execute. Hosted stores
+    /// override this to report [`DependencyBlocker::HarnessArchived`] /
+    /// [`DependencyBlocker::HarnessDeleted`] from the stored lifecycle status;
+    /// the default treats a missing record as deleted.
+    ///
+    /// [`DependencyBlocker::HarnessArchived`]: crate::dependency_blocker::DependencyBlocker::HarnessArchived
+    /// [`DependencyBlocker::HarnessDeleted`]: crate::dependency_blocker::DependencyBlocker::HarnessDeleted
+    async fn get_harness_blocker(
+        &self,
+        harness_id: HarnessId,
+    ) -> Result<Option<crate::dependency_blocker::DependencyBlocker>> {
+        Ok(match self.get_harness(harness_id).await? {
+            Some(_) => None,
+            None => Some(crate::dependency_blocker::DependencyBlocker::HarnessDeleted),
+        })
+    }
 }
 
 #[async_trait]
 impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
-        (**self).get_harness_chain(harness_id).await
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        (**self).get_harness(harness_id).await
+    }
+
+    async fn get_harness_blocker(
+        &self,
+        harness_id: HarnessId,
+    ) -> Result<Option<crate::dependency_blocker::DependencyBlocker>> {
+        (**self).get_harness_blocker(harness_id).await
     }
 }
 

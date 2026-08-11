@@ -8,7 +8,7 @@ use crate::in_memory::{InMemorySessionStorageStore, InMemorySessionStore};
 use async_trait::async_trait;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::error::Result;
-use everruns_core::harness::Harness;
+use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore};
 use everruns_core::session::Session;
 use everruns_core::session_task::SessionTaskRegistry;
@@ -16,7 +16,7 @@ use everruns_core::traits::{
     AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionMutator, SessionScheduleStore,
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{HarnessId, SessionId};
 use everruns_platform::PlatformStore;
 use std::sync::Arc;
 
@@ -41,10 +41,13 @@ pub trait RuntimeAgentStore: AgentStore + Send + Sync {
 }
 
 /// Harness store contract for runtime seeding and lookup.
+///
+/// Seeds portable [`HarnessDefinition`] values under an embedder-chosen id
+/// (EVE-881): the embedded host carries no stored Harness persistence records.
 #[async_trait]
 pub trait RuntimeHarnessStore: HarnessStore + Send + Sync {
-    /// Insert or replace a harness definition.
-    async fn add_harness(&self, harness: Harness) -> Result<()>;
+    /// Insert or replace a harness definition under the given id.
+    async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) -> Result<()>;
 }
 
 /// Session store contract for runtime seeding, lookup, and mutation.
@@ -216,8 +219,8 @@ impl RuntimeAgentStore for InMemoryAgentStore {
 
 #[async_trait]
 impl RuntimeHarnessStore for InMemoryHarnessStore {
-    async fn add_harness(&self, harness: Harness) -> Result<()> {
-        InMemoryHarnessStore::add_harness(self, harness).await;
+    async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) -> Result<()> {
+        InMemoryHarnessStore::add_harness(self, harness_id, harness).await;
         Ok(())
     }
 }

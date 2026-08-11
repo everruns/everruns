@@ -1294,10 +1294,10 @@ impl ResourceUrlable for everruns_platform::Agent {
 /// Hypermedia actions for a `Harness`. See `knowledge/execution/api-conventions.md`.
 pub fn harness_allowed_actions(
     id: &str,
-    status: &everruns_core::HarnessStatus,
+    status: &everruns_platform::HarnessStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::HarnessStatus;
+    use everruns_platform::HarnessStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1330,7 +1330,7 @@ pub fn harness_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::Harness {
+impl ResourceUrlable for everruns_platform::Harness {
     fn api_path() -> &'static str {
         "v1/harnesses"
     }
@@ -2378,7 +2378,7 @@ mod tests {
 
     #[test]
     fn harness_actions_offer_copy_only_when_active() {
-        use everruns_core::HarnessStatus;
+        use everruns_platform::HarnessStatus;
         let active =
             harness_allowed_actions("harness_01", &HarnessStatus::Active, "https://api.example");
         let archived = harness_allowed_actions(

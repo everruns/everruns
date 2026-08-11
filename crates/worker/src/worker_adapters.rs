@@ -24,13 +24,13 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    AgentDefinition, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
-    Session, ToolDefinition, UtilityLlmService,
+    AgentDefinition, DriverRegistry, EgressService, HarnessDefinition, Message, MessageHistory,
+    MessageQuery, Session, ToolDefinition, UtilityLlmService,
 };
 // EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
 // see the projected `AgentDefinition` / resolved execution snapshot.
-use everruns_platform::Agent;
+use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -605,14 +605,31 @@ impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
-        // WorkerAdapters returns a pre-merged harness; wrap as single-element chain
-        Ok(self
-            .adapters
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        // Loading seam (EVE-881): WorkerAdapters transports the pre-merged
+        // stored record; project it into the portable execution definition,
+        // failing archived/deleted records here.
+        self.adapters
             .get_harness(self.org_id, harness_id.uuid())
             .await?
-            .into_iter()
-            .collect())
+            .map(|harness| harness.execution_definition())
+            .transpose()
+    }
+
+    async fn get_harness_blocker(
+        &self,
+        harness_id: HarnessId,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(
+            match self
+                .adapters
+                .get_harness(self.org_id, harness_id.uuid())
+                .await?
+            {
+                Some(harness) => harness.dependency_blocker(),
+                None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+            },
+        )
     }
 }
 

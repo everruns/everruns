@@ -479,18 +479,16 @@ async fn harness_chain_overlay(
     store: &dyn crate::subagent_delegation::SubagentSessionDelegate,
     harness_id: HarnessId,
 ) -> Result<AgentConfigOverlay, ToolExecutionResult> {
-    let chain = store
-        .get_harness_chain(harness_id)
+    // EVE-881: the delegate returns the effective (inheritance-resolved)
+    // definition; parent-chain walking lives behind the platform adapter.
+    let harness = store
+        .get_harness(harness_id)
         .await
-        .map_err(ToolExecutionResult::internal_error)?;
-    if chain.is_empty() {
-        return Err(ToolExecutionResult::tool_error(format!(
-            "Harness not found: {harness_id}"
-        )));
-    }
-    Ok(AgentConfigOverlay::fold(
-        chain.iter().map(AgentConfigOverlay::from),
-    ))
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Harness not found: {harness_id}"))
+        })?;
+    Ok(AgentConfigOverlay::from(&harness))
 }
 
 async fn invite_mode_overlays(
@@ -1808,19 +1806,15 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_invite_rejects_inherited_harness_capability_conflict() {
         let mut store_value = MockSubagentDelegate::new();
-        let parent_harness_id = HarnessId::new();
         let child_harness_id = HarnessId::new();
-        let mut parent_harness = store_value.harness.clone();
-        parent_harness.id = parent_harness_id;
-        parent_harness.parent_harness_id = None;
-        parent_harness.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+        // EVE-881: the delegate returns the effective (inheritance-resolved)
+        // definition, so a capability inherited from a parent harness arrives
+        // already folded into the child's configuration.
+        let mut child_harness = store_value.harness.clone();
+        child_harness.capabilities = vec![crate::AgentCapabilityConfig::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
         )];
-        let mut child_harness = store_value.harness.clone();
-        child_harness.id = child_harness_id;
-        child_harness.parent_harness_id = Some(parent_harness_id);
-        child_harness.capabilities = vec![];
         store_value.session.harness_id = child_harness_id;
         store_value.agent.capabilities = vec![crate::AgentCapabilityConfig::with_config(
             "web_fetch",
@@ -1828,7 +1822,6 @@ mod tests {
         )];
         {
             let mut harnesses = store_value.extra_harnesses.lock().unwrap();
-            harnesses.insert(parent_harness_id, parent_harness);
             harnesses.insert(child_harness_id, child_harness);
         }
         let store = Arc::new(store_value);

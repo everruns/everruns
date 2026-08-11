@@ -8,10 +8,11 @@ use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, Update
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
 use everruns_core::{
-    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, Policy, ScopedMcpServers,
-    ToolDefinition, merge_scoped_mcp_servers,
+    AgentCapabilityConfig, HarnessId, Policy, ScopedMcpServers, ToolDefinition,
+    merge_scoped_mcp_servers,
     openresponses_types::{MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH},
 };
+use everruns_platform::{Harness, HarnessStatus};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

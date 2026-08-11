@@ -9,8 +9,7 @@
 //!
 //! See EVE-279 for design rationale.
 
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
-
+use everruns_platform::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "coding-container",

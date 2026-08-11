@@ -37,7 +37,9 @@ pub use backends::{
     HostBackends, PlatformStoreFactory, RuntimeAgentStore, RuntimeHarnessStore,
     RuntimeProviderStore, RuntimeSessionStore, ScheduleStoreFactory,
 };
-pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
+pub use builders::{
+    AgentBuilder, HarnessBuilder, SeededHarness, SessionBuilder, SingleSessionBuilder,
+};
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,

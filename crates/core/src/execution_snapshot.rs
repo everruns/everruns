@@ -17,7 +17,7 @@ use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
-use crate::harness::{Harness, HarnessStatus};
+use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{
     McpProtocolMode, McpServerAuthMode, McpServerTransportType, ScopedMcpServer,
 };
@@ -124,47 +124,24 @@ pub struct ResolvedExecutionSnapshot {
 impl ResolvedExecutionSnapshot {
     /// Project loaded records into the canonical execution value.
     ///
-    /// This is the platform projection boundary: it fails when the harness
-    /// chain is empty or does not terminate at the session's harness, when a
-    /// referenced agent is missing or does not match the session's agent id,
-    /// or when the leaf harness is archived or deleted. Agent lifecycle
-    /// validation happens one step earlier, at the [`AgentStore`] loading
-    /// seam: stored records that are archived or deleted fail there (EVE-877),
-    /// so only executable [`AgentDefinition`] values reach this projection.
-    /// Host execution never sees a snapshot built from broken record wiring.
+    /// This is the execution projection boundary: it fails when a referenced
+    /// agent is missing or does not match the session's agent id. Harness
+    /// lifecycle and inheritance validation happen one step earlier, at the
+    /// platform loading seam (EVE-881): parent-chain loading, cycle/error
+    /// handling, and archived/deleted validation run behind the
+    /// [`HarnessStore`] contract, so only the effective, executable
+    /// [`HarnessDefinition`] reaches this projection. Agent lifecycle
+    /// validation likewise fails at the [`AgentStore`] seam (EVE-877). Host
+    /// execution never sees a snapshot built from broken record wiring.
     ///
     /// Precedence is applied exactly once, through the same
     /// [`AgentConfigOverlay`] merge semantics the runtime capability
-    /// resolution uses.
+    /// resolution uses: harness → agent → session, leaf wins.
     pub fn project(
-        harness_chain: &[Harness],
+        harness: &HarnessDefinition,
         agent: Option<&AgentDefinition>,
         session: &Session,
     ) -> Result<Self> {
-        let Some(leaf) = harness_chain.last() else {
-            return Err(AgentLoopError::harness_not_found(session.harness_id));
-        };
-        if leaf.id != session.harness_id {
-            return Err(AgentLoopError::config(format!(
-                "harness chain terminates at {} but session {} references harness {}",
-                leaf.id, session.id, session.harness_id
-            )));
-        }
-        match leaf.status {
-            HarnessStatus::Active => {}
-            HarnessStatus::Archived | HarnessStatus::Deleted => {
-                return Err(AgentLoopError::config(format!(
-                    "harness {} is {} and cannot execute turns",
-                    leaf.id,
-                    if leaf.status == HarnessStatus::Archived {
-                        "archived"
-                    } else {
-                        "deleted"
-                    }
-                )));
-            }
-        }
-
         let agent = match (session.agent_id, agent) {
             (Some(agent_id), Some(agent)) => {
                 if agent.id != agent_id {
@@ -181,17 +158,19 @@ impl ResolvedExecutionSnapshot {
             (None, _) => None,
         };
 
-        let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);
         let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
         let effective = AgentConfigOverlay::fold(
-            harness_layers
+            [AgentConfigOverlay::from(harness)]
+                .into_iter()
                 .chain(agent_layers)
                 .chain([AgentConfigOverlay::from(session)]),
         );
 
-        let embedder_metadata = harness_chain
+        // Chain folding (root base, leaf wins) already happened at the platform
+        // seam; the definition carries the effective metadata.
+        let embedder_metadata = harness
+            .embedder_metadata
             .iter()
-            .flat_map(|harness| harness.embedder_metadata.iter())
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
 
@@ -250,12 +229,15 @@ pub async fn load_execution_snapshot_for_session(
     agent_store: &dyn AgentStore,
     session: &Session,
 ) -> Result<ResolvedExecutionSnapshot> {
-    let harness_chain = harness_store.get_harness_chain(session.harness_id).await?;
+    let harness = harness_store
+        .get_harness(session.harness_id)
+        .await?
+        .ok_or_else(|| AgentLoopError::harness_not_found(session.harness_id))?;
     let agent = match session.agent_id {
         Some(agent_id) => agent_store.get_agent(agent_id).await?,
         None => None,
     };
-    ResolvedExecutionSnapshot::project(&harness_chain, agent.as_ref(), session)
+    ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), session)
 }
 
 #[cfg(test)]
@@ -267,28 +249,10 @@ mod tests {
     use chrono::Utc;
     use std::collections::HashMap;
 
-    fn harness(harness_id: HarnessId) -> Harness {
-        Harness {
-            id: harness_id,
-            name: "base".into(),
-            display_name: Some("Base".into()),
-            description: None,
-            system_prompt: Some("Harness prompt.".into()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
+    fn harness() -> HarnessDefinition {
+        HarnessDefinition {
             capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            mcp_servers: Default::default(),
-            embedder_metadata: HashMap::new(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
+            ..HarnessDefinition::new("base", "Harness prompt.")
         }
     }
 
@@ -370,13 +334,13 @@ mod tests {
     #[test]
     fn precedence_instructions_concatenate_root_to_leaf() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let agent = agent(agent_id, harness_id);
         let mut session = session(session_id, harness_id, Some(agent_id));
         session.system_prompt = Some("Session prompt.".into());
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(
             snapshot.instructions.as_deref(),
             Some("Harness prompt.\n\nAgent prompt.\n\nSession prompt.")
@@ -386,30 +350,26 @@ mod tests {
     #[test]
     fn precedence_model_leaf_layer_wins() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.default_model_id = Some(ModelId::from_seed(1));
         let mut agent = agent(agent_id, harness_id);
         agent.default_model_id = Some(ModelId::from_seed(2));
         let mut session = session(session_id, harness_id, Some(agent_id));
 
-        let snapshot = ResolvedExecutionSnapshot::project(
-            std::slice::from_ref(&harness),
-            Some(&agent),
-            &session,
-        )
-        .unwrap();
+        let snapshot =
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(2)));
 
         session.model_id = Some(ModelId::from_seed(3));
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.default_model_id, Some(ModelId::from_seed(3)));
     }
 
     #[test]
     fn precedence_capabilities_override_by_id() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.capabilities = vec![AgentCapabilityConfig::with_config(
             "web_fetch",
             serde_json::json!({"enable_file_download": true}),
@@ -423,7 +383,7 @@ mod tests {
         )];
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.capabilities.len(), 2);
         assert_eq!(
             snapshot.capabilities[0],
@@ -457,12 +417,12 @@ mod tests {
         assert_eq!(attachment, framework_ref);
 
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.capabilities = vec![attachment.clone()];
         let agent = agent(agent_id, harness_id);
         let session = session(session_id, harness_id, Some(agent_id));
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.capabilities[0], framework_ref);
         assert_eq!(
             serde_json::to_value(&snapshot.capabilities[0]).unwrap(),
@@ -488,14 +448,14 @@ mod tests {
     #[test]
     fn precedence_initial_files_override_by_path() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.initial_files = vec![file("/config.txt", "harness"), file("/keep.txt", "keep")];
         let mut agent = agent(agent_id, harness_id);
         agent.initial_files = vec![file("config.txt", "agent")];
         let session = session(session_id, harness_id, Some(agent_id));
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.initial_files.len(), 2);
         assert_eq!(snapshot.initial_files[0].content, "agent");
         assert_eq!(snapshot.initial_files[1].content, "keep");
@@ -504,7 +464,7 @@ mod tests {
     #[test]
     fn precedence_mcp_servers_override_by_name() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.mcp_servers.insert(
             "docs".into(),
             ScopedMcpServer {
@@ -523,7 +483,7 @@ mod tests {
         );
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(
             snapshot.mcp_servers.get("docs").map(|s| s.url.as_str()),
             Some("https://session.example.com/mcp")
@@ -533,7 +493,7 @@ mod tests {
     #[test]
     fn precedence_network_access_narrows() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.network_access = Some(NetworkAccessList::allow_only([
             "*.example.com",
             "api.github.com",
@@ -543,7 +503,7 @@ mod tests {
         session.network_access = Some(NetworkAccessList::allow_only(["api.example.com"]));
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         let acl = snapshot.network_access.unwrap();
         assert_eq!(acl.allowed, vec!["api.example.com".to_string()]);
     }
@@ -551,7 +511,7 @@ mod tests {
     #[test]
     fn precedence_iteration_controls_leaf_wins() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let mut agent = agent(agent_id, harness_id);
         agent.max_iterations = Some(40);
         agent.parallel_tool_calls = Some(true);
@@ -560,7 +520,7 @@ mod tests {
         session.parallel_tool_calls = Some(false);
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.max_iterations, Some(5));
         assert_eq!(snapshot.parallel_tool_calls, Some(false));
     }
@@ -568,12 +528,12 @@ mod tests {
     #[test]
     fn correlation_values_are_copied() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let agent = agent(agent_id, harness_id);
         let session = session(session_id, harness_id, Some(agent_id));
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
         assert_eq!(snapshot.session_id, session_id);
         assert_eq!(snapshot.workspace_id, session.workspace_id);
         assert_eq!(snapshot.harness_id, harness_id);
@@ -583,61 +543,30 @@ mod tests {
         assert_eq!(snapshot.tags, vec!["tag-a".to_string()]);
     }
 
-    // --- Platform projection failures ---
-
-    #[test]
-    fn projection_fails_on_empty_harness_chain() {
-        let (harness_id, agent_id, session_id) = ids();
-        let agent = agent(agent_id, harness_id);
-        let session = session(session_id, harness_id, Some(agent_id));
-        assert!(ResolvedExecutionSnapshot::project(&[], Some(&agent), &session).is_err());
-    }
-
-    #[test]
-    fn projection_fails_on_chain_leaf_mismatch() {
-        let (harness_id, agent_id, session_id) = ids();
-        let other = harness(HarnessId::from_seed(99));
-        let agent = agent(agent_id, harness_id);
-        let session = session(session_id, harness_id, Some(agent_id));
-        assert!(ResolvedExecutionSnapshot::project(&[other], Some(&agent), &session).is_err());
-    }
+    // --- Projection failures ---
+    //
+    // Harness lifecycle and inheritance failures (empty chain, chain/leaf
+    // mismatch, archived/deleted records, cycles) moved to the platform
+    // loading seam (EVE-881); they are covered by the `everruns-platform`
+    // `resolve_execution_harness` tests and the hosted store adapters.
 
     #[test]
     fn projection_fails_on_missing_agent() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let session = session(session_id, harness_id, Some(agent_id));
-        assert!(ResolvedExecutionSnapshot::project(&[harness], None, &session).is_err());
+        assert!(ResolvedExecutionSnapshot::project(&harness, None, &session).is_err());
     }
 
     #[test]
     fn projection_fails_on_mismatched_agent() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let other_agent = agent(AgentId::from_seed(99), harness_id);
         let session = session(session_id, harness_id, Some(agent_id));
         assert!(
-            ResolvedExecutionSnapshot::project(&[harness], Some(&other_agent), &session).is_err()
+            ResolvedExecutionSnapshot::project(&harness, Some(&other_agent), &session).is_err()
         );
-    }
-
-    #[test]
-    fn projection_fails_on_archived_or_deleted_harness() {
-        // Agent lifecycle validation moved to the platform loading seam
-        // (EVE-877): archived/deleted stored Agent records fail in
-        // the platform record's `execution_definition` before projection.
-        let (harness_id, agent_id, session_id) = ids();
-        let session = session(session_id, harness_id, Some(agent_id));
-
-        for status in [HarnessStatus::Archived, HarnessStatus::Deleted] {
-            let mut archived = harness(harness_id);
-            archived.status = status.clone();
-            let agent = agent(agent_id, harness_id);
-            assert!(
-                ResolvedExecutionSnapshot::project(&[archived], Some(&agent), &session).is_err(),
-                "harness status {status:?} must fail projection"
-            );
-        }
     }
 
     #[tokio::test]
@@ -665,7 +594,7 @@ mod tests {
                 .is_err()
         );
 
-        harness_store.add_harness(harness(harness_id)).await;
+        harness_store.add_harness(harness_id, harness()).await;
         assert!(
             load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
                 .await
@@ -685,7 +614,7 @@ mod tests {
     #[test]
     fn snapshot_excludes_platform_metadata_and_credential_values() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness = harness(harness_id);
+        let harness = harness();
         let agent = agent(agent_id, harness_id);
         let mut session = session(session_id, harness_id, Some(agent_id));
         session.mcp_servers.insert(
@@ -706,7 +635,7 @@ mod tests {
         );
 
         let snapshot =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+            ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
 
         let serialized = serde_json::to_string(&snapshot).unwrap();
         let debugged = format!("{snapshot:?}");
@@ -729,7 +658,7 @@ mod tests {
     #[test]
     fn snapshot_serialization_is_deterministic_and_round_trips() {
         let (harness_id, agent_id, session_id) = ids();
-        let mut harness = harness(harness_id);
+        let mut harness = harness();
         harness.embedder_metadata = HashMap::from([
             ("zeta".to_string(), "z".to_string()),
             ("alpha".to_string(), "a".to_string()),
@@ -737,14 +666,8 @@ mod tests {
         let agent = agent(agent_id, harness_id);
         let session = session(session_id, harness_id, Some(agent_id));
 
-        let first = ResolvedExecutionSnapshot::project(
-            std::slice::from_ref(&harness),
-            Some(&agent),
-            &session,
-        )
-        .unwrap();
-        let second =
-            ResolvedExecutionSnapshot::project(&[harness], Some(&agent), &session).unwrap();
+        let first = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
+        let second = ResolvedExecutionSnapshot::project(&harness, Some(&agent), &session).unwrap();
 
         let first_json = serde_json::to_string(&first).unwrap();
         let second_json = serde_json::to_string(&second).unwrap();

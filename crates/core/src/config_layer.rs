@@ -25,7 +25,7 @@
 
 use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::network_access::{self, NetworkAccessList};
 use crate::session::Session;
@@ -183,8 +183,8 @@ pub fn normalize_initial_file_path(path: &str) -> String {
 // From conversions
 // ---------------------------------------------------------------------------
 
-impl From<&Harness> for AgentConfigOverlay {
-    fn from(h: &Harness) -> Self {
+impl From<&HarnessDefinition> for AgentConfigOverlay {
+    fn from(h: &HarnessDefinition) -> Self {
         AgentConfigOverlay {
             system_prompt: h.system_prompt.clone(),
             capabilities: h.capabilities.clone(),

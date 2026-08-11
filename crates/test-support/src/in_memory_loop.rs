@@ -375,32 +375,13 @@ impl InMemoryAgenticLoopBuilder {
             .map(|cap| AgentCapabilityConfig::new(cap.id()))
             .collect();
 
-        // Create harness
+        // Create harness (portable execution configuration keyed by id; the
+        // stored persistence record lives in everruns-platform, EVE-881).
         let harness_id = HarnessId::new();
         let now = Utc::now();
-        let harness = everruns_core::harness::Harness {
-            id: harness_id,
-            name: "in-memory".to_string(),
-            display_name: Some("In-Memory Harness".to_string()),
-            description: None,
-            system_prompt: Some(self.system_prompt.clone()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            mcp_servers: Default::default(),
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            embedder_metadata: Default::default(),
-            is_built_in: false,
-            status: everruns_core::harness::HarnessStatus::Active,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-        };
-        harness_store.add_harness(harness).await;
+        let harness =
+            everruns_core::HarnessDefinition::new("in-memory", self.system_prompt.clone());
+        harness_store.add_harness(harness_id, harness).await;
 
         // Surface explicitly-added tools (via `.tool(...)`) as agent tool
         // definitions so ReasonAtom returns them and ActAtom executes them

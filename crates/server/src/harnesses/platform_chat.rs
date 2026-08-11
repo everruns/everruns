@@ -3,8 +3,9 @@
 //! Keep `platform` here. Permission enforcement belongs in the
 //! platform tool execution path, not in harness amputation.
 
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
-
+use everruns_platform::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "platform-chat",

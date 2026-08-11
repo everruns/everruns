@@ -13,12 +13,12 @@
 use async_trait::async_trait;
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::harness::Harness;
 use everruns_core::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
 use everruns_platform::Agent;
+use everruns_platform::Harness;
 use everruns_platform::app::{App, AppChannel, ChannelType};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
 use std::sync::Arc;

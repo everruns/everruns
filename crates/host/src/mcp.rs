@@ -11,7 +11,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use everruns_core::capabilities::Capability;
 use everruns_core::{
-    AgentDefinition, Harness, McpCapability, McpServerTransportType, ScopedMcpServer,
+    AgentDefinition, HarnessDefinition, McpCapability, McpServerTransportType, ScopedMcpServer,
     ScopedMcpServers, Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
@@ -23,16 +23,14 @@ use crate::mcp_cache::McpDiscoveryCache;
 /// Maximum scoped MCP server discoveries run concurrently for one turn.
 const MAX_DISCOVERY_CONCURRENCY: usize = 16;
 
-/// Merge harness-chain → agent → session scoped MCP servers (last layer wins).
+/// Merge harness → agent → session scoped MCP servers (last layer wins). The
+/// harness definition is already inheritance-resolved (EVE-881).
 pub(crate) fn merge_session_scoped_servers(
-    harness_chain: &[Harness],
+    harness: &HarnessDefinition,
     agent: Option<&AgentDefinition>,
     session: &Session,
 ) -> ScopedMcpServers {
-    let mut merged = ScopedMcpServers::default();
-    for harness in harness_chain {
-        merged = merge_scoped_mcp_servers(&merged, &harness.mcp_servers);
-    }
+    let mut merged = merge_scoped_mcp_servers(&ScopedMcpServers::default(), &harness.mcp_servers);
     if let Some(agent) = agent {
         merged = merge_scoped_mcp_servers(&merged, &agent.mcp_servers);
     }

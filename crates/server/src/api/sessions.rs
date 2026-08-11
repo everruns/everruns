@@ -23,10 +23,11 @@ use everruns_core::typed_id::{
     AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
 };
 use everruns_core::{
-    BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
-    Session, SessionContextReport, SessionParticipant, SessionParticipantKind,
-    SessionParticipantRole, SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
+    Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, Session,
+    SessionContextReport, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
+use everruns_platform::BuiltInHarnessRole;
 use everruns_worker::AgentRunner;
 
 use super::common::{
@@ -440,6 +441,7 @@ impl AppState {
             runner,
             auth,
             &crate::platform::oss_platform_definition(),
+            &crate::platform::oss_built_in_harnesses(),
             crate::event_delivery::EventDelivery::in_memory(),
         )
     }
@@ -449,6 +451,7 @@ impl AppState {
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         platform_definition: &PlatformDefinition,
+        built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
@@ -460,15 +463,21 @@ impl AppState {
             db,
             runner,
             auth,
-            fallback_default_harness_name: platform_definition
-                .harness_for_role(BuiltInHarnessRole::Default)
-                .map(|h| h.name.clone()),
-            chat_harness_name: platform_definition
-                .harness_for_role(BuiltInHarnessRole::Chat)
-                .map(|h| h.name.clone()),
-            chat_session_title: platform_definition
-                .harness_for_role(BuiltInHarnessRole::Chat)
-                .map(|h| h.display_name.clone()),
+            fallback_default_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                BuiltInHarnessRole::Default,
+            )
+            .map(|h| h.name.clone()),
+            chat_harness_name: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.name.clone()),
+            chat_session_title: everruns_platform::harness_for_role(
+                built_in_harnesses,
+                BuiltInHarnessRole::Chat,
+            )
+            .map(|h| h.display_name.clone()),
             org_rate_limiter: OrgRateLimiter::default(),
         }
     }

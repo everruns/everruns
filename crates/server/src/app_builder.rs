@@ -388,6 +388,7 @@ pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
     platform_definition: Option<PlatformDefinition>,
+    built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     extra_routes: Vec<Router>,
     event_listeners: Vec<Arc<dyn EventListener>>,
     error_reporter: Option<SharedErrorReporter>,
@@ -405,6 +406,7 @@ impl ServerAppBuilder {
             config,
             auth_factory: None,
             platform_definition: None,
+            built_in_harnesses: None,
             extra_routes: Vec::new(),
             event_listeners: Vec::new(),
             error_reporter: None,
@@ -438,6 +440,19 @@ impl ServerAppBuilder {
     /// Replace the default OSS runtime surface with an explicit platform definition.
     pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
         self.platform_definition = Some(platform_definition);
+        self
+    }
+
+    /// Replace the built-in harness provisioning templates (EVE-881).
+    ///
+    /// Defaults to the OSS preset (`crate::platform::oss_built_in_harnesses`).
+    /// Product provisioning templates are server composition, not part of the
+    /// shared `PlatformDefinition` runtime surface.
+    pub fn built_in_harnesses(
+        mut self,
+        harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
+    ) -> Self {
+        self.built_in_harnesses = Some(harnesses);
         self
     }
 
@@ -557,6 +572,14 @@ impl ServerAppBuilder {
                 .clone()
                 .unwrap_or_else(crate::platform::oss_platform_definition),
         );
+        // Built-in harness provisioning templates are server composition
+        // (EVE-881): resolved here and threaded to seeding, auth safety nets,
+        // and role-based fallbacks.
+        let built_in_harnesses = Arc::new(
+            self.built_in_harnesses
+                .clone()
+                .unwrap_or_else(crate::platform::oss_built_in_harnesses),
+        );
         let mut supervisor = TaskSupervisor::new();
 
         // =====================================================================
@@ -603,6 +626,7 @@ impl ServerAppBuilder {
                     admin: auth_config.admin.clone(),
                 },
                 platform_definition.as_ref().clone(),
+                built_in_harnesses.as_ref().clone(),
                 encryption.clone(),
             ),
         );
@@ -644,18 +668,20 @@ impl ServerAppBuilder {
             None => {
                 let cfg = auth_config.clone();
                 if let Some(valkey) = valkey_client {
-                    Arc::new(auth::BuiltinAuthBackend::with_valkey(
-                        cfg,
-                        db.clone(),
-                        platform_definition.clone(),
-                        valkey,
-                    ))
+                    Arc::new(
+                        auth::BuiltinAuthBackend::with_valkey(
+                            cfg,
+                            db.clone(),
+                            platform_definition.clone(),
+                            valkey,
+                        )
+                        .with_built_in_harnesses(built_in_harnesses.clone()),
+                    )
                 } else {
-                    Arc::new(auth::BuiltinAuthBackend::new(
-                        cfg,
-                        db.clone(),
-                        platform_definition.clone(),
-                    ))
+                    Arc::new(
+                        auth::BuiltinAuthBackend::new(cfg, db.clone(), platform_definition.clone())
+                            .with_built_in_harnesses(built_in_harnesses.clone()),
+                    )
                 }
             }
         };
@@ -890,6 +916,7 @@ impl ServerAppBuilder {
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
+            &built_in_harnesses,
             event_delivery.clone(),
         );
         let mut session_service = crate::domains::sessions::SessionService::with_registry(
@@ -1016,6 +1043,7 @@ impl ServerAppBuilder {
                 event_delivery: event_delivery.clone(),
             },
             platform_definition.as_ref(),
+            &built_in_harnesses,
         );
         let capability_service = Arc::new(
             services::CapabilityService::with_registry(
@@ -1087,6 +1115,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             grade,
             platform_definition.clone(),
+            built_in_harnesses.clone(),
         )
         .with_org_rate_limiter(org_rate_limiter.clone());
         let agent_credentials_state = api::agent_credentials::AppState::new(
@@ -1134,9 +1163,11 @@ impl ServerAppBuilder {
         let utility_llm = platform_definition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
-                && let Some(default_harness_name) = platform_definition
-                    .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
-                    .map(|h| h.name.clone())
+                && let Some(default_harness_name) = everruns_platform::harness_for_role(
+                    &built_in_harnesses,
+                    everruns_platform::BuiltInHarnessRole::Default,
+                )
+                .map(|h| h.name.clone())
             {
                 let health_check_ctx = Arc::new(crate::domains::agents::HealthCheckRunContext {
                     db: db.clone(),
@@ -1352,7 +1383,7 @@ impl ServerAppBuilder {
         let mut organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
-            platform_definition.built_in_harnesses().to_vec(),
+            built_in_harnesses.as_ref().clone(),
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
         organizations_state.org_create_policy = self.org_create_policy;
@@ -1422,6 +1453,7 @@ impl ServerAppBuilder {
             runner.clone(),
             auth_state.clone(),
             platform_definition.as_ref(),
+            &built_in_harnesses,
             notifications_enabled,
             event_delivery.clone(),
             encryption.clone(),
