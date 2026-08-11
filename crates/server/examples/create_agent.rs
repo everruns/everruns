@@ -6,7 +6,7 @@
 // 2. Run migrations: just migrate
 // 3. Start the API: just api (in another terminal)
 
-use everruns_core::Agent;
+use everruns_platform::Agent;
 use serde_json::json;
 
 const API_BASE_URL: &str = "http://localhost:9000";

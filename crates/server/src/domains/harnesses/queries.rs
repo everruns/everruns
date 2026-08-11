@@ -438,7 +438,7 @@ pub const RESERVED_HARNESS_NAMES: &[&str] = &["default"];
 /// Validate harness name for create/update — standard addressable name rules
 /// plus rejection of reserved names.
 pub fn validate_harness_name(name: &str) -> Result<(), CommandError> {
-    everruns_core::validate_addressable_name(name)
+    everruns_platform::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("Harness {msg}")))?;
     if RESERVED_HARNESS_NAMES.contains(&name) {
         return Err(CommandError::bad_request(format!(

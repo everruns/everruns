@@ -10,10 +10,11 @@ use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_ser
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
-    Agent, Capability, EgressService, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers,
+    Capability, EgressService, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers,
     Session, SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
     validate_safe_url,
 };
+use everruns_platform::Agent;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -69,9 +70,12 @@ pub fn merge_effective_scoped_mcp_servers_with_capabilities(
     capability_registry: &CapabilityRegistry,
 ) -> ScopedMcpServers {
     let explicit = merge_effective_scoped_mcp_servers(harness, agent, session);
+    // Status-agnostic projection: scoped-MCP wiring historically saw the
+    // stored record regardless of lifecycle status (EVE-877).
+    let agent_definition = agent.map(|a| a.definition());
     let resolved = resolve_runtime_capabilities(
         std::slice::from_ref(harness),
-        agent,
+        agent_definition.as_ref(),
         session,
         capability_registry,
     );
@@ -311,9 +315,9 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use everruns_core::{
-        Agent, AgentStatus, Harness, HarnessId, HarnessStatus, ScopedMcpServer, Session, SessionId,
-        SessionStatus, generate_agent_public_id,
+        Harness, HarnessId, HarnessStatus, ScopedMcpServer, Session, SessionId, SessionStatus,
     };
+    use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 
     struct MutableConnectionResolver {
         token: tokio::sync::RwLock<Option<String>>,

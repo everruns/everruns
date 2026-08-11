@@ -14,7 +14,7 @@ use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use everruns_core::agent::{Agent, AgentStatus};
+use everruns_core::AgentDefinition;
 
 use chrono::Utc;
 use everruns_core::driver_registry::LlmStreamEvent;
@@ -81,35 +81,10 @@ fn test_harness(harness_id: HarnessId) -> Harness {
     }
 }
 
-fn test_agent(agent_id: AgentId) -> Agent {
-    Agent {
-        public_id: agent_id,
-        internal_id: uuid::Uuid::nil(),
-        name: "a".into(),
-        display_name: None,
-        description: None,
-        system_prompt: "Use tools.".into(),
-        default_model_id: None,
-
-        harness_id: everruns_core::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
+fn test_agent(agent_id: AgentId) -> AgentDefinition {
+    AgentDefinition {
         max_iterations: Some(8),
-        parallel_tool_calls: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..AgentDefinition::new(agent_id, "a", "Use tools.")
     }
 }
 

@@ -14,9 +14,9 @@ use crate::domains::common::*;
 use crate::max_iterations;
 use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, AgentVersion, AgentVersionChangeKind, InitialFile,
-    OrgRole, Policy, ScopedMcpServers, ToolDefinition,
+    AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
 };
+use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -1888,7 +1888,7 @@ impl Command for CheckAgentName {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<NameAvailability, CommandError> {
-        if everruns_core::validate_addressable_name(&self.name).is_err() {
+        if everruns_platform::validate_addressable_name(&self.name).is_err() {
             return Ok(NameAvailability { available: false });
         }
 

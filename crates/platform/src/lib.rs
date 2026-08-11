@@ -38,6 +38,15 @@ pub mod platform_store;
 pub mod agent_trigger;
 pub mod app;
 
+// Stored Agent/AgentVersion persistence records carved out of `everruns-core`
+// (EVE-877). Execution consumes only `everruns_core::AgentDefinition`, produced
+// by `Agent::execution_definition` at the platform loading seam.
+pub mod agent;
+
+pub use agent::{
+    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
+    generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
+};
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership, Organization,
     generate_org_public_id, validate_org_public_id,

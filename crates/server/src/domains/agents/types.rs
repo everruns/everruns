@@ -4,9 +4,8 @@
 // has a single import path.
 
 use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
-use everruns_core::{
-    AgentCapabilityConfig, AgentStatus, InitialFile, ScopedMcpServers, ToolDefinition,
-};
+use everruns_core::{AgentCapabilityConfig, InitialFile, ScopedMcpServers, ToolDefinition};
+use everruns_platform::AgentStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -185,7 +184,7 @@ pub struct CreateAgentVersionRequest {
     /// Reason this version was created. See `AgentVersionChangeKind` for the allowed values.
     /// Defaults to `manual` when omitted.
     #[serde(default)]
-    pub change_kind: Option<everruns_core::AgentVersionChangeKind>,
+    pub change_kind: Option<everruns_platform::AgentVersionChangeKind>,
 }
 
 /// Request body for the `rollback_agent_version` operation.

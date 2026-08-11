@@ -25,14 +25,17 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
+    AgentDefinition, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
     SessionParticipant, SessionStatus,
 };
+// EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
+// still carries it between server and worker (proto shape unchanged).
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
     proto_struct_to_json,
 };
+use everruns_platform::Agent;
 use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell};
 use tonic::service::interceptor::InterceptedService;
@@ -1328,7 +1331,30 @@ fn proto_message_to_message(proto_msg: proto::Message) -> Result<Message> {
 
 #[async_trait]
 impl AgentStore for GrpcOrgAdapter {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
+        // Loading seam (EVE-877): project the transported record into the
+        // portable execution definition; archived/deleted agents fail here.
+        self.fetch_agent_record(agent_id)
+            .await?
+            .map(|agent| agent.execution_definition())
+            .transpose()
+    }
+
+    async fn get_agent_blocker(
+        &self,
+        agent_id: AgentId,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.fetch_agent_record(agent_id).await? {
+            Some(agent) => agent.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::AgentDeleted),
+        })
+    }
+}
+
+impl GrpcOrgAdapter {
+    /// Fetch the stored agent record off the wire (platform-side transport;
+    /// projected to `AgentDefinition` before it reaches host execution).
+    pub(crate) async fn fetch_agent_record(&self, agent_id: AgentId) -> Result<Option<Agent>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetAgentRequest {
@@ -1366,10 +1392,10 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         .ok_or_else(|| anyhow::anyhow!("proto Agent missing harness_id"))?;
 
     let status = match proto_agent.status.to_lowercase().as_str() {
-        "active" => everruns_core::AgentStatus::Active,
-        "archived" => everruns_core::AgentStatus::Archived,
-        "deleted" => everruns_core::AgentStatus::Deleted,
-        _ => everruns_core::AgentStatus::Active,
+        "active" => everruns_platform::AgentStatus::Active,
+        "archived" => everruns_platform::AgentStatus::Archived,
+        "deleted" => everruns_platform::AgentStatus::Deleted,
+        _ => everruns_platform::AgentStatus::Active,
     };
 
     let capabilities = if proto_agent.capabilities.is_empty() {

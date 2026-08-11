@@ -1235,10 +1235,10 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 /// Hypermedia actions for an `Agent`. See `knowledge/execution/api-conventions.md`.
 pub fn agent_allowed_actions(
     id: &str,
-    status: &everruns_core::AgentStatus,
+    status: &everruns_platform::AgentStatus,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::AgentStatus;
+    use everruns_platform::AgentStatus;
     let mut actions = vec![
         AllowedAction::new("self")
             .with_method("GET")
@@ -1276,7 +1276,7 @@ pub fn agent_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::Agent {
+impl ResourceUrlable for everruns_platform::Agent {
     fn api_path() -> &'static str {
         "v1/agents"
     }
@@ -2350,7 +2350,7 @@ mod tests {
 
     #[test]
     fn agent_actions_offer_copy_only_when_active() {
-        use everruns_core::AgentStatus;
+        use everruns_platform::AgentStatus;
         let active = agent_allowed_actions("agent_01", &AgentStatus::Active, "https://api.example");
         let archived =
             agent_allowed_actions("agent_01", &AgentStatus::Archived, "https://api.example");

@@ -12,15 +12,16 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
 use everruns_core::traits::{
-    AgentStore, ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
+    ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    Agent, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
+    DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
     PlatformDefinition, Session, UtilityLlmService,
 };
+use everruns_platform::Agent;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -113,7 +114,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
         let store = GrpcAgentStore::new(self.client.clone(), org_id);
-        store.get_agent(AgentId::from_uuid(agent_id)).await
+        store.fetch_agent_record(AgentId::from_uuid(agent_id)).await
     }
 
     async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {

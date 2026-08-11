@@ -11,11 +11,10 @@ pub use everruns_core::driver_registry::{
 };
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentId, AgentStatus, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
+    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
     HarnessStatus, ModelId, PrincipalId, ScopedMcpServers, Session, SessionId, SessionStatus,
     ToolDefinition, plugin_capability_id,
 };
-use uuid::Uuid;
 
 /// Builds a [`Harness`] with runtime-friendly defaults.
 ///
@@ -250,7 +249,11 @@ impl HarnessBuilder {
     }
 }
 
-/// Builds an [`Agent`] with runtime-friendly defaults.
+/// Builds a portable [`AgentDefinition`] with runtime-friendly defaults.
+///
+/// EVE-877: the embedded host seeds authored execution configuration only.
+/// Stored Agent persistence records (lifecycle status, versioning, timestamps)
+/// live in `everruns-platform` and are a hosted-control-plane concern.
 #[derive(Debug, Clone)]
 pub struct AgentBuilder {
     id: AgentId,
@@ -259,8 +262,6 @@ pub struct AgentBuilder {
     description: Option<String>,
     system_prompt: String,
     default_model_id: Option<ModelId>,
-    harness_id: HarnessId,
-    tags: Vec<String>,
     capabilities: Vec<AgentCapabilityConfig>,
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
@@ -268,9 +269,6 @@ pub struct AgentBuilder {
     parallel_tool_calls: Option<bool>,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
-    status: AgentStatus,
-    created_at: Option<DateTime<Utc>>,
-    updated_at: Option<DateTime<Utc>>,
 }
 
 impl AgentBuilder {
@@ -283,8 +281,6 @@ impl AgentBuilder {
             description: None,
             system_prompt: system_prompt.into(),
             default_model_id: None,
-            harness_id: HarnessId::new(),
-            tags: Vec::new(),
             capabilities: Vec::new(),
             initial_files: Vec::new(),
             network_access: None,
@@ -292,9 +288,6 @@ impl AgentBuilder {
             parallel_tool_calls: None,
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
-            status: AgentStatus::Active,
-            created_at: None,
-            updated_at: None,
         }
     }
 
@@ -331,25 +324,6 @@ impl AgentBuilder {
 
     pub fn default_model_id(mut self, default_model_id: ModelId) -> Self {
         self.default_model_id = Some(default_model_id);
-        self
-    }
-
-    pub fn harness_id(mut self, harness_id: HarnessId) -> Self {
-        self.harness_id = harness_id;
-        self
-    }
-
-    pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        self.tags.push(tag.into());
-        self
-    }
-
-    pub fn tags<I, S>(mut self, tags: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.tags.extend(tags.into_iter().map(Into::into));
         self
     }
 
@@ -411,40 +385,15 @@ impl AgentBuilder {
         self
     }
 
-    pub fn status(mut self, status: AgentStatus) -> Self {
-        self.status = status;
-        self
-    }
-
-    pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
-        self.created_at = Some(created_at);
-        self
-    }
-
-    pub fn updated_at(mut self, updated_at: DateTime<Utc>) -> Self {
-        self.updated_at = Some(updated_at);
-        self
-    }
-
-    /// Build the agent. Builders do not validate domain invariants.
-    pub fn build(self) -> Agent {
-        let created_at = self.created_at.unwrap_or_else(Utc::now);
-        let updated_at = self.updated_at.unwrap_or(created_at);
-
-        Agent {
-            public_id: self.id,
-            internal_id: Uuid::nil(),
+    /// Build the agent definition. Builders do not validate domain invariants.
+    pub fn build(self) -> AgentDefinition {
+        AgentDefinition {
+            id: self.id,
             name: self.name,
             display_name: self.display_name,
             description: self.description,
             system_prompt: self.system_prompt,
             default_model_id: self.default_model_id,
-            harness_id: self.harness_id,
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: self.tags,
             capabilities: self.capabilities,
             initial_files: self.initial_files,
             network_access: self.network_access,
@@ -452,12 +401,6 @@ impl AgentBuilder {
             parallel_tool_calls: self.parallel_tool_calls,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
-            status: self.status,
-            created_at,
-            updated_at,
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
         }
     }
 }
@@ -846,7 +789,8 @@ impl SingleSessionBuilder {
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
         let tag = tag.into();
         self.harness = self.harness.tag(tag.clone());
-        self.agent = self.agent.tag(tag.clone());
+        // Agent definitions carry no tags (EVE-877); session tags drive
+        // execution metadata, harness tags stay for embedder bookkeeping.
         self.session = self.session.tag(tag);
         self
     }
@@ -935,7 +879,7 @@ impl SingleSessionBuilder {
         self
     }
 
-    pub(crate) fn build(self) -> (Harness, Agent, Session, SessionId) {
+    pub(crate) fn build(self) -> (Harness, AgentDefinition, Session, SessionId) {
         let session_id = self.session.session_id();
         (
             self.harness.build(),

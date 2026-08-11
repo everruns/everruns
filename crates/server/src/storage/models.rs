@@ -464,7 +464,7 @@ pub struct AgentRow {
     /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
     /// at which point an `agent_identities` row is created and linked so the
     /// agent owns its unattended sessions as itself. Storage-only: intentionally
-    /// not surfaced on the public `everruns_core::Agent` API.
+    /// not surfaced on the public `everruns_platform::Agent` API.
     #[sqlx(default)]
     pub agent_identity_id: Option<AgentIdentityId>,
     #[sqlx(default)]

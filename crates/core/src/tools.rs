@@ -2488,7 +2488,7 @@ mod tests {
         async fn get_agent_by_id(
             &self,
             _id: crate::typed_id::AgentId,
-        ) -> crate::Result<Option<crate::Agent>> {
+        ) -> crate::Result<Option<crate::AgentDefinition>> {
             Ok(None)
         }
         async fn add_agent_session_participant(

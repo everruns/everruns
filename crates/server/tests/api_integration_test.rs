@@ -21,9 +21,10 @@ use test_harness::TestServer;
 use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{
-    Agent, DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport, SessionFile,
+    DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport, SessionFile,
 };
 use everruns_durable::UpdateField;
+use everruns_platform::Agent;
 use everruns_server::storage::models::{
     CreateAgentRow, CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
     UpdateSession,
@@ -783,7 +784,10 @@ async fn test_delete_agent() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(archived_agent.status, everruns_core::AgentStatus::Archived);
+    assert_eq!(
+        archived_agent.status,
+        everruns_platform::AgentStatus::Archived
+    );
 
     let default_list: Value = server
         .get("/v1/agents")

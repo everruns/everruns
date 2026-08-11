@@ -427,8 +427,13 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
 // Conversion to/from schemas types
 // ============================================================================
 
-/// Convert proto Agent to schemas Agent using JSON
-pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent, ConversionError> {
+/// Convert proto Agent to the stored platform Agent record using JSON.
+///
+/// EVE-877: the stored record lives in `everruns-platform`; the proto shape is
+/// unchanged. Both endpoints of this wire (server, worker) are platform-side.
+pub fn proto_agent_to_schema(
+    value: proto::Agent,
+) -> Result<everruns_platform::Agent, ConversionError> {
     // Serialize proto to JSON, then deserialize to schema type
     // This is simpler and more maintainable than field-by-field conversion
     let tags: Vec<String> = vec![];
@@ -482,8 +487,8 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     serde_json::from_value(json).map_err(ConversionError::from)
 }
 
-/// Convert schemas Agent to proto Agent
-pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
+/// Convert the stored platform Agent record to proto Agent
+pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
     proto::Agent {
         id: Some(uuid_to_proto_uuid(value.internal_id)),
         name: value.name.clone(),
@@ -1898,7 +1903,7 @@ mod tests {
 
         // Create an Agent with capabilities
         let id = Uuid::now_v7();
-        let agent = everruns_core::Agent {
+        let agent = everruns_platform::Agent {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
@@ -1922,7 +1927,7 @@ mod tests {
             parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
-            status: everruns_core::AgentStatus::Active,
+            status: everruns_platform::AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,
@@ -1966,7 +1971,7 @@ mod tests {
 
         // Create an Agent without capabilities
         let id = Uuid::now_v7();
-        let agent = everruns_core::Agent {
+        let agent = everruns_platform::Agent {
             public_id: everruns_core::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
@@ -1987,7 +1992,7 @@ mod tests {
             parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
-            status: everruns_core::AgentStatus::Active,
+            status: everruns_platform::AgentStatus::Active,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             archived_at: None,

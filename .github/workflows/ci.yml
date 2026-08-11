@@ -412,6 +412,25 @@ jobs:
       - name: Check observability isolation
         run: bash scripts/lib/check-observability-isolation.sh
 
+  # Architecture guard (EVE-877): stored Agent/AgentVersion persistence records
+  # live in crates/platform. Kernel crates (core, engine, provider, capability)
+  # consume only the portable AgentDefinition and the resolved execution
+  # snapshot, and carry no everruns-platform edge.
+  agent-record-isolation:
+    name: Agent-Record Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check agent-record isolation
+        run: bash scripts/lib/check-agent-record-isolation.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest

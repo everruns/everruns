@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
-use everruns_core::agent::{Agent, AgentStatus};
+use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
 };
@@ -411,33 +411,12 @@ impl InMemoryAgenticLoopBuilder {
 
         // Create agent
         let agent_id = AgentId::new();
-        let agent = Agent {
-            public_id: agent_id,
-            internal_id: agent_id.uuid(),
-            name: "in-memory".to_string(),
+        let agent = AgentDefinition {
             display_name: Some(self.agent_name),
-            description: None,
-            system_prompt: self.system_prompt,
-            default_model_id: None,
-            harness_id,
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
             capabilities: agent_capability_configs,
-            mcp_servers: Default::default(),
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
             parallel_tool_calls: self.parallel_tool_calls,
             tools: explicit_tool_definitions,
-            status: AgentStatus::Active,
-            created_at: now,
-            updated_at: now,
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(agent_id, "in-memory", self.system_prompt)
         };
         agent_store.add_agent(agent).await;
 

@@ -913,7 +913,7 @@ impl WorkerServiceImpl {
     async fn build_mcp_tool_definitions(
         &self,
         org_id: i64,
-        agent: &everruns_core::Agent,
+        agent: &everruns_platform::Agent,
     ) -> Vec<McpToolDef> {
         use everruns_core::capabilities::mcp::parse_mcp_capability_id;
         use everruns_core::mcp_server::mcp_tool_name;

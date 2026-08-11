@@ -82,7 +82,7 @@ All entities use a **dual-ID pattern** with an internal UUID primary key and an 
 - FKs between tables use internal `UUID` columns
 - When auto-generating: derive `public_id` from the internal UUID for consistency (`{prefix}_{uuid_hex}`)
 
-**Domain struct convention:** See `crates/core/src/agent.rs` for the canonical example of the dual-ID pattern with `public_id` / `internal_id` fields.
+**Domain struct convention:** See `crates/platform/src/agent.rs` for the canonical example of the dual-ID pattern with `public_id` / `internal_id` fields.
 
 **Upsert semantics (PUT):**
 - `PUT /v1/{entity}/{public_id}` creates if not exists (201), updates if exists (200)

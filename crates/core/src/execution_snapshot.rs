@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::agent::{Agent, AgentStatus};
+use crate::agent_definition::AgentDefinition;
 use crate::capability_types::AgentCapabilityConfig;
 use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
@@ -122,20 +122,23 @@ pub struct ResolvedExecutionSnapshot {
 }
 
 impl ResolvedExecutionSnapshot {
-    /// Project stored records into the canonical execution value.
+    /// Project loaded records into the canonical execution value.
     ///
     /// This is the platform projection boundary: it fails when the harness
     /// chain is empty or does not terminate at the session's harness, when a
     /// referenced agent is missing or does not match the session's agent id,
-    /// or when the leaf harness / agent is archived or deleted. Host execution
-    /// never sees a snapshot built from broken record wiring.
+    /// or when the leaf harness is archived or deleted. Agent lifecycle
+    /// validation happens one step earlier, at the [`AgentStore`] loading
+    /// seam: stored records that are archived or deleted fail there (EVE-877),
+    /// so only executable [`AgentDefinition`] values reach this projection.
+    /// Host execution never sees a snapshot built from broken record wiring.
     ///
     /// Precedence is applied exactly once, through the same
     /// [`AgentConfigOverlay`] merge semantics the runtime capability
     /// resolution uses.
     pub fn project(
         harness_chain: &[Harness],
-        agent: Option<&Agent>,
+        agent: Option<&AgentDefinition>,
         session: &Session,
     ) -> Result<Self> {
         let Some(leaf) = harness_chain.last() else {
@@ -164,25 +167,11 @@ impl ResolvedExecutionSnapshot {
 
         let agent = match (session.agent_id, agent) {
             (Some(agent_id), Some(agent)) => {
-                if agent.public_id != agent_id {
+                if agent.id != agent_id {
                     return Err(AgentLoopError::config(format!(
                         "session {} references agent {} but agent {} was provided",
-                        session.id, agent_id, agent.public_id
+                        session.id, agent_id, agent.id
                     )));
-                }
-                match agent.status {
-                    AgentStatus::Active => {}
-                    AgentStatus::Archived | AgentStatus::Deleted => {
-                        return Err(AgentLoopError::config(format!(
-                            "agent {} is {} and cannot execute turns",
-                            agent.public_id,
-                            if agent.status == AgentStatus::Archived {
-                                "archived"
-                            } else {
-                                "deleted"
-                            }
-                        )));
-                    }
                 }
                 Some(agent)
             }
@@ -277,7 +266,6 @@ mod tests {
     use crate::session::SessionStatus;
     use chrono::Utc;
     use std::collections::HashMap;
-    use uuid::Uuid;
 
     fn harness(harness_id: HarnessId) -> Harness {
         Harness {
@@ -304,34 +292,11 @@ mod tests {
         }
     }
 
-    fn agent(agent_id: AgentId, harness_id: HarnessId) -> Agent {
-        Agent {
-            public_id: agent_id,
-            internal_id: Uuid::nil(),
-            name: "agent".into(),
-            display_name: Some("Agent".into()),
-            description: None,
-            system_prompt: "Agent prompt.".into(),
-            default_model_id: None,
-            harness_id,
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
+    fn agent(agent_id: AgentId, _harness_id: HarnessId) -> AgentDefinition {
+        AgentDefinition {
             max_iterations: Some(8),
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            display_name: Some("Agent".into()),
+            ..AgentDefinition::new(agent_id, "agent", "Agent prompt.")
         }
     }
 
@@ -657,7 +622,10 @@ mod tests {
     }
 
     #[test]
-    fn projection_fails_on_archived_or_deleted_records() {
+    fn projection_fails_on_archived_or_deleted_harness() {
+        // Agent lifecycle validation moved to the platform loading seam
+        // (EVE-877): archived/deleted stored Agent records fail in
+        // the platform record's `execution_definition` before projection.
         let (harness_id, agent_id, session_id) = ids();
         let session = session(session_id, harness_id, Some(agent_id));
 
@@ -668,16 +636,6 @@ mod tests {
             assert!(
                 ResolvedExecutionSnapshot::project(&[archived], Some(&agent), &session).is_err(),
                 "harness status {status:?} must fail projection"
-            );
-        }
-
-        for status in [AgentStatus::Archived, AgentStatus::Deleted] {
-            let harness = harness(harness_id);
-            let mut inactive = agent(agent_id, harness_id);
-            inactive.status = status.clone();
-            assert!(
-                ResolvedExecutionSnapshot::project(&[harness], Some(&inactive), &session).is_err(),
-                "agent status {status:?} must fail projection"
             );
         }
     }

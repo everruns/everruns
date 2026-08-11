@@ -21,13 +21,12 @@ use chrono::Utc;
 use everruns_core::capabilities::FileSystemCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness,
-    HarnessStatus, PlatformDefinition, ResolvedModel, Session, SessionStatus, ToolCall,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, Harness, HarnessStatus,
+    PlatformDefinition, ResolvedModel, Session, SessionStatus, ToolCall,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_test_support::llmsim_driver::LlmSimConfig;
 use tempfile::TempDir;
-use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -106,33 +105,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             archived_at: None,
             deleted_at: None,
         })
-        .agent(Agent {
-            public_id: agent_id,
-            internal_id: Uuid::nil(),
-            name: "files-agent".into(),
+        .agent(AgentDefinition {
             display_name: Some("Files Agent".into()),
-            description: None,
-            system_prompt: "Use tools when needed.".into(),
-            default_model_id: None,
-            harness_id,
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
             max_iterations: Some(8),
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(agent_id, "files-agent", "Use tools when needed.")
         })
         .session(Session {
             source: Default::default(),

@@ -9,7 +9,7 @@
 //   so the card itself is never the trust boundary
 
 use chrono::{DateTime, Utc};
-use everruns_core::Agent;
+use everruns_platform::Agent;
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 
@@ -414,7 +414,7 @@ mod tests {
     use chrono::TimeZone;
     use everruns_core::events::TokenUsage;
     use everruns_core::typed_id::AgentId;
-    use everruns_core::{Agent, AgentStatus};
+    use everruns_platform::{Agent, AgentStatus};
 
     fn sample_agent() -> Agent {
         Agent {

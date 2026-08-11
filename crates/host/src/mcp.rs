@@ -11,8 +11,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use everruns_core::capabilities::Capability;
 use everruns_core::{
-    Agent, Harness, McpCapability, McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
-    Session, ToolDefinition, merge_scoped_mcp_servers,
+    AgentDefinition, Harness, McpCapability, McpServerTransportType, ScopedMcpServer,
+    ScopedMcpServers, Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
 use futures::{StreamExt, stream};
@@ -26,7 +26,7 @@ const MAX_DISCOVERY_CONCURRENCY: usize = 16;
 /// Merge harness-chain → agent → session scoped MCP servers (last layer wins).
 pub(crate) fn merge_session_scoped_servers(
     harness_chain: &[Harness],
-    agent: Option<&Agent>,
+    agent: Option<&AgentDefinition>,
     session: &Session,
 ) -> ScopedMcpServers {
     let mut merged = ScopedMcpServers::default();

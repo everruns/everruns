@@ -13,7 +13,7 @@
 // Legacy per-entity methods (with_harness, with_agent) are kept for
 // backward compatibility but the AgentConfigOverlay path is canonical.
 
-use crate::agent::Agent;
+use crate::agent_definition::AgentDefinition;
 use crate::capabilities::{
     CapabilityRegistry, SystemPromptContext, ToolDefinitionHook, collect_capabilities_with_configs,
     compose_system_prompt, resolve_capability_configs,
@@ -236,7 +236,7 @@ impl RuntimeAgentBuilder {
     /// ```
     pub async fn with_agent(
         self,
-        agent: &Agent,
+        agent: &AgentDefinition,
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {
@@ -528,7 +528,6 @@ impl Default for RuntimeAgentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::AgentStatus;
     use crate::capabilities::{AgentCapabilityConfig, SystemPromptContext};
     use crate::typed_id::AgentId;
 
@@ -679,34 +678,14 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let ts = Timestamp::now(NoContext);
         let uuid = Uuid::new_v7(ts);
-        let agent = Agent {
-            public_id: AgentId::from_uuid(uuid),
-            internal_id: uuid,
-            name: "test-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Test Agent".to_string()),
-            description: None,
-            system_prompt: "Agent prompt.".to_string(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            tags: vec![],
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(uuid),
+                "test-agent".to_string(),
+                "Agent prompt.".to_string(),
+            )
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
@@ -850,34 +829,14 @@ mod tests {
             full_parameters: None,
         });
 
-        let agent = Agent {
-            public_id: AgentId::from_uuid(uuid),
-            internal_id: uuid,
-            name: "client-tool-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Client Tool Agent".to_string()),
-            description: None,
-            system_prompt: "Agent with client tools.".to_string(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
             tools: vec![client_tool],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            tags: vec![],
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(uuid),
+                "client-tool-agent".to_string(),
+                "Agent with client tools.".to_string(),
+            )
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
@@ -914,34 +873,15 @@ mod tests {
             full_parameters: None,
         });
 
-        let agent = Agent {
-            public_id: AgentId::from_uuid(uuid),
-            internal_id: uuid,
-            name: "mixed-tool-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Mixed Tool Agent".to_string()),
-            description: None,
-            system_prompt: "Agent with mixed tools.".to_string(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
             tools: vec![client_tool],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            tags: vec![],
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(uuid),
+                "mixed-tool-agent".to_string(),
+                "Agent with mixed tools.".to_string(),
+            )
         };
 
         let runtime_agent = RuntimeAgentBuilder::new()
@@ -974,34 +914,14 @@ mod tests {
 
         // Agent has current_time capability (no system prompt addition)
         let uuid = Uuid::new_v7(ts);
-        let agent = Agent {
-            public_id: AgentId::from_uuid(uuid),
-            internal_id: uuid,
-            name: "test-agent".to_string(),
+        let agent = AgentDefinition {
             display_name: Some("Test Agent".to_string()),
-            description: None,
-            system_prompt: "Agent prompt.".to_string(),
-            default_model_id: None,
-
-            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
             capabilities: vec![AgentCapabilityConfig::new("current_time")],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            tags: vec![],
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
+            ..AgentDefinition::new(
+                AgentId::from_uuid(uuid),
+                "test-agent".to_string(),
+                "Agent prompt.".to_string(),
+            )
         };
 
         // Session adds stateless_todo_list capability (additive — has system prompt addition)

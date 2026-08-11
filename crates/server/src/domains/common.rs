@@ -1184,7 +1184,7 @@ pub fn catalog_entries_with_schemas(
 
 /// Validate an addressable name (agent, harness, etc.)
 pub fn validate_name(entity: &str, name: &str) -> Result<(), CommandError> {
-    everruns_core::validate_addressable_name(name)
+    everruns_platform::validate_addressable_name(name)
         .map_err(|msg| CommandError::bad_request(format!("{entity} {msg}")))
 }
 

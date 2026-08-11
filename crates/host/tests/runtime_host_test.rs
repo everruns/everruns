@@ -22,7 +22,7 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, EventData, Harness,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, EventData, Harness,
     HarnessStatus, InputMessage, ResolvedModel, Session, SessionStatus, TokenUsage, Tool, ToolCall,
     ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context, user_facing_error_codes,
 };
@@ -736,34 +736,12 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
     }
 }
 
-fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
-    Agent {
-        public_id: agent_id,
-        internal_id: Uuid::nil(),
-        name: "test-agent".into(),
+fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> AgentDefinition {
+    AgentDefinition {
         display_name: Some("Test Agent".into()),
-        description: None,
-        system_prompt: "Use tools when needed.".into(),
-        default_model_id: None,
-        harness_id: HarnessId::from_uuid(Uuid::nil()),
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
         capabilities,
-        initial_files: vec![],
-        network_access: None,
         max_iterations: Some(8),
-        parallel_tool_calls: None,
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
+        ..AgentDefinition::new(agent_id, "test-agent", "Use tools when needed.")
     }
 }
 
