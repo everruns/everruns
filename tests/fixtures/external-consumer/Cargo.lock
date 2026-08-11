@@ -535,6 +535,7 @@ dependencies = [
  "chrono",
  "everruns-core",
  "inventory",
+ "jsonschema",
  "reqwest",
  "serde",
  "serde_json",
