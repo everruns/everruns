@@ -37,11 +37,11 @@ use std::{io, sync::Arc};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-use super::tool_output_persistence::{annotate_truncated_output, persist_output};
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::atoms::PostToolExecHook;
-use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
+use everruns_core::capabilities::tool_output_persistence::{annotate_truncated_output, persist_output};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::atoms::PostToolExecHook;
+use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::traits::ToolContext;
 
 /// Only distill results whose serialized size exceeds this threshold. Smaller
 /// results are left verbatim (cheap, cache-stable, and rarely worth a VFS write).
@@ -404,7 +404,7 @@ fn inject_pointer(result_value: &mut Value, display_path: &str, original_len: us
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     #[test]
     fn test_capability_metadata() {
@@ -555,11 +555,11 @@ mod tests {
 
     // --- Hook-level integration tests (after_exec end to end) ---
 
-    use crate::error::Result;
-    use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
-    use crate::traits::SessionFileSystem;
-    use crate::typed_id::SessionId;
+    use everruns_core::error::Result;
+    use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+    use everruns_core::traits::SessionFileSystem;
+    use everruns_core::typed_id::SessionId;
     use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::Mutex;

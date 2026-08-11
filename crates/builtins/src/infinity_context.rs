@@ -3,14 +3,14 @@
 //! Keeps recent conversation turns in prompt context while exposing a
 //! `query_history` tool for older messages that fell out of the active window.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::message::{ContentPart, Message, MessageRole};
-use crate::message_filter::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message_filter::{
     ExcludedNoticeTransform, MessageFilterProvider, MessageQuery, anchored_window,
 };
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{ToolContext, ToolContextService};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -323,7 +323,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
                 .collect();
             let count_before_integrity = messages.len();
             *messages =
-                crate::tool_call_integrity::retain_complete_message_tool_exchanges(messages, true);
+                everruns_core::tool_call_integrity::retain_complete_message_tool_exchanges(messages, true);
             total_excluded_count = total_excluded_count
                 .saturating_add(count_before_integrity.saturating_sub(messages.len()));
             let retained_head_len = messages
@@ -515,12 +515,12 @@ fn default_query_limit() -> usize {
 impl Tool for QueryHistoryTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_query_history(
+        Some(everruns_core::tool_narration::narrate_query_history(
             &tool_call.arguments,
             phase,
             locale,
@@ -790,9 +790,9 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::in_memory::InMemoryMessageRetriever;
-    use crate::typed_id::SessionId;
+    use everruns_core::capabilities::*;
+    use everruns_core::in_memory::InMemoryMessageRetriever;
+    use everruns_core::typed_id::SessionId;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -1414,7 +1414,7 @@ mod tests {
 
     #[test]
     fn trim_preserves_locally_unmatched_tool_result_for_stateful_responses() {
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_types::ToolCall;
 
         let provider = InfinityContextFilterProvider;
         // min_recent_messages=3 keeps the last 3 messages. With a 1-token budget the
@@ -1450,10 +1450,10 @@ mod tests {
 
         let llm_messages = messages
             .iter()
-            .map(crate::llm_conversions::llm_message_from_message)
+            .map(everruns_core::llm_conversions::llm_message_from_message)
             .collect();
         let stateless_view =
-            crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
+            everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
                 llm_messages,
                 false,
             );
@@ -1467,7 +1467,7 @@ mod tests {
 
     #[test]
     fn trim_removes_a_visible_call_when_its_result_is_evicted() {
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_types::ToolCall;
 
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
@@ -1510,7 +1510,7 @@ mod tests {
 
     #[test]
     fn trim_keeps_tool_result_when_tool_call_is_visible() {
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_types::ToolCall;
 
         let provider = InfinityContextFilterProvider;
         // All 3 messages fit in the window: no orphan expected.

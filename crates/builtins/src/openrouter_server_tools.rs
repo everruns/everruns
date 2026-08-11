@@ -14,9 +14,9 @@
 // See knowledge/foundations/llm-drivers.md ("OpenRouter Server Tools") and
 // https://openrouter.ai/docs/guides/features/server-tools.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::capabilities::RiskLevel;
-use crate::driver_registry::{OpenRouterServerTool, OpenRouterServerToolKind};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use everruns_core::capabilities::RiskLevel;
+use everruns_core::driver_registry::{OpenRouterServerTool, OpenRouterServerToolKind};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -253,7 +253,7 @@ impl Capability for OpenRouterServerToolsCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

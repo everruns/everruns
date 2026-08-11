@@ -9,14 +9,14 @@
 // - The side answer reuses the session's merged context, disables tools, and
 //   persists nothing, behaving like Claude Code's ephemeral overlay answer.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::command::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::command::{
     CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
     ExecuteCommandRequest,
 };
-use crate::command_host::SessionCompletionRequest;
-use crate::error::AgentLoopError;
-use crate::message::Message;
+use everruns_core::command_host::SessionCompletionRequest;
+use everruns_core::error::AgentLoopError;
+use everruns_core::message::Message;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -81,7 +81,7 @@ impl Capability for BtwCapability {
         &self,
         request: &ExecuteCommandRequest,
         ctx: &CommandExecutionContext,
-    ) -> crate::error::Result<CommandResult> {
+    ) -> everruns_core::error::Result<CommandResult> {
         if request.name != BTW_COMMAND_NAME {
             return Err(AgentLoopError::config(format!(
                 "{} cannot execute /{}",
@@ -127,13 +127,13 @@ impl Capability for BtwCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::command_host::{
+    use everruns_core::capabilities::*;
+    use everruns_core::command_host::{
         CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
     };
-    use crate::session::ExecutionSession;
-    use crate::typed_id::{HarnessId, SessionId};
-    use crate::user_facing_error::UserFacingErrorContext;
+    use everruns_core::session::ExecutionSession;
+    use everruns_core::typed_id::{HarnessId, SessionId};
+    use everruns_core::user_facing_error::UserFacingErrorContext;
     use std::sync::{Arc, Mutex};
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
@@ -173,7 +173,7 @@ mod tests {
 
     #[async_trait]
     impl CommandHost for StubHost {
-        async fn turn_context(&self) -> crate::error::Result<CommandTurnContext> {
+        async fn turn_context(&self) -> everruns_core::error::Result<CommandTurnContext> {
             let session_id = SessionId::new();
             Ok(CommandTurnContext {
                 session: test_session(session_id),

@@ -19,9 +19,9 @@
 // The applied mode and pre-disclosure error code are recorded in message
 // metadata (`error_disclosure`, `source_error_code`) for tracking.
 
-use crate::capabilities::{Capability, CapabilityLocalization};
-use crate::capability_types::AgentCapabilityConfig;
-use crate::user_facing_error::ErrorDisclosure;
+use everruns_core::capabilities::{Capability, CapabilityLocalization};
+use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_core::user_facing_error::ErrorDisclosure;
 
 pub const ERROR_DISCLOSURE_CAPABILITY_ID: &str = "error_disclosure";
 
@@ -148,7 +148,7 @@ pub fn resolve_error_disclosure(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     fn cap_config(mode: &str) -> AgentCapabilityConfig {
         AgentCapabilityConfig::with_config(

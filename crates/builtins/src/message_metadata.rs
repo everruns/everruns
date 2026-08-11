@@ -11,8 +11,8 @@ use std::sync::Arc;
 use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 
-use super::{Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider};
-use crate::message::{ContentPart, Message, MessageRole};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider};
+use everruns_core::message::{ContentPart, Message, MessageRole};
 
 pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
 
@@ -273,10 +273,10 @@ fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::capabilities::CapabilityRegistry;
-    use crate::message::ToolCallContentPart;
-    use crate::typed_id::SessionId;
+    use everruns_core::capabilities::*;
+    use everruns_core::capabilities::CapabilityRegistry;
+    use everruns_core::message::ToolCallContentPart;
+    use everruns_core::typed_id::SessionId;
 
     fn ctx() -> ModelViewContext<'static> {
         ModelViewContext {

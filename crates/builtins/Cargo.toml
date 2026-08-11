@@ -1,0 +1,41 @@
+# Portable built-in capabilities for Everruns (EVE-884).
+#
+# Decision: policy capabilities that need no environment edge (filesystem,
+# shell, network, interpreter) and no hosted product service are implemented
+# here rather than inside the execution kernel. `everruns-core` keeps the
+# neutral `Capability` contract and the collection hooks these implementations
+# plug into; hosts and product presets install this bundle explicitly.
+#
+# Dependency direction is strictly `builtins -> core`. Core never depends on
+# builtins (enforced by scripts/lib/check-builtin-capability-isolation.sh).
+
+[package]
+name = "everruns-builtins"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-builtins"
+description = "Portable built-in capabilities for Everruns - context, tool-search, guardrail and budget policy"
+readme = "README.md"
+keywords = ["agent", "agentic", "llm", "capabilities", "everruns"]
+categories = ["development-tools", "asynchronous"]
+
+[dependencies]
+everruns-core = { workspace = true }
+
+anyhow.workspace = true
+async-trait.workspace = true
+chrono.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+serde_yaml.workspace = true

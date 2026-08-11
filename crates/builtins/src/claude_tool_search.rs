@@ -15,11 +15,11 @@
 // `auto_tool_search` for a model-adaptive default that picks this on native
 // Claude models and the generic client-side mechanism elsewhere.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::driver_registry::ToolSearchConfig;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use everruns_core::driver_registry::ToolSearchConfig;
 use async_trait::async_trait;
 
-pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
+pub use everruns_core::capabilities::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
 /// Capability ID for Claude (Anthropic) tool search.
 pub const CLAUDE_TOOL_SEARCH_CAPABILITY_ID: &str = "claude_tool_search";
@@ -69,7 +69,7 @@ impl ClaudeToolSearchCapability {
 /// is otherwise routed (a Claude model reached via OpenRouter/Bedrock has the
 /// flag masked off in `get_model_profile` and falls back to client-side search).
 pub fn model_supports_native_tool_search(model: &str) -> bool {
-    crate::model_profiles::get_model_profile(&crate::provider::DriverId::Anthropic, model)
+    everruns_core::model_profiles::get_model_profile(&everruns_core::provider::DriverId::Anthropic, model)
         .is_some_and(|profile| profile.tool_search)
 }
 
@@ -118,7 +118,7 @@ impl Capability for ClaudeToolSearchCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

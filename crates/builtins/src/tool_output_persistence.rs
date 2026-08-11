@@ -25,14 +25,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::atoms::PostToolExecHook;
-use crate::tool_output_sanitizer::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::atoms::PostToolExecHook;
+use everruns_core::tool_output_sanitizer::{
     output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
 };
-use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{SessionFileSystem, ToolContext};
-use crate::typed_id::SessionId;
+use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::traits::{SessionFileSystem, ToolContext};
+use everruns_core::typed_id::SessionId;
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
 const MAX_PERSISTED_STREAM_BYTES: usize = 1024 * 1024; // 1 MiB
@@ -426,8 +426,8 @@ fn extract_output_text(json: &serde_json::Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
+    use everruns_core::capabilities::*;
+    use everruns_core::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
 
     #[test]
     fn test_extract_output_text_stdout_stderr() {
@@ -548,9 +548,9 @@ mod tests {
 
     // --- persist_large_output tests ---
 
-    use crate::error::Result;
-    use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileSystem;
+    use everruns_core::error::Result;
+    use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use everruns_core::traits::SessionFileSystem;
     use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -647,7 +647,7 @@ mod tests {
     }
 
     fn persistence_tool_def() -> ToolDefinition {
-        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
         ToolDefinition::Builtin(BuiltinTool {
             name: "bash".to_string(),
@@ -669,7 +669,7 @@ mod tests {
         lines.extend((0..300).map(|i| format!("src/errors_{i}.rs: struct ErrorContext{i}")));
         let full_output = lines.join("\n");
         let visible_output =
-            crate::tool_output_sanitizer::truncate_exec_stream(&full_output, NORMAL_BUDGET, 0);
+            everruns_core::tool_output_sanitizer::truncate_exec_stream(&full_output, NORMAL_BUDGET, 0);
         let store = Arc::new(MockFileStore::default());
         let mut context = ToolContext::new(test_session_id());
         context.file_store = Some(store.clone());
@@ -815,7 +815,7 @@ mod tests {
     // -------------------------------------------------------------------------
     // compact_persisted_result_for_model (EVE-562)
     // -------------------------------------------------------------------------
-    use crate::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET};
+    use everruns_core::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET};
 
     #[test]
     fn test_compact_success_caps_stdout_to_auto_success_budget() {

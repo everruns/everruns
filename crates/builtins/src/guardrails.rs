@@ -1,6 +1,6 @@
 // Declarative guardrails capability.
 //
-// Attaches the deterministic check engine (`crate::guardrail_checks`) to the
+// Attaches the deterministic check engine (`everruns_core::guardrail_checks`) to the
 // existing interception seams — streaming output guardrails and pre/post
 // tool hooks — driven entirely by per-agent config. No checks configured
 // means no hooks contributed: an agent without this capability (or with an
@@ -12,25 +12,25 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::atoms::{
+use everruns_core::atoms::{
     PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
 };
-use crate::capabilities::{Capability, CapabilityLocalization};
-use crate::guardrail_checks::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization};
+use everruns_core::guardrail_checks::{
     CompiledGuardrails, DEFAULT_OUTPUT_REPLACEMENT, DEFAULT_TOOL_OUTPUT_REPLACEMENT,
     GuardrailAction, GuardrailStage, GuardrailsConfig, MAX_CHECK_ID_LEN, MAX_CHECKS,
     MAX_ENTRIES_PER_CHECK, MAX_ENTRY_LEN, MAX_JUDGE_PROMPT_LEN, MAX_MCP_REF_LEN,
     MAX_REPLACEMENT_LEN,
 };
-use crate::mcp_server::mcp_tool_name;
-use crate::output_guardrail::{
+use everruns_core::mcp_server::mcp_tool_name;
+use everruns_core::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
     PostGenerationOutputContext, PostGenerationOutputGuardrail,
 };
-use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
-use crate::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
-use crate::{LlmMessage, LlmMessageRole};
+use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_core::traits::ToolContext;
+use everruns_core::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
+use everruns_core::{LlmMessage, LlmMessageRole};
 
 pub const GUARDRAILS_CAPABILITY_ID: &str = "guardrails";
 
@@ -258,8 +258,8 @@ Format: {"verdict":"allow"} or {"verdict":"block","reason":"<concise reason>"}"#
 /// (fail-open). The caller is responsible for applying advisory-mode
 /// downgrade via `compiled.judge_action()`.
 async fn run_judge_check(
-    service: &dyn crate::UtilityLlmService,
-    check: &crate::guardrail_checks::CompiledJudgeCheck,
+    service: &dyn everruns_core::UtilityLlmService,
+    check: &everruns_core::guardrail_checks::CompiledJudgeCheck,
     stage: GuardrailStage,
     tool_name: &str,
     content: &str,
@@ -359,8 +359,8 @@ Format: {"scores":{"<category>":<integer 0-100>, ...}} — include every request
 /// score below it, and `None` on any error/timeout/parse failure (fail-open).
 /// The caller applies advisory-mode downgrade via `compiled.async_action()`.
 async fn run_moderation_check(
-    service: &dyn crate::UtilityLlmService,
-    check: &crate::guardrail_checks::CompiledModerationCheck,
+    service: &dyn everruns_core::UtilityLlmService,
+    check: &everruns_core::guardrail_checks::CompiledModerationCheck,
     content: &str,
 ) -> Option<GuardrailAction> {
     let payload = truncate_on_char_boundary(content, MODERATION_CONTENT_CAP);
@@ -520,8 +520,8 @@ fn parse_verdict(value: &serde_json::Value, label: &str) -> Option<GuardrailActi
 /// verdict, `None` on any failure (fail-open). The caller applies advisory-mode
 /// downgrade via `compiled.async_action()`.
 async fn run_mcp_check(
-    invoker: &dyn crate::McpToolInvoker,
-    check: &crate::guardrail_checks::CompiledMcpCheck,
+    invoker: &dyn everruns_core::McpToolInvoker,
+    check: &everruns_core::guardrail_checks::CompiledMcpCheck,
     stage: GuardrailStage,
     tool_name: &str,
     content: &str,
@@ -661,7 +661,7 @@ impl OutputGuardrailRun for DeclarativeOutputRun {
                         reason_code = %hit.reason_code,
                         "guardrails: blocking model output"
                     );
-                    return GuardrailDecision::Block(crate::output_guardrail::GuardrailBlock {
+                    return GuardrailDecision::Block(everruns_core::output_guardrail::GuardrailBlock {
                         reason_code: hit.reason_code,
                         replacement: hit
                             .replacement
@@ -742,7 +742,7 @@ impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
                         reason_code = "guardrail.moderation",
                         "guardrails: blocking model output (moderation)"
                     );
-                    return GuardrailDecision::Block(crate::output_guardrail::GuardrailBlock {
+                    return GuardrailDecision::Block(everruns_core::output_guardrail::GuardrailBlock {
                         reason_code: "guardrail.moderation".to_string(),
                         replacement: check
                             .replacement
@@ -1125,10 +1125,10 @@ impl PostToolExecHook for GuardrailPostToolHook {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::typed_id::SessionId;
-    use crate::utility_llm::UtilityLlmService;
-    use crate::{AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream};
+    use everruns_core::capabilities::*;
+    use everruns_core::typed_id::SessionId;
+    use everruns_core::utility_llm::UtilityLlmService;
+    use everruns_core::{AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream};
     use async_trait::async_trait;
     use serde_json::json;
     use std::sync::Arc;
@@ -1170,8 +1170,8 @@ mod tests {
 
         async fn chat_completion(
             &self,
-            _request: crate::utility_llm::UtilityLlmRequest,
-        ) -> crate::Result<LlmResponse> {
+            _request: everruns_core::utility_llm::UtilityLlmRequest,
+        ) -> everruns_core::Result<LlmResponse> {
             if self.response.is_empty() {
                 return Err(AgentLoopError::llm("stub error"));
             }
@@ -1198,8 +1198,8 @@ mod tests {
 
         async fn chat_completion_stream(
             &self,
-            _request: crate::utility_llm::UtilityLlmRequest,
-        ) -> crate::Result<LlmResponseStream> {
+            _request: everruns_core::utility_llm::UtilityLlmRequest,
+        ) -> everruns_core::Result<LlmResponseStream> {
             Err(AgentLoopError::llm("stub: no stream"))
         }
     }
@@ -1431,8 +1431,8 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::McpToolInvoker for StubMcpInvoker {
-        async fn invoke(&self, tool_call: &ToolCall) -> crate::Result<ToolResult> {
+    impl everruns_core::McpToolInvoker for StubMcpInvoker {
+        async fn invoke(&self, tool_call: &ToolCall) -> everruns_core::Result<ToolResult> {
             *self.last_call.lock().unwrap() = Some(tool_call.clone());
             let result = match &self.behavior {
                 McpBehavior::Result(v) => ToolResult {
@@ -1477,14 +1477,14 @@ mod tests {
     }
 
     fn tool_def() -> ToolDefinition {
-        ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+        ToolDefinition::Builtin(everruns_core::tool_types::BuiltinTool {
             name: "test_tool".to_string(),
             display_name: None,
             description: "test".to_string(),
             parameters: json!({}),
-            policy: crate::tool_types::ToolPolicy::Auto,
+            policy: everruns_core::tool_types::ToolPolicy::Auto,
             category: None,
-            deferrable: crate::tool_types::DeferrablePolicy::Never,
+            deferrable: everruns_core::tool_types::DeferrablePolicy::Never,
             hints: Default::default(),
             full_parameters: None,
         })
@@ -1866,7 +1866,7 @@ mod tests {
     async fn judge_pre_tool_hook_skipped_when_service_not_configured() {
         // Service is present in the context but reports is_configured() == false
         // (e.g. DisabledUtilityLlmService). Judge checks must be silently skipped.
-        use crate::utility_llm::DisabledUtilityLlmService;
+        use everruns_core::utility_llm::DisabledUtilityLlmService;
         let cap = GuardrailsCapability;
         let hooks = cap.pre_tool_use_hooks_with_config(&json!({
             "checks": [{"stage": "tool_use", "type": "llm_judge",
@@ -2154,8 +2154,8 @@ mod tests {
             calls: std::sync::atomic::AtomicUsize,
         }
         #[async_trait]
-        impl crate::McpToolInvoker for Counter {
-            async fn invoke(&self, tool_call: &ToolCall) -> crate::Result<ToolResult> {
+        impl everruns_core::McpToolInvoker for Counter {
+            async fn invoke(&self, tool_call: &ToolCall) -> everruns_core::Result<ToolResult> {
                 self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Ok(ToolResult {
                     tool_call_id: tool_call.id.clone(),

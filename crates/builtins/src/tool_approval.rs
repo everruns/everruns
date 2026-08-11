@@ -18,11 +18,11 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::atoms::{PreToolUseDecision, PreToolUseHook};
-use crate::capabilities::{Capability, CapabilityStatus};
-use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::ToolContext;
-use crate::typed_id::SessionId;
+use everruns_core::atoms::{PreToolUseDecision, PreToolUseHook};
+use everruns_core::capabilities::{Capability, CapabilityStatus};
+use everruns_core::tool_types::{ToolCall, ToolDefinition};
+use everruns_core::traits::ToolContext;
+use everruns_core::typed_id::SessionId;
 
 pub const TOOL_APPROVAL_CAPABILITY_ID: &str = "tool_approval";
 
@@ -99,7 +99,7 @@ impl ApprovalMode {
 /// How risky a tool is, derived from the tool's own [`ToolHints`] annotations
 /// rather than by guessing from names.
 ///
-/// [`ToolHints`]: crate::tool_types::ToolHints
+/// [`ToolHints`]: everruns_core::tool_types::ToolHints
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ToolRisk {
     /// Declares `readonly` — never gated.
@@ -296,8 +296,8 @@ impl PreToolUseHook for ToolApprovalHook {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tool_types::{BuiltinTool, ToolHints};
+    use everruns_core::capabilities::*;
+    use everruns_core::tool_types::{BuiltinTool, ToolHints};
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

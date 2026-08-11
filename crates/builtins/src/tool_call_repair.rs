@@ -41,7 +41,7 @@
 
 use std::sync::Arc;
 
-use crate::capabilities::{Capability, CapabilityLocalization};
+use everruns_core::capabilities::{Capability, CapabilityLocalization};
 use serde_json::Value;
 
 pub const TOOL_CALL_REPAIR_CAPABILITY_ID: &str = "tool_call_repair";
@@ -552,7 +552,7 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
     use serde_json::json;
 
     fn schema() -> Value {

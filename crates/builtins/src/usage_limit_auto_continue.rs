@@ -6,7 +6,7 @@
 // resume on its own once the limit resets.
 //
 // The behavior is fully encapsulated behind the platform's `LlmErrorHook`
-// seam (`crate::llm_error_hook`): the capability contributes no tools and no
+// seam (`everruns_core::llm_error_hook`): the capability contributes no tools and no
 // reason-atom special-casing. It supplies an error hook that, on the terminal
 // error path, when the error code matches:
 //
@@ -20,9 +20,9 @@
 // other capability's hook — new error-recovery extensions are built the same
 // way, without touching the atom.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::capability_types::AgentCapabilityConfig;
-use crate::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_core::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -193,7 +193,7 @@ struct UsageLimitAutoContinueHook;
 impl LlmErrorHook for UsageLimitAutoContinueHook {
     async fn on_llm_error(&self, ctx: &LlmErrorContext<'_>) -> LlmErrorHookOutcome {
         // Only act on the usage-limit error this capability recovers from.
-        if ctx.error_code != crate::user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED {
+        if ctx.error_code != everruns_core::user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED {
             return LlmErrorHookOutcome::noop();
         }
         // Best-effort: without a schedule store or a concrete reset time there
@@ -251,7 +251,7 @@ impl LlmErrorHook for UsageLimitAutoContinueHook {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     fn cap_config(config: Value) -> AgentCapabilityConfig {
         AgentCapabilityConfig::with_config(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, config)
@@ -312,12 +312,12 @@ mod tests {
     // Handler tests (the encapsulated behavior, exercised via the seam)
     // ------------------------------------------------------------------------
 
-    use crate::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookServices};
-    use crate::session_schedule::SessionSchedule;
-    use crate::traits::SessionScheduleStore;
-    use crate::typed_id::{PrincipalId, ScheduleId, SessionId};
-    use crate::user_facing_error::UserFacingErrorFields;
-    use crate::user_facing_error_codes;
+    use everruns_core::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookServices};
+    use everruns_core::session_schedule::SessionSchedule;
+    use everruns_core::traits::SessionScheduleStore;
+    use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
+    use everruns_core::user_facing_error::UserFacingErrorFields;
+    use everruns_core::user_facing_error_codes;
     use std::sync::Mutex;
 
     /// Records the one-shot schedules the handler creates so tests can assert on
@@ -337,7 +337,7 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
             timezone: String,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             self.created
                 .lock()
                 .unwrap()
@@ -367,25 +367,25 @@ mod tests {
             &self,
             _session_id: SessionId,
             _schedule_id: ScheduleId,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             unimplemented!("not used by these tests")
         }
 
         async fn list_schedules(
             &self,
             _session_id: SessionId,
-        ) -> crate::error::Result<Vec<SessionSchedule>> {
+        ) -> everruns_core::error::Result<Vec<SessionSchedule>> {
             Ok(vec![])
         }
 
         async fn count_active_schedules(
             &self,
             _session_id: SessionId,
-        ) -> crate::error::Result<u32> {
+        ) -> everruns_core::error::Result<u32> {
             Ok(self.active_schedules)
         }
 
-        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_core::error::Result<u32> {
             Ok(0)
         }
     }
@@ -430,7 +430,7 @@ mod tests {
     #[tokio::test]
     async fn handler_enforces_schedule_limits_before_auto_continue() {
         let store = Arc::new(RecordingScheduleStore {
-            active_schedules: crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION,
+            active_schedules: everruns_core::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION,
             ..Default::default()
         });
         let services = LlmErrorHookServices {

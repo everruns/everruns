@@ -88,43 +88,16 @@ pub use crate::capability_types::{
 mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
-mod auto_tool_search;
-mod btw;
-mod budgeting;
-mod claude_tool_search;
-pub mod compaction;
-mod current_time;
 mod declarative;
-mod error_disclosure;
 pub mod facts;
-mod guardrails;
-mod human_intent;
-mod infinity_context;
-mod loop_detection;
-mod message_metadata;
-mod openai_tool_search;
-mod openrouter_server_tools;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
-mod parallel_tool_calls;
-mod progress_guard;
-mod prompt_caching;
-mod prompt_canary_guardrail;
-mod self_budget;
 mod session;
 mod session_sandbox;
 mod session_sql_database;
 mod session_storage;
 mod skills;
 mod skills_scoped;
-mod stateless_todo_list;
-mod system_commands;
-mod tool_approval;
-mod tool_call_repair;
-mod tool_output_distillation;
-mod tool_output_persistence;
-mod tool_search;
-mod usage_limit_auto_continue;
 pub mod util;
 
 // Re-export capabilities
@@ -152,22 +125,6 @@ pub use attach_skill::{
     SkillContribution, SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries,
     is_skill_capability, parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
-pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
-pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
-pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
-pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
-pub use compaction::{
-    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
-    CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
-    MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
-    SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
-    apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
-    build_summarization_prompt, build_summary_message, classify_memory_tiers,
-    compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
-    format_messages_for_summarization, should_compact_for_cost, should_compact_proactively,
-    total_tool_result_bytes,
-};
-pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
@@ -175,42 +132,9 @@ pub use declarative::{
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
 };
-pub use error_disclosure::{
-    ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
-};
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
-pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
-pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
-pub use infinity_context::{
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, InfinityContextFilterOnlyCapability,
-    QueryHistoryTool,
-};
-pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
-pub use message_metadata::{
-    MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
-    MessageMetadataField, render_annotation, strip_leading_timestamp_annotations,
-};
-pub use openai_tool_search::{
-    DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
-    model_supports_native_tool_search,
-};
-pub use openrouter_server_tools::{
-    OPENROUTER_SERVER_TOOLS_CAPABILITY_ID, OpenRouterServerToolsCapability,
-};
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use parallel_tool_calls::{
-    PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
-    parallel_tool_calls_from_config,
-};
-pub use progress_guard::{PROGRESS_GUARD_CAPABILITY_ID, ProgressGuardCapability};
-pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
-pub use prompt_canary_guardrail::{
-    DEFAULT_REPLACEMENT as PROMPT_CANARY_DEFAULT_REPLACEMENT,
-    PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
-    REASON_CODE_SYSTEM_PROMPT_LEAK,
-};
-pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use session::{
     GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
     SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
@@ -232,33 +156,7 @@ pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
 };
-pub use stateless_todo_list::{
-    STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
-};
-pub use usage_limit_auto_continue::{
-    AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
-    resolve_usage_limit_auto_continue,
-};
 // Blueprint types are exported directly from the trait definitions above
-pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
-pub use tool_approval::{
-    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
-    ToolApprover,
-};
-pub use tool_call_repair::{
-    DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
-    TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairCapability, ToolCallRepairConfig,
-    salvage_tool_arguments, tool_call_repair_capability,
-};
-pub use tool_output_distillation::{
-    DistillOutputHook, TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID, ToolOutputDistillationCapability,
-};
-pub use tool_output_persistence::{
-    PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
-};
-pub use tool_search::{
-    TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
-};
 
 // ============================================================================
 // System Prompt Context

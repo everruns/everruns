@@ -4,8 +4,8 @@
 // drivers that support it. This capability does not add tools or prompt text;
 // it only configures the outbound LLM request.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use everruns_core::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
 use async_trait::async_trait;
 
 /// Capability ID for provider prompt caching.
@@ -99,7 +99,7 @@ impl Capability for PromptCachingCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

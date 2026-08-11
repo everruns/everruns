@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use crate::capabilities::{Capability, CapabilityLocalization, ToolCallHook, ToolDefinitionHook};
-use crate::tool_narration::ToolNarrationPhase;
-use crate::tool_types::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization, ToolCallHook, ToolDefinitionHook};
+use everruns_core::tool_narration::ToolNarrationPhase;
+use everruns_core::tool_types::{
     ToolCall, ToolDefinition, add_human_intent_to_tool_definitions, human_intent,
 };
 
@@ -61,7 +61,7 @@ impl ToolCallHook for HumanIntentToolCallHook {
         tool_call: &ToolCall,
         _phase: ToolNarrationPhase,
         _locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         human_intent(&tool_call.arguments).map(truncate_intent)
     }
@@ -89,8 +89,8 @@ fn truncate_intent(intent: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+    use everruns_core::capabilities::*;
+    use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
     use serde_json::json;
 
     #[test]

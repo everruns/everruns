@@ -10,7 +10,7 @@
 //
 // See knowledge/security/budgeting.md (Self-Managed vs Platform-Enforced Budgets).
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 
 pub const SELF_BUDGET_CAPABILITY_ID: &str = "self_budget";
 
@@ -66,7 +66,7 @@ const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed s
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

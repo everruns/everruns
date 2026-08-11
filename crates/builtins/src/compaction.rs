@@ -10,12 +10,12 @@
 //! - The `auto` cascade: observation masking → native → summarization
 //! - Proactive compaction at a configurable budget threshold, not just on error
 
-use super::{
+use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, ModelViewContext, ModelViewProvider,
 };
-use crate::events::TokenUsage;
-use crate::message::{ContentPart, Message, MessageRole};
-use crate::message_filter::MessageFilterProvider;
+use everruns_core::events::TokenUsage;
+use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -468,7 +468,7 @@ struct CompactionFilterProvider;
 impl MessageFilterProvider for CompactionFilterProvider {
     fn apply_filters(
         &self,
-        _query: &mut crate::message_filter::MessageQuery,
+        _query: &mut everruns_core::message_filter::MessageQuery,
         _config: &serde_json::Value,
     ) {
         // The filter provider signals that compaction is active on this session.
@@ -643,7 +643,7 @@ pub fn aggressive_trim(
         }
         kept.sort_by_key(|(i, _)| *i);
         result.extend(kept.into_iter().map(|(_, m)| m));
-        return crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result);
+        return everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges(result);
     }
 
     token_budget -= protected_budget;
@@ -672,7 +672,7 @@ pub fn aggressive_trim(
     all_kept.sort_by_key(|(i, _)| *i);
 
     result.extend(all_kept.into_iter().map(|(_, m)| m));
-    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
+    everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
 }
 
 // ============================================================================
@@ -847,14 +847,14 @@ pub fn apply_hierarchical_memory(
         result.extend_from_slice(&messages[hot_start..]);
     }
 
-    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
+    everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
 }
 
 // ============================================================================
 // Protected Tool Detection
 // ============================================================================
 
-use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+use everruns_core::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
 
 /// Tool names whose results must be protected from compaction.
 ///
@@ -1700,7 +1700,7 @@ pub fn compose_summary_with_recent(
     }
     messages.push(build_summary_message(summary_text));
     messages.extend_from_slice(recent_messages);
-    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(messages)
+    everruns_core::tool_call_integrity::retain_complete_llm_tool_exchanges(messages)
 }
 
 // ============================================================================
@@ -1724,8 +1724,8 @@ pub struct CompactionStep {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tool_types::ToolCall;
+    use everruns_core::capabilities::*;
+    use everruns_core::tool_types::ToolCall;
     use serde_json::json;
 
     fn assert_complete_tool_exchanges(messages: &[LlmMessage]) {
@@ -2157,7 +2157,7 @@ mod tests {
         let capability = CompactionCapability;
         let provider = capability.model_view_provider().unwrap();
         let context = ModelViewContext {
-            session_id: crate::typed_id::SessionId::new(),
+            session_id: everruns_core::typed_id::SessionId::new(),
             prior_usage: None,
         };
         let result = provider.apply_model_view(messages, &json!({}), &context);

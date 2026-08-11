@@ -1,8 +1,8 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, Fact, FactsContext};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus, Fact, FactsContext};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use chrono::SecondsFormat;
 use serde_json::Value;
@@ -71,12 +71,12 @@ pub struct GetCurrentTimeTool;
 impl Tool for GetCurrentTimeTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_current_time(phase, locale))
+        Some(everruns_core::tool_narration::narrate_current_time(phase, locale))
     }
 
     fn name(&self) -> &str {
@@ -154,7 +154,7 @@ impl Tool for GetCurrentTimeTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -166,8 +166,8 @@ mod tests {
 
     #[test]
     fn test_contributes_dynamic_current_time_fact() {
-        use crate::capabilities::{FactsContext, Volatility};
-        use crate::typed_id::SessionId;
+        use everruns_core::capabilities::{FactsContext, Volatility};
+        use everruns_core::typed_id::SessionId;
 
         let cap = CurrentTimeCapability;
         let facts = cap.facts(

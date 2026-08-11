@@ -58,19 +58,19 @@
 // round-trip before its first read/edit/shell call. Equivalent in effect to
 // marking those tools `DeferrablePolicy::Never`, but settable from outside.
 
-use super::{
+use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
-use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
-use crate::typed_id::SessionId;
+use everruns_core::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
+use everruns_core::typed_id::SessionId;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
+pub use everruns_core::capabilities::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
 /// Capability ID for the generic (provider-agnostic) tool search.
 pub const TOOL_SEARCH_CAPABILITY_ID: &str = "tool_search";
@@ -494,12 +494,12 @@ impl ToolSearchTool {
 impl Tool for ToolSearchTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_tool_search(
+        Some(everruns_core::tool_narration::narrate_tool_search(
             &tool_call.arguments,
             phase,
             locale,
@@ -543,7 +543,7 @@ impl Tool for ToolSearchTool {
 
     // Never defer the search tool's own schema.
     fn to_definition(&self) -> ToolDefinition {
-        ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+        ToolDefinition::Builtin(everruns_core::tool_types::BuiltinTool {
             name: self.name().to_string(),
             display_name: self.display_name().map(str::to_string),
             description: self.description().to_string(),
@@ -635,8 +635,8 @@ impl Tool for ToolSearchTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::tool_types::{BuiltinTool, ToolPolicy};
+    use everruns_core::capabilities::*;
+    use everruns_core::tool_types::{BuiltinTool, ToolPolicy};
 
     fn builtin(name: &str, description: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
         ToolDefinition::Builtin(BuiltinTool {
@@ -1086,7 +1086,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_with_registry_returns_schemas() {
-        use crate::tools::ToolRegistry;
+        use everruns_core::tools::ToolRegistry;
 
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
@@ -1119,7 +1119,7 @@ mod tests {
         // reveals the matched tool for its session, and the *same* capability's
         // hook for that session then restores its registered schema on the next
         // pass.
-        use crate::tools::ToolRegistry;
+        use everruns_core::tools::ToolRegistry;
 
         let cap = ToolSearchCapability::with_threshold(3);
         let session: SessionId = uuid::Uuid::new_v4().into();
@@ -1189,7 +1189,7 @@ mod tests {
     /// `docs/capabilities/tool-search.md`; re-run this test to refresh them.
     #[test]
     fn benchmark_prompt_size_reduction() {
-        use crate::capabilities::{
+        use everruns_core::capabilities::{
             Capability, CurrentTimeCapability, SessionCapability, SessionStorageCapability,
             SkillsCapability, StatelessTodoListCapability,
         };
@@ -1294,7 +1294,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_filters_registry_to_visible_tools() {
-        use crate::tools::ToolRegistry;
+        use everruns_core::tools::ToolRegistry;
 
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);

@@ -7,7 +7,7 @@
 // System commands are surfaced to the UI via the commands() trait method
 // and executed via the commands API endpoint.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 
 /// System commands capability ID
 pub const SYSTEM_COMMANDS_CAPABILITY_ID: &str = "system_commands";
@@ -55,7 +55,7 @@ impl Capability for SystemCommandsCapability {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

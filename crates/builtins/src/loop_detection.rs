@@ -10,10 +10,10 @@ use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::capabilities::{Capability, CapabilityLocalization};
-use crate::message::{Message, MessageRole, ToolCallContentPart};
-use crate::message_filter::{MessageFilterProvider, MessageQuery};
-use crate::tool_fingerprint::tool_call_parts_fingerprint;
+use everruns_core::capabilities::{Capability, CapabilityLocalization};
+use everruns_core::message::{Message, MessageRole, ToolCallContentPart};
+use everruns_core::message_filter::{MessageFilterProvider, MessageQuery};
+use everruns_core::tool_fingerprint::tool_call_parts_fingerprint;
 
 /// Default threshold: 3 repeated attempts triggers warning.
 const DEFAULT_THRESHOLD: usize = 3;
@@ -469,8 +469,8 @@ fn is_read_file_tool_name(name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::message::{ContentPart, ToolCallContentPart};
+    use everruns_core::capabilities::*;
+    use everruns_core::message::{ContentPart, ToolCallContentPart};
 
     /// Helper: build an agent message with the given tool calls.
     fn agent_msg_with_calls(calls: Vec<(&str, serde_json::Value)>) -> Message {
@@ -485,7 +485,7 @@ mod tests {
             })
             .collect();
         Message {
-            id: crate::typed_id::MessageId::new(),
+            id: everruns_core::typed_id::MessageId::new(),
             role: MessageRole::Agent,
             content,
             phase: None,

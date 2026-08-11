@@ -15,8 +15,8 @@
 
 use std::sync::Arc;
 
-use crate::capabilities::{Capability, CapabilityLocalization};
-use crate::output_guardrail::{
+use everruns_core::capabilities::{Capability, CapabilityLocalization};
+use everruns_core::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
 };
 
@@ -250,7 +250,7 @@ fn normalize(input: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
     use serde_json::json;
 
     fn arm_with(prompt: &str) -> Option<Box<dyn OutputGuardrailRun>> {

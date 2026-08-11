@@ -38,9 +38,9 @@
 //! Consider adding context compaction (prune old write_todos calls) if context
 //! growth becomes an issue in long-running sessions.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -117,12 +117,12 @@ pub struct WriteTodosTool;
 impl Tool for WriteTodosTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_write_todos(phase, locale))
+        Some(everruns_core::tool_narration::narrate_write_todos(phase, locale))
     }
 
     fn name(&self) -> &str {
@@ -293,7 +293,7 @@ impl Tool for WriteTodosTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

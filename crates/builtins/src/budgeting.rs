@@ -10,10 +10,10 @@
 //
 // See knowledge/security/budgeting.md (Phase 4: Agent awareness)
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -87,12 +87,12 @@ pub struct CheckBudgetTool;
 impl Tool for CheckBudgetTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_check_budget(phase, locale))
+        Some(everruns_core::tool_narration::narrate_check_budget(phase, locale))
     }
 
     fn name(&self) -> &str {
@@ -158,7 +158,7 @@ impl Tool for CheckBudgetTool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use everruns_core::capabilities::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -195,7 +195,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_budget_tool_with_context_no_checker() {
-        use crate::typed_id::SessionId;
+        use everruns_core::typed_id::SessionId;
         let tool = CheckBudgetTool;
         // With context but no budget_checker, also falls back
         let context = ToolContext::new(SessionId::new());
@@ -212,9 +212,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_budget_tool_with_mock_checker() {
-        use crate::budget::{BudgetSummary, BudgetToolResponse};
-        use crate::traits::BudgetChecker;
-        use crate::typed_id::SessionId;
+        use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
+        use everruns_core::traits::BudgetChecker;
+        use everruns_core::typed_id::SessionId;
         use std::sync::Arc;
 
         struct MockBudgetChecker;
@@ -224,7 +224,7 @@ mod tests {
             async fn check_budgets(
                 &self,
                 _session_id: &str,
-            ) -> crate::error::Result<BudgetToolResponse> {
+            ) -> everruns_core::error::Result<BudgetToolResponse> {
                 Ok(BudgetToolResponse {
                     status: "active".into(),
                     budgets: vec![BudgetSummary {
