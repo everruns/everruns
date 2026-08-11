@@ -2398,6 +2398,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-builtins",
  "everruns-capability",
  "everruns-core",
  "everruns-host",
@@ -2470,6 +2471,23 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "everruns-builtins"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-capability",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+ "uuid 1.24.0",
 ]
 
 [[package]]

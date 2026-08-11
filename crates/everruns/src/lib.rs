@@ -44,7 +44,6 @@ mod agent;
 #[cfg(feature = "capabilities")]
 pub mod capability;
 mod capability_config;
-mod compaction;
 mod context;
 mod events;
 mod history;
@@ -53,17 +52,17 @@ mod mcp;
 mod plugin;
 mod session;
 mod tool;
-mod tool_search;
 /// Session-owned background work, scheduling, cancellation, and wakes.
 pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
-pub use compaction::{CompactionConfig, CompactionStrategy};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
 pub use events::{
     CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
     SessionEvent, SessionEventKind,
 };
+#[cfg(feature = "builtins")]
+pub use everruns_builtins::{CompactionConfig, CompactionStrategy, ToolSearch};
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -76,7 +75,6 @@ pub use mcp::McpServer;
 pub use plugin::PluginError;
 pub use session::{CancelError, RunError, SendDisposition, SentMessage, Session, Turn, TurnHandle};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
-pub use tool_search::ToolSearch;
 
 #[cfg(feature = "local")]
 mod local;
@@ -185,15 +183,17 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CapabilityRef, CapabilitySpec, CompactionConfig, CompactionStrategy, CompletionContext,
-        EventStream, EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError,
-        HistoryError, HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile,
-        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
-        PluginError, ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session,
-        SessionContext, SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool,
-        ToolEndContext, ToolInfo, ToolResponse, ToolSearch, ToolStartContext, Turn, TurnHandle,
-        TurnStartContext, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        CapabilityRef, CapabilitySpec, CompletionContext, EventStream, EventStreamError,
+        FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
+        HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile, IntoCapability,
+        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
+        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
+        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
+        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, WorkspacePolicy,
+        WorkspacePolicyBuilder, WorkspacePolicyError,
     };
+    #[cfg(feature = "builtins")]
+    pub use crate::{CompactionConfig, CompactionStrategy, ToolSearch};
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
     pub use everruns_core::turn::TurnStopReason;
