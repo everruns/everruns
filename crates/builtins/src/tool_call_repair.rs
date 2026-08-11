@@ -42,6 +42,10 @@
 use std::sync::Arc;
 
 use crate::capabilities::{Capability, CapabilityLocalization};
+use crate::events::{EventContext, EventRequest, ToolCallRepairedData};
+use crate::tool_types::ToolCall;
+use async_trait::async_trait;
+use everruns_core::{FinalizedToolCallsContext, FinalizedToolCallsHook};
 use serde_json::Value;
 
 pub const TOOL_CALL_REPAIR_CAPABILITY_ID: &str = "tool_call_repair";
@@ -479,6 +483,64 @@ impl ToolCallRepairConfig {
 /// capability is present in the resolved capability set.
 pub struct ToolCallRepairCapability;
 
+struct ToolCallRepairHook {
+    config: ToolCallRepairConfig,
+}
+
+#[async_trait]
+impl FinalizedToolCallsHook for ToolCallRepairHook {
+    async fn apply(&self, context: &FinalizedToolCallsContext<'_>, calls: &mut [ToolCall]) {
+        for call in calls {
+            let schema = context
+                .tool_definitions
+                .iter()
+                .find(|definition| definition.name() == call.name)
+                .map(|definition| definition.full_parameters().clone());
+
+            let outcome = match salvage_tool_arguments(&call.arguments, schema.as_ref()) {
+                SalvageResult::AlreadyValid => continue,
+                SalvageResult::Repaired(fixed) => {
+                    call.arguments = fixed;
+                    RepairOutcome::LocalSalvage
+                }
+                SalvageResult::Unsalvageable => self
+                    .config
+                    .outcome_after_failed_salvage(context.iteration.saturating_sub(1)),
+            };
+
+            tracing::info!(
+                session_id = %context.session_id,
+                turn_id = %context.atom_context.turn_id,
+                tool_call_id = %call.id,
+                tool_name = %call.name,
+                outcome = outcome.label(),
+                "tool-call repair"
+            );
+
+            if let Err(error) = context
+                .event_emitter
+                .emit(EventRequest::new(
+                    context.session_id,
+                    EventContext::from_atom_context(context.atom_context),
+                    ToolCallRepairedData {
+                        turn_id: context.atom_context.turn_id,
+                        tool_call_id: call.id.clone(),
+                        tool_name: call.name.clone(),
+                        outcome: outcome.label().to_string(),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    error = %error,
+                    "failed to emit tool.call_repaired event"
+                );
+            }
+        }
+    }
+}
+
 impl Capability for ToolCallRepairCapability {
     fn id(&self) -> &str {
         TOOL_CALL_REPAIR_CAPABILITY_ID
@@ -542,6 +604,12 @@ impl Capability for ToolCallRepairCapability {
             config_overlay: None,
         }]
     }
+
+    fn finalized_tool_calls_hook(&self, config: &Value) -> Option<Arc<dyn FinalizedToolCallsHook>> {
+        Some(Arc::new(ToolCallRepairHook {
+            config: ToolCallRepairConfig::from_json(config),
+        }))
+    }
 }
 
 /// Convenience: the registered capability as an `Arc` (mirrors how other
@@ -553,7 +621,79 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::atoms::AtomContext;
+    use everruns_core::events::{EventData, EventRequest};
+    use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
+    use everruns_core::traits::EventEmitter;
+    use everruns_core::{Event, EventId, MessageId, SessionId, TurnId};
     use serde_json::json;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingEmitter {
+        requests: Mutex<Vec<EventRequest>>,
+    }
+
+    #[async_trait]
+    impl EventEmitter for RecordingEmitter {
+        async fn emit(&self, request: EventRequest) -> everruns_core::Result<Event> {
+            let event = request.clone().into_event(EventId::new(), 0);
+            self.requests.lock().unwrap().push(request);
+            Ok(event)
+        }
+    }
+
+    impl RecordingEmitter {
+        fn repaired_events(&self) -> Vec<(String, String)> {
+            self.requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|request| match &request.data {
+                    EventData::ToolCallRepaired(data) => {
+                        Some((data.tool_call_id.clone(), data.outcome.clone()))
+                    }
+                    _ => None,
+                })
+                .collect()
+        }
+    }
+
+    fn read_file_definition() -> ToolDefinition {
+        ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: None,
+            description: "Read a file".to_string(),
+            parameters: schema(),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: Default::default(),
+            hints: Default::default(),
+            full_parameters: None,
+        })
+    }
+
+    async fn apply_capability_hook(
+        config: &Value,
+        iteration: u32,
+        calls: &mut [ToolCall],
+        emitter: &RecordingEmitter,
+    ) {
+        let capability = ToolCallRepairCapability;
+        let hook = capability
+            .finalized_tool_calls_hook(config)
+            .expect("tool-call repair contributes its finalized-call hook");
+        let atom_context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let definitions = [read_file_definition()];
+        let context = FinalizedToolCallsContext {
+            event_emitter: emitter,
+            session_id: SessionId::new(),
+            atom_context: &atom_context,
+            tool_definitions: &definitions,
+            iteration,
+        };
+        hook.apply(&context, calls).await;
+    }
 
     fn schema() -> Value {
         json!({
@@ -566,6 +706,40 @@ mod tests {
             },
             "required": ["path"]
         })
+    }
+
+    #[tokio::test]
+    async fn finalized_call_hook_repairs_arguments_and_emits_stable_outcome() {
+        let emitter = RecordingEmitter::default();
+        let mut calls = [ToolCall {
+            id: "call_1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!("here you go: {'path': '/foo'}"),
+        }];
+
+        apply_capability_hook(&json!({}), 1, &mut calls, &emitter).await;
+
+        assert_eq!(calls[0].arguments, json!({ "path": "/foo" }));
+        assert_eq!(
+            emitter.repaired_events(),
+            vec![("call_1".to_string(), "local-salvage".to_string())]
+        );
+    }
+
+    #[tokio::test]
+    async fn finalized_call_hook_leaves_valid_arguments_untouched_and_silent() {
+        let emitter = RecordingEmitter::default();
+        let original = json!({ "path": "/already/good" });
+        let mut calls = [ToolCall {
+            id: "call_2".to_string(),
+            name: "read_file".to_string(),
+            arguments: original.clone(),
+        }];
+
+        apply_capability_hook(&json!({}), 1, &mut calls, &emitter).await;
+
+        assert_eq!(calls[0].arguments, original);
+        assert!(emitter.repaired_events().is_empty());
     }
 
     // ---- Salvage: table-driven across each malformation class ----

@@ -148,6 +148,12 @@ registers their implementations and services. See the
 Keep ordinary functions on `#[everruns::tool]` and `.tool(...)`; a function
 tool is not a capability reference.
 
+The default `builtins` feature supplies the backend-neutral policy catalog and
+typed `CompactionConfig` and `ToolSearch` values through `everruns-builtins`.
+Build with `default-features = false` when supplying a completely custom
+registry; that keeps the policy implementation bundle out of the dependency
+graph.
+
 ## Sessions, Events, and Cancellation
 
 An agent opens independent live sessions. `send` accepts a message immediately,

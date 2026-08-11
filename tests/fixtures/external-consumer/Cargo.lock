@@ -417,6 +417,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-builtins",
  "everruns-capability",
  "everruns-core",
  "everruns-host",
@@ -427,6 +428,22 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "everruns-builtins"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-capability",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -487,6 +504,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-engine",
  "everruns-integrations-filesystem",
@@ -587,6 +605,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "external-builtin-pack"
+version = "0.0.0"
+dependencies = [
+ "everruns-builtins",
+ "everruns-core",
 ]
 
 [[package]]

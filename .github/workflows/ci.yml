@@ -431,6 +431,24 @@ jobs:
       - name: Check environment capability isolation
         run: bash scripts/lib/check-environment-capability-isolation.sh
 
+  # Architecture guard (EVE-884): portable policy implementations live in
+  # everruns-builtins, core retains only neutral contracts, and minimal
+  # Framework consumers can exclude the optional bundle.
+  portable-builtins-isolation:
+    name: Portable Built-ins Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check portable built-ins isolation
+        run: bash scripts/lib/check-portable-builtins-isolation.sh
+
   # Architecture guard (EVE-877, EVE-881): stored Agent/AgentVersion and
   # Harness persistence records plus the built-in harness provisioning
   # templates live in crates/platform. Kernel crates (core, engine, provider,

@@ -450,6 +450,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     let capability_registry = adapter.capability_registry();
     if let Some(blueprint_id) = blueprint_id {
         let mut registry = ToolRegistry::with_defaults();
+        #[cfg(feature = "builtins")]
+        everruns_builtins::register_default_tools(&mut registry);
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
             everruns_core::error::AgentLoopError::config(format!(
                 "Blueprint \"{blueprint_id}\" not found in registry"
@@ -521,6 +523,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     .await;
 
     let mut registry = ToolRegistry::with_defaults();
+    #[cfg(feature = "builtins")]
+    everruns_builtins::register_default_tools(&mut registry);
     for tool in collected.tools {
         registry.register_boxed(tool);
     }
@@ -1536,6 +1540,11 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
         .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
         .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
+
+    #[cfg(feature = "builtins")]
+    {
+        atom = atom.with_final_post_tool_hook(Arc::new(everruns_builtins::PersistOutputHook));
+    }
 
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);

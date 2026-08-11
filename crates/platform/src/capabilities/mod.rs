@@ -148,6 +148,9 @@ pub fn hosted_capability_registry_for_grade(
 ) -> everruns_core::capabilities::CapabilityRegistry {
     let mut registry =
         everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    #[cfg(feature = "portable-builtins")]
+    everruns_builtins::register_portable_capabilities(&mut registry)
+        .expect("core and portable built-in catalogs must not collide");
     register_hosted_capabilities(&mut registry, grade);
     registry
 }
@@ -166,6 +169,23 @@ mod tests {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
         assert!(registry.has(PLATFORM_CAPABILITY_ID));
         assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
+    }
+
+    #[cfg(feature = "portable-builtins")]
+    #[test]
+    fn hosted_registry_contains_full_portable_policy_catalog() {
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
+        for capability_id in [
+            "current_time",
+            "compaction",
+            "tool_call_repair",
+            "usage_limit_auto_continue",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "hosted product registry is missing `{capability_id}`"
+            );
+        }
     }
 
     #[cfg(feature = "environment-capabilities")]

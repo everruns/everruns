@@ -108,6 +108,16 @@ impl Capability for ErrorDisclosureCapability {
             },
         ]
     }
+
+    fn error_disclosure(&self, config: &serde_json::Value) -> Option<ErrorDisclosure> {
+        Some(
+            config
+                .get("mode")
+                .and_then(serde_json::Value::as_str)
+                .and_then(ErrorDisclosure::parse)
+                .unwrap_or_default(),
+        )
+    }
 }
 
 /// Disclosure mode configured on the enabled `error_disclosure` capability,

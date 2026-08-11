@@ -1182,32 +1182,59 @@ mod tests {
         }
     }
 
-    /// Measure the prompt-size reduction from deferral on a realistic agent
-    /// surface built from production capabilities. Prints a breakdown (run with
-    /// `--nocapture`) and guards that deferral keeps cutting the tool-list size
-    /// by a wide margin. The printed numbers back the benchmark table in
-    /// `docs/capabilities/tool-search.md`; re-run this test to refresh them.
+    /// Measure the prompt-size reduction from deferral on a representative
+    /// agent surface without importing effectful capability packages. Prints a
+    /// breakdown (run with `--nocapture`) and guards that deferral keeps cutting
+    /// the tool-list size by a wide margin.
     #[test]
     fn benchmark_prompt_size_reduction() {
-        use crate::capabilities::{
-            Capability, CurrentTimeCapability, SessionCapability, SessionStorageCapability,
-            SkillsCapability, StatelessTodoListCapability,
-        };
-
-        // A representative core surface. Environment-backed integration
-        // benchmarks live with the host composition that owns those tools.
-        let caps: Vec<Box<dyn Capability>> = vec![
-            Box::new(CurrentTimeCapability),
-            Box::new(SessionCapability),
-            Box::new(SessionStorageCapability),
-            Box::new(StatelessTodoListCapability),
-            Box::new(SkillsCapability),
+        let representative_names = [
+            "read_file",
+            "write_file",
+            "edit_file",
+            "grep_files",
+            "list_directory",
+            "shell",
+            "web_fetch",
+            "get_session_info",
+            "write_session_title",
+            "kv_store",
+            "secret_store",
+            "write_todos",
+            "get_current_time",
+            "spawn_agent",
+            "send_message",
+            "wait_agent",
+            "create_schedule",
+            "list_schedules",
         ];
-
-        let mut defs: Vec<ToolDefinition> = caps
+        let mut defs: Vec<ToolDefinition> = representative_names
             .iter()
-            .flat_map(|c| c.tools())
-            .map(|t| t.to_definition())
+            .map(|name| {
+                ToolDefinition::Builtin(BuiltinTool {
+                    name: (*name).to_string(),
+                    display_name: None,
+                    description: format!("Representative schema for {name}"),
+                    parameters: json!({
+                        "type": "object",
+                        "properties": {
+                            "path": { "type": "string", "description": "Target path" },
+                            "query": { "type": "string", "description": "Search query" },
+                            "content": { "type": "string", "description": "Input content" },
+                            "offset": { "type": "integer", "minimum": 0 },
+                            "limit": { "type": "integer", "minimum": 1 },
+                            "recursive": { "type": "boolean" },
+                            "metadata": { "type": "object", "additionalProperties": true }
+                        },
+                        "required": ["path"]
+                    }),
+                    policy: ToolPolicy::Auto,
+                    category: None,
+                    deferrable: DeferrablePolicy::Automatic,
+                    hints: ToolHints::default(),
+                    full_parameters: None,
+                })
+            })
             .collect();
         // Add the search tool itself, as the live capability does.
         defs.push(ToolSearchTool::default().to_definition());
@@ -1234,10 +1261,9 @@ mod tests {
         // full surface, before deferral.
         let params_full: usize = defs.iter().map(|d| d.parameters().to_string().len()).sum();
 
-        // This core-only surface is intentionally smaller after environment
-        // integrations moved out. Trigger deferral at its actual size; host
-        // composition tests cover the public default threshold.
-        let threshold = total.saturating_sub(1);
+        // First model turn at the real default threshold: a surface this size is
+        // above it, so every deferrable schema is stubbed.
+        let threshold = DEFAULT_TOOL_SEARCH_THRESHOLD;
         let deferred = hook(threshold).transform(defs);
         let deferred_count = deferred.iter().filter(|d| is_stubbed(d)).count();
         let deferred_bytes = llm_view(&deferred);
@@ -1275,19 +1301,17 @@ mod tests {
             "  parameter schemas ......... {params_full} -> {params_deferred} bytes ({params_pct:.0}% smaller)"
         );
 
-        // Sanity guard: the smaller core-only surface must still shrink
-        // materially. Host composition owns the larger environment-backed
-        // benchmark.
+        // Sanity guard: a many-tool surface must shrink substantially.
         assert!(
             total >= threshold,
             "surface should meet or exceed the default threshold ({total} < {threshold})"
         );
         assert!(
-            pct > 40.0,
-            "deferral should materially cut the whole tool list (was {pct:.0}%)"
+            pct > 45.0,
+            "deferral should cut the whole tool list by a wide margin (was {pct:.0}%)"
         );
         assert!(
-            params_pct > 65.0,
+            params_pct > 70.0,
             "parameter schemas should compress substantially (was {params_pct:.0}%)"
         );
     }

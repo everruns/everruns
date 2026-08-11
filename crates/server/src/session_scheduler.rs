@@ -49,6 +49,15 @@ const ORPHAN_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 /// Maximum monitor tasks to cancel per sweep pass (bounds latency per cycle).
 const ORPHAN_SWEEP_LIMIT: i64 = 50;
 
+/// Build the deliberately narrow tool registry used by autonomous monitor
+/// probes. Portable context-free tools are composed by the product rather than
+/// being hard-coded into the core registry.
+pub(crate) fn monitor_probe_tool_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::with_monitor_probe_defaults();
+    everruns_builtins::register_monitor_tools(&mut registry);
+    registry
+}
+
 /// Spawn the session schedule poller as a background task.
 ///
 /// Polls every `poll_interval` for due schedules, injects messages, and
@@ -924,7 +933,7 @@ mod tests {
 
     #[tokio::test]
     async fn monitor_probe_registry_excludes_network_and_filesystem_tools() {
-        let registry = everruns_core::ToolRegistry::with_monitor_probe_defaults();
+        let registry = monitor_probe_tool_registry();
 
         assert!(
             registry.has("get_current_time"),
@@ -956,7 +965,7 @@ mod tests {
         .await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_monitor_probe_defaults());
+        let tool_registry = Arc::new(monitor_probe_tool_registry());
 
         let probe_ran = fire_monitor_tasks(
             &registry,
@@ -1004,7 +1013,7 @@ mod tests {
         let task = create_monitor_task(&db, session_id, schedule_id).await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_monitor_probe_defaults());
+        let tool_registry = Arc::new(monitor_probe_tool_registry());
 
         let probe_ran = fire_monitor_tasks(
             &registry,
