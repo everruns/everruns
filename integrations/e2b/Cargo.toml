@@ -27,7 +27,7 @@ http = "1"
 http-body = "1"
 futures.workspace = true
 connectrpc = { version = "0.8.1", features = ["client", "client-tls"] }
-buffa = "0.8.1"
+buffa = "0.9.1"
 rustls.workspace = true
 rustls-native-certs = "0.8"
 
