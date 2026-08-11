@@ -146,32 +146,30 @@ Contract rules:
   step and CI job `capability-contract`) fails any new capability
   ID/config/definition type in core, host, or platform.
 
-The effect-neutral `Capability` trait and kernel built-ins remain in
-`everruns-core`. Environment-backed implementations are owned by focused
-sibling crates: filesystem, Bashkit, web fetch, Lua, OpenRouter workspace,
-MCP, and concrete HTTP. `scripts/lib/check-environment-capability-isolation.sh`
-guards that dependency direction and the Framework's opt-in feature edges.
+Capability identity/configuration lives in `everruns-capability`. Runtime
+execution contracts, the registry, and effect-neutral kernel built-ins live in
+`everruns-core`. Portable policy implementations live in `everruns-builtins`;
+environment and hosted implementations live in their owning
+integration/product crates. No implementation bundle registers itself merely
+by being linked. The environment and portable isolation guards enforce those
+dependency directions and the Framework's opt-in feature edges.
 
 ### Architecture
 
-Capability identity comes from **everruns-capability**. Effect-neutral built-ins
-and contracts live in **everruns-core**; environment implementations live in
-focused crates and are composed by the selected host:
+Capability implementations are composed explicitly by the selected host:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ everruns-capability + everruns-core                      │
-│  ┌─────────────────────────────────────────────────┐   │
-│  │ Identity/config + CapabilityRegistry/traits     │   │
-│  │ + effect-neutral built-in implementations       │   │
-│  └─────────────────────────────────────────────────┘   │
+│ everruns-capability: identity + configuration contract │
+│ everruns-core: registry, contracts + neutral kernel    │
+│ everruns-builtins/integrations/product: implementations│
 └───────────────────────────┬─────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Focused integrations + host/platform composition         │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │ filesystem/bashkit/web/lua/MCP/HTTP implementations │
-│  │ runtime_capability_registry / hosted registry   │   │
+│  │ policy + filesystem/bashkit/web/lua/MCP/HTTP    │   │
+│  │ runtime/hosted registries + API DTO conversion  │   │
 │  └─────────────────────────────────────────────────┘   │
 └───────────────────────────┬─────────────────────────────┘
                             ↓
@@ -181,9 +179,15 @@ focused crates and are composed by the selected host:
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Core owns the registry and the implementations that need no environment edge.
-- `everruns-host::runtime_capability_registry()` adds feature-selected embedded integrations.
-- `everruns-platform::capabilities::hosted_capability_registry_for_grade()` adds the hosted integration catalog and platform-management capabilities.
+- Portable policy capabilities are defined in **everruns-builtins**. Linking
+  the crate has no side effect; registry composition calls its registration
+  function explicitly and collision checks are fail-closed.
+- Core owns the registry, contracts, and effect-neutral kernel implementations.
+- `everruns-host::runtime_capability_registry()` and
+  `compose_runtime_capability_registry(base)` add feature-selected embedded
+  integrations.
+- `everruns-platform::capabilities::hosted_capability_registry_for_grade()`
+  composes the hosted integration catalog and platform-management capabilities.
 - The API layer uses the hosted registry and converts it to response DTOs.
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
@@ -311,14 +315,16 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 
 **Built-in IDs** use `snake_case` naming and are validated against the `CapabilityRegistry`. **MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. **Declarative IDs** use the `declarative:` prefix followed by the persisted definition's unique name. See `knowledge/integrations/mcp-servers.md` for MCP details.
 
-For the full list of built-in capability IDs, see `crates/core/src/capabilities/mod.rs` (registry initialization).
+For the portable policy catalog and its stable registration order, see
+`crates/builtins/src/lib.rs`. Environment and hosted catalogs stay with their
+owning crates.
 
 ##### Built-in Capability ID Constants
 
-Every built-in capability **must** declare a `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str` in its module and return it from `fn id()`. All constants are re-exported from `crates/core/src/capabilities/mod.rs`.
+Every built-in capability **must** declare a `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str` in its owning module and return it from `fn id()`. The owning crate re-exports the constant.
 
 ```rust
-// In crates/core/src/capabilities/current_time.rs
+// In crates/builtins/src/current_time.rs
 pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
 
 impl Capability for CurrentTimeCapability {
@@ -1054,7 +1060,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 
 | Question | Decision |
 |----------|----------|
-| Where are capabilities defined? | In-memory registry (not database) |
+| Where are capabilities defined? | Implementation-owning crates, composed into an in-memory registry (not database) |
 | How are they applied? | Resolved at API layer, merged into RuntimeAgent |
 | Order of application? | By `position` field (lower = earlier) |
 | Can capabilities conflict? | Currently no conflict resolution; later capabilities add to earlier ones |
@@ -1063,14 +1069,16 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 
 ### Adding New Capabilities
 
-1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for the neutral trait definition) in the crate that owns the implementation's effects.
-2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in that owner and return it from `fn id()` (see **Built-in Capability ID Constants** above).
-3. Re-export the constant and struct from the owning crate's public root.
-4. Choose the registry preset deliberately:
-   - Register effect-neutral kernel capabilities in `CapabilityRegistry::runtime_builtins()` and/or `CapabilityRegistry::with_builtins_for_grade()`.
-   - Register environment-backed embedded capabilities in `everruns_host::runtime_capability_registry()` behind a Cargo feature.
-   - Register environment-backed hosted capabilities through `everruns_platform::capabilities::hosted_capability_registry_for_grade()` and its explicit product feature set.
-   - Use integration inventory registration for external integration crates that should appear only when their crate is linked.
+1. Choose the implementation owner: backend-neutral policy in `everruns-builtins`; environment or hosted behavior in its integration/product crate. Implement the `Capability` trait from `everruns-core`.
+2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the owner and return it from `fn id()` (see **Built-in Capability ID Constants** above).
+3. Re-export the constant and implementation from the owning crate's public root.
+4. Add it to the owning crate's explicit registration function and each
+   application preset that should expose it. Portable and product bundles must
+   not use link-time inventory or implicit registration. External integration
+   inventory remains appropriate only when linking that integration is itself
+   the opt-in. A runtime preset may include a capability only when its required
+   host services are present; hosted-only capabilities stay in product
+   composition.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 6. No database migration required — capability ID validated at runtime
 7. Add or update registry tests that prove the capability appears in the intended preset(s) and is absent from inappropriate preset(s)

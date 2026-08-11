@@ -23,21 +23,23 @@ contracts instead of on server internals.
 
 ```rust
 use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
-use everruns_core::capabilities::CurrentTimeCapability;
 
-let mut capabilities = CapabilityRegistry::new();
-capabilities.register(CurrentTimeCapability);
+let capabilities = CapabilityRegistry::new();
 
 let drivers = DriverRegistry::new();
 let platform = PlatformDefinition::new(capabilities, drivers);
 
-assert!(platform.capability_registry().get("current_time").is_some());
+assert!(platform.capability_registry().is_empty());
 ```
+
+`everruns-core` does not register a policy catalog. Applications that want the
+standard backend-neutral policies compose `everruns-builtins`; environment and
+hosted capabilities come from their owning integration or product crates.
 
 ## What It Provides
 
 - Agent, harness, session, message, event, and typed ID domain models
-- Capability and tool traits for extending what agents can do
+- Capability registry/execution contracts and tool traits for extensions
 - An LLM driver registry and provider-neutral message, tool, and reasoning types
 - Context assembly shared by embedded, worker, and server execution paths
 - Minimal in-memory store implementations for embedding and prototyping
