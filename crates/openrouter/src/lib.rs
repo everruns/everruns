@@ -1,7 +1,7 @@
 //! OpenRouter provider driver for Everruns.
 //!
 //! `everruns-openrouter` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core`
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider`
 //! and registers the OpenRouter provider into a [`DriverRegistry`].
 //!
 //! OpenRouter exposes an OpenAI-compatible Responses API, so [`OpenRouterChatDriver`]

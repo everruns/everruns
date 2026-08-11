@@ -1112,8 +1112,6 @@ struct GeminiModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::FileSystemCapability;
-    use everruns_core::capabilities::Capability;
     use everruns_provider::driver_registry::ChatDriver;
 
     #[test]
@@ -1366,9 +1364,90 @@ mod tests {
         assert_eq!(prop["type"], "boolean");
     }
 
+    /// Builds filesystem-style tool definitions mirroring the schema shapes the
+    /// session filesystem capability produces (nested `additionalProperties`
+    /// inside array items and sub-objects). Kept as an in-crate fixture so this
+    /// wire-protocol crate stays decoupled from capability implementations
+    /// (EVE-874); capability identity/authoring lives in `everruns-capability`.
+    fn filesystem_style_tools() -> Vec<ToolDefinition> {
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+
+        let builtin = |name: &str, parameters: Value| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: format!("{name} tool"),
+                parameters,
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default(),
+                full_parameters: None,
+            })
+        };
+
+        vec![
+            builtin(
+                "read_file",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "offset": { "type": "integer", "default": 0, "minimum": 0 },
+                        "limit": { "type": "integer", "default": 2000, "minimum": 1 }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                }),
+            ),
+            builtin(
+                "edit_file",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "expected_hash": { "type": "string" },
+                        "edits": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "old_text": { "type": "string" },
+                                    "new_text": { "type": "string" }
+                                },
+                                "required": ["old_text", "new_text"],
+                                "additionalProperties": false
+                            }
+                        }
+                    },
+                    "required": ["path", "expected_hash", "edits"],
+                    "additionalProperties": false
+                }),
+            ),
+            builtin(
+                "grep_files",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": { "type": "string" },
+                        "options": {
+                            "type": "object",
+                            "properties": {
+                                "case_insensitive": { "type": "boolean" }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "required": ["pattern"],
+                    "additionalProperties": false
+                }),
+            ),
+        ]
+    }
+
     #[test]
-    fn test_convert_file_system_capability_strips_nested_additional_properties() {
-        let tools = FileSystemCapability.tool_definitions();
+    fn test_convert_filesystem_style_tools_strips_nested_additional_properties() {
+        let tools = filesystem_style_tools();
         let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
 
         fn assert_no_additional_properties(v: &Value) {

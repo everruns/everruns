@@ -68,10 +68,17 @@ protocol drivers, model profiles, retry/stream helpers, typed IDs, the
 credential form schema, and the LLM error taxonomy). It carries none of core's
 heavy subtrees (`a2a` gRPC, web-fetch/fetchkit), so a
 standalone provider build never pulls them in. A provider is therefore a pure
-`ChatDriver` implementation with no dependency on core's agent-loop runtime;
-provider crates keep `everruns-core` (and, where needed,
-`everruns-test-support` for the in-memory runtime + `llmsim` harness) only as
-**dev-dependencies**.
+`ChatDriver` implementation with no dependency on core's agent-loop runtime.
+Since EVE-874 provider crates carry **no** `everruns-core` edge at all — not
+even as a dev-dependency; wire-level tests build their fixtures in-crate, and
+`scripts/lib/check-provider-isolation.sh` (pre-push + CI) rejects a direct
+core/host/platform/server dependency on any edge kind, plus any heavy core
+feature subtree (sqlx/utoipa/inventory/axum/tonic) in provider-only shipped
+trees. Default-product registration stays a composition concern: the worker
+(`crates/worker/src/adapters.rs`) assembles all official drivers into the
+product registry, and downstream providers register through the open
+`DriverRegistry` seams alone (see
+`tests/fixtures/external-consumer/provider-pack/`).
 
 Deterministic simulation and demo fixtures live in `everruns-test-support`
 (EVE-875): the `llmsim` driver, the in-memory agentic loop, mock test doubles,

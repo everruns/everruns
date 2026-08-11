@@ -1,5 +1,5 @@
 # OpenAI Provider Implementation
-# Decision: Implements the core LlmProvider trait for OpenAI API
+# Decision: Implements the everruns-provider ChatDriver contract for the OpenAI API
 # Decision: Uses OpenAI's chat completion API with streaming support
 
 [package]
@@ -38,13 +38,11 @@ chrono.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
-# default-features = false sheds core's heavy optional subtrees
-# (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
-# need, keeping the standalone crate's dependency tree small.
+# Provider SPI only (EVE-874): wire-protocol crates never depend on
+# everruns-core. Intentional optional features of everruns-provider (`openapi`
+# schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
 everruns-provider = { path = "../provider", version = "0.17.26" }
 
 [dev-dependencies]
-# Integration tests use core's in-memory runtime + llmsim harness.
-everruns-core = { path = "../core" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"

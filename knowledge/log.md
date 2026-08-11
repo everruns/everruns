@@ -2,6 +2,16 @@
 
 ## 2026-08-11
 
+* **Provider SPI separation completed**: Official wire-protocol provider
+  crates no longer depend on `everruns-core` on any edge kind — the last
+  dev-dependencies were removed and their tests now build fixtures in-crate
+  (EVE-874). A new architecture guard
+  (`scripts/lib/check-provider-isolation.sh`, pre-push + CI) forbids direct
+  core/host/platform/server dependencies from provider crates and keeps heavy
+  core feature subtrees out of provider-only builds; a downstream provider
+  fixture proves custom drivers compile against `everruns-provider` alone.
+  Updated code-organization.
+
 * **Agent record extraction**: Moved the stored `Agent` and `AgentVersion`
   persistence records — lifecycle status, versioning and publication metadata,
   fork lineage, public-name validation, and persistence helpers — out of

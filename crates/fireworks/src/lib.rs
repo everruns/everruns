@@ -1,7 +1,7 @@
 //! Fireworks AI provider driver for Everruns.
 //!
 //! `everruns-fireworks` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core`
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider`
 //! and registers the Fireworks AI provider into a [`DriverRegistry`].
 //!
 //! [Fireworks AI](https://fireworks.ai) serves open models (Llama, Qwen,

@@ -1,6 +1,6 @@
 //! AWS Bedrock Runtime provider driver for Everruns.
 //!
-//! `everruns-bedrock` implements the [`ChatDriver`] contract from `everruns-core`
+//! `everruns-bedrock` implements the [`ChatDriver`] contract from `everruns-provider`
 //! using the AWS Bedrock Runtime `ConverseStream` API.
 //! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
 //! the application-facing `everruns` crate.

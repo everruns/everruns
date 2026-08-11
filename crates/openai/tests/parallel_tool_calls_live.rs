@@ -9,11 +9,11 @@
 //! Ignored by default (requires network + `OPENAI_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openai --test parallel_tool_calls_live -- --ignored --nocapture`
 
-use everruns_core::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
-use everruns_core::tool_types::{
+use everruns_openai::provider;
+use everruns_provider::driver_registry::{LlmCallConfig, LlmMessage, LlmMessageRole};
+use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
-use everruns_openai::provider;
 
 const LIVE_MODEL: &str = "gpt-4o-mini";
 

@@ -11,11 +11,11 @@
 // stream by closing the connection (no `[DONE]` marker), which the driver's
 // finish handling collapses into a single terminal `Done` event.
 
-use everruns_core::driver_registry::{
+use everruns_gemini::GeminiChatDriver;
+use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent,
 };
-use everruns_gemini::GeminiChatDriver;
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
 use wiremock::matchers::{method, path_regex};
