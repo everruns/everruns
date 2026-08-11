@@ -200,6 +200,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         )
         .await
         .expect("parent turn runs");
+    skip_if_quota!(turn, config.label());
     assert!(turn.success, "parent turn failed: {:?}", turn.error);
 
     let parent_messages = runtime.messages(parent_id).await.expect("parent messages");
@@ -237,6 +238,19 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     let settled = settled.expect("subagent task should settle within 120s");
+    // The child's turn is a second live call; out-of-quota there is the same
+    // provider condition as on the parent turn, not a subagent regression.
+    if settled.state != SessionTaskState::Succeeded
+        && let Some(err) = settled.error.as_ref()
+        && is_quota_exhausted(&err.message)
+    {
+        eprintln!(
+            "SKIP: provider {} out of quota: {}",
+            config.label(),
+            err.message
+        );
+        return;
+    }
     assert_eq!(
         settled.state,
         SessionTaskState::Succeeded,
