@@ -19,8 +19,8 @@ mod tools;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
+use everruns_platform::connector::ConnectorPlugin;
 
 use connection::BraveSearchConnector;
 use tools::BraveWebSearchTool;

@@ -78,8 +78,6 @@ similar = "3"
 
 # URL parsing
 url = "2"
-# Form encoding for OAuth token requests (crates/core/src/oauth.rs).
-serde_urlencoded = "0.7"
 
 # Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
 # ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
@@ -115,10 +113,11 @@ sqlx = { workspace = true, optional = true }
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 # Tool types are defined locally in this crate
 
-# OpenAI Protocol provider
-# Note: We need "default" features for system proxy detection from environment variables
+# HTTP client backing the egress boundary (DirectEgressService) and the
+# bashkit/model-scout transports. "default" features keep system proxy
+# detection from environment variables. OAuth token exchange and the system
+# email senders moved out of core in EVE-879 (everruns-mcp, everruns-platform).
 reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"] }
-eventsource-stream = "0.2"
 
 # Plugin system for external integrations
 inventory.workspace = true

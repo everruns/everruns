@@ -6,7 +6,7 @@
 //   lives in this crate, not in the server crate.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 

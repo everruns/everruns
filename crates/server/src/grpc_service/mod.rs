@@ -531,7 +531,7 @@ pub struct WorkerServiceImpl {
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
     utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    connector_registry: everruns_core::connector::ConnectorRegistry,
+    connector_registry: everruns_platform::connector::ConnectorRegistry,
 }
 
 impl WorkerServiceImpl {
@@ -595,7 +595,9 @@ impl WorkerServiceImpl {
             capability_registry,
         ));
         let utility_llm_service = platform_definition.utility_llm_service();
-        let connector_registry = platform_definition.connectors().clone();
+        // Hosted connector catalog (EVE-879): defaults to the OSS inventory
+        // preset; `ServerAppBuilder` overrides via `set_connector_registry`.
+        let connector_registry = crate::platform::oss_connector_registry();
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -676,6 +678,13 @@ impl WorkerServiceImpl {
     }
 
     /// Set the task notification broadcaster (must be called after async initialization)
+    pub fn set_connector_registry(
+        &mut self,
+        registry: everruns_platform::connector::ConnectorRegistry,
+    ) {
+        self.connector_registry = registry;
+    }
+
     pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskBroadcaster>) {
         self.task_broadcaster = Some(broadcaster);
     }

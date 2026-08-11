@@ -159,8 +159,9 @@ else
   fail "observability isolation guard failed"
 fi
 
-# 15. Agent-record isolation guard (EVE-877, EVE-881, EVE-882, EVE-878: Agent,
-#     Harness, Session, and eval/observer/feature-management records)
+# 15. Agent-record isolation guard (EVE-877, EVE-881, EVE-882, EVE-878,
+#     EVE-879: Agent, Harness, Session, eval/observer/feature-management
+#     records, and connector/OAuth/email infrastructure)
 echo "15/17 Agent-record isolation guard"
 if AGENT_RECORD_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-agent-record-isolation.sh" 2>&1

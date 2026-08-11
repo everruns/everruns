@@ -40,8 +40,8 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder,
     MountPoint, RiskLevel, SystemPromptContext,
 };
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
+use everruns_platform::connector::ConnectorPlugin;
 
 use connection::DaytonaConnector;
 use session_sandbox_provider::DaytonaSessionSandboxProvider;

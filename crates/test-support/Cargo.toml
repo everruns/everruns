@@ -34,8 +34,12 @@ default = ["sim", "fixtures", "host"]
 # on it.
 sim = ["dep:llmsim"]
 # Fake demo capabilities: fake AWS/CRM/financial/warehouse, test math and
-# weather, the sample-data mount demo, and the noop fixture.
-fixtures = []
+# weather, the sample-data mount demo, and the noop fixture. The fake AWS
+# connector registers into the hosted connector plugin system, which lives in
+# the platform crate (EVE-879) — only this fixture surface links it, so the
+# `sim`-only consumers (the `everruns` facade, the worker) stay platform-free
+# through this crate.
+fixtures = ["dep:everruns-platform"]
 # `LlmSimRuntimeExt`: the `.llm_sim(...)` convenience for
 # `everruns_host::InProcessRuntimeBuilder`.
 host = ["dep:everruns-host", "sim"]
@@ -43,6 +47,7 @@ host = ["dep:everruns-host", "sim"]
 [dependencies]
 everruns-core = { path = "../core", version = "0.17.26", default-features = false }
 everruns-host = { workspace = true, optional = true }
+everruns-platform = { workspace = true, optional = true }
 
 anyhow.workspace = true
 async-trait.workspace = true

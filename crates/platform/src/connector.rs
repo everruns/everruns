@@ -1,7 +1,11 @@
 // Connector Plugin System
 //
+// Decision (EVE-879): the connector catalog is a hosted control-plane surface
+// — the server renders its form schemas and resolves connections; nothing
+// consumes a Connector during a turn — so it lives in `everruns-platform`,
+// not `everruns-core`.
 // Decision: Parallel to IntegrationPlugin, allows integration crates to register
-// connectors via inventory::submit! without core knowing about them.
+// connectors via inventory::submit! without the kernel knowing about them.
 // Decision: Form schema is backend-driven — connectors define their own UI fields
 // and instructions, frontend renders generically.
 // Decision: Validation is async — connectors can call external APIs to verify credentials.
@@ -213,11 +217,12 @@ impl Default for ConnectorRegistryBuilder {
 // ============================================================================
 
 // Form schema types are shared with provider drivers; see
-// `crate::credential_schema` and knowledge/foundations/providers.md "Credentials".
-pub use crate::credential_schema::{FieldType, FormField};
+// `everruns_core::credential_schema` and knowledge/foundations/providers.md
+// "Credentials". The schema itself stays in `everruns-provider`.
+pub use everruns_core::credential_schema::{FieldType, FormField};
 
 /// Credential form schema for connectors.
-pub type ConnectorFormSchema = crate::credential_schema::CredentialFormSchema;
+pub type ConnectorFormSchema = everruns_core::credential_schema::CredentialFormSchema;
 
 /// Result of credential validation.
 #[derive(Debug, Clone)]

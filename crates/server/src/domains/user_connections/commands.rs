@@ -86,8 +86,8 @@ impl Command for ListConnectionProviders {
                     display_name: provider.display_name().to_string(),
                     description: provider.description().to_string(),
                     connection_type: match provider.connection_type() {
-                        everruns_core::connector::ConnectorType::OAuth => "oauth",
-                        everruns_core::connector::ConnectorType::ApiKey => "api_key",
+                        everruns_platform::connector::ConnectorType::OAuth => "oauth",
+                        everruns_platform::connector::ConnectorType::ApiKey => "api_key",
                     }
                     .to_string(),
                     ui_link: "/settings/connections".to_string(),

@@ -1,10 +1,10 @@
-//! OAuth 2.1 authorization-code client, shared by every everruns host.
+//! OAuth 2.1 authorization-code client: the protocol steps, and nothing else.
 //!
-//! Everruns already speaks OAuth in three unrelated places — the provider
-//! connect flow, user connections, and (until now, only in downstream hosts)
-//! MCP server login. Each grew its own PKCE, its own token exchange, and its
-//! own refresh. This module is the one implementation they can share: the
-//! protocol steps, and nothing else.
+//! This started life in `everruns-core` as a client every host could share.
+//! EVE-879 moved it here: MCP login/refresh is its only consumer, and the
+//! execution kernel should not carry token-exchange plumbing or form encoding
+//! for a flow it never runs. The server's control-plane OAuth flows (provider
+//! connect, user connections) keep their own egress-based exchange client.
 //!
 //! What lives here is deliberately the *stateless* half:
 //!
@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::egress::{EgressRequest, EgressRequestKind, EgressService};
+use everruns_core::egress::{EgressRequest, EgressRequestKind, EgressService};
 
 /// Refresh this long before a token actually expires, so a request issued at
 /// the edge of validity does not race the clock.
@@ -97,12 +97,24 @@ pub enum OAuthError {
 pub type Result<T> = std::result::Result<T, OAuthError>;
 
 /// A PKCE verifier/challenge pair (RFC 7636, S256).
-#[derive(Debug, Clone)]
+///
+/// `Debug` redacts the verifier: it is the secret half of the pair and leaks
+/// grant-hijacking capability if it reaches logs.
+#[derive(Clone)]
 pub struct PkcePair {
     /// High-entropy secret kept by the client until code exchange.
     pub verifier: String,
     /// S256 hash of the verifier, sent on the authorize request.
     pub challenge: String,
+}
+
+impl std::fmt::Debug for PkcePair {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PkcePair")
+            .field("verifier", &"[REDACTED]")
+            .field("challenge", &self.challenge)
+            .finish()
+    }
 }
 
 impl PkcePair {
@@ -187,7 +199,12 @@ pub struct ClientRegistration {
 
 /// Tokens held for a grant, plus the bookkeeping needed to renew them without
 /// re-running discovery.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// `Serialize` exists for encrypted persistence (control-plane rows, a CLI
+/// token file) — never serialize a `TokenSet` into events, snapshots, or API
+/// responses. `Debug` redacts every credential field so tracing a token set
+/// cannot leak the grant.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenSet {
     /// The bearer (or other type) access token.
     pub access_token: String,
@@ -216,6 +233,27 @@ pub struct TokenSet {
 
 fn default_token_type() -> String {
     "Bearer".to_string()
+}
+
+impl std::fmt::Debug for TokenSet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenSet")
+            .field("access_token", &"[REDACTED]")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("token_type", &self.token_type)
+            .field("expires_at", &self.expires_at)
+            .field("scope", &self.scope)
+            .field("token_endpoint", &self.token_endpoint)
+            .field("client_id", &self.client_id)
+            .field(
+                "client_secret",
+                &self.client_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
 }
 
 impl TokenSet {
@@ -634,8 +672,8 @@ fn truncate(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::egress::{EgressError, EgressResponse, EgressResult};
     use async_trait::async_trait;
+    use everruns_core::egress::{EgressError, EgressResponse, EgressResult};
     use std::sync::{Arc, Mutex};
 
     /// Egress double: answers by URL, records what was sent. Tests exercise
@@ -687,7 +725,7 @@ mod tests {
         async fn send_stream(
             &self,
             _request: EgressRequest,
-        ) -> EgressResult<crate::egress::EgressStreamResponse> {
+        ) -> EgressResult<everruns_core::egress::EgressStreamResponse> {
             Err(EgressError::Transport(
                 "streaming not supported".to_string(),
             ))
@@ -958,6 +996,36 @@ mod tests {
             }
             other => panic!("expected an HTTP error, got {other}"),
         }
+    }
+
+    #[test]
+    fn token_set_debug_redacts_every_credential_field() {
+        let tokens = TokenSet {
+            access_token: "at-secret".to_string(),
+            refresh_token: Some("rt-secret".to_string()),
+            token_type: "Bearer".to_string(),
+            expires_at: None,
+            scope: Some("mcp:read".to_string()),
+            token_endpoint: Some("https://auth.example.com/token".to_string()),
+            client_id: Some("client-1".to_string()),
+            client_secret: Some("cs-secret".to_string()),
+        };
+        let rendered = format!("{tokens:?}");
+        for secret in ["at-secret", "rt-secret", "cs-secret"] {
+            assert!(!rendered.contains(secret), "{secret} leaked: {rendered}");
+        }
+        assert!(rendered.contains("[REDACTED]"));
+        // Non-secret bookkeeping stays visible for debugging.
+        assert!(rendered.contains("client-1"));
+        assert!(rendered.contains("https://auth.example.com/token"));
+    }
+
+    #[test]
+    fn pkce_debug_redacts_the_verifier() {
+        let pair = PkcePair::generate();
+        let rendered = format!("{pair:?}");
+        assert!(!rendered.contains(&pair.verifier), "{rendered}");
+        assert!(rendered.contains(&pair.challenge));
     }
 
     #[test]

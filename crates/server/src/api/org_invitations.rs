@@ -28,7 +28,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
-use everruns_core::{EmailError, EmailMessage, EmailSender, OrgRole};
+use everruns_core::OrgRole;
+use everruns_platform::email::{EmailError, EmailMessage, EmailSender};
 use everruns_platform::{AuditEvent, ManagementAction};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
@@ -733,7 +734,7 @@ pub async fn accept_invite(
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use everruns_core::{EmailResult, NoopEmailSender, SentEmail};
+    use everruns_platform::email::{EmailResult, NoopEmailSender, SentEmail};
 
     fn db() -> StorageBackend {
         StorageBackend::in_memory()

@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Everruns is embeddable through a shared `PlatformDefinition` composition root. An embedder can assemble a custom runtime surface, then pass the same definition to the control plane and worker so capabilities, LLM drivers, connection providers, and built-in harness templates stay aligned.
+Everruns is embeddable through a shared `PlatformDefinition` composition root. An embedder can assemble a custom runtime surface, then pass the same definition to the control plane and worker so capabilities, LLM drivers, and platform host services stay aligned. Hosted product services — built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879) — are composed on `ServerAppBuilder` instead.
 
 This spec defines the contract for embedding. See `crates/core/src/platform_definition.rs` for the public Rust API.
 
@@ -29,13 +29,17 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 
 - Capability registry
 - LLM driver registry
-- Connection-provider registry
-- Built-in harness templates
-- System email sender
+- System egress service
 - System utility LLM service
 - Session filesystem factory
+- Vector store
 
 The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.
+
+Hosted control-plane services live on `ServerAppBuilder`, not on
+`PlatformDefinition`: `built_in_harnesses` (EVE-881), `connector_registry`,
+and `email_sender` (EVE-879). The connector trait/registry and the email
+contract live in `everruns-platform`.
 
 Platform-wide host services are represented as provider-neutral traits or
 factories. For example, `SessionFileSystemFactory` lets a platform select
@@ -88,10 +92,11 @@ Everruns provides default presets so OSS behavior remains unchanged unless an em
 
 - `oss_platform_definition()`
 - `oss_platform_definition_for_grade()`
-- `oss_connection_provider_registry()`
+- `oss_connector_registry()`
 - `oss_built_in_harnesses()`
+- `system_email_sender()`
 
-This preset centralizes the current OSS runtime surface, including inventory-discovered connection providers and built-in harness templates.
+This preset centralizes the current OSS runtime surface, including inventory-discovered connectors and built-in harness templates (both composed on `ServerAppBuilder`, EVE-879/EVE-881).
 
 ### Worker preset
 
@@ -100,7 +105,7 @@ This preset centralizes the current OSS runtime surface, including inventory-dis
 - `default_platform_definition()`
 - `default_platform_definition_for_grade()`
 
-The worker preset includes built-in capabilities and built-in LLM drivers. It intentionally leaves connection providers and harness templates empty because those are server-owned unless an embedder passes a fully shared definition.
+The worker preset includes built-in capabilities and built-in LLM drivers. Connectors, harness templates, and email are server-owned composition and never part of the worker surface.
 
 ## Consumption Rules
 
@@ -482,7 +487,7 @@ Those may be added later, but they are outside the current embedding contract.
 ## Source Index
 
 - `crates/core/src/platform_definition.rs`
-- `crates/core/src/connector.rs`
+- `crates/platform/src/connector.rs`
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`

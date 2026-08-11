@@ -304,7 +304,7 @@ pub struct AppState {
     pub session_file_service: Arc<WorkspaceFileService>,
     pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
-    pub connector_registry: everruns_core::connector::ConnectorRegistry,
+    pub connector_registry: everruns_platform::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
     pub reporting_service: Arc<ReportingService>,
     pub runner: Arc<dyn AgentRunner>,
@@ -366,7 +366,10 @@ impl AppState {
             session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             session_sandbox_service: None,
             capability_service,
-            connector_registry: platform_definition.connectors().clone(),
+            // Hosted connector catalog (EVE-879): defaults to the OSS
+            // inventory preset; server composition overrides via
+            // `with_connector_registry`.
+            connector_registry: crate::platform::oss_connector_registry(),
             budget_service: Arc::new(BudgetService::new(db.clone())),
             reporting_service: Arc::new(ReportingService::new(db.clone())),
             db,
@@ -405,6 +408,14 @@ impl AppState {
 
     pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
         self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    pub fn with_connector_registry(
+        mut self,
+        registry: everruns_platform::connector::ConnectorRegistry,
+    ) -> Self {
+        self.connector_registry = registry;
         self
     }
 

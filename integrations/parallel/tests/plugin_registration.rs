@@ -1,8 +1,8 @@
 //! Integration test: verify Parallel plugin registers via inventory.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
+use everruns_platform::connector::ConnectorPlugin;
 
 use everruns_integrations_parallel as _;
 

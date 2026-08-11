@@ -484,7 +484,7 @@ impl TestServer {
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),
-            platform_definition.email_sender(),
+            everruns_server::platform::system_email_sender(),
             auth_config.frontend_url.clone(),
         );
         let session_schedules_state = api::session_schedules::AppState::new(
@@ -521,7 +521,7 @@ impl TestServer {
             encryption.clone(),
             auth_state.clone(),
             auth_config.clone(),
-            platform_definition.connectors().clone(),
+            everruns_server::platform::oss_connector_registry(),
             mcp_service,
         );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -535,7 +535,7 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
-            platform_definition.connectors().clone(),
+            everruns_server::platform::oss_connector_registry(),
         );
         let apps_state = api::apps::AppState::new(
             db.clone(),

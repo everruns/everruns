@@ -16,8 +16,8 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::connector::{ConnectorRegistry, ConnectorType};
 use everruns_core::{AgentIdentityId, Caller};
+use everruns_platform::connector::{ConnectorRegistry, ConnectorType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 

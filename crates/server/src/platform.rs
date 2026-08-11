@@ -6,13 +6,13 @@
 //! can start from the OSS preset or construct a `PlatformDefinition` manually
 //! without depending on inventory registration.
 
-use everruns_core::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
-    DEFAULT_ORG_ID, DirectEgressService, PlatformDefinition, SystemEmailConfig,
-    SystemUtilityLlmConfig,
+    DEFAULT_ORG_ID, DirectEgressService, PlatformDefinition, SystemUtilityLlmConfig,
 };
 use everruns_platform::BuiltInHarnessDefinition;
+use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
+use everruns_platform::email::{EmailSender, SystemEmailConfig};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -38,21 +38,19 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let capability_registry =
         everruns_platform::capabilities::hosted_capability_registry_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
-    let connectors = oss_connector_registry_for_grade(grade);
     // Runtime egress honors EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent
-    // paths. System email uses its direct provider client outside egress.
+    // paths.
     let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
-    let email_sender = SystemEmailConfig::from_env()
-        .expect("Invalid system email configuration")
-        .into_sender();
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
 
+    // EVE-879: the connector registry and system email sender are hosted
+    // control-plane services, composed on `ServerAppBuilder` (see
+    // `oss_connector_registry` / `system_email_sender`), not carried on the
+    // execution-facing `PlatformDefinition`.
     let mut builder = PlatformDefinition::builder()
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
-        .connectors(connectors)
         .egress_service(egress_service)
-        .email_sender(email_sender)
         .utility_llm_service(utility_llm_service)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
@@ -116,4 +114,15 @@ pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegi
 /// Built-in harness templates for the default OSS platform.
 pub fn oss_built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
     crate::harnesses::built_in_harnesses()
+}
+
+/// Build the environment-configured system email sender (EVE-879).
+///
+/// System email uses its direct provider client outside the runtime egress
+/// boundary — it is operator-owned deployment traffic, not tenant traffic.
+/// Returns the `DisabledEmailSender` when `EMAIL_PROVIDER` is unset.
+pub fn system_email_sender() -> Arc<dyn EmailSender> {
+    SystemEmailConfig::from_env()
+        .expect("Invalid system email configuration")
+        .into_sender()
 }

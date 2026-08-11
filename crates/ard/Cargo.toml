@@ -23,6 +23,9 @@ documentation = "https://docs.rs/everruns-ard"
 
 [dependencies]
 everruns-core.workspace = true
+# Connector catalog (EVE-879): the ARD connector registers into the hosted
+# connector plugin system, which lives in the platform crate.
+everruns-platform.workspace = true
 inventory.workspace = true
 
 # HTTP client for ARD registry REST API

@@ -5,7 +5,7 @@
 // Decision: All E2B-specific connection config lives in this crate, not in the server crate.
 
 use async_trait::async_trait;
-use everruns_core::connector::{
+use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 
