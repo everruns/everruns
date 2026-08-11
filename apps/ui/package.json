@@ -73,6 +73,6 @@
     "oxlint": "^1.72.0",
     "playwright": "^1.61.1",
     "tailwindcss": "^4.3.2",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   }
 }
