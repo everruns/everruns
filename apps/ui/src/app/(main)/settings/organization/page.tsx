@@ -343,13 +343,13 @@ export default function OrganizationPage() {
 
             <SettingsGroup
               title="Models"
-              description="Model fallbacks applied when agents or sessions do not set their own model."
+              description="Override the platform model fallback used when agents or sessions do not set their own model."
               status={<AutoSaveBadge saveState={saveStates.models} />}
               error={saveStates.models.error}
             >
               <SettingsRow
                 label="Default Model"
-                description="Used when no model is specified at the agent or session level."
+                description="Leave empty to use the platform default, GPT-5.6 Terra."
                 htmlFor="default-model"
               >
                 <ModelPicker
@@ -360,7 +360,7 @@ export default function OrganizationPage() {
                     setDefaultModelId(value);
                     scheduleAutoSave("models", nextDraft);
                   }}
-                  placeholder="No default model"
+                  placeholder="Platform default · GPT-5.6 Terra"
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
