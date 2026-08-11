@@ -173,7 +173,7 @@ import SessionLayout from "@/app/(main)/sessions/[sessionId]/layout";
 describe("SessionLayout", () => {
   beforeEach(() => {
     mockPush.mockReset();
-    mockPathname.mockReturnValue("/sessions/ses-abc12345/chat");
+    mockPathname.mockReturnValue("/sessions/ses-abc12345/transcript");
     mockSessionContext.sessionLoading = false;
     mockSessionContext.effectiveStatus = "idle";
     mockSessionContext.liveUsage = null;
@@ -221,21 +221,32 @@ describe("SessionLayout", () => {
     });
   });
 
-  it("renders the five recording tabs", async () => {
+  it("renders the recording tabs in information-architecture order", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /transcript/i })).toBeInTheDocument();
     });
-    for (const label of [/timeline/i, /events/i, /workspace/i, /cost/i]) {
-      expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
-    }
+    expect(
+      screen
+        .getAllByRole("link")
+        .filter((link) =>
+          ["Transcript", "Timeline", "Work", "Events", "Workspace", "Cost"].includes(
+            link.textContent ?? "",
+          ),
+        )
+        .map((link) => link.textContent),
+    ).toEqual(["Transcript", "Timeline", "Work", "Events", "Workspace", "Cost"]);
   });
 
   it("points each tab at its route", async () => {
     await renderLayout();
 
     await waitFor(() => {
+      expect(screen.getByRole("link", { name: /transcript/i })).toHaveAttribute(
+        "href",
+        "/sessions/ses-abc12345/transcript",
+      );
       expect(screen.getByRole("link", { name: /timeline/i })).toHaveAttribute(
         "href",
         "/sessions/ses-abc12345/timeline",
@@ -270,6 +281,15 @@ describe("SessionLayout", () => {
       expect(screen.getByRole("link", { name: /workspace/i })).toHaveClass("border-primary");
     });
     expect(screen.getByRole("link", { name: /timeline/i })).not.toHaveClass("border-primary");
+  });
+
+  it("highlights Transcript and uses it in the page title", async () => {
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /transcript/i })).toHaveClass("border-primary");
+      expect(document.title).toContain("Transcript · Test Session · Session");
+    });
   });
 
   it("offers the three escape hatches and no session-editing control", async () => {
@@ -359,8 +379,9 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /transcript/i })).toBeInTheDocument();
     });
+    expect(screen.getByRole("link", { name: /timeline/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /events/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /cost/i })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /workspace/i })).not.toBeInTheDocument();

@@ -177,7 +177,7 @@ describe("Thread surface", () => {
     expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Open session/ })).toHaveAttribute(
       "href",
-      "/sessions/sess_1",
+      "/sessions/sess_1/transcript",
     );
     fireEvent.click(screen.getByRole("button", { name: "Pin chat" }));
     expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });

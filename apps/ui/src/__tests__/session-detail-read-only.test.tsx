@@ -3,7 +3,7 @@
 //
 // Every network call the UI makes goes through `@/lib/api/client` or `fetch`.
 // Both are replaced here with recorders that fail loudly on anything other than
-// GET, then each of the five tabs is rendered and every control on it is
+// GET, then every tab is rendered and every control on it is
 // exercised — buttons clicked, text fields typed into and submitted. A tab that
 // grows a composer, a save button or a delete affordance fails this test.
 
@@ -185,6 +185,8 @@ jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
 }));
 
 // eslint-disable-next-line import/first
+import TranscriptPage from "../app/(main)/sessions/[sessionId]/transcript/page";
+// eslint-disable-next-line import/first
 import TimelinePage from "../app/(main)/sessions/[sessionId]/timeline/page";
 // eslint-disable-next-line import/first
 import WorkPage from "../app/(main)/sessions/[sessionId]/work/page";
@@ -196,6 +198,7 @@ import WorkspacePage from "../app/(main)/sessions/[sessionId]/files/page";
 import CostPage from "../app/(main)/sessions/[sessionId]/cost/page";
 
 const TABS: Array<[string, React.ComponentType]> = [
+  ["Transcript", TranscriptPage],
   ["Timeline", TimelinePage],
   ["Work", WorkPage],
   ["Events", EventsPage],

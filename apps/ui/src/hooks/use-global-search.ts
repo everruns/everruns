@@ -563,7 +563,7 @@ export function useGlobalSearch(query: string) {
           icon: MessageSquare,
           title: title,
           subtitle: `Sessions > ${title.length > 40 ? title.slice(0, 40) + "..." : title}`,
-          href: `/sessions/${session.id}`,
+          href: `/sessions/${session.id}/transcript`,
         });
         sessionCount++;
       }

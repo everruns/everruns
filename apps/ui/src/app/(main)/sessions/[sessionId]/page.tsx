@@ -6,5 +6,5 @@ interface SessionPageProps {
 
 export default async function SessionPage({ params }: SessionPageProps) {
   const { sessionId } = await params;
-  redirect(`/sessions/${sessionId}/timeline`);
+  redirect(`/sessions/${sessionId}/transcript`);
 }

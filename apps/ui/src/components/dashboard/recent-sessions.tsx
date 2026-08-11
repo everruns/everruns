@@ -88,7 +88,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                 <EntityCard
                   key={session.id}
                   variant="row"
-                  href={`/sessions/${session.id}`}
+                  href={`/sessions/${session.id}/transcript`}
                   title={session.title || `Session ${shortenId(session.id)}`}
                   copyValue={session.id}
                   icon={

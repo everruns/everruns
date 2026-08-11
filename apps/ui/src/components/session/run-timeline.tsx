@@ -40,8 +40,10 @@ interface TimelineStep {
   icon: ComponentType<{ className?: string }>;
   tone: StepTone;
   title: string;
-  /** Short facts rendered as a badge row (model, tokens, duration, worker). */
+  /** Short user-facing facts rendered as a badge row (model, tokens, duration). */
   facts: string[];
+  /** Raw correlation and storage fields hidden behind the details disclosure. */
+  technicalDetails?: string[];
   /** Expandable payload — a tool result, a subagent return, an error. */
   payload?: string;
 }
@@ -74,9 +76,9 @@ function stringifyPayload(value: unknown): string | undefined {
  * correlation `exec_id`; when the runtime does not attach one, we say nothing
  * rather than inventing a name.
  */
-function workerFact(event: Event): string[] {
+function workerDetails(event: Event): string[] {
   const execId = event.context?.exec_id;
-  return execId ? [`worker ${execId}`] : [];
+  return execId ? [`Worker: ${execId}`] : [];
 }
 
 function eventSteps(events: Event[]): TimelineStep[] {
@@ -93,9 +95,10 @@ function eventSteps(events: Event[]): TimelineStep[] {
         icon: Play,
         tone: "accent",
         title: "Session started",
-        facts: [started.model_id ? `model ${started.model_id}` : null, ...workerFact(event)].filter(
+        facts: [started.model_id ? `model ${started.model_id}` : null].filter(
           (fact): fact is string => !!fact,
         ),
+        technicalDetails: workerDetails(event),
       });
       return;
     }
@@ -107,7 +110,8 @@ function eventSteps(events: Event[]): TimelineStep[] {
         icon: CircleDot,
         tone: "accent",
         title: "Agent turn started",
-        facts: workerFact(event),
+        facts: [],
+        technicalDetails: workerDetails(event),
         payload: stringifyPayload(turnStarted.input_content),
       });
       return;
@@ -126,8 +130,11 @@ function eventSteps(events: Event[]): TimelineStep[] {
           usage ? `${formatTokens(usage.input_tokens)} prompt` : null,
           usage ? `${formatTokens(usage.output_tokens)} completion` : null,
           formatDuration(generation.metadata.duration_ms),
-          ...workerFact(event),
+          generation.metadata.retry && generation.metadata.retry.attempts > 0
+            ? `${generation.metadata.retry.attempts + 1} attempts`
+            : null,
         ].filter((fact): fact is string => !!fact),
+        technicalDetails: workerDetails(event),
         payload: generation.metadata.error,
       });
       return;
@@ -141,11 +148,10 @@ function eventSteps(events: Event[]): TimelineStep[] {
         icon: Wrench,
         tone: toolCompleted.success ? "neutral" : "danger",
         title: toolCompleted.display_name || toolCompleted.tool_name,
-        facts: [
-          toolCompleted.status,
-          formatDuration(toolCompleted.duration_ms),
-          ...workerFact(event),
-        ].filter((fact): fact is string => !!fact),
+        facts: [toolCompleted.status, formatDuration(toolCompleted.duration_ms)].filter(
+          (fact): fact is string => !!fact,
+        ),
+        technicalDetails: workerDetails(event),
         payload:
           toolCompleted.error ??
           stringifyPayload(resultText || (toolCompleted.result as unknown)) ??
@@ -161,9 +167,8 @@ function eventSteps(events: Event[]): TimelineStep[] {
         icon: AlertTriangle,
         tone: "danger",
         title: "Turn failed",
-        facts: [turnFailed.error_code ?? null, ...workerFact(event)].filter(
-          (fact): fact is string => !!fact,
-        ),
+        facts: [turnFailed.error_code ?? null].filter((fact): fact is string => !!fact),
+        technicalDetails: workerDetails(event),
         payload: turnFailed.error,
       });
       return;
@@ -183,8 +188,8 @@ function eventSteps(events: Event[]): TimelineStep[] {
             ? `${formatTokens(turnCompleted.usage.input_tokens + turnCompleted.usage.output_tokens)} tokens`
             : null,
           formatDuration(turnCompleted.duration_ms),
-          ...workerFact(event),
         ].filter((fact): fact is string => !!fact),
+        technicalDetails: workerDetails(event),
       });
       return;
     }
@@ -200,8 +205,8 @@ function eventSteps(events: Event[]): TimelineStep[] {
           idled.usage
             ? `${formatTokens(idled.usage.input_tokens + idled.usage.output_tokens)} cumulative tokens`
             : null,
-          ...workerFact(event),
         ].filter((fact): fact is string => !!fact),
+        technicalDetails: workerDetails(event),
       });
     }
   });
@@ -239,12 +244,13 @@ function taskSteps(tasks: SessionTask[], events: Event[]): TimelineStep[] {
     icon: task.kind === "subagent" ? Bot : ListTodo,
     tone: task.state === "failed" ? ("danger" as const) : ("neutral" as const),
     title: task.display_name || task.kind,
-    facts: [
-      task.kind,
-      task.state,
-      task.worker_id ? `worker ${task.worker_id}` : null,
-      task.result_path ?? null,
-    ].filter((fact): fact is string => !!fact),
+    facts: [task.kind, task.state, task.attempt > 1 ? `${task.attempt} attempts` : null].filter(
+      (fact): fact is string => !!fact,
+    ),
+    technicalDetails: [
+      task.worker_id ? `Worker: ${task.worker_id}` : null,
+      task.result_path ? `Result path: ${task.result_path}` : null,
+    ].filter((detail): detail is string => !!detail),
     payload: task.error ? `${task.error.kind}: ${task.error.message}` : (task.summary ?? undefined),
   }));
 }
@@ -281,7 +287,7 @@ function TimelineRow({ step }: { step: TimelineStep }) {
         </div>
       )}
 
-      {step.payload && (
+      {(step.payload || (step.technicalDetails?.length ?? 0) > 0) && (
         <div className="mt-1.5">
           <button
             type="button"
@@ -290,12 +296,23 @@ function TimelineRow({ step }: { step: TimelineStep }) {
             aria-expanded={expanded}
           >
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {expanded ? "Hide payload" : "Show payload"}
+            {expanded ? "Hide details" : "Show details"}
           </button>
           {expanded && (
-            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded border border-border/70 bg-card px-3 py-2 text-xs text-foreground">
-              {step.payload}
-            </pre>
+            <div className="mt-1 max-h-64 overflow-auto rounded border border-border/70 bg-card px-3 py-2 text-xs text-foreground">
+              {step.technicalDetails && step.technicalDetails.length > 0 && (
+                <ul className="space-y-1 text-muted-foreground">
+                  {step.technicalDetails.map((detail) => (
+                    <li key={detail}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+              {step.payload && (
+                <pre className="mt-2 whitespace-pre-wrap break-words border-t border-border/70 pt-2">
+                  {step.payload}
+                </pre>
+              )}
+            </div>
           )}
         </div>
       )}

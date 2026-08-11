@@ -160,7 +160,7 @@ export function SessionCard({
   // Show output preview from session (last assistant message)
   const outputPreview = session.output_preview;
   // Sessions are org-level entities
-  const sessionUrl = `/sessions/${session.id}`;
+  const sessionUrl = `/sessions/${session.id}/transcript`;
   const isPinned = session.is_pinned === true;
 
   return (

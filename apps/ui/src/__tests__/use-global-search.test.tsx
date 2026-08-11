@@ -7,8 +7,9 @@ const mockUseAgents = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] 
 jest.mock("@/hooks/use-agents", () => ({
   useAgents: (options?: { enabled?: boolean }) => mockUseAgents(options),
 }));
+const mockUseSessions = jest.fn(() => ({ data: { data: [] as Array<Record<string, unknown>> } }));
 jest.mock("@/hooks/use-sessions", () => ({
-  useSessions: () => ({ data: { data: [] } }),
+  useSessions: () => mockUseSessions(),
 }));
 jest.mock("@/hooks/use-harnesses", () => ({
   useHarnesses: () => ({ data: [] }),
@@ -134,6 +135,8 @@ describe("useGlobalSearch", () => {
   beforeEach(() => {
     mockSetCurrentOrg.mockClear();
     mockUseAgents.mockClear();
+    mockUseSessions.mockReset();
+    mockUseSessions.mockReturnValue({ data: { data: [] } });
     mockUseSkills.mockClear();
     mockUseEvals.mockClear();
     mockUseMemories.mockClear();
@@ -227,6 +230,29 @@ describe("useGlobalSearch", () => {
       subtitle: "Current organization > org_current",
     });
     expect(orgResult?.onSelect).toBeUndefined();
+  });
+
+  it("opens session search results on the transcript", () => {
+    mockUseSessions.mockReturnValue({
+      data: {
+        data: [
+          {
+            id: "session_123",
+            title: "Recorded deployment",
+            preview: "Deploy the service",
+          },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useGlobalSearch("recorded deployment"));
+
+    expect(result.current).toContainEqual(
+      expect.objectContaining({
+        id: "session:session_123",
+        href: "/sessions/session_123/transcript",
+      }),
+    );
   });
 
   it.each([

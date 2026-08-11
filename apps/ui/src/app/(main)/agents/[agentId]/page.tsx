@@ -128,7 +128,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
       const session = await createSession.mutateAsync({
         request: { agent_id: agentId, ...(title ? { title } : {}) },
       });
-      router.push(`/sessions/${session.id}`);
+      router.push(`/sessions/${session.id}/transcript`);
       return session;
     },
     [agentId, createSession, router],
@@ -176,7 +176,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         webMcpSessionPendingRef.current = true;
         try {
           const session = await createAgentSession(title || undefined);
-          return { created: true, session_id: session.id, path: `/sessions/${session.id}` };
+          return {
+            created: true,
+            session_id: session.id,
+            path: `/sessions/${session.id}/transcript`,
+          };
         } finally {
           webMcpSessionPendingRef.current = false;
         }
