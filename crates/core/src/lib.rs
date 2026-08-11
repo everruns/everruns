@@ -188,6 +188,7 @@ mod tool_call_integrity;
 pub use everruns_provider::openai_protocol;
 pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;
+pub use tool_call_integrity::retain_complete_llm_tool_exchanges;
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;

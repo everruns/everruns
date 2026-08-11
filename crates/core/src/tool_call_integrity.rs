@@ -74,7 +74,7 @@ pub(crate) fn retain_complete_message_tool_exchanges(
 ///
 /// This is strict because compaction operates on a self-contained transcript; it
 /// never synthesizes execution results and can only reduce the selected output.
-pub(crate) fn retain_complete_llm_tool_exchanges(messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
+pub fn retain_complete_llm_tool_exchanges(messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
     retain_complete_llm_tool_exchanges_for_request(messages, false)
 }
 
