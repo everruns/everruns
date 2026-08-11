@@ -129,7 +129,7 @@ export function ChatThreadHeader({
         <ChatPinButton session={session} showLabel />
         <ShareButton />
         <Link
-          href={`/sessions/${session.id}`}
+          href={`/sessions/${session.id}/transcript`}
           aria-label="Open session"
           className="inline-flex items-center gap-1.5 border border-border/70 px-2.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-muted/40 max-sm:size-7 max-sm:justify-center max-sm:px-0"
         >

@@ -176,7 +176,7 @@ export default function EventsPage() {
                   <TableHead className="w-[80px]">Seq</TableHead>
                   <TableHead className="w-[180px]">Type</TableHead>
                   <TableHead className="w-[200px]">Timestamp</TableHead>
-                  <TableHead>Data</TableHead>
+                  <TableHead>Raw event</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -205,10 +205,10 @@ export default function EventsPage() {
                               View
                             </Button>
                           )}
-                          <CopyButton data={event.data} />
+                          <CopyButton data={event} />
                         </div>
                         <pre className="whitespace-pre-wrap break-all text-xs bg-muted p-2 rounded max-h-[200px] overflow-y-auto">
-                          {JSON.stringify(event.data, null, 2)}
+                          {JSON.stringify(event, null, 2)}
                         </pre>
                       </div>
                     </TableCell>

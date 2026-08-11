@@ -45,11 +45,11 @@ import {
 } from "lucide-react";
 
 /**
- * A session is a recording, not a workspace (EVE-854), so its tabs are the five
- * views a recording actually has. `files` keeps its route id — the label is
+ * A session is a recording, not a workspace, so its tabs are the views a
+ * recording actually has. `files` keeps its route id — the label is
  * "Workspace" and renaming the route would break existing links.
  */
-export type SessionNavKey = "timeline" | "work" | "events" | "files" | "cost";
+export type SessionNavKey = "transcript" | "timeline" | "work" | "events" | "files" | "cost";
 
 export interface SessionNavItem {
   key: SessionNavKey;
@@ -155,6 +155,12 @@ export function buildSessionNavigation({
   const hasWork = hasFeature("leased_resources") || hasFeature("schedules");
 
   return [
+    {
+      key: "transcript",
+      label: "Transcript",
+      href: `${basePath}/transcript`,
+      icon: MessageSquare,
+    },
     {
       key: "timeline",
       label: "Timeline",

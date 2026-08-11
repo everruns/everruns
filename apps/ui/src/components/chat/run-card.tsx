@@ -42,7 +42,9 @@ function kindIcon(kind: string) {
  *  otherwise the owning session's task list. */
 function runHref(task: SessionTask): string {
   const childSessionId = task.links?.child_session_id;
-  return childSessionId ? `/sessions/${childSessionId}` : `/sessions/${task.session_id}/resources`;
+  return childSessionId
+    ? `/sessions/${childSessionId}/transcript`
+    : `/sessions/${task.session_id}/resources`;
 }
 
 export function RunCard({ run, now }: { run: ChatRun; now: number }) {

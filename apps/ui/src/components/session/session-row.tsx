@@ -58,7 +58,7 @@ export function SessionRow({ session, agentName }: SessionRowProps) {
 
   return (
     <Link
-      href={`/sessions/${session.id}`}
+      href={`/sessions/${session.id}/transcript`}
       className="flex items-start gap-3 border bg-card px-4 py-3 transition-colors hover:border-foreground/20 hover:bg-accent/10"
     >
       <span

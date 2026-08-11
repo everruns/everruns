@@ -75,7 +75,7 @@ export default function DashboardPage() {
         },
       });
       setNewSessionDialogOpen(false);
-      router.push(`/sessions/${session.id}`);
+      router.push(`/sessions/${session.id}/transcript`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }

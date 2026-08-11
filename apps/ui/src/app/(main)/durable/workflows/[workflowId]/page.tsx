@@ -294,7 +294,7 @@ export default function WorkflowDetailPage({
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Linked Session</p>
                     <Link
-                      href={`/sessions/${workflow.session_id}`}
+                      href={`/sessions/${workflow.session_id}/transcript`}
                       className="inline-flex items-center gap-1 text-primary hover:underline"
                     >
                       <ExternalLink className="h-4 w-4" />

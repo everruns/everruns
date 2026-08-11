@@ -128,7 +128,7 @@ function WorkflowRow({
       <TableCell>
         {workflow.session_id ? (
           <Link
-            href={`/sessions/${workflow.session_id}`}
+            href={`/sessions/${workflow.session_id}/transcript`}
             className="flex items-center gap-1 text-sm text-primary hover:underline"
           >
             <ExternalLink className="h-3 w-3" />

@@ -76,10 +76,11 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   same twice, so the Chats entry lists only the few most recently active threads and hands
   the rest to the all-threads page. It also holds its order steady while the pointer is
   inside it, so an arriving turn cannot re-sort a row out from under a click.
-* **A session is a read-only recording.** Session detail inspects, it does not edit. The
-  inspector pattern lives inside session detail rather than in the shell. It carries five
-  views — Timeline, Work, Events, Workspace, Cost — each showing something a recording
-  actually has; watching a live session stream is not editing it. Anything that would
+* **A session is a read-only recording.** Session detail inspects, it does not edit. Its default
+  Transcript preserves the human-readable conversation; Timeline curates how the run executed;
+  Events remains the exact emitted ledger. Work, Workspace, and Cost appear when applicable to the
+  recording and its enabled capabilities. Watching any of these views stream live is not editing
+  the session. Anything that would
   change the session (composing a message, editing a file, writing a secret, steering or
   cancelling a task, enabling a schedule) is absent rather than disabled, including the
   WebMCP tools a browser agent could otherwise reach. The tab set is built by

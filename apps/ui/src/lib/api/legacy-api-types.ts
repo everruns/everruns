@@ -2,7 +2,7 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
-import type { SessionActivity, SessionSource } from "./schema-types";
+import type { LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -2492,6 +2492,7 @@ export interface LlmGenerationMetadata {
   time_to_first_token_ms?: number;
   success: boolean;
   error?: string;
+  retry?: LlmRetryInfo | null;
   compaction?: LlmCompactionInfo;
 }
 

@@ -45,7 +45,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
       const session = await createSession.mutateAsync({
         request: { agent_id: agentId },
       });
-      router.push(`/sessions/${session.id}`);
+      router.push(`/sessions/${session.id}/transcript`);
     } catch (error) {
       console.error("Failed to create session:", error);
     }

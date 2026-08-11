@@ -29,6 +29,7 @@ const events: Event[] = [
       model: "gpt-4",
       success: true,
       usage: { input_tokens: 1200, output_tokens: 80 },
+      retry: { attempts: 2, total_wait_ms: 500 },
     },
   }),
   event(4, "tool.completed", {
@@ -81,10 +82,19 @@ describe("RunTimeline", () => {
     expect(screen.getByText("1.2K prompt")).toBeInTheDocument();
   });
 
-  it("names the durable-execution worker that ran each step", () => {
+  it("keeps durable-execution worker IDs behind details", () => {
     render(<RunTimeline events={events} tasks={[]} />);
 
-    expect(screen.getAllByText("worker exec_alpha").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Worker: exec_alpha")).not.toBeInTheDocument();
+    const modelStep = screen.getByText("Model call").closest("li")!;
+    fireEvent.click(within(modelStep).getByRole("button", { name: /show details/i }));
+    expect(screen.getByText("Worker: exec_alpha")).toBeInTheDocument();
+  });
+
+  it("surfaces model retries as a curated fact", () => {
+    render(<RunTimeline events={events} tasks={[]} />);
+
+    expect(screen.getByText("3 attempts")).toBeInTheDocument();
   });
 
   it("shows a tool call's result payload inline, behind an expander", () => {
@@ -94,7 +104,7 @@ describe("RunTimeline", () => {
     expect(screen.queryByText("the file body")).not.toBeInTheDocument();
 
     const toolStep = screen.getByText("Read file").closest("li")!;
-    fireEvent.click(within(toolStep).getByRole("button", { name: /show payload/i }));
+    fireEvent.click(within(toolStep).getByRole("button", { name: /show details/i }));
     expect(screen.getByText("the file body")).toBeInTheDocument();
   });
 
@@ -108,7 +118,10 @@ describe("RunTimeline", () => {
     render(<RunTimeline events={events} tasks={tasks} />);
 
     expect(screen.getByText("Doc reviewer")).toBeInTheDocument();
-    expect(screen.getByText("worker worker_7")).toBeInTheDocument();
+    expect(screen.queryByText("Worker: worker_7")).not.toBeInTheDocument();
+    const subagentStep = screen.getByText("Doc reviewer").closest("li")!;
+    fireEvent.click(within(subagentStep).getByRole("button", { name: /show details/i }));
+    expect(screen.getByText("Worker: worker_7")).toBeInTheDocument();
 
     const titles = screen.getAllByRole("listitem").map((item) => item.textContent ?? "");
     const subagentIndex = titles.findIndex((title) => title.includes("Doc reviewer"));
@@ -121,5 +134,11 @@ describe("RunTimeline", () => {
     render(<RunTimeline events={[]} tasks={[]} />);
 
     expect(screen.getByText(/Nothing has run in this session yet/)).toBeInTheDocument();
+  });
+
+  it("shows a loading state while live history is being hydrated", () => {
+    render(<RunTimeline events={[]} tasks={[]} loading />);
+
+    expect(screen.getByText("Loading the run…")).toBeInTheDocument();
   });
 });

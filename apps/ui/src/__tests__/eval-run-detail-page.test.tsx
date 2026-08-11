@@ -101,7 +101,7 @@ describe("EvalRunDetailPage", () => {
     await renderWithSuspense({ evalId: "eval_123", runId: "evalrun_123" });
 
     const link = screen.getByLabelText("Open session for Case with session in new tab");
-    expect(link).toHaveAttribute("href", "/sessions/session_123");
+    expect(link).toHaveAttribute("href", "/sessions/session_123/transcript");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
