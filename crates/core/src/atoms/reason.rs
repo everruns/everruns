@@ -71,22 +71,10 @@ use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facin
 // Helper Functions
 // ============================================================================
 
-/// Apply the opt-in tool-call repair capability (EVE-600) to a finalized batch
-/// of tool calls. No-op unless `tool_call_repair` is in the resolved capability
-/// set, so the default path stays byte-for-byte unchanged.
-///
-/// For each malformed call this runs deterministic local salvage against the
-/// tool's JSON schema, rewrites `arguments` in place when salvage succeeds, and
-/// emits one `tool.call_repaired` event per malformed call with an outcome label
-/// (`local-salvage` | `re-prompt` | `gave-up`). Un-salvaged calls are left
-/// unchanged so they flow to the existing act-phase error path; the per-call
-/// attempt cap (bounding the corrective re-prompt) is enforced by
-/// `ToolCallRepairConfig`, so there is never an infinite repair loop.
-///
-/// Extracted as a free function (like `repair_dangling_tool_calls`) so it can be
-/// exercised by capability-level tests without constructing a full `ReasonAtom`.
-#[allow(clippy::too_many_arguments)] // all inputs are the per-turn repair context
-async fn apply_tool_call_repair(
+/// Apply capability-owned transforms to the finalized model tool-call batch.
+/// The reason atom owns timing and context; each implementation owns its policy.
+#[allow(clippy::too_many_arguments)]
+async fn apply_finalized_tool_calls_hooks(
     capability_registry: &CapabilityRegistry,
     event_emitter: &dyn EventEmitter,
     session_id: SessionId,
@@ -96,71 +84,19 @@ async fn apply_tool_call_repair(
     tool_calls: &mut [ToolCall],
     iteration: u32,
 ) {
-    use crate::capabilities::{
-        RepairOutcome, SalvageResult, TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairConfig,
-        salvage_tool_arguments,
+    let hook_context = crate::finalized_tool_calls::FinalizedToolCallsContext {
+        event_emitter,
+        session_id,
+        atom_context: context,
+        tool_definitions,
+        iteration,
     };
-
-    // Opt-in: only run when the capability is enabled for this agent.
-    let Some(cfg) = resolved_capability_configs.iter().find(|c| {
-        capability_registry.canonical_id(c.capability_id()) == Some(TOOL_CALL_REPAIR_CAPABILITY_ID)
-    }) else {
-        return;
-    };
-    let repair_config = ToolCallRepairConfig::from_json(cfg.config_value());
-
-    for call in tool_calls.iter_mut() {
-        // Schema for the targeted tool, if its definition is available.
-        let schema = tool_definitions
-            .iter()
-            .find(|t| t.name() == call.name)
-            .map(|t| t.full_parameters().clone());
-
-        let outcome = match salvage_tool_arguments(&call.arguments, schema.as_ref()) {
-            // Well-formed call: nothing to do, do not emit an event.
-            SalvageResult::AlreadyValid => continue,
-            SalvageResult::Repaired(fixed) => {
-                call.arguments = fixed;
-                RepairOutcome::LocalSalvage
-            }
-            // Local salvage failed. The corrective re-prompt is realized by the
-            // outer agent loop retrying on the next reason iteration, so the
-            // per-turn `iteration` (1-based) is the count of attempts already
-            // spent on this turn: prior_attempts = iteration - 1. The bounded
-            // decision is Reprompt while attempts remain, else GaveUp. Either way
-            // the call is left unchanged and flows to the existing error path.
-            SalvageResult::Unsalvageable => {
-                repair_config.outcome_after_failed_salvage(iteration.saturating_sub(1))
-            }
+    for config in resolved_capability_configs {
+        let Some(capability) = capability_registry.get(config.capability_id()) else {
+            continue;
         };
-
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            tool_call_id = %call.id,
-            tool_name = %call.name,
-            outcome = outcome.label(),
-            "ReasonAtom: tool-call repair"
-        );
-
-        if let Err(e) = event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                EventContext::from_atom_context(context),
-                crate::events::ToolCallRepairedData {
-                    turn_id: context.turn_id,
-                    tool_call_id: call.id.clone(),
-                    tool_name: call.name.clone(),
-                    outcome: outcome.label().to_string(),
-                },
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "ReasonAtom: failed to emit tool.call_repaired event"
-            );
+        if let Some(hook) = capability.finalized_tool_calls_hook(config.config_value()) {
+            hook.apply(&hook_context, tool_calls).await;
         }
     }
 }
@@ -1196,15 +1132,9 @@ impl ReasonAtom {
         }
     }
 
-    /// Repair malformed tool-call arguments via the opt-in `tool_call_repair`
-    /// capability (EVE-600). No-op unless the capability is in the resolved set,
-    /// keeping the default path byte-for-byte unchanged. Runs deterministic
-    /// local salvage on each call and emits one `tool.call_repaired` event per
-    /// malformed call with an outcome label. The bounded corrective re-prompt is
-    /// realized by the outer agent loop: an un-salvaged call proceeds unchanged
-    /// to the act phase (today's error path) and the model retries next
-    /// iteration; the per-call attempt cap is enforced by `ToolCallRepairConfig`.
-    async fn repair_malformed_tool_calls(
+    /// Run configured capability hooks after model tool calls are finalized and
+    /// before the assistant message is persisted.
+    async fn apply_finalized_tool_call_hooks(
         &self,
         session_id: SessionId,
         context: &AtomContext,
@@ -1213,7 +1143,7 @@ impl ReasonAtom {
         tool_calls: &mut [ToolCall],
         iteration: u32,
     ) {
-        apply_tool_call_repair(
+        apply_finalized_tool_calls_hooks(
             &self.capability_registry,
             self.event_emitter.as_ref(),
             session_id,
@@ -3519,7 +3449,7 @@ impl ReasonAtom {
         // `tool.call_repaired` event per malformed call. When the capability is
         // disabled (the default) this is a no-op and behavior is unchanged.
         if !tool_calls.is_empty() {
-            self.repair_malformed_tool_calls(
+            self.apply_finalized_tool_call_hooks(
                 session_id,
                 context,
                 &resolved_capability_configs,
@@ -4818,7 +4748,7 @@ mod tests {
             iteration: u32,
         ) {
             let registry = CapabilityRegistry::with_builtins();
-            apply_tool_call_repair(
+            apply_finalized_tool_calls_hooks(
                 &registry,
                 emitter,
                 SessionId::new(),

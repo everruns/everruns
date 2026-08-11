@@ -105,6 +105,7 @@ pub use everruns_provider::credential_schema;
 // enums) moved to the `everruns-platform` crate — they are product
 // management/reporting records that never participate in a turn.
 pub mod events;
+pub mod finalized_tool_calls;
 pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
@@ -483,6 +484,7 @@ pub use events::{
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
+pub use finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
 pub use guardrail_checks::{
     CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
     GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,

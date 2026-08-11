@@ -940,6 +940,16 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns a configured hook over the finalized model tool-call batch.
+    /// This later seam is suitable for policy that needs all calls plus their
+    /// final schemas before the assistant message is persisted.
+    fn finalized_tool_calls_hook(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn crate::finalized_tool_calls::FinalizedToolCallsHook>> {
+        None
+    }
+
     /// Contribute human-readable narration for one of *this capability's* tool
     /// calls (e.g. "Read AGENTS.md", "Searched tools: router").
     ///
