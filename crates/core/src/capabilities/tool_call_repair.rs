@@ -42,6 +42,10 @@
 use std::sync::Arc;
 
 use crate::capabilities::{Capability, CapabilityLocalization};
+use crate::events::{EventContext, EventRequest, ToolCallRepairedData};
+use crate::finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
+use crate::tool_types::ToolCall;
+use async_trait::async_trait;
 use serde_json::Value;
 
 pub const TOOL_CALL_REPAIR_CAPABILITY_ID: &str = "tool_call_repair";
@@ -479,6 +483,64 @@ impl ToolCallRepairConfig {
 /// capability is present in the resolved capability set.
 pub struct ToolCallRepairCapability;
 
+struct ToolCallRepairHook {
+    config: ToolCallRepairConfig,
+}
+
+#[async_trait]
+impl FinalizedToolCallsHook for ToolCallRepairHook {
+    async fn apply(&self, context: &FinalizedToolCallsContext<'_>, calls: &mut [ToolCall]) {
+        for call in calls {
+            let schema = context
+                .tool_definitions
+                .iter()
+                .find(|definition| definition.name() == call.name)
+                .map(|definition| definition.full_parameters().clone());
+
+            let outcome = match salvage_tool_arguments(&call.arguments, schema.as_ref()) {
+                SalvageResult::AlreadyValid => continue,
+                SalvageResult::Repaired(fixed) => {
+                    call.arguments = fixed;
+                    RepairOutcome::LocalSalvage
+                }
+                SalvageResult::Unsalvageable => self
+                    .config
+                    .outcome_after_failed_salvage(context.iteration.saturating_sub(1)),
+            };
+
+            tracing::info!(
+                session_id = %context.session_id,
+                turn_id = %context.atom_context.turn_id,
+                tool_call_id = %call.id,
+                tool_name = %call.name,
+                outcome = outcome.label(),
+                "tool-call repair"
+            );
+
+            if let Err(error) = context
+                .event_emitter
+                .emit(EventRequest::new(
+                    context.session_id,
+                    EventContext::from_atom_context(context.atom_context),
+                    ToolCallRepairedData {
+                        turn_id: context.atom_context.turn_id,
+                        tool_call_id: call.id.clone(),
+                        tool_name: call.name.clone(),
+                        outcome: outcome.label().to_string(),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    error = %error,
+                    "failed to emit tool.call_repaired event"
+                );
+            }
+        }
+    }
+}
+
 impl Capability for ToolCallRepairCapability {
     fn id(&self) -> &str {
         TOOL_CALL_REPAIR_CAPABILITY_ID
@@ -541,6 +603,12 @@ impl Capability for ToolCallRepairCapability {
             ),
             config_overlay: None,
         }]
+    }
+
+    fn finalized_tool_calls_hook(&self, config: &Value) -> Option<Arc<dyn FinalizedToolCallsHook>> {
+        Some(Arc::new(ToolCallRepairHook {
+            config: ToolCallRepairConfig::from_json(config),
+        }))
     }
 }
 
