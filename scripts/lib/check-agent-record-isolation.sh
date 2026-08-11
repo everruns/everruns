@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-877, EVE-881): stored platform persistence records —
-# Agent/AgentVersion (lifecycle status, versioning/publication metadata, fork
-# lineage) and Harness (lifecycle status, hierarchy identifiers, built-in
-# flags, display metadata, timestamps) plus the built-in harness provisioning
-# templates — live in crates/platform (`everruns-platform`). The execution
-# kernel consumes only the portable `everruns_core::AgentDefinition` /
-# `everruns_core::HarnessDefinition` and the resolved execution snapshot:
+# Architecture guard (EVE-877, EVE-881, EVE-882): stored platform persistence
+# records — Agent/AgentVersion (lifecycle status, versioning/publication
+# metadata, fork lineage), Harness (lifecycle status, hierarchy identifiers,
+# built-in flags, display metadata, timestamps) plus the built-in harness
+# provisioning templates, and Session (product status/source/activity facets,
+# participants, ownership references, previews, timestamps, catalog
+# relationships) — live in crates/platform (`everruns-platform`). The
+# execution kernel consumes only the portable `everruns_core::AgentDefinition`
+# / `everruns_core::HarnessDefinition` / `everruns_core::ExecutionSession` and
+# the resolved execution snapshot:
 #
 # 1. Kernel crate sources (core, engine, provider, capability) must not
-#    reference `everruns_platform` at all — the platform Agent/Harness records
-#    must never flow back into the kernel.
+#    reference `everruns_platform` at all — the platform Agent/Harness/Session
+#    records must never flow back into the kernel.
 # 2. Kernel crates must carry no everruns-platform edge of any kind (normal,
 #    build, or dev), so `cargo tree` stays clean.
 # 3. Provider-only crates must ship no everruns-platform subtree on their
 #    normal (shipped) dependency edges.
 # 4. Kernel crates must not re-declare the moved stored-record/provisioning
 #    types (Agent, AgentVersion, AgentStatus, Harness, HarnessStatus,
-#    BuiltInHarnessDefinition, BuiltInHarnessRole).
+#    BuiltInHarnessDefinition, BuiltInHarnessRole, Session, SessionStatus,
+#    SessionSource, SessionActivity, SessionParticipant and its enums).
 
 set -euo pipefail
 
@@ -35,17 +39,18 @@ KERNEL_TREES=(
   crates/capability
 )
 if matches=$(grep -rnE 'everruns_platform(::|;)' "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
-  echo "Kernel crates must not reference everruns_platform (EVE-877, EVE-881):"
+  echo "Kernel crates must not reference everruns_platform (EVE-877, EVE-881, EVE-882):"
   echo "$matches"
   FAILED=1
 fi
 
 # 1b. Kernel sources: the moved stored-record and provisioning types must not
-#     be re-declared inside the kernel (EVE-877 agents, EVE-881 harnesses).
-RECORD_TYPES='Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|BuiltInHarnessDefinition|BuiltInHarnessRole'
+#     be re-declared inside the kernel (EVE-877 agents, EVE-881 harnesses,
+#     EVE-882 sessions).
+RECORD_TYPES='Agent|AgentVersion|AgentStatus|Harness|HarnessStatus|BuiltInHarnessDefinition|BuiltInHarnessRole|Session|SessionStatus|SessionSource|SessionActivity|SessionParticipant|SessionParticipantKind|SessionParticipantRole'
 if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (${RECORD_TYPES})[[:space:]{<(]" \
   "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
-  echo "Kernel crates must not declare stored platform record types (EVE-877, EVE-881):"
+  echo "Kernel crates must not declare stored platform record types (EVE-877, EVE-881, EVE-882):"
   echo "$matches"
   FAILED=1
 fi
@@ -87,8 +92,8 @@ for crate in "${PROVIDER_CRATES[@]}"; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion and Harness records belong in crates/platform (EVE-877, EVE-881)."
+  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records belong in crates/platform (EVE-877, EVE-881, EVE-882)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition only; platform records stay in crates/platform."
+echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession only; platform records stay in crates/platform."

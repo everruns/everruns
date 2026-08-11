@@ -426,7 +426,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
     let session = service
         .db
         .create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,
@@ -813,7 +813,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
     let session = service
         .db
         .create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: everruns_core::DEFAULT_ORG_ID,
             app_id: None,

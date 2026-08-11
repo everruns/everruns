@@ -44,7 +44,7 @@ async fn create_test_principal(repo: &dyn Repository, label: &str) -> PrincipalI
 
 fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionRow {
     CreateSessionRow {
-        source: everruns_core::SessionSource::Api,
+        source: everruns_platform::SessionSource::Api,
         org_id: DEFAULT_ORG_ID,
         app_id: None,
         harness_id: None,

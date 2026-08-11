@@ -18,8 +18,8 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    DriverRegistry, EgressService, Message, MessageHistory, MessageQuery, PlatformDefinition,
-    Session, UtilityLlmService,
+    DriverRegistry, EgressService, ExecutionSession, Message, MessageHistory, MessageQuery,
+    PlatformDefinition, UtilityLlmService,
 };
 use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
@@ -129,18 +129,13 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // Session Operations
     // =========================================================================
 
-    async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<Session>> {
+    async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<ExecutionSession>> {
         let store = GrpcSessionStore::new(self.client.clone(), org_id);
         everruns_core::traits::SessionStore::get_session(&store, SessionId::from_uuid(session_id))
             .await
     }
 
-    async fn set_session_status(
-        &self,
-        org_id: i64,
-        session_id: Uuid,
-        status: &str,
-    ) -> Result<Session> {
+    async fn set_session_status(&self, org_id: i64, session_id: Uuid, status: &str) -> Result<()> {
         self.client
             .set_session_status(org_id, SessionId::from_uuid(session_id), status)
             .await
@@ -151,7 +146,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         org_id: i64,
         session_id: Uuid,
         title: String,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         self.client
             .set_session_title(org_id, SessionId::from_uuid(session_id), &title)
             .await

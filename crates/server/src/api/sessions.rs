@@ -23,11 +23,13 @@ use everruns_core::typed_id::{
     AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
 };
 use everruns_core::{
-    Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, Session,
-    SessionContextReport, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, SessionContextReport,
     SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
 use everruns_platform::BuiltInHarnessRole;
+use everruns_platform::{
+    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+};
 use everruns_worker::AgentRunner;
 
 use super::common::{
@@ -47,7 +49,7 @@ pub struct CreateSessionRequest {
     /// server-owned so the sessions facet rail stays trustworthy.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "chat")]
-    pub source: Option<everruns_core::SessionSource>,
+    pub source: Option<everruns_platform::SessionSource>,
     /// ID of the harness for this session (format: harness_{32-hex}).
     /// If omitted, the harness is derived from the agent (when one is supplied),
     /// else the org default harness, else the built-in fallback. New orgs default

@@ -22,7 +22,6 @@
 //!
 //! Run with: cargo run -p everruns-llm-tests --example turn_based_execution
 
-use chrono::Utc;
 use everruns_core::{
     AgentDefinition, EnvCredentialProvider, HarnessDefinition, InputMessage, MessageRetriever,
     atoms::{
@@ -34,9 +33,9 @@ use everruns_core::{
         InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
         InMemoryProviderStore, InMemorySessionStore,
     },
-    session::{Session, SessionStatus},
+    session::{ExecutionSession, SessionExecutionState},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
-    typed_id::{AgentId, HarnessId, PrincipalId, TurnId},
+    typed_id::{AgentId, HarnessId, TurnId},
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -112,7 +111,6 @@ async fn main() -> anyhow::Result<()> {
     let harness_id = HarnessId::new();
     let agent_id = Uuid::now_v7();
     let session_id = Uuid::now_v7();
-    let now = Utc::now();
     let harness = HarnessDefinition::new("default", "You are a helpful assistant.");
     harness_store.add_harness(harness_id, harness).await;
 
@@ -129,25 +127,15 @@ async fn main() -> anyhow::Result<()> {
     agent_store.add_agent(agent).await;
 
     // Create a session in the store
-    let session = Session {
-        source: Default::default(),
-        activity: Default::default(),
+    let session = ExecutionSession {
         id: session_id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
         title: Some("Weather Query".to_string()),
         goal: None,
         locale: None,
-        preview: None,
-        output_preview: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![],
@@ -159,18 +147,10 @@ async fn main() -> anyhow::Result<()> {
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: SessionStatus::Started,
-        created_at: now,
-        updated_at: now,
-        started_at: None,
-        finished_at: None,
+        status: SessionExecutionState::Started,
         usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
         parent_session_id: None,
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: None,
         blueprint_config: None,
     };
@@ -189,7 +169,7 @@ async fn main() -> anyhow::Result<()> {
     // Setup: Add user message to store (simulating API layer)
     // =========================================================================
     let user_question = "What's the weather like in Paris?";
-    println!("Session: {}", session_id);
+    println!("ExecutionSession: {}", session_id);
     println!("User: {}\n", user_question);
 
     // Add user message to store (this would be done by the API layer)

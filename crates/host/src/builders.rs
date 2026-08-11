@@ -5,14 +5,13 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
 pub use everruns_core::driver_registry::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
 };
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, HarnessDefinition,
-    HarnessId, ModelId, PrincipalId, ScopedMcpServers, Session, SessionId, SessionStatus,
+    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, ExecutionSession,
+    HarnessDefinition, HarnessId, ModelId, ScopedMcpServers, SessionExecutionState, SessionId,
     ToolDefinition, plugin_capability_id,
 };
 
@@ -345,14 +344,18 @@ impl AgentBuilder {
     }
 }
 
-/// Builds a [`Session`] with runtime-friendly defaults.
+/// Builds a portable [`ExecutionSession`] with runtime-friendly defaults.
+///
+/// EVE-882: the embedded host seeds the neutral execution view only. The
+/// stored Session persistence record (source facets, participants, ownership
+/// summaries, timestamps, UI metadata) lives in `everruns-platform` and is a
+/// hosted control-plane concern.
 #[derive(Debug, Clone)]
 pub struct SessionBuilder {
     id: SessionId,
     organization_id: String,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-    owner_principal_id: PrincipalId,
     title: Option<String>,
     goal: Option<String>,
     locale: Option<String>,
@@ -366,9 +369,7 @@ pub struct SessionBuilder {
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
-    status: SessionStatus,
-    created_at: Option<DateTime<Utc>>,
-    updated_at: Option<DateTime<Utc>>,
+    status: SessionExecutionState,
 }
 
 impl SessionBuilder {
@@ -379,7 +380,6 @@ impl SessionBuilder {
             organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: None,
-            owner_principal_id: PrincipalId::from_seed(1),
             title: None,
             goal: None,
             locale: None,
@@ -393,9 +393,7 @@ impl SessionBuilder {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: None,
-            updated_at: None,
+            status: SessionExecutionState::Started,
         }
     }
 
@@ -422,11 +420,6 @@ impl SessionBuilder {
 
     pub fn agent(mut self, agent_id: AgentId) -> Self {
         self.agent_id = Some(agent_id);
-        self
-    }
-
-    pub fn owner_principal_id(mut self, owner_principal_id: PrincipalId) -> Self {
-        self.owner_principal_id = owner_principal_id;
         self
     }
 
@@ -527,45 +520,22 @@ impl SessionBuilder {
         self
     }
 
-    pub fn status(mut self, status: SessionStatus) -> Self {
+    pub fn status(mut self, status: SessionExecutionState) -> Self {
         self.status = status;
         self
     }
 
-    pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
-        self.created_at = Some(created_at);
-        self
-    }
-
-    pub fn updated_at(mut self, updated_at: DateTime<Utc>) -> Self {
-        self.updated_at = Some(updated_at);
-        self
-    }
-
     /// Build the session. Builders do not validate domain invariants.
-    pub fn build(self) -> Session {
-        let created_at = self.created_at.unwrap_or_else(Utc::now);
-        let updated_at = self.updated_at.unwrap_or(created_at);
-
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
+    pub fn build(self) -> ExecutionSession {
+        ExecutionSession {
             id: self.id,
             workspace_id: everruns_core::WorkspaceId::from_uuid((self.id).uuid()),
             organization_id: self.organization_id,
             harness_id: self.harness_id,
             agent_id: self.agent_id,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: self.owner_principal_id,
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: self.title,
             goal: self.goal,
             locale: self.locale,
-            preview: None,
-            output_preview: None,
             tags: self.tags,
             model_id: self.model_id,
             capabilities: self.capabilities,
@@ -578,17 +548,9 @@ impl SessionBuilder {
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             status: self.status,
-            created_at,
-            updated_at,
-            started_at: None,
-            finished_at: None,
             usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: Vec::new(),
             parent_session_id: None,
             forked_from_session_id: None,
-            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         }
@@ -807,7 +769,7 @@ impl SingleSessionBuilder {
         self
     }
 
-    pub(crate) fn build(self) -> (SeededHarness, AgentDefinition, Session, SessionId) {
+    pub(crate) fn build(self) -> (SeededHarness, AgentDefinition, ExecutionSession, SessionId) {
         let session_id = self.session.session_id();
         (
             self.harness.build(),

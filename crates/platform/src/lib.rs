@@ -50,6 +50,13 @@ pub mod agent;
 // loading seam.
 pub mod harness;
 
+// Stored Session persistence record and product lifecycle enums carved out of
+// `everruns-core` (EVE-882). Execution consumes only the portable
+// `everruns_core::ExecutionSession`, produced by `Session::execution_session`
+// at the platform loading seam; the neutral `SessionExecutionState` maps
+// to/from the stored `SessionStatus` at the adapter boundary.
+pub mod session;
+
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
@@ -67,6 +74,10 @@ pub use platform_store::{
     PlatformStoreSubagentDelegate,
 };
 pub use principal::{Principal, PrincipalStatus};
+pub use session::{
+    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    SessionSource, SessionStatus,
+};
 
 // Hosted control-plane orchestration records (EVE-841).
 pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};

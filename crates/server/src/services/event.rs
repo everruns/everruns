@@ -27,7 +27,8 @@ use crate::storage::{
 use anyhow::{Result, bail};
 use everruns_core::events::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
 use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest, FeatureFlags, SessionParticipantKind};
+use everruns_core::{Event, EventListener, EventRequest, FeatureFlags};
+use everruns_platform::SessionParticipantKind;
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -563,8 +564,9 @@ mod tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionParticipantRow, CreateSessionRow};
     use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
-    use everruns_core::{DEFAULT_ORG_ID, HarnessId, Message, PrincipalId, SessionParticipantRole};
-    use everruns_core::{SessionParticipantKind, typed_id::AgentId};
+    use everruns_core::typed_id::AgentId;
+    use everruns_core::{DEFAULT_ORG_ID, HarnessId, Message, PrincipalId};
+    use everruns_platform::SessionParticipantRole;
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
@@ -609,7 +611,7 @@ mod tests {
 
     fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
         CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

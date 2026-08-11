@@ -4,10 +4,10 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
     MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, ServiceKind,
-    SessionId, SessionParticipant, SessionParticipantId, SessionParticipantKind,
-    SessionParticipantRole, SkillId, TriggerId,
+    SessionId, SessionParticipantId, SkillId, TriggerId,
 };
 use everruns_durable::UpdateField;
+use everruns_platform::{SessionParticipant, SessionParticipantKind, SessionParticipantRole};
 use sqlx::FromRow;
 use uuid::Uuid;
 
@@ -804,7 +804,7 @@ pub struct SessionRow {
     pub parallel_tool_calls: Option<bool>,
     pub status: String,
     /// How the session was started (EVE-852). Stored as the closed-set string
-    /// backing `everruns_core::SessionSource`.
+    /// backing `everruns_platform::SessionSource`.
     #[sqlx(default)]
     pub source: String,
     /// Denormalized outcome of the most recent terminal turn: `completed`,
@@ -883,9 +883,9 @@ pub struct SessionListFilters {
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     /// Empty means "any source".
-    pub sources: Vec<everruns_core::SessionSource>,
+    pub sources: Vec<everruns_platform::SessionSource>,
     /// Empty means "any activity".
-    pub activities: Vec<everruns_core::SessionActivity>,
+    pub activities: Vec<everruns_platform::SessionActivity>,
     /// Restrict to sessions whose resolved human owner is this user (`mine`).
     pub owner_user_id: Option<Uuid>,
     pub created_after: Option<DateTime<Utc>>,
@@ -949,7 +949,7 @@ pub struct CreateSessionRow {
     /// How this session was started. Set by the creating ingress path, never
     /// taken from untrusted client input except for the two client-declarable
     /// variants (see `SessionSource::is_client_declarable`).
-    pub source: everruns_core::SessionSource,
+    pub source: everruns_platform::SessionSource,
     pub app_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,

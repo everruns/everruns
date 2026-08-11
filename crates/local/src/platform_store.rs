@@ -13,7 +13,8 @@
 use async_trait::async_trait;
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session::{Session, SessionParticipant};
+use everruns_core::session::ExecutionSession;
+use everruns_core::typed_id::PrincipalId;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
@@ -21,6 +22,7 @@ use everruns_platform::Agent;
 use everruns_platform::Harness;
 use everruns_platform::app::{App, AppChannel, ChannelType};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
+use everruns_platform::{Session, SessionParticipant};
 use std::sync::Arc;
 
 /// Drives real local sessions for the platform store. An embedder implements
@@ -40,6 +42,9 @@ pub trait LocalSessionRunner: Send + Sync {
     }
 
     /// Create a child/local session and persist it in the session catalog.
+    ///
+    /// Returns the portable execution view (EVE-882): embedded runners carry
+    /// no stored Session persistence records.
     async fn create_session(
         &self,
         harness_id: HarnessId,
@@ -47,12 +52,12 @@ pub trait LocalSessionRunner: Send + Sync {
         title: Option<&str>,
         locale: Option<&str>,
         parent_session_id: Option<SessionId>,
-    ) -> Result<Session>;
+    ) -> Result<ExecutionSession>;
 
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         if request.forked_from_session_id.is_some()
             || request.budget_root_session_id.is_some()
             || request.seed != everruns_core::session::SessionSeedMode::Fresh
@@ -80,10 +85,10 @@ pub trait LocalSessionRunner: Send + Sync {
         &self,
         limit: Option<usize>,
         agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>>;
+    ) -> Result<Vec<ExecutionSession>>;
 
     /// Look up a single session by id.
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>>;
 
     /// Read recent messages (most recent first) as platform messages.
     async fn get_messages(
@@ -118,6 +123,14 @@ impl LocalPlatformStore {
             base_url: base_url.into(),
         }
     }
+
+    /// Lift the runner's portable execution view into the stored platform
+    /// record the `PlatformStore` seam speaks (EVE-882). The local host has no
+    /// real session ownership catalog, so the record carries the fixed local
+    /// principal and neutral product defaults.
+    fn lift(&self, session: ExecutionSession) -> Session {
+        Session::from_execution_session(session, PrincipalId::from_seed(1))
+    }
 }
 
 #[async_trait]
@@ -137,9 +150,11 @@ impl PlatformStore for LocalPlatformStore {
         if blueprint_id.is_some() {
             return Err(unsupported("create_session(blueprint)"));
         }
-        self.runner
-            .create_session(harness_id, agent_id, title, locale, parent_session_id)
-            .await
+        Ok(self.lift(
+            self.runner
+                .create_session(harness_id, agent_id, title, locale, parent_session_id)
+                .await?,
+        ))
     }
 
     async fn create_session_with_options(
@@ -149,11 +164,15 @@ impl PlatformStore for LocalPlatformStore {
         if request.blueprint_id.is_some() {
             return Err(unsupported("create_session(blueprint)"));
         }
-        self.runner.create_session_with_options(request).await
+        Ok(self.lift(self.runner.create_session_with_options(request).await?))
     }
 
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
-        self.runner.get_session(id).await
+        Ok(self
+            .runner
+            .get_session(id)
+            .await?
+            .map(|session| self.lift(session)))
     }
 
     async fn add_agent_session_participant(
@@ -169,7 +188,13 @@ impl PlatformStore for LocalPlatformStore {
         limit: Option<usize>,
         agent_id: Option<AgentId>,
     ) -> Result<Vec<Session>> {
-        self.runner.list_sessions(limit, agent_id).await
+        Ok(self
+            .runner
+            .list_sessions(limit, agent_id)
+            .await?
+            .into_iter()
+            .map(|session| self.lift(session))
+            .collect())
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {

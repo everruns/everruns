@@ -742,7 +742,7 @@ mod tests {
         ensure_base_harness(db, None).await;
 
         db.create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -782,7 +782,7 @@ mod tests {
         org_id: i64,
     ) -> everruns_core::SessionId {
         db.create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             org_id,
             app_id: None,
             harness_id: None,
@@ -823,7 +823,7 @@ mod tests {
         parent: everruns_core::SessionId,
     ) -> everruns_core::SessionId {
         db.create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1742,7 +1742,7 @@ mod tests {
         let session_network_access = NetworkAccessList::allow_only(["b.example.com"]);
         let session_id = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),
@@ -1835,7 +1835,7 @@ mod tests {
         let stale_harness_id = HarnessId::new();
         let session_id = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(stale_harness_id),

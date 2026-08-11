@@ -480,7 +480,7 @@ impl HasAuditTargetId for crate::agent::Agent {
     }
 }
 
-impl HasAuditTargetId for everruns_core::Session {
+impl HasAuditTargetId for crate::session::Session {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }

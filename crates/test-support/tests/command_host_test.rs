@@ -9,14 +9,15 @@ use everruns_core::{
     AgentLoopError, CapabilityRegistry, DisabledCommandHost, DriverRegistry, SessionId,
     StoreCommandHost,
 };
-use everruns_core::{CommandHost, Session, SessionCompletionError, SessionCompletionRequest};
+use everruns_core::{
+    CommandHost, ExecutionSession, SessionCompletionError, SessionCompletionRequest,
+};
 use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use everruns_core::AgentDefinition;
 
-use chrono::Utc;
 use everruns_core::driver_registry::LlmStreamEvent;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::in_memory::{
@@ -25,7 +26,7 @@ use everruns_core::in_memory::{
 };
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::provider::DriverId;
-use everruns_core::session::SessionStatus;
+use everruns_core::session::SessionExecutionState;
 use everruns_core::typed_id::{AgentId, HarnessId};
 use everruns_test_support::{LlmSimConfig, LlmSimDriver};
 use futures::StreamExt;
@@ -70,26 +71,20 @@ fn test_agent(agent_id: AgentId) -> AgentDefinition {
     }
 }
 
-fn test_session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> Session {
-    Session {
-        source: Default::default(),
-        activity: Default::default(),
+fn test_session(
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: AgentId,
+) -> ExecutionSession {
+    ExecutionSession {
         id: session_id,
         workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: Some(agent_id),
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
         title: None,
         goal: None,
         locale: None,
-        preview: None,
-        output_preview: None,
         tags: vec![],
         model_id: None,
         capabilities: vec![],
@@ -101,18 +96,10 @@ fn test_session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId)
         network_access: None,
         max_iterations: None,
         parallel_tool_calls: None,
-        status: SessionStatus::Started,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        started_at: None,
-        finished_at: None,
+        status: SessionExecutionState::Started,
         usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
         parent_session_id: None,
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: None,
         blueprint_config: None,
     }

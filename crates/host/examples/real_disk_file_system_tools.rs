@@ -17,12 +17,11 @@
 use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
-use chrono::Utc;
 use everruns_core::capabilities::FileSystemCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, HarnessDefinition,
-    PlatformDefinition, ResolvedModel, Session, SessionStatus, ToolCall,
+    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
+    HarnessDefinition, PlatformDefinition, ResolvedModel, SessionExecutionState, ToolCall,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -95,25 +94,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_iterations: Some(8),
             ..AgentDefinition::new(agent_id, "files-agent", "Use tools when needed.")
         })
-        .session(Session {
-            source: Default::default(),
-            activity: Default::default(),
+        .session(ExecutionSession {
             id: session_id,
             workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: Some("Files Session".into()),
+            title: Some("Files ExecutionSession".into()),
             goal: None,
             locale: None,
-            preview: None,
-            output_preview: None,
             tags: vec![],
             model_id: None,
             capabilities: vec![],
@@ -125,18 +114,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
+            status: SessionExecutionState::Started,
             usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
             parent_session_id: None,
             forked_from_session_id: None,
-            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         })

@@ -10,7 +10,7 @@ use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::error::Result;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore};
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{
     AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionMutator, SessionScheduleStore,
@@ -51,10 +51,13 @@ pub trait RuntimeHarnessStore: HarnessStore + Send + Sync {
 }
 
 /// Session store contract for runtime seeding, lookup, and mutation.
+///
+/// Seeds portable [`ExecutionSession`] values (EVE-882): the embedded host
+/// carries no stored Session persistence records.
 #[async_trait]
 pub trait RuntimeSessionStore: SessionStore + SessionMutator + Send + Sync {
-    /// Insert or replace a session definition.
-    async fn add_session(&self, session: Session) -> Result<()>;
+    /// Insert or replace a session's portable execution view.
+    async fn add_session(&self, session: ExecutionSession) -> Result<()>;
 }
 
 /// Provider store contract for runtime lookup and default-model configuration.
@@ -227,7 +230,7 @@ impl RuntimeHarnessStore for InMemoryHarnessStore {
 
 #[async_trait]
 impl RuntimeSessionStore for InMemorySessionStore {
-    async fn add_session(&self, session: Session) -> Result<()> {
+    async fn add_session(&self, session: ExecutionSession) -> Result<()> {
         InMemorySessionStore::add_session(self, session).await;
         Ok(())
     }

@@ -317,7 +317,7 @@ pub struct VoiceEndResponse {
 pub struct VoiceSessionResponse<T> {
     /// The session this voice connection is attached to. Returned alongside
     /// the voice payload so a caller has a single round-trip view of both.
-    pub session: everruns_core::Session,
+    pub session: everruns_platform::Session,
     /// Voice connection details — concrete shape depends on the endpoint
     /// (e.g. `VoiceCallResponse` for `/voice/call`, `VoiceAttachResponse`
     /// for `/voice/attach`).

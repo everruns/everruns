@@ -1437,11 +1437,11 @@ impl ResourceUrlable for everruns_core::budget::Budget {
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
     id: &str,
-    status: &everruns_core::session::SessionStatus,
+    status: &everruns_platform::SessionStatus,
     is_pinned: bool,
     api_base: &str,
 ) -> Vec<AllowedAction> {
-    use everruns_core::session::SessionStatus;
+    use everruns_platform::SessionStatus;
     let mut actions = Vec::new();
     actions.push(
         AllowedAction::new("self")
@@ -1503,7 +1503,7 @@ pub fn session_allowed_actions(
     actions
 }
 
-impl ResourceUrlable for everruns_core::Session {
+impl ResourceUrlable for everruns_platform::Session {
     fn api_path() -> &'static str {
         "v1/sessions"
     }
@@ -2215,7 +2215,7 @@ mod tests {
 
     #[test]
     fn session_actions_include_cancel_when_turn_is_active() {
-        use everruns_core::session::SessionStatus;
+        use everruns_platform::SessionStatus;
         let actions = session_allowed_actions(
             "session_01",
             &SessionStatus::Active,
@@ -2238,7 +2238,7 @@ mod tests {
 
     #[test]
     fn session_actions_omit_cancel_in_idle_or_paused_states() {
-        use everruns_core::session::SessionStatus;
+        use everruns_platform::SessionStatus;
         for status in [
             SessionStatus::Started,
             SessionStatus::Idle,
@@ -2256,7 +2256,7 @@ mod tests {
 
     #[test]
     fn session_actions_flip_pin_rel_on_is_pinned() {
-        use everruns_core::session::SessionStatus;
+        use everruns_platform::SessionStatus;
         let unpinned = session_allowed_actions(
             "session_01",
             &SessionStatus::Idle,
@@ -2287,7 +2287,7 @@ mod tests {
 
     #[test]
     fn session_actions_always_include_self_events_stream_update_delete() {
-        use everruns_core::session::SessionStatus;
+        use everruns_platform::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
             &SessionStatus::Idle,

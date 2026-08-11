@@ -25,9 +25,12 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    AgentDefinition, HarnessDefinition, Message, MessageFilter, MessageRole, Session,
-    SessionParticipant, SessionStatus,
+    AgentDefinition, ExecutionSession, HarnessDefinition, Message, MessageFilter, MessageRole,
 };
+// EVE-882: the stored Session record and its lifecycle enums moved to
+// `everruns-platform`; the worker's PlatformStore surface still transports
+// them, while execution paths carry only the portable `ExecutionSession`.
+use everruns_platform::{Session, SessionParticipant, SessionStatus};
 // EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
 // still carries it between server and worker (proto shape unchanged).
 use everruns_internal_protocol::proto;
@@ -196,13 +199,17 @@ impl GrpcClient {
         }
     }
 
-    /// Set session status (started, active, idle)
+    /// Set session status (started, active, idle).
+    ///
+    /// Acknowledgement only (EVE-882): the wire response still carries the
+    /// stored record for older workers, but status mutation exposes no
+    /// session record to the caller.
     pub async fn set_session_status(
         &self,
         org_id: i64,
         session_id: SessionId,
         status: &str,
-    ) -> Result<Session> {
+    ) -> Result<()> {
         let request = proto::SetSessionStatusRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             status: status.to_string(),
@@ -210,26 +217,21 @@ impl GrpcClient {
         };
 
         let mut client = self.inner.lock().await;
-        let response = client
+        client
             .set_session_status(request)
             .await
             .map_err(grpc_status_to_error)?;
-
-        let proto_session = response
-            .into_inner()
-            .session
-            .ok_or_else(|| grpc_missing_field("No session in response"))?;
-
-        proto_session_to_session(proto_session)
+        Ok(())
     }
 
-    /// Set session title.
+    /// Set session title, acknowledging with the refreshed portable
+    /// execution view (EVE-882).
     pub async fn set_session_title(
         &self,
         org_id: i64,
         session_id: SessionId,
         title: &str,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         let request = proto::SetSessionTitleRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             title: title.to_string(),
@@ -1579,7 +1581,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
 
 #[async_trait]
 impl SessionStore for GrpcOrgAdapter {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetSessionRequest {
@@ -1602,7 +1604,9 @@ impl SessionStore for GrpcOrgAdapter {
     }
 }
 
-fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
+/// Project the proto session payload straight into the portable execution
+/// view (EVE-882): the worker never materializes the stored Session record.
+fn proto_session_to_session(proto_session: proto::Session) -> Result<ExecutionSession> {
     let id = proto_uuid_to_uuid(proto_session.id.as_ref())?;
     let agent_id = proto_session
         .agent_id
@@ -1620,17 +1624,6 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
-    let owner_principal_id = proto_session
-        .owner_principal_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?
-        .ok_or_else(|| anyhow::anyhow!("Missing owner_principal_id in session proto"))?;
-    let resolved_owner_user_id = proto_session
-        .resolved_owner_user_id
-        .as_ref()
-        .map(|u| proto_uuid_to_uuid(Some(u)))
-        .transpose()?;
     let parent_session_id = proto_session
         .parent_session_id
         .as_ref()
@@ -1641,18 +1634,8 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .as_deref()
         .and_then(|json| serde_json::from_str(json).ok());
 
-    let status = match proto_session.status.to_lowercase().as_str() {
-        "started" => everruns_core::SessionStatus::Started,
-        "active" => everruns_core::SessionStatus::Active,
-        "idle" => everruns_core::SessionStatus::Idle,
-        // Handle legacy values during migration
-        "running" => everruns_core::SessionStatus::Active,
-        "pending" | "completed" | "failed" => everruns_core::SessionStatus::Idle,
-        _ => everruns_core::SessionStatus::Started,
-    };
-
-    let created_at = proto_timestamp_or_now(proto_session.created_at.as_ref());
-    let updated_at = proto_timestamp_or_now(proto_session.updated_at.as_ref());
+    let status =
+        everruns_core::SessionExecutionState::from(proto_session.status.to_lowercase().as_str());
 
     // Parse capabilities from proto if present
     let capabilities = proto_session
@@ -1661,31 +1644,15 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .filter_map(|c| serde_json::from_str::<everruns_core::AgentCapabilityConfig>(c).ok())
         .collect();
 
-    Ok(Session {
-        // The proto Session does not carry origin/activity: the worker has no
-        // use for either, and the control plane is their source of truth.
-        source: Default::default(),
-        activity: Default::default(),
+    Ok(ExecutionSession {
         id: id.into(),
         workspace_id: everruns_core::WorkspaceId::from_uuid(id),
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
-        agent_version_id: proto_session
-            .agent_version_id
-            .as_ref()
-            .map(|id| proto_uuid_to_uuid(Some(id)).map(everruns_core::AgentVersionId::from_uuid))
-            .transpose()?,
-        agent_identity_id: None,
         harness_id: harness_id.into(),
-        owner_principal_id: owner_principal_id.into(),
-        resolved_owner_user_id,
-        owner: None,
-        effective_owner: None,
         title: non_empty_string(proto_session.title),
         goal: proto_session.goal.clone(),
         locale: non_empty_string(proto_session.locale),
-        preview: None,
-        output_preview: None,
         tags: proto_session.tags,
         model_id: model_id.map(|u| u.into()),
         capabilities,
@@ -1707,18 +1674,10 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         max_iterations: None,
         parallel_tool_calls: proto_session.parallel_tool_calls,
         status,
-        created_at,
-        updated_at,
-        started_at: None,
-        finished_at: None,
         usage: None, // Usage not tracked in worker context
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![], // Computed at API read time, not in worker
         parent_session_id,
         // Fork lineage is API-read-time metadata, not carried over gRPC.
         forked_from_session_id: None,
-        forked_from_sequence: None,
         blueprint_id: proto_session.blueprint_id,
         blueprint_config,
     })
@@ -2287,7 +2246,7 @@ fn proto_event_to_core(proto_event: proto::Event) -> Result<Event> {
 /// Turn context loaded in one batched gRPC call
 pub struct TurnContext {
     pub agent: Option<Agent>,
-    pub session: Session,
+    pub session: ExecutionSession,
     pub messages: Vec<Message>,
     pub model: Option<ResolvedModel>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
@@ -2689,7 +2648,7 @@ impl everruns_core::traits::SessionMutator for GrpcOrgAdapter {
         &self,
         session_id: everruns_core::SessionId,
         title: String,
-    ) -> Result<everruns_core::session::Session> {
+    ) -> Result<ExecutionSession> {
         self.client
             .set_session_title(self.org_id, session_id, &title)
             .await

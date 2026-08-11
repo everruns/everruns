@@ -21,7 +21,7 @@ use crate::error::{AgentLoopError, Result};
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::{AssembledTurnContext, inspect_turn_context};
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::traits::{
     AgentStore, HarnessStore, ImageResolver, ProviderStore, ResolvedImage, ResolvedModel,
     SessionFileSystem, SessionStore,
@@ -44,7 +44,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct CommandTurnContext {
     /// Session the command is executing against.
-    pub session: Session,
+    pub session: ExecutionSession,
     /// Conversation messages after capability message filters.
     pub messages: Vec<Message>,
     /// Merged system prompt including capability contributions.

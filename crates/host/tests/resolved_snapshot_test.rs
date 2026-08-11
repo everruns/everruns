@@ -35,7 +35,7 @@ struct Fixture {
     runtime: everruns_host::InProcessRuntime,
     harness: everruns_host::SeededHarness,
     agent: everruns_core::AgentDefinition,
-    session: everruns_core::Session,
+    session: everruns_core::ExecutionSession,
 }
 
 async fn fixture() -> Fixture {

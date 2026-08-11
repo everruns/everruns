@@ -1452,11 +1452,11 @@ async fn find_or_create_invocation_session(
             // The invocation channel *is* the session's origin. `api_endpoint`
             // collapses into `webhook`: both are an inbound HTTP call into the app.
             match source {
-                AppInvocationSource::Schedule => everruns_core::SessionSource::Schedule,
+                AppInvocationSource::Schedule => everruns_platform::SessionSource::Schedule,
                 AppInvocationSource::Webhook | AppInvocationSource::ApiEndpoint => {
-                    everruns_core::SessionSource::Webhook
+                    everruns_platform::SessionSource::Webhook
                 }
-                AppInvocationSource::A2a => everruns_core::SessionSource::A2a,
+                AppInvocationSource::A2a => everruns_platform::SessionSource::A2a,
             },
             CreateSessionRequest {
                 source: None,

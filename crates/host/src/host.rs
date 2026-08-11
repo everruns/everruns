@@ -18,7 +18,7 @@ use everruns_core::events::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_core::session::SessionStatus;
+use everruns_core::session::SessionExecutionState;
 use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
@@ -73,7 +73,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-        status: SessionStatus,
+        status: SessionExecutionState,
     ) -> everruns_core::error::Result<()>;
 
     /// Load and resolve the turn's execution inputs.
@@ -667,7 +667,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         }
     }
 
-    async fn set_session_status(&self, status: SessionStatus, action: &'static str) {
+    async fn set_session_status(&self, status: SessionExecutionState, action: &'static str) {
         if let Err(error) = self
             .adapter
             .set_session_status(self.org_id, self.session_id, status)
@@ -706,7 +706,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             .flatten()
             .map(|message| message.content_to_llm_string());
 
-        self.set_session_status(SessionStatus::Active, "turn_started")
+        self.set_session_status(SessionExecutionState::Active, "turn_started")
             .await;
 
         self.emit_event(EventRequest::new(
@@ -748,7 +748,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         iterations: Option<u32>,
         usage: Option<TokenUsage>,
     ) {
-        self.set_session_status(SessionStatus::Idle, "emit_session_idled")
+        self.set_session_status(SessionExecutionState::Idle, "emit_session_idled")
             .await;
 
         self.emit_event(EventRequest::new(
@@ -928,7 +928,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         user_error: Option<&UserFacingError>,
         disclosure: Option<ErrorDisclosure>,
     ) {
-        self.set_session_status(SessionStatus::Idle, "turn_failed")
+        self.set_session_status(SessionExecutionState::Idle, "turn_failed")
             .await;
 
         self.emit_event(EventRequest::new(
@@ -964,7 +964,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
 
     pub async fn waiting_for_tool_results(&self) {
         self.set_session_status(
-            SessionStatus::WaitingForToolResults,
+            SessionExecutionState::WaitingForToolResults,
             "waiting_for_tool_results",
         )
         .await;

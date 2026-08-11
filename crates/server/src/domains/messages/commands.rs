@@ -3,7 +3,8 @@ use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
 use crate::domains::messages::CreateMessageContext;
 use everruns_core::typed_id::{AgentId, SessionId, SessionParticipantId};
-use everruns_core::{SessionParticipantKind, SessionParticipantRole};
+use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -100,7 +101,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 
 async fn require_platform_chat_owner(
     ctx: &Ctx,
-    session: &everruns_core::Session,
+    session: &everruns_platform::Session,
 ) -> Result<(), CommandError> {
     let harness = ctx
         .db
@@ -503,7 +504,7 @@ mod tests {
         let guest_agent = seed_agent(&db, harness.id, "routing-guest").await;
         let session = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),
@@ -629,7 +630,7 @@ mod tests {
     async fn platform_chat_owner_fixture(
         caller_user_id: Uuid,
         owner_user_id: Uuid,
-    ) -> (Ctx, everruns_core::Session) {
+    ) -> (Ctx, everruns_platform::Session) {
         let db = Arc::new(StorageBackend::in_memory());
         let harness = db
             .create_harness(
@@ -653,7 +654,7 @@ mod tests {
             .expect("create Platform Chat harness");
         let row = db
             .create_session(CreateSessionRow {
-                source: everruns_core::SessionSource::Api,
+                source: everruns_platform::SessionSource::Api,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),

@@ -144,7 +144,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
     let owner_principal_id = create_test_principal(backend, TEST_ORG_ID).await;
     backend
         .create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,

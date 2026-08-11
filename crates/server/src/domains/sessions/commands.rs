@@ -15,11 +15,12 @@ use everruns_core::events::{
 use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
 use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
-use everruns_core::{
-    Message, Session, SessionActivity, SessionContextReport, SessionParticipant,
-    SessionParticipantKind, SessionParticipantRole, SessionSource, session_title_updated_event,
-};
+use everruns_core::{Message, SessionContextReport, session_title_updated_event};
 use everruns_platform::ANONYMOUS_USER_ID;
+use everruns_platform::{
+    Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+    SessionSource,
+};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -1260,7 +1261,7 @@ mod tests {
             .expect("reload session");
         assert_eq!(
             after.status,
-            everruns_core::SessionStatus::Idle,
+            everruns_platform::SessionStatus::Idle,
             "cancelled session must settle to idle"
         );
     }
@@ -1924,7 +1925,7 @@ impl Command for CancelSession {
         let session_id = q::parse_session_id(&self.session_id)?;
         let session = q::get_session(ctx, session_id, None).await?;
 
-        if session.status != everruns_core::SessionStatus::Active {
+        if session.status != everruns_platform::SessionStatus::Active {
             return Ok(CancelTurnResponse {
                 status: CancelStatus::NoOp,
                 message: "No turn currently running".to_string(),

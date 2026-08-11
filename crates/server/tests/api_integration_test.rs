@@ -20,12 +20,11 @@ use test_harness::TestServer;
 
 use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
-use everruns_core::{
-    DEFAULT_ORG_ID, Model, PrincipalId, Session, SessionContextReport, SessionFile,
-};
+use everruns_core::{DEFAULT_ORG_ID, Model, PrincipalId, SessionContextReport, SessionFile};
 use everruns_durable::UpdateField;
 use everruns_platform::Agent;
 use everruns_platform::Harness;
+use everruns_platform::Session;
 use everruns_server::storage::models::{
     CreateAgentRow, CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
     UpdateSession,
@@ -630,7 +629,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
         .unwrap();
     assert_eq!(deleted_item["effective_harness"]["status"], "deleted");
 
-    let session: everruns_core::Session = server
+    let session: everruns_platform::Session = server
         .post(
             "/v1/sessions",
             json!({ "agent_id": inherited["id"], "title": "Inherited harness proof" }),

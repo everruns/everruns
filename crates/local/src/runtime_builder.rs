@@ -86,7 +86,7 @@ impl LocalRuntimeBuilder {
     }
 
     /// Seed a session.
-    pub fn session(mut self, session: everruns_core::Session) -> Self {
+    pub fn session(mut self, session: everruns_core::ExecutionSession) -> Self {
         self.inner = self.inner.session(session);
         self
     }

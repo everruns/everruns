@@ -168,8 +168,17 @@ impl WorkerService for WorkerServiceImpl {
         // are resolved, so attached MCP servers and A2A agents become usable on
         // the next turn with no change to the agent loop.
         if let Ok(store) = self.storage_store() {
-            everruns_core::ard_attachment::apply_session_attachments(store.as_ref(), &mut session)
-                .await;
+            // Attachments merge into the portable config layer (EVE-882);
+            // fold the merged fields back onto the stored record so proto
+            // conversion and scoped-MCP resolution below see them.
+            let mut execution_session = session.execution_session();
+            everruns_core::ard_attachment::apply_session_attachments(
+                store.as_ref(),
+                &mut execution_session,
+            )
+            .await;
+            session.mcp_servers = execution_session.mcp_servers;
+            session.capabilities = execution_session.capabilities;
         }
 
         // Get agent with capabilities via domain query (optional)
@@ -4213,7 +4222,7 @@ impl WorkerService for WorkerServiceImpl {
                     // Platform-initiated creation is a delegated child of a
                     // running session (subagent spawn / handoff), not an
                     // ordinary API call.
-                    everruns_core::SessionSource::Subagent,
+                    everruns_platform::SessionSource::Subagent,
                     create_req,
                 )
                 .await
@@ -4225,7 +4234,7 @@ impl WorkerService for WorkerServiceImpl {
                     harness_id,
                     agent_uuid,
                     create_req.agent_id,
-                    everruns_core::SessionSource::Subagent,
+                    everruns_platform::SessionSource::Subagent,
                     create_req,
                 )
                 .await

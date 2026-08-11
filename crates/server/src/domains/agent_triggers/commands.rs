@@ -1150,7 +1150,7 @@ async fn find_or_create_trigger_session(
                 app_id,
                 execution_context.owner_principal_id,
                 execution_context.resolved_owner_user_id,
-                everruns_core::SessionSource::Schedule,
+                everruns_platform::SessionSource::Schedule,
                 req,
             )
             .await

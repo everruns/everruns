@@ -32,7 +32,7 @@ use everruns_core::message::Message;
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
-use everruns_core::session::{Session, SessionStatus};
+use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
@@ -61,7 +61,7 @@ use std::sync::{Arc, Mutex};
 const HASH_INPUT_CAP_BYTES: usize = 128;
 
 /// Derive an internal `i64` org id from the public `org_<32hex>` form on a
-/// [`Session`].
+/// [`ExecutionSession`].
 ///
 /// Round-trip with [`everruns_core::org_public_id_from_internal`]: when the
 /// public id was produced by that helper (i.e. the upper bits are zero and
@@ -321,7 +321,7 @@ pub struct InProcessRuntimeBuilder {
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<crate::builders::SeededHarness>,
     agents: Vec<AgentDefinition>,
-    sessions: Vec<Session>,
+    sessions: Vec<ExecutionSession>,
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
     mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
@@ -531,7 +531,7 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Seed a session into the runtime store.
-    pub fn session(mut self, session: Session) -> Self {
+    pub fn session(mut self, session: ExecutionSession) -> Self {
         self.sessions.push(session);
         self
     }
@@ -876,7 +876,7 @@ pub struct InProcessRuntime {
 }
 
 impl InProcessRuntime {
-    async fn ensure_session_started(&self, session: &Session) -> Result<()> {
+    async fn ensure_session_started(&self, session: &ExecutionSession) -> Result<()> {
         if self
             .event_history
             .contains_event_type(session.id, everruns_core::events::SESSION_STARTED)
@@ -924,7 +924,7 @@ impl InProcessRuntime {
     /// Resolve the effective scoped MCP servers for a session.
     async fn session_mcp_servers(
         &self,
-        session: &Session,
+        session: &ExecutionSession,
         agent: Option<&AgentDefinition>,
     ) -> everruns_core::ScopedMcpServers {
         let harness = self
@@ -1560,7 +1560,7 @@ impl InProcessRuntime {
     /// Load a session record and fold runtime ARD attachments into its config
     /// layer before capabilities / scoped MCP servers are resolved
     /// (resource_discovery).
-    async fn attached_session(&self, session_id: SessionId) -> Result<Session> {
+    async fn attached_session(&self, session_id: SessionId) -> Result<ExecutionSession> {
         let mut session = self
             .session_store
             .get_session(session_id)
@@ -1620,7 +1620,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         &self,
         _org_id: i64,
         session_id: SessionId,
-        _status: SessionStatus,
+        _status: SessionExecutionState,
     ) -> Result<()> {
         // The in-process runtime does not persist status. Lifecycle callers
         // still emit their events; downstream consumers in-process don't
@@ -1788,7 +1788,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
 fn effective_overlay(
     harness: &HarnessDefinition,
     agent: Option<&AgentDefinition>,
-    session: &Session,
+    session: &ExecutionSession,
 ) -> AgentConfigOverlay {
     let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
     AgentConfigOverlay::fold(
@@ -1835,7 +1835,7 @@ async fn seed_runtime_initial_files(
     harness_store: &dyn RuntimeHarnessStore,
     agent_store: &dyn RuntimeAgentStore,
     file_store: &dyn SessionFileSystem,
-    session: &Session,
+    session: &ExecutionSession,
 ) -> Result<()> {
     let harness = harness_store
         .get_harness(session.harness_id)

@@ -2495,7 +2495,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _agent_id: crate::typed_id::AgentId,
-        ) -> crate::Result<crate::session::SessionParticipant> {
+        ) -> crate::Result<crate::typed_id::SessionParticipantId> {
             Err(crate::error::AgentLoopError::tool(
                 "test store does not add participants",
             ))
@@ -2509,12 +2509,15 @@ mod tests {
         async fn create_session_with_options(
             &self,
             _request: crate::subagent_delegation::PlatformCreateSessionRequest,
-        ) -> crate::Result<crate::Session> {
+        ) -> crate::Result<crate::ExecutionSession> {
             Err(crate::error::AgentLoopError::tool(
                 "test store does not create sessions",
             ))
         }
-        async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
+        async fn get_session_by_id(
+            &self,
+            _id: SessionId,
+        ) -> crate::Result<Option<crate::ExecutionSession>> {
             Ok(None)
         }
         async fn send_message(&self, _session_id: SessionId, content: &str) -> crate::Result<()> {

@@ -2,9 +2,8 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
-use everruns_core::{
-    SessionId, SessionParticipantId, SessionParticipantKind, SessionParticipantRole,
-};
+use everruns_core::{SessionId, SessionParticipantId};
+use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 
 impl InMemoryDatabase {
     pub(crate) async fn insert_initial_session_participants(

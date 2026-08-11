@@ -478,13 +478,12 @@ impl Tool for SearchGitHubIssuesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use everruns_core::error::Result;
     use everruns_core::traits::{
         KeyInfo, SecretInfo, SessionStorageStore, SessionStore, UserConnectionResolver,
     };
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{HarnessId, PrincipalId, Session, SessionStatus};
+    use everruns_core::{ExecutionSession, HarnessId, SessionExecutionState};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -598,12 +597,12 @@ mod tests {
     }
 
     struct MockSessionStore {
-        session: Session,
+        session: ExecutionSession,
     }
 
     #[async_trait]
     impl SessionStore for MockSessionStore {
-        async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+        async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
             if self.session.id == session_id {
                 return Ok(Some(self.session.clone()));
             }
@@ -611,26 +610,19 @@ mod tests {
         }
     }
 
-    fn child_session_with_parent(session_id: SessionId, parent_session_id: SessionId) -> Session {
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
+    fn child_session_with_parent(
+        session_id: SessionId,
+        parent_session_id: SessionId,
+    ) -> ExecutionSession {
+        ExecutionSession {
             id: session_id,
             workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: HarnessId::new(),
             agent_id: None,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: Some("child".to_string()),
             goal: None,
             locale: None,
-            preview: None,
-            output_preview: None,
             tags: vec![],
             model_id: None,
             capabilities: vec![],
@@ -642,18 +634,10 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
-            status: SessionStatus::Idle,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
+            status: SessionExecutionState::Idle,
             usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
             parent_session_id: Some(parent_session_id),
             forked_from_session_id: None,
-            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         }

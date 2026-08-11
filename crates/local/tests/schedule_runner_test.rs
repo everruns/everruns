@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
@@ -64,14 +64,14 @@ impl LocalSessionRunner for RecordingRunner {
         _title: Option<&str>,
         _locale: Option<&str>,
         _parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
     async fn create_session_with_options(
         &self,
         _request: PlatformCreateSessionRequest,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
@@ -98,11 +98,11 @@ impl LocalSessionRunner for RecordingRunner {
         &self,
         _limit: Option<usize>,
         _agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
-    async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
@@ -171,7 +171,7 @@ impl LocalSessionRunner for RoutingRunner {
         _title: Option<&str>,
         _locale: Option<&str>,
         _parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
@@ -192,11 +192,11 @@ impl LocalSessionRunner for RoutingRunner {
         &self,
         _limit: Option<usize>,
         _agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
-    async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
@@ -232,7 +232,7 @@ impl LocalSessionRunner for BlockingRunner {
         _title: Option<&str>,
         _locale: Option<&str>,
         _parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
@@ -247,11 +247,11 @@ impl LocalSessionRunner for BlockingRunner {
         &self,
         _limit: Option<usize>,
         _agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 
-    async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Err(AgentLoopError::tool("unused in schedule runner test"))
     }
 

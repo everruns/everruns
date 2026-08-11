@@ -401,7 +401,7 @@ mod tests {
         .unwrap();
 
         db.create_session(CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,

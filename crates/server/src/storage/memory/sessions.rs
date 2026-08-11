@@ -6,7 +6,8 @@ use super::matches_search_tokens;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::{AgentId, EventId, HarnessId, PrincipalId, SessionId};
-use everruns_core::{SessionActivity, SessionStatus};
+use everruns_platform::{SessionActivity, SessionStatus};
+
 use uuid::Uuid;
 
 /// Facet dimension whose own selection is excluded when counting it.

@@ -2,6 +2,22 @@
 
 ## 2026-08-11
 
+* **Session aggregate extraction**: Moved the persisted `Session`
+  database/API aggregate — product status/source/activity facets,
+  participants, ownership references, previews, timestamps, catalog
+  relationships — out of `everruns-core` into `everruns-platform` (EVE-882,
+  breaking for direct core consumers in 0.18). Core keeps only the portable
+  `ExecutionSession` (correlation values plus the session configuration
+  overlay a turn consumes) and the neutral `SessionExecutionState`; the
+  stored `SessionStatus` maps to/from it at the adapter boundary, and host
+  status mutation acknowledges without returning a record. Server
+  repositories and worker adapters project the stored record via
+  `Session::execution_session()` at the loading seam; embedded/local hosts
+  lift the execution view back into a minimal record with
+  `Session::from_execution_session()` only where they implement platform
+  seams. REST/gRPC and stored schema are unchanged (OpenAPI byte-identical);
+  the agent-record isolation guard now also covers Session records.
+
 * **Harness record extraction**: Moved the stored `Harness` persistence
   record — lifecycle status, hierarchy identifiers, built-in flags, display
   metadata, timestamps, chain-merge helpers — and the built-in provisioning

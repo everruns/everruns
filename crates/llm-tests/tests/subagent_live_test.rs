@@ -21,7 +21,7 @@ use llm_test_matrix::*;
 use async_trait::async_trait;
 use everruns_core::capabilities::SubagentCapability;
 use everruns_core::error::Result;
-use everruns_core::session::Session;
+use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{CapabilityRegistry, MessageRole, PlatformDefinition};
@@ -62,7 +62,7 @@ impl LocalSessionRunner for RuntimeRunner {
         title: Option<&str>,
         _locale: Option<&str>,
         parent_session_id: Option<SessionId>,
-    ) -> Result<Session> {
+    ) -> Result<ExecutionSession> {
         let mut session = SessionBuilder::new(harness_id)
             .id(SessionId::new())
             .title(title.unwrap_or("subagent"))
@@ -89,11 +89,11 @@ impl LocalSessionRunner for RuntimeRunner {
         &self,
         _limit: Option<usize>,
         _agent_id: Option<AgentId>,
-    ) -> Result<Vec<Session>> {
+    ) -> Result<Vec<ExecutionSession>> {
         Ok(vec![])
     }
 
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.sessions.get_session(session_id).await
     }
 

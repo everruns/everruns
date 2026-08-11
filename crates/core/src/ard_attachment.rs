@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::capability_types::AgentCapabilityConfig;
 use crate::mcp_server::ScopedMcpServer;
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::traits::SessionStorageStore;
 use crate::typed_id::SessionId;
 
@@ -95,7 +95,7 @@ pub fn urn_slug(urn: &str) -> String {
 /// Merge a single attachment into a session's config layer. Idempotent: an MCP
 /// server with the same logical name, or an A2A agent with the same `id`, is
 /// not duplicated (the attachment wins on conflict, matching last-layer-wins).
-pub fn merge_attachment_into_session(session: &mut Session, attachment: &ArdAttachment) {
+pub fn merge_attachment_into_session(session: &mut ExecutionSession, attachment: &ArdAttachment) {
     match &attachment.target {
         ArdAttachmentTarget::McpServer { name, server } => {
             session.mcp_servers.insert(name.clone(), server.clone());
@@ -110,7 +110,7 @@ pub fn merge_attachment_into_session(session: &mut Session, attachment: &ArdAtta
 /// capability config (creating the capability entry if absent). Adding the
 /// capability at the session layer makes `spawn_agent` available scoped to this
 /// session even when the base agent was not provisioned with A2A delegation.
-fn merge_external_agent(session: &mut Session, agent: &serde_json::Value) {
+fn merge_external_agent(session: &mut ExecutionSession, agent: &serde_json::Value) {
     let Some(agent_id) = agent.get("id").and_then(|v| v.as_str()) else {
         return;
     };
@@ -190,7 +190,10 @@ pub async fn load_session_attachments(
 /// config layer. Called during turn-context assembly (server `GetTurnContext`
 /// and the in-process runtime) after the session record is loaded and before
 /// scoped MCP servers / capabilities are resolved into the live tool set.
-pub async fn apply_session_attachments(storage: &dyn SessionStorageStore, session: &mut Session) {
+pub async fn apply_session_attachments(
+    storage: &dyn SessionStorageStore,
+    session: &mut ExecutionSession,
+) {
     let attachments = load_session_attachments(storage, session.id).await;
     for attachment in &attachments {
         merge_attachment_into_session(session, attachment);
@@ -201,55 +204,9 @@ pub async fn apply_session_attachments(storage: &dyn SessionStorageStore, sessio
 mod tests {
     use super::*;
     use crate::mcp_server::McpServerTransportType;
-    use crate::session::SessionStatus;
 
-    fn test_session() -> Session {
-        let session_id = SessionId::new();
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
-            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id: crate::typed_id::HarnessId::new(),
-            agent_id: None,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: None,
-            goal: None,
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
-        }
+    fn test_session() -> ExecutionSession {
+        ExecutionSession::with_own_workspace(SessionId::new(), crate::typed_id::HarnessId::new())
     }
 
     fn mcp_attachment(urn: &str, name: &str) -> ArdAttachment {

@@ -10,12 +10,12 @@ use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_ser
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
-    Capability, EgressService, McpCapability, McpServerAuthMode, ScopedMcpServers, Session,
-    SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
-    validate_safe_url,
+    Capability, EgressService, McpCapability, McpServerAuthMode, ScopedMcpServers, SessionId,
+    ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities, validate_safe_url,
 };
 use everruns_platform::Agent;
 use everruns_platform::Harness;
+use everruns_platform::Session;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -75,10 +75,12 @@ pub fn merge_effective_scoped_mcp_servers_with_capabilities(
     // stored records regardless of lifecycle status (EVE-877, EVE-881).
     let agent_definition = agent.map(|a| a.definition());
     let harness_definition = harness.definition();
+    // EVE-882: capability resolution consumes the portable execution view.
+    let execution_session = session.execution_session();
     let resolved = resolve_runtime_capabilities(
         &harness_definition,
         agent_definition.as_ref(),
-        session,
+        &execution_session,
         capability_registry,
     );
     let contributed =
@@ -316,7 +318,7 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use everruns_core::{HarnessId, ScopedMcpServer, Session, SessionId, SessionStatus};
+    use everruns_core::{HarnessId, ScopedMcpServer, SessionId};
     use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 
     struct MutableConnectionResolver {
@@ -485,7 +487,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
-            status: SessionStatus::Started,
+            status: everruns_platform::SessionStatus::Started,
             created_at: Utc::now(),
             updated_at: Utc::now(),
             started_at: None,

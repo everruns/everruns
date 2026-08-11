@@ -13,8 +13,8 @@
 use crate::agent_definition::AgentDefinition;
 use crate::error::Result;
 use crate::harness_definition::HarnessDefinition;
-use crate::session::{Session, SessionParticipant, SessionSeedMode};
-use crate::typed_id::{AgentId, HarnessId, SessionId};
+use crate::session::{ExecutionSession, SessionSeedMode};
+use crate::typed_id::{AgentId, HarnessId, SessionId, SessionParticipantId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -62,20 +62,24 @@ pub trait SubagentSessionDelegate: Send + Sync {
     async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>>;
 
     /// Add an agent as a member participant in an existing session.
+    ///
+    /// Returns the new participant row's id (a neutral correlation value);
+    /// the stored participant record stays behind the platform seam (EVE-882).
     async fn add_agent_session_participant(
         &self,
         session_id: SessionId,
         agent_id: AgentId,
-    ) -> Result<SessionParticipant>;
+    ) -> Result<SessionParticipantId>;
 
-    /// Create a child session with the given options.
+    /// Create a child session with the given options. Returns the portable
+    /// execution view of the new session (EVE-882).
     async fn create_session_with_options(
         &self,
         request: PlatformCreateSessionRequest,
-    ) -> Result<Session>;
+    ) -> Result<ExecutionSession>;
 
-    /// Get a session by id.
-    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
+    /// Get a session's portable execution view by id.
+    async fn get_session_by_id(&self, id: SessionId) -> Result<Option<ExecutionSession>>;
 
     /// Send a user message to a session, triggering a turn.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
@@ -99,7 +103,7 @@ pub trait SubagentSessionDelegate: Send + Sync {
 pub mod tests {
     use super::*;
     use crate::AgentCapabilityConfig;
-    use crate::session::{SessionParticipant, SessionStatus};
+    use crate::session::SessionExecutionState;
 
     /// Mock [`SubagentSessionDelegate`] for portable subagent/handoff tests.
     ///
@@ -111,9 +115,10 @@ pub mod tests {
         pub extra_harnesses:
             std::sync::Mutex<std::collections::HashMap<HarnessId, HarnessDefinition>>,
         pub agent: AgentDefinition,
-        pub session: Session,
-        pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
-        pub joined_participants: std::sync::Mutex<Vec<SessionParticipant>>,
+        pub session: ExecutionSession,
+        pub extra_sessions:
+            std::sync::Mutex<std::collections::HashMap<SessionId, ExecutionSession>>,
+        pub joined_participants: std::sync::Mutex<Vec<(SessionId, Option<AgentId>)>>,
         pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
         pub created_session_budget_roots: std::sync::Mutex<Vec<Option<SessionId>>>,
         pub wait_for_idle_status: std::sync::Mutex<String>,
@@ -143,53 +148,10 @@ pub mod tests {
                         "You are helpful.",
                     )
                 },
-                session: {
-                    let session_id = SessionId::new();
-                    Session {
-                        source: Default::default(),
-                        activity: Default::default(),
-                        id: session_id,
-                        workspace_id: crate::WorkspaceId::from_uuid(session_id.uuid()),
-                        organization_id: "org_00000000000000000000000000000001".to_string(),
-                        harness_id: HarnessId::new(),
-                        agent_id: None,
-                        agent_version_id: None,
-                        agent_identity_id: None,
-                        owner_principal_id: crate::PrincipalId::from_seed(1),
-                        resolved_owner_user_id: None,
-                        owner: None,
-                        effective_owner: None,
-                        title: Some("Test Session".to_string()),
-                        goal: None,
-                        locale: None,
-                        preview: None,
-                        output_preview: None,
-                        tags: vec![],
-                        model_id: None,
-                        capabilities: vec![],
-                        tools: vec![],
-                        mcp_servers: Default::default(),
-                        system_prompt: None,
-                        initial_files: vec![],
-                        hints: None,
-                        network_access: None,
-                        max_iterations: None,
-                        parallel_tool_calls: None,
-                        status: SessionStatus::Idle,
-                        created_at: chrono::Utc::now(),
-                        updated_at: chrono::Utc::now(),
-                        started_at: None,
-                        finished_at: None,
-                        usage: None,
-                        is_pinned: None,
-                        active_schedule_count: None,
-                        features: vec![],
-                        parent_session_id: None,
-                        forked_from_session_id: None,
-                        forked_from_sequence: None,
-                        blueprint_id: None,
-                        blueprint_config: None,
-                    }
+                session: ExecutionSession {
+                    title: Some("Test Session".to_string()),
+                    status: SessionExecutionState::Idle,
+                    ..ExecutionSession::with_own_workspace(SessionId::new(), HarnessId::new())
                 },
                 extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                 joined_participants: std::sync::Mutex::new(Vec::new()),
@@ -210,7 +172,7 @@ pub mod tests {
             blueprint_id: Option<&str>,
             blueprint_config: Option<&serde_json::Value>,
             parent_session_id: Option<SessionId>,
-        ) -> Result<Session> {
+        ) -> Result<ExecutionSession> {
             if let Ok(mut recorder) = self.created_session_harness_ids.lock() {
                 recorder.push(hid);
             }
@@ -243,23 +205,11 @@ pub mod tests {
             &self,
             session_id: SessionId,
             agent_id: AgentId,
-        ) -> Result<SessionParticipant> {
-            let participant = SessionParticipant {
-                id: crate::typed_id::SessionParticipantId::new(),
-                session_id,
-                kind: crate::session::SessionParticipantKind::Agent,
-                agent_id: Some(agent_id),
-                agent_version_id: None,
-                principal_id: self.session.owner_principal_id,
-                display_name: None,
-                role: crate::session::SessionParticipantRole::Member,
-                joined_at: chrono::Utc::now(),
-                left_at: None,
-            };
+        ) -> Result<SessionParticipantId> {
             if let Ok(mut participants) = self.joined_participants.lock() {
-                participants.push(participant.clone());
+                participants.push((session_id, Some(agent_id)));
             }
-            Ok(participant)
+            Ok(SessionParticipantId::new())
         }
 
         async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
@@ -272,7 +222,7 @@ pub mod tests {
         async fn create_session_with_options(
             &self,
             request: PlatformCreateSessionRequest,
-        ) -> Result<Session> {
+        ) -> Result<ExecutionSession> {
             self.created_session_budget_roots
                 .lock()
                 .expect("budget root recorder")
@@ -296,7 +246,7 @@ pub mod tests {
             Ok(session)
         }
 
-        async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
+        async fn get_session_by_id(&self, id: SessionId) -> Result<Option<ExecutionSession>> {
             if id == self.session.id {
                 return Ok(Some(self.session.clone()));
             }

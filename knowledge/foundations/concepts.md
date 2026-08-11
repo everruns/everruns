@@ -81,6 +81,11 @@ Working instance of an agentic loop. Configured by its harness and situationally
   lineage metadata (`forked_from_session_id`) and does not affect nesting guards.
 - Sessions may carry a `goal`, an objective shown in lists and injected into the
   runtime prompt as session metadata rather than as a user message.
+- Since EVE-882 the persisted Session aggregate (status/source/activity facets,
+  participants, ownership, previews, timestamps) lives in `everruns-platform`;
+  the execution kernel consumes only the portable
+  `everruns_core::ExecutionSession` projection plus the neutral
+  `SessionExecutionState`, produced at the platform loading seam.
 
 ### Capability
 

@@ -25,14 +25,15 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
+use everruns_core::Caller;
 use everruns_core::channel::{
     InboundAttachment, InboundChannelEvent, SessionRoutingStrategy, ThreadContext,
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
-use everruns_core::{Caller, SessionParticipantKind, SessionParticipantRole};
 use everruns_platform::{App, AppStatus, SessionStrategy, SlackChannelConfig, SlackReplyMode};
+use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
@@ -683,7 +684,7 @@ async fn process_slack_message(
                     app.internal_id,
                     app.owner_principal_id,
                     app.resolved_owner_user_id,
-                    everruns_core::SessionSource::Slack,
+                    everruns_platform::SessionSource::Slack,
                     req,
                 )
                 .await?;
@@ -2455,7 +2456,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         let row = CreateSessionRow {
-            source: everruns_core::SessionSource::Api,
+            source: everruns_platform::SessionSource::Api,
             workspace_id: None,
             org_id: 1,
             app_id: None,

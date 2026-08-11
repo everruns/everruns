@@ -20,7 +20,7 @@ use crate::message_filter::MessageQuery;
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_agent::RuntimeAgent;
 use crate::runtime_agent::RuntimeAgentBuilder;
-use crate::session::Session;
+use crate::session::ExecutionSession;
 use crate::tool_types::ToolDefinition;
 use crate::traits::{
     AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionFileSystem, SessionStore,
@@ -35,8 +35,8 @@ pub struct AssembledTurnContext {
     pub harness: HarnessDefinition,
     /// Optional agent execution definition attached to the session.
     pub agent: Option<AgentDefinition>,
-    /// Session being executed.
-    pub session: Session,
+    /// Portable execution view of the session being executed (EVE-882).
+    pub session: ExecutionSession,
     /// Effective overlay after merging harness chain → agent → session.
     pub effective_overlay: AgentConfigOverlay,
     /// Capability configs after dependency resolution.
@@ -271,7 +271,7 @@ async fn assemble_turn_context_with_mode(
 pub fn resolve_runtime_capabilities(
     harness: &HarnessDefinition,
     agent: Option<&AgentDefinition>,
-    session: &Session,
+    session: &ExecutionSession,
     capability_registry: &CapabilityRegistry,
 ) -> ResolvedRuntimeCapabilities {
     let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
@@ -299,7 +299,7 @@ pub fn resolve_runtime_capabilities(
 }
 
 async fn build_runtime_agent(
-    session: &Session,
+    session: &ExecutionSession,
     effective_overlay: &AgentConfigOverlay,
     capability_registry: &CapabilityRegistry,
     prompt_ctx: &SystemPromptContext,
@@ -405,10 +405,9 @@ mod tests {
     use crate::message::Controls;
     use crate::message_retriever::InputMessage;
     use crate::network_access::NetworkAccessList;
-    use crate::session::{Session, SessionStatus};
+    use crate::session::ExecutionSession;
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::typed_id::{AgentId, HarnessId};
-    use chrono::Utc;
 
     /// Local stand-in for the `test_math` fixture capability, which lives in
     /// `everruns-test-support` (EVE-875). These tests only need a registered
@@ -473,51 +472,16 @@ mod tests {
         }
     }
 
-    fn session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> Session {
-        Session {
-            source: Default::default(),
-            activity: Default::default(),
-            id: session_id,
-            workspace_id: crate::WorkspaceId::from_uuid((session_id).uuid()),
-            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id,
+    fn session(
+        session_id: SessionId,
+        harness_id: HarnessId,
+        agent_id: AgentId,
+    ) -> ExecutionSession {
+        ExecutionSession {
             agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: crate::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
             title: Some("ctx".into()),
-            goal: None,
             locale: Some("en-US".into()),
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            parallel_tool_calls: None,
-            status: SessionStatus::Started,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            forked_from_session_id: None,
-            forked_from_sequence: None,
-            blueprint_id: None,
-            blueprint_config: None,
+            ..ExecutionSession::with_own_workspace(session_id, harness_id)
         }
     }
 
