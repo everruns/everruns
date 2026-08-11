@@ -9,6 +9,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { MessageCircle, Plus } from "lucide-react";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
+import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { NewChatForm } from "@/components/chat/new-chat-form";
 import { EmptyState, PageContainer, PageMasthead } from "@/components/layout";
 import { buttonVariants } from "@/components/ui/button";
@@ -22,21 +23,26 @@ import type { Session } from "@/lib/api/types";
 
 function ThreadRow({ thread, counterpart }: { thread: Session; counterpart?: string }) {
   return (
-    <Link
-      href={`/chats/${thread.id}`}
-      className="flex items-center gap-3 border border-border/70 bg-card/80 px-4 py-3 transition-colors hover:bg-muted/40"
-    >
-      <AgentAvatar name={counterpart} size="sm" />
-      <div className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium text-foreground">{threadTitle(thread)}</span>
-        {thread.output_preview && (
-          <span className="truncate text-xs text-muted-foreground">{thread.output_preview}</span>
-        )}
-      </div>
-      <span className="ml-auto flex-none text-xs text-muted-foreground">
-        {formatRelativeTime(thread.updated_at)}
-      </span>
-    </Link>
+    <div className="flex items-center border border-border/70 bg-card/80 transition-colors hover:bg-muted/40">
+      <Link
+        href={`/chats/${thread.id}`}
+        className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3"
+      >
+        <AgentAvatar name={counterpart} size="sm" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-medium text-foreground">
+            {threadTitle(thread)}
+          </span>
+          {thread.output_preview && (
+            <span className="truncate text-xs text-muted-foreground">{thread.output_preview}</span>
+          )}
+        </div>
+        <span className="ml-auto flex-none text-xs text-muted-foreground">
+          {formatRelativeTime(thread.updated_at)}
+        </span>
+      </Link>
+      <ChatPinButton session={thread} className="mr-3" />
+    </div>
   );
 }
 

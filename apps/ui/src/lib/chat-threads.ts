@@ -57,9 +57,10 @@ export function threadActivityAt(session: Session): number {
 }
 
 /**
- * Pick this user's chat threads out of a session page, most recently active
- * first. `userId` is undefined when auth is off (local development, single
- * anonymous user) — every thread is then "mine".
+ * Pick this user's chat threads out of a session page. Pinned threads come
+ * first, with each group ordered by most recent activity. `userId` is undefined
+ * when auth is off (local development, single anonymous user) — every thread is
+ * then "mine".
  */
 export function selectChatThreads(sessions: Session[], userId?: string): Session[] {
   return sessions
@@ -68,7 +69,10 @@ export function selectChatThreads(sessions: Session[], userId?: string): Session
       (session) =>
         !userId || !session.resolved_owner_user_id || session.resolved_owner_user_id === userId,
     )
-    .sort((a, b) => threadActivityAt(b) - threadActivityAt(a));
+    .sort((a, b) => {
+      const pinOrder = Number(b.is_pinned === true) - Number(a.is_pinned === true);
+      return pinOrder || threadActivityAt(b) - threadActivityAt(a);
+    });
 }
 
 /** Title to show for a thread that has not been named yet. */

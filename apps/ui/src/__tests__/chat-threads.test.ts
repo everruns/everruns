@@ -48,6 +48,19 @@ describe("selectChatThreads", () => {
     expect(threads.map((thread) => thread.id)).toEqual(["newest", "middle", "old"]);
   });
 
+  it("keeps pinned threads ahead of newer unpinned threads", () => {
+    const threads = selectChatThreads(
+      [
+        session({ id: "newest", updated_at: "2026-08-09T12:00:00Z" }),
+        session({ id: "pinned-old", updated_at: "2026-08-01T00:00:00Z", is_pinned: true }),
+        session({ id: "pinned-new", updated_at: "2026-08-05T00:00:00Z", is_pinned: true }),
+      ],
+      "user_1",
+    );
+
+    expect(threads.map((thread) => thread.id)).toEqual(["pinned-new", "pinned-old", "newest"]);
+  });
+
   it("drops threads owned by someone else", () => {
     const threads = selectChatThreads(
       [

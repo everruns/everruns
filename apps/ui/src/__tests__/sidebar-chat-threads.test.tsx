@@ -58,6 +58,18 @@ describe("SidebarChatThreads", () => {
     expect(screen.getByRole("link", { name: /New chat/ })).toHaveAttribute("href", "/chats/new");
   });
 
+  it("marks pinned threads", () => {
+    mockUseChatThreads.mockReturnValue({
+      threads: [{ ...thread("sess_pinned", "Pinned thread"), is_pinned: true }],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<SidebarChatThreads pathname="/chats" />);
+
+    expect(screen.getByLabelText("Pinned")).toBeInTheDocument();
+  });
+
   it("holds the order steady while the pointer is inside the list", () => {
     const first = thread("sess_a", "Alpha");
     const second = thread("sess_b", "Beta");

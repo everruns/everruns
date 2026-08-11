@@ -17,6 +17,7 @@ import Link from "next/link";
 import { Check, Copy, ExternalLink, Pencil } from "lucide-react";
 import type { Session } from "@/lib/api/types";
 import { AgentAvatar } from "@/components/chat/agent-avatar";
+import { ChatPinButton } from "@/components/chat/chat-pin-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUpdateSession } from "@/hooks/use-sessions";
@@ -88,13 +89,15 @@ function ShareButton() {
       type="button"
       variant="outline"
       size="sm"
+      className="max-sm:w-7 max-sm:px-0"
+      aria-label={copied ? "Link copied" : "Share"}
       onClick={async () => {
         await navigator.clipboard?.writeText(window.location.href);
         setCopied(true);
       }}
     >
       {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      {copied ? "Link copied" : "Share"}
+      <span className="max-sm:hidden">{copied ? "Link copied" : "Share"}</span>
     </Button>
   );
 }
@@ -123,13 +126,15 @@ export function ChatThreadHeader({
         </span>
       </div>
       <div className="ml-auto flex items-center gap-2">
+        <ChatPinButton session={session} showLabel />
         <ShareButton />
         <Link
           href={`/sessions/${session.id}`}
-          className="inline-flex items-center gap-1.5 border border-border/70 px-2.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-muted/40"
+          aria-label="Open session"
+          className="inline-flex items-center gap-1.5 border border-border/70 px-2.5 py-1.5 text-[13px] font-medium transition-colors hover:bg-muted/40 max-sm:size-7 max-sm:justify-center max-sm:px-0"
         >
           <ExternalLink className="size-3.5" />
-          Open session
+          <span className="max-sm:hidden">Open session</span>
         </Link>
       </div>
     </div>

@@ -5,6 +5,9 @@ import ChatThreadPage from "@/app/(main)/chats/[threadId]/page";
 import { useChatThreads } from "@/hooks/use-chat-threads";
 import type { Session } from "@/lib/api/types";
 
+const mockPinMutate = jest.fn();
+const mockUnpinMutate = jest.fn();
+
 jest.mock("next/link", () => ({
   __esModule: true,
   default: ({ children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
@@ -18,6 +21,8 @@ jest.mock("@/hooks/use-chat-threads", () => ({
 
 jest.mock("@/hooks/use-sessions", () => ({
   useUpdateSession: () => ({ mutate: jest.fn() }),
+  usePinSession: () => ({ mutate: mockPinMutate, isPending: false }),
+  useUnpinSession: () => ({ mutate: mockUnpinMutate, isPending: false }),
 }));
 
 jest.mock("@/hooks", () => ({
@@ -97,6 +102,24 @@ describe("Chats surface", () => {
     expect(screen.getByRole("link", { name: /Latency/ })).toHaveAttribute("href", "/chats/sess_2");
   });
 
+  it("pins and unpins chats from the list", () => {
+    mockUseChatThreads.mockReturnValue({
+      threads: [
+        thread({ id: "sess_1" }),
+        thread({ id: "sess_2", title: "Pinned", is_pinned: true }),
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<ChatsPageClient />);
+    fireEvent.click(screen.getByRole("button", { name: "Pin chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unpin chat" }));
+
+    expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
+    expect(mockUnpinMutate).toHaveBeenCalledWith({ sessionId: "sess_2" });
+  });
+
   it("keeps the starting form mounted when the new thread lands in the list", () => {
     const { rerender } = render(<ChatsPageClient />);
     fireEvent.click(screen.getByText("new-chat-form"));
@@ -156,6 +179,8 @@ describe("Thread surface", () => {
       "href",
       "/sessions/sess_1",
     );
+    fireEvent.click(screen.getByRole("button", { name: "Pin chat" }));
+    expect(mockPinMutate).toHaveBeenCalledWith({ sessionId: "sess_1" });
   });
 
   it("names the harness for a thread bound to one instead of an agent", async () => {
