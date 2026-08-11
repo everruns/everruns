@@ -15,8 +15,33 @@ fn core_manifest_has_no_edge_to_platform() {
         .unwrap_or_else(|e| panic!("read {}: {e}", manifest_path.display()));
 
     assert!(
-        !manifest.contains("everruns-platform"),
+        !declares_platform_edge(&manifest),
         "everruns-core must not depend on everruns-platform \
          (allowed direction is platform -> core)"
     );
+}
+
+/// Whether the manifest *declares* a dependency on `everruns-platform`.
+///
+/// Comments are stripped first: prose that merely names the crate — such as a
+/// note recording where a module moved — documents the boundary rather than
+/// crossing it, and must not fail the build.
+fn declares_platform_edge(manifest: &str) -> bool {
+    manifest
+        .lines()
+        .map(|line| line.split_once('#').map_or(line, |(code, _)| code))
+        .any(|code| code.contains("everruns-platform"))
+}
+
+#[test]
+fn comments_naming_the_crate_are_not_edges() {
+    assert!(!declares_platform_edge(
+        "# email senders moved out of core (everruns-mcp, everruns-platform)\nserde = \"1\"\n"
+    ));
+    assert!(declares_platform_edge(
+        "everruns-platform = { path = \"../platform\" }"
+    ));
+    assert!(declares_platform_edge(
+        "everruns-platform = { path = \"../platform\" } # still an edge"
+    ));
 }

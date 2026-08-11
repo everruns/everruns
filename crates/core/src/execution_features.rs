@@ -76,7 +76,6 @@ impl InternalFeatureFlags {
 /// filtering the capability list handed to the worker.
 #[derive(Debug, Clone)]
 pub struct ExecutionFeatureDecisions {
-    grade: DeploymentGrade,
     /// Outbound agent delegation capabilities (`a2a_agent_delegation`,
     /// `agent_handoff`). Experimental: auto-enabled in dev, off in prod by
     /// default. When off, the capabilities are not registered at all.
@@ -91,16 +90,18 @@ impl ExecutionFeatureDecisions {
         Self {
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", &grade),
             internal: InternalFeatureFlags::from_env(),
-            grade,
         }
     }
 
     /// Whether a registration-time feature gate is enabled.
     ///
     /// Internal infrastructure flags win; any other name resolves via the
-    /// experimental `FEATURE_<NAME>` env rule (explicit env var beats the
-    /// grade's experimental default), matching the platform's system-level
-    /// resolution for experimental product flags. Used by
+    /// standard `FEATURE_<NAME>` env rule: enabled only by an explicit env
+    /// var, never by the grade's experimental default. Registration gates
+    /// control real side effects (e.g. the `machine_payments` gate on the
+    /// payments capability, where spend is irreversible), so an unknown gate
+    /// must fail closed even in dev — the pre-EVE-878 flag catalog classified
+    /// `machine_payments` as standard/off, and this preserves that. Used by
     /// `IntegrationPlugin::feature_flag` gating.
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
@@ -110,7 +111,7 @@ impl ExecutionFeatureDecisions {
             "agent_delegation" => self.agent_delegation,
             _ => {
                 let env_var = format!("FEATURE_{}", flag.to_ascii_uppercase());
-                experimental_flag(&env_var, &self.grade)
+                standard_flag(&env_var, false)
             }
         }
     }
@@ -274,17 +275,21 @@ mod tests {
     }
 
     #[test]
-    fn test_decisions_resolve_product_flags_via_experimental_env_rule() {
+    fn test_decisions_resolve_unknown_gates_via_standard_env_rule() {
         let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_VOICE") };
+        // Registration gates fail closed without an explicit env var, in every
+        // grade — a payments-style gate must not auto-enable in dev.
+        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
         let dev = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
-        assert!(dev.is_enabled("voice"));
+        assert!(!dev.is_enabled("machine_payments"));
         let prod = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(!prod.is_enabled("voice"));
+        assert!(!prod.is_enabled("machine_payments"));
 
-        unsafe { std::env::set_var("FEATURE_VOICE", "true") };
+        unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
+        let dev = ExecutionFeatureDecisions::from_env(DeploymentGrade::Dev);
+        assert!(dev.is_enabled("machine_payments"));
         let prod = ExecutionFeatureDecisions::from_env(DeploymentGrade::Prod);
-        assert!(prod.is_enabled("voice"));
-        unsafe { std::env::remove_var("FEATURE_VOICE") };
+        assert!(prod.is_enabled("machine_payments"));
+        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
     }
 }

@@ -64,7 +64,9 @@ pub struct IntegrationPlugin {
     /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
     pub experimental_only: bool,
     /// If set, only registered when the named deployment feature flag is enabled.
-    /// Both API-visible and internal flag catalogs are checked at registry build time.
+    /// Resolved at registry build time via `ExecutionFeatureDecisions`: internal
+    /// infrastructure flags first, otherwise the explicit `FEATURE_<NAME>` env
+    /// var (fail-closed — no grade-based default for registration gates).
     pub feature_flag: Option<&'static str>,
     /// Factory function that creates the capability instance.
     pub factory: fn() -> Box<dyn Capability>,
