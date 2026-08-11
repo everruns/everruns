@@ -824,6 +824,16 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Context-compaction policy configured by this capability. The reason
+    /// atom owns orchestration and invokes the returned implementation without
+    /// matching on a capability ID.
+    fn compaction_policy(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn crate::compaction_policy::CompactionPolicy>> {
+        None
+    }
+
     /// Returns key/value [`Fact`]s this capability contributes to the model.
     ///
     /// Facts are routed by their [`Volatility`] so prompt caching is preserved:

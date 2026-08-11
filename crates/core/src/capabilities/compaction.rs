@@ -20,6 +20,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use crate::compaction_policy::{
+    CompactionPolicy, CompactionSettings, CompactionStrategy as ExecutionCompactionStrategy,
+    ObservationMaskingResult as ExecutionObservationMaskingResult,
+};
+
 /// Capability ID for compaction.
 pub const COMPACTION_CAPABILITY_ID: &str = "compaction";
 const MAX_RELATED_RECENT_READ_RESULTS: usize = 4;
@@ -281,6 +286,87 @@ impl CompactionConfig {
 /// Compaction capability.
 pub struct CompactionCapability;
 
+#[derive(Debug)]
+struct ConfiguredCompactionPolicy {
+    config: CompactionConfig,
+}
+
+impl CompactionPolicy for ConfiguredCompactionPolicy {
+    fn settings(&self) -> CompactionSettings {
+        CompactionSettings {
+            strategy: match self.config.strategy {
+                CompactionStrategy::Auto => ExecutionCompactionStrategy::Auto,
+                CompactionStrategy::Native => ExecutionCompactionStrategy::Native,
+                CompactionStrategy::ObservationMasking => {
+                    ExecutionCompactionStrategy::ObservationMasking
+                }
+                CompactionStrategy::Summarization => ExecutionCompactionStrategy::Summarization,
+            },
+            budget_percent: self.config.budget_percent,
+            summarization_model: self.config.summarization.model.clone(),
+        }
+    }
+
+    fn estimate_total_tokens(&self, messages: &[LlmMessage]) -> usize {
+        estimate_total_tokens(messages)
+    }
+
+    fn should_compact_proactively(&self, messages: &[LlmMessage], context_window: usize) -> bool {
+        should_compact_proactively(messages, &self.config, context_window)
+    }
+
+    fn should_compact_for_cost(
+        &self,
+        estimated_input_tokens: usize,
+        raw_tool_result_bytes: usize,
+        usage: Option<&crate::events::TokenUsage>,
+    ) -> bool {
+        should_compact_for_cost(
+            estimated_input_tokens,
+            raw_tool_result_bytes,
+            &self.config,
+            usage,
+        )
+    }
+
+    fn apply_observation_masking(
+        &self,
+        messages: &[LlmMessage],
+    ) -> ExecutionObservationMaskingResult {
+        let result = apply_observation_masking(messages, &self.config.observation_masking);
+        ExecutionObservationMaskingResult {
+            messages: result.messages,
+            masked_count: result.masked_count,
+        }
+    }
+
+    fn aggressive_trim(
+        &self,
+        messages: &[LlmMessage],
+        target_tokens: usize,
+        preserve_system: bool,
+    ) -> Vec<LlmMessage> {
+        aggressive_trim(messages, target_tokens, preserve_system)
+    }
+
+    fn summarization_prompt(&self) -> String {
+        build_summarization_prompt(&self.config.summarization)
+    }
+
+    fn format_messages_for_summarization(&self, messages: &[LlmMessage]) -> String {
+        format_messages_for_summarization(messages)
+    }
+
+    fn compose_summary_with_recent(
+        &self,
+        system_message: Option<LlmMessage>,
+        summary_text: &str,
+        recent_messages: &[LlmMessage],
+    ) -> Vec<LlmMessage> {
+        compose_summary_with_recent(system_message, summary_text, recent_messages)
+    }
+}
+
 impl Capability for CompactionCapability {
     fn id(&self) -> &str {
         COMPACTION_CAPABILITY_ID
@@ -372,6 +458,12 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
             ));
         }
         Ok(())
+    }
+
+    fn compaction_policy(&self, config: &serde_json::Value) -> Option<Arc<dyn CompactionPolicy>> {
+        Some(Arc::new(ConfiguredCompactionPolicy {
+            config: CompactionConfig::from_json(config),
+        }))
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
