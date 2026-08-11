@@ -1,10 +1,10 @@
 //! Anthropic Claude provider driver for Everruns.
 //!
 //! `everruns-anthropic` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core` and
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-provider` and
 //! registers Anthropic's Messages API driver into a [`DriverRegistry`].
 //!
-//! Provider crates depend on `everruns-core`; `everruns-core` does not depend on
+//! Provider crates depend on `everruns-provider`; the provider SPI does not depend on
 //! provider implementations. Hosts register whichever drivers they want to make
 //! available.
 //!

@@ -11,12 +11,12 @@
 //   2. Microsoft Entra ID OAuth  -> a token is minted from the (mocked) token
 //      endpoint and applied as `Authorization: Bearer <token>`.
 
-use everruns_core::DriverRegistry;
-use everruns_core::driver_registry::{
+use everruns_mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
+use everruns_provider::DriverRegistry;
+use everruns_provider::ProviderEndpoint;
+use everruns_provider::driver_registry::{
     ChatDriver, DriverId, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
-use everruns_mai::{EntraOAuthConfig, MaiAuth, provider, register_driver};
-use everruns_provider::ProviderEndpoint;
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -55,7 +55,7 @@ fn sse_chat_response() -> String {
     .join("\n")
 }
 
-async fn drain_text(mut stream: everruns_core::driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_provider::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {

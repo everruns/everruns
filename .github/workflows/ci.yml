@@ -431,6 +431,25 @@ jobs:
       - name: Check agent-record isolation
         run: bash scripts/lib/check-agent-record-isolation.sh
 
+  # Architecture guard (EVE-874): official wire-protocol provider crates build
+  # on the provider SPI (everruns-provider) alone — no direct core, host,
+  # platform, or server dependency on any edge kind, and no heavy core
+  # feature subtree in provider-only builds.
+  provider-isolation:
+    name: Provider Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check provider isolation
+        run: bash scripts/lib/check-provider-isolation.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest

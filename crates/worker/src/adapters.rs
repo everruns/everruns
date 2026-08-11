@@ -115,3 +115,37 @@ pub fn create_chat_driver(
     let registry = create_driver_registry();
     registry.create_chat_driver(&config)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The product's default platform composition must register every official
+    /// provider driver (EVE-874). Protocol drivers live in provider crates on
+    /// the everruns-provider SPI; the worker is the composition point that
+    /// assembles them into the default product registry, so a provider crate
+    /// dropping out of the assembly fails here.
+    #[test]
+    fn default_registry_registers_all_official_providers() {
+        let registry = create_driver_registry();
+        let official = [
+            DriverId::OpenAI,
+            DriverId::OpenAICompletions,
+            DriverId::OpenRouter,
+            DriverId::Mai,
+            DriverId::Fireworks,
+            DriverId::Meta,
+            DriverId::Anthropic,
+            DriverId::Gemini,
+            DriverId::Bedrock,
+            // Seeded simulation driver (test-support `sim` surface).
+            DriverId::LlmSim,
+        ];
+        for id in official {
+            assert!(
+                registry.has_driver(&id),
+                "default product registry is missing official driver {id:?}"
+            );
+        }
+    }
+}

@@ -11,7 +11,7 @@
 // cache-exclusive), so `prompt_tokens` passes through unchanged.
 
 use everruns_anthropic::AnthropicChatDriver;
-use everruns_core::driver_registry::{
+use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent,
 };

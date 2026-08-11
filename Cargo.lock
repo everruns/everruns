@@ -2426,7 +2426,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "eventsource-stream",
- "everruns-core",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",
@@ -2643,7 +2642,6 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-core",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",
@@ -2658,7 +2656,6 @@ name = "everruns-gemini"
 version = "0.17.26"
 dependencies = [
  "async-trait",
- "everruns-core",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",
@@ -2993,7 +2990,6 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-core",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",
@@ -3063,7 +3059,6 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-core",
  "everruns-provider",
  "reqwest 0.13.4",
  "serde",
@@ -3079,7 +3074,6 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
- "everruns-core",
  "everruns-provider",
  "futures",
  "reqwest 0.13.4",

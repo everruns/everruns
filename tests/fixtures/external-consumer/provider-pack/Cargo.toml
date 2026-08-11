@@ -1,0 +1,18 @@
+[package]
+name = "external-provider-pack"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# A third-party provider driver built against the provider SPI ALONE
+# (EVE-874): no everruns, no everruns-core, no everruns-host. It implements
+# the `ChatDriver` contract, registers under an external `DriverId`, and
+# streams a scripted completion — proving custom providers need nothing but
+# `everruns-provider`.
+[dependencies]
+async-trait = "0.1"
+everruns-provider = { path = "../../../../crates/provider" }
+futures = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

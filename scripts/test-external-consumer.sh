@@ -9,6 +9,11 @@
 #                             `everruns-capability` contract ALONE (EVE-873),
 #                             so the open capability seams fail here if they
 #                             stop being usable without core/host access.
+#   external-provider-pack    implements the `ChatDriver` contract and driver
+#                             registration against the provider SPI
+#                             (`everruns-provider`) ALONE (EVE-874), so custom
+#                             downstream providers fail here if they stop
+#                             compiling without core/host access.
 #   external-event-log        implements the canonical `EventLog`/`EventReader`
 #                             SPI from `everruns-host` and supplies it to host
 #                             composition, so the SPI fails here if it stops
@@ -42,6 +47,11 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-capability-pack
 
 echo "External capability pack builds on the neutral everruns-capability contract under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-provider-pack
+
+echo "External provider pack builds on the provider SPI (everruns-provider) alone under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-event-log

@@ -1,8 +1,8 @@
 # Fireworks AI Provider Implementation
 # Decision: Fireworks AI serves open models (Llama, Qwen, DeepSeek, GLM, Kimi,
 # gpt-oss, ...) behind an OpenAI-compatible Chat Completions API. This crate
-# wraps the core Chat Completions protocol driver and adds Fireworks-specific
-# model discovery, which advertises rich capability metadata (supports_chat,
+# wraps the shared everruns-provider Chat Completions protocol driver and adds
+# Fireworks-specific model discovery, which advertises rich capability metadata (supports_chat,
 # supports_tools, supports_image_input, context_length).
 
 [package]
@@ -32,15 +32,14 @@ serde_json.workspace = true
 chrono.workspace = true
 
 # Internal dependencies
-# default-features = false sheds core's heavy optional subtrees
-# (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
-# need, keeping the dependency tree small. No version pin: this crate is not in
-# the publish set, so it follows the unpublished-crate convention (path only).
+# Provider SPI only (EVE-874): wire-protocol crates never depend on
+# everruns-core. Intentional optional features of everruns-provider (`openapi`
+# schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
+# No version pin: this crate is not in the publish set, so it follows the
+# unpublished-crate convention (path only).
 everruns-provider = { path = "../provider" }
 
 [dev-dependencies]
-# Integration tests use core's in-memory runtime + llmsim harness.
-everruns-core = { path = "../core" }
 # tokio powers `#[tokio::test]`; wiremock captures discovery requests;
 # futures drains the chat stream.
 tokio = { workspace = true, features = ["full", "test-util"] }
