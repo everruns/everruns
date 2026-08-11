@@ -2577,7 +2577,6 @@ pub async fn collect_capabilities_with_configs(
                     Some(inner) => inner,
                     None => capability.as_ref(),
                 };
-            let effective_id = effective.id();
             let delegation_target =
                 effective.delegation_target_with_config(cap_config.config_value());
 
@@ -3053,7 +3052,7 @@ mod tests {
 
     impl Capability for PromptToolFixture {
         fn id(&self) -> &str {
-            "stateless_todo_list"
+            "prompt_tool_fixture"
         }
         fn name(&self) -> &str {
             "Prompt Tool Fixture"
@@ -3066,6 +3065,23 @@ mod tests {
         }
         fn tools(&self) -> Vec<Box<dyn Tool>> {
             vec![Box::new(FixtureTool("write_todos"))]
+        }
+    }
+
+    struct SecondPromptFixture;
+
+    impl Capability for SecondPromptFixture {
+        fn id(&self) -> &str {
+            "second_prompt_fixture"
+        }
+        fn name(&self) -> &str {
+            "Second Prompt Fixture"
+        }
+        fn description(&self) -> &str {
+            "Fixture with a second static prompt."
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("A second capability prompt contribution.")
         }
     }
 
@@ -3173,6 +3189,7 @@ mod tests {
         registry.register(WebFetchFixture);
         registry.register(DynamicFactFixture);
         registry.register(PromptToolFixture);
+        registry.register(SecondPromptFixture);
         registry.register(DynamicPreviewFixture);
         registry
     }
@@ -3851,19 +3868,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_apply_capabilities_stateless_todo_list() {
+    async fn test_apply_capabilities_prompt_tool_fixture() {
         let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &["stateless_todo_list".to_string()],
+            &["prompt_tool_fixture".to_string()],
             &registry,
             &test_ctx(),
         )
         .await;
 
-        // StatelessTodoList has system prompt addition and 1 tool
+        // The fixture has a system prompt addition and one tool.
         assert!(
             applied
                 .runtime_agent
@@ -3883,12 +3900,12 @@ mod tests {
     async fn test_xml_tags_wrap_capability_prompts() {
         let registry = fixture_registry();
         let collected =
-            collect_capabilities(&["stateless_todo_list".to_string()], &registry, &test_ctx())
+            collect_capabilities(&["prompt_tool_fixture".to_string()], &registry, &test_ctx())
                 .await;
 
         assert_eq!(collected.system_prompt_parts.len(), 1);
         let part = &collected.system_prompt_parts[0];
-        assert!(part.starts_with("<capability id=\"stateless_todo_list\">"));
+        assert!(part.starts_with("<capability id=\"prompt_tool_fixture\">"));
         assert!(part.ends_with("</capability>"));
         assert!(part.contains("Task Management"));
     }
@@ -3897,7 +3914,10 @@ mod tests {
     async fn test_xml_tags_multiple_capabilities() {
         let registry = fixture_registry();
         let collected = collect_capabilities(
-            &["stateless_todo_list".to_string(), "budgeting".to_string()],
+            &[
+                "prompt_tool_fixture".to_string(),
+                "second_prompt_fixture".to_string(),
+            ],
             &registry,
             &test_ctx(),
         )
@@ -3905,9 +3925,12 @@ mod tests {
 
         assert_eq!(collected.system_prompt_parts.len(), 2);
         assert!(
-            collected.system_prompt_parts[0].starts_with("<capability id=\"stateless_todo_list\">")
+            collected.system_prompt_parts[0].starts_with("<capability id=\"prompt_tool_fixture\">")
         );
-        assert!(collected.system_prompt_parts[1].starts_with("<capability id=\"budgeting\">"));
+        assert!(
+            collected.system_prompt_parts[1]
+                .starts_with("<capability id=\"second_prompt_fixture\">")
+        );
 
         let prefix = collected.system_prompt_prefix().unwrap();
         // Both capability sections separated by double newline
@@ -3921,7 +3944,7 @@ mod tests {
 
         let applied = apply_capabilities(
             base,
-            &["stateless_todo_list".to_string()],
+            &["prompt_tool_fixture".to_string()],
             &registry,
             &test_ctx(),
         )
@@ -3930,7 +3953,7 @@ mod tests {
         let prompt = &applied.runtime_agent.system_prompt;
         assert!(prompt.starts_with("<system-prompt>\nYou are helpful.\n</system-prompt>"));
         // Capability wrapped
-        assert!(prompt.contains("<capability id=\"stateless_todo_list\">"));
+        assert!(prompt.contains("<capability id=\"prompt_tool_fixture\">"));
         assert!(prompt.contains("</capability>"));
         // Base prompt wrapped
         assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));

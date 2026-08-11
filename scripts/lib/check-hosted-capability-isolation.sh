@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-885): service-backed product capabilities live in
-# everruns-platform. Core owns only portable implementations and neutral
-# capability/tool/task/event/delegation contracts.
+# everruns-platform. Core owns only neutral capability/tool/task/event/
+# delegation contracts; portable policy implementations live in builtins.
 
 set -euo pipefail
 
@@ -55,4 +55,4 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-echo "Hosted capability isolation guard passed: core carries portable implementations and neutral contracts only."
+echo "Hosted capability isolation guard passed: hosted implementations stay in platform and core carries neutral contracts only."

@@ -29,6 +29,7 @@ async fn compaction_is_configured_without_checkpoint_store_types() {
         .expect("turn runs");
 }
 
+#[cfg(feature = "filesystem")]
 #[tokio::test]
 async fn real_workspace_seeding_and_context_inspection_use_framework_types() {
     let workspace = tempfile::tempdir().expect("workspace");
