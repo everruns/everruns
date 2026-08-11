@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-885): service-backed product capabilities live in
-# everruns-platform. Core owns only neutral capability/tool/task/event/
-# delegation contracts; portable policy implementations live in builtins.
+# Architecture guard (EVE-885, extended by EVE-886): service-backed product
+# capabilities live in everruns-platform. Core owns only neutral capability/
+# tool/task/event/delegation contracts; portable policy implementations live in
+# builtins.
 
 set -euo pipefail
 
@@ -15,6 +16,9 @@ HOSTED_MODULES=(
   citation_verification data_knowledge delegation_result knowledge_base
   knowledge_index memory model_scout monitors openrouter_workspace research
   session_schedule session_tasks subagents user_hooks
+  # EVE-886: the session-service family — each needs a session store, session
+  # key/value + secret storage, a SQL database, or a sandbox provider.
+  session session_sandbox session_sql_database session_storage
 )
 
 for module in "${HOSTED_MODULES[@]}"; do
@@ -31,7 +35,7 @@ for module in memory vector_store; do
   fi
 done
 
-HOSTED_DEFINITION_PATTERN='pub (struct|enum|trait) (KnowledgeStore|KnowledgeSearchHit|KnowledgeIndexSearch|VectorStore|Memory|MemoryConfig|MemoryStatus|SubagentCapability|AgentHandoffCapability|UserHooksCapability)([[:space:]<{(]|$)'
+HOSTED_DEFINITION_PATTERN='pub (struct|enum|trait) (KnowledgeStore|KnowledgeSearchHit|KnowledgeIndexSearch|VectorStore|Memory|MemoryConfig|MemoryStatus|SubagentCapability|AgentHandoffCapability|UserHooksCapability|SessionCapability|SessionStorageCapability|SessionSqlDatabaseCapability|SessionSandboxCapability)([[:space:]<{(]|$)'
 if matches=$(grep -rnE "$HOSTED_DEFINITION_PATTERN" crates/core/src --include='*.rs' 2>/dev/null); then
   echo "Hosted capability or service definitions must not be declared by everruns-core:"
   echo "$matches"
@@ -51,7 +55,7 @@ if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
 fi
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Hosted capability isolation guard failed. Product implementations and services belong in crates/platform (EVE-885)."
+  echo "Hosted capability isolation guard failed. Product implementations and services belong in crates/platform (EVE-885, EVE-886)."
   exit 1
 fi
 

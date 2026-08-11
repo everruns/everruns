@@ -1257,9 +1257,6 @@ impl CapabilityRegistry {
         // explicitly by tests and examples, never by product registries.
 
         // External integration plugins (registered via inventory::submit! in integration crates)
-        let internal_flags = &feature_decisions.internal;
-        if internal_flags.session_sandbox {}
-
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin

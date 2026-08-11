@@ -119,6 +119,15 @@ presets compose the hosted registry explicitly; the Framework preset does not
 advertise service-backed product capabilities. The capability-isolation guard
 keeps these implementations and their service contracts out of core.
 
+The session-service capabilities followed (EVE-886): `session`,
+`session_storage`, `session_sql_database` and `session_sandbox` each need a host
+service — a session store, key/value plus secret storage, a SQL database, or a
+sandbox provider — so they sit with the other service-backed families in
+`everruns-platform`. Composition, not the kernel, decides what a deployment
+advertises: product registration installs all four (sandbox behind its feature
+flag), and the host preset re-adds the two the default in-process runtime can
+serve, so the Framework still exposes session info and session storage.
+
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,
 `::error`, `::typed_id`, …), so application crates and embedders that import

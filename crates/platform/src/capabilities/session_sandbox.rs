@@ -814,7 +814,7 @@ impl Tool for SandboxManageTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::capabilities::{Capability, CapabilityRegistry};
+    use everruns_core::capabilities::Capability;
     use everruns_core::deployment::DeploymentGrade;
     use everruns_core::traits::ToolContext;
 

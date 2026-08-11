@@ -243,10 +243,10 @@ changes.
 
 All participating title mutation paths suppress no-ops and emit the typed
 `session.title.updated` semantic event after an actual change. Tool-originated
-mutations preserve the current turn correlation. Embedders can reuse the core
+mutations preserve the current turn correlation. Embedders can reuse the
 title-mutation helpers and project events through the runtime event bus without
 replacing the capability. See
-[`crates/core/src/capabilities/session.rs`](../../crates/core/src/capabilities/session.rs)
+[`crates/platform/src/capabilities/session.rs`](../../crates/platform/src/capabilities/session.rs)
 for the public config and helper APIs, and [`knowledge/execution/events.md`](events.md) for the
 event contract.
 
