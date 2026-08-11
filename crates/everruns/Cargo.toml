@@ -47,7 +47,6 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # independently gateable so the bare facade still compiles with
 # `--no-default-features`.
 capabilities = ["everruns-capability/definition", "dep:schemars", "dep:serde"]
-a2a = ["everruns-core/a2a"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.

@@ -1,3 +1,8 @@
+// The hosted product registry supplies both `background_execution` (EVE-885)
+// and the real background-capable `bashkit_shell` tool, so this file needs the
+// product's environment integrations compiled in.
+#![cfg(feature = "environment-capabilities")]
+
 // EVE-501: integration tests for the `background_execution` capability.
 //
 // These tests assemble the runtime tool set the same way the worker and the
@@ -12,12 +17,11 @@
 // suggested next layer; this test pins the contract that path depends on.
 
 use everruns_core::capabilities::{
-    AgentCapabilityConfig, BACKGROUND_EXECUTION_CAPABILITY_ID, CapabilityId, CapabilityRegistry,
-    SystemPromptContext, collect_capabilities_with_configs,
+    AgentCapabilityConfig, CapabilityId, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::tools::ToolRegistry;
 use everruns_core::typed_id::SessionId;
-use everruns_integrations_bashkit::BashkitShellCapability;
+use everruns_platform::capabilities::BACKGROUND_EXECUTION_CAPABILITY_ID;
 
 fn ctx() -> SystemPromptContext {
     SystemPromptContext::without_file_store(SessionId::new())
@@ -40,8 +44,7 @@ async fn assemble(
     Vec<everruns_core::tool_types::ToolDefinition>,
     Vec<String>,
 ) {
-    let mut registry = CapabilityRegistry::with_builtins();
-    registry.register(BashkitShellCapability);
+    let registry = everruns_platform::capabilities::hosted_capability_registry();
     let configs: Vec<AgentCapabilityConfig> = cap_ids.iter().map(|id| cap(id)).collect();
     let collected = collect_capabilities_with_configs(&configs, &registry, &ctx()).await;
 

@@ -22,7 +22,7 @@ anyhow.workspace = true
 tracing.workspace = true
 
 everruns-capability = { workspace = true }
-everruns-core = { path = "../core", features = ["a2a", "embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
 # Telemetry init (OTLP exporter + tracing-subscriber layers) — installed
 # explicitly by the worker binary; core no longer ships it (EVE-876).
 everruns-observability = { workspace = true }
@@ -30,7 +30,7 @@ everruns-observability = { workspace = true }
 # scenarios). `sim` only — the worker never links the demo fixture
 # capabilities; scripts/lib/check-test-support-isolation.sh guards this.
 everruns-test-support = { workspace = true, features = ["sim"] }
-everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities"] }
+everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "a2a"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-openai-image = { path = "../../integrations/openai-image" }

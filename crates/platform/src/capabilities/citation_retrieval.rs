@@ -3,7 +3,7 @@
 //! Turns the sources surfaced by `search_index` / `search_knowledge` into
 //! claim-level provenance on the assistant's answer. It contributes no tools of
 //! its own; instead it registers a post-generation annotation hook (see
-//! [`crate::annotation_hook`]) that, once the model has answered, scans the
+//! [`everruns_core::annotation_hook`]) that, once the model has answered, scans the
 //! turn's retrieval tool results, aligns each retrieved passage to the sentence
 //! it best supports, and attaches a [`TextAnnotation`] there. Alignment is
 //! deterministic token overlap — no extra model call, no text rewrite — so it is
@@ -19,13 +19,13 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::annotation_hook::{
+use everruns_core::annotation_hook::{
     AnnotationContext, AnnotationResult, PostGenerationAnnotationHook, citation_tokens,
     token_overlap_ratio,
 };
-use crate::capabilities::Capability;
-use crate::capability_types::CapabilityStatus;
-use crate::message::{AnnotationSource, ContentPart, Message, TextAnnotation};
+use everruns_core::capabilities::Capability;
+use everruns_core::capability_types::CapabilityStatus;
+use everruns_core::message::{AnnotationSource, ContentPart, Message, TextAnnotation};
 
 /// Canonical capability id.
 pub const CITATION_RETRIEVAL_CAPABILITY_ID: &str = "citation_retrieval";
@@ -343,7 +343,7 @@ fn split_sentences(text: &str) -> Vec<Sentence> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::{MessageRole, ToolCallContentPart, ToolResultContentPart};
+    use everruns_core::message::{MessageRole, ToolCallContentPart, ToolResultContentPart};
 
     fn tool_call_msg(call_id: &str, tool: &str) -> Message {
         let mut m = Message::assistant("");

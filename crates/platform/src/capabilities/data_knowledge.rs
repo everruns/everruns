@@ -152,7 +152,7 @@ impl Capability for DataKnowledgeCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capability_types::MountSource;
+    use everruns_core::capability_types::MountSource;
 
     // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 

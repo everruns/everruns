@@ -12,11 +12,14 @@
 // always fine.
 
 use everruns_core::capabilities::{
-    BudgetingCapability, Capability, DataKnowledgeCapability, InfinityContextCapability,
-    MemoryCapability, MessageMetadataCapability, SelfBudgetCapability, SessionSandboxCapability,
-    SkillsCapability, StatelessTodoListCapability, SubagentCapability, SystemPromptContext,
+    BudgetingCapability, Capability, InfinityContextCapability, MessageMetadataCapability,
+    SelfBudgetCapability, SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability,
+    SystemPromptContext,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_platform::capabilities::{
+    DataKnowledgeCapability, MemoryCapability, SubagentCapability,
+};
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
     let ctx = SystemPromptContext::without_file_store(SessionId::new());

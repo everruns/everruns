@@ -25,23 +25,25 @@ use super::delegation_result::{
 };
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode};
-use crate::session::SessionSeedMode;
-use crate::session_task::{
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, DelegationTargetProvider, RiskLevel,
+    SPAWN_AGENT_CONCURRENCY_CLASS, SpawnMode,
+};
+use async_trait::async_trait;
+use everruns_core::session::SessionSeedMode;
+use everruns_core::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
     TaskMessage, TaskWakePolicy, task_message_text,
 };
-use crate::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
-use crate::tool_types::ToolHints;
-use crate::tools::{
+use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{
     BackgroundRunPermit, Tool, ToolExecutionResult, try_acquire_background_run_permit,
 };
-use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
-use crate::typed_id::SessionId;
-use async_trait::async_trait;
+use everruns_core::traits::{SessionStore, SpawnClaimResult, ToolContext};
+use everruns_core::typed_id::SessionId;
 
-pub(crate) const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -103,7 +105,7 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 16,
-                    "default": crate::traits::DEFAULT_MAX_SUBAGENT_DEPTH,
+                    "default": everruns_core::traits::DEFAULT_MAX_SUBAGENT_DEPTH,
                     "description": "Maximum child depth allowed from a top-level session. Top-level sessions are depth 0; setting 0 blocks all subagent spawning."
                 },
                 "max_depth": {
@@ -116,7 +118,7 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 1024,
-                    "default": crate::traits::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
+                    "default": everruns_core::traits::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum non-terminal descendant subagent tasks allowed under one root session. Counts queued, running, and awaiting_input tasks."
                 },
                 "max_concurrent_descendant_tasks": {
@@ -129,21 +131,21 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 10000,
-                    "default": crate::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
+                    "default": everruns_core::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum descendant subagent task records allowed under one root session before rejecting new spawns."
                 },
                 "max_active_detached_tasks": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 1024,
-                    "default": crate::traits::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+                    "default": everruns_core::traits::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
                     "description": "Maximum non-terminal detached peer sessions allowed under one origin root session. Detached spawns reset depth but are still capped here so a loop cannot run unbounded (EVE-767)."
                 },
                 "max_total_detached_tasks": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 10000,
-                    "default": crate::traits::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+                    "default": everruns_core::traits::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
                     "description": "Maximum detached peer session task records allowed under one origin root session before rejecting new detached spawns."
                 }
             }
@@ -205,6 +207,13 @@ impl Capability for SubagentCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![]
     }
+
+    fn delegation_target_with_config(&self, _config: &Value) -> Option<DelegationTargetProvider> {
+        Some(DelegationTargetProvider {
+            target_type: "subagent",
+            tool: Box::new(SpawnSubagentAsAgentTool),
+        })
+    }
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth and root-tree task caps. Use blueprints for specialist tools/model.";
@@ -216,13 +225,13 @@ const PUSH_CONFIGS_SPEC_KEY: &str = "push_configs";
 const VALID_PUSH_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpawnLifetime {
+pub enum SpawnLifetime {
     Linked,
     Detached,
 }
 
 impl SpawnLifetime {
-    fn parse(arguments: &Value) -> Result<Self, ToolExecutionResult> {
+    pub fn parse(arguments: &Value) -> Result<Self, ToolExecutionResult> {
         match arguments.get("lifetime").and_then(Value::as_str) {
             None | Some("linked") => Ok(Self::Linked),
             Some("detached") => Ok(Self::Detached),
@@ -232,7 +241,7 @@ impl SpawnLifetime {
         }
     }
 
-    fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Linked => "linked",
             Self::Detached => "detached",
@@ -264,28 +273,30 @@ const BACKGROUND_HEARTBEAT_INTERVAL_SECS: u64 = 15;
 /// (paused / waiting_for_tool_results) so the watcher does not spin.
 const BACKGROUND_POLL_BACKOFF_SECS: u64 = 5;
 
-fn terminal_subagent_status(wait_status: &str) -> Option<crate::session::SubagentStatus> {
+fn terminal_subagent_status(wait_status: &str) -> Option<everruns_core::session::SubagentStatus> {
     match wait_status {
         // Plain `idle` only means the worker is ready for another turn — failed
         // turns also leave the session idle — so only explicit terminal
         // outcomes may settle the spawn handle and persist terminal metadata.
-        "completed" => Some(crate::session::SubagentStatus::Completed),
-        "error" | "failed" => Some(crate::session::SubagentStatus::Failed),
-        "cancelled" => Some(crate::session::SubagentStatus::Cancelled),
-        "max_iterations_reached" => Some(crate::session::SubagentStatus::MaxIterationsReached),
+        "completed" => Some(everruns_core::session::SubagentStatus::Completed),
+        "error" | "failed" => Some(everruns_core::session::SubagentStatus::Failed),
+        "cancelled" => Some(everruns_core::session::SubagentStatus::Cancelled),
+        "max_iterations_reached" => {
+            Some(everruns_core::session::SubagentStatus::MaxIterationsReached)
+        }
         // A sealed turn (no forward progress / budget exhausted) is terminal but
         // distinct from a failure — surface it so the parent can decide next steps.
-        "sealed" => Some(crate::session::SubagentStatus::Sealed),
+        "sealed" => Some(everruns_core::session::SubagentStatus::Sealed),
         _ => None,
     }
 }
 
 fn terminal_subagent_task_state(
-    subagent_status: &crate::session::SubagentStatus,
+    subagent_status: &everruns_core::session::SubagentStatus,
 ) -> SessionTaskState {
     match subagent_status {
-        crate::session::SubagentStatus::Completed => SessionTaskState::Succeeded,
-        crate::session::SubagentStatus::Cancelled => SessionTaskState::Canceled,
+        everruns_core::session::SubagentStatus::Completed => SessionTaskState::Succeeded,
+        everruns_core::session::SubagentStatus::Cancelled => SessionTaskState::Canceled,
         _ => SessionTaskState::Failed,
     }
 }
@@ -321,7 +332,7 @@ fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecut
                 "Each push_configs entry requires a string `url`.",
             ));
         };
-        if let Err(e) = crate::url_validation::validate_safe_url(url) {
+        if let Err(e) = everruns_core::url_validation::validate_safe_url(url) {
             return Err(ToolExecutionResult::tool_error(format!(
                 "Invalid push_configs url \"{url}\": {e}"
             )));
@@ -375,7 +386,7 @@ use super::util::{get_subagent_delegate, require_str_nonblank as require_str};
 
 fn get_session_store(
     context: &ToolContext,
-) -> Result<&dyn crate::traits::SessionStore, ToolExecutionResult> {
+) -> Result<&dyn everruns_core::traits::SessionStore, ToolExecutionResult> {
     context
         .session_store
         .as_ref()
@@ -387,7 +398,7 @@ fn get_session_store(
 
 async fn current_subagent_depth(
     session_store: &dyn SessionStore,
-    session: &crate::session::ExecutionSession,
+    session: &everruns_core::session::ExecutionSession,
     max_subagent_depth: u32,
 ) -> Result<u32, ToolExecutionResult> {
     let mut depth = 0_u32;
@@ -416,7 +427,7 @@ async fn current_subagent_depth(
 
 async fn root_session_for_subagent_tree(
     session_store: &dyn SessionStore,
-    session: &crate::session::ExecutionSession,
+    session: &everruns_core::session::ExecutionSession,
 ) -> Result<SessionId, ToolExecutionResult> {
     let mut root_id = session.id;
     let mut cursor = session.parent_session_id;
@@ -453,7 +464,7 @@ struct DescendantTaskCounts {
 }
 
 async fn descendant_subagent_task_counts(
-    registry: &dyn crate::session_task::SessionTaskRegistry,
+    registry: &dyn everruns_core::session_task::SessionTaskRegistry,
     root_session_id: SessionId,
     max_active: u32,
     max_total: u32,
@@ -497,7 +508,7 @@ async fn descendant_subagent_task_counts(
 
 async fn enforce_subagent_task_caps(
     session_store: &dyn SessionStore,
-    session: &crate::session::ExecutionSession,
+    session: &everruns_core::session::ExecutionSession,
     context: &ToolContext,
 ) -> Result<(), ToolExecutionResult> {
     let Some(registry) = context.session_task_registry.as_ref() else {
@@ -535,7 +546,7 @@ async fn enforce_subagent_task_caps(
 /// peers — are all attributed to the origin root. Only `session`-kind tasks are
 /// counted; subagent accounting is untouched.
 async fn descendant_detached_task_counts(
-    registry: &dyn crate::session_task::SessionTaskRegistry,
+    registry: &dyn everruns_core::session_task::SessionTaskRegistry,
     root_session_id: SessionId,
     max_active: u32,
     max_total: u32,
@@ -613,7 +624,7 @@ async fn enforce_detached_spawn_caps(
 
 async fn enforce_subagent_depth_cap(
     session_store: &dyn SessionStore,
-    session: &crate::session::ExecutionSession,
+    session: &everruns_core::session::ExecutionSession,
     context: &ToolContext,
 ) -> Result<(), ToolExecutionResult> {
     let max_subagent_depth = context.subagent_nesting_policy.max_subagent_depth();
@@ -630,7 +641,9 @@ async fn enforce_subagent_depth_cap(
 }
 
 /// Extract the last assistant/agent message content from a list of messages.
-fn last_agent_message(messages: &[crate::subagent_delegation::PlatformMessage]) -> Option<String> {
+fn last_agent_message(
+    messages: &[everruns_core::subagent_delegation::PlatformMessage],
+) -> Option<String> {
     messages
         .iter()
         .rfind(|m| m.role == "agent" || m.role == "assistant")
@@ -689,12 +702,12 @@ pub struct SpawnSubagentAsAgentTool;
 impl Tool for SpawnSubagentAsAgentTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_subagent_spawn(
+        Some(everruns_core::tool_narration::narrate_subagent_spawn(
             &tool_call.arguments,
             phase,
             locale,
@@ -1120,7 +1133,7 @@ async fn spawn_agent_subagent_impl(
 /// Immediate tool result for a background spawn: the child is running and the
 /// task record is the surface for progress and the final result.
 fn background_running_result(
-    child_id: crate::typed_id::SessionId,
+    child_id: everruns_core::typed_id::SessionId,
     name: &str,
     task_id: &Option<String>,
     blueprint_param: &Option<String>,
@@ -1151,7 +1164,7 @@ fn background_running_result(
 async fn spawn_create_and_wait(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    parent_session: &crate::session::ExecutionSession,
+    parent_session: &everruns_core::session::ExecutionSession,
     name: &str,
     goal: Option<&str>,
     instructions: &str,
@@ -1164,7 +1177,7 @@ async fn spawn_create_and_wait(
     lifetime: SpawnLifetime,
     seed: SessionSeedMode,
     settle_ctx: Option<(
-        &dyn crate::traits::SubagentSpawnStore,
+        &dyn everruns_core::traits::SubagentSpawnStore,
         &str,
         uuid::Uuid,
         uuid::Uuid,
@@ -1392,12 +1405,16 @@ async fn spawn_create_and_wait(
 async fn run_subagent_wait_and_settle(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    child_id: crate::typed_id::SessionId,
+    child_id: everruns_core::typed_id::SessionId,
     name: &str,
     _instructions: &str,
     blueprint_param: &Option<String>,
     task_id: Option<String>,
-    settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
+    settle_ctx: Option<(
+        &dyn everruns_core::traits::SubagentSpawnStore,
+        &str,
+        uuid::Uuid,
+    )>,
 ) -> ToolExecutionResult {
     // Foreground mode: wait for completion
     let status = match store.wait_for_idle(child_id, Some(300)).await {
@@ -1459,10 +1476,14 @@ async fn run_subagent_wait_and_settle(
 async fn settle_subagent_outcome(
     store: &dyn SubagentSessionDelegate,
     context: &ToolContext,
-    child_id: crate::typed_id::SessionId,
+    child_id: everruns_core::typed_id::SessionId,
     status: &str,
     task_id: Option<&str>,
-    settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
+    settle_ctx: Option<(
+        &dyn everruns_core::traits::SubagentSpawnStore,
+        &str,
+        uuid::Uuid,
+    )>,
 ) -> Result<String, ToolExecutionResult> {
     // Get the subagent's response messages
     let messages = match store.get_messages(child_id, Some(5)).await {
@@ -1535,7 +1556,7 @@ async fn settle_subagent_outcome(
 #[allow(clippy::too_many_arguments)]
 fn spawn_background_watcher(
     context: &ToolContext,
-    child_id: crate::typed_id::SessionId,
+    child_id: everruns_core::typed_id::SessionId,
     name: &str,
     first_message: Option<String>,
     task_id: Option<String>,
@@ -1640,7 +1661,7 @@ fn spawn_background_watcher(
                         claim_token,
                     ) {
                         (Some(spawn_store), Some(tool_call_id), Some(token)) => Some((
-                            spawn_store.as_ref() as &dyn crate::traits::SubagentSpawnStore,
+                            spawn_store.as_ref() as &dyn everruns_core::traits::SubagentSpawnStore,
                             tool_call_id.as_str(),
                             token,
                         )),
@@ -1751,14 +1772,14 @@ impl TaskExecutor for SubagentTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> crate::error::Result<()> {
+    ) -> everruns_core::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(crate::error::AgentLoopError::tool(
+            return Err(everruns_core::error::AgentLoopError::tool(
                 "subagent task delivery requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(crate::error::AgentLoopError::tool(format!(
+            return Err(everruns_core::error::AgentLoopError::tool(format!(
                 "subagent task {} has no child session link",
                 task.id
             )));
@@ -1767,14 +1788,18 @@ impl TaskExecutor for SubagentTaskExecutor {
         store.send_message(child_id, &text).await
     }
 
-    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+    async fn cancel(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> everruns_core::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(crate::error::AgentLoopError::tool(
+            return Err(everruns_core::error::AgentLoopError::tool(
                 "subagent task cancellation requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(crate::error::AgentLoopError::tool(format!(
+            return Err(everruns_core::error::AgentLoopError::tool(format!(
                 "subagent task {} has no child session link",
                 task.id
             )));
@@ -1796,7 +1821,7 @@ impl TaskExecutor for SubagentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> crate::error::Result<()> {
+    ) -> everruns_core::error::Result<()> {
         if task.state.is_terminal() {
             return Ok(());
         }
@@ -1823,7 +1848,9 @@ impl TaskExecutor for SubagentTaskExecutor {
         .await
         .map(|_| ())
         .map_err(|_| {
-            crate::error::AgentLoopError::tool("Failed to read subagent result during reconcile")
+            everruns_core::error::AgentLoopError::tool(
+                "Failed to read subagent result during reconcile",
+            )
         })
     }
 }
@@ -1848,7 +1875,11 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         TASK_KIND_SESSION
     }
 
-    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+    async fn cancel(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> everruns_core::error::Result<()> {
         let Some(registry) = context.session_task_registry.as_ref() else {
             return Ok(());
         };
@@ -1870,7 +1901,7 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
                 "Peer session cancellation requested; tracking settled canceled.".to_string()
             }
             (None, Some(_)) => {
-                return Err(crate::error::AgentLoopError::tool(
+                return Err(everruns_core::error::AgentLoopError::tool(
                     "detached session task cancellation requires platform_store context",
                 ));
             }
@@ -1904,8 +1935,8 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Tool;
-    use crate::session_task::{TaskMessageDirection, TaskMessagePart, task_result_path};
+    use everruns_core::Tool;
+    use everruns_core::session_task::{TaskMessageDirection, TaskMessagePart, task_result_path};
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -1922,35 +1953,37 @@ mod tests {
         assert_eq!(terminal_subagent_status("idle"), None);
         assert_eq!(
             terminal_subagent_status("completed"),
-            Some(crate::session::SubagentStatus::Completed)
+            Some(everruns_core::session::SubagentStatus::Completed)
         );
         assert_eq!(
             terminal_subagent_status("failed"),
-            Some(crate::session::SubagentStatus::Failed)
+            Some(everruns_core::session::SubagentStatus::Failed)
         );
         assert_eq!(
             terminal_subagent_status("cancelled"),
-            Some(crate::session::SubagentStatus::Cancelled)
+            Some(everruns_core::session::SubagentStatus::Cancelled)
         );
         assert_eq!(
             terminal_subagent_status("sealed"),
-            Some(crate::session::SubagentStatus::Sealed)
+            Some(everruns_core::session::SubagentStatus::Sealed)
         );
         assert_eq!(
-            terminal_subagent_task_state(&crate::session::SubagentStatus::Completed),
+            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Completed),
             SessionTaskState::Succeeded
         );
         // A sealed subagent settles as a terminal, non-retryable failed task.
         assert_eq!(
-            terminal_subagent_task_state(&crate::session::SubagentStatus::Sealed),
+            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Sealed),
             SessionTaskState::Failed
         );
         assert_eq!(
-            terminal_subagent_task_state(&crate::session::SubagentStatus::Cancelled),
+            terminal_subagent_task_state(&everruns_core::session::SubagentStatus::Cancelled),
             SessionTaskState::Canceled
         );
         assert_eq!(
-            terminal_subagent_task_state(&crate::session::SubagentStatus::MaxIterationsReached),
+            terminal_subagent_task_state(
+                &everruns_core::session::SubagentStatus::MaxIterationsReached
+            ),
             SessionTaskState::Failed
         );
         assert_eq!(terminal_subagent_status("waiting_for_tool_results"), None);
@@ -1959,7 +1992,8 @@ mod tests {
 
     #[test]
     fn subagent_nesting_policy_resolves_platform_org_agent_precedence() {
-        let platform = crate::traits::SubagentNestingPolicy::default().with_platform_default(4);
+        let platform =
+            everruns_core::traits::SubagentNestingPolicy::default().with_platform_default(4);
         assert_eq!(platform.max_subagent_depth(), 4);
 
         let org = platform.with_org_override(Some(3));
@@ -2008,14 +2042,14 @@ mod tests {
     // Spawn handle tests (EVE-535)
     // =========================================================================
 
-    use crate::traits::{NoopSubagentSpawnStore, SpawnClaimResult, SubagentSpawnStore};
+    use everruns_core::traits::{NoopSubagentSpawnStore, SpawnClaimResult, SubagentSpawnStore};
     use std::sync::Arc;
 
     /// NoopSubagentSpawnStore always returns Claimed with a fresh token.
     #[tokio::test]
     async fn noop_spawn_store_always_claims() {
         let store = NoopSubagentSpawnStore;
-        let parent = crate::typed_id::SessionId::new();
+        let parent = everruns_core::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
         let result = store
@@ -2033,8 +2067,8 @@ mod tests {
     #[tokio::test]
     async fn noop_spawn_store_register_and_settle_are_noops() {
         let store = NoopSubagentSpawnStore;
-        let parent = crate::typed_id::SessionId::new();
-        let child = crate::typed_id::SessionId::new();
+        let parent = everruns_core::typed_id::SessionId::new();
+        let child = everruns_core::typed_id::SessionId::new();
         let handle_id = uuid::Uuid::new_v4();
         let token = uuid::Uuid::new_v4();
 
@@ -2053,7 +2087,7 @@ mod tests {
     #[tokio::test]
     async fn arc_spawn_store_delegates() {
         let store: Arc<dyn SubagentSpawnStore> = Arc::new(NoopSubagentSpawnStore);
-        let parent = crate::typed_id::SessionId::new();
+        let parent = everruns_core::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
         let result = store
@@ -2069,32 +2103,39 @@ mod tests {
     // =========================================================================
 
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::session_file::SessionFile;
-    use crate::session_task::SessionTaskRegistry;
-    use crate::subagent_delegation::tests::MockSubagentDelegate;
-    use crate::traits::SessionFileSystem;
+    use crate::platform_store::tests::MockPlatformStore;
+    use crate::{PlatformStore, PlatformStoreSubagentDelegate};
     use chrono::Utc;
+    use everruns_core::session_file::SessionFile;
+    use everruns_core::session_task::SessionTaskRegistry;
+    use everruns_core::traits::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    fn delegate(
+        store: Arc<MockPlatformStore>,
+    ) -> Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate> {
+        Arc::new(PlatformStoreSubagentDelegate(store))
+    }
+
     /// SessionStore view over the mock platform store (depth-policy lookup).
-    struct MockSessionStore(Arc<MockSubagentDelegate>);
+    struct MockSessionStore(Arc<MockPlatformStore>);
 
     struct MockSessionCreationAuthority {
-        root: crate::typed_id::SessionId,
+        root: everruns_core::typed_id::SessionId,
         allowed: bool,
     }
 
     #[async_trait]
-    impl crate::traits::SessionCreationAuthority for MockSessionCreationAuthority {
+    impl everruns_core::traits::SessionCreationAuthority for MockSessionCreationAuthority {
         async fn authorize_session_creation(
             &self,
-            _session_id: crate::typed_id::SessionId,
-        ) -> crate::error::Result<crate::typed_id::SessionId> {
+            _session_id: everruns_core::typed_id::SessionId,
+        ) -> everruns_core::error::Result<everruns_core::typed_id::SessionId> {
             if self.allowed {
                 Ok(self.root)
             } else {
-                Err(crate::error::AgentLoopError::tool(
+                Err(everruns_core::error::AgentLoopError::tool(
                     "org:sessions:manage is required",
                 ))
             }
@@ -2102,29 +2143,36 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionStore for MockSessionStore {
+    impl everruns_core::traits::SessionStore for MockSessionStore {
         async fn get_session(
             &self,
-            session_id: crate::typed_id::SessionId,
-        ) -> crate::error::Result<Option<crate::session::ExecutionSession>> {
-            self.0.get_session_by_id(session_id).await
+            session_id: everruns_core::typed_id::SessionId,
+        ) -> everruns_core::error::Result<Option<everruns_core::session::ExecutionSession>>
+        {
+            // EVE-882: the store holds the platform record; execution sees the
+            // projected view.
+            Ok(self
+                .0
+                .get_session_by_id(session_id)
+                .await?
+                .map(|session| session.execution_session()))
         }
     }
 
     fn spawn_context(
-        store: &Arc<MockSubagentDelegate>,
+        store: &Arc<MockPlatformStore>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
     ) -> ToolContext {
         spawn_context_for_session(store, registry, store.session.id)
     }
 
     fn spawn_context_for_session(
-        store: &Arc<MockSubagentDelegate>,
+        store: &Arc<MockPlatformStore>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
-        session_id: crate::typed_id::SessionId,
+        session_id: everruns_core::typed_id::SessionId,
     ) -> ToolContext {
         let mut context = ToolContext::new(session_id);
-        context.subagent_delegate = Some(store.clone());
+        context.subagent_delegate = Some(delegate(store.clone()));
         context.session_store = Some(Arc::new(MockSessionStore(store.clone())));
         context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
             root: store.session.id,
@@ -2152,10 +2200,10 @@ mod tests {
     /// background watcher settles it from a detached tokio task).
     async fn wait_for_task_state(
         registry: &InMemorySessionTaskRegistry,
-        session_id: crate::typed_id::SessionId,
+        session_id: everruns_core::typed_id::SessionId,
         task_id: &str,
-        state: crate::session_task::SessionTaskState,
-    ) -> crate::session_task::SessionTask {
+        state: everruns_core::session_task::SessionTaskState,
+    ) -> everruns_core::session_task::SessionTask {
         for _ in 0..200 {
             let task = registry
                 .get(session_id, task_id)
@@ -2183,9 +2231,9 @@ mod tests {
 
         async fn read_file(
             &self,
-            session_id: crate::typed_id::SessionId,
+            session_id: everruns_core::typed_id::SessionId,
             path: &str,
-        ) -> crate::error::Result<Option<SessionFile>> {
+        ) -> everruns_core::error::Result<Option<SessionFile>> {
             let content = self
                 .files
                 .lock()
@@ -2209,11 +2257,11 @@ mod tests {
 
         async fn write_file(
             &self,
-            session_id: crate::typed_id::SessionId,
+            session_id: everruns_core::typed_id::SessionId,
             path: &str,
             content: &str,
             _encoding: &str,
-        ) -> crate::error::Result<SessionFile> {
+        ) -> everruns_core::error::Result<SessionFile> {
             self.files
                 .lock()
                 .unwrap()
@@ -2235,10 +2283,10 @@ mod tests {
 
         async fn delete_file(
             &self,
-            session_id: crate::typed_id::SessionId,
+            session_id: everruns_core::typed_id::SessionId,
             path: &str,
             _recursive: bool,
-        ) -> crate::error::Result<bool> {
+        ) -> everruns_core::error::Result<bool> {
             Ok(self
                 .files
                 .lock()
@@ -2249,49 +2297,51 @@ mod tests {
 
         async fn list_directory(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             _path: &str,
-        ) -> crate::error::Result<Vec<crate::session_file::FileInfo>> {
+        ) -> everruns_core::error::Result<Vec<everruns_core::session_file::FileInfo>> {
             Ok(vec![])
         }
 
         async fn stat_file(
             &self,
-            session_id: crate::typed_id::SessionId,
+            session_id: everruns_core::typed_id::SessionId,
             path: &str,
-        ) -> crate::error::Result<Option<crate::session_file::FileStat>> {
+        ) -> everruns_core::error::Result<Option<everruns_core::session_file::FileStat>> {
             let content = self
                 .files
                 .lock()
                 .unwrap()
                 .get(&(session_id.uuid(), path.to_string()))
                 .cloned();
-            Ok(content.map(|content| crate::session_file::FileStat {
-                path: path.to_string(),
-                name: path.rsplit('/').next().unwrap_or(path).to_string(),
-                is_directory: false,
-                is_readonly: false,
-                size_bytes: content.len() as i64,
-                created_at: Utc::now(),
-                updated_at: Utc::now(),
-            }))
+            Ok(
+                content.map(|content| everruns_core::session_file::FileStat {
+                    path: path.to_string(),
+                    name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                    is_directory: false,
+                    is_readonly: false,
+                    size_bytes: content.len() as i64,
+                    created_at: Utc::now(),
+                    updated_at: Utc::now(),
+                }),
+            )
         }
 
         async fn grep_files(
             &self,
-            _session_id: crate::typed_id::SessionId,
+            _session_id: everruns_core::typed_id::SessionId,
             _pattern: &str,
             _path_pattern: Option<&str>,
-        ) -> crate::error::Result<Vec<crate::session_file::GrepMatch>> {
+        ) -> everruns_core::error::Result<Vec<everruns_core::session_file::GrepMatch>> {
             Ok(vec![])
         }
 
         async fn create_directory(
             &self,
-            session_id: crate::typed_id::SessionId,
+            session_id: everruns_core::typed_id::SessionId,
             path: &str,
-        ) -> crate::error::Result<crate::session_file::FileInfo> {
-            Ok(crate::session_file::FileInfo {
+        ) -> everruns_core::error::Result<everruns_core::session_file::FileInfo> {
+            Ok(everruns_core::session_file::FileInfo {
                 id: uuid::Uuid::new_v4(),
                 session_id: session_id.uuid(),
                 path: path.to_string(),
@@ -2307,7 +2357,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_invalid_mode() {
-        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         let result = spawn(
             &context,
             json!({"name": "Runner", "instructions": "go", "mode": "asap"}),
@@ -2321,7 +2371,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_other_target_types() {
-        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         let result = SpawnSubagentAsAgentTool
             .execute_with_context(
                 json!({
@@ -2340,7 +2390,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_creates_subagent_task() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2372,7 +2422,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_creates_peer_session_task_with_goal_and_lineage() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2392,7 +2442,7 @@ mod tests {
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success, got {result:?}");
         };
-        let child_id: crate::typed_id::SessionId = value["subagent_id"]
+        let child_id: everruns_core::typed_id::SessionId = value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2430,7 +2480,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_requires_session_creation_authority_before_creation() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = spawn_context(&store, Some(registry));
         context.session_creation_authority = None;
@@ -2455,7 +2505,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_reports_permission_denial_before_creation() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let mut context = spawn_context(&store, Some(registry));
         context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
@@ -2484,10 +2534,10 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_bypasses_subagent_depth_guard() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+            everruns_core::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
         );
 
         let linked = spawn(
@@ -2517,7 +2567,7 @@ mod tests {
     // origin root so a loop of detached spawns cannot run unbounded (TM-DOS).
 
     fn session_task_under(
-        root: crate::typed_id::SessionId,
+        root: everruns_core::typed_id::SessionId,
         kind: &str,
         state: SessionTaskState,
     ) -> CreateSessionTask {
@@ -2529,7 +2579,7 @@ mod tests {
             spec: json!({}),
             state,
             links: TaskLinks {
-                child_session_id: Some(crate::typed_id::SessionId::new()),
+                child_session_id: Some(everruns_core::typed_id::SessionId::new()),
                 ..Default::default()
             },
             wake_policy: TaskWakePolicy::Silent,
@@ -2538,7 +2588,7 @@ mod tests {
 
     #[tokio::test]
     async fn detached_task_counts_ignore_subagent_and_terminal_active() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let root = store.session.id;
 
@@ -2592,10 +2642,10 @@ mod tests {
 
     #[tokio::test]
     async fn detached_spawn_rejected_at_cap_and_allowed_under_cap() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default()
+            everruns_core::traits::SubagentNestingPolicy::default()
                 .with_agent_detached_task_caps_override(Some(1), Some(4)),
         );
 
@@ -2630,10 +2680,10 @@ mod tests {
     async fn detached_cap_does_not_affect_linked_subagent_spawn() {
         // A root already at the detached ceiling must still allow linked
         // subagent spawns — the two budgets are independent (regression guard).
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default()
+            everruns_core::traits::SubagentNestingPolicy::default()
                 .with_agent_detached_task_caps_override(Some(1), Some(4)),
         );
         let root = store.session.id;
@@ -2672,10 +2722,10 @@ mod tests {
     async fn detached_session_task_cancel_requests_peer_cancellation() {
         // EVE-766: cancel_task on a detached-session task must cooperatively
         // cancel the peer session, not just detach the tracking chip.
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
-        let child_id = crate::typed_id::SessionId::new();
+        let child_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: context.session_id,
@@ -2730,7 +2780,7 @@ mod tests {
     async fn detached_session_task_cancel_without_peer_link_still_settles() {
         // Defensive: a session-kind task with no peer link has nothing to
         // signal, but the cancel intent must still be honored.
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
         let task = registry
@@ -2768,7 +2818,7 @@ mod tests {
     #[tokio::test]
     async fn detached_session_task_cancel_without_platform_store_fails_closed() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        let mut context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         context.session_task_registry = Some(registry.clone());
         let task = registry
             .create(CreateSessionTask {
@@ -2779,7 +2829,7 @@ mod tests {
                 spec: json!({}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(crate::typed_id::SessionId::new()),
+                    child_session_id: Some(everruns_core::typed_id::SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::Silent,
@@ -2808,7 +2858,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_allows_depth_two_and_rejects_depth_three_by_default() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let root_context = spawn_context(&store, Some(registry.clone()));
@@ -2821,7 +2871,7 @@ mod tests {
         let ToolExecutionResult::Success(first_value) = first else {
             panic!("expected first spawn success, got {first:?}");
         };
-        let b_id: crate::typed_id::SessionId = first_value["subagent_id"]
+        let b_id: everruns_core::typed_id::SessionId = first_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2836,7 +2886,7 @@ mod tests {
         let ToolExecutionResult::Success(second_value) = second else {
             panic!("expected second spawn success, got {second:?}");
         };
-        let c_id: crate::typed_id::SessionId = second_value["subagent_id"]
+        let c_id: everruns_core::typed_id::SessionId = second_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2860,9 +2910,9 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_depth_zero_restores_hard_block() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let mut context = spawn_context(&store, None).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+            everruns_core::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
         );
         context.session_task_registry = Some(Arc::new(InMemorySessionTaskRegistry::default()));
 
@@ -2883,11 +2933,11 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_rejects_when_active_descendant_cap_is_full() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default()
+            everruns_core::traits::SubagentNestingPolicy::default()
                 .with_agent_task_caps_override(Some(1), Some(200)),
         );
 
@@ -2921,10 +2971,10 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_counts_grandchildren_for_active_descendant_cap() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let policy = crate::traits::SubagentNestingPolicy::default()
+        let policy = everruns_core::traits::SubagentNestingPolicy::default()
             .with_agent_override(Some(4))
             .with_agent_task_caps_override(Some(2), Some(200));
         let root_context =
@@ -2938,7 +2988,7 @@ mod tests {
         let ToolExecutionResult::Success(first_value) = first else {
             panic!("expected first spawn success, got {first:?}");
         };
-        let b_id: crate::typed_id::SessionId = first_value["subagent_id"]
+        let b_id: everruns_core::typed_id::SessionId = first_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2954,7 +3004,7 @@ mod tests {
         let ToolExecutionResult::Success(second_value) = second else {
             panic!("expected second spawn success, got {second:?}");
         };
-        let c_id: crate::typed_id::SessionId = second_value["subagent_id"]
+        let c_id: everruns_core::typed_id::SessionId = second_value["subagent_id"]
             .as_str()
             .expect("subagent_id")
             .parse()
@@ -2979,11 +3029,11 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_total_descendant_cap_counts_terminal_tasks() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            crate::traits::SubagentNestingPolicy::default()
+            everruns_core::traits::SubagentNestingPolicy::default()
                 .with_agent_task_caps_override(Some(16), Some(1)),
         );
 
@@ -3042,7 +3092,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_stores_result_schema_on_task() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3085,9 +3135,10 @@ mod tests {
     async fn report_result_writes_result_file_and_updates_task() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let file_store = Arc::new(MemoryFileStore::default());
-        let parent_session_id = crate::typed_id::SessionId::new();
-        let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
-        let child_session_id = crate::typed_id::SessionId::new();
+        let parent_session_id = everruns_core::typed_id::SessionId::new();
+        let parent_workspace_id =
+            everruns_core::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3155,9 +3206,10 @@ mod tests {
     async fn report_result_rejects_terminal_task_without_overwriting_result() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let file_store = Arc::new(MemoryFileStore::default());
-        let parent_session_id = crate::typed_id::SessionId::new();
-        let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
-        let child_session_id = crate::typed_id::SessionId::new();
+        let parent_session_id = everruns_core::typed_id::SessionId::new();
+        let parent_workspace_id =
+            everruns_core::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3240,9 +3292,9 @@ mod tests {
     #[tokio::test]
     async fn report_result_rejects_invalid_result_schema_payload() {
         let tool = ReportResultTool::new(
-            crate::typed_id::SessionId::new(),
-            crate::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
-            crate::typed_id::SessionId::new(),
+            everruns_core::typed_id::SessionId::new(),
+            everruns_core::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
+            everruns_core::typed_id::SessionId::new(),
             "task_test".to_string(),
             json!({
                 "type": "object",
@@ -3270,7 +3322,7 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_agent_subagent_stores_message_schema_and_wakes_on_activity() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3307,7 +3359,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_posts_structured_outbound_message() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let parent_session_id = crate::typed_id::SessionId::new();
+        let parent_session_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3336,7 +3388,7 @@ mod tests {
             task.spec["message_schema"].clone(),
         );
         assert_eq!(tool.name(), "report_task_progress");
-        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        let mut context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         context.session_task_registry = Some(registry.clone());
 
         let result = tool
@@ -3364,7 +3416,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_rejects_stale_task_attempt() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let parent_session_id = crate::typed_id::SessionId::new();
+        let parent_session_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3399,7 +3451,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        let mut context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         context.session_task_registry = Some(registry.clone());
         let result = tool
             .execute_with_context(json!({"step": "late"}), &context)
@@ -3421,7 +3473,7 @@ mod tests {
     #[tokio::test]
     async fn report_task_progress_rejects_invalid_message_schema_payload() {
         let tool = ReportTaskProgressTool::new(
-            crate::typed_id::SessionId::new(),
+            everruns_core::typed_id::SessionId::new(),
             "task_test".to_string(),
             1,
             json!({
@@ -3457,13 +3509,13 @@ mod tests {
         // with the channel-facing `report_progress` tool. `ToolRegistry` is keyed
         // by name, so a collision would silently drop one tool. This guards the
         // rename against regressions: both tools must coexist in one registry.
-        use crate::progress_reporting::{
+        use everruns_core::progress_reporting::{
             REPORT_PROGRESS_TOOL_NAME, ReportProgressTool as ChannelReportProgressTool,
         };
-        use crate::tools::ToolRegistry;
+        use everruns_core::tools::ToolRegistry;
 
         let subagent = ReportTaskProgressTool::new(
-            crate::typed_id::SessionId::new(),
+            everruns_core::typed_id::SessionId::new(),
             "task_test".to_string(),
             1,
             json!({"type": "object"}),
@@ -3487,7 +3539,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_background_without_registry_errors() {
-        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::new());
         let result = spawn(
             &context,
             json!({"name": "Runner", "instructions": "go", "mode": "background"}),
@@ -3504,7 +3556,7 @@ mod tests {
 
     #[tokio::test]
     async fn default_mode_without_registry_degrades_to_foreground() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let context = spawn_context(&store, None);
         let result = spawn(&context, json!({"name": "Runner", "instructions": "go"})).await;
         let ToolExecutionResult::Success(value) = result else {
@@ -3518,7 +3570,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_spawn_returns_immediately_and_settles_task() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3547,12 +3599,12 @@ mod tests {
 
     #[tokio::test]
     async fn background_spawn_rejects_when_session_active_run_limit_reached() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "paused".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry));
 
-        for index in 0..crate::tools::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+        for index in 0..everruns_core::tools::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
             let result = spawn(
                 &context,
                 json!({
@@ -3585,7 +3637,7 @@ mod tests {
     async fn background_settles_bare_idle_as_completed() {
         // Local/embedded hosts run the child's turn synchronously inside
         // send_message and report a bare `idle`; the watcher must settle it.
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
@@ -3605,7 +3657,7 @@ mod tests {
 
     #[tokio::test]
     async fn background_failed_child_settles_task_failed() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "failed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3627,7 +3679,7 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_foreground_blocks_and_returns_result() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3655,12 +3707,12 @@ mod tests {
 
     #[tokio::test]
     async fn reconcile_settles_finished_child() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
 
-        let child_id = crate::typed_id::SessionId::new();
+        let child_id = everruns_core::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: context.session_id,
@@ -3694,7 +3746,7 @@ mod tests {
 
     #[tokio::test]
     async fn reconcile_is_noop_while_child_still_working() {
-        let store = Arc::new(MockSubagentDelegate::new());
+        let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "timeout (last status: Active)".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -3708,7 +3760,7 @@ mod tests {
                 spec: json!({"mode": "background"}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(crate::typed_id::SessionId::new()),
+                    child_session_id: Some(everruns_core::typed_id::SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::OnTerminal,

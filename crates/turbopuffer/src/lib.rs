@@ -1,13 +1,13 @@
 //! Turbopuffer vector-store backend for Knowledge Indexes.
 //!
-//! Implements [`everruns_core::vector_store::VectorStore`] against Turbopuffer's
+//! Implements [`everruns_platform::vector_store::VectorStore`] against Turbopuffer's
 //! v2 HTTP API (<https://turbopuffer.com/docs>). This is the reference
 //! production backend; the in-memory store stays the default and Turbopuffer is
 //! opt-in via `TURBOPUFFER_API_KEY` (see `crates/server/src/platform.rs`).
 //!
 //! Multitenancy and multi-index isolation are handled by the caller: each
 //! Knowledge Index gets one org-prefixed namespace (see
-//! [`everruns_core::vector_store::index_namespace`]), and this backend simply
+//! [`everruns_platform::vector_store::index_namespace`]), and this backend simply
 //! maps each namespace string onto a Turbopuffer namespace path segment.
 //!
 //! ## Error handling
@@ -18,7 +18,7 @@
 
 use anyhow::{Context, Result, bail};
 use async_trait::async_trait;
-use everruns_core::vector_store::{VectorMatch, VectorQuery, VectorRecord, VectorStore};
+use everruns_platform::vector_store::{VectorMatch, VectorQuery, VectorRecord, VectorStore};
 use serde::Deserialize;
 use serde_json::{Value, json};
 

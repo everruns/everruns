@@ -179,7 +179,7 @@ entries, kinds, raw types, tags, resources, and resolvable links.
 ## `data_knowledge` as OKF Consumer
 
 The `data_knowledge` capability mounts a readonly `/knowledge/{tables,business,
-queries}` scaffold (`crates/core/src/capabilities/data_knowledge.rs`). It is
+queries}` scaffold (`crates/platform/src/capabilities/data_knowledge.rs`). It is
 made an OKF consumer so the mounted tree *is* a conformant OKF bundle and the
 same content is portable:
 
@@ -255,7 +255,7 @@ knowledge. Implemented as a cross-crate slice:
   skipped — no existence leak) and calls `search_knowledge_entries`. Public
   org-id → internal id uses `org_internal_id_from_public`.
 * The tool on `KnowledgeBaseCapability::tools_with_config`
-  (`crates/core/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
+  (`crates/platform/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
   from config, unit-tested against a mock `KnowledgeStore`.
 * The embedded `InProcessRuntime` path is not yet wired (returns no store), so
   the tool is currently active on the server/worker execution path.

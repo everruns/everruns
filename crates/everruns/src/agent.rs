@@ -657,9 +657,9 @@ impl Agent {
             let registry = {
                 #[cfg(feature = "local")]
                 if self.local.is_some() {
-                    everruns_host::compose_runtime_capability_registry(
-                        everruns_core::CapabilityRegistry::with_builtins(),
-                    )
+                    // The local profile serves the hosted catalog from SQLite
+                    // (EVE-885), so validation and execution see one set.
+                    everruns_local::local_capability_registry()
                 } else {
                     everruns_host::runtime_capability_registry()
                 }
@@ -1088,9 +1088,7 @@ impl AgentBuilder {
         let capability_registry = {
             #[cfg(feature = "local")]
             if self.local.is_some() {
-                everruns_host::compose_runtime_capability_registry(
-                    everruns_core::CapabilityRegistry::with_builtins(),
-                )
+                everruns_local::local_capability_registry()
             } else {
                 everruns_host::runtime_capability_registry()
             }

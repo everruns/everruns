@@ -447,10 +447,6 @@ mod tests {
     fn test_from_core_populates_features() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        let schedule_cap = registry.get("session_schedule").unwrap();
-        let info = CapabilityInfo::from_core(schedule_cap.as_ref());
-        assert_eq!(info.features, vec!["schedules"]);
-
         let storage_cap = registry.get("session_storage").unwrap();
         let info = CapabilityInfo::from_core(storage_cap.as_ref());
         assert!(info.features.contains(&"secrets".to_string()));
@@ -506,9 +502,10 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // user_hooks is a core-owned High-risk policy capability.
-        let hooks_cap = registry.get("user_hooks").unwrap();
-        let info = CapabilityInfo::from_core(hooks_cap.as_ref());
+        // openrouter_server_tools is a core-owned High-risk capability
+        // (user_hooks moved to everruns-platform in EVE-885).
+        let server_tools_cap = registry.get("openrouter_server_tools").unwrap();
+        let info = CapabilityInfo::from_core(server_tools_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 
         // current_time is Low risk (default)

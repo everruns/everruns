@@ -2,16 +2,15 @@
 //! whenever the active tool set contains at least one built-in tool that opts
 //! into detached execution via `ToolHints::supports_background`.
 //!
-//! This capability is auto-activated by
-//! [`super::collect_capabilities_with_configs`] after the explicit-capability
-//! collection loop. It can also be selected explicitly by id
+//! This capability is auto-activated by core capability collection through the
+//! neutral [`Capability::auto_activates_for`] hook. It can also be selected explicitly by id
 //! (`"background_execution"`) — the auto-activator skips it in that case.
 //!
 //! See `knowledge/execution/background-execution.md` for the cross-cutting / meta-tool
 //! capability contract this implements.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tools::{SpawnBackgroundTool, Tool};
+use everruns_core::tools::{SpawnBackgroundTool, Tool};
 
 /// Capability id used by the auto-activator in
 /// `collect_capabilities_with_configs`.
@@ -63,21 +62,27 @@ impl Capability for BackgroundExecutionCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(SpawnBackgroundTool)]
     }
+
+    fn auto_activates_for(&self, tools: &[everruns_core::tool_types::ToolDefinition]) -> bool {
+        tools
+            .iter()
+            .any(|tool| tool.hints().supports_background == Some(true))
+    }
 }
 
 /// Task executor for `background_tool` tasks.
 pub struct BackgroundToolTaskExecutor;
 
 #[async_trait::async_trait]
-impl crate::session_task::TaskExecutor for BackgroundToolTaskExecutor {
+impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
     fn kind(&self) -> &str {
-        crate::session_task::TASK_KIND_BACKGROUND_TOOL
+        everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL
     }
 
     /// Re-attach when `spec["reattachable"]` is true (set at spawn time when
     /// the tool declared `idempotent` or `readonly` hints). Tools without this
     /// flag are still failed as orphaned so side-effecting runs are not doubled.
-    fn can_reattach_task(&self, task: &crate::session_task::SessionTask) -> bool {
+    fn can_reattach_task(&self, task: &everruns_core::session_task::SessionTask) -> bool {
         task.spec
             .get("reattachable")
             .and_then(|v| v.as_bool())
@@ -87,10 +92,10 @@ impl crate::session_task::TaskExecutor for BackgroundToolTaskExecutor {
     /// Re-execute the tool from spec after worker loss.
     async fn start(
         &self,
-        task: &crate::session_task::SessionTask,
-        context: &crate::traits::ToolContext,
-    ) -> crate::error::Result<()> {
-        crate::tools::reattach_background_run(task, context).await
+        task: &everruns_core::session_task::SessionTask,
+        context: &everruns_core::traits::ToolContext,
+    ) -> everruns_core::error::Result<()> {
+        everruns_core::tools::reattach_background_run(task, context).await
     }
 
     /// Cooperative cancellation: `cancel_task` records `cancel_requested_at`
@@ -99,15 +104,15 @@ impl crate::session_task::TaskExecutor for BackgroundToolTaskExecutor {
     /// polling design works even when this call executes on a different worker.
     async fn cancel(
         &self,
-        _task: &crate::session_task::SessionTask,
-        _context: &crate::traits::ToolContext,
-    ) -> crate::error::Result<()> {
+        _task: &everruns_core::session_task::SessionTask,
+        _context: &everruns_core::traits::ToolContext,
+    ) -> everruns_core::error::Result<()> {
         Ok(())
     }
 }
 
 inventory::submit! {
-    crate::session_task::TaskExecutorPlugin {
+    everruns_core::session_task::TaskExecutorPlugin {
         executor: || std::sync::Arc::new(BackgroundToolTaskExecutor),
     }
 }
@@ -120,15 +125,17 @@ mod tests {
 
     #[test]
     fn can_reattach_task_true_when_spec_reattachable_true() {
-        use crate::session_task::{SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy};
         use chrono::Utc;
+        use everruns_core::session_task::{
+            SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy,
+        };
 
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t1".to_string(),
-            session_id: crate::SessionId::new(),
+            session_id: everruns_core::SessionId::new(),
             root_session_id: None,
-            kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
+            kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "get_current_time", "reattachable": true }),
             state: SessionTaskState::Running,
@@ -143,7 +150,7 @@ mod tests {
             attempt: 1,
             worker_id: None,
             heartbeat_at: None,
-            links: crate::session_task::TaskLinks::default(),
+            links: everruns_core::session_task::TaskLinks::default(),
             wake_policy: TaskWakePolicy::Silent,
             created_at: Utc::now(),
             started_at: None,
@@ -155,15 +162,17 @@ mod tests {
 
     #[test]
     fn can_reattach_task_false_when_spec_reattachable_false() {
-        use crate::session_task::{SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy};
         use chrono::Utc;
+        use everruns_core::session_task::{
+            SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy,
+        };
 
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t2".to_string(),
-            session_id: crate::SessionId::new(),
+            session_id: everruns_core::SessionId::new(),
             root_session_id: None,
-            kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
+            kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "some_side_effecting_tool", "reattachable": false }),
             state: SessionTaskState::Running,
@@ -178,7 +187,7 @@ mod tests {
             attempt: 1,
             worker_id: None,
             heartbeat_at: None,
-            links: crate::session_task::TaskLinks::default(),
+            links: everruns_core::session_task::TaskLinks::default(),
             wake_policy: TaskWakePolicy::Silent,
             created_at: Utc::now(),
             started_at: None,
@@ -190,15 +199,17 @@ mod tests {
 
     #[test]
     fn can_reattach_task_false_when_spec_has_no_reattachable_field() {
-        use crate::session_task::{SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy};
         use chrono::Utc;
+        use everruns_core::session_task::{
+            SessionTask, SessionTaskState, TaskExecutor, TaskWakePolicy,
+        };
 
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t3".to_string(),
-            session_id: crate::SessionId::new(),
+            session_id: everruns_core::SessionId::new(),
             root_session_id: None,
-            kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
+            kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "old_task_without_reattachable_flag" }),
             state: SessionTaskState::Running,
@@ -213,7 +224,7 @@ mod tests {
             attempt: 1,
             worker_id: None,
             heartbeat_at: None,
-            links: crate::session_task::TaskLinks::default(),
+            links: everruns_core::session_task::TaskLinks::default(),
             wake_policy: TaskWakePolicy::Silent,
             created_at: Utc::now(),
             started_at: None,

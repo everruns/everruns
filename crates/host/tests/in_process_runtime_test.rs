@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use everruns_core::capabilities::{InfinityContextCapability, SessionTasksCapability};
+use everruns_core::capabilities::InfinityContextCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
@@ -12,6 +12,7 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
     SessionBuilder, TurnStopReason,
 };
+use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::LlmSimConfig;

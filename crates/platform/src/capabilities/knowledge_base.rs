@@ -14,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::knowledge_store::KnowledgeStoreExt;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 
 /// Stable string id for the knowledge base capability.
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
@@ -88,12 +89,12 @@ impl SearchKnowledgeTool {
 impl Tool for SearchKnowledgeTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_search_knowledge(
+        Some(everruns_core::tool_narration::narrate_search_knowledge(
             &tool_call.arguments,
             phase,
             locale,
@@ -147,7 +148,7 @@ impl Tool for SearchKnowledgeTool {
             return ToolExecutionResult::success(json!({ "count": 0, "results": [] }));
         }
 
-        let Some(store) = context.knowledge_store.as_ref() else {
+        let Some(store) = context.extension::<KnowledgeStoreExt>() else {
             return ToolExecutionResult::tool_error(
                 "Knowledge search is not available in this execution context",
             );
@@ -186,6 +187,7 @@ impl Tool for SearchKnowledgeTool {
             .unwrap_or(10);
 
         match store
+            .0
             .search_knowledge(
                 org_id,
                 &self.config.bases,
@@ -210,11 +212,11 @@ impl Tool for SearchKnowledgeTool {
         true
     }
 
-    fn deferrable_policy(&self) -> crate::tool_types::DeferrablePolicy {
+    fn deferrable_policy(&self) -> everruns_core::tool_types::DeferrablePolicy {
         // "Consult-first" tool: keep its full schema directly callable so the
         // model invokes it rather than routing through tool-search. See
         // knowledge/execution/tool-search.md (never-defer) and knowledge/runtime-resources/okf-adoption.md.
-        crate::tool_types::DeferrablePolicy::Never
+        everruns_core::tool_types::DeferrablePolicy::Never
     }
 }
 
@@ -460,8 +462,9 @@ mod tests {
 
     // --- search_knowledge tool ---
 
-    use crate::traits::{KnowledgeSearchHit, KnowledgeStore, ToolContext};
-    use crate::typed_id::{DEFAULT_ORG_ID, SessionId};
+    use crate::knowledge_store::{KnowledgeSearchHit, KnowledgeStore, KnowledgeStoreExt};
+    use everruns_core::traits::ToolContext;
+    use everruns_core::typed_id::{DEFAULT_ORG_ID, SessionId};
     use std::sync::Arc;
 
     struct MockKnowledgeStore {
@@ -472,13 +475,13 @@ mod tests {
     impl KnowledgeStore for MockKnowledgeStore {
         async fn search_knowledge(
             &self,
-            _org_id: crate::typed_id::OrgId,
+            _org_id: everruns_core::typed_id::OrgId,
             kb_public_ids: &[String],
             _query: &str,
             _kind: Option<&str>,
             _tags: &[String],
             _limit: usize,
-        ) -> crate::error::Result<Vec<KnowledgeSearchHit>> {
+        ) -> everruns_core::error::Result<Vec<KnowledgeSearchHit>> {
             if kb_public_ids.is_empty() {
                 Ok(Vec::new())
             } else {
@@ -506,7 +509,10 @@ mod tests {
             kinds: vec![],
         });
         let mut ctx = ToolContext::new(SessionId::new());
-        ctx.knowledge_store = Some(Arc::new(MockKnowledgeStore { hits: vec![hit()] }));
+        ctx.extensions
+            .insert(Arc::new(KnowledgeStoreExt(Arc::new(MockKnowledgeStore {
+                hits: vec![hit()],
+            }))));
         ctx.org_id = Some(DEFAULT_ORG_ID);
 
         let result = tool
@@ -528,7 +534,10 @@ mod tests {
     async fn search_tool_with_no_bases_returns_empty() {
         let tool = SearchKnowledgeTool::new(KnowledgeBaseConfig::default());
         let mut ctx = ToolContext::new(SessionId::new());
-        ctx.knowledge_store = Some(Arc::new(MockKnowledgeStore { hits: vec![hit()] }));
+        ctx.extensions
+            .insert(Arc::new(KnowledgeStoreExt(Arc::new(MockKnowledgeStore {
+                hits: vec![hit()],
+            }))));
         ctx.org_id = Some(DEFAULT_ORG_ID);
 
         let result = tool

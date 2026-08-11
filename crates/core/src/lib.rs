@@ -24,6 +24,12 @@
 //! `everruns-http`. Hosts select those edges explicitly instead of inheriting
 //! them from this contract crate.
 //!
+//! Hosted product capabilities — including Knowledge Bases and Indexes,
+//! Memories, delegation, schedules/tasks, user hooks, and platform management
+//! — live in `everruns-platform`. [`CapabilityRegistry::runtime_builtins`]
+//! intentionally does not advertise them. Core exposes only neutral collection
+//! hooks and type-keyed extension seams needed by hosts and capability crates.
+//!
 //! Deterministic simulation (the `llmsim` driver, the in-memory agentic
 //! loop, and demo fixture capabilities) lives in the `everruns-test-support`
 //! crate; core carries no test implementations.
@@ -109,7 +115,6 @@ pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
-pub mod memory;
 pub use everruns_provider::model;
 pub use everruns_provider::model_discovery;
 pub use everruns_provider::model_profiles;
@@ -140,7 +145,6 @@ pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
 pub mod task_observer;
-pub mod vector_store;
 pub mod wake_queue;
 pub mod workspace;
 pub mod workspace_policy;
@@ -195,9 +199,8 @@ pub mod platform_definition;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
-/// Narrow child-session delegation contract for portable subagent/handoff
-/// orchestration (EVE-839): core owns the interface, the platform crate
-/// implements it over `PlatformStore`.
+/// Narrow child-session delegation contract: core owns the host-neutral
+/// interface and a host adapter supplies the implementation.
 pub mod subagent_delegation;
 pub use everruns_provider::stream_accumulator;
 pub use everruns_provider::stream_reconnect;
@@ -395,8 +398,8 @@ pub use capabilities::{
     HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
     InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
     MountDirectoryBuilder, MountEntry, MountPoint, MountSource, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
-    OpenAiToolSearchCapability, QueryHistoryTool, ResearchCapability, ResolvedCapabilities,
-    RiskLevel, SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
+    OpenAiToolSearchCapability, QueryHistoryTool, ResolvedCapabilities, RiskLevel,
+    SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
     SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
     SqlSchemaTool, StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook,
     WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,

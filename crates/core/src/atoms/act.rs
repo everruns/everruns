@@ -335,12 +335,6 @@ where
         self
     }
 
-    /// Set the knowledge store on this atom (backs `search_knowledge`).
-    pub fn with_knowledge_store(mut self, store: Arc<dyn crate::traits::KnowledgeStore>) -> Self {
-        self.context_services.knowledge_store = Some(store);
-        self
-    }
-
     /// Set the provider credential store on this atom
     pub fn with_provider_credential_store(
         mut self,
@@ -410,15 +404,6 @@ where
         store: Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>,
     ) -> Self {
         self.context_services.subagent_delegate = Some(store);
-        self
-    }
-
-    /// Set the Knowledge Index search service for the `search_index` tool.
-    pub fn with_knowledge_index_search(
-        mut self,
-        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
-    ) -> Self {
-        self.context_services.knowledge_index_search = Some(search);
         self
     }
 

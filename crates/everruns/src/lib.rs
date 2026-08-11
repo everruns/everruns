@@ -5,6 +5,9 @@
 //! session identities, observe events, cancel work, and inspect the next model context
 //! without constructing an execution host. Default features stay offline; the
 //! deterministic simulator needs no credentials or network.
+//! The default registry advertises only portable capabilities; hosted
+//! knowledge, delegation, task, hook, and platform-management implementations
+//! require an explicit Everruns Platform host.
 //!
 //! `everruns` is the primary Rust library in the
 //! [Everruns](https://everruns.com) ecosystem. Ordinary applications begin

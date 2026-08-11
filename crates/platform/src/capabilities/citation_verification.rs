@@ -22,13 +22,13 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::annotation_hook::{
+use everruns_core::annotation_hook::{
     CitationVerifier, VerificationContext, citation_tokens, span_text, token_overlap_ratio,
 };
-use crate::capabilities::Capability;
-use crate::capability_types::CapabilityStatus;
-use crate::message::{TextAnnotation, VerificationStatus, VerificationVerdict};
-use crate::utility_llm::UtilityLlmRequest;
+use everruns_core::capabilities::Capability;
+use everruns_core::capability_types::CapabilityStatus;
+use everruns_core::message::{TextAnnotation, VerificationStatus, VerificationVerdict};
+use everruns_core::utility_llm::UtilityLlmRequest;
 
 /// Canonical capability id.
 pub const CITATION_VERIFICATION_CAPABILITY_ID: &str = "citation_verification";
@@ -227,7 +227,7 @@ fn heuristic_verdict(text: &str, ann: &TextAnnotation, threshold: f32) -> Verifi
 /// Ask the utility model to judge every claim/source pair in one call. Returns
 /// `None` on any transport/parse failure so the caller can fall back.
 async fn llm_verdicts(
-    svc: &Arc<dyn crate::UtilityLlmService>,
+    svc: &Arc<dyn everruns_core::UtilityLlmService>,
     text: &str,
     annotations: &[TextAnnotation],
 ) -> Option<Vec<VerificationVerdict>> {
@@ -301,7 +301,7 @@ fn extract_json_array(raw: &str) -> Option<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::message::AnnotationSource;
+    use everruns_core::message::AnnotationSource;
 
     fn annotation(start: usize, end: usize, snippet: &str) -> TextAnnotation {
         TextAnnotation {

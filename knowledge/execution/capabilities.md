@@ -146,25 +146,36 @@ Contract rules:
   step and CI job `capability-contract`) fails any new capability
   ID/config/definition type in core, host, or platform.
 
-The effect-neutral `Capability` trait and kernel built-ins remain in
+The effect-neutral `Capability` trait and portable built-ins remain in
 `everruns-core`. Environment-backed implementations are owned by focused
 sibling crates: filesystem, Bashkit, web fetch, Lua, OpenRouter workspace,
-MCP, and concrete HTTP. `scripts/lib/check-environment-capability-isolation.sh`
-guards that dependency direction and the Framework's opt-in feature edges.
+MCP, and concrete HTTP. Hosted product implementations and their service
+contracts live in `everruns-platform`.
+`scripts/lib/check-environment-capability-isolation.sh` and
+`scripts/lib/check-hosted-capability-isolation.sh` guard those dependency
+directions and the Framework's opt-in feature edges.
 
 ### Architecture
 
-Capability identity comes from **everruns-capability**. Effect-neutral built-ins
-and contracts live in **everruns-core**; environment implementations live in
-focused crates and are composed by the selected host:
+Capability identity/configuration comes from **everruns-capability**.
+Effect-neutral built-ins and contracts live in **everruns-core**; environment
+implementations live in focused crates; hosted implementations are layered by
+**everruns-platform**. All three resolve through the same registry contract
+and are composed by the selected host:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ everruns-capability + everruns-core                      │
 │  ┌─────────────────────────────────────────────────┐   │
-│  │ Identity/config + CapabilityRegistry/traits     │   │
-│  │ + effect-neutral built-in implementations       │   │
+│  │ CapabilityRegistry + neutral collection hooks   │   │
+│  │ + portable Capability implementations           │   │
 │  └─────────────────────────────────────────────────┘   │
+└───────────────────────────┬─────────────────────────────┘
+                            ↑ platform -> core
+┌─────────────────────────────────────────────────────────┐
+│                  everruns-platform                      │
+│ Hosted knowledge/delegation/task/management impls       │
+│ + narrow stores + product registry composition          │
 └───────────────────────────┬─────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -181,9 +192,9 @@ focused crates and are composed by the selected host:
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Core owns the registry and the implementations that need no environment edge.
+- Core owns the registry and the portable implementations that need no environment edge or product service.
 - `everruns-host::runtime_capability_registry()` adds feature-selected embedded integrations.
-- `everruns-platform::capabilities::hosted_capability_registry_for_grade()` adds the hosted integration catalog and platform-management capabilities.
+- `everruns-platform::capabilities::hosted_capability_registry_for_grade()` adds the hosted product catalog, the hosted integration catalog, and platform-management capabilities.
 - The API layer uses the hosted registry and converts it to response DTOs.
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
@@ -1065,11 +1076,11 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 
 1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for the neutral trait definition) in the crate that owns the implementation's effects.
 2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in that owner and return it from `fn id()` (see **Built-in Capability ID Constants** above).
-3. Re-export the constant and struct from the owning crate's public root.
+3. Re-export the constant and struct from the owning crate's public root: portable implementations from `everruns-core`, environment-backed ones from their integration crate, hosted/service-backed ones from `everruns-platform`.
 4. Choose the registry preset deliberately:
    - Register effect-neutral kernel capabilities in `CapabilityRegistry::runtime_builtins()` and/or `CapabilityRegistry::with_builtins_for_grade()`.
    - Register environment-backed embedded capabilities in `everruns_host::runtime_capability_registry()` behind a Cargo feature.
-   - Register environment-backed hosted capabilities through `everruns_platform::capabilities::hosted_capability_registry_for_grade()` and its explicit product feature set.
+   - Register hosted/service-backed capabilities through `everruns_platform::capabilities::register_hosted_capabilities()`, which `hosted_capability_registry_for_grade()` composes with the product feature set.
    - Use integration inventory registration for external integration crates that should appear only when their crate is linked.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 6. No database migration required — capability ID validated at runtime
@@ -1080,8 +1091,7 @@ Runtime-default eligibility is based on host services, not risk level. A high-ri
 capability may be runtime-usable when it runs entirely through runtime-provided
 services such as the session filesystem or egress service. A low-risk capability
 must still stay out of `runtime_builtins()` if its tools need optional services
-such as `platform_store`, `session_task_registry`, `schedule_store`, session SQL
-databases, provider credentials, or knowledge stores. See `knowledge/foundations/runtime.md` for
+such as platform, task, schedule, provider-credential, or knowledge stores. See `knowledge/foundations/runtime.md` for
 the embedded runtime contract.
 
 ### Capability Mount Points
@@ -1225,7 +1235,10 @@ Lifecycle rules for platform management:
 
 ##### Design Decision: Context-Aware Tools
 
-All platform management tools require session context to access the `PlatformStore`. Each tool implements `requires_context() -> true` and uses `execute_with_context()`. The `ToolContext` provides a `platform_store` field with the `PlatformStore` implementation.
+All platform management tools require session context to access the
+`PlatformStore`. Each tool implements `requires_context() -> true` and uses
+`execute_with_context()`. The host installs a typed `PlatformStoreExt` in the
+neutral `ToolContextExtensions` bag; core never names the hosted store.
 
 ##### Design Decision: UI Links
 
@@ -1241,7 +1254,10 @@ The `read_capabilities` tool enables agents (particularly the Platform Chat) to 
 
 ##### Design Decision: PlatformStore Trait
 
-The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management API. `DirectPlatformStore` (in `everruns-server`) implements it using the existing `StorageBackend` and `SessionService`. This keeps the capability in core while the implementation uses server-layer storage.
+The `PlatformStore` trait and its management capabilities live in
+`everruns-platform`. `DirectPlatformStore` (in `everruns-server`) implements it
+using the existing `StorageBackend` and `SessionService`; core carries only the
+type-keyed extension seam and the narrow neutral subagent delegate contract.
 
 ##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
 

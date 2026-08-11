@@ -1190,9 +1190,8 @@ mod tests {
     #[test]
     fn benchmark_prompt_size_reduction() {
         use crate::capabilities::{
-            Capability, CurrentTimeCapability, KnowledgeBaseCapability, KnowledgeIndexCapability,
-            SessionCapability, SessionStorageCapability, SkillsCapability,
-            StatelessTodoListCapability, SubagentCapability,
+            Capability, CurrentTimeCapability, SessionCapability, SessionStorageCapability,
+            SkillsCapability, StatelessTodoListCapability,
         };
 
         // A representative core surface. Environment-backed integration
@@ -1202,10 +1201,7 @@ mod tests {
             Box::new(SessionCapability),
             Box::new(SessionStorageCapability),
             Box::new(StatelessTodoListCapability),
-            Box::new(SubagentCapability),
             Box::new(SkillsCapability),
-            Box::new(KnowledgeBaseCapability),
-            Box::new(KnowledgeIndexCapability),
         ];
 
         let mut defs: Vec<ToolDefinition> = caps

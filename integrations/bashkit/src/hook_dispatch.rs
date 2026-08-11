@@ -945,32 +945,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn all_example_bundles_validate_against_user_hooks_schema() {
-        use crate::capabilities::{Capability, UserHooksCapability};
-
-        let dir = format!("{}/../../examples/hook-bundles", env!("CARGO_MANIFEST_DIR"));
-        let cap = UserHooksCapability;
-        let mut checked = 0;
-        for entry in std::fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-            let raw = std::fs::read_to_string(&path).unwrap();
-            let config: serde_json::Value = serde_json::from_str(&raw)
-                .unwrap_or_else(|e| panic!("{}: invalid JSON: {e}", path.display()));
-            cap.validate_config(&config).unwrap_or_else(|e| {
-                panic!("{}: failed user_hooks validation: {e}", path.display())
-            });
-            checked += 1;
-        }
-        assert!(
-            checked >= 6,
-            "expected to validate the shipped bundles, saw {checked}"
-        );
-    }
-
     #[tokio::test]
     async fn jq_can_read_payload_from_env_path() {
         // Smoke test for the documented `jq` workflow. We use a tiny

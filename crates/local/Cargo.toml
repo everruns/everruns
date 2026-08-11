@@ -27,7 +27,7 @@ libc = "0.2"
 # core feature surface as everruns-host.
 everruns-core.workspace = true
 everruns-host.workspace = true
-everruns-platform.workspace = true
+everruns-platform = { workspace = true, features = ["a2a"] }
 
 # Async
 tokio = { workspace = true, features = ["rt", "time", "sync"] }

@@ -470,6 +470,24 @@ jobs:
       - name: Check provider isolation
         run: bash scripts/lib/check-provider-isolation.sh
 
+  # Architecture guard (EVE-885): hosted knowledge, delegation, task, hook,
+  # and management capability implementations live in crates/platform. Core
+  # carries portable implementations and neutral contracts only.
+  hosted-capability-isolation:
+    name: Hosted Capability Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check hosted capability isolation
+        run: bash scripts/lib/check-hosted-capability-isolation.sh
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest

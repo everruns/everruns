@@ -1,11 +1,10 @@
-//! Narrow session-delegation contract for portable subagent/handoff orchestration.
+//! Narrow, host-neutral session-delegation contract.
 //!
-//! EVE-839: portable capabilities (`subagents`, `agent_handoff`) drive child
-//! sessions — create, message, wait, read — without depending on the full
-//! hosted [`PlatformStore`](https://docs.rs/everruns-platform) seam. They use
-//! this narrow, `everruns-core`-owned trait instead. The hosted platform crate
-//! implements it by delegating to its `PlatformStore`, so core carries no
-//! `PlatformStore` symbol while server/worker keep identical behavior.
+//! Hosted delegation capabilities drive child sessions — create, message,
+//! wait, read — through this narrow `everruns-core`-owned trait instead of the
+//! full hosted [`PlatformStore`](https://docs.rs/everruns-platform) seam. The
+//! platform crate implements it by delegating to `PlatformStore`, so core owns
+//! only the execution contract while server/worker keep identical behavior.
 //!
 //! The request/message DTOs live here (not in `everruns-platform`) because the
 //! trait signature needs them and core cannot depend on platform.
@@ -45,9 +44,9 @@ pub struct PlatformCreateSessionRequest {
     pub seed: SessionSeedMode,
 }
 
-/// The narrow set of child-session operations portable subagent orchestration
-/// needs. Implemented by the hosted platform adapter (over `PlatformStore`);
-/// carried on [`ToolContext`](crate::ToolContext) as an optional service.
+/// The narrow set of child-session operations a delegation provider needs.
+/// Implemented by a host adapter and carried on [`ToolContext`](crate::ToolContext)
+/// as an optional service.
 #[async_trait]
 pub trait SubagentSessionDelegate: Send + Sync {
     /// Look up an agent's execution definition by id (target validation for
@@ -105,7 +104,7 @@ pub mod tests {
     use crate::AgentCapabilityConfig;
     use crate::session::SessionExecutionState;
 
-    /// Mock [`SubagentSessionDelegate`] for portable subagent/handoff tests.
+    /// Mock [`SubagentSessionDelegate`] for neutral delegation-contract tests.
     ///
     /// Carries the same simulated harness/agent/session state the former
     /// `MockPlatformStore` provided, restricted to the narrow delegate surface

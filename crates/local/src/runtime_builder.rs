@@ -19,6 +19,19 @@ use everruns_host::{InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFi
 use crate::backends::LocalBackends;
 use crate::profile::LocalProfile;
 
+/// Capability registry for a local profile: the hosted product catalog whose
+/// services `LocalBackends` supplies from SQLite (EVE-885), plus whatever
+/// environment integrations this host selected (EVE-883).
+///
+/// Callers that assemble their own [`PlatformDefinition`] for a local profile
+/// should start here, so build-time capability validation sees the same set the
+/// local runtime executes.
+pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
+    everruns_host::compose_runtime_capability_registry(
+        everruns_platform::capabilities::hosted_capability_registry(),
+    )
+}
+
 /// Convenience wrapper around [`InProcessRuntimeBuilder`] that wires a local
 /// profile + SQLite-backed task/schedule stores and a workspace file store.
 pub struct LocalRuntimeBuilder {
@@ -133,9 +146,7 @@ impl LocalRuntimeBuilder {
                     ))
                 });
                 PlatformDefinition::builder()
-                    .capability_registry(everruns_host::compose_runtime_capability_registry(
-                        everruns_core::CapabilityRegistry::with_builtins(),
-                    ))
+                    .capability_registry(local_capability_registry())
                     .driver_registry(everruns_core::DriverRegistry::new())
                     .egress_service(everruns_host::runtime_egress_service())
                     .session_file_system_factory(factory)

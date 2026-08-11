@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use crate::session_task::{
+use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TASK_KIND_MONITOR, TaskExecutor, TaskExecutorPlugin,
 };
 
@@ -33,12 +33,12 @@ impl TaskExecutor for MonitorTaskExecutor {
     /// dangling enabled schedule is less harmful than leaving the task stuck.
     async fn cancel(
         &self,
-        task: &crate::session_task::SessionTask,
-        context: &crate::traits::ToolContext,
-    ) -> crate::error::Result<()> {
+        task: &everruns_core::session_task::SessionTask,
+        context: &everruns_core::traits::ToolContext,
+    ) -> everruns_core::error::Result<()> {
         // Attempt to cancel the linked schedule.
         if let Some(schedule_id_str) = task.spec.get("schedule_id").and_then(|v| v.as_str()) {
-            match crate::typed_id::ScheduleId::parse(schedule_id_str) {
+            match everruns_core::typed_id::ScheduleId::parse(schedule_id_str) {
                 Ok(schedule_id) => {
                     if let Some(ref store) = context.schedule_store
                         && let Err(e) = store.cancel_schedule(task.session_id, schedule_id).await
@@ -97,12 +97,12 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
-    use crate::session_schedule::SessionSchedule;
-    use crate::session_task::{
+    use everruns_core::session_schedule::SessionSchedule;
+    use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, TaskLinks, TaskWakePolicy,
     };
-    use crate::traits::{SessionScheduleStore, ToolContext};
-    use crate::typed_id::{ScheduleId, SessionId};
+    use everruns_core::traits::{SessionScheduleStore, ToolContext};
+    use everruns_core::typed_id::{ScheduleId, SessionId};
     use std::sync::{Arc, Mutex};
 
     // -------------------------------------------------------------------------
@@ -123,7 +123,7 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
             timezone: String,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             let _ = (
                 session_id,
                 description,
@@ -138,13 +138,13 @@ mod tests {
             &self,
             session_id: SessionId,
             schedule_id: ScheduleId,
-        ) -> crate::error::Result<SessionSchedule> {
+        ) -> everruns_core::error::Result<SessionSchedule> {
             self.canceled.lock().unwrap().push(schedule_id);
             // Return a minimal schedule so the call succeeds.
             Ok(SessionSchedule {
                 id: schedule_id,
                 session_id,
-                owner_principal_id: crate::typed_id::PrincipalId::new(),
+                owner_principal_id: everruns_core::typed_id::PrincipalId::new(),
                 resolved_owner_user_id: None,
                 owner: None,
                 effective_owner: None,
@@ -153,7 +153,7 @@ mod tests {
                 scheduled_at: None,
                 timezone: "UTC".into(),
                 enabled: false,
-                schedule_type: crate::session_schedule::ScheduleType::OneShot,
+                schedule_type: everruns_core::session_schedule::ScheduleType::OneShot,
                 next_trigger_at: None,
                 last_triggered_at: None,
                 trigger_count: 0,
@@ -165,18 +165,18 @@ mod tests {
         async fn count_active_schedules(
             &self,
             _session_id: SessionId,
-        ) -> crate::error::Result<u32> {
+        ) -> everruns_core::error::Result<u32> {
             Ok(0)
         }
 
-        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_core::error::Result<u32> {
             Ok(0)
         }
 
         async fn list_schedules(
             &self,
             _session_id: SessionId,
-        ) -> crate::error::Result<Vec<SessionSchedule>> {
+        ) -> everruns_core::error::Result<Vec<SessionSchedule>> {
             Ok(vec![])
         }
     }

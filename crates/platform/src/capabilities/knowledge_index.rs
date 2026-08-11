@@ -17,9 +17,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::knowledge_store::KnowledgeIndexSearchExt;
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 
 /// Stable string id for the knowledge index capability.
 pub const KNOWLEDGE_INDEX_CAPABILITY_ID: &str = "knowledge_index";
@@ -231,12 +232,12 @@ pub struct SearchIndexTool {
 impl Tool for SearchIndexTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_search_knowledge(
+        Some(everruns_core::tool_narration::narrate_search_knowledge(
             &tool_call.arguments,
             phase,
             locale,
@@ -342,7 +343,7 @@ impl Tool for SearchIndexTool {
             return ToolExecutionResult::success(json!({ "results": [] }));
         }
 
-        let Some(search) = context.knowledge_index_search.as_ref() else {
+        let Some(search) = context.extension::<KnowledgeIndexSearchExt>() else {
             return ToolExecutionResult::tool_error(
                 "Knowledge Index search is not available in this context. Ensure the \
                  knowledge_index capability is enabled with bound indexes.",
@@ -354,8 +355,12 @@ impl Tool for SearchIndexTool {
             );
         };
 
-        let org_internal = crate::organization::org_internal_id_from_public(org_id);
-        match search.search(org_internal, &index_ids, query, top_k).await {
+        let org_internal = everruns_core::organization::org_internal_id_from_public(org_id);
+        match search
+            .0
+            .search(org_internal, &index_ids, query, top_k)
+            .await
+        {
             Ok(citations) => match serde_json::to_value(&citations) {
                 Ok(results) => ToolExecutionResult::success(json!({ "results": results })),
                 Err(e) => ToolExecutionResult::internal_error_msg(format!(
@@ -472,8 +477,9 @@ mod tests {
         let cap = KnowledgeIndexCapability;
         let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
         let tool = &tools[0];
-        let ctx = ToolContext::new(crate::typed_id::SessionId::new())
-            .with_org_id(crate::typed_id::OrgId::from_uuid(uuid::Uuid::from_u128(1)));
+        let ctx = ToolContext::new(everruns_core::typed_id::SessionId::new()).with_org_id(
+            everruns_core::typed_id::OrgId::from_uuid(uuid::Uuid::from_u128(1)),
+        );
         let result = tool
             .execute_with_context(json!({ "query": "hello" }), &ctx)
             .await;
@@ -484,7 +490,7 @@ mod tests {
     async fn search_index_requires_query() {
         let cap = KnowledgeIndexCapability;
         let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
-        let ctx = ToolContext::new(crate::typed_id::SessionId::new());
+        let ctx = ToolContext::new(everruns_core::typed_id::SessionId::new());
         let result = tools[0]
             .execute_with_context(json!({ "query": "  " }), &ctx)
             .await;

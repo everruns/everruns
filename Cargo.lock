@@ -2546,9 +2546,6 @@ dependencies = [
 name = "everruns-core"
 version = "0.17.26"
 dependencies = [
- "a2a-client-lf",
- "a2a-lf",
- "a2a-server-lf",
  "anyhow",
  "async-trait",
  "axum",
@@ -3203,8 +3200,12 @@ version = "0.17.26"
 name = "everruns-platform"
 version = "0.17.26"
 dependencies = [
+ "a2a-client-lf",
+ "a2a-lf",
+ "a2a-server-lf",
  "anyhow",
  "async-trait",
+ "axum",
  "chrono",
  "everruns-core",
  "everruns-integrations-bashkit",
@@ -3212,14 +3213,17 @@ dependencies = [
  "everruns-integrations-lua",
  "everruns-integrations-openrouter-workspace",
  "everruns-integrations-web-fetch",
+ "futures",
  "include_dir",
  "inventory",
+ "jsonschema",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "url",
  "utoipa",
  "uuid 1.24.0",
  "wiremock",
@@ -3420,6 +3424,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "everruns-core",
+ "everruns-platform",
  "reqwest 0.13.4",
  "serde",
  "serde_json",

@@ -2271,7 +2271,13 @@ impl ServerAppBuilder {
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone())
-                .with_vector_store(platform_definition.vector_store())
+                .with_vector_store(
+                    platform_definition
+                        .extension::<everruns_platform::VectorStoreExt>()
+                        .expect("OSS platform definition installs a vector store")
+                        .0
+                        .clone(),
+                )
                 .with_org_rate_limiter(Arc::new(org_rate_limiter.clone()));
 
                 // Wire lazy connection resolver (requires encryption for token decryption).
@@ -2416,7 +2422,11 @@ impl ServerAppBuilder {
                 memory_connection_resolver,
                 provider_resolver.clone(),
                 driver_registry.clone(),
-                platform_definition.vector_store(),
+                platform_definition
+                    .extension::<everruns_platform::VectorStoreExt>()
+                    .expect("OSS platform definition installs a vector store")
+                    .0
+                    .clone(),
             ),
         );
 

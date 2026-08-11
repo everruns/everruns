@@ -52,6 +52,11 @@ contributes nothing until the selected host or plugin provides that
 implementation. This is not a function tool: ordinary functions remain on
 `AgentBuilder::tool` and `#[everruns::tool]`.
 
+The same rule applies to Everruns Platform capability IDs. The default
+Framework registry does not advertise or execute hosted knowledge, delegation,
+task, hook, or management capabilities. See
+[portable and hosted capabilities](/framework/capability-boundaries/).
+
 JSON capability config is not a credential store. Framework debug output
 redacts it, but a host may persist or inspect it; pass a provider-owned secret
 handle rather than API keys or tokens.
