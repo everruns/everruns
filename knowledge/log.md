@@ -2,6 +2,20 @@
 
 ## 2026-08-11
 
+* **Harness record extraction**: Moved the stored `Harness` persistence
+  record — lifecycle status, hierarchy identifiers, built-in flags, display
+  metadata, timestamps, chain-merge helpers — and the built-in provisioning
+  templates (`BuiltInHarnessDefinition`, roles) out of `everruns-core` into
+  `everruns-platform` (EVE-881, breaking for direct core consumers in 0.18).
+  Core keeps only the portable `HarnessDefinition` (effective environment
+  configuration); the `HarnessStore` loading seam resolves parent-chain
+  inheritance and enforces archived/deleted validation before host execution,
+  so hosts never request or receive a stored Harness. Built-in harness
+  composition moved off `PlatformDefinition` onto server composition
+  (`ServerAppBuilder::built_in_harnesses`). REST/gRPC and stored schema are
+  unchanged (OpenAPI byte-identical); the agent-record isolation guard now
+  also covers Harness records.
+
 * **Provider SPI separation completed**: Official wire-protocol provider
   crates no longer depend on `everruns-core` on any edge kind — the last
   dev-dependencies were removed and their tests now build fixtures in-crate

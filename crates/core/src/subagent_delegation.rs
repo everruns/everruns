@@ -12,13 +12,12 @@
 
 use crate::agent_definition::AgentDefinition;
 use crate::error::Result;
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::session::{Session, SessionParticipant, SessionSeedMode};
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 /// Simplified message representation for subagent/handoff result collection.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,32 +55,11 @@ pub trait SubagentSessionDelegate: Send + Sync {
     /// platform adapter (EVE-877).
     async fn get_agent_by_id(&self, id: AgentId) -> Result<Option<AgentDefinition>>;
 
-    /// Look up a harness by id (parent harness resolution).
-    async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
-
-    /// Resolve the inheritance chain (root-first) for a harness. Default impl
-    /// walks `parent_harness_id` via [`Self::get_harness`], guarding cycles.
-    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
-        let mut chain = Vec::new();
-        let mut current_id = Some(id);
-        let mut seen = HashSet::new();
-
-        while let Some(harness_id) = current_id {
-            if !seen.insert(harness_id) {
-                return Err(crate::error::AgentLoopError::tool(format!(
-                    "Harness inheritance cycle detected at {harness_id}"
-                )));
-            }
-            let Some(harness) = self.get_harness(harness_id).await? else {
-                return Ok(Vec::new());
-            };
-            current_id = harness.parent_harness_id;
-            chain.push(harness);
-        }
-
-        chain.reverse();
-        Ok(chain)
-    }
+    /// Look up a harness's effective (inheritance-resolved) execution
+    /// configuration by id. Parent-chain walking, cycle guarding, and the
+    /// stored persistence record stay behind the hosted platform adapter
+    /// (EVE-881).
+    async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>>;
 
     /// Add an agent as a member participant in an existing session.
     async fn add_agent_session_participant(
@@ -121,7 +99,6 @@ pub trait SubagentSessionDelegate: Send + Sync {
 pub mod tests {
     use super::*;
     use crate::AgentCapabilityConfig;
-    use crate::harness::HarnessStatus;
     use crate::session::{SessionParticipant, SessionStatus};
 
     /// Mock [`SubagentSessionDelegate`] for portable subagent/handoff tests.
@@ -130,8 +107,9 @@ pub mod tests {
     /// `MockPlatformStore` provided, restricted to the narrow delegate surface
     /// (EVE-839). The full hosted mock still lives in `everruns-platform`.
     pub struct MockSubagentDelegate {
-        pub harness: Harness,
-        pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
+        pub harness: HarnessDefinition,
+        pub extra_harnesses:
+            std::sync::Mutex<std::collections::HashMap<HarnessId, HarnessDefinition>>,
         pub agent: AgentDefinition,
         pub session: Session,
         pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
@@ -151,27 +129,9 @@ pub mod tests {
     impl MockSubagentDelegate {
         pub fn new() -> Self {
             Self {
-                harness: Harness {
-                    id: HarnessId::new(),
-                    name: "test-harness".to_string(),
-                    display_name: Some("Test Harness".to_string()),
-                    description: Some("test harness".to_string()),
-                    system_prompt: Some("You are helpful.".to_string()),
-                    parent_harness_id: None,
-                    default_model_id: None,
-                    tags: vec![],
+                harness: HarnessDefinition {
                     capabilities: vec![AgentCapabilityConfig::new("session")],
-                    initial_files: vec![],
-                    network_access: None,
-                    parallel_tool_calls: None,
-                    mcp_servers: Default::default(),
-                    embedder_metadata: Default::default(),
-                    is_built_in: false,
-                    status: HarnessStatus::Active,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                    archived_at: None,
-                    deleted_at: None,
+                    ..HarnessDefinition::new("test-harness", "You are helpful.")
                 },
                 extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: AgentDefinition {
@@ -302,7 +262,7 @@ pub mod tests {
             Ok(participant)
         }
 
-        async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
+        async fn get_harness(&self, id: HarnessId) -> Result<Option<HarnessDefinition>> {
             if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
                 return Ok(Some(harness));
             }

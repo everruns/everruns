@@ -13,10 +13,11 @@ use axum::{
     http::{HeaderMap, StatusCode},
     routing::get,
 };
-use everruns_core::{BuiltInHarnessDefinition, DEFAULT_ORG_ID, OrgRole};
+use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 use everruns_durable::UpdateField;
 use everruns_platform::{
-    AuditEvent, ManagementAction, Organization, generate_org_public_id, validate_org_public_id,
+    AuditEvent, BuiltInHarnessDefinition, ManagementAction, Organization, generate_org_public_id,
+    validate_org_public_id,
 };
 
 use super::common::{

@@ -2,8 +2,11 @@
 //!
 //! `PlatformDefinition` is the shared composition root for server and worker
 //! runtime surface. Embedders can add or remove capabilities, LLM drivers,
-//! connection providers, and built-in harness templates without patching
-//! internal startup code.
+//! and connection providers without patching internal startup code.
+//!
+//! Built-in harness provisioning templates are product composition, not
+//! Framework execution configuration; they moved to `everruns-platform`
+//! (EVE-881) and are wired by the server/platform layer.
 //!
 //! Server-only concerns such as route wiring, auth backends, and background
 //! task scheduling stay outside this module so the type can be reused from any
@@ -18,129 +21,17 @@ use crate::{
 };
 use std::sync::Arc;
 
-/// Stable role assigned to a built-in harness template.
-///
-/// Roles let the server resolve special harness behavior without assuming a
-/// specific harness name. For example, a platform can provide a base harness
-/// named "Minimal" and still mark it as the `Base` harness.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BuiltInHarnessRole {
-    /// Harness used when session creation omits `harness_id` and the org has no
-    /// explicit `base_harness_id` configured yet.
-    Base,
-    /// Harness selected as the default in organization settings when the org is
-    /// first initialized.
-    Default,
-    /// Harness used by the global chat endpoint.
-    Chat,
-}
-
-/// Capability entry for a built-in harness template.
-///
-/// This is the neutral [`everruns_capability::CapabilityRef`] under its
-/// historical provisioning name (EVE-873): built-in provisioning uses the
-/// same reference/config representation as persisted attachments and the
-/// Framework instead of a second semantic model.
-pub use crate::capability_types::AgentCapabilityConfig as BuiltInCapabilityDefinition;
-
-/// Built-in harness template provisioned by a platform definition.
-///
-/// Built-in harnesses are identified by `name` (unique per org). IDs are
-/// assigned by the seeder at provisioning time — never hardcoded.
-#[derive(Debug, Clone)]
-pub struct BuiltInHarnessDefinition {
-    /// Name, unique per org (e.g. "generic").
-    pub name: String,
-    /// Human-readable display name shown in UI.
-    pub display_name: String,
-    /// Human-readable description.
-    pub description: String,
-    /// Base system prompt for the harness.
-    pub system_prompt: String,
-    /// Optional parent harness name to inherit from during provisioning.
-    pub parent_name: Option<String>,
-    /// Tags applied to the harness.
-    pub tags: Vec<String>,
-    /// Capabilities enabled by default for the harness.
-    pub capabilities: Vec<BuiltInCapabilityDefinition>,
-    /// Special roles for platform behavior.
-    pub roles: Vec<BuiltInHarnessRole>,
-}
-
-impl BuiltInHarnessDefinition {
-    /// Create a built-in harness template.
-    pub fn new(
-        name: impl Into<String>,
-        display_name: impl Into<String>,
-        description: impl Into<String>,
-        system_prompt: impl Into<String>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            display_name: display_name.into(),
-            description: description.into(),
-            system_prompt: system_prompt.into(),
-            parent_name: None,
-            tags: Vec::new(),
-            capabilities: Vec::new(),
-            roles: Vec::new(),
-        }
-    }
-
-    /// Replace the harness tags.
-    pub fn with_tags<I, S>(mut self, tags: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.tags = tags.into_iter().map(Into::into).collect();
-        self
-    }
-
-    /// Set the parent harness name used for inheritance during provisioning.
-    pub fn with_parent_name(mut self, parent_name: impl Into<String>) -> Self {
-        self.parent_name = Some(parent_name.into());
-        self
-    }
-
-    /// Replace the harness capabilities.
-    pub fn with_capabilities<I>(mut self, capabilities: I) -> Self
-    where
-        I: IntoIterator<Item = BuiltInCapabilityDefinition>,
-    {
-        self.capabilities = capabilities.into_iter().collect();
-        self
-    }
-
-    /// Replace the harness roles.
-    pub fn with_roles<I>(mut self, roles: I) -> Self
-    where
-        I: IntoIterator<Item = BuiltInHarnessRole>,
-    {
-        self.roles = roles.into_iter().collect();
-        self
-    }
-
-    /// Check whether this harness has a specific role.
-    pub fn has_role(&self, role: BuiltInHarnessRole) -> bool {
-        self.roles.contains(&role)
-    }
-}
-
 /// Shared definition of the Everruns platform surface.
 ///
 /// `PlatformDefinition` lets an embedder decide which capabilities, LLM
-/// drivers, connection providers, built-in harness templates, and platform
-/// service factories exist at runtime. Server and worker code should consume
-/// the same definition so the control plane and execution plane stay aligned.
+/// drivers, connection providers, and platform service factories exist at
+/// runtime. Server and worker code should consume the same definition so the
+/// control plane and execution plane stay aligned.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use everruns_core::{
-///     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
-///     DriverRegistry, PlatformDefinition,
-/// };
+/// use everruns_core::{DriverRegistry, PlatformDefinition};
 ///
 /// let mut drivers = DriverRegistry::new();
 /// everruns_openai::register_driver(&mut drivers);
@@ -148,16 +39,6 @@ impl BuiltInHarnessDefinition {
 /// let platform = PlatformDefinition::builder()
 ///     .driver_registry(drivers)
 ///     .capability(everruns_core::CurrentTimeCapability)
-///     .add_built_in_harness(
-///         BuiltInHarnessDefinition::new(
-///             "minimal",
-///             "Minimal",
-///             "Small default harness for an embedded deployment.",
-///             "You are a helpful assistant.",
-///         )
-///         .with_roles([BuiltInHarnessRole::Base, BuiltInHarnessRole::Default])
-///         .with_capabilities([BuiltInCapabilityDefinition::new("current_time")]),
-///     )
 ///     .build();
 /// ```
 #[derive(Clone)]
@@ -165,7 +46,6 @@ pub struct PlatformDefinition {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     connectors: ConnectorRegistry,
-    built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     egress_service: Arc<dyn EgressService>,
     email_sender: Arc<dyn EmailSender>,
     utility_llm_service: Arc<dyn UtilityLlmService>,
@@ -180,7 +60,6 @@ impl PlatformDefinition {
             capability_registry,
             driver_registry,
             connectors: ConnectorRegistry::new(),
-            built_in_harnesses: Vec::new(),
             egress_service: Arc::new(crate::DirectEgressService::default()),
             email_sender: Arc::new(crate::DisabledEmailSender),
             utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
@@ -224,16 +103,6 @@ impl PlatformDefinition {
         &mut self.connectors
     }
 
-    /// Built-in harness templates provisioned by this platform.
-    pub fn built_in_harnesses(&self) -> &[BuiltInHarnessDefinition] {
-        &self.built_in_harnesses
-    }
-
-    /// Mutable access to the built-in harness templates.
-    pub fn built_in_harnesses_mut(&mut self) -> &mut Vec<BuiltInHarnessDefinition> {
-        &mut self.built_in_harnesses
-    }
-
     /// System-wide outbound network boundary.
     pub fn egress_service(&self) -> Arc<dyn EgressService> {
         self.egress_service.clone()
@@ -259,16 +128,6 @@ impl PlatformDefinition {
     pub fn vector_store(&self) -> Arc<dyn VectorStore> {
         self.vector_store.clone()
     }
-
-    /// Append a built-in harness template.
-    pub fn add_built_in_harness(&mut self, harness: BuiltInHarnessDefinition) {
-        self.built_in_harnesses.push(harness);
-    }
-
-    /// Find the first built-in harness with the requested role.
-    pub fn harness_for_role(&self, role: BuiltInHarnessRole) -> Option<&BuiltInHarnessDefinition> {
-        self.built_in_harnesses.iter().find(|h| h.has_role(role))
-    }
 }
 
 impl Default for PlatformDefinition {
@@ -279,12 +138,10 @@ impl Default for PlatformDefinition {
 
 impl std::fmt::Debug for PlatformDefinition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let harness_keys: Vec<_> = self.built_in_harnesses.iter().map(|h| &h.name).collect();
         f.debug_struct("PlatformDefinition")
             .field("capabilities", &self.capability_registry)
             .field("drivers", &self.driver_registry.registered_providers())
             .field("connectors", &self.connectors)
-            .field("built_in_harnesses", &harness_keys)
             .field("egress_service", &self.egress_service.name())
             .field("email_sender", &self.email_sender.name())
             .field("utility_llm_service", &self.utility_llm_service.name())
@@ -337,21 +194,6 @@ impl PlatformDefinitionBuilder {
     /// Register a connector on the platform.
     pub fn connector(mut self, provider: impl Connector + 'static) -> Self {
         self.platform.connectors.register(provider);
-        self
-    }
-
-    /// Replace the built-in harness templates.
-    pub fn built_in_harnesses<I>(mut self, harnesses: I) -> Self
-    where
-        I: IntoIterator<Item = BuiltInHarnessDefinition>,
-    {
-        self.platform.built_in_harnesses = harnesses.into_iter().collect();
-        self
-    }
-
-    /// Append a built-in harness template.
-    pub fn add_built_in_harness(mut self, harness: BuiltInHarnessDefinition) -> Self {
-        self.platform.built_in_harnesses.push(harness);
         self
     }
 
@@ -475,26 +317,10 @@ mod tests {
             .driver_registry(drivers.clone())
             .capability(CurrentTimeCapability)
             .connector(TestProvider)
-            .add_built_in_harness(
-                BuiltInHarnessDefinition::new(
-                    "minimal",
-                    "Minimal",
-                    "Minimal harness",
-                    "You are helpful.",
-                )
-                .with_roles([BuiltInHarnessRole::Base, BuiltInHarnessRole::Default]),
-            )
             .build();
 
         assert!(platform.capability_registry().has("current_time"));
         assert!(platform.connectors().has("test_provider"));
-        assert_eq!(
-            platform
-                .harness_for_role(BuiltInHarnessRole::Base)
-                .unwrap()
-                .name,
-            "minimal"
-        );
         assert!(
             platform
                 .driver_registry()
@@ -509,10 +335,6 @@ mod tests {
             .capability_registry_mut()
             .register(CurrentTimeCapability);
         platform.connectors_mut().register(TestProvider);
-        platform.add_built_in_harness(
-            BuiltInHarnessDefinition::new("chat", "Chat", "Chat harness", "You are helpful.")
-                .with_roles([BuiltInHarnessRole::Chat]),
-        );
 
         let info = crate::CapabilityInfo::from_core(
             platform
@@ -523,12 +345,5 @@ mod tests {
         );
         assert_eq!(info.status, CapabilityStatus::Available);
         assert!(platform.connectors().has("test_provider"));
-        assert_eq!(
-            platform
-                .harness_for_role(BuiltInHarnessRole::Chat)
-                .unwrap()
-                .name,
-            "chat"
-        );
     }
 }

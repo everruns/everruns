@@ -27,7 +27,7 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
 };
-use everruns_core::harness::Harness;
+use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
@@ -319,7 +319,7 @@ pub struct InProcessRuntimeBuilder {
     backends: Option<HostBackends>,
     workspace_policy: Option<everruns_core::WorkspacePolicy>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
-    harnesses: Vec<Harness>,
+    harnesses: Vec<crate::builders::SeededHarness>,
     agents: Vec<AgentDefinition>,
     sessions: Vec<Session>,
     default_session_id: Option<SessionId>,
@@ -517,8 +517,9 @@ impl InProcessRuntimeBuilder {
         self
     }
 
-    /// Seed a harness into the runtime store.
-    pub fn harness(mut self, harness: Harness) -> Self {
+    /// Seed a harness definition (under its embedder-chosen id) into the
+    /// runtime store.
+    pub fn harness(mut self, harness: crate::builders::SeededHarness) -> Self {
         self.harnesses.push(harness);
         self
     }
@@ -725,7 +726,10 @@ impl InProcessRuntimeBuilder {
         // compiled definition config so the capability resolution path can
         // deserialise them without a registry entry (same path as declarative:).
         for harness in &mut self.harnesses {
-            hydrate_plugin_refs(&mut harness.capabilities, &self.plugin_capability_configs);
+            hydrate_plugin_refs(
+                &mut harness.definition.capabilities,
+                &self.plugin_capability_configs,
+            );
         }
         for agent in &mut self.agents {
             hydrate_plugin_refs(&mut agent.capabilities, &self.plugin_capability_configs);
@@ -735,7 +739,10 @@ impl InProcessRuntimeBuilder {
         }
 
         for harness in &self.harnesses {
-            backends.harness_store.add_harness(harness.clone()).await?;
+            backends
+                .harness_store
+                .add_harness(harness.id, harness.definition.clone())
+                .await?;
         }
         for agent in &self.agents {
             backends.agent_store.add_agent(agent.clone()).await?;
@@ -920,13 +927,15 @@ impl InProcessRuntime {
         session: &Session,
         agent: Option<&AgentDefinition>,
     ) -> everruns_core::ScopedMcpServers {
-        let harness_chain = self
+        let harness = self
             .harness_store
-            .get_harness_chain(session.harness_id)
+            .get_harness(session.harness_id)
             .await
+            .ok()
+            .flatten()
             .unwrap_or_default();
         let resolved = resolve_runtime_capabilities(
-            &harness_chain,
+            &harness,
             agent,
             session,
             self.platform_definition.capability_registry(),
@@ -935,7 +944,7 @@ impl InProcessRuntime {
             &resolved.resolved_capability_configs,
             self.platform_definition.capability_registry(),
         );
-        let explicit = crate::mcp::merge_session_scoped_servers(&harness_chain, agent, session);
+        let explicit = crate::mcp::merge_session_scoped_servers(&harness, agent, session);
         everruns_core::merge_scoped_mcp_servers(&contributed, &explicit)
     }
     /// Create a builder for the in-process runtime.
@@ -1634,14 +1643,14 @@ impl RuntimeHostAdapter for InProcessRuntime {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,
         };
-        let harness_chain = self
+        let harness = self
             .harness_store
-            .get_harness_chain(session.harness_id)
-            .await?;
+            .get_harness(session.harness_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::harness_not_found(session.harness_id))?;
         // Platform projection: stored records stop here; execution receives
         // the canonical resolved value (EVE-872).
-        let snapshot =
-            ResolvedExecutionSnapshot::project(&harness_chain, agent.as_ref(), &session)?;
+        let snapshot = ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), &session)?;
         let messages = self.event_history.load(session_id).await?;
 
         // Discover tools from the session's scoped MCP servers so they appear
@@ -1777,14 +1786,14 @@ impl RuntimeHostAdapter for InProcessRuntime {
 }
 
 fn effective_overlay(
-    harness_chain: &[Harness],
+    harness: &HarnessDefinition,
     agent: Option<&AgentDefinition>,
     session: &Session,
 ) -> AgentConfigOverlay {
-    let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);
     let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
     AgentConfigOverlay::fold(
-        harness_layers
+        [AgentConfigOverlay::from(harness)]
+            .into_iter()
             .chain(agent_layers)
             .chain([AgentConfigOverlay::from(session)]),
     )
@@ -1828,13 +1837,15 @@ async fn seed_runtime_initial_files(
     file_store: &dyn SessionFileSystem,
     session: &Session,
 ) -> Result<()> {
-    let harness_chain = harness_store.get_harness_chain(session.harness_id).await?;
-    if harness_chain.is_empty() {
-        return Err(AgentLoopError::store(format!(
-            "harness not found while seeding files: {}",
-            session.harness_id
-        )));
-    }
+    let harness = harness_store
+        .get_harness(session.harness_id)
+        .await?
+        .ok_or_else(|| {
+            AgentLoopError::store(format!(
+                "harness not found while seeding files: {}",
+                session.harness_id
+            ))
+        })?;
     let agent = match session.agent_id {
         Some(agent_id) => Some(
             agent_store
@@ -1844,7 +1855,7 @@ async fn seed_runtime_initial_files(
         ),
         None => None,
     };
-    let overlay = effective_overlay(&harness_chain, agent.as_ref(), session);
+    let overlay = effective_overlay(&harness, agent.as_ref(), session);
     // Seed into the session's workspace (a shared workspace differs from the
     // session id; the default 1:1 case is equal).
     let seed_key = SessionId::from_uuid(session.workspace_id.uuid());

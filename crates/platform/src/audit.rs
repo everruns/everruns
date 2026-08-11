@@ -468,7 +468,7 @@ impl<T: HasAuditTargetId> HasAuditTargetId for Vec<T> {
 }
 
 // Domain type implementations
-impl HasAuditTargetId for everruns_core::Harness {
+impl HasAuditTargetId for crate::harness::Harness {
     fn audit_target_id(&self) -> Option<String> {
         Some(self.id.to_string())
     }

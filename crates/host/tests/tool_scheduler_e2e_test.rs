@@ -17,8 +17,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel,
-    Session, ToolCall,
+    AgentDefinition, CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel, Session,
+    ToolCall,
 };
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
@@ -151,10 +151,9 @@ fn platform_with_recording(log: Arc<Mutex<SchedLog>>) -> PlatformDefinition {
     PlatformDefinition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> Harness {
+fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("sched", "You are a scheduler test assistant.")
         .id(harness_id)
-        .display_name("Scheduler Test")
         .capability(TEST_CAPABILITY_ID)
         .build()
 }

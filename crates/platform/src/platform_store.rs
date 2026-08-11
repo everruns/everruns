@@ -7,11 +7,11 @@
 
 use crate::agent::Agent;
 use crate::app::{App, AppChannel, ChannelType};
+use crate::harness::{Harness, resolve_execution_harness};
 use async_trait::async_trait;
 use everruns_core::SessionContextReport;
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::Result;
-use everruns_core::harness::Harness;
 use everruns_core::session::{Session, SessionParticipant, SessionSeedMode};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
@@ -367,11 +367,14 @@ impl everruns_core::subagent_delegation::SubagentSessionDelegate for PlatformSto
             .await?
             .map(|agent| agent.definition()))
     }
-    async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
-        self.0.get_harness(id).await
-    }
-    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
-        self.0.get_harness_chain(id).await
+    async fn get_harness(&self, id: HarnessId) -> Result<Option<everruns_core::HarnessDefinition>> {
+        // EVE-881: the delegate surfaces the effective (inheritance-resolved)
+        // execution configuration; the stored chain stays behind this adapter.
+        let chain = self.0.get_harness_chain(id).await?;
+        if chain.is_empty() {
+            return Ok(None);
+        }
+        resolve_execution_harness(&chain, id).map(Some)
     }
     async fn add_agent_session_participant(
         &self,
@@ -415,8 +418,8 @@ pub mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};
     use crate::app::{App, AppChannel, AppStatus, ChannelType};
+    use crate::harness::HarnessStatus;
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::harness::{Harness, HarnessStatus};
     use everruns_core::session::{Session, SessionStatus};
 
     /// Mock PlatformStore for unit tests.

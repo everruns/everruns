@@ -3,7 +3,6 @@
 // Decision: Shared module in core so both workers and activities don't
 // duplicate harness/agent status checks and error messages.
 
-use crate::HarnessStatus;
 use crate::error::Result;
 use crate::traits::{AgentStore, HarnessStore};
 use crate::typed_id::{AgentId, HarnessId};
@@ -51,14 +50,11 @@ pub async fn detect_dependency_blocker(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
 ) -> Result<Option<DependencyBlocker>> {
-    let harness_chain = harness_store.get_harness_chain(harness_id).await?;
-    match harness_chain.last() {
-        Some(leaf) => match leaf.status {
-            HarnessStatus::Active => {}
-            HarnessStatus::Archived => return Ok(Some(DependencyBlocker::HarnessArchived)),
-            HarnessStatus::Deleted => return Ok(Some(DependencyBlocker::HarnessDeleted)),
-        },
-        None => return Ok(Some(DependencyBlocker::HarnessDeleted)),
+    // EVE-881: lifecycle status lives on the stored platform record, so hosted
+    // stores answer the availability probe from their own status column instead
+    // of exposing the record here.
+    if let Some(blocker) = harness_store.get_harness_blocker(harness_id).await? {
+        return Ok(Some(blocker));
     }
 
     if let Some(agent_id) = agent_id {

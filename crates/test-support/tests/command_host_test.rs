@@ -18,7 +18,7 @@ use everruns_core::AgentDefinition;
 
 use chrono::Utc;
 use everruns_core::driver_registry::LlmStreamEvent;
-use everruns_core::harness::{Harness, HarnessStatus};
+use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     InMemorySessionStore,
@@ -56,28 +56,10 @@ async fn disabled_host_errors_clearly() {
     assert!(error.to_string().contains("streaming"));
 }
 
-fn test_harness(harness_id: HarnessId) -> Harness {
-    Harness {
-        id: harness_id,
-        name: "h".into(),
-        display_name: None,
-        description: None,
-        system_prompt: Some("You are a test harness.".into()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
+fn test_harness() -> HarnessDefinition {
+    HarnessDefinition {
         capabilities: vec![everruns_core::AgentCapabilityConfig::new("test_math")],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
+        ..HarnessDefinition::new("h", "You are a test harness.")
     }
 }
 
@@ -144,7 +126,7 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
     let session_id: SessionId = "session_000000000000000000000000000000a1".parse().unwrap();
 
     let harness_store = InMemoryHarnessStore::new();
-    harness_store.add_harness(test_harness(harness_id)).await;
+    harness_store.add_harness(harness_id, test_harness()).await;
     let agent_store = InMemoryAgentStore::new();
     agent_store.add_agent(test_agent(agent_id)).await;
     let session_store = InMemorySessionStore::new();

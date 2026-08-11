@@ -2500,7 +2500,10 @@ mod tests {
                 "test store does not add participants",
             ))
         }
-        async fn get_harness(&self, _id: HarnessId) -> crate::Result<Option<crate::Harness>> {
+        async fn get_harness(
+            &self,
+            _id: HarnessId,
+        ) -> crate::Result<Option<crate::HarnessDefinition>> {
             Ok(None)
         }
         async fn create_session_with_options(

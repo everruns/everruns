@@ -21,10 +21,11 @@ use test_harness::TestServer;
 use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{
-    DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport, SessionFile,
+    DEFAULT_ORG_ID, Model, PrincipalId, Session, SessionContextReport, SessionFile,
 };
 use everruns_durable::UpdateField;
 use everruns_platform::Agent;
+use everruns_platform::Harness;
 use everruns_server::storage::models::{
     CreateAgentRow, CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings,
     UpdateSession,

@@ -23,8 +23,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, EventData, Harness, HarnessStatus, MountFs, Session, SessionStatus,
-    ToolCall, WorkspaceRootSet,
+    AgentCapabilityConfig, EventData, HarnessDefinition, MountFs, Session, SessionStatus, ToolCall,
+    WorkspaceRootSet,
 };
 use everruns_host::{
     InMemorySessionFileStore, RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter,
@@ -113,12 +113,12 @@ impl RuntimeHostAdapter for NarrationTestHost {
             .get_session(session_id)
             .await?
             .expect("session exists");
-        let harness_chain = self
+        let harness = self
             .harness_store
-            .get_harness_chain(session.harness_id)
-            .await?;
-        let snapshot =
-            everruns_core::ResolvedExecutionSnapshot::project(&harness_chain, None, &session)?;
+            .get_harness(session.harness_id)
+            .await?
+            .expect("harness exists");
+        let snapshot = everruns_core::ResolvedExecutionSnapshot::project(&harness, None, &session)?;
         Ok(ResolvedTurnInputs {
             snapshot,
             messages: self.message_store.load(session_id).await?,
@@ -167,28 +167,10 @@ impl RuntimeHostAdapter for NarrationTestHost {
     }
 }
 
-fn harness(harness_id: HarnessId) -> Harness {
-    Harness {
-        id: harness_id,
-        name: "files".into(),
-        display_name: Some("Files".into()),
-        description: None,
-        system_prompt: None,
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
+fn harness() -> HarnessDefinition {
+    HarnessDefinition {
         capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
+        ..HarnessDefinition::new("files", "")
     }
 }
 
@@ -358,7 +340,7 @@ async fn mounted_real_disk_list_directory_narration_uses_workspace_paths() {
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    host.harness_store.add_harness(harness(harness_id)).await;
+    host.harness_store.add_harness(harness_id, harness()).await;
     host.session_store
         .insert(session(session_id, harness_id))
         .await;
@@ -385,7 +367,7 @@ async fn mount_fs_list_directory_narration_matches_results() {
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    host.harness_store.add_harness(harness(harness_id)).await;
+    host.harness_store.add_harness(harness_id, harness()).await;
     host.session_store
         .insert(session(session_id, harness_id))
         .await;
@@ -408,7 +390,7 @@ async fn in_memory_list_directory_narration_keeps_workspace_alias() {
 
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    host.harness_store.add_harness(harness(harness_id)).await;
+    host.harness_store.add_harness(harness_id, harness()).await;
     host.session_store
         .insert(session(session_id, harness_id))
         .await;
@@ -461,7 +443,7 @@ async fn named_mount_narration_preserves_mount_path() {
     );
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    host.harness_store.add_harness(harness(harness_id)).await;
+    host.harness_store.add_harness(harness_id, harness()).await;
     host.session_store
         .insert(session(session_id, harness_id))
         .await;
@@ -482,7 +464,7 @@ async fn list_directory_root_inputs_narrate_display_root() {
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
-    host.harness_store.add_harness(harness(harness_id)).await;
+    host.harness_store.add_harness(harness_id, harness()).await;
     host.session_store
         .insert(session(session_id, harness_id))
         .await;

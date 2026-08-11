@@ -95,7 +95,7 @@ pub mod credential_provider;
 pub use everruns_provider::credential_schema;
 pub mod eval;
 pub mod events;
-pub mod harness;
+pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
@@ -360,10 +360,11 @@ pub use connector::{
     Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorRegistry, ConnectorRegistryBuilder,
     ConnectorType, ConnectorValidation, FieldType, FormField,
 };
-pub use platform_definition::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, PlatformDefinition,
-    PlatformDefinitionBuilder,
-};
+// EVE-881: `BuiltInHarnessDefinition`, `BuiltInHarnessRole`, and
+// `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —
+// product provisioning templates are platform/server composition, not
+// Framework execution configuration.
+pub use platform_definition::{PlatformDefinition, PlatformDefinitionBuilder};
 pub use session_sandbox::{
     DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SESSION_SANDBOX_CAPABILITY_ID,
     SESSION_SANDBOX_SECRET_NAME, SessionSandboxConfig, SessionSandboxExecRequest,
@@ -483,7 +484,11 @@ pub use guardrail_checks::{
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
 };
-pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
+// EVE-881: the stored `Harness` persistence record, its lifecycle enum, the
+// chain-merge helpers, and the built-in provisioning templates moved to the
+// `everruns-platform` crate. Core keeps only the portable harness execution
+// configuration consumed during a turn.
+pub use harness_definition::HarnessDefinition;
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };

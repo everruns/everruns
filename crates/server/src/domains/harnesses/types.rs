@@ -6,9 +6,8 @@
 use std::collections::HashMap;
 
 use everruns_core::typed_id::{HarnessId, ModelId};
-use everruns_core::{
-    AgentCapabilityConfig, HarnessStatus, InitialFile, ScopedMcpServers, ToolDefinition,
-};
+use everruns_core::{AgentCapabilityConfig, InitialFile, ScopedMcpServers, ToolDefinition};
+use everruns_platform::HarnessStatus;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

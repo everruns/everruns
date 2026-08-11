@@ -25,7 +25,7 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    AgentDefinition, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
+    AgentDefinition, HarnessDefinition, Message, MessageFilter, MessageRole, Session,
     SessionParticipant, SessionStatus,
 };
 // EVE-877: the stored Agent record moved to `everruns-platform`; the gRPC wire
@@ -35,7 +35,9 @@ use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
     proto_struct_to_json,
 };
-use everruns_platform::Agent;
+// EVE-881: the stored Harness record likewise lives in `everruns-platform`;
+// the gRPC wire carries the pre-merged record between server and worker.
+use everruns_platform::{Agent, Harness, HarnessStatus};
 use std::sync::Arc;
 use tokio::sync::{Mutex, OnceCell};
 use tonic::service::interceptor::InterceptedService;
@@ -1454,10 +1456,38 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
 
 #[async_trait]
 impl HarnessStore for GrpcOrgAdapter {
-    async fn get_harness_chain(
+    async fn get_harness(
         &self,
         harness_id: everruns_core::HarnessId,
-    ) -> Result<Vec<Harness>> {
+    ) -> Result<Option<HarnessDefinition>> {
+        // Loading seam (EVE-881): the server pre-merges the inheritance chain;
+        // project the transported record into the portable execution
+        // definition, failing archived/deleted records here.
+        self.fetch_harness_record(harness_id)
+            .await?
+            .map(|harness| harness.execution_definition())
+            .transpose()
+    }
+
+    async fn get_harness_blocker(
+        &self,
+        harness_id: everruns_core::HarnessId,
+    ) -> Result<Option<everruns_core::DependencyBlocker>> {
+        Ok(match self.fetch_harness_record(harness_id).await? {
+            Some(harness) => harness.dependency_blocker(),
+            None => Some(everruns_core::DependencyBlocker::HarnessDeleted),
+        })
+    }
+}
+
+impl GrpcOrgAdapter {
+    /// Fetch the stored (pre-merged) harness record off the wire
+    /// (platform-side transport; projected to `HarnessDefinition` before it
+    /// reaches host execution).
+    pub(crate) async fn fetch_harness_record(
+        &self,
+        harness_id: everruns_core::HarnessId,
+    ) -> Result<Option<Harness>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetHarnessRequest {
@@ -1470,13 +1500,9 @@ impl HarnessStore for GrpcOrgAdapter {
             .await
             .map_err(grpc_status_to_error)?;
 
-        // gRPC returns a pre-merged harness; wrap as single-element chain
         match response.into_inner().harness {
-            Some(proto_harness) => {
-                let harness = proto_harness_to_harness(proto_harness)?;
-                Ok(vec![harness])
-            }
-            None => Ok(vec![]),
+            Some(proto_harness) => Ok(Some(proto_harness_to_harness(proto_harness)?)),
+            None => Ok(None),
         }
     }
 }

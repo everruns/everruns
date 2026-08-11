@@ -520,7 +520,7 @@ pub fn schema_agent_to_proto(value: &everruns_platform::Agent) -> proto::Agent {
 }
 
 /// Convert schemas Harness to proto Harness
-pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness {
+pub fn schema_harness_to_proto(value: &everruns_platform::Harness) -> proto::Harness {
     proto::Harness {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         name: value.name.clone(),
@@ -555,7 +555,7 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
 /// Convert proto Harness to schemas Harness
 pub fn proto_harness_to_schema(
     value: proto::Harness,
-) -> Result<everruns_core::Harness, ConversionError> {
+) -> Result<everruns_platform::Harness, ConversionError> {
     // EVE-652: a missing harness id previously became "" (opaque downstream
     // failure); surface the precise MissingField instead.
     let id_str = value

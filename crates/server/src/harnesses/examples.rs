@@ -9,7 +9,7 @@
 //!   examples whose required capabilities are missing are hidden, matching
 //!   agent examples behaviour.
 
-use everruns_core::BuiltInHarnessDefinition;
+use everruns_platform::BuiltInHarnessDefinition;
 
 use super::{coding_container, coding_daytona, data_analyst};
 

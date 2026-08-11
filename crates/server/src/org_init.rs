@@ -20,11 +20,11 @@ use crate::storage::{
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use everruns_core::{
-    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, HarnessId,
-    PluginMarketplaceId,
-};
+use everruns_core::{HarnessId, PluginMarketplaceId};
 use everruns_durable::UpdateField;
+use everruns_platform::{
+    BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 

@@ -1,7 +1,6 @@
 //! Base harness — empty, no capabilities. Blank canvas for custom configurations.
 
-use everruns_core::{BuiltInHarnessDefinition, BuiltInHarnessRole};
-
+use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "base",

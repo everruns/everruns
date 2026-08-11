@@ -6,10 +6,10 @@ use crate::storage::{
 };
 use crate::{max_iterations, org_init};
 use everruns_core::config_layer::AgentConfigOverlay;
-use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{SessionScheduleStore, SessionStorageStore, ToolContext};
 use everruns_core::{AgentCapabilityConfig, HarnessId, SessionId, SessionTask, from_json};
+use everruns_platform::{Harness, HarnessStatus};
 use std::collections::HashSet;
 use std::sync::Arc;
 

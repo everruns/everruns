@@ -177,28 +177,29 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         // They are projected into the canonical resolved execution snapshot
         // here, at the platform boundary, so host execution never sees them
         // (EVE-872). The control plane returns the harness pre-merged, so the
-        // chain is a single element and precedence folds identically to the
-        // in-process runtime.
+        // effective definition folds identically to the in-process runtime.
         let context = self
             .adapters
             .load_turn_context(org_id, session_id.uuid())
             .await?;
-        let harness_chain: Vec<_> = self
+        // Loading seam (EVE-877/EVE-881): project the stored records into the
+        // portable execution definitions; archived/deleted harnesses and
+        // agents fail here, before the snapshot is built.
+        let harness_definition = self
             .adapters
             .get_harness(org_id, context.session.harness_id.uuid())
             .await?
-            .into_iter()
-            .collect();
-        // Loading seam (EVE-877): project the stored record into the portable
-        // execution definition; archived/deleted agents fail here, before the
-        // snapshot is built.
+            .ok_or_else(|| {
+                everruns_core::AgentLoopError::harness_not_found(context.session.harness_id)
+            })?
+            .execution_definition()?;
         let agent_definition = context
             .agent
             .as_ref()
             .map(|agent| agent.execution_definition())
             .transpose()?;
         let snapshot = ResolvedExecutionSnapshot::project(
-            &harness_chain,
+            &harness_definition,
             agent_definition.as_ref(),
             &context.session,
         )?;

@@ -11,36 +11,43 @@ pub use everruns_core::driver_registry::{
 };
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
-    HarnessStatus, ModelId, PrincipalId, ScopedMcpServers, Session, SessionId, SessionStatus,
+    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, HarnessDefinition,
+    HarnessId, ModelId, PrincipalId, ScopedMcpServers, Session, SessionId, SessionStatus,
     ToolDefinition, plugin_capability_id,
 };
 
-/// Builds a [`Harness`] with runtime-friendly defaults.
+/// A portable harness definition seeded under an embedder-chosen id.
 ///
-/// Use this when embedding Everruns directly and seeding a harness in code.
-/// IDs and timestamps are generated at [`build`](Self::build) time unless
-/// explicitly set.
+/// EVE-881: the Framework host carries no stored Harness persistence records.
+/// The definition itself is id-free neutral configuration; the id exists only
+/// to key the association with sessions (`Session::harness_id`).
+#[derive(Debug, Clone)]
+pub struct SeededHarness {
+    /// Id sessions reference via `harness_id`.
+    pub id: HarnessId,
+    /// Portable execution configuration seeded under `id`.
+    pub definition: HarnessDefinition,
+}
+
+/// Builds a portable [`HarnessDefinition`] with runtime-friendly defaults,
+/// paired with the id it is seeded under.
+///
+/// EVE-881: the embedded host seeds neutral execution configuration only.
+/// Stored Harness persistence records (lifecycle status, hierarchy, display
+/// metadata, timestamps) live in `everruns-platform` and are a hosted
+/// control-plane concern.
 #[derive(Debug, Clone)]
 pub struct HarnessBuilder {
     id: HarnessId,
     name: String,
-    display_name: Option<String>,
-    description: Option<String>,
     system_prompt: String,
-    parent_harness_id: Option<HarnessId>,
     default_model_id: Option<ModelId>,
-    tags: Vec<String>,
     capabilities: Vec<AgentCapabilityConfig>,
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     parallel_tool_calls: Option<bool>,
     mcp_servers: ScopedMcpServers,
     embedder_metadata: HashMap<String, String>,
-    is_built_in: bool,
-    status: HarnessStatus,
-    created_at: Option<DateTime<Utc>>,
-    updated_at: Option<DateTime<Utc>>,
 }
 
 impl HarnessBuilder {
@@ -49,22 +56,14 @@ impl HarnessBuilder {
         Self {
             id: HarnessId::new(),
             name: name.into(),
-            display_name: None,
-            description: None,
             system_prompt: system_prompt.into(),
-            parent_harness_id: None,
             default_model_id: None,
-            tags: Vec::new(),
             capabilities: Vec::new(),
             initial_files: Vec::new(),
             network_access: None,
             parallel_tool_calls: None,
             mcp_servers: ScopedMcpServers::default(),
             embedder_metadata: HashMap::new(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: None,
-            updated_at: None,
         }
     }
 
@@ -84,42 +83,13 @@ impl HarnessBuilder {
         self
     }
 
-    pub fn display_name(mut self, display_name: impl Into<String>) -> Self {
-        self.display_name = Some(display_name.into());
-        self
-    }
-
-    pub fn description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
-        self
-    }
-
     pub fn system_prompt(mut self, system_prompt: impl Into<String>) -> Self {
         self.system_prompt = system_prompt.into();
         self
     }
 
-    pub fn parent_harness_id(mut self, parent_harness_id: HarnessId) -> Self {
-        self.parent_harness_id = Some(parent_harness_id);
-        self
-    }
-
     pub fn default_model_id(mut self, default_model_id: ModelId) -> Self {
         self.default_model_id = Some(default_model_id);
-        self
-    }
-
-    pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        self.tags.push(tag.into());
-        self
-    }
-
-    pub fn tags<I, S>(mut self, tags: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.tags.extend(tags.into_iter().map(Into::into));
         self
     }
 
@@ -197,54 +167,24 @@ impl HarnessBuilder {
         self
     }
 
-    pub fn is_built_in(mut self, is_built_in: bool) -> Self {
-        self.is_built_in = is_built_in;
-        self
-    }
-
-    pub fn status(mut self, status: HarnessStatus) -> Self {
-        self.status = status;
-        self
-    }
-
-    pub fn created_at(mut self, created_at: DateTime<Utc>) -> Self {
-        self.created_at = Some(created_at);
-        self
-    }
-
-    pub fn updated_at(mut self, updated_at: DateTime<Utc>) -> Self {
-        self.updated_at = Some(updated_at);
-        self
-    }
-
-    /// Build the harness. Builders do not validate domain invariants.
-    pub fn build(self) -> Harness {
-        let created_at = self.created_at.unwrap_or_else(Utc::now);
-        let updated_at = self.updated_at.unwrap_or(created_at);
-
-        Harness {
+    /// Build the seeded harness. Builders do not validate domain invariants.
+    pub fn build(self) -> SeededHarness {
+        SeededHarness {
             id: self.id,
-            name: self.name,
-            display_name: self.display_name,
-            description: self.description,
-            // Empty/whitespace-only builder prompt means the harness
-            // contributes no base prompt.
-            system_prompt: (!self.system_prompt.trim().is_empty()).then_some(self.system_prompt),
-            parent_harness_id: self.parent_harness_id,
-            default_model_id: self.default_model_id,
-            tags: self.tags,
-            capabilities: self.capabilities,
-            initial_files: self.initial_files,
-            network_access: self.network_access,
-            parallel_tool_calls: self.parallel_tool_calls,
-            mcp_servers: self.mcp_servers,
-            embedder_metadata: self.embedder_metadata,
-            is_built_in: self.is_built_in,
-            status: self.status,
-            created_at,
-            updated_at,
-            archived_at: None,
-            deleted_at: None,
+            definition: HarnessDefinition {
+                name: self.name,
+                // Empty/whitespace-only builder prompt means the harness
+                // contributes no base prompt.
+                system_prompt: (!self.system_prompt.trim().is_empty())
+                    .then_some(self.system_prompt),
+                default_model_id: self.default_model_id,
+                capabilities: self.capabilities,
+                initial_files: self.initial_files,
+                network_access: self.network_access,
+                parallel_tool_calls: self.parallel_tool_calls,
+                mcp_servers: self.mcp_servers,
+                embedder_metadata: self.embedder_metadata,
+            },
         }
     }
 }
@@ -747,18 +687,8 @@ impl SingleSessionBuilder {
         self
     }
 
-    pub fn harness_display_name(mut self, display_name: impl Into<String>) -> Self {
-        self.harness = self.harness.display_name(display_name);
-        self
-    }
-
     pub fn agent_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.agent = self.agent.display_name(display_name);
-        self
-    }
-
-    pub fn harness_description(mut self, description: impl Into<String>) -> Self {
-        self.harness = self.harness.description(description);
         self
     }
 
@@ -787,10 +717,8 @@ impl SingleSessionBuilder {
     }
 
     pub fn tag(mut self, tag: impl Into<String>) -> Self {
-        let tag = tag.into();
-        self.harness = self.harness.tag(tag.clone());
-        // Agent definitions carry no tags (EVE-877); session tags drive
-        // execution metadata, harness tags stay for embedder bookkeeping.
+        // Harness/agent definitions carry no tags (EVE-877, EVE-881); session
+        // tags drive execution metadata.
         self.session = self.session.tag(tag);
         self
     }
@@ -879,7 +807,7 @@ impl SingleSessionBuilder {
         self
     }
 
-    pub(crate) fn build(self) -> (Harness, AgentDefinition, Session, SessionId) {
+    pub(crate) fn build(self) -> (SeededHarness, AgentDefinition, Session, SessionId) {
         let session_id = self.session.session_id();
         (
             self.harness.build(),
@@ -902,6 +830,7 @@ mod tests {
 
         assert_eq!(
             harness
+                .definition
                 .embedder_metadata
                 .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
                 .map(String::as_str),
@@ -909,6 +838,7 @@ mod tests {
         );
         assert_eq!(
             harness
+                .definition
                 .embedder_metadata
                 .get(OPENROUTER_X_TITLE_METADATA_KEY)
                 .map(String::as_str),
@@ -924,6 +854,7 @@ mod tests {
 
         assert_eq!(
             harness
+                .definition
                 .embedder_metadata
                 .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
                 .map(String::as_str),
@@ -931,6 +862,7 @@ mod tests {
         );
         assert_eq!(
             harness
+                .definition
                 .embedder_metadata
                 .get(OPENROUTER_X_TITLE_METADATA_KEY)
                 .map(String::as_str),

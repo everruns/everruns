@@ -2713,7 +2713,7 @@ impl SessionService {
         &self,
         org_id: i64,
         harness_id: HarnessId,
-    ) -> Result<Option<everruns_core::Harness>> {
+    ) -> Result<Option<everruns_platform::Harness>> {
         resolve_effective_harness(self.db.as_ref(), org_id, harness_id).await
     }
 }

@@ -26,11 +26,11 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Caller, ContentPart, DriverId, DriverRegistry, EgressRequest, EgressRequestKind, EgressService,
-    EventData, Harness, HarnessStatus, Message, MessageRole, Session, SessionParticipant,
-    SessionStatus, ToolDefinition, ToolResultContentPart, UtilityLlmService, merge_harness,
-    resolve_runtime_capabilities,
+    EventData, Message, MessageRole, Session, SessionParticipant, SessionStatus, ToolDefinition,
+    ToolResultContentPart, UtilityLlmService, resolve_runtime_capabilities,
 };
 use everruns_platform::{Agent, AgentStatus};
+use everruns_platform::{Harness, HarnessStatus, merge_harness};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -344,12 +344,14 @@ impl DirectWorkerAdapters {
         agent: Option<&Agent>,
         harness: Option<&Harness>,
     ) -> Result<Vec<Message>> {
-        let harness_chain: Vec<Harness> = harness.cloned().into_iter().collect();
-        // Status-agnostic projection: message-filter resolution historically
-        // saw the stored record regardless of lifecycle status (EVE-877).
+        // Status-agnostic projections: message-filter resolution historically
+        // saw the stored records regardless of lifecycle status (EVE-877,
+        // EVE-881). The harness arrives pre-merged, so its plain definition is
+        // the effective configuration.
+        let harness_definition = harness.map(|h| h.definition()).unwrap_or_default();
         let agent_definition = agent.map(|a| a.definition());
         let resolved = resolve_runtime_capabilities(
-            &harness_chain,
+            &harness_definition,
             agent_definition.as_ref(),
             session,
             &self.capability_registry,

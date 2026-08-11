@@ -14,7 +14,7 @@ use crate::capabilities::{
 };
 use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::message::{Message, MessageRole};
 use crate::message_filter::MessageQuery;
 use crate::message_retriever::MessageRetriever;
@@ -31,8 +31,8 @@ use std::sync::Arc;
 /// Public snapshot of the assembled turn context used by reason-phase hosts.
 #[derive(Debug, Clone)]
 pub struct AssembledTurnContext {
-    /// Full root-to-leaf harness chain.
-    pub harness_chain: Vec<Harness>,
+    /// Effective (inheritance-resolved) harness execution configuration.
+    pub harness: HarnessDefinition,
     /// Optional agent execution definition attached to the session.
     pub agent: Option<AgentDefinition>,
     /// Session being executed.
@@ -156,10 +156,10 @@ async fn assemble_turn_context_with_mode(
     file_store: Option<Arc<dyn SessionFileSystem>>,
     mode: ContextAssemblyMode,
 ) -> Result<AssembledTurnContext> {
-    let harness_chain = harness_store.get_harness_chain(harness_id).await?;
-    if harness_chain.is_empty() {
-        return Err(AgentLoopError::harness_not_found(harness_id));
-    }
+    let harness = harness_store
+        .get_harness(harness_id)
+        .await?
+        .ok_or_else(|| AgentLoopError::harness_not_found(harness_id))?;
 
     let agent = if let Some(agent_id) = agent_id {
         Some(
@@ -180,12 +180,7 @@ async fn assemble_turn_context_with_mode(
     let ResolvedRuntimeCapabilities {
         effective_overlay,
         resolved_capability_configs,
-    } = resolve_runtime_capabilities(
-        &harness_chain,
-        agent.as_ref(),
-        &session,
-        capability_registry,
-    );
+    } = resolve_runtime_capabilities(&harness, agent.as_ref(), &session, capability_registry);
 
     let message_filters = crate::capabilities::collect_message_filters_only(
         &effective_overlay.capabilities,
@@ -251,17 +246,12 @@ async fn assemble_turn_context_with_mode(
     )
     .await?;
 
-    let embedder_metadata = harness_chain.iter().fold(HashMap::new(), |mut acc, h| {
-        acc.extend(
-            h.embedder_metadata
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone())),
-        );
-        acc
-    });
+    // Chain folding (root base, leaf wins) already happened at the platform
+    // seam; the definition carries the effective metadata.
+    let embedder_metadata = harness.embedder_metadata.clone();
 
     Ok(AssembledTurnContext {
-        harness_chain,
+        harness,
         agent,
         session,
         effective_overlay,
@@ -279,15 +269,15 @@ async fn assemble_turn_context_with_mode(
 
 /// Resolve the merged overlay and dependency-expanded capability configs for a runtime session.
 pub fn resolve_runtime_capabilities(
-    harness_chain: &[Harness],
+    harness: &HarnessDefinition,
     agent: Option<&AgentDefinition>,
     session: &Session,
     capability_registry: &CapabilityRegistry,
 ) -> ResolvedRuntimeCapabilities {
-    let harness_layers = harness_chain.iter().map(AgentConfigOverlay::from);
     let agent_layers = agent.into_iter().map(AgentConfigOverlay::from);
     let effective_overlay = AgentConfigOverlay::fold(
-        harness_layers
+        [AgentConfigOverlay::from(harness)]
+            .into_iter()
             .chain(agent_layers)
             .chain([AgentConfigOverlay::from(session)]),
     );
@@ -408,7 +398,7 @@ mod tests {
     use super::*;
 
     use crate::capabilities::{AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry};
-    use crate::harness::{Harness, HarnessStatus};
+    use crate::harness_definition::HarnessDefinition;
     use crate::in_memory::{
         InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     };
@@ -468,28 +458,10 @@ mod tests {
         }
     }
 
-    fn harness(harness_id: HarnessId) -> Harness {
-        Harness {
-            id: harness_id,
-            name: "math".into(),
-            display_name: Some("Math".into()),
-            description: None,
-            system_prompt: Some("You are a math harness.".into()),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
+    fn harness() -> HarnessDefinition {
+        HarnessDefinition {
             capabilities: vec![AgentCapabilityConfig::new("test_math")],
-            initial_files: vec![],
-            network_access: None,
-            parallel_tool_calls: None,
-            mcp_servers: Default::default(),
-            embedder_metadata: HashMap::new(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
+            ..HarnessDefinition::new("math", "You are a math harness.")
         }
     }
 
@@ -585,7 +557,7 @@ mod tests {
         let session_id = "session_00000000000000000000000000000081".parse().unwrap();
 
         let harness_store = InMemoryHarnessStore::new();
-        harness_store.add_harness(harness(harness_id)).await;
+        harness_store.add_harness(harness_id, harness()).await;
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
         let session_store = crate::in_memory::InMemorySessionStore::new();
@@ -654,7 +626,7 @@ mod tests {
         let session_id = "session_00000000000000000000000000000084".parse().unwrap();
 
         let harness_store = InMemoryHarnessStore::new();
-        harness_store.add_harness(harness(harness_id)).await;
+        harness_store.add_harness(harness_id, harness()).await;
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
         let mut session_record = session(session_id, harness_id, agent_id);
@@ -720,7 +692,7 @@ mod tests {
         let session_id = "session_00000000000000000000000000000082".parse().unwrap();
 
         let harness_store = InMemoryHarnessStore::new();
-        harness_store.add_harness(harness(harness_id)).await;
+        harness_store.add_harness(harness_id, harness()).await;
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
         let session_store = crate::in_memory::InMemorySessionStore::new();
@@ -770,10 +742,10 @@ mod tests {
         let agent_id = "agent_00000000000000000000000000000083".parse().unwrap();
         let session_id = "session_00000000000000000000000000000083".parse().unwrap();
 
-        let mut harness_record = harness(harness_id);
+        let mut harness_record = harness();
         harness_record.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
         let harness_store = InMemoryHarnessStore::new();
-        harness_store.add_harness(harness_record).await;
+        harness_store.add_harness(harness_id, harness_record).await;
 
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;

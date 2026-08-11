@@ -20,7 +20,7 @@ use crate::capabilities::{
 };
 use crate::config_layer::AgentConfigOverlay;
 use crate::driver_registry::{PromptCacheConfig, ToolSearchConfig};
-use crate::harness::Harness;
+use crate::harness_definition::HarnessDefinition;
 use crate::model_profiles::get_model_profile;
 use crate::provider::DriverId;
 use crate::tool_types::ToolDefinition;
@@ -209,7 +209,7 @@ impl RuntimeAgentBuilder {
     /// Call this BEFORE `with_agent()` to establish the base prompt layer.
     pub async fn with_harness(
         self,
-        harness: &Harness,
+        harness: &HarnessDefinition,
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {

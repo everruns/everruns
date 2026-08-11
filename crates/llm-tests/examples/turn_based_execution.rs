@@ -24,7 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    AgentDefinition, EnvCredentialProvider, Harness, HarnessStatus, InputMessage, MessageRetriever,
+    AgentDefinition, EnvCredentialProvider, HarnessDefinition, InputMessage, MessageRetriever,
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
     },
@@ -113,29 +113,8 @@ async fn main() -> anyhow::Result<()> {
     let agent_id = Uuid::now_v7();
     let session_id = Uuid::now_v7();
     let now = Utc::now();
-    let harness = Harness {
-        id: harness_id,
-        name: "default".to_string(),
-        display_name: Some("Default Harness".to_string()),
-        description: None,
-        system_prompt: Some("You are a helpful assistant.".to_string()),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        parallel_tool_calls: None,
-        mcp_servers: Default::default(),
-        embedder_metadata: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: now,
-        updated_at: now,
-        archived_at: None,
-        deleted_at: None,
-    };
-    harness_store.add_harness(harness).await;
+    let harness = HarnessDefinition::new("default", "You are a helpful assistant.");
+    harness_store.add_harness(harness_id, harness).await;
 
     // Create an agent in the store
     let agent = AgentDefinition {

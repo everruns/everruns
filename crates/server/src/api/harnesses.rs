@@ -17,9 +17,10 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
-    ResourceConfigResponse, evaluate_policies_with,
+    AgentCapabilityConfig, Caller, DeploymentGrade, PlatformDefinition, ResourceConfigResponse,
+    evaluate_policies_with,
 };
+use everruns_platform::Harness;
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,

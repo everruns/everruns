@@ -5,10 +5,8 @@
 use crate::domains::common::CommandError;
 use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
-use everruns_core::{
-    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile,
-    is_declarative_capability, merge_harness,
-};
+use everruns_core::{AgentCapabilityConfig, HarnessId, InitialFile, is_declarative_capability};
+use everruns_platform::{Harness, HarnessStatus, merge_harness};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 

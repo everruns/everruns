@@ -28,10 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Per-type builders are useful when an embedder needs stable ids or
     // separate construction. IDs are generated unless `.id(...)` is called.
-    let harness_builder = HarnessBuilder::new("math", "You are a math assistant.")
-        .display_name("Math")
-        .description("Minimal embedded harness")
-        .capability("test_math");
+    let harness_builder =
+        HarnessBuilder::new("math", "You are a math assistant.").capability("test_math");
     let harness_id = harness_builder.harness_id();
     let agent_builder = AgentBuilder::new("math-agent", "Use tools when they help.")
         .display_name("Math Agent")
@@ -68,8 +66,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
-                .harness_display_name("Math")
-                .harness_description("Minimal embedded harness")
                 .with_capability("test_math")
                 .agent("math-agent", "Use tools when they help.")
                 .agent_display_name("Math Agent")

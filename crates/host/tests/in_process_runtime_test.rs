@@ -5,7 +5,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
+    AgentDefinition, CapabilityRegistry, DriverId, InitialFile, Message, MessageRole,
     PlatformDefinition, ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
 };
@@ -25,10 +25,9 @@ fn minimal_platform() -> PlatformDefinition {
     PlatformDefinition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> Harness {
+fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
-        .display_name("Math")
         .capability("test_math")
         .build()
 }
@@ -82,11 +81,7 @@ fn per_type_builders_accept_explicit_timestamps() {
     let agent_id = everruns_core::AgentId::from_seed(51);
     let session_id = everruns_core::SessionId::from_seed(51);
 
-    let harness = HarnessBuilder::new("math", "prompt")
-        .id(harness_id)
-        .created_at(timestamp)
-        .updated_at(timestamp)
-        .build();
+    let harness = HarnessBuilder::new("math", "prompt").id(harness_id).build();
     let agent = AgentBuilder::new("math-agent", "prompt")
         .id(agent_id)
         .build();
@@ -97,10 +92,9 @@ fn per_type_builders_accept_explicit_timestamps() {
         .updated_at(timestamp)
         .build();
 
-    assert_eq!(harness.created_at, timestamp);
-    assert_eq!(harness.updated_at, timestamp);
-    // Agent definitions are portable execution configuration (EVE-877); they
-    // carry no persistence timestamps.
+    // Harness/agent definitions are portable execution configuration
+    // (EVE-877, EVE-881); they carry no persistence timestamps.
+    assert_eq!(harness.id, harness_id);
     assert_eq!(agent.id, agent_id);
     assert_eq!(session.created_at, timestamp);
     assert_eq!(session.updated_at, timestamp);
@@ -419,7 +413,7 @@ async fn single_session_builder_seeds_runnable_runtime() {
     let session_id = runtime.default_session_id().expect("default session id");
     let context = runtime.load_context(session_id).await.unwrap();
 
-    assert_eq!(context.harness_chain.last().expect("harness").name, "math");
+    assert_eq!(context.harness.name, "math");
     assert_eq!(
         context.agent.expect("agent").system_prompt,
         "Use tools when needed."
@@ -472,9 +466,9 @@ async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let context = runtime.load_context(session_id).await.unwrap();
     assert_eq!(
         context
-            .harness_chain
-            .last()
-            .and_then(|h| h.network_access.as_ref())
+            .harness
+            .network_access
+            .as_ref()
             .map(|acl| acl.allowed.clone()),
         Some(vec!["example.com".to_string()])
     );
@@ -513,6 +507,7 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
 
     let mut math_harness = harness(harness_id);
     math_harness
+        .definition
         .initial_files
         .push(everruns_core::session_file::InitialFile {
             path: "/workspace/notes.txt".into(),
@@ -631,7 +626,7 @@ async fn runtime_uses_platform_session_file_system_factory() {
         .build();
 
     let mut harness = harness(harness_id);
-    harness.initial_files = vec![InitialFile {
+    harness.definition.initial_files = vec![InitialFile {
         path: "/seed.txt".into(),
         content: "from platform factory".into(),
         encoding: "text".into(),
@@ -743,7 +738,7 @@ async fn runtime_exposes_assembled_context() {
     let context = runtime.load_context(session_id).await.unwrap();
 
     assert_eq!(context.session.id, session_id);
-    assert_eq!(context.harness_chain.len(), 1);
+    assert_eq!(context.harness.name, "math");
     assert_eq!(context.messages.len(), 2);
     assert_eq!(context.model_with_provider.model, "llmsim-model");
     assert!(

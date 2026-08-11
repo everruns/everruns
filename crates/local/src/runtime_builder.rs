@@ -73,8 +73,8 @@ impl LocalRuntimeBuilder {
         self
     }
 
-    /// Seed a harness.
-    pub fn harness(mut self, harness: everruns_core::Harness) -> Self {
+    /// Seed a harness definition (under its embedder-chosen id).
+    pub fn harness(mut self, harness: everruns_host::SeededHarness) -> Self {
         self.inner = self.inner.harness(harness);
         self
     }

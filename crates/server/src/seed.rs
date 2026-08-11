@@ -240,7 +240,7 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
 /// work without special-casing a nil/missing user.
 async fn seed_anonymous_user(
     db: &StorageBackend,
-    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
+    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -290,7 +290,7 @@ const ADMIN_USER_ID: Uuid = Uuid::from_u128(0x00000000_0000_0000_0000_0000000000
 async fn seed_admin_user(
     db: &StorageBackend,
     admin_config: &AdminConfig,
-    harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
+    harness_definitions: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -2353,6 +2353,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> Jo
         db,
         auth_ctx,
         crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
+        crate::platform::oss_built_in_harnesses(),
         None,
     )
 }
@@ -2369,6 +2370,7 @@ pub fn spawn_seed_task_with_platform_definition(
     db: Arc<StorageBackend>,
     auth_ctx: SeedAuthContext,
     platform_definition: PlatformDefinition,
+    built_in_harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> JoinHandle<()> {
     let grade = DeploymentGrade::from_env();
@@ -2378,7 +2380,15 @@ pub fn spawn_seed_task_with_platform_definition(
         // Small delay to let the server start first
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        match run_seed_with_retry(&db, grade, &auth_ctx, &platform_definition).await {
+        match run_seed_with_retry(
+            &db,
+            grade,
+            &auth_ctx,
+            &platform_definition,
+            &built_in_harnesses,
+        )
+        .await
+        {
             Ok(result) => {
                 if result.has_changes() {
                     tracing::info!(
@@ -2431,7 +2441,7 @@ pub fn spawn_seed_task_with_platform_definition(
                 // After seed succeeds, reconcile built-in harnesses for ALL orgs.
                 // Runs inside the seed task (not a separate task) so the default
                 // org row is guaranteed to exist before harness init runs.
-                reconcile_org_harnesses(&db, &platform_definition).await;
+                reconcile_org_harnesses(&db, &built_in_harnesses).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -2448,8 +2458,10 @@ pub fn spawn_seed_task_with_platform_definition(
 /// Called after seeding completes (inside the seed task) so the default org row
 /// is guaranteed to exist. Each org is reconciled independently; a single failure
 /// is logged but does not prevent other orgs from updating.
-async fn reconcile_org_harnesses(db: &StorageBackend, platform_definition: &PlatformDefinition) {
-    let harnesses = platform_definition.built_in_harnesses();
+async fn reconcile_org_harnesses(
+    db: &StorageBackend,
+    harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+) {
     let orgs = match db.list_organizations().await {
         Ok(orgs) => orgs,
         Err(e) => {
@@ -2510,12 +2522,21 @@ async fn run_seed_with_retry(
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     platform_definition: &PlatformDefinition,
+    built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_all_with_platform_definition(db, grade, auth_ctx, platform_definition).await {
+        match seed_all_with_platform_definition(
+            db,
+            grade,
+            auth_ctx,
+            platform_definition,
+            built_in_harnesses,
+        )
+        .await
+        {
             Ok(result) => return Ok(result),
             Err(e) => {
                 let error_str = e.to_string();
@@ -2568,7 +2589,14 @@ pub async fn seed_all(
     auth_ctx: &SeedAuthContext,
 ) -> anyhow::Result<SeedResult> {
     let platform_definition = crate::platform::oss_platform_definition_for_grade(grade);
-    seed_all_with_platform_definition(db, grade, auth_ctx, &platform_definition).await
+    seed_all_with_platform_definition(
+        db,
+        grade,
+        auth_ctx,
+        &platform_definition,
+        &crate::platform::oss_built_in_harnesses(),
+    )
+    .await
 }
 
 /// Run all seeders in order using an explicit platform definition.
@@ -2577,6 +2605,7 @@ pub async fn seed_all_with_platform_definition(
     _grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
     platform_definition: &PlatformDefinition,
+    built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
 
@@ -2591,7 +2620,7 @@ pub async fn seed_all_with_platform_definition(
     result.merge(org_result);
 
     // Seed anonymous user (for auth=none mode, depends on default org)
-    let anon_result = seed_anonymous_user(db, platform_definition.built_in_harnesses()).await?;
+    let anon_result = seed_anonymous_user(db, built_in_harnesses).await?;
     tracing::debug!(
         created = anon_result.created,
         updated = anon_result.updated,
@@ -2604,8 +2633,7 @@ pub async fn seed_all_with_platform_definition(
     if auth_ctx.mode == AuthMode::Admin
         && let Some(admin_config) = &auth_ctx.admin
     {
-        let admin_result =
-            seed_admin_user(db, admin_config, platform_definition.built_in_harnesses()).await?;
+        let admin_result = seed_admin_user(db, admin_config, built_in_harnesses).await?;
         tracing::debug!(
             created = admin_result.created,
             updated = admin_result.updated,
@@ -2686,7 +2714,7 @@ mod tests {
         StorageBackend::in_memory()
     }
 
-    fn built_in_harnesses() -> Vec<everruns_core::BuiltInHarnessDefinition> {
+    fn built_in_harnesses() -> Vec<everruns_platform::BuiltInHarnessDefinition> {
         org_init::default_harness_definitions()
     }
 
@@ -3282,8 +3310,7 @@ mod tests {
 
         // seed_all creates default-org harnesses via seed_anonymous_user.
         // Run reconciliation too, matching the full startup flow.
-        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        reconcile_org_harnesses(&db, &pd).await;
+        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
 
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
@@ -3686,8 +3713,7 @@ mod tests {
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
-        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        reconcile_org_harnesses(&db, &pd).await;
+        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
 
         // Mutate harness description via public API. Resolve the base
         // harness id by name from the DB — built-in harnesses no longer
@@ -3801,8 +3827,7 @@ mod tests {
         );
 
         // Run reconciliation (covers ALL orgs, including default).
-        let pd = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        reconcile_org_harnesses(&db, &pd).await;
+        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
 
         // After reconciliation, both orgs should have the built-in harnesses.
         let default_harnesses = db

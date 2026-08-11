@@ -33,7 +33,7 @@ fn scoped_server_with_secret_header() -> ScopedMcpServer {
 
 struct Fixture {
     runtime: everruns_host::InProcessRuntime,
-    harness: everruns_core::Harness,
+    harness: everruns_host::SeededHarness,
     agent: everruns_core::AgentDefinition,
     session: everruns_core::Session,
 }
@@ -88,7 +88,7 @@ async fn framework_load_resolved_turn_matches_direct_projection() {
         .expect("resolved turn loads");
 
     let direct = ResolvedExecutionSnapshot::project(
-        std::slice::from_ref(&fixture.harness),
+        &fixture.harness.definition,
         Some(&fixture.agent),
         &fixture.session,
     )
