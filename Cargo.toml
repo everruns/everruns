@@ -100,7 +100,7 @@ schemars = "1.0"
 # Procedural-macro toolchain (backs `everruns-macros`).
 proc-macro2 = "1.0"
 quote = "1.0"
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
 # Compile-pass / compile-fail fixtures for the proc-macro crate.
 trybuild = "1.0"
 
