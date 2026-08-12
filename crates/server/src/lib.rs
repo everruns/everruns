@@ -59,6 +59,7 @@ pub use platform::{
     oss_built_in_harnesses, oss_connector_registry, oss_platform_definition,
     oss_platform_definition_for_grade,
 };
+pub mod built_in_agents;
 pub mod harnesses;
 
 // Direct worker adapters for in-process task worker

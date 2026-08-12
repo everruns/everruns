@@ -17,6 +17,9 @@ use uuid::Uuid;
 
 use everruns_core::AgentDefinition;
 use everruns_core::capability_types::AgentCapabilityConfig;
+// Built-in provisioning uses the same capability reference shape as persisted
+// attachments; `BuiltInCapabilityDefinition` is its provisioning-side alias.
+use crate::harness::BuiltInCapabilityDefinition;
 use everruns_core::error::AgentLoopError;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
@@ -412,6 +415,82 @@ pub fn generate_agent_public_id() -> AgentId {
 /// Must match format: agent_<32-lowercase-hex-chars>
 pub fn validate_agent_public_id(s: &str) -> bool {
     s.parse::<AgentId>().is_ok()
+}
+
+// ============================================================================
+// Built-in agent provisioning templates (EVE-865)
+//
+// The counterpart to `BuiltInHarnessDefinition`: a fork supplies its own
+// built-in agents the same way it supplies harnesses. Identified by `name`
+// (unique per org); IDs are assigned at provisioning time, never hardcoded.
+// ============================================================================
+
+/// Built-in agent template provisioned during org initialization.
+///
+/// A built-in agent's *definition* is immutable through the API — the server
+/// rejects mutating commands against it — so an org cannot edit it out from
+/// under the next platform upgrade. Bindings an org attaches around it
+/// (triggers, identities, credentials) stay editable.
+#[derive(Debug, Clone)]
+pub struct BuiltInAgentDefinition {
+    /// Name, unique per org (e.g. "platform-chat").
+    pub name: String,
+    /// Human-readable display name shown in UI.
+    pub display_name: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Agent system prompt, layered over the harness prompt.
+    pub system_prompt: String,
+    /// Name of the built-in harness this agent runs on.
+    ///
+    /// Agent-first session creation derives the harness from the agent, so
+    /// binding the agent to its harness here is what lets a thread be bound to
+    /// exactly one agent with no special casing.
+    pub harness_name: String,
+    /// Tags applied to the agent.
+    pub tags: Vec<String>,
+    /// Capabilities enabled by default for the agent.
+    pub capabilities: Vec<BuiltInCapabilityDefinition>,
+}
+
+impl BuiltInAgentDefinition {
+    /// Create a built-in agent template bound to a built-in harness.
+    pub fn new(
+        name: impl Into<String>,
+        display_name: impl Into<String>,
+        description: impl Into<String>,
+        system_prompt: impl Into<String>,
+        harness_name: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            display_name: display_name.into(),
+            description: description.into(),
+            system_prompt: system_prompt.into(),
+            harness_name: harness_name.into(),
+            tags: Vec::new(),
+            capabilities: Vec::new(),
+        }
+    }
+
+    /// Replace the agent tags.
+    pub fn with_tags<I, S>(mut self, tags: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    /// Replace the agent capabilities.
+    pub fn with_capabilities<I>(mut self, capabilities: I) -> Self
+    where
+        I: IntoIterator<Item = BuiltInCapabilityDefinition>,
+    {
+        self.capabilities = capabilities.into_iter().collect();
+        self
+    }
 }
 
 #[cfg(test)]

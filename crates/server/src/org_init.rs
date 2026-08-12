@@ -16,7 +16,9 @@
 
 use crate::storage::{
     StorageBackend,
-    models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
+    models::{
+        CreateAgentRow, CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings,
+    },
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -320,6 +322,132 @@ pub async fn initialize_org_harnesses_with_definitions(
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
+}
+
+// ============================================================================
+// Built-in agents (EVE-865)
+// ============================================================================
+
+/// Initialize built-in agents for a specific organization.
+pub async fn initialize_org_agents(db: &StorageBackend, org_id: i64) -> Result<InitResult> {
+    initialize_org_agents_with_definitions(db, org_id, &crate::built_in_agents::built_in_agents())
+        .await
+}
+
+/// Reconcile built-in agents from an explicit set of definitions.
+///
+/// Idempotent and self-healing. Protection stops deletion through the API; it
+/// does nothing for an org whose row is missing — one seeded before built-in
+/// agents shipped, one where the row was removed directly in the database, or a
+/// half-applied migration. Running this on every startup recreates a missing
+/// built-in agent and adopts an existing same-named row rather than creating a
+/// duplicate, so a fresh org and a repaired org converge on the same state.
+///
+/// Must run after [`initialize_org_harnesses`]: each agent names the built-in
+/// harness it runs on, and that harness has to exist first.
+pub async fn initialize_org_agents_with_definitions(
+    db: &StorageBackend,
+    org_id: i64,
+    agents: &[everruns_platform::BuiltInAgentDefinition],
+) -> Result<InitResult> {
+    let mut result = InitResult::default();
+
+    for agent in agents {
+        let harness_id = db
+            .get_harness_by_name(org_id, &agent.harness_name)
+            .await?
+            .filter(|h| h.is_built_in)
+            .map(|h| h.id)
+            .with_context(|| {
+                format!(
+                    "built-in agent '{}' needs harness '{}', which is not provisioned for org {org_id}",
+                    agent.name, agent.harness_name
+                )
+            })?;
+
+        // Look up by name, like harnesses: the name is stable, the UUID is
+        // DB-assigned. Adopting a same-named row is what makes a repeated run
+        // idempotent rather than duplicating.
+        let existing = db.get_agent_by_name(org_id, &agent.name).await?;
+
+        match existing {
+            Some(row) => {
+                // Adopt an unflagged row rather than skipping it — an org
+                // seeded before this feature has the agent but not the flag.
+                if !row.is_built_in {
+                    db.mark_agent_built_in(org_id, row.id).await?;
+                    tracing::info!(
+                        name = agent.name,
+                        org_id,
+                        id = %row.id,
+                        "Adopted existing agent as built-in"
+                    );
+                    result.updated += 1;
+                } else {
+                    result.unchanged += 1;
+                }
+            }
+            None => {
+                let public_id = everruns_platform::generate_agent_public_id();
+                let input = CreateAgentRow {
+                    public_id: public_id.to_string(),
+                    name: agent.name.clone(),
+                    display_name: Some(agent.display_name.clone()),
+                    description: Some(agent.description.clone()),
+                    system_prompt: agent.system_prompt.clone(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: agent.tags.clone(),
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    is_built_in: true,
+                };
+                let row = db.create_agent(org_id, input).await?;
+                sync_agent_capabilities(db, row.id.uuid(), &agent.capabilities).await?;
+                tracing::info!(
+                    name = agent.name,
+                    org_id,
+                    id = %row.id,
+                    "Created built-in agent"
+                );
+                result.created += 1;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+async fn sync_agent_capabilities(
+    db: &StorageBackend,
+    agent_id: Uuid,
+    desired: &[BuiltInCapabilityDefinition],
+) -> Result<bool> {
+    let current = db.get_agent_capabilities(agent_id).await?;
+    let current_ids: Vec<&str> = current.iter().map(|c| c.capability_id.as_str()).collect();
+    let desired_ids: Vec<&str> = desired.iter().map(|c| c.capability_id()).collect();
+
+    if current_ids == desired_ids {
+        return Ok(false);
+    }
+
+    let cap_tuples: Vec<(String, i32, serde_json::Value)> = desired
+        .iter()
+        .enumerate()
+        .map(|(idx, cap)| {
+            (
+                cap.capability_id().to_string(),
+                idx as i32,
+                cap.config_value().clone(),
+            )
+        })
+        .collect();
+    db.set_agent_capabilities(agent_id, cap_tuples).await?;
+    Ok(true)
 }
 
 /// Demote any rows for the legacy default built-ins (`coding-container`,

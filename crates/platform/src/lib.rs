@@ -83,8 +83,9 @@ pub mod connector;
 pub mod email;
 
 pub use agent::{
-    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
-    generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
+    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, BuiltInAgentDefinition,
+    MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id, validate_addressable_name,
+    validate_agent_public_id,
 };
 pub use harness::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
