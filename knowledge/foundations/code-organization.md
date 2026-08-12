@@ -128,6 +128,17 @@ advertises: product registration installs all four (sandbox behind its feature
 flag), and the host preset re-adds the two the default in-process runtime can
 serve, so the Framework still exposes session info and session storage.
 
+The records those capabilities read follow them (EVE-880). The org-scoped
+`Workspace` row and the managed per-session sandbox — state record, provider
+SPI, inventory plugin and lifecycle helpers — live in `everruns-platform`; a
+turn resolves workspace *paths* through core's roots and policy types, and
+reaches a sandbox only through the capability. `session_sqldb` is the
+deliberate exception: its value types are the signature vocabulary of
+`SessionSqlDbStore`, which `ToolContext` still holds as an optional field, so
+records and trait move together under EVE-887 rather than leaving core naming
+platform types. Session task, schedule and resource records likewise stay
+while core execution still consumes them.
+
 `everruns-core` depends on `everruns-provider` and re-exports every moved module
 at its original path (`everruns_core::driver_registry`, `::model_profiles`,
 `::error`, `::typed_id`, …), so application crates and embedders that import

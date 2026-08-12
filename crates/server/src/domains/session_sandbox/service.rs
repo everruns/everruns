@@ -12,15 +12,15 @@ use crate::org_init;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use anyhow::Context;
 use async_trait::async_trait;
-use everruns_core::session_sandbox::{
-    SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
-    session_sandbox_config_from_capabilities,
-};
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
     AgentCapabilityConfig, Event, EventData, EventListener, LeasedResourceStore,
     SessionResourceRegistry, SessionStorageStore, ToolContext, UserConnectionResolver,
     merge_capabilities,
+};
+use everruns_platform::session_sandbox::{
+    SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
+    session_sandbox_config_from_capabilities,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -258,19 +258,19 @@ impl EventListener for SessionSandboxEventListener {
 mod tests {
     use super::*;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::session_sandbox::{
+    use everruns_core::{DEFAULT_ORG_ID, InitialFile, SessionStorageStore, UserConnectionResolver};
+    use everruns_platform::session_sandbox::{
         SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
         SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,
         SessionSandboxStatus, SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
         load_session_sandbox_state,
     };
-    use everruns_core::{DEFAULT_ORG_ID, InitialFile, SessionStorageStore, UserConnectionResolver};
     use serde_json::json;
 
     struct TestSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_core::SessionSandboxProviderPlugin {
+        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(TestSessionSandboxProvider),
         }
     }
@@ -389,7 +389,7 @@ mod tests {
     struct ResolverRequiredSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_core::SessionSandboxProviderPlugin {
+        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(ResolverRequiredSessionSandboxProvider),
         }
     }

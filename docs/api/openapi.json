@@ -34345,7 +34345,7 @@
       },
       "SessionSandboxStatusValue": {
         "type": "string",
-        "description": "Wire-facing status of a session sandbox. Mirrors\n`everruns_core::SessionSandboxStatus` for the public API.",
+        "description": "Wire-facing status of a session sandbox. Mirrors\n`everruns_platform::session_sandbox::SessionSandboxStatus` for the public API.",
         "enum": [
           "running",
           "paused",

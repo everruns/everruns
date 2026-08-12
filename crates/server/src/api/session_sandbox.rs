@@ -22,7 +22,7 @@ use utoipa::ToSchema;
 use super::common::{ApiResult, impl_auth_state};
 
 /// Wire-facing status of a session sandbox. Mirrors
-/// `everruns_core::SessionSandboxStatus` for the public API.
+/// `everruns_platform::session_sandbox::SessionSandboxStatus` for the public API.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionSandboxStatusValue {
@@ -31,12 +31,12 @@ pub enum SessionSandboxStatusValue {
     Lost,
 }
 
-impl From<everruns_core::SessionSandboxStatus> for SessionSandboxStatusValue {
-    fn from(status: everruns_core::SessionSandboxStatus) -> Self {
+impl From<everruns_platform::session_sandbox::SessionSandboxStatus> for SessionSandboxStatusValue {
+    fn from(status: everruns_platform::session_sandbox::SessionSandboxStatus) -> Self {
         match status {
-            everruns_core::SessionSandboxStatus::Running => Self::Running,
-            everruns_core::SessionSandboxStatus::Paused => Self::Paused,
-            everruns_core::SessionSandboxStatus::Lost => Self::Lost,
+            everruns_platform::session_sandbox::SessionSandboxStatus::Running => Self::Running,
+            everruns_platform::session_sandbox::SessionSandboxStatus::Paused => Self::Paused,
+            everruns_platform::session_sandbox::SessionSandboxStatus::Lost => Self::Lost,
         }
     }
 }

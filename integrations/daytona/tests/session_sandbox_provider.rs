@@ -2,10 +2,11 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::session_sandbox::{SessionSandboxConfig, create_session_sandbox_provider};
 use everruns_core::traits::{KeyInfo, SecretInfo, ToolContext, UserConnectionResolver};
-use everruns_core::{
-    SessionSandboxExecRequest, SessionSandboxInstance, SessionStorageStore, typed_id::SessionId,
+use everruns_core::{SessionStorageStore, typed_id::SessionId};
+use everruns_platform::session_sandbox::{
+    SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxInstance,
+    create_session_sandbox_provider,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -300,9 +301,9 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
         .status(
             &context,
             &config,
-            &everruns_core::SessionSandboxState {
+            &everruns_platform::session_sandbox::SessionSandboxState {
                 provider: "daytona".to_string(),
-                status: everruns_core::SessionSandboxStatus::Running,
+                status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: instance.clone(),
                 init_completed_at: Some(chrono::Utc::now().to_rfc3339()),
                 last_init_error: None,
@@ -314,7 +315,7 @@ async fn daytona_provider_replaces_lost_instance_and_restores_workspace() {
         .unwrap();
     assert_eq!(
         lost_status.session_status,
-        everruns_core::SessionSandboxStatus::Lost
+        everruns_platform::session_sandbox::SessionSandboxStatus::Lost
     );
 
     let replacement = provider.resume(&context, &config, &instance).await.unwrap();
@@ -555,7 +556,7 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
             &context,
             &config,
             &instance,
-            &everruns_core::SessionSandboxExecRequest {
+            &everruns_platform::session_sandbox::SessionSandboxExecRequest {
                 command: "echo ready".to_string(),
                 cwd: Some("/home/daytona".to_string()),
                 timeout_ms: Some(10_000),
@@ -595,9 +596,9 @@ async fn daytona_provider_manages_managed_sandbox_flow() {
         .status(
             &context,
             &config,
-            &everruns_core::SessionSandboxState {
+            &everruns_platform::session_sandbox::SessionSandboxState {
                 provider: "daytona".to_string(),
-                status: everruns_core::SessionSandboxStatus::Running,
+                status: everruns_platform::session_sandbox::SessionSandboxStatus::Running,
                 instance: resumed.clone(),
                 init_completed_at: None,
                 last_init_error: None,

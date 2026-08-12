@@ -1,5 +1,27 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-12
+
+* **Session sandbox record extraction**: Moved the managed per-session sandbox
+  — config, persisted state, provider instance and exec/file payloads, the
+  `SessionSandboxProvider` SPI with its inventory plugin, and the
+  create/resume/pause/delete/init/checkpoint lifecycle helpers — out of
+  `everruns-core` into `everruns-platform` (EVE-880), where the sandbox
+  capability already lives after EVE-886. One provider-backed sandbox per
+  session is control-plane state: a turn reaches it through the capability,
+  never through the kernel. Integration providers (Daytona) register against
+  platform. The agent-record isolation guard now covers the sandbox record
+  types and the provider SPI, and the `Workspace` row moved earlier in the
+  same issue.
+
+  `session_sqldb` deliberately stayed in core. Its value types are the
+  signature vocabulary of `SessionSqlDbStore`, and that trait is pinned to
+  core by `ToolContext::sqldb_store`; splitting records from trait would make
+  core name platform types. The family moves with EVE-887, when the
+  monolithic optional-field context becomes narrow typed services. The same
+  reasoning holds for the session task, schedule and resource records, which
+  still have execution-time consumers inside core.
+
 ## 2026-08-11
 
 * **Hosted capability extraction**: Moved hosted knowledge, Memory,

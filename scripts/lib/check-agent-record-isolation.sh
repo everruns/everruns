@@ -34,7 +34,11 @@
 #    ObserverMatch, LlmJudgeConfig, TraceScore, FeatureFlags, FeatureFlagMap,
 #    FeatureFlagDefinition), nor the moved connector/email/OAuth
 #    infrastructure types (ConnectorRegistry, ConnectorPlugin, EmailMessage,
-#    SystemEmailConfig, ResendEmailSender, OAuthClient, TokenSet, ...).
+#    SystemEmailConfig, ResendEmailSender, OAuthClient, TokenSet, ...), nor
+#    the moved session-service records (EVE-880): the org-scoped Workspace
+#    row and the managed per-session sandbox (config, persisted state,
+#    provider instance, exec/file payloads) together with the
+#    `SessionSandboxProvider` SPI and its inventory plugin.
 
 set -euo pipefail
 
@@ -70,9 +74,14 @@ RECORD_TYPES="${RECORD_TYPES}|FeatureFlags|FeatureFlagMap|FeatureFlagDefinition"
 RECORD_TYPES="${RECORD_TYPES}|Connector|ConnectorPlugin|ConnectorRegistry|ConnectorRegistryBuilder|ConnectorType|ConnectorValidation"
 RECORD_TYPES="${RECORD_TYPES}|EmailAddress|EmailMessage|EmailTag|EmailTemplate|MinimalEmailTemplate|BasicEmailTemplate|RenderedEmail|SentEmail|NoopEmailSender|DisabledEmailSender|ResendEmailSender|ResendEmailConfig|SystemEmailConfig"
 RECORD_TYPES="${RECORD_TYPES}|OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration"
-if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum) (${RECORD_TYPES})[[:space:]{<(]" \
+RECORD_TYPES="${RECORD_TYPES}|Workspace|WorkspaceStatus"
+RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|SessionSandboxStatus|SessionSandboxStatusResponse|SessionSandboxInstance|SessionSandboxState|SessionSandboxExecRequest|SessionSandboxExecResponse|SessionSandboxReadFileResponse|SessionSandboxWriteFileResponse|SessionSandboxProvider|SessionSandboxProviderPlugin"
+# `trait` is included so the sandbox provider SPI cannot reappear in the
+# kernel: integration crates register providers against platform, and a turn
+# reaches a sandbox only through the capability.
+if matches=$(grep -rnE "^[[:space:]]*pub (struct|enum|trait) (${RECORD_TYPES})[[:space:]{<(]" \
   "${KERNEL_TREES[@]}" --include='*.rs' 2>/dev/null); then
-  echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879):"
+  echo "Kernel crates must not declare stored platform record types or moved connector/OAuth/email infrastructure (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880):"
   echo "$matches"
   FAILED=1
 fi
@@ -114,8 +123,8 @@ for crate in "${PROVIDER_CRATES[@]}"; do
 done
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records plus eval/observer/feature-management aggregates — and the connector/email infrastructure — belong in crates/platform; the OAuth protocol client belongs in crates/mcp (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879)."
+  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records, eval/observer/feature-management aggregates, the connector/email infrastructure, and the Workspace/session-sandbox records belong in crates/platform; the OAuth protocol client belongs in crates/mcp (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession and resolved execution features only; platform records and connector/OAuth/email infrastructure stay out of the kernel."
+echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession and resolved execution features only; platform records, connector/OAuth/email infrastructure, and the Workspace/session-sandbox records stay out of the kernel."

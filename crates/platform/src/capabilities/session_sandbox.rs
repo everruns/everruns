@@ -3,14 +3,14 @@
 //! One managed sandbox per session. The concrete provider is chosen by config
 //! (`provider: "daytona"` initially), while the tool surface stays stable.
 
-use async_trait::async_trait;
-use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
-pub use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
-use everruns_core::session_sandbox::{
+pub use crate::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
+use crate::session_sandbox::{
     DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SessionSandboxConfig, checkpoint_session_sandbox,
     create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
     load_session_sandbox_state, pause_session_sandbox, session_sandbox_tool_hints,
 };
+use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
@@ -195,7 +195,7 @@ fn parse_config(config: &Value) -> Result<SessionSandboxConfig, ToolExecutionRes
 
 fn provider_for_config(
     config: &SessionSandboxConfig,
-) -> Result<Box<dyn everruns_core::SessionSandboxProvider>, ToolExecutionResult> {
+) -> Result<Box<dyn crate::session_sandbox::SessionSandboxProvider>, ToolExecutionResult> {
     create_session_sandbox_provider(&config.provider).ok_or_else(|| {
         ToolExecutionResult::tool_error(format!(
             "Session sandbox provider '{}' is not registered",
@@ -205,7 +205,7 @@ fn provider_for_config(
 }
 
 fn build_sandbox_exec_result(
-    response: everruns_core::SessionSandboxExecResponse,
+    response: crate::session_sandbox::SessionSandboxExecResponse,
     cwd: Option<&str>,
 ) -> ToolExecutionResult {
     let mut result = json!({
@@ -229,7 +229,7 @@ fn build_sandbox_exec_result(
 }
 
 fn build_sandbox_read_file_result(
-    response: everruns_core::SessionSandboxReadFileResponse,
+    response: crate::session_sandbox::SessionSandboxReadFileResponse,
     offset: usize,
     limit: usize,
 ) -> ToolExecutionResult {
@@ -353,7 +353,7 @@ impl Tool for SandboxExecTool {
                 context,
                 &config,
                 &state.instance,
-                &everruns_core::SessionSandboxExecRequest {
+                &crate::session_sandbox::SessionSandboxExecRequest {
                     command: command.to_string(),
                     cwd: arguments
                         .get("cwd")
@@ -945,7 +945,7 @@ mod tests {
     #[test]
     fn sandbox_exec_result_preserves_absent_raw_output() {
         let result = build_sandbox_exec_result(
-            everruns_core::SessionSandboxExecResponse {
+            crate::session_sandbox::SessionSandboxExecResponse {
                 exit_code: 0,
                 stdout: "ok".to_string(),
                 stderr: String::new(),
@@ -966,7 +966,7 @@ mod tests {
     #[test]
     fn sandbox_exec_result_keeps_raw_output_sidecar_when_present() {
         let result = build_sandbox_exec_result(
-            everruns_core::SessionSandboxExecResponse {
+            crate::session_sandbox::SessionSandboxExecResponse {
                 exit_code: 17,
                 stdout: "trimmed".to_string(),
                 stderr: "warn".to_string(),
@@ -990,7 +990,7 @@ mod tests {
     #[test]
     fn sandbox_read_file_result_applies_line_window() {
         let result = build_sandbox_read_file_result(
-            everruns_core::SessionSandboxReadFileResponse {
+            crate::session_sandbox::SessionSandboxReadFileResponse {
                 path: "/workspace/src/lib.rs".to_string(),
                 content: "alpha\nbeta\ngamma\ndelta".to_string(),
                 encoding: "text".to_string(),
@@ -1019,7 +1019,7 @@ mod tests {
     #[test]
     fn sandbox_read_file_result_marks_untruncated_window() {
         let result = build_sandbox_read_file_result(
-            everruns_core::SessionSandboxReadFileResponse {
+            crate::session_sandbox::SessionSandboxReadFileResponse {
                 path: "/workspace/src/lib.rs".to_string(),
                 content: "alpha\nbeta".to_string(),
                 encoding: "text".to_string(),
