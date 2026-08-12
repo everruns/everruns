@@ -2398,6 +2398,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "everruns-builtins",
  "everruns-capability",
  "everruns-core",
  "everruns-host",
@@ -2470,6 +2471,23 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
+]
+
+[[package]]
+name = "everruns-builtins"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-capability",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+ "uuid 1.24.0",
 ]
 
 [[package]]
@@ -2546,9 +2564,6 @@ dependencies = [
 name = "everruns-core"
 version = "0.17.26"
 dependencies = [
- "a2a-client-lf",
- "a2a-lf",
- "a2a-server-lf",
  "anyhow",
  "async-trait",
  "axum",
@@ -2665,6 +2680,7 @@ version = "0.17.26"
 dependencies = [
  "async-trait",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-engine",
  "everruns-http",
@@ -3035,6 +3051,7 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-bedrock",
+ "everruns-builtins",
  "everruns-core",
  "everruns-fireworks",
  "everruns-gemini",
@@ -3064,6 +3081,7 @@ dependencies = [
  "chrono-tz",
  "cron",
  "dirs",
+ "everruns-builtins",
  "everruns-core",
  "everruns-host",
  "everruns-platform",
@@ -3203,23 +3221,31 @@ version = "0.17.26"
 name = "everruns-platform"
 version = "0.17.26"
 dependencies = [
+ "a2a-client-lf",
+ "a2a-lf",
+ "a2a-server-lf",
  "anyhow",
  "async-trait",
+ "axum",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
  "everruns-integrations-lua",
  "everruns-integrations-openrouter-workspace",
  "everruns-integrations-web-fetch",
+ "futures",
  "include_dir",
  "inventory",
+ "jsonschema",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "url",
  "utoipa",
  "uuid 1.24.0",
  "wiremock",
@@ -3297,6 +3323,7 @@ dependencies = [
  "ethers-core",
  "ethers-signers",
  "everruns-ard",
+ "everruns-builtins",
  "everruns-capability",
  "everruns-container-sandbox",
  "everruns-core",
@@ -3401,6 +3428,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "everruns-builtins",
  "everruns-core",
  "everruns-host",
  "everruns-platform",
@@ -3420,6 +3448,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "everruns-core",
+ "everruns-platform",
  "reqwest 0.13.4",
  "serde",
  "serde_json",

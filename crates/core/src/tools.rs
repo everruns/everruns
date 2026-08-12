@@ -61,7 +61,7 @@ struct SessionBackgroundPermit {
 ///
 /// This combines the worker-wide guard with the per-session guard so all
 /// background execution paths share the same admission control.
-pub(crate) struct BackgroundRunPermit {
+pub struct BackgroundRunPermit {
     _worker: tokio::sync::SemaphorePermit<'static>,
     _session: SessionBackgroundPermit,
 }
@@ -103,7 +103,9 @@ fn try_acquire_session_background_permit(
     })
 }
 
-pub(crate) fn try_acquire_background_run_permit(
+/// Acquire the shared worker- and session-scoped admission permit used by
+/// detached tool implementations.
+pub fn try_acquire_background_run_permit(
     session_id: SessionId,
 ) -> std::result::Result<BackgroundRunPermit, String> {
     let worker = ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire().map_err(|_| {
@@ -670,20 +672,16 @@ impl ToolRegistry {
     /// Create a tool registry with default built-in tools.
     ///
     /// This includes:
-    /// - `get_current_time`: Returns the current date and time
     /// - `echo`: Echoes back the provided message
     /// - `report_progress`: Emits deterministic external progress updates
-    /// - TaskList tools: write_todos
     ///
     /// Test fixture tools (test math/weather) are NOT included: they moved to
     /// the `everruns-test-support` crate (EVE-875) and are registered
     /// explicitly by tests that need them.
     pub fn with_defaults() -> Self {
-        use crate::capabilities::{GetCurrentTimeTool, WriteTodosTool};
         use crate::progress_reporting::ReportProgressTool;
 
         let builder = ToolRegistry::builder()
-            .tool(GetCurrentTimeTool)
             .tool(EchoTool)
             // NOTE: `spawn_background` is intentionally NOT a default tool —
             // it is contributed by the `background_execution` capability,
@@ -694,9 +692,7 @@ impl ToolRegistry {
             // model-visible tools and the worker execution registry: the
             // executor only knows about `spawn_background` when the model
             // can also see it.
-            .tool(ReportProgressTool)
-            // TaskList capability tools
-            .tool(WriteTodosTool);
+            .tool(ReportProgressTool);
 
         builder.build()
     }
@@ -709,12 +705,7 @@ impl ToolRegistry {
     /// controls such as network ACLs, egress routing, storage, or filesystem
     /// mediation.
     pub fn with_monitor_probe_defaults() -> Self {
-        use crate::capabilities::GetCurrentTimeTool;
-
-        ToolRegistry::builder()
-            .tool(GetCurrentTimeTool)
-            .tool(EchoTool)
-            .build()
+        ToolRegistry::builder().tool(EchoTool).build()
     }
 
     /// Register a tool with the registry.
@@ -1803,8 +1794,8 @@ fn is_canceled_outcome(
 
 /// Re-attach a `background_tool` task after worker loss.
 ///
-/// Called by `BackgroundToolTaskExecutor::start()` when the reaper decides the
-/// task is safe to restart. Reads `spec["tool"]` and `spec["arguments"]` from
+/// Called by a host-owned task executor when the reaper decides the task is
+/// safe to restart. Reads `spec["tool"]` and `spec["arguments"]` from
 /// the task, looks up the tool in the built-in default registry, and spawns a
 /// fresh background run with `task.attempt` as the heartbeat fence. New artifact
 /// paths are generated so old partial artifacts do not conflict.
@@ -1816,7 +1807,7 @@ fn is_canceled_outcome(
 /// - the tool does not implement `BackgroundExecutable`
 /// - the tool's current hints are not `idempotent` or `readonly`
 /// - per-worker or per-session background concurrency caps are exhausted
-pub(crate) async fn reattach_background_run(
+pub async fn reattach_background_run(
     task: &crate::session_task::SessionTask,
     context: &crate::traits::ToolContext,
 ) -> crate::error::Result<()> {
@@ -2077,7 +2068,6 @@ impl Tool for FailingTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::GetCurrentTimeTool;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_task::SessionTaskRegistry;
     use crate::subagent_delegation::SubagentSessionDelegate;
@@ -2737,36 +2727,30 @@ mod tests {
     #[tokio::test]
     async fn test_tool_registry() {
         let mut registry = ToolRegistry::new();
-        registry.register(GetCurrentTimeTool);
         registry.register(EchoTool);
 
-        assert_eq!(registry.len(), 2);
-        assert!(registry.has("get_current_time"));
+        assert_eq!(registry.len(), 1);
         assert!(registry.has("echo"));
         assert!(!registry.has("nonexistent"));
 
         let definitions = registry.tool_definitions();
-        assert_eq!(definitions.len(), 2);
+        assert_eq!(definitions.len(), 1);
     }
 
     #[tokio::test]
     async fn test_tool_registry_builder() {
-        let registry = ToolRegistry::builder()
-            .tool(GetCurrentTimeTool)
-            .tool(EchoTool)
-            .build();
+        let registry = ToolRegistry::builder().tool(EchoTool).build();
 
-        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.len(), 1);
     }
 
     #[test]
     fn test_tool_display_name_in_definition() {
-        // GetCurrentTimeTool has display_name "Get Current Time"
-        let tool = GetCurrentTimeTool;
-        assert_eq!(tool.display_name(), Some("Get Current Time"));
+        let tool = EchoTool;
+        assert_eq!(tool.display_name(), Some("Echo"));
 
         let def = tool.to_definition();
-        assert_eq!(def.display_name(), Some("Get Current Time"));
+        assert_eq!(def.display_name(), Some("Echo"));
     }
 
     #[test]
@@ -2873,13 +2857,13 @@ mod tests {
 
     #[test]
     fn test_tool_to_definition() {
-        let tool = GetCurrentTimeTool;
+        let tool = EchoTool;
         let def = tool.to_definition();
 
         let ToolDefinition::Builtin(builtin) = def else {
             panic!("expected Builtin variant");
         };
-        assert_eq!(builtin.name, "get_current_time");
+        assert_eq!(builtin.name, "echo");
         assert_eq!(builtin.policy, ToolPolicy::Auto);
     }
 
@@ -2887,11 +2871,7 @@ mod tests {
     fn test_with_defaults_has_expected_tools() {
         let registry = ToolRegistry::with_defaults();
 
-        // Core tools
-        assert!(
-            registry.has("get_current_time"),
-            "should have get_current_time"
-        );
+        // Core execution-contract tools only.
         assert!(registry.has("echo"), "should have echo");
         // spawn_background is contributed by the background_execution
         // capability (auto-activated) — it must NOT be in defaults.
@@ -2913,15 +2893,12 @@ mod tests {
             "get_weather must NOT be in defaults"
         );
 
-        // TaskList capability tools
-        assert!(registry.has("write_todos"), "should have write_todos");
-
         // Environment-backed tools are composed by the host, not core defaults.
         for tool in ["read_file", "write_file", "bash", "web_fetch"] {
             assert!(!registry.has(tool), "`{tool}` must not be a core default");
         }
 
-        assert_eq!(registry.len(), 4, "should have four neutral default tools");
+        assert_eq!(registry.len(), 2, "should have two core default tools");
     }
 
     #[tokio::test]

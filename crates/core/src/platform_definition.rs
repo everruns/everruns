@@ -19,8 +19,7 @@
 
 use crate::{
     Capability, CapabilityRegistry, DriverRegistry, EgressService, UtilityLlmService,
-    traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
-    vector_store::{InMemoryVectorStore, VectorStore},
+    traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory, ToolContextExtensions},
 };
 use std::sync::Arc;
 
@@ -41,7 +40,7 @@ use std::sync::Arc;
 ///
 /// let platform = PlatformDefinition::builder()
 ///     .driver_registry(drivers)
-///     .capability(everruns_core::CurrentTimeCapability)
+///     .capability(everruns_core::HumanIntentCapability)
 ///     .build();
 /// ```
 #[derive(Clone)]
@@ -51,7 +50,7 @@ pub struct PlatformDefinition {
     egress_service: Arc<dyn EgressService>,
     utility_llm_service: Arc<dyn UtilityLlmService>,
     session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
-    vector_store: Arc<dyn VectorStore>,
+    extensions: ToolContextExtensions,
 }
 
 impl PlatformDefinition {
@@ -63,7 +62,7 @@ impl PlatformDefinition {
             egress_service: Arc::new(crate::DisabledEgressService),
             utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
-            vector_store: Arc::new(InMemoryVectorStore::new()),
+            extensions: ToolContextExtensions::default(),
         }
     }
 
@@ -107,10 +106,9 @@ impl PlatformDefinition {
         self.session_file_system_factory.clone()
     }
 
-    /// Platform-selected vector store backing Knowledge Index embeddings.
-    /// Defaults to the in-memory backend; production deployments override it.
-    pub fn vector_store(&self) -> Arc<dyn VectorStore> {
-        self.vector_store.clone()
+    /// Resolve a type-keyed service supplied by a crate layered above core.
+    pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.extensions.get::<T>()
     }
 }
 
@@ -131,7 +129,7 @@ impl std::fmt::Debug for PlatformDefinition {
                 "session_file_system_factory",
                 &self.session_file_system_factory.name(),
             )
-            .field("vector_store", &"<dyn VectorStore>")
+            .field("extensions", &self.extensions)
             .finish()
     }
 }
@@ -188,9 +186,9 @@ impl PlatformDefinitionBuilder {
         self
     }
 
-    /// Set the platform-wide vector store for Knowledge Index embeddings.
-    pub fn vector_store(mut self, vector_store: Arc<dyn VectorStore>) -> Self {
-        self.platform.vector_store = vector_store;
+    /// Insert a type-keyed service supplied by a crate layered above core.
+    pub fn extension<T: std::any::Any + Send + Sync>(mut self, value: Arc<T>) -> Self {
+        self.platform.extensions.insert(value);
         self
     }
 
@@ -209,7 +207,7 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityStatus, CurrentTimeCapability};
+    use crate::{CapabilityStatus, HumanIntentCapability};
     use async_trait::async_trait;
 
     /// Chat driver stub: registration-only, never invoked in these tests.
@@ -239,10 +237,10 @@ mod tests {
 
         let platform = PlatformDefinition::builder()
             .driver_registry(drivers.clone())
-            .capability(CurrentTimeCapability)
+            .capability(HumanIntentCapability)
             .build();
 
-        assert!(platform.capability_registry().has("current_time"));
+        assert!(platform.capability_registry().has("human_intent"));
         assert!(
             platform
                 .driver_registry()
@@ -255,13 +253,13 @@ mod tests {
         let mut platform = PlatformDefinition::default();
         platform
             .capability_registry_mut()
-            .register(CurrentTimeCapability);
+            .register(HumanIntentCapability);
 
         let info = crate::CapabilityInfo::from_core(
             platform
                 .capability_registry()
-                .get("current_time")
-                .expect("current_time registered")
+                .get("human_intent")
+                .expect("human_intent registered")
                 .as_ref(),
         );
         assert_eq!(info.status, CapabilityStatus::Available);

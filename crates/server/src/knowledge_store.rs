@@ -11,8 +11,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::organization::org_internal_id_from_public;
-use everruns_core::traits::{KnowledgeSearchHit, KnowledgeStore};
 use everruns_core::typed_id::{KnowledgeBaseId, OrgId};
+use everruns_platform::{KnowledgeSearchHit, KnowledgeStore};
 
 use crate::storage::StorageBackend;
 

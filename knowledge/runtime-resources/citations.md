@@ -27,7 +27,7 @@ in [Phasing](#phasing).
 ## Motivation
 
 Grounding already exists in everruns, but it dies as opaque tool-result JSON:
-`search_index` returns `KnowledgeIndexCitation` (`crates/core/src/vector_store.rs`)
+`search_index` returns `KnowledgeIndexCitation` (`crates/platform/src/vector_store.rs`)
 and `search_knowledge` returns `KnowledgeSearchHit` (`crates/core/src/traits.rs`),
 each carrying a stable id (`kchk_…` / `kbe_…`), `source_uri`, `location`, and a
 `snippet`. But nothing ties those sources to the *specific sentence* the model

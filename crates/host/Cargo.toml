@@ -34,6 +34,7 @@ tracing.workspace = true
 uuid.workspace = true
 
 everruns-core.workspace = true
+everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-http = { workspace = true, optional = true }
 everruns-mcp = { workspace = true, optional = true }
@@ -45,6 +46,7 @@ everruns-integrations-lua = { workspace = true, optional = true }
 
 [features]
 default = []
+builtins = ["dep:everruns-builtins"]
 mcp = ["dep:everruns-mcp", "dep:everruns-http"]
 mcp-stdio = ["mcp", "everruns-mcp/stdio"]
 filesystem = ["dep:everruns-integrations-filesystem"]
@@ -66,6 +68,7 @@ name = "mcp_runtime_test"
 required-features = ["mcp"]
 
 [dev-dependencies]
+everruns-builtins.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 # Deterministic simulator + fixtures for host tests/examples. Version-less

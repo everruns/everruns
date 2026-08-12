@@ -33,19 +33,20 @@ use everruns_core::{
     MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, PrincipalSummary, Rule,
     SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
     capabilities::{
-        AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
-        collect_capabilities_with_configs, compute_features, resolve_capability_configs,
+        AttachSkillCapability, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
+        compute_features, resolve_capability_configs,
     },
-    is_declarative_capability, is_plugin_capability, is_skill_capability,
-    memory::{MemoryConfig, MemoryMountAccess},
-    merge_capabilities, merge_initial_files, normalize_initial_file_path,
-    parse_declarative_capability_id, parse_skill_capability_id,
+    is_declarative_capability, is_plugin_capability, is_skill_capability, merge_capabilities,
+    merge_initial_files, normalize_initial_file_path, parse_declarative_capability_id,
+    parse_skill_capability_id,
     typed_id::MemoryId,
 };
 use everruns_durable::UpdateField;
 use everruns_mcp::is_mcp_capability;
-use everruns_platform::AgentVersionPolicy;
 use everruns_platform::FeatureFlags;
+use everruns_platform::{
+    AgentVersionPolicy, MemoryConfig, MemoryMountAccess, capabilities::MEMORY_CAPABILITY_ID,
+};
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -2081,7 +2082,7 @@ impl SessionService {
             }
             if config.capability_id() == "user_hooks" {
                 disabled.extend(
-                    everruns_core::capabilities::user_hooks::disabled_contributions(
+                    everruns_platform::capabilities::user_hooks::disabled_contributions(
                         config.config_value(),
                     ),
                 );
@@ -5343,7 +5344,7 @@ mod tests {
     async fn session_start_hook_fires_on_create() {
         let db = Arc::new(StorageBackend::in_memory());
         let mut registry = CapabilityRegistry::new();
-        registry.register(everruns_core::capabilities::UserHooksCapability);
+        registry.register(everruns_platform::capabilities::UserHooksCapability);
         let session_service = SessionService::with_registry(db.clone(), registry);
         let caller = Caller::internal(DEFAULT_ORG_ID);
 
@@ -5384,7 +5385,7 @@ mod tests {
     async fn session_end_hook_fires_on_delete_without_blocking() {
         let db = Arc::new(StorageBackend::in_memory());
         let mut registry = CapabilityRegistry::new();
-        registry.register(everruns_core::capabilities::UserHooksCapability);
+        registry.register(everruns_platform::capabilities::UserHooksCapability);
         let session_service = SessionService::with_registry(db.clone(), registry);
         let caller = Caller::internal(DEFAULT_ORG_ID);
 

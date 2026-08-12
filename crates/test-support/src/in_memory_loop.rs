@@ -330,7 +330,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::capabilities::current_time::CurrentTimeCapability;
+    /// use everruns_builtins::CurrentTimeCapability;
     ///
     /// let runner = InMemoryAgenticLoop::builder()
     ///     .capability(CurrentTimeCapability)

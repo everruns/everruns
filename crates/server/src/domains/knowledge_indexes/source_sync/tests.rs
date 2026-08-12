@@ -13,7 +13,7 @@ use everruns_core::driver_registry::{
     EmbeddingsDriverError, ServiceKind,
 };
 use everruns_core::typed_id::KnowledgeIndexId;
-use everruns_core::vector_store::{InMemoryVectorStore, VectorQuery, index_namespace};
+use everruns_platform::vector_store::{InMemoryVectorStore, VectorQuery, index_namespace};
 
 // ----------------------------- chunk_text -----------------------------
 

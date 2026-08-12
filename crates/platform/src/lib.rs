@@ -1,9 +1,13 @@
-//! Backend control-plane entities and store contracts for the Everruns Platform.
+//! Backend control-plane entities and store contracts for the
+//! [Everruns](https://everruns.com) Platform.
 //!
 //! This crate owns organization, principal, app/channel, trigger, payment,
-//! reporting, audit, and hosted-management values used by server and platform
-//! backends. It is part of the [Everruns](https://everruns.com) ecosystem;
-//! normal Framework applications use `everruns` rather than platform records.
+//! reporting, audit, and hosted capability implementations used by server and
+//! platform backends. Hosted knowledge, memory, delegation, task, user-hook,
+//! and management capabilities are composed through
+//! [`capabilities::hosted_capability_registry`]. Normal Framework applications
+//! use `everruns`; its default registry does not advertise these product-owned
+//! capabilities.
 //!
 //! # Example
 //!
@@ -16,10 +20,10 @@
 //!
 //! # Layer boundary
 //!
-//! Backend/API-only records live here. Cross-cutting identity and payment
-//! values needed during a turn remain in `everruns-core` and are re-exported
-//! where a unified platform-facing import is useful. The dependency direction
-//! remains `platform -> core`.
+//! Backend/API-only records and service-backed capability implementations live
+//! here. Cross-cutting identity and payment values needed during a turn remain
+//! in `everruns-core` and are re-exported where a unified platform-facing import
+//! is useful. The dependency direction remains `platform -> core`.
 
 pub mod audit;
 pub mod organization;
@@ -29,7 +33,10 @@ pub mod reporting;
 
 // Hosted management seam and capabilities carved out of `everruns-core` (EVE-839).
 pub mod capabilities;
+pub mod knowledge_store;
+pub mod memory;
 pub mod platform_store;
+pub mod vector_store;
 
 // Hosted control-plane orchestration records carved out of `everruns-core`
 // (EVE-841). `App`/`AppChannel` and their channel configs, plus `AgentTrigger`,
@@ -83,6 +90,14 @@ pub use harness::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
     HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,
 };
+pub use knowledge_store::{
+    KnowledgeIndexSearchExt, KnowledgeIndexSearchHit, KnowledgeSearchHit, KnowledgeStore,
+    KnowledgeStoreExt,
+};
+pub use memory::{
+    Memory, MemoryConfig, MemoryFile, MemoryMountAccess, MemoryMountConfig, MemoryScope,
+    MemoryStatus, validate_memory_config, validate_mount_config_shape,
+};
 pub use organization::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, OrgMembership, Organization,
     generate_org_public_id, validate_org_public_id,
@@ -109,6 +124,10 @@ pub use feature_flags::{
 pub use observer::{
     LlmJudgeConfig, Observer, ObserverMatch, ObserverScope, ObserverScorerConfig, ObserverStatus,
     ScorerMethod, TraceScore, TraceScoreStatus,
+};
+pub use vector_store::{
+    InMemoryVectorStore, KnowledgeIndexCitation, KnowledgeIndexSearch, VectorMatch, VectorQuery,
+    VectorRecord, VectorStore, VectorStoreExt, index_namespace,
 };
 
 // Hosted control-plane orchestration records (EVE-841).
