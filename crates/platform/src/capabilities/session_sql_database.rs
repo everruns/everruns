@@ -5,13 +5,13 @@
 // - sql_query: Read-only SELECT queries returning columns + rows as JSON.
 // - sql_schema: Introspect database schema (tables, columns, types).
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::session_sqldb::SessionSqlDbError;
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
-use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::session_sqldb::SessionSqlDbError;
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
+use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
 use serde_json::{Value, json};
 
 pub const SESSION_SQL_DATABASE_CAPABILITY_ID: &str = "session_sql_database";
@@ -132,12 +132,12 @@ pub struct SqlExecuteTool;
 impl Tool for SqlExecuteTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+        everruns_core::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -235,12 +235,12 @@ pub struct SqlQueryTool;
 impl Tool for SqlQueryTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+        everruns_core::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -341,12 +341,12 @@ pub struct SqlSchemaTool;
 impl Tool for SqlSchemaTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+        everruns_core::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
     }
 
     fn name(&self) -> &str {
@@ -450,7 +450,7 @@ impl Tool for SqlSchemaTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::typed_id::SessionId;
+    use everruns_core::typed_id::SessionId;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -513,7 +513,7 @@ mod tests {
         let columns = vec!["id".to_string()];
         let rows = vec![vec![json!(1)], vec![json!(2)]];
         let response = shape_sql_query_response("db", &columns, &rows, 2, false);
-        crate::truncation_info::assert_conforms("sql_query", &response);
+        everruns_core::truncation_info::assert_conforms("sql_query", &response);
         assert_eq!(response["truncation"]["truncated"], false);
     }
 
@@ -522,7 +522,7 @@ mod tests {
         let columns = vec!["id".to_string()];
         let rows = vec![vec![json!(1)]; 1000];
         let response = shape_sql_query_response("db", &columns, &rows, 1000, true);
-        crate::truncation_info::assert_conforms("sql_query", &response);
+        everruns_core::truncation_info::assert_conforms("sql_query", &response);
         assert_eq!(response["truncation"]["truncated"], true);
         assert_eq!(response["truncation"]["reason"], "row_cap");
         assert!(

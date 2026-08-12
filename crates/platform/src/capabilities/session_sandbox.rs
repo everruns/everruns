@@ -3,20 +3,20 @@
 //! One managed sandbox per session. The concrete provider is chosen by config
 //! (`provider: "daytona"` initially), while the tool surface stays stable.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-pub use crate::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
-use crate::session_sandbox::{
+use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+pub use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
+use everruns_core::session_sandbox::{
     DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SessionSandboxConfig, checkpoint_session_sandbox,
     create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
     load_session_sandbox_state, pause_session_sandbox, session_sandbox_tool_hints,
 };
-use crate::tool_output_sanitizer::{
+use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
-use crate::truncation_info::TruncationInfo;
-use async_trait::async_trait;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
+use everruns_core::truncation_info::TruncationInfo;
 use serde_json::{Value, json};
 
 pub struct SessionSandboxCapability;
@@ -195,7 +195,7 @@ fn parse_config(config: &Value) -> Result<SessionSandboxConfig, ToolExecutionRes
 
 fn provider_for_config(
     config: &SessionSandboxConfig,
-) -> Result<Box<dyn crate::SessionSandboxProvider>, ToolExecutionResult> {
+) -> Result<Box<dyn everruns_core::SessionSandboxProvider>, ToolExecutionResult> {
     create_session_sandbox_provider(&config.provider).ok_or_else(|| {
         ToolExecutionResult::tool_error(format!(
             "Session sandbox provider '{}' is not registered",
@@ -205,7 +205,7 @@ fn provider_for_config(
 }
 
 fn build_sandbox_exec_result(
-    response: crate::SessionSandboxExecResponse,
+    response: everruns_core::SessionSandboxExecResponse,
     cwd: Option<&str>,
 ) -> ToolExecutionResult {
     let mut result = json!({
@@ -229,7 +229,7 @@ fn build_sandbox_exec_result(
 }
 
 fn build_sandbox_read_file_result(
-    response: crate::SessionSandboxReadFileResponse,
+    response: everruns_core::SessionSandboxReadFileResponse,
     offset: usize,
     limit: usize,
 ) -> ToolExecutionResult {
@@ -270,13 +270,13 @@ impl SandboxExecTool {
 impl Tool for SandboxExecTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sandbox");
-        Some(crate::tool_narration::narrate_shell_exec(
+        Some(everruns_core::tool_narration::narrate_shell_exec(
             &tool_call.arguments,
             fallback,
             phase,
@@ -299,14 +299,14 @@ impl Tool for SandboxExecTool {
                 "command": { "type": "string", "description": "Shell command to execute" },
                 "cwd": { "type": "string", "description": "Optional working directory inside the sandbox" },
                 "timeout_ms": { "type": "integer", "minimum": 1, "description": "Optional execution timeout in milliseconds" },
-                "output": crate::tool_output_sanitizer::output_verbosity_schema()
+                "output": everruns_core::tool_output_sanitizer::output_verbosity_schema()
             },
             "required": ["command"],
             "additionalProperties": false
         })
     }
 
-    fn hints(&self) -> crate::ToolHints {
+    fn hints(&self) -> everruns_core::ToolHints {
         session_sandbox_tool_hints()
     }
 
@@ -353,7 +353,7 @@ impl Tool for SandboxExecTool {
                 context,
                 &config,
                 &state.instance,
-                &crate::SessionSandboxExecRequest {
+                &everruns_core::SessionSandboxExecRequest {
                     command: command.to_string(),
                     cwd: arguments
                         .get("cwd")
@@ -404,12 +404,12 @@ impl SandboxReadFileTool {
 impl Tool for SandboxReadFileTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_read_file(
+        Some(everruns_core::tool_narration::narrate_read_file(
             &tool_call.arguments,
             phase,
             locale,
@@ -447,7 +447,7 @@ impl Tool for SandboxReadFileTool {
         })
     }
 
-    fn hints(&self) -> crate::ToolHints {
+    fn hints(&self) -> everruns_core::ToolHints {
         session_sandbox_tool_hints().with_readonly(true)
     }
 
@@ -511,12 +511,12 @@ impl SandboxWriteFileTool {
 impl Tool for SandboxWriteFileTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_write_file(
+        Some(everruns_core::tool_narration::narrate_write_file(
             &tool_call.arguments,
             phase,
             locale,
@@ -543,7 +543,7 @@ impl Tool for SandboxWriteFileTool {
         })
     }
 
-    fn hints(&self) -> crate::ToolHints {
+    fn hints(&self) -> everruns_core::ToolHints {
         session_sandbox_tool_hints()
     }
 
@@ -617,12 +617,14 @@ impl SandboxStatusTool {
 impl Tool for SandboxStatusTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_sandbox_status(phase, locale))
+        Some(everruns_core::tool_narration::narrate_sandbox_status(
+            phase, locale,
+        ))
     }
 
     fn name(&self) -> &str {
@@ -641,7 +643,7 @@ impl Tool for SandboxStatusTool {
         })
     }
 
-    fn hints(&self) -> crate::ToolHints {
+    fn hints(&self) -> everruns_core::ToolHints {
         session_sandbox_tool_hints()
             .with_readonly(true)
             .with_idempotent(true)
@@ -710,12 +712,12 @@ impl SandboxManageTool {
 impl Tool for SandboxManageTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_sandbox_manage(
+        Some(everruns_core::tool_narration::narrate_sandbox_manage(
             &tool_call.arguments,
             phase,
             locale,
@@ -745,7 +747,7 @@ impl Tool for SandboxManageTool {
         })
     }
 
-    fn hints(&self) -> crate::ToolHints {
+    fn hints(&self) -> everruns_core::ToolHints {
         session_sandbox_tool_hints().with_destructive(true)
     }
 
@@ -812,9 +814,9 @@ impl Tool for SandboxManageTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::{Capability, CapabilityRegistry};
-    use crate::deployment::DeploymentGrade;
-    use crate::traits::ToolContext;
+    use everruns_core::capabilities::Capability;
+    use everruns_core::deployment::DeploymentGrade;
+    use everruns_core::traits::ToolContext;
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -902,13 +904,17 @@ mod tests {
 
     #[test]
     fn session_sandbox_registry_is_flag_gated() {
+        // The gate moved with the capability (EVE-886): product composition
+        // decides, the kernel preset no longer carries it either way.
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+        let registry =
+            crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
         assert!(!registry.has("session_sandbox"));
 
         unsafe { std::env::set_var("FEATURE_SESSION_SANDBOX", "true") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+        let registry =
+            crate::capabilities::hosted_capability_registry_for_grade(DeploymentGrade::Dev);
         assert!(registry.has("session_sandbox"));
         unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
     }
@@ -916,7 +922,7 @@ mod tests {
     #[tokio::test]
     async fn sandbox_exec_rejects_zero_timeout() {
         let tool = SandboxExecTool::new(json!({ "provider": "missing-provider" }));
-        let context = ToolContext::new(crate::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_core::typed_id::SessionId::new());
 
         let result = tool
             .execute_with_context(
@@ -939,7 +945,7 @@ mod tests {
     #[test]
     fn sandbox_exec_result_preserves_absent_raw_output() {
         let result = build_sandbox_exec_result(
-            crate::SessionSandboxExecResponse {
+            everruns_core::SessionSandboxExecResponse {
                 exit_code: 0,
                 stdout: "ok".to_string(),
                 stderr: String::new(),
@@ -960,7 +966,7 @@ mod tests {
     #[test]
     fn sandbox_exec_result_keeps_raw_output_sidecar_when_present() {
         let result = build_sandbox_exec_result(
-            crate::SessionSandboxExecResponse {
+            everruns_core::SessionSandboxExecResponse {
                 exit_code: 17,
                 stdout: "trimmed".to_string(),
                 stderr: "warn".to_string(),
@@ -984,7 +990,7 @@ mod tests {
     #[test]
     fn sandbox_read_file_result_applies_line_window() {
         let result = build_sandbox_read_file_result(
-            crate::SessionSandboxReadFileResponse {
+            everruns_core::SessionSandboxReadFileResponse {
                 path: "/workspace/src/lib.rs".to_string(),
                 content: "alpha\nbeta\ngamma\ndelta".to_string(),
                 encoding: "text".to_string(),
@@ -1013,7 +1019,7 @@ mod tests {
     #[test]
     fn sandbox_read_file_result_marks_untruncated_window() {
         let result = build_sandbox_read_file_result(
-            crate::SessionSandboxReadFileResponse {
+            everruns_core::SessionSandboxReadFileResponse {
                 path: "/workspace/src/lib.rs".to_string(),
                 content: "alpha\nbeta".to_string(),
                 encoding: "text".to_string(),

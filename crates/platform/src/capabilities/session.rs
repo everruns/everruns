@@ -4,15 +4,15 @@
 //! - `write_session_title`: update session title
 //! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::error::{AgentLoopError, Result};
-use crate::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
-use crate::session::ExecutionSession;
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{EventEmitter, SessionMutator, SessionStore, ToolContext};
-use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
+use everruns_core::session::ExecutionSession;
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::{EventEmitter, SessionMutator, SessionStore, ToolContext};
+use everruns_core::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -168,7 +168,7 @@ impl Capability for SessionCapability {
 
     async fn system_prompt_contribution_with_config(
         &self,
-        _ctx: &super::SystemPromptContext,
+        _ctx: &everruns_core::capabilities::SystemPromptContext,
         config: &Value,
     ) -> Option<String> {
         if !SessionCapabilityConfig::from_value(config).auto_title {
@@ -196,12 +196,12 @@ pub struct WriteSessionTitleTool;
 impl Tool for WriteSessionTitleTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_write_session_title(
+        Some(everruns_core::tool_narration::narrate_write_session_title(
             &tool_call.arguments,
             phase,
             locale,
@@ -293,12 +293,12 @@ pub struct GetSessionInfoTool;
 impl Tool for GetSessionInfoTool {
     fn narrate(
         &self,
-        _tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_get_session_info(
+        Some(everruns_core::tool_narration::narrate_get_session_info(
             phase, locale,
         ))
     }
@@ -385,12 +385,14 @@ fn usage_json(usage: &TokenUsage) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AgentDefinition;
-    use crate::events::{Event, EventRequest};
-    use crate::session::{ExecutionSession, SessionExecutionState};
-    use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId};
-    use crate::{AgentCapabilityConfig, Tool};
     use async_trait::async_trait;
+    use everruns_core::AgentDefinition;
+    use everruns_core::events::{Event, EventRequest};
+    use everruns_core::session::{ExecutionSession, SessionExecutionState};
+    use everruns_core::typed_id::{
+        AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId,
+    };
+    use everruns_core::{AgentCapabilityConfig, Tool};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
@@ -399,7 +401,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionStore for MockSessionStore {
+    impl everruns_core::traits::SessionStore for MockSessionStore {
         async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
             Ok(self.session.lock().expect("poisoned").clone())
         }
@@ -411,7 +413,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionMutator for MockSessionMutator {
+    impl everruns_core::traits::SessionMutator for MockSessionMutator {
         async fn update_session_title(
             &self,
             _session_id: SessionId,
@@ -433,7 +435,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::EventEmitter for RecordingEventEmitter {
+    impl everruns_core::traits::EventEmitter for RecordingEventEmitter {
         async fn emit(&self, request: EventRequest) -> Result<Event> {
             self.requests
                 .lock()
@@ -444,7 +446,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::AgentStore for MockAgentStore {
+    impl everruns_core::traits::AgentStore for MockAgentStore {
         async fn get_agent(&self, _agent_id: AgentId) -> Result<Option<AgentDefinition>> {
             Ok(self.agent.clone())
         }
@@ -462,8 +464,8 @@ mod tests {
 
     #[test]
     fn session_tools_narrate_all_phases() {
-        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use everruns_core::tool_types::ToolCall;
 
         let ctx = ToolNarrationContext::default();
         let title_call = ToolCall {
@@ -540,11 +542,14 @@ mod tests {
 
         let requests = emitter.requests.lock().expect("poisoned");
         assert_eq!(requests.len(), 1);
-        assert_eq!(requests[0].event_type, crate::events::SESSION_TITLE_UPDATED);
+        assert_eq!(
+            requests[0].event_type,
+            everruns_core::events::SESSION_TITLE_UPDATED
+        );
         assert_eq!(requests[0].context.turn_id, Some(turn_id));
         assert_eq!(requests[0].context.input_message_id, Some(input_message_id));
         match &requests[0].data {
-            crate::events::EventData::SessionTitleUpdated(data) => {
+            everruns_core::events::EventData::SessionTitleUpdated(data) => {
                 assert_eq!(data.previous_title.as_deref(), Some("Old title"));
                 assert_eq!(data.title, "New title");
             }
@@ -580,7 +585,8 @@ mod tests {
     #[tokio::test]
     async fn auto_title_policy_is_opt_in_and_mandatory_when_enabled() {
         let capability = SessionCapability;
-        let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
+        let ctx =
+            everruns_core::capabilities::SystemPromptContext::without_file_store(SessionId::new());
 
         assert!(
             capability

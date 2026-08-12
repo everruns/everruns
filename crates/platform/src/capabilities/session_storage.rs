@@ -7,11 +7,11 @@
 //! - `kv_store`: Key/value storage operations (set, get, delete, list)
 //! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_types::ToolHints;
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
 
 // Reserve internal KV prefixes from the user-facing kv_store. Reference the
@@ -20,9 +20,9 @@ use serde_json::{Value, json};
 // attachments / discovery cache (`ard_attachment`). Reserving the ARD prefixes
 // stops a session/tool actor forging attachments via kv_store (TM-TOOL/TM-AGENT).
 const INTERNAL_KV_PREFIXES: &[&str] = &[
-    super::AGENT_RUN_KEY_PREFIX,
-    crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
-    crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
+    everruns_core::capabilities::AGENT_RUN_KEY_PREFIX,
+    everruns_core::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
+    everruns_core::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
 ];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
 
@@ -118,13 +118,13 @@ pub struct KvStoreTool;
 impl Tool for KvStoreTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Key-Value Store");
-        Some(crate::tool_narration::narrate_secret_store(
+        Some(everruns_core::tool_narration::narrate_secret_store(
             &tool_call.arguments,
             fallback,
             phase,
@@ -329,13 +329,13 @@ pub struct SecretStoreTool;
 impl Tool for SecretStoreTool {
     fn narrate(
         &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
-        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Secret Store");
-        Some(crate::tool_narration::narrate_secret_store(
+        Some(everruns_core::tool_narration::narrate_secret_store(
             &tool_call.arguments,
             fallback,
             phase,
@@ -566,9 +566,9 @@ impl Tool for SecretStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::SessionStorageStore;
-    use crate::typed_id::SessionId;
-    use crate::{KeyInfo, Result};
+    use everruns_core::traits::SessionStorageStore;
+    use everruns_core::typed_id::SessionId;
+    use everruns_core::{KeyInfo, Result};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -578,7 +578,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionStorageStore for TestStorageStore {
+    impl everruns_core::traits::SessionStorageStore for TestStorageStore {
         async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
             self.values
                 .lock()
@@ -627,7 +627,10 @@ mod tests {
             Ok(false)
         }
 
-        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<crate::SecretInfo>> {
+        async fn list_secrets(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Vec<everruns_core::SecretInfo>> {
             Ok(Vec::new())
         }
     }

@@ -19,7 +19,11 @@ pub mod monitors;
 pub mod platform;
 pub mod platform_management;
 pub mod research;
+pub mod session;
+pub mod session_sandbox;
 pub mod session_schedule;
+pub mod session_sql_database;
+pub mod session_storage;
 pub mod session_tasks;
 pub mod subagents;
 pub mod user_hooks;
@@ -73,9 +77,26 @@ pub use platform_management::{
     ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
+pub use session::{
+    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
+    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
+    update_session_title_with_event,
+};
+pub use session_sandbox::{
+    SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
+    SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
+};
 pub use session_schedule::{
     CancelScheduleTool, CreateScheduleTool, ListSchedulesTool, SESSION_SCHEDULE_CAPABILITY_ID,
     SessionScheduleCapability,
+};
+pub use session_sql_database::{
+    SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool,
+};
+pub use session_storage::{
+    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
+    is_internal_session_kv_key, is_internal_session_secret_name,
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use subagents::{
@@ -121,6 +142,16 @@ pub fn register_hosted_capabilities(
     registry: &mut everruns_core::capabilities::CapabilityRegistry,
     grade: everruns_core::DeploymentGrade,
 ) {
+    // Session-service capabilities (EVE-886): every one needs a host service —
+    // a session store, session key/value + secret storage, a SQL database, or a
+    // sandbox provider — so they are composed here rather than shipped by the
+    // kernel.
+    registry.register(SessionCapability);
+    registry.register(SessionStorageCapability);
+    registry.register(SessionSqlDatabaseCapability);
+    if everruns_core::InternalFeatureFlags::from_env().session_sandbox {
+        registry.register(SessionSandboxCapability);
+    }
     registry.register(ResearchCapability);
     registry.register(MemoryCapability);
     registry.register(BackgroundExecutionCapability);

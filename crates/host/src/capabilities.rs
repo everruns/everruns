@@ -29,8 +29,31 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// environment composition as [`runtime_capability_registry`]. Existing
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
+    register_session_service_capabilities(&mut registry);
     register_selected_integrations(&mut registry);
     registry
+}
+
+/// Register the session-service capabilities an in-process host can serve.
+///
+/// `session` and `session_storage` moved to the product crate with the rest of
+/// the service-backed families (EVE-886), but the default in-process runtime
+/// supplies both services, so the Framework keeps advertising them. The SQL and
+/// sandbox capabilities need backends this host does not provide and stay with
+/// product composition.
+fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {
+    if registry
+        .get(everruns_platform::capabilities::SESSION_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_platform::capabilities::SessionCapability);
+    }
+    if registry
+        .get(everruns_platform::capabilities::SESSION_STORAGE_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_platform::capabilities::SessionStorageCapability);
+    }
 }
 
 /// Return the egress service matching the selected host integrations.
