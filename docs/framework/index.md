@@ -53,8 +53,9 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 ## Extend and operate
 
 - [Custom providers](/framework/custom-providers/) — attach a custom `ChatDriver` without changing a closed enum.
-- [Capabilities](/framework/advanced-capabilities/) — configure typed built-ins and open references, or package typed tools with stable metadata and lifecycle context.
+- [Capabilities](/framework/advanced-capabilities/) — configure the optional standard policy bundle and open references, or package typed tools with stable metadata and lifecycle context.
 - [Capability integrations](/framework/capability-integrations/) — opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
+- [Portable and hosted capabilities](/framework/capability-boundaries/) — understand the Framework/Platform implementation boundary.
 - [Custom backends](/framework/custom-backends/) — cross into low-level host composition deliberately.
 - [Testing and simulation](/framework/testing-and-simulation/) — deterministic tests without credentials.
 - [Runnable examples](/framework/examples/) — complete programs maintained with the crate.

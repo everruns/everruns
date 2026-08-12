@@ -19,7 +19,6 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use async_trait::async_trait;
-use everruns_core::capabilities::SubagentCapability;
 use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
@@ -30,6 +29,7 @@ use everruns_host::{
     RuntimeSessionStore, SessionBuilder,
 };
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
+use everruns_platform::capabilities::SubagentCapability;
 use everruns_platform::{PlatformMessage, PlatformStore};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;

@@ -84,64 +84,19 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
-#[cfg(feature = "a2a")]
-mod a2a_delegation;
 #[cfg(feature = "ui-capabilities")]
 mod a2ui;
-mod agent_handoff;
-mod agent_instructions;
 pub mod attach_skill;
-mod auto_tool_search;
-mod background_execution;
-mod btw;
-mod budgeting;
-mod citation_retrieval;
-mod citation_verification;
-mod claude_tool_search;
-pub mod compaction;
-mod current_time;
-mod data_knowledge;
 mod declarative;
-mod delegation_result;
-mod error_disclosure;
 pub mod facts;
-mod guardrails;
 mod human_intent;
 mod infinity_context;
-mod knowledge_base;
-mod knowledge_index;
-mod loop_detection;
-mod memory;
-mod message_metadata;
-mod monitors;
-mod openai_tool_search;
 mod openrouter_server_tools;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
-mod parallel_tool_calls;
-mod progress_guard;
-mod prompt_caching;
-mod prompt_canary_guardrail;
-mod research;
-mod self_budget;
-mod session;
-mod session_sandbox;
-mod session_schedule;
-mod session_sql_database;
-mod session_storage;
-mod session_tasks;
 mod skills;
 mod skills_scoped;
-mod stateless_todo_list;
-mod subagents;
-mod system_commands;
 mod tool_approval;
-mod tool_call_repair;
-mod tool_output_distillation;
-mod tool_output_persistence;
-mod tool_search;
-mod usage_limit_auto_continue;
-pub mod user_hooks;
 pub mod util;
 
 // Re-export capabilities
@@ -152,49 +107,18 @@ pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
 /// KV key prefix for A2A delegation run records. Defined ungated so the
 /// session-storage internal-prefix reservation (a TM-TOOL/TM-AGENT mitigation
 /// against forged attachments) holds even when the `a2a` feature is compiled out.
-pub(crate) const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
-#[cfg(feature = "a2a")]
-pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
+pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+/// Shared concurrency class for every provider of the model-visible
+/// `spawn_agent` tool. Implementations live in host/integration crates, while
+/// collection keeps the merged tool serialized through this neutral key.
+pub const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
-pub use agent_handoff::{
-    AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
-};
-pub use agent_instructions::{
-    AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
-    AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
-    MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
-};
 pub use attach_skill::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapabilityIdExt,
     SkillContribution, SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries,
     is_skill_capability, parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
-pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
-pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
-pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
-pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
-pub use citation_retrieval::{
-    CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
-};
-pub use citation_verification::{
-    CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
-    CitationVerificationConfig, VerificationMode,
-};
-pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
-pub use compaction::{
-    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
-    CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
-    MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
-    SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
-    apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
-    build_summarization_prompt, build_summary_message, classify_memory_tiers,
-    compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
-    format_messages_for_summarization, should_compact_for_cost, should_compact_proactively,
-    total_tool_result_bytes,
-};
-pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
-pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
@@ -202,112 +126,26 @@ pub use declarative::{
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
 };
-pub use delegation_result::{
-    ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
-    report_task_progress_tool_for_child_session,
-};
-pub use error_disclosure::{
-    ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
-};
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
-pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, InfinityContextFilterOnlyCapability,
     QueryHistoryTool,
-};
-pub use knowledge_base::{
-    KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
-    validate_knowledge_base_config,
-};
-pub use knowledge_index::{
-    KNOWLEDGE_INDEX_CAPABILITY_ID, KnowledgeIndexCapability, KnowledgeIndexConfig,
-    validate_knowledge_index_config,
-};
-pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
-pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
-pub use message_metadata::{
-    MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
-    MessageMetadataField, render_annotation, strip_leading_timestamp_annotations,
-};
-pub use openai_tool_search::{
-    DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
-    model_supports_native_tool_search,
 };
 pub use openrouter_server_tools::{
     OPENROUTER_SERVER_TOOLS_CAPABILITY_ID, OpenRouterServerToolsCapability,
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use parallel_tool_calls::{
-    PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
-    parallel_tool_calls_from_config,
-};
-pub use progress_guard::{PROGRESS_GUARD_CAPABILITY_ID, ProgressGuardCapability};
-pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
-pub use prompt_canary_guardrail::{
-    DEFAULT_REPLACEMENT as PROMPT_CANARY_DEFAULT_REPLACEMENT,
-    PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
-    REASON_CODE_SYSTEM_PROMPT_LEAK,
-};
-pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
-pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
-pub use session::{
-    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
-    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
-    update_session_title_with_event,
-};
-pub use session_sandbox::{
-    SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
-    SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
-};
-pub use session_schedule::{
-    CancelScheduleTool, CreateScheduleTool, ListSchedulesTool, SESSION_SCHEDULE_CAPABILITY_ID,
-    SessionScheduleCapability,
-};
-pub use session_sql_database::{
-    SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
-    SqlSchemaTool,
-};
-pub use session_storage::{
-    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
-    is_internal_session_kv_key, is_internal_session_secret_name,
-};
-pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
 };
-pub use stateless_todo_list::{
-    STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
-};
-pub(crate) use subagents::SPAWN_AGENT_CONCURRENCY_CLASS;
-pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
-pub use usage_limit_auto_continue::{
-    AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
-    resolve_usage_limit_auto_continue,
-};
 // Blueprint types are exported directly from the trait definitions above
-pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{
     ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
     ToolApprover,
 };
-pub use tool_call_repair::{
-    DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
-    TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairCapability, ToolCallRepairConfig,
-    salvage_tool_arguments, tool_call_repair_capability,
-};
-pub use tool_output_distillation::{
-    DistillOutputHook, TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID, ToolOutputDistillationCapability,
-};
-pub use tool_output_persistence::{
-    PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
-};
-pub use tool_search::{
-    TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
-};
-pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
 
 // ============================================================================
 // System Prompt Context
@@ -648,6 +486,25 @@ pub trait Capability: Send + Sync {
         self.tools()
     }
 
+    /// Returns a provider for one target of the neutral `spawn_agent` router.
+    ///
+    /// Hosted delegation implementations use this seam so core can assemble a
+    /// single model-facing tool without knowing capability IDs or product
+    /// configuration. The provider tool receives the original call unchanged.
+    fn delegation_target_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<DelegationTargetProvider> {
+        None
+    }
+
+    /// Whether this capability should be activated from the tools collected so
+    /// far. This generic hook supports cross-cutting adapters without teaching
+    /// core their IDs or deployment ownership.
+    fn auto_activates_for(&self, _tool_definitions: &[ToolDefinition]) -> bool {
+        false
+    }
+
     /// Returns system prompt contribution adapted to per-capability config.
     ///
     /// Called during capability collection. Capabilities whose system prompt
@@ -791,6 +648,55 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Provider-facing deferred tool-loading configuration contributed by
+    /// this capability. The execution engine consumes this generically and
+    /// does not match on implementation-owned capability IDs.
+    fn tool_search_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::driver_registry::ToolSearchConfig> {
+        None
+    }
+
+    /// Provider-facing prompt-cache configuration contributed by this
+    /// capability.
+    fn prompt_cache_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::driver_registry::PromptCacheConfig> {
+        None
+    }
+
+    /// Request-level parallel tool-call preference contributed by this
+    /// capability. `None` leaves the runtime/provider default unchanged.
+    fn parallel_tool_calls_preference(&self, _config: &serde_json::Value) -> Option<bool> {
+        None
+    }
+
+    /// User-facing terminal-error disclosure selected by this capability.
+    fn error_disclosure(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::user_facing_error::ErrorDisclosure> {
+        None
+    }
+
+    /// Filter assistant text before it is persisted or returned. This is a
+    /// deterministic, config-aware seam for capability-owned annotations.
+    fn filter_response_text(&self, text: String, _config: &serde_json::Value) -> String {
+        text
+    }
+
+    /// Context-compaction policy configured by this capability. The reason
+    /// atom owns orchestration and invokes the returned implementation without
+    /// matching on a capability ID.
+    fn compaction_policy(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn crate::compaction_policy::CompactionPolicy>> {
+        None
+    }
+
     /// Returns key/value [`Fact`]s this capability contributes to the model.
     ///
     /// Facts are routed by their [`Volatility`] so prompt caching is preserved:
@@ -905,6 +811,16 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no tool call handling).
     fn tool_call_hooks(&self) -> Vec<Arc<dyn ToolCallHook>> {
         vec![]
+    }
+
+    /// Returns a configured hook over the finalized model tool-call batch.
+    /// This later seam is suitable for policy that needs all calls plus their
+    /// final schemas before the assistant message is persisted.
+    fn finalized_tool_calls_hook(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn crate::finalized_tool_calls::FinalizedToolCallsHook>> {
+        None
     }
 
     /// Contribute human-readable narration for one of *this capability's* tool
@@ -1250,8 +1166,9 @@ impl std::fmt::Debug for AgentBlueprint {
 ///
 /// let registry = CapabilityRegistry::with_builtins();
 ///
-/// // Get a capability by ID
-/// if let Some(cap) = registry.get("current_time") {
+/// // Core presets contain only effect-neutral capabilities. Applications add
+/// // policy and integration bundles through their owning composition crates.
+/// if let Some(cap) = registry.get("human_intent") {
 ///     println!("Capability: {}", cap.name());
 /// }
 ///
@@ -1278,10 +1195,12 @@ impl CapabilityRegistry {
         }
     }
 
-    /// Create a registry with all built-in capabilities registered
+    /// Create a registry with the broad effect-neutral core preset registered.
     ///
-    /// Uses `DeploymentGrade::from_env()` to determine which capabilities to include.
-    /// For explicit control, use `with_builtins_for_grade()`.
+    /// Portable policy implementations live in `everruns-builtins`, and
+    /// environment/product implementations live in their owning composition
+    /// crates. Uses `DeploymentGrade::from_env()` to select grade-gated core
+    /// capabilities. For explicit control, use `with_builtins_for_grade()`.
     pub fn with_builtins() -> Self {
         Self::with_builtins_for_grade(DeploymentGrade::from_env())
     }
@@ -1299,40 +1218,14 @@ impl CapabilityRegistry {
     pub fn runtime_builtins() -> Self {
         let mut registry = Self::new();
 
-        registry.register(AgentInstructionsCapability);
         registry.register(HumanIntentCapability);
-        registry.register(CurrentTimeCapability);
-        registry.register(MessageMetadataCapability);
-        registry.register(SessionStorageCapability);
-        registry.register(SessionCapability);
-        registry.register(StatelessTodoListCapability);
-        registry.register(BtwCapability);
         registry.register(InfinityContextCapability);
-        registry.register(budgeting::BudgetingCapability);
-        registry.register(SelfBudgetCapability);
-        registry.register(CompactionCapability);
-        registry.register(ErrorDisclosureCapability);
-        registry.register(OpenAiToolSearchCapability::new());
-        registry.register(ClaudeToolSearchCapability::new());
-        registry.register(ToolSearchCapability::new());
-        registry.register(AutoToolSearchCapability::new());
-        registry.register(PromptCachingCapability::new());
-        registry.register(ParallelToolCallsCapability);
         registry.register(SkillsCapability);
-        registry.register(SystemCommandsCapability);
-        registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
-        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
-        registry.register(LoopDetectionCapability);
-        registry.register(ProgressGuardCapability::new());
-        registry.register(ToolCallRepairCapability);
-        registry.register(PromptCanaryGuardrailCapability);
-        registry.register(GuardrailsCapability);
-        registry.register(user_hooks::UserHooksCapability);
 
         registry
     }
 
-    /// Create a registry with built-in capabilities for a specific deployment grade
+    /// Create the broad effect-neutral core preset for a deployment grade.
     ///
     /// Experimental capabilities are included via integration plugins in dev environments.
     /// Non-experimental integration plugins (like Daytona) are included in all environments.
@@ -1340,103 +1233,16 @@ impl CapabilityRegistry {
         let mut registry = Self::new();
 
         // Core capabilities (all environments)
-        registry.register(AgentInstructionsCapability);
         registry.register(HumanIntentCapability);
-        registry.register(CurrentTimeCapability);
-        registry.register(MessageMetadataCapability);
-        registry.register(ResearchCapability);
         registry.register(OpenRouterServerToolsCapability);
-        registry.register(MemoryCapability);
-        registry.register(SessionStorageCapability);
-        registry.register(SessionCapability);
-        registry.register(SessionSqlDatabaseCapability);
-        registry.register(StatelessTodoListCapability);
-        registry.register(BackgroundExecutionCapability);
-        registry.register(SessionScheduleCapability);
-        registry.register(BtwCapability);
         registry.register(InfinityContextCapability);
-        registry.register(budgeting::BudgetingCapability);
-        registry.register(SelfBudgetCapability);
-        registry.register(CompactionCapability);
-        registry.register(ErrorDisclosureCapability);
-
-        // OpenAI tool_search (deferred tool loading, all environments)
-        registry.register(OpenAiToolSearchCapability::new());
-        // Claude (Anthropic) tool_search (hosted deferred tool loading)
-        registry.register(ClaudeToolSearchCapability::new());
-        // Generic, provider-agnostic tool_search (client-side deferred loading)
-        registry.register(ToolSearchCapability::new());
-        // Model-adaptive tool_search (hosted on capable models, generic elsewhere)
-        registry.register(AutoToolSearchCapability::new());
-        registry.register(PromptCachingCapability::new());
-
-        // Request-level parallel tool calls preference (none/prefer/avoid).
-        registry.register(ParallelToolCallsCapability);
 
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
 
-        // Subagents (spawn child agent sessions, all environments)
-        registry.register(SubagentCapability);
-
-        // Session tasks (inspect/steer background work, all environments)
-        registry.register(SessionTasksCapability);
-
         // Deployment-level execution feature decisions (EVE-878): resolved once
         // from env + grade; never reads org feature-management records.
         let feature_decisions = crate::ExecutionFeatureDecisions::from_env(grade);
-
-        // Outbound agent delegation — experimental (dev-only by default).
-        // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
-        // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
-        if feature_decisions.agent_delegation {
-            registry.register(AgentHandoffCapability);
-            // Additionally compile-gated behind the `a2a` cargo feature: in
-            // provider builds that disable core defaults the delegation
-            // capability is absent even when FEATURE_AGENT_DELEGATION is set.
-            #[cfg(feature = "a2a")]
-            registry.register(A2aAgentDelegationCapability);
-        }
-
-        // System commands (/clear, /status, /compact, /model)
-        registry.register(SystemCommandsCapability);
-
-        // Tool output persistence (EVE-222: persist exec output to VFS)
-        registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
-        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
-
-        // User hooks (see knowledge/runtime-resources/user-hooks.md): user-authored shell commands
-        // at lifecycle/tool events. Risk: High.
-        registry.register(user_hooks::UserHooksCapability);
-
-        // Loop detection (EVE-227: detect repeated identical tool calls)
-        registry.register(LoopDetectionCapability);
-
-        // Progress guard: warns when tool traffic is investigation without
-        // edits or validation. Complements loop detection, which only catches
-        // literal repeats. Behavior-only (no tools), opt-in per agent.
-        registry.register(ProgressGuardCapability::new());
-
-        // Auto-continue after an LLM usage limit resets: resumes interrupted
-        // work once the provider limit clears. Behavior-only (no tools).
-        // Grade-only (not in `runtime_builtins`): its error hook needs the
-        // `schedule_store` host service to create the continuation and a schedule
-        // poller to fire it — neither is in the default in-process runtime — so it
-        // sits with `session_schedule` rather than the runtime-safe preset.
-        registry.register(UsageLimitAutoContinueCapability);
-
-        // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
-        // arguments. Disabled by default — registered so agents can enable it,
-        // but contributes nothing unless explicitly selected.
-        registry.register(ToolCallRepairCapability);
-
-        // Prompt canary guardrail: replace assistant output if it leaks the
-        // first sentence of the system prompt. Streaming-output guardrail.
-        registry.register(PromptCanaryGuardrailCapability);
-
-        // Declarative guardrails (knowledge/execution/guardrails.md): config-driven
-        // deterministic checks over model output and tool calls.
-        registry.register(GuardrailsCapability);
 
         // OpenUI/A2UI prompt helpers are product features, not required by embedders.
         #[cfg(feature = "ui-capabilities")]
@@ -1445,32 +1251,12 @@ impl CapabilityRegistry {
             registry.register(A2UiCapability);
         }
 
-        // Data knowledge scaffold (all environments)
-        registry.register(DataKnowledgeCapability);
-
-        // Knowledge bases (curated org knowledge — see knowledge/runtime-resources/knowledge-bases.md)
-        registry.register(KnowledgeBaseCapability);
-
-        // Knowledge indexes (source-backed embedded collections — see knowledge/runtime-resources/knowledge-indexes.md)
-        registry.register(KnowledgeIndexCapability);
-
-        // Retrieval citations (claim-level provenance from search results — see knowledge/runtime-resources/citations.md)
-        registry.register(CitationRetrievalCapability);
-
-        // Citation verification (stamps faithfulness verdicts — see knowledge/runtime-resources/citations.md)
-        registry.register(CitationVerificationCapability);
-
         // Demo/test fixture capabilities (fake_*, test_math/test_weather,
         // sample_data, noop) are NOT registered here. They live in the
         // `everruns-test-support` crate (EVE-875) and are registered
         // explicitly by tests and examples, never by product registries.
 
         // External integration plugins (registered via inventory::submit! in integration crates)
-        let internal_flags = &feature_decisions.internal;
-        if internal_flags.session_sandbox {
-            registry.register(SessionSandboxCapability);
-        }
-
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
                 && plugin
@@ -1628,7 +1414,7 @@ impl CapabilityRegistryBuilder {
         }
     }
 
-    /// Create a new builder with built-in capabilities
+    /// Create a new builder with the broad effect-neutral core preset.
     pub fn with_builtins() -> Self {
         Self {
             registry: CapabilityRegistry::with_builtins(),
@@ -1765,21 +1551,21 @@ impl CollectedCapabilities {
     }
 }
 
-struct SpawnAgentTargetProvider {
-    target_type: &'static str,
-    tool: Box<dyn Tool>,
+pub struct DelegationTargetProvider {
+    pub target_type: &'static str,
+    pub tool: Box<dyn Tool>,
 }
 
 /// Shared execution mode accepted natively by every `spawn_agent` provider.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum SpawnMode {
+pub enum SpawnMode {
     Background,
     Foreground,
 }
 
 impl SpawnMode {
-    pub(crate) fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<Self> {
         match value {
             "background" => Some(Self::Background),
             "foreground" => Some(Self::Foreground),
@@ -1787,7 +1573,7 @@ impl SpawnMode {
         }
     }
 
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Background => "background",
             Self::Foreground => "foreground",
@@ -1796,11 +1582,11 @@ impl SpawnMode {
 }
 
 struct UnifiedSpawnAgentTool {
-    providers: Vec<SpawnAgentTargetProvider>,
+    providers: Vec<DelegationTargetProvider>,
 }
 
 impl UnifiedSpawnAgentTool {
-    fn new(providers: Vec<SpawnAgentTargetProvider>) -> Self {
+    fn new(providers: Vec<DelegationTargetProvider>) -> Self {
         Self { providers }
     }
 
@@ -2124,7 +1910,7 @@ impl CollectedModelViewProviders {
     }
 }
 
-/// True when the `compaction` capability is present and available in this set.
+/// True when an available capability contributes compaction policy in this set.
 ///
 /// Infinity context defers token-budget eviction to compaction when both are
 /// enabled (see knowledge/runtime-resources/infinity-context.md) so that compaction's summary — not a
@@ -2134,10 +1920,10 @@ fn compaction_is_enabled(
     registry: &CapabilityRegistry,
 ) -> bool {
     capability_configs.iter().any(|cap_config| {
-        cap_config.capability_id() == COMPACTION_CAPABILITY_ID
-            && registry
-                .get(cap_config.capability_id())
-                .is_some_and(|cap| cap.status() == CapabilityStatus::Available)
+        registry.get(cap_config.capability_id()).is_some_and(|cap| {
+            cap.status() == CapabilityStatus::Available
+                && cap.compaction_policy(cap_config.config_value()).is_some()
+        })
     })
 }
 
@@ -2691,8 +2477,7 @@ pub async fn collect_capabilities_with_configs(
     let mut has_dynamic_facts = false;
     let facts_ctx = FactsContext::new(ctx.session_id);
     let compaction_on = compaction_is_enabled(capability_configs, registry);
-    let mut agent_handoff_spawn_config: Option<serde_json::Value> = None;
-    let mut spawn_agent_providers: Vec<SpawnAgentTargetProvider> = Vec::new();
+    let mut delegation_targets: Vec<DelegationTargetProvider> = Vec::new();
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_id();
@@ -2751,9 +2536,9 @@ pub async fn collect_capabilities_with_configs(
             // Every contribution below is collected from `effective` (system prompt,
             // tools, hooks, tool definitions, mounts, MCP servers, skills, message
             // filters); for the common non-delegating case `effective` is just
-            // `capability`. The tool_search special case below therefore keys on
-            // `effective.id()` rather than the configured `cap_id`, so a resolved
-            // `auto_tool_search` is treated as whichever mechanism it became.
+            // `capability`. Driver preferences are also contributed through the
+            // effective implementation's neutral trait methods, so a resolved
+            // `auto_tool_search` behaves as whichever mechanism it became.
             // Attribution stays on the configured `cap_id`/`capability` so tools
             // surface under the capability the user actually configured.
             let effective: &dyn Capability =
@@ -2761,10 +2546,8 @@ pub async fn collect_capabilities_with_configs(
                     Some(inner) => inner,
                     None => capability.as_ref(),
                 };
-            let effective_id = effective.id();
-            if cap_id == AGENT_HANDOFF_CAPABILITY_ID {
-                agent_handoff_spawn_config = Some(cap_config.config_value().clone());
-            }
+            let delegation_target =
+                effective.delegation_target_with_config(cap_config.config_value());
 
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
             if let Some(contribution) = effective
@@ -2790,15 +2573,9 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
-            for tool in effective.tools_with_config(cap_config.config_value()) {
-                if cap_id == A2A_AGENT_DELEGATION_CAPABILITY_ID && tool.name() == "spawn_agent" {
-                    spawn_agent_providers.push(SpawnAgentTargetProvider {
-                        target_type: "external_a2a",
-                        tool,
-                    });
-                } else {
-                    tools.push(tool);
-                }
+            tools.extend(effective.tools_with_config(cap_config.config_value()));
+            if let Some(target) = delegation_target {
+                delegation_targets.push(target);
             }
             tool_definition_hooks.extend(
                 effective.tool_definition_hooks_with_context(ctx, cap_config.config_value()),
@@ -2812,9 +2589,6 @@ pub async fn collect_capabilities_with_configs(
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = effective.category();
             for def in effective.tool_definitions() {
-                if cap_id == A2A_AGENT_DELEGATION_CAPABILITY_ID && def.name() == "spawn_agent" {
-                    continue;
-                }
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,
@@ -2823,58 +2597,15 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect a hosted tool_search mechanism (OpenAI or Anthropic). Both
-            // hosted capabilities produce the same provider-agnostic
-            // `ToolSearchConfig`; the driver that handles the request picks the
-            // wire format. `auto_tool_search` resolves to one of these ids only on
-            // models with native support; on every other model it resolves to the
-            // generic `tool_search`, which sets no hosted config and instead
-            // contributes the hook + tool above.
-            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
-                || effective_id == CLAUDE_TOOL_SEARCH_CAPABILITY_ID
-            {
-                // Parse threshold from config, fall back to default
-                let threshold = cap_config
-                    .config_value()
-                    .clone()
-                    .get("threshold")
-                    .and_then(|v| v.as_u64())
-                    .map(|v| v as usize)
-                    .unwrap_or(DEFAULT_TOOL_SEARCH_THRESHOLD);
-                tool_search = Some(crate::driver_registry::ToolSearchConfig {
-                    enabled: true,
-                    threshold,
-                });
-            }
-
-            if cap_id == PROMPT_CACHING_CAPABILITY_ID {
-                let strategy = cap_config
-                    .config_value()
-                    .clone()
-                    .get("strategy")
-                    .and_then(|v| v.as_str())
-                    .map(|value| match value {
-                        "auto" => crate::driver_registry::PromptCacheStrategy::Auto,
-                        _ => crate::driver_registry::PromptCacheStrategy::Auto,
-                    })
-                    .unwrap_or(crate::driver_registry::PromptCacheStrategy::Auto);
-                let gemini_cached_content = cap_config
-                    .config_value()
-                    .clone()
-                    .get("gemini_cached_content")
-                    .and_then(|v| v.as_str())
-                    .map(str::to_string);
-                prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
-                    enabled: true,
-                    strategy,
-                    gemini_cached_content,
-                });
-            }
-
-            if cap_id == PARALLEL_TOOL_CALLS_CAPABILITY_ID {
-                parallel_tool_calls =
-                    parallel_tool_calls::parallel_tool_calls_from_config(cap_config.config_value());
-            }
+            tool_search = effective
+                .tool_search_config(cap_config.config_value())
+                .or(tool_search);
+            prompt_cache = effective
+                .prompt_cache_config(cap_config.config_value())
+                .or(prompt_cache);
+            parallel_tool_calls = effective
+                .parallel_tool_calls_preference(cap_config.config_value())
+                .or(parallel_tool_calls);
 
             if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
                 let server_tools =
@@ -2913,24 +2644,10 @@ pub async fn collect_capabilities_with_configs(
         }
     }
 
-    // EVE-677 migration: known delegation providers now share one model-facing
-    // `spawn_agent` dispatcher so subagents, first-party handoffs, and external
-    // A2A agents can coexist in the same session. Unknown third-party
-    // `spawn_agent` owners still win to avoid changing their contract.
-    if applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID) {
-        spawn_agent_providers.push(SpawnAgentTargetProvider {
-            target_type: "subagent",
-            tool: Box::new(SpawnSubagentAsAgentTool),
-        });
-    }
-    if let Some(config) = agent_handoff_spawn_config.as_ref() {
-        spawn_agent_providers.push(SpawnAgentTargetProvider {
-            target_type: "agent",
-            tool: Box::new(SpawnAgentHandoffTool::new(config)),
-        });
-    }
-    if !tools.iter().any(|tool| tool.name() == "spawn_agent") && !spawn_agent_providers.is_empty() {
-        let tool = UnifiedSpawnAgentTool::new(spawn_agent_providers);
+    // Delegation providers share one model-facing `spawn_agent` dispatcher.
+    // Unknown tools with that name still win to preserve their contract.
+    if !tools.iter().any(|tool| tool.name() == "spawn_agent") && !delegation_targets.is_empty() {
+        let tool = UnifiedSpawnAgentTool::new(delegation_targets);
         let def = tool
             .to_definition()
             .with_category("Orchestration")
@@ -2939,38 +2656,31 @@ pub async fn collect_capabilities_with_configs(
         tool_definitions.push(def);
     }
 
-    // Auto-activate `background_execution` whenever any collected tool
-    // declares background support via `ToolHints::supports_background`.
-    //
-    // This is the generic cross-cutting capability contract — meta-tools that
-    // wrap other tools based on hints should hook in here, not attach to a
-    // single owner capability (e.g. `bashkit_shell`).
-    //
-    // Lockstep: we extend both `tools` (execution registry) and
-    // `tool_definitions` (model-visible) so the model can see and the worker
-    // can dispatch `spawn_background` from the same activation event. See
-    // `knowledge/execution/background-execution.md`.
-    if !applied_ids
-        .iter()
-        .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID)
-        && tool_definitions
-            .iter()
-            .any(|def| def.hints().supports_background == Some(true))
-        && let Some(bg_cap) = registry.get(BACKGROUND_EXECUTION_CAPABILITY_ID)
-        && bg_cap.status() == CapabilityStatus::Available
-    {
-        tools.extend(bg_cap.tools());
-        let cap_category = bg_cap.category();
-        for def in bg_cap.tool_definitions() {
+    // Auto-activated adapters are selected through a neutral capability hook;
+    // core does not name or own the hosted implementation.
+    let auto_activated: Vec<_> = registry
+        .list()
+        .into_iter()
+        .filter(|cap| {
+            !applied_ids.iter().any(|id| id == cap.id())
+                && cap.status() == CapabilityStatus::Available
+                && cap.auto_activates_for(&tool_definitions)
+        })
+        .cloned()
+        .collect();
+    for cap in auto_activated {
+        tools.extend(cap.tools());
+        let cap_category = cap.category();
+        for def in cap.tool_definitions() {
             let def = match (def.category(), cap_category) {
                 (None, Some(cat)) => def.with_category(cat),
                 _ => def,
             }
-            .with_capability_attribution(BACKGROUND_EXECUTION_CAPABILITY_ID, Some(bg_cap.name()));
+            .with_capability_attribution(cap.id(), Some(cap.name()));
             tool_definitions.push(def);
         }
-        narration_hooks.push(Arc::new(CapabilityNarrationHook(bg_cap.clone())));
-        applied_ids.push(BACKGROUND_EXECUTION_CAPABILITY_ID.to_string());
+        narration_hooks.push(Arc::new(CapabilityNarrationHook(cap.clone())));
+        applied_ids.push(cap.id().to_string());
     }
 
     // Fold static facts into the cached system-prompt prefix, and add the
@@ -3062,11 +2772,10 @@ pub struct AppliedCapabilities {
 /// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 /// let ctx = SystemPromptContext::without_file_store(SessionId::new());
 ///
-/// let capability_ids = vec!["current_time".to_string()];
+/// let capability_ids = vec!["human_intent".to_string()];
 /// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry, &ctx).await;
 ///
-/// // The runtime agent now includes CurrentTime tool
-/// assert!(!applied.tool_registry.is_empty());
+/// assert_eq!(applied.applied_ids, vec!["human_intent"]);
 /// ```
 pub async fn apply_capabilities(
     base_runtime_agent: RuntimeAgent,
@@ -3234,6 +2943,27 @@ mod tests {
         }
     }
 
+    /// Stands in for the product `session_storage` capability, which moved to
+    /// `everruns-platform` with the other service-backed families (EVE-886).
+    /// Feature computation is core's mechanism, so it is exercised here against
+    /// a fixture rather than a product implementation.
+    struct StorageFixture;
+
+    impl Capability for StorageFixture {
+        fn id(&self) -> &str {
+            "session_storage"
+        }
+        fn name(&self) -> &str {
+            "Fixture Storage"
+        }
+        fn description(&self) -> &str {
+            "Fixture session storage capability."
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["secrets", "key_value"]
+        }
+    }
+
     struct BashFixture;
 
     impl Capability for BashFixture {
@@ -3277,6 +3007,88 @@ mod tests {
         }
         fn risk_level(&self) -> RiskLevel {
             RiskLevel::High
+        }
+    }
+
+    /// Portable-policy-shaped stand-ins used only to exercise neutral core
+    /// collection mechanics after policy implementations moved out of core.
+    struct DynamicFactFixture;
+
+    impl Capability for DynamicFactFixture {
+        fn id(&self) -> &str {
+            "current_time"
+        }
+        fn name(&self) -> &str {
+            "Dynamic Fact Fixture"
+        }
+        fn description(&self) -> &str {
+            "Fixture with one dynamic fact and one tool."
+        }
+        fn icon(&self) -> Option<&str> {
+            Some("clock")
+        }
+        fn category(&self) -> Option<&str> {
+            Some("Core")
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![Box::new(FixtureTool("get_current_time"))]
+        }
+        fn facts(&self, _config: &serde_json::Value, _ctx: &FactsContext) -> Vec<Fact> {
+            vec![Fact::dynamic("current_time", "fixture-now")]
+        }
+    }
+
+    struct PromptToolFixture;
+
+    impl Capability for PromptToolFixture {
+        fn id(&self) -> &str {
+            "prompt_tool_fixture"
+        }
+        fn name(&self) -> &str {
+            "Prompt Tool Fixture"
+        }
+        fn description(&self) -> &str {
+            "Fixture with a static prompt and tool."
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("Task Management uses the write_todos tool.")
+        }
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![Box::new(FixtureTool("write_todos"))]
+        }
+    }
+
+    struct SecondPromptFixture;
+
+    impl Capability for SecondPromptFixture {
+        fn id(&self) -> &str {
+            "second_prompt_fixture"
+        }
+        fn name(&self) -> &str {
+            "Second Prompt Fixture"
+        }
+        fn description(&self) -> &str {
+            "Fixture with a second static prompt."
+        }
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("A second capability prompt contribution.")
+        }
+    }
+
+    struct DynamicPreviewFixture;
+
+    impl Capability for DynamicPreviewFixture {
+        fn id(&self) -> &str {
+            "agent_instructions"
+        }
+        fn name(&self) -> &str {
+            "Dynamic Preview Fixture"
+        }
+        fn description(&self) -> &str {
+            "Fixture whose runtime prompt is dynamic."
+        }
+        fn system_prompt_preview(&self) -> Option<String> {
+            Some("Reads AGENTS.md dynamically.".to_string())
         }
     }
 
@@ -3363,8 +3175,13 @@ mod tests {
         registry.register(WeatherFixture);
         registry.register(SampleDataFixture);
         registry.register(FileSystemFixture);
+        registry.register(StorageFixture);
         registry.register(BashFixture);
         registry.register(WebFetchFixture);
+        registry.register(DynamicFactFixture);
+        registry.register(PromptToolFixture);
+        registry.register(SecondPromptFixture);
+        registry.register(DynamicPreviewFixture);
         registry
     }
 
@@ -3390,58 +3207,19 @@ mod tests {
     #[test]
     fn capability_metadata_is_an_opt_in_host_hatch() {
         // Core capabilities carry none, so nothing changes for them.
-        assert!(CurrentTimeCapability.metadata().is_none());
+        assert!(HumanIntentCapability.metadata().is_none());
 
         let metadata = HostAnnotatedCapability.metadata().expect("metadata");
         assert_eq!(metadata["icon"], "sparkles");
         assert_eq!(metadata["group"], "host");
     }
 
-    /// Base set of built-in capabilities present in all environments (no experimental delegation).
+    /// Portable built-in capabilities present in every deployment grade.
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = [
-            "agent_instructions",
             "human_intent",
-            "budgeting",
-            "self_budget",
-            "current_time",
-            "research",
-            "session_storage",
-            "session",
-            "session_sql_database",
-            "stateless_todo_list",
-            "background_execution",
-            "session_schedule",
-            "btw",
             "infinity_context",
-            "compaction",
-            "memory",
-            "message_metadata",
-            "openai_tool_search",
-            "claude_tool_search",
-            "tool_search",
-            "auto_tool_search",
-            "prompt_caching",
-            "parallel_tool_calls",
-            "session_tasks",
             "skills",
-            "subagents",
-            "system_commands",
-            "data_knowledge",
-            "knowledge_base",
-            "knowledge_index",
-            "citation_retrieval",
-            "citation_verification",
-            "tool_output_persistence",
-            "tool_output_distillation",
-            "loop_detection",
-            "progress_guard",
-            "usage_limit_auto_continue",
-            "tool_call_repair",
-            "error_disclosure",
-            "prompt_canary_guardrail",
-            "guardrails",
-            "user_hooks",
             "openrouter_server_tools",
         ]
         .into_iter()
@@ -3455,49 +3233,9 @@ mod tests {
 
     /// Capabilities present in the default in-process runtime registry.
     fn expected_runtime_builtin_ids() -> BTreeSet<&'static str> {
-        [
-            "agent_instructions",
-            "human_intent",
-            "budgeting",
-            "self_budget",
-            "current_time",
-            "session_storage",
-            "session",
-            "stateless_todo_list",
-            "btw",
-            "infinity_context",
-            "compaction",
-            "message_metadata",
-            "openai_tool_search",
-            "claude_tool_search",
-            "tool_search",
-            "auto_tool_search",
-            "prompt_caching",
-            "parallel_tool_calls",
-            "skills",
-            "system_commands",
-            "tool_output_persistence",
-            "tool_output_distillation",
-            "loop_detection",
-            "progress_guard",
-            "tool_call_repair",
-            "error_disclosure",
-            "prompt_canary_guardrail",
-            "guardrails",
-            "user_hooks",
-        ]
-        .into_iter()
-        .collect::<BTreeSet<_>>()
-    }
-
-    /// Full set for dev: base + experimental delegation capabilities.
-    fn expected_dev_builtin_ids() -> BTreeSet<&'static str> {
-        let mut ids = expected_core_builtin_ids();
-        ids.insert("agent_handoff");
-        if cfg!(feature = "a2a") {
-            ids.insert("a2a_agent_delegation");
-        }
-        ids
+        ["human_intent", "infinity_context", "skills"]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
     }
 
     fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {
@@ -3515,26 +3253,19 @@ mod tests {
 
     #[test]
     fn test_capability_registry_with_builtins_dev() {
-        // Dev mode includes all built-in capabilities including experimental delegation
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
-        assert_eq!(registry_ids(&registry), expected_dev_builtin_ids());
-        assert!(registry.has("agent_handoff"));
-        assert_eq!(registry.has("a2a_agent_delegation"), cfg!(feature = "a2a"));
+        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
     }
 
     #[test]
     fn test_capability_registry_with_builtins_prod() {
-        // Prod mode excludes experimental capabilities including delegation
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
-        // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
-        assert!(!registry.has("agent_handoff"));
-        assert!(!registry.has("a2a_agent_delegation"));
     }
 
     #[test]
@@ -3566,7 +3297,13 @@ mod tests {
             "session_schedule",
             "subagents",
             "background_execution",
+            // Session-service capabilities moved to the product crate with the
+            // rest of the service-backed families (EVE-886); hosts that can
+            // serve them compose them back in.
+            "session",
+            "session_storage",
             "session_sql_database",
+            "session_sandbox",
             "knowledge_base",
             "knowledge_index",
             "data_knowledge",
@@ -3580,22 +3317,10 @@ mod tests {
     }
 
     #[test]
-    fn test_agent_delegation_enabled_by_env_in_prod() {
-        // FEATURE_AGENT_DELEGATION=true enables delegation caps even in prod
+    fn hosted_capabilities_are_not_registered_by_core_feature_flags() {
         let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
-        assert!(registry.has("agent_handoff"));
-        assert_eq!(registry.has("a2a_agent_delegation"), cfg!(feature = "a2a"));
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-    }
-
-    #[test]
-    fn test_agent_delegation_disabled_by_env_in_dev() {
-        // FEATURE_AGENT_DELEGATION=false disables delegation caps even in dev
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "false") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
         assert!(!registry.has("agent_handoff"));
         assert!(!registry.has("a2a_agent_delegation"));
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
@@ -3605,9 +3330,9 @@ mod tests {
     fn test_capability_registry_get() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get("current_time").unwrap();
-        assert_eq!(current_time.id(), "current_time");
-        assert_eq!(current_time.status(), CapabilityStatus::Available);
+        let human_intent = registry.get("human_intent").unwrap();
+        assert_eq!(human_intent.id(), "human_intent");
+        assert_eq!(human_intent.status(), CapabilityStatus::Available);
     }
 
     /// Registry-wide invariants for every built-in capability. This replaces the
@@ -3732,8 +3457,8 @@ mod tests {
             ),
         ];
 
-        // Exercise the fullest production registry so platform tools, session
-        // tasks/schedules, and the SQL/knowledge surfaces are all covered.
+        // Exercise the full portable production registry. Hosted registries
+        // enforce the same invariant in everruns-platform.
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         let ctx = ToolNarrationContext::default();
         let mut missing: Vec<String> = Vec::new();
@@ -3821,32 +3546,44 @@ mod tests {
     fn test_capability_registry_builder() {
         let registry = CapabilityRegistry::builder()
             .capability(HumanIntentCapability)
-            .capability(CurrentTimeCapability)
             .build();
 
         assert!(registry.has("human_intent"));
-        assert!(registry.has("current_time"));
-        assert_eq!(registry.len(), 2);
+        assert_eq!(registry.len(), 1);
     }
 
     #[test]
     fn test_capability_status() {
-        let registry = CapabilityRegistry::with_builtins();
+        assert_eq!(HumanIntentCapability.status(), CapabilityStatus::Available);
 
-        let current_time = registry.get("current_time").unwrap();
-        assert_eq!(current_time.status(), CapabilityStatus::Available);
-
-        let research = registry.get("research").unwrap();
-        assert_eq!(research.status(), CapabilityStatus::ComingSoon);
+        struct ComingSoonFixture;
+        impl Capability for ComingSoonFixture {
+            fn id(&self) -> &str {
+                "coming_soon_fixture"
+            }
+            fn name(&self) -> &str {
+                "Coming Soon Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::ComingSoon
+            }
+        }
+        assert_eq!(ComingSoonFixture.status(), CapabilityStatus::ComingSoon);
     }
 
     #[test]
     fn test_capability_icons_and_categories() {
+        // `session` used to stand in here; it moved to the product crate with
+        // the service-backed families (EVE-886). Icons and categories are a
+        // kernel-owned projection, so a kernel capability covers it.
         let registry = CapabilityRegistry::with_builtins();
 
-        let current_time = registry.get("current_time").unwrap();
-        assert_eq!(current_time.icon(), Some("clock"));
-        assert_eq!(current_time.category(), Some("Core"));
+        let skills = registry.get("skills").unwrap();
+        assert_eq!(skills.icon(), SkillsCapability.icon());
+        assert_eq!(skills.category(), SkillsCapability.category());
     }
 
     #[test]
@@ -3876,7 +3613,7 @@ mod tests {
         );
 
         // current_time has no system_prompt_addition — preview should be None
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let current_time = registry.get("current_time").unwrap();
         assert!(current_time.system_prompt_preview().is_none());
         assert!(current_time.system_prompt_addition().is_none());
@@ -3884,7 +3621,7 @@ mod tests {
 
     #[test]
     fn test_system_prompt_preview_dynamic_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let cap = registry.get("agent_instructions").unwrap();
 
         // No static addition, but preview exists
@@ -3937,7 +3674,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_current_time() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
@@ -3972,24 +3709,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_skips_coming_soon() {
-        let registry = CapabilityRegistry::with_builtins();
+        struct ComingSoonFixture;
+        impl Capability for ComingSoonFixture {
+            fn id(&self) -> &str {
+                "coming_soon_fixture"
+            }
+            fn name(&self) -> &str {
+                "Coming Soon Fixture"
+            }
+            fn description(&self) -> &str {
+                "Test-only capability."
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::ComingSoon
+            }
+            fn system_prompt_addition(&self) -> Option<&str> {
+                Some("Not yet available.")
+            }
+        }
+        let mut registry = CapabilityRegistry::new();
+        registry.register(ComingSoonFixture);
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
-        // Research is ComingSoon, so it should be skipped
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &["research".to_string()],
+            &["coming_soon_fixture".to_string()],
             &registry,
             &test_ctx(),
         )
         .await;
 
-        // System prompt should not have the research addition
         assert_eq!(
             applied.runtime_agent.system_prompt,
             base_runtime_agent.system_prompt
         );
-        assert!(applied.applied_ids.is_empty()); // Research was not applied
+        assert!(applied.applied_ids.is_empty());
     }
 
     #[tokio::test]
@@ -4105,19 +3859,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_apply_capabilities_stateless_todo_list() {
-        let registry = CapabilityRegistry::with_builtins();
+    async fn test_apply_capabilities_prompt_tool_fixture() {
+        let registry = fixture_registry();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base_runtime_agent.clone(),
-            &["stateless_todo_list".to_string()],
+            &["prompt_tool_fixture".to_string()],
             &registry,
             &test_ctx(),
         )
         .await;
 
-        // StatelessTodoList has system prompt addition and 1 tool
+        // The fixture has a system prompt addition and one tool.
         assert!(
             applied
                 .runtime_agent
@@ -4135,25 +3889,25 @@ mod tests {
 
     #[tokio::test]
     async fn test_xml_tags_wrap_capability_prompts() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected =
-            collect_capabilities(&["stateless_todo_list".to_string()], &registry, &test_ctx())
+            collect_capabilities(&["prompt_tool_fixture".to_string()], &registry, &test_ctx())
                 .await;
 
         assert_eq!(collected.system_prompt_parts.len(), 1);
         let part = &collected.system_prompt_parts[0];
-        assert!(part.starts_with("<capability id=\"stateless_todo_list\">"));
+        assert!(part.starts_with("<capability id=\"prompt_tool_fixture\">"));
         assert!(part.ends_with("</capability>"));
         assert!(part.contains("Task Management"));
     }
 
     #[tokio::test]
     async fn test_xml_tags_multiple_capabilities() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let collected = collect_capabilities(
             &[
-                "stateless_todo_list".to_string(),
-                "session_schedule".to_string(),
+                "prompt_tool_fixture".to_string(),
+                "second_prompt_fixture".to_string(),
             ],
             &registry,
             &test_ctx(),
@@ -4162,10 +3916,11 @@ mod tests {
 
         assert_eq!(collected.system_prompt_parts.len(), 2);
         assert!(
-            collected.system_prompt_parts[0].starts_with("<capability id=\"stateless_todo_list\">")
+            collected.system_prompt_parts[0].starts_with("<capability id=\"prompt_tool_fixture\">")
         );
         assert!(
-            collected.system_prompt_parts[1].starts_with("<capability id=\"session_schedule\">")
+            collected.system_prompt_parts[1]
+                .starts_with("<capability id=\"second_prompt_fixture\">")
         );
 
         let prefix = collected.system_prompt_prefix().unwrap();
@@ -4175,12 +3930,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_xml_tags_system_prompt_wrapping() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
         let applied = apply_capabilities(
             base,
-            &["stateless_todo_list".to_string()],
+            &["prompt_tool_fixture".to_string()],
             &registry,
             &test_ctx(),
         )
@@ -4189,7 +3944,7 @@ mod tests {
         let prompt = &applied.runtime_agent.system_prompt;
         assert!(prompt.starts_with("<system-prompt>\nYou are helpful.\n</system-prompt>"));
         // Capability wrapped
-        assert!(prompt.contains("<capability id=\"stateless_todo_list\">"));
+        assert!(prompt.contains("<capability id=\"prompt_tool_fixture\">"));
         assert!(prompt.contains("</capability>"));
         // Base prompt wrapped
         assert!(prompt.contains("<system-prompt>\nYou are helpful.\n</system-prompt>"));
@@ -4248,7 +4003,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_collect_capabilities_empty_mounts_by_default() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Most capabilities don't have mounts
         let collected =
@@ -4262,7 +4017,7 @@ mod tests {
         // `current_time` contributes a Dynamic fact, so the cached prompt gets
         // the explanatory note but NOT a static `<facts>` block (the live value
         // is appended at the conversation tail per request instead).
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let configs = vec![AgentCapabilityConfig::new("current_time".to_string())];
         let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
         let prompt = collected.system_prompt_parts.join("\n");
@@ -4313,7 +4068,7 @@ mod tests {
 
     #[test]
     fn test_collect_dynamic_facts_returns_current_time() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let configs = vec![AgentCapabilityConfig::new("current_time".to_string())];
         let facts = collect_dynamic_facts(
             &configs,
@@ -4385,7 +4140,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_no_deps() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // CurrentTime has no dependencies
         let resolved = resolve_dependencies(&["current_time".to_string()], &registry).unwrap();
@@ -4596,7 +4351,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_collect_capabilities_with_configs_no_filter_providers() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let configs = vec![AgentCapabilityConfig::with_config(
             CapabilityId::new("current_time"),
             serde_json::json!({}),
@@ -4871,81 +4626,6 @@ mod tests {
     }
 
     #[test]
-    fn test_infinity_context_defers_to_compaction_end_to_end() {
-        use crate::message::Message;
-
-        let mut registry = CapabilityRegistry::new();
-        registry.register(InfinityContextCapability);
-        registry.register(CompactionCapability);
-
-        let tight = serde_json::json!({
-            "context_budget_tokens": 1,
-            "min_recent_messages": 1
-        });
-
-        // Infinity context alone (tight budget): it trims and injects a notice.
-        let solo = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-            tight.clone(),
-        )];
-        let mut messages = vec![
-            Message::user("task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent"),
-        ];
-        collect_message_filters_only(&solo, &registry).apply_post_load_filters(&mut messages);
-        assert!(
-            messages
-                .iter()
-                .any(|m| m.text().is_some_and(|t| t.contains("NOT visible"))),
-            "infinity context alone should trim and notice"
-        );
-
-        // Infinity context + compaction: infinity context defers, no eviction.
-        let both = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
-                tight,
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(COMPACTION_CAPABILITY_ID),
-                serde_json::json!({}),
-            ),
-        ];
-        let mut messages = vec![
-            Message::user("task"),
-            Message::assistant("old ".repeat(400)),
-            Message::user("recent"),
-        ];
-        collect_message_filters_only(&both, &registry).apply_post_load_filters(&mut messages);
-        assert_eq!(messages.len(), 3, "compaction owns reduction; no eviction");
-        assert!(
-            messages
-                .iter()
-                .all(|m| !m.text().is_some_and(|t| t.contains("NOT visible"))),
-            "no hidden-history notice when compaction is the active reducer"
-        );
-    }
-
-    #[test]
-    fn test_compaction_is_enabled_detects_compaction() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(CompactionCapability);
-
-        let with_compaction = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new(COMPACTION_CAPABILITY_ID),
-            serde_json::json!({}),
-        )];
-        assert!(compaction_is_enabled(&with_compaction, &registry));
-
-        let without = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("current_time"),
-            serde_json::json!({}),
-        )];
-        assert!(!compaction_is_enabled(&without, &registry));
-    }
-
-    #[test]
     fn test_collect_message_filters_only_skips_unknown_capabilities() {
         let registry = CapabilityRegistry::new();
 
@@ -5085,71 +4765,6 @@ mod tests {
         // post_load reversed the messages
         assert_eq!(messages[0].text(), Some("second"));
         assert_eq!(messages[1].text(), Some("first"));
-    }
-
-    #[test]
-    fn test_collect_model_view_providers_respects_compaction_capability_boundary() {
-        use crate::tool_types::ToolCall;
-
-        fn tool_heavy_messages() -> Vec<Message> {
-            let mut messages = vec![Message::user("inspect files repeatedly")];
-            for index in 0..9 {
-                let call_id = format!("call_{index}");
-                messages.push(Message::assistant_with_tools(
-                    "",
-                    vec![ToolCall {
-                        id: call_id.clone(),
-                        name: "read_file".to_string(),
-                        arguments: serde_json::json!({"path": "/workspace/src/lib.rs"}),
-                    }],
-                ));
-                messages.push(Message::tool_result(
-                    call_id,
-                    Some(serde_json::json!({
-                        "path": "/workspace/src/lib.rs",
-                        "content": format!("{}{}", "large file line\n".repeat(1000), index),
-                        "total_lines": 1000,
-                        "lines_shown": {"start": 1, "end": 1000},
-                        "truncated": false
-                    })),
-                    None,
-                ));
-            }
-            messages
-        }
-
-        fn first_tool_result_is_masked(messages: &[Message]) -> bool {
-            messages[2]
-                .tool_result_content()
-                .and_then(|result| result.result.as_ref())
-                .and_then(|result| result.get("masked"))
-                .and_then(|masked| masked.as_bool())
-                .unwrap_or(false)
-        }
-
-        let mut registry = CapabilityRegistry::new();
-        registry.register(CompactionCapability);
-        let context = ModelViewContext {
-            session_id: SessionId::new(),
-            prior_usage: None,
-        };
-
-        let no_compaction = collect_model_view_providers(&[], &registry, None);
-        let unmasked = no_compaction.apply_model_view(tool_heavy_messages(), &context);
-        assert!(!first_tool_result_is_masked(&unmasked));
-
-        let compaction = collect_model_view_providers(
-            &[AgentCapabilityConfig::with_config(
-                CapabilityId::new(COMPACTION_CAPABILITY_ID),
-                serde_json::json!({}),
-            )],
-            &registry,
-            None,
-        );
-        let masked = compaction.apply_model_view(tool_heavy_messages(), &context);
-        assert!(first_tool_result_is_masked(&masked));
-        let last_tool = masked.last().unwrap().tool_result_content().unwrap();
-        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
     }
 
     // Tests for resolve_for_model delegation in fast-path collectors
@@ -5435,461 +5050,6 @@ mod tests {
     }
 
     // =========================================================================
-    // EVE-501: background_execution auto-activation
-    // =========================================================================
-
-    /// Auto-activation: any collected tool with `supports_background=true`
-    /// causes `spawn_background` to appear in both tool_definitions and tools.
-    #[tokio::test]
-    async fn test_background_execution_auto_activates_with_bashkit_shell() {
-        let registry = fixture_registry();
-        let collected =
-            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-        assert!(
-            tool_names.contains(&"spawn_background"),
-            "spawn_background must be auto-activated when bashkit_shell (a \
-             background-capable tool) is in the agent's capability set; got: {:?}",
-            tool_names
-        );
-        assert!(
-            collected
-                .applied_ids
-                .iter()
-                .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID),
-            "background_execution must be in applied_ids when auto-activated; \
-             got: {:?}",
-            collected.applied_ids
-        );
-
-        // Lockstep: implementations match definitions (executable in the worker).
-        assert!(
-            collected
-                .tools
-                .iter()
-                .any(|t| t.name() == "spawn_background"),
-            "spawn_background tool implementation must be present alongside the \
-             definition (lockstep contract)"
-        );
-    }
-
-    /// Negative: when no collected tool declares background support, the
-    /// capability must NOT auto-activate.
-    #[tokio::test]
-    async fn test_background_execution_does_not_auto_activate_without_hint() {
-        let registry = CapabilityRegistry::with_builtins();
-        // current_time has no background-capable tool.
-        let collected =
-            collect_capabilities(&["current_time".to_string()], &registry, &test_ctx()).await;
-
-        let tool_names: Vec<&str> = collected
-            .tool_definitions
-            .iter()
-            .map(|t| t.name())
-            .collect();
-        assert!(
-            !tool_names.contains(&"spawn_background"),
-            "spawn_background must NOT be activated without a background-capable \
-             tool; got: {:?}",
-            tool_names
-        );
-        assert!(
-            !collected
-                .applied_ids
-                .iter()
-                .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID),
-            "background_execution must not appear in applied_ids when no \
-             background-capable tool is present; got: {:?}",
-            collected.applied_ids
-        );
-    }
-
-    #[tokio::test]
-    async fn test_subagents_collect_unified_spawn_agent_adapter() {
-        let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(
-            &[SUBAGENTS_CAPABILITY_ID.to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        assert!(
-            collected
-                .tools
-                .iter()
-                .any(|tool| tool.name() == "spawn_agent"),
-            "subagent-only sessions should get the unified spawn_agent adapter"
-        );
-        let spawn_agent = collected
-            .tool_definitions
-            .iter()
-            .find(|tool| tool.name() == "spawn_agent")
-            .expect("spawn_agent definition");
-        assert_eq!(
-            spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["subagent"])
-        );
-        assert_eq!(
-            spawn_agent.concurrency_class(),
-            Some(SPAWN_AGENT_CONCURRENCY_CLASS),
-            "unified spawn_agent must serialize same-batch spawns before cap checks"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_agent_handoff_collects_unified_spawn_agent_adapter() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(AgentHandoffCapability);
-        let agent_id = crate::typed_id::AgentId::new();
-        let harness_id = crate::typed_id::HarnessId::new();
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-            serde_json::json!({
-                "targets": [{
-                    "id": "aws_operator",
-                    "name": "AWS Operator",
-                    "agent_id": agent_id,
-                    "harness_id": harness_id
-                }]
-            }),
-        )];
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        assert!(
-            collected
-                .tools
-                .iter()
-                .any(|tool| tool.name() == "spawn_agent"),
-            "agent_handoff-only sessions should get the unified spawn_agent adapter"
-        );
-        let spawn_agent = collected
-            .tool_definitions
-            .iter()
-            .find(|tool| tool.name() == "spawn_agent")
-            .expect("spawn_agent definition");
-        assert_eq!(
-            spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["agent"])
-        );
-    }
-
-    #[tokio::test]
-    async fn test_spawn_agent_dispatcher_combines_known_target_providers() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(SubagentCapability);
-        registry.register(AgentHandoffCapability);
-
-        let agent_id = crate::typed_id::AgentId::new();
-        let harness_id = crate::typed_id::HarnessId::new();
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
-                serde_json::json!({}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-                serde_json::json!({
-                    "targets": [{
-                        "id": "aws_operator",
-                        "name": "AWS Operator",
-                        "agent_id": agent_id,
-                        "harness_id": harness_id
-                    }]
-                }),
-            ),
-        ];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-        let spawn_agent_defs: Vec<_> = collected
-            .tool_definitions
-            .iter()
-            .filter(|tool| tool.name() == "spawn_agent")
-            .collect();
-
-        assert_eq!(spawn_agent_defs.len(), 1);
-        let schema = spawn_agent_defs[0].parameters();
-        assert_eq!(
-            schema["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["subagent", "agent"])
-        );
-        // Anthropic rejects top-level oneOf/allOf/anyOf in input_schema, so
-        // the per-target constraints must live inside the target property.
-        assert!(schema.get("oneOf").is_none());
-        assert!(schema.get("anyOf").is_none());
-        assert!(schema.get("allOf").is_none());
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["name", "instructions", "target"])
-        );
-        assert_eq!(
-            schema["properties"]["target"]["oneOf"],
-            serde_json::json!([
-                {
-                    "properties": {"type": {"const": "subagent"}}
-                },
-                {
-                    "properties": {"type": {"const": "agent"}},
-                    "required": ["type", "id"]
-                }
-            ])
-        );
-    }
-
-    #[cfg(feature = "a2a")]
-    #[tokio::test]
-    async fn test_spawn_agent_dispatcher_includes_external_a2a_provider() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(SubagentCapability);
-        registry.register(A2aAgentDelegationCapability);
-
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
-                serde_json::json!({}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(A2A_AGENT_DELEGATION_CAPABILITY_ID),
-                serde_json::json!({
-                    "agents": [{
-                        "id": "local_app",
-                        "name": "Local App",
-                        "base_url": "https://example.com"
-                    }]
-                }),
-            ),
-        ];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-        let spawn_agent_defs: Vec<_> = collected
-            .tool_definitions
-            .iter()
-            .filter(|tool| tool.name() == "spawn_agent")
-            .collect();
-
-        assert_eq!(spawn_agent_defs.len(), 1);
-        assert_eq!(
-            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["subagent", "external_a2a"])
-        );
-        assert_eq!(
-            spawn_agent_defs[0].parameters()["properties"]["mode"]["enum"],
-            serde_json::json!(["background", "foreground"])
-        );
-        assert!(
-            !spawn_agent_defs[0].parameters()["properties"]["mode"]["description"]
-                .as_str()
-                .expect("mode description")
-                .contains("wait")
-        );
-        let schema = spawn_agent_defs[0].parameters();
-        assert!(schema.get("oneOf").is_none());
-        // name is required at the root even with external_a2a present: the
-        // local providers demand it and requiring a field external_a2a ignores
-        // is safe, whereas top-level conditional requirements are rejected.
-        assert_eq!(
-            schema["required"],
-            serde_json::json!(["name", "instructions", "target"])
-        );
-        assert_eq!(
-            schema["properties"]["target"]["oneOf"],
-            serde_json::json!([
-                {
-                    "properties": {"type": {"const": "subagent"}}
-                },
-                {
-                    "properties": {"type": {"const": "external_a2a"}},
-                    "anyOf": [
-                        {"required": ["id"]},
-                        {"required": ["external_agent_id"]}
-                    ]
-                }
-            ])
-        );
-    }
-
-    struct ExistingSpawnAgentCapability;
-
-    impl Capability for ExistingSpawnAgentCapability {
-        fn id(&self) -> &str {
-            "existing_spawn_agent"
-        }
-
-        fn name(&self) -> &str {
-            "Existing Spawn Agent"
-        }
-
-        fn description(&self) -> &str {
-            "Test capability that already owns spawn_agent"
-        }
-
-        fn tools(&self) -> Vec<Box<dyn Tool>> {
-            vec![Box::new(ExistingSpawnAgentTool)]
-        }
-    }
-
-    struct ExistingSpawnAgentTool;
-
-    #[async_trait]
-    impl Tool for ExistingSpawnAgentTool {
-        fn name(&self) -> &str {
-            "spawn_agent"
-        }
-
-        fn description(&self) -> &str {
-            "Existing spawn_agent test tool"
-        }
-
-        fn parameters_schema(&self) -> serde_json::Value {
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "target": {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "enum": ["external_a2a"]}
-                        },
-                        "required": ["type"]
-                    }
-                },
-                "required": ["target"]
-            })
-        }
-
-        async fn execute(
-            &self,
-            _arguments: serde_json::Value,
-        ) -> crate::tools::ToolExecutionResult {
-            crate::tools::ToolExecutionResult::success(serde_json::json!({"ok": true}))
-        }
-    }
-
-    #[tokio::test]
-    async fn test_subagents_do_not_shadow_existing_spawn_agent_provider() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(SubagentCapability);
-        registry.register(ExistingSpawnAgentCapability);
-
-        let collected = collect_capabilities(
-            &[
-                SUBAGENTS_CAPABILITY_ID.to_string(),
-                "existing_spawn_agent".to_string(),
-            ],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        let spawn_agent_defs: Vec<_> = collected
-            .tool_definitions
-            .iter()
-            .filter(|tool| tool.name() == "spawn_agent")
-            .collect();
-        assert_eq!(spawn_agent_defs.len(), 1);
-        assert_eq!(
-            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["external_a2a"])
-        );
-    }
-
-    #[tokio::test]
-    async fn test_agent_handoff_does_not_shadow_existing_spawn_agent_provider() {
-        let mut registry = CapabilityRegistry::new();
-        registry.register(AgentHandoffCapability);
-        registry.register(ExistingSpawnAgentCapability);
-
-        let agent_id = crate::typed_id::AgentId::new();
-        let harness_id = crate::typed_id::HarnessId::new();
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
-                serde_json::json!({
-                    "targets": [{
-                        "id": "aws_operator",
-                        "name": "AWS Operator",
-                        "agent_id": agent_id,
-                        "harness_id": harness_id
-                    }]
-                }),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("existing_spawn_agent"),
-                serde_json::json!({}),
-            ),
-        ];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        let spawn_agent_defs: Vec<_> = collected
-            .tool_definitions
-            .iter()
-            .filter(|tool| tool.name() == "spawn_agent")
-            .collect();
-        assert_eq!(spawn_agent_defs.len(), 1);
-        assert_eq!(
-            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
-            serde_json::json!(["external_a2a"])
-        );
-    }
-
-    /// Idempotence: explicitly selecting `background_execution` plus a
-    /// background-capable tool must not produce duplicate spawn_background
-    /// entries.
-    #[tokio::test]
-    async fn test_background_execution_explicit_selection_is_idempotent() {
-        let registry = CapabilityRegistry::with_builtins();
-        let collected = collect_capabilities(
-            &[
-                "bashkit_shell".to_string(),
-                BACKGROUND_EXECUTION_CAPABILITY_ID.to_string(),
-            ],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        let spawn_background_count = collected
-            .tool_definitions
-            .iter()
-            .filter(|t| t.name() == "spawn_background")
-            .count();
-        assert_eq!(
-            spawn_background_count, 1,
-            "spawn_background must appear exactly once even when \
-             background_execution is selected explicitly alongside a \
-             background-capable tool"
-        );
-        let applied_count = collected
-            .applied_ids
-            .iter()
-            .filter(|id| id.as_str() == BACKGROUND_EXECUTION_CAPABILITY_ID)
-            .count();
-        assert_eq!(
-            applied_count, 1,
-            "background_execution must appear exactly once in applied_ids"
-        );
-    }
-
-    /// Lockstep: with_defaults() must NOT include spawn_background — it only
-    /// reaches the worker registry through the auto-activated capability.
-    /// This proves the executor cannot dispatch spawn_background without the
-    /// model having seen it.
-    #[test]
-    fn test_defaults_do_not_include_spawn_background() {
-        let registry = crate::ToolRegistry::with_defaults();
-        assert!(
-            !registry.has("spawn_background"),
-            "with_defaults() must not include 'spawn_background' — it comes \
-             from the background_execution capability (EVE-501)"
-        );
-    }
-
-    // =========================================================================
     // Feature tests
     // =========================================================================
 
@@ -5991,29 +5151,18 @@ mod tests {
     }
 
     #[test]
-    fn test_session_storage_capability_features() {
+    fn kernel_capability_features_are_declared_on_the_capability() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let storage = registry.get("session_storage").unwrap();
-        let features = storage.features();
-        assert!(features.contains(&"secrets"));
-        assert!(features.contains(&"key_value"));
-    }
-
-    #[test]
-    fn test_session_schedule_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let schedule = registry.get("session_schedule").unwrap();
-        assert_eq!(schedule.features(), vec!["schedules"]);
-    }
-
-    #[test]
-    fn test_session_sql_database_capability_features() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let sql = registry.get("session_sql_database").unwrap();
-        assert_eq!(sql.features(), vec!["sql_database"]);
+        // `session_storage`/`session_sql_database` moved to the product crate
+        // (EVE-886); their feature declarations are covered there. What core
+        // owns is the mechanism: a registered capability's `features()` is what
+        // `compute_features` reports.
+        let skills = registry.get("skills").expect("skills is kernel-owned");
+        assert_eq!(
+            compute_features(&["skills".to_string()], &registry),
+            skills.features()
+        );
     }
 
     #[test]
@@ -6036,8 +5185,8 @@ mod tests {
     fn test_compute_features_single_capability() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let features = compute_features(&["session_schedule".to_string()], &registry);
-        assert_eq!(features, vec!["schedules"]);
+        let features = compute_features(&["skills".to_string()], &registry);
+        assert_eq!(features, registry.get("skills").expect("skills").features());
     }
 
     #[test]
@@ -6048,14 +5197,12 @@ mod tests {
             &[
                 "session_file_system".to_string(),
                 "session_storage".to_string(),
-                "session_schedule".to_string(),
             ],
             &registry,
         );
         assert!(features.contains(&"file_system".to_string()));
         assert!(features.contains(&"secrets".to_string()));
         assert!(features.contains(&"key_value".to_string()));
-        assert!(features.contains(&"schedules".to_string()));
     }
 
     #[test]
@@ -6094,25 +5241,23 @@ mod tests {
                 "bashkit_shell".to_string(),
                 "session_storage".to_string(),
                 "session".to_string(),
-                "session_schedule".to_string(),
             ],
             &registry,
         );
         assert!(features.contains(&"file_system".to_string()));
         assert!(features.contains(&"secrets".to_string()));
         assert!(features.contains(&"key_value".to_string()));
-        assert!(features.contains(&"schedules".to_string()));
     }
 
     #[test]
     fn test_compute_features_unknown_capability_ignored() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         let features = compute_features(
-            &["unknown_cap".to_string(), "session_schedule".to_string()],
+            &["unknown_cap".to_string(), "session_storage".to_string()],
             &registry,
         );
-        assert_eq!(features, vec!["schedules"]);
+        assert_eq!(features, vec!["secrets", "key_value"]);
     }
 
     #[test]
@@ -6145,427 +5290,6 @@ mod tests {
         // Default capabilities should be Low
         let noop = registry.get("noop").unwrap();
         assert_eq!(noop.risk_level(), RiskLevel::Low);
-    }
-
-    // =========================================================================
-    // OpenAI tool_search capability collection tests
-    // =========================================================================
-
-    #[tokio::test]
-    async fn test_apply_capabilities_openai_tool_search() {
-        let registry = CapabilityRegistry::with_builtins();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["openai_tool_search".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // OpenAiToolSearchCapability provides no tools and no system prompt
-        assert_eq!(
-            applied.runtime_agent.system_prompt,
-            base_runtime_agent.system_prompt
-        );
-        assert!(applied.tool_registry.is_empty());
-        assert_eq!(applied.applied_ids, vec!["openai_tool_search"]);
-
-        // tool_search config should be set on the runtime agent
-        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_openai_tool_search_with_other_capabilities() {
-        let registry = fixture_registry();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let applied = apply_capabilities(
-            base_runtime_agent,
-            &[
-                "current_time".to_string(),
-                "openai_tool_search".to_string(),
-                "test_math".to_string(),
-            ],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        // Should have tools from current_time and test_math
-        assert!(applied.tool_registry.has("get_current_time"));
-        assert!(applied.tool_registry.has("add"));
-        assert!(applied.tool_registry.has("subtract"));
-        assert!(applied.tool_registry.has("multiply"));
-        assert!(applied.tool_registry.has("divide"));
-
-        // tool_search should still be configured
-        let ts = applied.runtime_agent.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, DEFAULT_TOOL_SEARCH_THRESHOLD);
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_tool_search_custom_threshold() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("openai_tool_search"),
-            serde_json::json!({"threshold": 5}),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        let ts = collected.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, 5);
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_generic_off_native() {
-        let registry = fixture_registry();
-
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("auto_tool_search"),
-                serde_json::json!({"threshold": 2}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("test_math"),
-                serde_json::json!({}),
-            ),
-        ];
-
-        // No native support (pre-4 Claude) → resolves to the generic client-side
-        // mechanism: no hosted config, but the tool_search tool + DeferSchemaHook
-        // are collected.
-        let ctx = test_ctx().with_model("claude-3-5-haiku");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        assert!(
-            collected.tool_search.is_none(),
-            "auto_tool_search must not set a hosted config on a non-native model"
-        );
-        assert!(
-            collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "auto_tool_search must contribute the client-side tool_search tool"
-        );
-        assert!(
-            !collected.tool_definition_hooks.is_empty(),
-            "auto_tool_search must contribute a client-side deferral hook"
-        );
-
-        let mut transformed = collected.tool_definitions.clone();
-        for hook in &collected.tool_definition_hooks {
-            transformed = hook.transform(transformed);
-        }
-        let add_tool = transformed
-            .iter()
-            .find(|tool| tool.name() == "add")
-            .expect("test_math contributes add");
-        assert!(
-            add_tool.parameters().get("properties").is_none(),
-            "generic auto_tool_search must honor the configured threshold"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_native() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("auto_tool_search"),
-            serde_json::json!({"threshold": 7}),
-        )];
-
-        // Native support → resolves to the hosted OpenAI mechanism: a hosted
-        // config (honoring the configured threshold) and no client-side tool/hook.
-        let ctx = test_ctx().with_model("gpt-5.4");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        let ts = collected
-            .tool_search
-            .as_ref()
-            .expect("auto_tool_search must set a hosted config on a native model");
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, 7);
-        assert!(
-            !collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "hosted mechanism must not contribute the client-side tool_search tool"
-        );
-        assert!(
-            collected.tool_definition_hooks.is_empty(),
-            "hosted mechanism must not contribute a client-side deferral hook"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_anthropic() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("auto_tool_search"),
-            serde_json::json!({"threshold": 9}),
-        )];
-
-        // Native Claude support → resolves to the hosted Anthropic mechanism: a
-        // hosted config (honoring the threshold) and no client-side tool/hook.
-        let ctx = test_ctx().with_model("claude-opus-4-8");
-        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
-
-        let ts = collected
-            .tool_search
-            .as_ref()
-            .expect("auto_tool_search must set a hosted config on a native Claude model");
-        assert!(ts.enabled);
-        assert_eq!(ts.threshold, 9);
-        assert!(
-            !collected
-                .tools
-                .iter()
-                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
-            "hosted mechanism must not contribute the client-side tool_search tool"
-        );
-        assert!(
-            collected.tool_definition_hooks.is_empty(),
-            "hosted mechanism must not contribute a client-side deferral hook"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_no_tool_search_without_capability() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("current_time"),
-            serde_json::json!({}),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        assert!(collected.tool_search.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_tool_search_category_propagation() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        // test_math capability has category "Testing"
-        let configs = vec![
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("test_math"),
-                serde_json::json!({}),
-            ),
-            AgentCapabilityConfig::with_config(
-                CapabilityId::new("openai_tool_search"),
-                serde_json::json!({}),
-            ),
-        ];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        // Verify tool_search is configured
-        assert!(collected.tool_search.is_some());
-
-        // Verify tools have categories from their capability
-        for tool_def in &collected.tool_definitions {
-            // test_math tools should have the Math category
-            if ["add", "subtract", "multiply", "divide"].contains(&tool_def.name()) {
-                assert!(
-                    tool_def.category().is_some(),
-                    "Tool {} should have a category from its capability",
-                    tool_def.name()
-                );
-            }
-        }
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_prompt_caching() {
-        let registry = CapabilityRegistry::with_builtins();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let applied = apply_capabilities(
-            base_runtime_agent.clone(),
-            &["prompt_caching".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-
-        assert_eq!(
-            applied.runtime_agent.system_prompt,
-            base_runtime_agent.system_prompt
-        );
-        assert!(applied.tool_registry.is_empty());
-        assert_eq!(applied.applied_ids, vec!["prompt_caching"]);
-
-        let prompt_cache = applied.runtime_agent.prompt_cache.as_ref().unwrap();
-        assert!(prompt_cache.enabled);
-        assert_eq!(
-            prompt_cache.strategy,
-            crate::driver_registry::PromptCacheStrategy::Auto
-        );
-        assert!(prompt_cache.gemini_cached_content.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_openrouter_server_tools() {
-        let registry = CapabilityRegistry::with_builtins();
-        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("openrouter_server_tools"),
-            serde_json::json!({
-                "tools": ["web_search", "datetime"],
-                "web_search_max_results": 4,
-            }),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-        let routing = collected
-            .openrouter_routing
-            .as_ref()
-            .expect("server tools produce routing config");
-        let kinds: Vec<_> = routing.server_tools.iter().map(|t| t.kind).collect();
-        assert_eq!(
-            kinds,
-            vec![
-                crate::driver_registry::OpenRouterServerToolKind::WebSearch,
-                crate::driver_registry::OpenRouterServerToolKind::Datetime,
-            ]
-        );
-
-        // The capability contributes request intent only — no executable tools.
-        // With no tools selected (bare id, empty config) it is a no-op.
-        let applied = apply_capabilities(
-            base_runtime_agent,
-            &["openrouter_server_tools".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert!(applied.tool_registry.is_empty());
-        assert!(applied.runtime_agent.openrouter_routing.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_prompt_caching_custom_strategy() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("prompt_caching"),
-            serde_json::json!({"strategy": "auto"}),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        let prompt_cache = collected.prompt_cache.as_ref().unwrap();
-        assert!(prompt_cache.enabled);
-        assert_eq!(
-            prompt_cache.strategy,
-            crate::driver_registry::PromptCacheStrategy::Auto
-        );
-        assert!(prompt_cache.gemini_cached_content.is_none());
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_prompt_caching_gemini_cached_content() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        let configs = vec![AgentCapabilityConfig::with_config(
-            CapabilityId::new("prompt_caching"),
-            serde_json::json!({
-                "strategy": "auto",
-                "gemini_cached_content": "cachedContents/demo-cache"
-            }),
-        )];
-
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
-
-        let prompt_cache = collected.prompt_cache.as_ref().unwrap();
-        assert_eq!(
-            prompt_cache.gemini_cached_content.as_deref(),
-            Some("cachedContents/demo-cache")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_collect_capabilities_parallel_tool_calls_modes() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        // Default (no explicit mode) => prefer => Some(true).
-        let collected = collect_capabilities_with_configs(
-            &[AgentCapabilityConfig::new("parallel_tool_calls")],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert_eq!(collected.parallel_tool_calls, Some(true));
-
-        // avoid => Some(false).
-        let collected = collect_capabilities_with_configs(
-            &[AgentCapabilityConfig::with_config(
-                CapabilityId::new("parallel_tool_calls"),
-                serde_json::json!({"mode": "avoid"}),
-            )],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert_eq!(collected.parallel_tool_calls, Some(false));
-
-        // none => None (provider default).
-        let collected = collect_capabilities_with_configs(
-            &[AgentCapabilityConfig::with_config(
-                CapabilityId::new("parallel_tool_calls"),
-                serde_json::json!({"mode": "none"}),
-            )],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert_eq!(collected.parallel_tool_calls, None);
-
-        // Capability absent => None.
-        let collected = collect_capabilities_with_configs(&[], &registry, &test_ctx()).await;
-        assert_eq!(collected.parallel_tool_calls, None);
-    }
-
-    #[tokio::test]
-    async fn test_apply_capabilities_parallel_tool_calls_precedence() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        // Capability supplies the preference when no explicit field is set.
-        let applied = apply_capabilities(
-            RuntimeAgent::new("p", "gpt-5.2"),
-            &["parallel_tool_calls".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert_eq!(applied.runtime_agent.parallel_tool_calls, Some(true));
-
-        // Explicit field (escape hatch) wins over the capability.
-        let mut base = RuntimeAgent::new("p", "gpt-5.2");
-        base.parallel_tool_calls = Some(false);
-        let applied = apply_capabilities(
-            base,
-            &["parallel_tool_calls".to_string()],
-            &registry,
-            &test_ctx(),
-        )
-        .await;
-        assert_eq!(applied.runtime_agent.parallel_tool_calls, Some(false));
     }
 
     // ========================================================================

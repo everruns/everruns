@@ -32,7 +32,9 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-a2ui",
     ],
     "crates/engine/Cargo.toml": ["everruns-core"],
+    "crates/builtins/Cargo.toml": ["everruns-core"],
     "crates/platform/Cargo.toml": [
+        "everruns-builtins",
         "everruns-core",
         "everruns-integrations-filesystem",
         "everruns-integrations-bashkit",
@@ -43,6 +45,7 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/http/Cargo.toml": ["everruns-core"],
     "crates/mcp/Cargo.toml": ["everruns-core", "everruns-http"],
     "crates/host/Cargo.toml": [
+        "everruns-builtins",
         "everruns-core",
         "everruns-engine",
         "everruns-http",
@@ -54,6 +57,7 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-integrations-lua",
     ],
     "crates/everruns/Cargo.toml": [
+        "everruns-builtins",
         "everruns-core",
         "everruns-host",
         "everruns-local",
@@ -61,7 +65,12 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-test-support",
     ],
     "crates/test-support/Cargo.toml": ["everruns-core"],
-    "crates/local/Cargo.toml": ["everruns-core", "everruns-host", "everruns-platform"],
+    "crates/local/Cargo.toml": [
+        "everruns-builtins",
+        "everruns-core",
+        "everruns-host",
+        "everruns-platform",
+    ],
     "crates/openai/Cargo.toml": ["everruns-provider"],
     "crates/anthropic/Cargo.toml": ["everruns-provider"],
     "crates/openrouter/Cargo.toml": ["everruns-provider"],
@@ -88,6 +97,7 @@ INNER_PINS: dict[str, list[str]] = {
 
 # Workspace.dependencies path pins (root Cargo.toml).
 WORKSPACE_PIN_DEPS: list[str] = [
+    "everruns-builtins",
     "everruns-capability",
     "everruns-core",
     "everruns-engine",

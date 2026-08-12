@@ -431,6 +431,24 @@ jobs:
       - name: Check environment capability isolation
         run: bash scripts/lib/check-environment-capability-isolation.sh
 
+  # Architecture guard (EVE-884): portable policy implementations live in
+  # everruns-builtins, core retains only neutral contracts, and minimal
+  # Framework consumers can exclude the optional bundle.
+  portable-builtins-isolation:
+    name: Portable Built-ins Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check portable built-ins isolation
+        run: bash scripts/lib/check-portable-builtins-isolation.sh
+
   # Architecture guard (EVE-877, EVE-881): stored Agent/AgentVersion and
   # Harness persistence records plus the built-in harness provisioning
   # templates live in crates/platform. Kernel crates (core, engine, provider,
@@ -469,6 +487,24 @@ jobs:
 
       - name: Check provider isolation
         run: bash scripts/lib/check-provider-isolation.sh
+
+  # Architecture guard (EVE-885): hosted knowledge, delegation, task, hook,
+  # and management capability implementations live in crates/platform. Core
+  # carries portable implementations and neutral contracts only.
+  hosted-capability-isolation:
+    name: Hosted Capability Isolation Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check hosted capability isolation
+        run: bash scripts/lib/check-hosted-capability-isolation.sh
 
   migration-immutability:
     name: Migration Immutability
@@ -651,7 +687,12 @@ jobs:
 
       - name: Install shell test dependencies
         run: |
-          sudo apt-get update
+          # `apt-get update` exits non-zero when *any* configured repo fails, and
+          # the runner image ships third-party lists we never install from
+          # (packages.microsoft.com has 403'd and reddened main). Tolerate a
+          # partial refresh; `apt-get install` still fails loudly if a package is
+          # genuinely unavailable.
+          sudo apt-get update || true
           sudo apt-get install -y lsof netcat-openbsd ripgrep
 
           CADDY_VERSION="2.9.1"
@@ -1306,8 +1347,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Ensure jq is available
+        run: |
+          # jq ships with the GitHub-hosted runner image, so the apt path is only
+          # a fallback. See the shell-test job for why the refresh is tolerated.
+          if command -v jq >/dev/null 2>&1; then
+            jq --version
+            exit 0
+          fi
+          sudo apt-get update || true
+          sudo apt-get install -y jq
 
       - name: Download server binary
         uses: actions/download-artifact@v4

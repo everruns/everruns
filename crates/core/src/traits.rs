@@ -1060,39 +1060,6 @@ pub struct SecretInfo {
 /// - Store data in a database (production)
 /// - Use in-memory storage for testing
 ///
-/// A single ranked hit from a Knowledge Base search. Public-id surface only;
-/// no internal UUIDs. See knowledge/runtime-resources/knowledge-bases.md and knowledge/runtime-resources/okf-adoption.md.
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct KnowledgeSearchHit {
-    /// Entry public id (`kbe_…`).
-    pub id: String,
-    /// Owning Knowledge Base public id (`kb_…`).
-    pub kb_id: String,
-    pub title: String,
-    pub kind: String,
-    pub tags: Vec<String>,
-    /// Short body excerpt for the LLM.
-    pub snippet: String,
-    /// Optional OKF resource URI, when set on the entry.
-    pub resource: Option<String>,
-}
-
-/// Org-scoped search over curated Knowledge Bases, backing the agent-facing
-/// `search_knowledge` tool. Implementations MUST scope to `org_id` and silently
-/// ignore KB ids not owned by that org (no existence leak across tenants).
-#[async_trait]
-pub trait KnowledgeStore: Send + Sync {
-    async fn search_knowledge(
-        &self,
-        org_id: crate::typed_id::OrgId,
-        kb_public_ids: &[String],
-        query: &str,
-        kind: Option<&str>,
-        tags: &[String],
-        limit: usize,
-    ) -> Result<Vec<KnowledgeSearchHit>>;
-}
-
 /// Storage for session-scoped key/value pairs and secrets.
 ///
 /// Key/value storage is for general data that doesn't need encryption.
@@ -1779,8 +1746,6 @@ pub enum ToolContextService {
     ConnectionResolver,
     ScheduleStore,
     SubagentSessionDelegate,
-    KnowledgeStore,
-    KnowledgeIndexSearch,
     LeasedResourceStore,
     SessionResourceRegistry,
     SessionTaskRegistry,
@@ -1813,8 +1778,6 @@ impl ToolContextService {
             Self::ConnectionResolver => "ConnectionResolver",
             Self::ScheduleStore => "SessionScheduleStore",
             Self::SubagentSessionDelegate => "SubagentSessionDelegate",
-            Self::KnowledgeStore => "KnowledgeStore",
-            Self::KnowledgeIndexSearch => "KnowledgeIndexSearch",
             Self::LeasedResourceStore => "LeasedResourceStore",
             Self::SessionResourceRegistry => "SessionResourceRegistry",
             Self::SessionTaskRegistry => "SessionTaskRegistry",
@@ -1853,8 +1816,6 @@ pub struct ToolContextServices {
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
     pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
     pub extensions: ToolContextExtensions,
-    pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
-    pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
     pub session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
@@ -1889,8 +1850,6 @@ impl ToolContextServices {
             ToolContextService::ConnectionResolver => self.connection_resolver.is_some(),
             ToolContextService::ScheduleStore => self.schedule_store.is_some(),
             ToolContextService::SubagentSessionDelegate => self.subagent_delegate.is_some(),
-            ToolContextService::KnowledgeStore => self.knowledge_store.is_some(),
-            ToolContextService::KnowledgeIndexSearch => self.knowledge_index_search.is_some(),
             ToolContextService::LeasedResourceStore => self.leased_resource_store.is_some(),
             ToolContextService::SessionResourceRegistry => self.session_resource_registry.is_some(),
             ToolContextService::SessionTaskRegistry => self.session_task_registry.is_some(),
@@ -2010,23 +1969,14 @@ pub struct ToolContext {
     /// Optional session schedule store for scheduling tools.
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
 
-    /// Optional narrow child-session delegate for portable subagent/handoff
-    /// orchestration (EVE-839). The hosted `PlatformStore` seam itself is no
-    /// longer named by core; the platform crate implements this delegate and,
-    /// for its own management tools, is resolved via [`Self::extension`].
+    /// Optional narrow child-session delegate for host-provided orchestration.
+    /// The hosted `PlatformStore` seam itself is not named by core; a host
+    /// adapter implements this contract and platform tools use typed extensions.
     pub subagent_delegate: Option<Arc<dyn crate::subagent_delegation::SubagentSessionDelegate>>,
     /// Type-erased, host-supplied extensions keyed by concrete type. Lets crates
     /// layered above core (e.g. `everruns-platform`) hang typed services on the
     /// tool context without core naming them (EVE-839).
     pub extensions: ToolContextExtensions,
-    /// Optional knowledge store backing the `search_knowledge` tool.
-    pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
-
-    /// Optional hybrid retrieval over bound Knowledge Indexes for the
-    /// `search_index` tool. Server-implemented; populated only on the server
-    /// act path alongside `platform_store` / `connection_resolver`.
-    pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
-
     /// Optional leased resource store for lifecycle-managed provider resources.
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
 
@@ -2142,8 +2092,6 @@ impl ToolContext {
             schedule_store: None,
             subagent_delegate: None,
             extensions: ToolContextExtensions::default(),
-            knowledge_store: None,
-            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -2187,8 +2135,6 @@ impl ToolContext {
             schedule_store: services.schedule_store.clone(),
             subagent_delegate: services.subagent_delegate.clone(),
             extensions: services.extensions.clone(),
-            knowledge_store: services.knowledge_store.clone(),
-            knowledge_index_search: services.knowledge_index_search.clone(),
             leased_resource_store: services.leased_resource_store.clone(),
             session_resource_registry: services.session_resource_registry.clone(),
             session_task_registry: services.session_task_registry.clone(),
@@ -2232,8 +2178,6 @@ impl ToolContext {
             schedule_store: None,
             subagent_delegate: None,
             extensions: ToolContextExtensions::default(),
-            knowledge_store: None,
-            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -2280,8 +2224,6 @@ impl ToolContext {
             schedule_store: None,
             subagent_delegate: None,
             extensions: ToolContextExtensions::default(),
-            knowledge_store: None,
-            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -2329,8 +2271,6 @@ impl ToolContext {
             schedule_store: None,
             subagent_delegate: None,
             extensions: ToolContextExtensions::default(),
-            knowledge_store: None,
-            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -2439,8 +2379,6 @@ impl ToolContext {
             schedule_store: None,
             subagent_delegate: None,
             extensions: ToolContextExtensions::default(),
-            knowledge_store: None,
-            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -2534,15 +2472,6 @@ impl ToolContext {
     /// [`Self::with_extension`].
     pub fn extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
         self.extensions.get::<T>()
-    }
-
-    /// Add a Knowledge Index search service to this context (for `search_index`).
-    pub fn with_knowledge_index_search(
-        mut self,
-        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
-    ) -> Self {
-        self.knowledge_index_search = Some(search);
-        self
     }
 
     /// Add a leased resource store to this context.
@@ -2700,10 +2629,6 @@ impl std::fmt::Debug for ToolContext {
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
             .field("subagent_delegate", &self.subagent_delegate.is_some())
-            .field(
-                "knowledge_index_search",
-                &self.knowledge_index_search.is_some(),
-            )
             .field(
                 "leased_resource_store",
                 &self.leased_resource_store.is_some(),

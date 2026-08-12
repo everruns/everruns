@@ -8,10 +8,7 @@ use everruns_core::atoms::{
     ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_core::capabilities::{
-    SystemPromptContext, collect_capabilities_with_configs, report_result_tool_for_child_session,
-    report_task_progress_tool_for_child_session,
-};
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -28,14 +25,18 @@ use everruns_core::traits::{
     ToolContextServices, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::vector_store::KnowledgeIndexSearch;
 use everruns_core::{
     CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     ErrorDisclosure, ResolvedExecutionSnapshot, TokenUsage, ToolDefinition, ToolRegistry,
     UserFacingError, UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
 };
-use everruns_platform::PlatformStore;
+use everruns_platform::capabilities::{
+    report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
+};
+use everruns_platform::{
+    KnowledgeIndexSearch, KnowledgeIndexSearchExt, KnowledgeStore, KnowledgeStoreExt, PlatformStore,
+};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -169,7 +170,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// Knowledge store backing the `search_knowledge` tool. Default: none.
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn KnowledgeStore>> {
         None
     }
 
@@ -322,7 +323,7 @@ fn subagent_nesting_policy_from_configs(
     resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
 ) -> everruns_core::SubagentNestingPolicy {
     let subagents_config = resolved_capability_configs.iter().find(|config| {
-        config.capability_id() == everruns_core::capabilities::SUBAGENTS_CAPABILITY_ID
+        config.capability_id() == everruns_platform::capabilities::SUBAGENTS_CAPABILITY_ID
     });
 
     let configured_depth = subagents_config
@@ -391,7 +392,7 @@ fn finalize_specs_from_configs(
         }
         if config.capability_id() == "user_hooks" {
             disabled_contributions.extend(
-                everruns_core::capabilities::user_hooks::disabled_contributions(
+                everruns_platform::capabilities::user_hooks::disabled_contributions(
                     config.config_value(),
                 ),
             );
@@ -449,6 +450,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     let capability_registry = adapter.capability_registry();
     if let Some(blueprint_id) = blueprint_id {
         let mut registry = ToolRegistry::with_defaults();
+        #[cfg(feature = "builtins")]
+        everruns_builtins::register_default_tools(&mut registry);
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
             everruns_core::error::AgentLoopError::config(format!(
                 "Blueprint \"{blueprint_id}\" not found in registry"
@@ -520,6 +523,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     .await;
 
     let mut registry = ToolRegistry::with_defaults();
+    #[cfg(feature = "builtins")]
+    everruns_builtins::register_default_tools(&mut registry);
     for tool in collected.tools {
         registry.register_boxed(tool);
     }
@@ -621,8 +626,8 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
 ) -> ToolContextServices {
     // EVE-839: the adapter still yields a hosted `PlatformStore`, but core no
-    // longer names it. Thread it as the narrow subagent delegate (for portable
-    // subagent/handoff orchestration) and, when present, as the typed
+    // longer names it. Thread it as the neutral delegation contract and, when
+    // present, as the typed
     // `PlatformStoreExt` extension the hosted platform capabilities resolve.
     let platform_store = adapter.platform_store(org_id, session_id);
     let subagent_delegate = platform_store.clone().map(|store| {
@@ -633,6 +638,12 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         let mut extensions = everruns_core::traits::ToolContextExtensions::default();
         if let Some(store) = platform_store {
             extensions.insert(Arc::new(everruns_platform::PlatformStoreExt(store)));
+        }
+        if let Some(store) = adapter.knowledge_store() {
+            extensions.insert(Arc::new(KnowledgeStoreExt(store)));
+        }
+        if let Some(search) = adapter.knowledge_index_search(org_id) {
+            extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
         extensions
     };
@@ -653,8 +664,6 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         schedule_store: adapter.schedule_store(org_id),
         subagent_delegate,
         extensions,
-        knowledge_store: adapter.knowledge_store(),
-        knowledge_index_search: adapter.knowledge_index_search(org_id),
         leased_resource_store: adapter.leased_resource_store(),
         session_resource_registry: adapter.session_resource_registry(),
         session_task_registry: adapter.session_task_registry(),
@@ -1531,6 +1540,11 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
         .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
         .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
+
+    #[cfg(feature = "builtins")]
+    {
+        atom = atom.with_final_post_tool_hook(Arc::new(everruns_builtins::PersistOutputHook));
+    }
 
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);

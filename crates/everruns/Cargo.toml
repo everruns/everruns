@@ -35,7 +35,7 @@ required-features = ["macros", "openai"]
 # worker integrations. The `macros` surface is the
 # default surfaces beyond the bare re-exports — macros and typed capabilities —
 # pull in no network or I/O edge, only async adaptation and schema generation.
-default = ["macros", "capabilities", "filesystem"]
+default = ["macros", "capabilities", "builtins", "filesystem"]
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON
 # Schema generation), and `serde` (derive). Kept out of `everruns-core`.
@@ -47,7 +47,10 @@ macros = ["dep:everruns-macros", "dep:schemars", "dep:serde"]
 # independently gateable so the bare facade still compiles with
 # `--no-default-features`.
 capabilities = ["everruns-capability/definition", "dep:schemars", "dep:serde"]
-a2a = ["everruns-core/a2a"]
+# Curated typed values plus the backend-neutral implementation bundle. Kept
+# optional so `default-features = false` Framework consumers compile no built-in
+# implementation package.
+builtins = ["dep:everruns-builtins", "everruns-host/builtins"]
 # 0.17 feature-name compatibility. Writable message JSONL was retired in favor
 # of canonical event logs; retaining the no-op name keeps dependent feature
 # lists compiling without exposing a writable message store.
@@ -77,6 +80,7 @@ openai = ["dep:everruns-openai"]
 # code-defined authoring surface. The facade re-exports this contract as its
 # application capability API.
 everruns-capability.workspace = true
+everruns-builtins = { workspace = true, optional = true }
 everruns-core.workspace = true
 everruns-host.workspace = true
 # Deterministic in-process simulator backing `Model::simulated` (EVE-875).

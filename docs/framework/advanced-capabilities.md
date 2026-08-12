@@ -52,6 +52,11 @@ contributes nothing until the selected host or plugin provides that
 implementation. This is not a function tool: ordinary functions remain on
 `AgentBuilder::tool` and `#[everruns::tool]`.
 
+The same rule applies to Everruns Platform capability IDs. The default
+Framework registry does not advertise or execute hosted knowledge, delegation,
+task, hook, or management capabilities. See
+[portable and hosted capabilities](/framework/capability-boundaries/).
+
 JSON capability config is not a credential store. Framework debug output
 redacts it, but a host may persist or inspect it; pass a provider-owned secret
 handle rather than API keys or tokens.
@@ -81,6 +86,21 @@ impl IntoCapability for VendorSearch {
 ```
 
 No `everruns-core`, registry, store, or host dependency is needed.
+
+## Choose the standard policy bundle
+
+The Framework's default `builtins` feature links `everruns-builtins`, the
+backend-neutral implementation bundle for compaction, tool search, budgeting,
+loop/progress safeguards, prompt caching, tool-call repair, output handling,
+and guardrails. Linking the package has no registration side effect: each host
+constructs its registry explicitly, so a custom registry cannot be changed by
+dependency order.
+
+Applications that want only the open Framework contracts can disable default
+features and add the integrations they need. The policy bundle owns no network
+client, process runner, interpreter, database, or hosted service. Output
+persistence and distillation declare `session_file_system` as a host-provided
+dependency; enable them only in a composition that supplies that capability.
 
 ## Choose an authoring level
 
