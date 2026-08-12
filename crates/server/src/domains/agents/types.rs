@@ -91,9 +91,9 @@ pub struct CreateAgentRequest {
 }
 
 /// Request to update an agent. Only provided fields will be updated.
-///
-/// Every field is optional, so `Default` means "change nothing" — convenient
-/// for tests that exercise one field at a time.
+// Every field is optional, so `Default` means "change nothing" — convenient for
+// tests that exercise one field at a time. Kept out of the doc comment: utoipa
+// publishes those into docs/api/openapi.json, and this is an internal note.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateAgentRequest {
     /// Name, unique per org. Lowercase alphanumeric and hyphens.
