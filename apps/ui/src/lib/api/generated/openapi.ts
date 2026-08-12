@@ -14644,7 +14644,7 @@ export interface components {
     SessionSandboxAction: "pause" | "resume" | "delete";
     /**
      * @description Wire-facing status of a session sandbox. Mirrors
-     *     `everruns_core::SessionSandboxStatus` for the public API.
+     *     `everruns_platform::session_sandbox::SessionSandboxStatus` for the public API.
      * @enum {string}
      */
     SessionSandboxStatusValue: "running" | "paused" | "lost";
