@@ -2,6 +2,29 @@
 
 ## 2026-08-12
 
+* **Background tool runs leave the kernel**: Moved `spawn_background` — the
+  tool, its session-task mirroring, the scheduled-monitor path, the background
+  event sink, admission-control permits and the reattach entry point — out of
+  `everruns-core` into `everruns-platform` as `background_run` (EVE-888,
+  ~1800 lines). Creating session tasks and schedules is hosted behaviour; the
+  kernel keeps the neutral `BackgroundExecutableTool`/`BackgroundEventSink`
+  contracts in `core::background` and runs whatever a host supplies. The
+  `background_execution` capability, which already lived in platform, now owns
+  the tool it advertises, and `subagents` shares the same admission permits so
+  every detached path goes through one gate.
+
+  This did **not** free the `session_task` record for EVE-880, contrary to the
+  expectation recorded against EVE-897. Three consumers remain in core, and one
+  is load-bearing: `SessionTask` and `TaskMessage` are embedded in the
+  canonical `task.created` / `task.updated` / `task.message.*` event payloads
+  (`events.rs`), which EVE-888 explicitly retains as kernel surface while
+  putting changes to canonical event semantics out of scope. `wake_queue.rs`
+  and `task_observer.rs` also consume the record. Moving the family therefore
+  needs a neutral task projection for events, or an accepted event-payload
+  change — a decision, not a mechanical move. `session_schedule` is separately
+  pinned by `SessionScheduleStore` in `core::traits`, which is the EVE-897
+  pattern.
+
 * **Session SQL store becomes a typed context extension**: Removed
   `ToolContext::sqldb_store` and moved the whole `session_sqldb` family —
   store trait, value types and error — from `everruns-core` to

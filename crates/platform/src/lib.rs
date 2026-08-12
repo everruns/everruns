@@ -69,6 +69,13 @@ pub mod session;
 // working-area row with its lifecycle status is control-plane state.
 pub mod workspace;
 
+// Background tool runs carved out of `everruns-core` (EVE-888): the
+// `spawn_background` tool, its session-task mirroring and schedule path, the
+// event sink, admission-control permits and the reattach entry point. The
+// kernel keeps the neutral `BackgroundExecutableTool`/`BackgroundEventSink`
+// contracts; creating session tasks and schedules is hosted behaviour.
+pub mod background_run;
+
 // Session SQL database store carved out of `everruns-core` (EVE-897). The
 // value types are the signature vocabulary of `SessionSqlDbStore`, so records
 // and trait moved together once the kernel stopped naming the store on

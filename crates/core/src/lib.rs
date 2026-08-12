@@ -364,8 +364,8 @@ pub use openresponses_protocol::{
 
 // Tool abstraction re-exports
 pub use tools::{
-    EchoTool, FailingTool, SpawnBackgroundTool, Tool, ToolExecutionResult, ToolInternalError,
-    ToolRegistry, ToolRegistryBuilder, ToolResultImage,
+    EchoTool, FailingTool, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry,
+    ToolRegistryBuilder, ToolResultImage,
 };
 
 // Shared credential form schema (provider drivers + connection providers)
