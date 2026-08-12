@@ -14,6 +14,12 @@ updates:
       cargo:
         patterns:
           - "*"
+    ignore:
+      # `buffa` must track whatever `connectrpc` links against. connectrpc 0.8.1
+      # depends on buffa 0.8, so taking buffa 0.9 puts two buffa crates in the
+      # graph and the connectrpc-generated e2b code stops type-checking against
+      # `::buffa::bytes::BufMut`. Drop this once connectrpc ships a 0.9 release.
+      - dependency-name: "buffa"
 
   - package-ecosystem: "docker"
     directories:
@@ -42,3 +48,18 @@ updates:
     labels:
       - "dependencies"
       - "javascript"
+    ignore:
+      # astro 7 still does `import yaml from "js-yaml"` internally, and Vite
+      # externalizes that bare specifier so the prerender bundle resolves it from
+      # the app root. Hoisting js-yaml 5 (ESM-only, no default export) there
+      # breaks `astro build`. Drop this once astro moves off the default import.
+      - dependency-name: "js-yaml"
+        update-types: ["version-update:semver-major"]
+      # openapi-typescript 7.13.0 reads `ts.factory` off the typescript package,
+      # which TypeScript 7 no longer exposes that way, so `api-types:check` dies
+      # with "Cannot read properties of undefined (reading
+      # 'createKeywordTypeNode')". Everything else in the UI — typecheck, build,
+      # lint, jest — is already clean on TypeScript 7. Drop this once
+      # openapi-typescript supports it.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
