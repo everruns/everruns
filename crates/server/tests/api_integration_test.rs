@@ -557,6 +557,7 @@ async fn test_list_agents_resolves_explicit_inherited_and_missing_harnesses() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await

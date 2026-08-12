@@ -598,6 +598,7 @@ mod tests {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await

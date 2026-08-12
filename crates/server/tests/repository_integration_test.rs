@@ -219,6 +219,7 @@ async fn test_agent_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -302,6 +303,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -332,6 +334,7 @@ async fn test_agent_upsert_initial_files() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -482,6 +485,7 @@ async fn test_agent_get_by_name() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -765,6 +769,7 @@ async fn test_session_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -997,6 +1002,7 @@ async fn test_event_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1098,6 +1104,7 @@ async fn test_event_exclude_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1207,6 +1214,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1310,6 +1318,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1429,6 +1438,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1652,6 +1662,7 @@ async fn test_event_filter_types() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1964,6 +1975,7 @@ async fn test_session_file_crud() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2166,6 +2178,7 @@ async fn test_agent_capabilities() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2446,6 +2459,7 @@ async fn test_session_usage_tracking() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2556,6 +2570,7 @@ async fn test_session_previews() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
