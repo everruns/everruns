@@ -431,7 +431,7 @@ No breaking changes to existing user configs.
 | `SessionLifecycleHook`, `TurnLifecycleHook` traits | `crates/core/src/lifecycle_hooks.rs` — defines both traits plus `BashLifecycleHook` |
 | `HookAdapterBuilder` (spec → adapter) | `crates/core/src/hook_adapter.rs` |
 | `Capability::user_hooks()` default + collection extension | `crates/core/src/capabilities/mod.rs` |
-| `user_hooks` capability | `crates/core/src/capabilities/user_hooks.rs` |
+| `user_hooks` capability | `crates/platform/src/capabilities/user_hooks.rs` |
 | `pre_tool_use` wire-in | `crates/core/src/atoms/act.rs::execute_single_tool` |
 | `post_tool_use` wire-in | existing `PostToolExecHook` chain |
 

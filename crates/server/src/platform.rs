@@ -58,11 +58,14 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     // Knowledge Index vector store. Opt-in: when `TURBOPUFFER_API_KEY` is set
     // (and non-empty) use the Turbopuffer backend, otherwise keep the in-memory
     // default. The API key is never logged.
-    if let Some(store) = turbopuffer_vector_store_from_env() {
-        builder = builder.vector_store(store);
-    } else {
-        tracing::info!(vector_store = "in-memory", "vector store backend active");
-    }
+    let vector_store: Arc<dyn everruns_platform::VectorStore> =
+        if let Some(store) = turbopuffer_vector_store_from_env() {
+            store
+        } else {
+            tracing::info!(vector_store = "in-memory", "vector store backend active");
+            Arc::new(everruns_platform::InMemoryVectorStore::new())
+        };
+    builder = builder.extension(Arc::new(everruns_platform::VectorStoreExt(vector_store)));
 
     builder.build()
 }

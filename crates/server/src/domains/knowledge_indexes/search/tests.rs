@@ -11,7 +11,7 @@ use everruns_core::driver_registry::{
     EmbeddingsDriver, EmbeddingsDriverError, ServiceKind,
 };
 use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId, KnowledgeIndexId};
-use everruns_core::vector_store::{
+use everruns_platform::vector_store::{
     InMemoryVectorStore, KnowledgeIndexSearch, VectorRecord, VectorStore, index_namespace,
 };
 use uuid::Uuid;

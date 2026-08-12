@@ -63,7 +63,7 @@ Recursive, bounded by `MAX_DEPTH` and `MAX_NODES`:
 | Object | Recurse into each field; small fields untouched. |
 | Scalar / small value | Unchanged. |
 
-Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`, `MAX_DISTILL_INPUT_BYTES = 1 MiB`. See `crates/core/src/capabilities/tool_output_distillation.rs`.
+Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`, `MAX_DISTILL_INPUT_BYTES = 1 MiB`. See `crates/builtins/src/tool_output_distillation.rs`.
 
 ## Recovery Contract
 
@@ -91,6 +91,6 @@ It is included by default in the **generic harness** (`crates/server/src/harness
 
 - `knowledge/execution/tool-execution.md` — output budgets, `PersistOutputHook`, hook ordering
 - `knowledge/execution/capabilities.md` — capability system
-- `crates/core/src/capabilities/tool_output_distillation.rs` — implementation
-- `crates/core/src/capabilities/tool_output_persistence.rs` — reused persistence helpers
+- `crates/builtins/src/tool_output_distillation.rs` — implementation
+- `crates/builtins/src/tool_output_persistence.rs` — reused persistence helpers
 - `docs/advanced/tool-output-pipeline.md` — end-to-end pipeline and destinations

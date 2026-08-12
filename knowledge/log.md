@@ -2,6 +2,15 @@
 
 ## 2026-08-11
 
+* **Hosted capability extraction**: Moved hosted knowledge, Memory,
+  delegation, background/scheduled task, user-hook, citation, model-scout,
+  OpenRouter-workspace, and platform-management capability implementations out
+  of `everruns-core` into `everruns-platform` (EVE-885). Core keeps neutral
+  capability/tool/task/event/delegation contracts, generic collection hooks,
+  and type-keyed service extensions. Product presets explicitly compose the
+  hosted registry; the Framework preset no longer advertises capabilities whose
+  persistence, tenancy, worker, or authorization services are absent.
+
 * **Connection/auth/email infrastructure extraction**: Moved the hosted
   connector catalog (`Connector` trait, `ConnectorRegistry`,
   `ConnectorPlugin` inventory registration) and the system email contract

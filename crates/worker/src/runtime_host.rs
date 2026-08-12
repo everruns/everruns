@@ -285,7 +285,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.storage_store())
     }
 
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
         self.adapters.knowledge_store()
     }
 
@@ -333,7 +333,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn knowledge_index_search(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+    ) -> Option<Arc<dyn everruns_platform::vector_store::KnowledgeIndexSearch>> {
         self.adapters.knowledge_index_search(org_id)
     }
 

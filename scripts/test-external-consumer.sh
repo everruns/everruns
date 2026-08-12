@@ -9,6 +9,8 @@
 #                             `everruns-capability` contract ALONE (EVE-873),
 #                             so the open capability seams fail here if they
 #                             stop being usable without core/host access.
+#   external-builtin-pack     composes `everruns-builtins` into a fresh core
+#                             registry without relying on link-time discovery.
 #   external-provider-pack    implements the `ChatDriver` contract and driver
 #                             registration against the provider SPI
 #                             (`everruns-provider`) ALONE (EVE-874), so custom
@@ -47,6 +49,11 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-capability-pack
 
 echo "External capability pack builds on the neutral everruns-capability contract under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-builtin-pack
+
+echo "External host composes the portable built-in policy bundle explicitly under -D warnings."
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-provider-pack

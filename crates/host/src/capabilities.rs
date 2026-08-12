@@ -8,10 +8,18 @@ use std::sync::Arc;
 
 use everruns_core::{CapabilityRegistry, EgressService};
 
-/// Return the runtime-safe core built-ins plus integrations enabled as host
-/// Cargo features.
+/// Return the runtime-safe neutral core preset, optional portable policy
+/// bundle, and integrations enabled as host Cargo features.
 pub fn runtime_capability_registry() -> CapabilityRegistry {
-    compose_runtime_capability_registry(CapabilityRegistry::runtime_builtins())
+    let registry = CapabilityRegistry::runtime_builtins();
+    #[cfg(feature = "builtins")]
+    let registry = {
+        let mut registry = registry;
+        everruns_builtins::register_runtime_capabilities(&mut registry)
+            .expect("core and portable runtime catalogs must not collide");
+        registry
+    };
+    compose_runtime_capability_registry(registry)
 }
 
 /// Add host integrations selected by Cargo features to an existing registry.
@@ -21,8 +29,31 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 /// environment composition as [`runtime_capability_registry`]. Existing
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
+    register_session_service_capabilities(&mut registry);
     register_selected_integrations(&mut registry);
     registry
+}
+
+/// Register the session-service capabilities an in-process host can serve.
+///
+/// `session` and `session_storage` moved to the product crate with the rest of
+/// the service-backed families (EVE-886), but the default in-process runtime
+/// supplies both services, so the Framework keeps advertising them. The SQL and
+/// sandbox capabilities need backends this host does not provide and stay with
+/// product composition.
+fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {
+    if registry
+        .get(everruns_platform::capabilities::SESSION_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_platform::capabilities::SessionCapability);
+    }
+    if registry
+        .get(everruns_platform::capabilities::SESSION_STORAGE_CAPABILITY_ID)
+        .is_none()
+    {
+        registry.register(everruns_platform::capabilities::SessionStorageCapability);
+    }
 }
 
 /// Return the egress service matching the selected host integrations.
@@ -72,6 +103,12 @@ mod tests {
     #[test]
     fn runtime_registry_matches_selected_host_features() {
         let registry = runtime_capability_registry();
+        assert_eq!(registry.has("current_time"), cfg!(feature = "builtins"));
+        assert_eq!(registry.has("compaction"), cfg!(feature = "builtins"));
+        assert!(
+            !registry.has("usage_limit_auto_continue"),
+            "the embedded runtime preset has no schedule-backed auto-continue service"
+        );
         assert_eq!(
             registry.has("session_file_system"),
             cfg!(feature = "filesystem")
@@ -87,7 +124,10 @@ mod tests {
     #[test]
     fn composition_preserves_caller_selected_core_capabilities() {
         let registry = compose_runtime_capability_registry(CapabilityRegistry::with_builtins());
-        assert!(registry.has("session_schedule"));
+        // A core-owned capability the caller brought in survives composition.
+        // `session_schedule` used to stand in here; it is hosted and lives in
+        // everruns-platform now (EVE-885), so it is no longer in this preset.
+        assert!(registry.has("session_storage"));
         assert_eq!(
             registry.has("session_file_system"),
             cfg!(feature = "filesystem")

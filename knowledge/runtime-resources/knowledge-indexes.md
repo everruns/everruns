@@ -159,7 +159,7 @@ credential-safe, actionable categories rather than raw provider errors.
 
 Embeddings live in an **external vector database**, abstracted behind a
 vendor-neutral `VectorStore` trait selected through `PlatformDefinition`
-(`crates/core/src/vector_store.rs`), mirroring how `SessionFileStore` is
+(`crates/platform/src/vector_store.rs`), mirroring how `SessionFileStore` is
 pluggable. OSS depends on no vendor SDK at the core layer.
 
 Backends:

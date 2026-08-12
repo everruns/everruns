@@ -18,7 +18,7 @@ use futures::StreamExt;
 use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
-use everruns_core::vector_store::{VectorRecord, VectorStore};
+use everruns_platform::vector_store::{VectorRecord, VectorStore};
 use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};

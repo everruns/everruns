@@ -54,7 +54,7 @@ exposed via `config_schema()` so clients render a generic editor with no
 hard-coded knowledge of check types.
 
 The check engine is `everruns_core::guardrail_checks`; the capability wiring is
-`crates/core/src/capabilities/guardrails.rs`. See those for exact field names
+`crates/builtins/src/guardrails.rs`. See those for exact field names
 and limits rather than duplicating them here.
 
 ## Checks

@@ -4048,60 +4048,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tool_definition_hook_applies_host_root_to_eager_and_deferred_schemas() {
-        use crate::capabilities::ToolSearchCapability;
-        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition};
-
-        let store = Arc::new(MockFileStore::with_display_root("/repo"));
-        let ctx = SystemPromptContext {
-            session_id: SessionId::new(),
-            locale: None,
-            file_store: Some(store),
-            model: None,
-        };
-        let cap = FileSystemCapability;
-        let hooks = cap.tool_definition_hooks_with_context(&ctx, &json!({}));
-        assert_eq!(hooks.len(), 1);
-
-        let read_file = ToolDefinition::Builtin(BuiltinTool {
-            name: "read_file".to_string(),
-            display_name: None,
-            description: "Read file".to_string(),
-            parameters: ReadFileTool.parameters_schema(),
-            policy: Default::default(),
-            category: None,
-            deferrable: DeferrablePolicy::Automatic,
-            hints: Default::default(),
-            full_parameters: None,
-        });
-        let eager = hooks[0].transform(vec![read_file.clone()]);
-        assert!(!schema_contains_workspace(eager[0].full_parameters()));
-
-        let defer_cap = ToolSearchCapability::with_threshold(1);
-        let defer_hooks =
-            defer_cap.tool_definition_hooks_with_context(&ctx, &json!({ "threshold": 1 }));
-        let deferred = defer_hooks[0].transform(hooks[0].transform(vec![
-            read_file,
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "other_tool".to_string(),
-                display_name: None,
-                description: "Other".to_string(),
-                parameters: json!({"type": "object"}),
-                policy: Default::default(),
-                category: None,
-                deferrable: DeferrablePolicy::Automatic,
-                hints: Default::default(),
-                full_parameters: None,
-            }),
-        ]));
-        let read = deferred
-            .iter()
-            .find(|tool| tool.name() == "read_file")
-            .expect("read_file present");
-        assert!(!schema_contains_workspace(read.full_parameters()));
-    }
-
-    #[tokio::test]
     async fn list_directory_without_path_uses_workspace_display_root() {
         // File tools run behind MountFs; the mounted primary presents the stable
         // host-agnostic /workspace root rather than the backend's host path.

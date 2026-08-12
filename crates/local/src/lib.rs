@@ -56,7 +56,7 @@ pub use db::SqliteDb;
 pub use error::{LocalError, LocalResult};
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
-pub use runtime_builder::LocalRuntimeBuilder;
+pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};
 pub use schedule_runner::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
 };
