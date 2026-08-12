@@ -107,24 +107,16 @@ everruns-openui = { path = "../openui", version = "0.17.26", optional = true }
 # A2UI component catalog and prompt generator
 everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
 
-# A2A outbound agent delegation (optional; behind the `a2a` feature). Pulls the
-# tonic/prost gRPC stack and a second reqwest major, so it is the largest single
-# subtree a provider-only consumer can shed.
-a2a = { workspace = true, optional = true }
-a2a-client = { workspace = true, optional = true }
-
 # Compile-time directory embedding for virtual mounts (platform docs)
 include_dir = { version = "0.7", optional = true }
 
 [features]
-# Heavy subtrees stay ON by default so the application crates (server, worker,
-# cli, runtime) and core's own test suite are unchanged. Provider crates depend
-# on core with `default-features = false` to shed them — see crates/openrouter.
+# Portable optional subtrees stay ON by default for existing core consumers.
+# Hosted A2A/delegation implementations are owned by everruns-platform and no
+# longer appear in any core feature set.
 # Note: OTLP telemetry moved to `everruns-observability` (EVE-876); no core
 # build — default or otherwise — carries exporter dependencies.
 default = ["llm-tests"]
-# Outbound A2A agent delegation (tonic/prost gRPC stack).
-a2a = ["dep:a2a", "dep:a2a-client"]
 embedded-platform-docs = ["dep:include_dir"]
 openapi = ["utoipa", "everruns-provider/openapi"]
 sqlx = ["dep:sqlx", "everruns-provider/sqlx"]
@@ -139,6 +131,5 @@ tracing-subscriber.workspace = true
 wiremock = "0.6"
 # Snapshot testing for contract tests
 insta = { version = "1.40", features = ["json", "redactions"] }
-a2a-server.workspace = true
 axum.workspace = true
 tempfile.workspace = true

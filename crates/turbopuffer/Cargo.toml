@@ -1,5 +1,5 @@
 # Turbopuffer Vector Store Backend
-# Decision: Implements everruns-core's VectorStore trait against Turbopuffer's
+# Decision: Implements everruns-platform's VectorStore trait against Turbopuffer's
 # v2 HTTP API. Opt-in production backend for Knowledge Index embeddings; the
 # in-memory store stays the default. See knowledge/runtime-resources/knowledge-indexes.md.
 
@@ -44,6 +44,7 @@ tracing.workspace = true
 
 # Internal dependencies
 everruns-core.workspace = true
+everruns-platform.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

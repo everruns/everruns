@@ -14,10 +14,11 @@ use axum::{
     routing::get,
 };
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_core::capabilities::{A2aAgentDelegationCapability, Capability};
+use everruns_core::capabilities::Capability;
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
+use everruns_platform::capabilities::A2aAgentDelegationCapability;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
@@ -333,11 +334,13 @@ fn outbound_delegation_config(
 
 async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageStore>, Value) {
     let capability = A2aAgentDelegationCapability;
+    // EVE-885: delegation providers expose their tool through the neutral
+    // router seam. Collection merges every provider into one model-facing
+    // `spawn_agent`; this test drives the A2A provider tool directly.
     let spawn_tool = capability
-        .tools_with_config(&config)
-        .into_iter()
-        .find(|tool| tool.name() == "spawn_agent")
-        .expect("spawn_agent tool");
+        .delegation_target_with_config(&config)
+        .expect("a2a delegation target provider")
+        .tool;
     let storage = Arc::new(TestStorageStore::default());
     // Background spawns are now required to be task-backed (so they can be
     // controlled via wait_task/message_task/cancel_task), so the ToolContext

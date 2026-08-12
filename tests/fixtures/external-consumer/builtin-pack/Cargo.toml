@@ -1,0 +1,9 @@
+[package]
+name = "external-builtin-pack"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+everruns-builtins = { path = "../../../../crates/builtins" }
+everruns-core = { path = "../../../../crates/core", default-features = false }

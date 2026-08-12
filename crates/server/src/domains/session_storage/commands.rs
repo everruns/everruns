@@ -1,7 +1,9 @@
 use super::queries as q;
 use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretInfo};
 use crate::domains::common::*;
-use everruns_core::capabilities::{is_internal_session_kv_key, is_internal_session_secret_name};
+use everruns_platform::capabilities::{
+    is_internal_session_kv_key, is_internal_session_secret_name,
+};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

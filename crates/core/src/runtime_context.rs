@@ -8,10 +8,8 @@ use std::collections::HashMap;
 
 use crate::AgentCapabilityConfig;
 use crate::agent_definition::AgentDefinition;
-use crate::capabilities::{
-    COMPACTION_CAPABILITY_ID, CapabilityRegistry, CompactionConfig, SystemPromptContext,
-    resolve_capability_configs,
-};
+use crate::capabilities::{CapabilityRegistry, SystemPromptContext, resolve_capability_configs};
+use crate::compaction_policy::CompactionPolicy;
 use crate::config_layer::AgentConfigOverlay;
 use crate::error::{AgentLoopError, Result};
 use crate::harness_definition::HarnessDefinition;
@@ -53,8 +51,8 @@ pub struct AssembledTurnContext {
     pub resolved_model_id: Option<ModelId>,
     /// Locale resolved from message controls/metadata or session defaults.
     pub resolved_locale: Option<String>,
-    /// Compaction config extracted from merged capabilities, if present.
-    pub compaction_config: Option<CompactionConfig>,
+    /// Capability-owned compaction policy, if present.
+    pub compaction_policy: Option<Arc<dyn CompactionPolicy>>,
     /// Embedder metadata folded from the harness chain (root base, leaf wins).
     pub embedder_metadata: HashMap<String, String>,
 }
@@ -230,11 +228,11 @@ async fn assemble_turn_context_with_mode(
         model: Some(model_with_provider.model.clone()),
     };
 
-    let compaction_config = effective_overlay
-        .capabilities
-        .iter()
-        .find(|cap| cap.capability_id() == COMPACTION_CAPABILITY_ID)
-        .map(|cap| CompactionConfig::from_json(cap.config_value()));
+    let compaction_policy = effective_overlay.capabilities.iter().find_map(|config| {
+        capability_registry
+            .get(config.capability_id())?
+            .compaction_policy(config.config_value())
+    });
 
     let runtime_agent = build_runtime_agent(
         &session,
@@ -262,7 +260,7 @@ async fn assemble_turn_context_with_mode(
         model_with_provider,
         resolved_model_id,
         resolved_locale,
-        compaction_config,
+        compaction_policy,
         embedder_metadata,
     })
 }

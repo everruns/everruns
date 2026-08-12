@@ -3269,17 +3269,17 @@ mod tests {
         let ctx = mock_context();
         let tool = ReadCapabilitiesTool;
         let result = tool
-            .execute_with_context(json!({"search": "current_time"}), &ctx)
+            .execute_with_context(json!({"search": "human_intent"}), &ctx)
             .await;
         match result {
             ToolExecutionResult::Success(v) => {
                 let count = v["count"].as_u64().unwrap();
-                assert!(count >= 1, "should find at least current_time");
+                assert!(count >= 1, "should find at least human_intent");
                 let caps = v["capabilities"].as_array().unwrap();
                 assert!(
                     caps.iter()
-                        .any(|c| c["id"].as_str().unwrap() == "current_time"),
-                    "should contain current_time"
+                        .any(|c| c["id"].as_str().unwrap() == "human_intent"),
+                    "should contain human_intent"
                 );
             }
             other => panic!("expected success, got: {other:?}"),

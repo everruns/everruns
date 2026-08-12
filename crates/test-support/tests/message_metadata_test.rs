@@ -7,8 +7,8 @@
 //
 // Run with: cargo test -p everruns-core --test message_metadata_test
 
+use everruns_builtins::MessageMetadataCapability;
 use everruns_core::MessageRetriever;
-use everruns_core::capabilities::MessageMetadataCapability;
 use everruns_core::message::MessageRole;
 use everruns_test_support::InMemoryAgenticLoop;
 use everruns_test_support::LlmSimConfig;

@@ -2324,9 +2324,7 @@ mod tests {
 
     #[test]
     fn message_fold_reflects_model_view_masking() {
-        use everruns_core::capabilities::compaction::{
-            CompactionConfig, build_model_view_messages,
-        };
+        use everruns_builtins::{RuntimeCompactionConfig, build_model_view_messages};
 
         let session = SessionId::new();
         let (run, result) = sample_run_and_result(session);
@@ -2364,7 +2362,8 @@ mod tests {
         // Folding the model view drops the masked (older) tool-result content —
         // exactly the training-faithfulness the dataset export now guarantees.
         let masked_messages =
-            build_model_view_messages(&messages, &CompactionConfig::default(), None).messages;
+            build_model_view_messages(&messages, &RuntimeCompactionConfig::default(), None)
+                .messages;
         let masked = build_case_record_from_messages(
             &run,
             &result,

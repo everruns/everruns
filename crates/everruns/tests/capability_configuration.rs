@@ -1,5 +1,7 @@
 //! Downstream-style coverage for the unified Framework capability entrypoint.
 
+#![cfg(feature = "builtins")]
+
 use everruns::{
     Agent, BuildError, CapabilityRef, CapabilitySpec, CompactionConfig, FunctionTool,
     IntoCapability, Model, ToolSearch,
@@ -195,17 +197,20 @@ fn duplicate_ids_across_typed_dynamic_and_string_inputs_are_rejected() {
         }
     );
 
-    let error = builder()
-        .capability(CapabilityRef::new("virtual_bash"))
-        .capability("bashkit_shell")
-        .build()
-        .expect_err("a built-in alias and canonical ID must collide");
-    assert_eq!(
-        error,
-        BuildError::DuplicateCapability {
-            id: "bashkit_shell".into(),
-        }
-    );
+    #[cfg(feature = "bashkit")]
+    {
+        let error = builder()
+            .capability(CapabilityRef::new("virtual_bash"))
+            .capability("bashkit_shell")
+            .build()
+            .expect_err("an enabled integration alias and canonical ID must collide");
+        assert_eq!(
+            error,
+            BuildError::DuplicateCapability {
+                id: "bashkit_shell".into(),
+            }
+        );
+    }
 }
 
 #[test]

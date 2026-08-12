@@ -9,7 +9,7 @@
 //! nothing is scheduled even though the schedule store is present.
 
 use async_trait::async_trait;
-use everruns_core::capabilities::UsageLimitAutoContinueCapability;
+use everruns_builtins::UsageLimitAutoContinueCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::traits::SessionScheduleStore;

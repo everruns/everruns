@@ -24,6 +24,12 @@
 //! `everruns-http`. Hosts select those edges explicitly instead of inheriting
 //! them from this contract crate.
 //!
+//! Hosted product capabilities — including Knowledge Bases and Indexes,
+//! Memories, delegation, schedules/tasks, user hooks, and platform management
+//! — live in `everruns-platform`. [`CapabilityRegistry::runtime_builtins`]
+//! intentionally does not advertise them. Core exposes only neutral collection
+//! hooks and type-keyed extension seams needed by hosts and capability crates.
+//!
 //! Deterministic simulation (the `llmsim` driver, the in-memory agentic
 //! loop, and demo fixture capabilities) lives in the `everruns-test-support`
 //! crate; core carries no test implementations.
@@ -32,13 +38,13 @@
 //!
 //! ```
 //! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
-//! use everruns_core::capabilities::CurrentTimeCapability;
+//! use everruns_core::capabilities::HumanIntentCapability;
 //!
 //! let mut capabilities = CapabilityRegistry::new();
-//! capabilities.register(CurrentTimeCapability);
+//! capabilities.register(HumanIntentCapability);
 //!
 //! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-//! assert!(platform.capability_registry().get("current_time").is_some());
+//! assert!(platform.capability_registry().get("human_intent").is_some());
 //! ```
 
 // Runtime types (tool definitions, capability types)
@@ -105,11 +111,11 @@ pub use everruns_provider::credential_schema;
 // enums) moved to the `everruns-platform` crate — they are product
 // management/reporting records that never participate in a turn.
 pub mod events;
+pub mod finalized_tool_calls;
 pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
-pub mod memory;
 pub use everruns_provider::model;
 pub use everruns_provider::model_discovery;
 pub use everruns_provider::model_profiles;
@@ -140,7 +146,6 @@ pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
 pub mod task_observer;
-pub mod vector_store;
 pub mod wake_queue;
 pub mod workspace;
 pub mod workspace_policy;
@@ -166,6 +171,7 @@ pub mod capabilities;
 pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
+pub mod compaction_policy;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
@@ -188,6 +194,7 @@ mod tool_call_integrity;
 pub use everruns_provider::openai_protocol;
 pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;
+pub use tool_call_integrity::retain_complete_llm_tool_exchanges;
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
@@ -195,9 +202,8 @@ pub mod platform_definition;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
-/// Narrow child-session delegation contract for portable subagent/handoff
-/// orchestration (EVE-839): core owns the interface, the platform crate
-/// implements it over `PlatformStore`.
+/// Narrow child-session delegation contract: core owns the host-neutral
+/// interface and a host adapter supplies the implementation.
 pub mod subagent_delegation;
 pub use everruns_provider::stream_accumulator;
 pub use everruns_provider::stream_reconnect;
@@ -387,24 +393,18 @@ pub use session_sandbox::{
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
-    AUTO_TOOL_SEARCH_CAPABILITY_ID, AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities,
-    AutoToolSearchCapability, BlueprintModel, CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability,
+    AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel, Capability,
     CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    ClaudeToolSearchCapability, CollectedCapabilities, CurrentTimeCapability,
-    DECLARATIVE_CAPABILITY_PREFIX, DependencyError, GetCurrentTimeTool, GetSessionInfoTool,
+    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError,
     HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
     InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
-    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
-    OpenAiToolSearchCapability, QueryHistoryTool, ResearchCapability, ResolvedCapabilities,
-    RiskLevel, SessionCapability, SessionCapabilityConfig, SessionSandboxCapability,
-    SessionSqlDatabaseCapability, SessionTitleMutation, SqlExecuteTool, SqlQueryTool,
-    SqlSchemaTool, StatelessTodoListCapability, ToolCallHook, ToolDefinitionHook,
-    WriteSessionTitleTool, WriteTodosTool, apply_capabilities, collect_capabilities,
-    collect_capabilities_with_configs, compute_features, declarative_capability_id,
-    declarative_capability_info, get_dependencies, hydrate_declarative_capability_config,
-    hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
-    plugin_capability_info, resolve_dependencies, session_title_updated_event,
-    update_session_title_with_event, validate_declarative_capability_definition,
+    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, QueryHistoryTool,
+    ResolvedCapabilities, RiskLevel, ToolCallHook, ToolDefinitionHook, apply_capabilities,
+    collect_capabilities, collect_capabilities_with_configs, compute_features,
+    declarative_capability_id, declarative_capability_info, get_dependencies,
+    hydrate_declarative_capability_config, hydrate_plugin_capability_config,
+    is_declarative_capability, parse_declarative_capability_id, plugin_capability_info,
+    resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,
@@ -458,6 +458,10 @@ pub use ard_attachment::{
     merge_attachment_into_session, urn_slug,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
+pub use compaction_policy::{
+    CompactionPolicy, CompactionSettings, CompactionStrategy as PolicyCompactionStrategy,
+    ObservationMaskingResult as PolicyObservationMaskingResult,
+};
 pub use context_report::{
     ContextReportContribution, ContextReportSection, SessionContextReport,
     build_session_context_report, build_session_context_report_from_generation,
@@ -482,6 +486,7 @@ pub use events::{
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnCompletedData, TurnFailedData,
     TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
+pub use finalized_tool_calls::{FinalizedToolCallsContext, FinalizedToolCallsHook};
 pub use guardrail_checks::{
     CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
     GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
