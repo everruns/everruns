@@ -389,6 +389,7 @@ pub struct ServerAppBuilder {
     auth_factory: Option<AuthFactoryFn>,
     platform_definition: Option<PlatformDefinition>,
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
+    built_in_agents: Option<Vec<everruns_platform::BuiltInAgentDefinition>>,
     connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
     extra_routes: Vec<Router>,
@@ -409,6 +410,7 @@ impl ServerAppBuilder {
             auth_factory: None,
             platform_definition: None,
             built_in_harnesses: None,
+            built_in_agents: None,
             connector_registry: None,
             email_sender: None,
             extra_routes: Vec::new(),
@@ -457,6 +459,19 @@ impl ServerAppBuilder {
         harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
     ) -> Self {
         self.built_in_harnesses = Some(harnesses);
+        self
+    }
+
+    /// Replace the built-in agent provisioning templates (EVE-865).
+    ///
+    /// Defaults to the OSS preset (`crate::built_in_agents::built_in_agents`).
+    /// Each definition names the built-in harness it runs on, so a fork
+    /// replacing the harness set should replace this too.
+    pub fn built_in_agents(
+        mut self,
+        agents: Vec<everruns_platform::BuiltInAgentDefinition>,
+    ) -> Self {
+        self.built_in_agents = Some(agents);
         self
     }
 
@@ -608,6 +623,13 @@ impl ServerAppBuilder {
                 .clone()
                 .unwrap_or_else(crate::platform::oss_built_in_harnesses),
         );
+        // Built-in agents (EVE-865) follow the same composition rule; they are
+        // reconciled after harnesses because each names the harness it runs on.
+        let built_in_agents = Arc::new(
+            self.built_in_agents
+                .clone()
+                .unwrap_or_else(crate::built_in_agents::built_in_agents),
+        );
         // Connector registry and system email sender are hosted control-plane
         // services (EVE-879): composed here, not on `PlatformDefinition`.
         let connector_registry = self
@@ -665,6 +687,7 @@ impl ServerAppBuilder {
                 },
                 platform_definition.as_ref().clone(),
                 built_in_harnesses.as_ref().clone(),
+                built_in_agents.as_ref().clone(),
                 encryption.clone(),
             ),
         );

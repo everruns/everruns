@@ -2330,6 +2330,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> Jo
         auth_ctx,
         crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
         crate::platform::oss_built_in_harnesses(),
+        crate::built_in_agents::built_in_agents(),
         None,
     )
 }
@@ -2347,6 +2348,7 @@ pub fn spawn_seed_task_with_platform_definition(
     auth_ctx: SeedAuthContext,
     platform_definition: PlatformDefinition,
     built_in_harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
+    built_in_agents: Vec<everruns_platform::BuiltInAgentDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> JoinHandle<()> {
     let grade = DeploymentGrade::from_env();
@@ -2417,7 +2419,7 @@ pub fn spawn_seed_task_with_platform_definition(
                 // After seed succeeds, reconcile built-in harnesses for ALL orgs.
                 // Runs inside the seed task (not a separate task) so the default
                 // org row is guaranteed to exist before harness init runs.
-                reconcile_org_harnesses(&db, &built_in_harnesses).await;
+                reconcile_org_harnesses(&db, &built_in_harnesses, &built_in_agents).await;
             }
             Err(e) => {
                 tracing::warn!(
@@ -2429,14 +2431,22 @@ pub fn spawn_seed_task_with_platform_definition(
     })
 }
 
-/// Reconcile built-in harnesses for every organization (including the default org).
+/// Reconcile built-in harnesses and agents for every organization (including
+/// the default org).
 ///
 /// Called after seeding completes (inside the seed task) so the default org row
 /// is guaranteed to exist. Each org is reconciled independently; a single failure
 /// is logged but does not prevent other orgs from updating.
+///
+/// This is the self-heal path for built-in agents (EVE-865): API protection
+/// stops deletion, but does nothing for an org seeded before the feature, one
+/// whose row was removed directly in the database, or a half-applied migration.
+/// Running every startup recreates a missing built-in agent and adopts an
+/// existing same-named row instead of duplicating.
 async fn reconcile_org_harnesses(
     db: &StorageBackend,
     harnesses: &[everruns_platform::BuiltInHarnessDefinition],
+    agents: &[everruns_platform::BuiltInAgentDefinition],
 ) {
     let orgs = match db.list_organizations().await {
         Ok(orgs) => orgs,
@@ -2462,6 +2472,26 @@ async fn reconcile_org_harnesses(
                 created += r.created;
                 updated += r.updated;
                 unchanged += r.unchanged;
+
+                // Agents reference the harness they run on, so they are only
+                // reconciled once that org's harnesses are in place.
+                match org_init::initialize_org_agents_with_definitions(db, org.org_id, agents)
+                    .await
+                {
+                    Ok(a) => {
+                        created += a.created;
+                        updated += a.updated;
+                        unchanged += a.unchanged;
+                    }
+                    Err(e) => {
+                        errors += 1;
+                        tracing::warn!(
+                            org_id = org.org_id,
+                            error = %e,
+                            "Built-in agent reconciliation failed for org (non-fatal)"
+                        );
+                    }
+                }
             }
             Err(e) => {
                 errors += 1;
@@ -3276,7 +3306,12 @@ mod tests {
 
         // seed_all creates default-org harnesses via seed_anonymous_user.
         // Run reconciliation too, matching the full startup flow.
-        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
+        reconcile_org_harnesses(
+            &db,
+            &crate::platform::oss_built_in_harnesses(),
+            &crate::built_in_agents::built_in_agents(),
+        )
+        .await;
 
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
@@ -3662,7 +3697,12 @@ mod tests {
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
-        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
+        reconcile_org_harnesses(
+            &db,
+            &crate::platform::oss_built_in_harnesses(),
+            &crate::built_in_agents::built_in_agents(),
+        )
+        .await;
 
         // Mutate harness description via public API. Resolve the base
         // harness id by name from the DB — built-in harnesses no longer
@@ -3776,7 +3816,12 @@ mod tests {
         );
 
         // Run reconciliation (covers ALL orgs, including default).
-        reconcile_org_harnesses(&db, &crate::platform::oss_built_in_harnesses()).await;
+        reconcile_org_harnesses(
+            &db,
+            &crate::platform::oss_built_in_harnesses(),
+            &crate::built_in_agents::built_in_agents(),
+        )
+        .await;
 
         // After reconciliation, both orgs should have the built-in harnesses.
         let default_harnesses = db
