@@ -4350,6 +4350,7 @@ mod tests {
             max_iterations: None,
             network_access: None,
             parallel_tool_calls: None,
+            is_built_in: false,
         };
         db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
             .await

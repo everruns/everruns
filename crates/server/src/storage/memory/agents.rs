@@ -40,6 +40,7 @@ impl InMemoryDatabase {
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
             status: "active".to_string(),
+            is_built_in: input.is_built_in,
             created_at: now,
             updated_at: now,
             archived_at: None,
@@ -124,6 +125,7 @@ impl InMemoryDatabase {
             max_iterations: input.max_iterations,
             parallel_tool_calls: input.parallel_tool_calls,
             status: "active".to_string(),
+            is_built_in: input.is_built_in,
             created_at: now,
             updated_at: now,
             archived_at: None,
@@ -182,14 +184,29 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    /// Count non-deleted agents in an org (for resource limits).
-    /// Includes active and archived; excludes soft-deleted rows.
+    /// Flag an agent as platform-supplied. Idempotent; used by org bootstrap.
+    pub async fn mark_agent_built_in(&self, org_id: i64, id: AgentId) -> Result<()> {
+        if let Some(agent) = self
+            .agents
+            .write()
+            .values_mut()
+            .find(|a| a.org_id == org_id && a.id == id)
+        {
+            agent.is_built_in = true;
+        }
+        Ok(())
+    }
+
+    /// Count agents against the per-org limit.
+    /// Includes active and archived; excludes soft-deleted and built-in rows.
     pub async fn count_agents_for_org(&self, org_id: i64) -> Result<i64> {
         Ok(self
             .agents
             .read()
             .values()
-            .filter(|a| a.org_id == org_id && a.status != "deleted")
+            // Built-in agents are platform-supplied and do not consume the
+            // org's quota — same rule as built-in harnesses.
+            .filter(|a| a.org_id == org_id && a.status != "deleted" && !a.is_built_in)
             .count() as i64)
     }
 
@@ -430,6 +447,7 @@ impl InMemoryDatabase {
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
                 status: "active".to_string(),
+                is_built_in: input.is_built_in,
                 created_at: now,
                 updated_at: now,
                 archived_at: None,
@@ -503,6 +521,7 @@ impl InMemoryDatabase {
                 max_iterations: input.max_iterations,
                 parallel_tool_calls: input.parallel_tool_calls,
                 status: "active".to_string(),
+                is_built_in: input.is_built_in,
                 created_at: now,
                 updated_at: now,
                 archived_at: None,

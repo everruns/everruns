@@ -257,6 +257,7 @@ mod tests {
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            is_built_in: false,
         };
         let mut agent_two = agent_one.clone();
         agent_two.public_id = "agent_00000000000000000000000000000042".to_string();

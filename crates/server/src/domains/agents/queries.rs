@@ -321,6 +321,66 @@ pub async fn get_by_name(
 }
 
 // ============================================================================
+// Built-in agent protection
+// ============================================================================
+
+/// Whether the agent is platform-supplied. Mirrors the harness equivalent.
+///
+/// Takes the same `id_or_name` the command received and resolves it the same
+/// way [`resolve`] does. Agents use the dual-ID pattern — the API-facing
+/// `public_id` is a different value from the internal primary key — so a guard
+/// that looked the caller's identifier up as an internal id would find nothing
+/// and wave every mutation through.
+///
+/// A missing agent reports `false` so callers surface their own "not found",
+/// rather than a confusing "cannot modify built-in agent".
+pub async fn is_built_in(
+    db: &StorageBackend,
+    org_id: i64,
+    id_or_name: &str,
+) -> anyhow::Result<bool> {
+    let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
+        db.get_agent_by_public_id(org_id, &agent_id.to_string())
+            .await?
+    } else {
+        db.get_agent_by_name(org_id, id_or_name).await?
+    };
+    Ok(row.map(|r| r.is_built_in).unwrap_or(false))
+}
+
+/// Reject a mutation that would change a built-in agent's *definition*.
+///
+/// The line is definition vs bindings, and it is deliberate:
+///
+/// - **Definition is protected** — prompt, model, capabilities, versions,
+///   status. These come from the platform definition, so an org editing them
+///   would silently diverge from what the next platform upgrade ships.
+/// - **Bindings stay editable** — triggers, identities, credentials, check
+///   rules, health checks. These live in adjacent domains and never touch the
+///   agents row. A built-in agent nobody can attach a trigger to is a built-in
+///   agent nobody can use.
+///
+/// Call this from `Command::execute`, never from an HTTP route: the MCP
+/// endpoint's `execute` tier dispatches the same command descriptors, so a
+/// route-level check would leave the built-in agent editable over MCP by any
+/// caller holding agent-management access — including the agent itself.
+///
+/// `CopyAgent` is intentionally not guarded; it is the escape hatch.
+pub async fn ensure_not_built_in(
+    db: &StorageBackend,
+    org_id: i64,
+    id_or_name: &str,
+    verb: &str,
+) -> Result<(), CommandError> {
+    if is_built_in(db, org_id, id_or_name).await? {
+        return Err(CommandError::bad_request(format!(
+            "Cannot {verb} built-in agent. Copy it first to create an editable version."
+        )));
+    }
+    Ok(())
+}
+
+// ============================================================================
 // Validation helpers
 // ============================================================================
 

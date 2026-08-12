@@ -136,6 +136,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await

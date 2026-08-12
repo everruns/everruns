@@ -71,6 +71,7 @@ async fn test_create_and_get_agent() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -165,6 +166,7 @@ async fn test_create_and_list_sessions() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -596,6 +598,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -721,6 +724,7 @@ async fn test_session_updated_at() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -810,6 +814,7 @@ async fn test_events_sequence() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -899,6 +904,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -1324,6 +1330,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2042,6 +2049,7 @@ async fn test_list_events_empty_session_with_limit() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2112,6 +2120,7 @@ async fn test_sessions_pagination() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2257,6 +2266,7 @@ async fn test_sessions_pagination_ordering() {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -2770,6 +2780,7 @@ async fn create_test_agent(
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            is_built_in: false,
         },
     )
     .await
@@ -3373,6 +3384,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await

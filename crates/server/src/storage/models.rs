@@ -477,6 +477,11 @@ pub struct AgentRow {
     pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
+    /// Platform-supplied agent (mirrors `HarnessRow::is_built_in`). Its
+    /// definition is immutable through the API and excluded from the per-org
+    /// agent limit; bindings around it stay editable.
+    #[sqlx(default)]
+    pub is_built_in: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
@@ -618,6 +623,9 @@ pub struct CreateAgentRow {
     pub max_iterations: Option<i32>,
     /// Request-level parallel tool calling preference (EVE-598)
     pub parallel_tool_calls: Option<bool>,
+    /// Platform-supplied agent. Only org bootstrap sets this; every API-facing
+    /// creation path leaves it false.
+    pub is_built_in: bool,
 }
 
 #[derive(Debug, Clone, Default)]
