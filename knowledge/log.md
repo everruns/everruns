@@ -2,6 +2,26 @@
 
 ## 2026-08-12
 
+* **Session SQL store becomes a typed context extension**: Removed
+  `ToolContext::sqldb_store` and moved the whole `session_sqldb` family —
+  store trait, value types and error — from `everruns-core` to
+  `everruns-platform` (EVE-897, first family). The field was the only thing
+  pinning the family to the kernel: core named the trait, the trait's
+  signatures named the value types, and no core execution path touched either.
+  The capability now resolves `SessionSqlDbStoreExt` from the type-keyed
+  extension bag core already carried, and the host installs it beside the
+  other typed services. `SessionSqlDbStoreRef` and the
+  `ToolContextService::SessionSqlDbStore` variant are gone. The capability
+  never declared this service in `required_context_services`, so a missing
+  store still surfaces as the same structured tool error.
+
+  The remaining ~18 optional service fields (~1250 call sites) follow one
+  family per change. This seam unblocks `session_sqldb` only: `session_task`
+  and `session_schedule` are pinned by `crates/core/src/tools.rs` creating
+  monitor and background-tool tasks during execution, and `session_resource`
+  by `resource_ownership.rs` and the portable skills capabilities — both
+  EVE-888 work.
+
 * **Composition root extraction**: Moved `PlatformDefinition` out of
   `everruns-core` into `everruns-host` as `HostComposition` (EVE-887).
   Selecting which capabilities, drivers and host services a deployment runs
@@ -29,12 +49,12 @@
   types and the provider SPI, and the `Workspace` row moved earlier in the
   same issue.
 
-  `session_sqldb` deliberately stayed in core. Its value types are the
-  signature vocabulary of `SessionSqlDbStore`, and that trait is pinned to
-  core by `ToolContext::sqldb_store`; splitting records from trait would make
-  core name platform types. The family moves with EVE-887, when the
-  monolithic optional-field context becomes narrow typed services. The same
-  reasoning holds for the session task, schedule and resource records, which
+  `session_sqldb` stayed in core in this change. Its value types are the
+  signature vocabulary of `SessionSqlDbStore`, and that trait was pinned to
+  core by `ToolContext::sqldb_store`; splitting records from trait would have
+  made core name platform types. (That family moved under EVE-897, not
+  EVE-887 as this entry first said — see the EVE-897 entry above.) The same
+  reasoning held for the session task, schedule and resource records, which
   still have execution-time consumers inside core.
 
 ## 2026-08-11

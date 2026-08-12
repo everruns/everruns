@@ -147,7 +147,6 @@ pub mod session_file;
 pub mod session_path;
 pub mod session_resource;
 pub mod session_schedule;
-pub mod session_sqldb;
 pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
@@ -275,10 +274,10 @@ pub use traits::{
     NoopPartialStreamStore, NoopStreamHeartbeater, NoopSubagentSpawnStore, OutboundToolRateLimiter,
     PartialStreamState, PartialStreamStore, ProviderStore, ReasoningEffortHandle, ResolvedImage,
     ResolvedModel, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress,
-    SubagentNestingPolicy, SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor,
-    UserConnectionResolver, WorkspaceScopedFileSystem,
+    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionStorageStore,
+    SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress, SubagentNestingPolicy,
+    SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
+    WorkspaceScopedFileSystem,
 };
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
@@ -563,10 +562,10 @@ pub use session_file::{
 pub use session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
-pub use session_sqldb::{
-    ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
-    SqlQueryResult, TableSchema,
-};
+// EVE-897: the session SQL database store and its value types moved to
+// `everruns-platform`. Records and trait travel together — the value types are
+// the trait's signature vocabulary — and nothing in the kernel names either:
+// the capability resolves the store as a typed context extension.
 pub use session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,

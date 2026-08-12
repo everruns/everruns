@@ -328,7 +328,9 @@ macro_rules! mock_worker_adapters {
             fn driver_registry(&self) -> everruns_core::DriverRegistry {
                 everruns_core::DriverRegistry::new()
             }
-            fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+            fn sqldb_store(
+                &self,
+            ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
                 unimplemented!()
             }
             fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {

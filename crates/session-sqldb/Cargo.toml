@@ -14,6 +14,7 @@ rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_declt
 
 # Core types
 everruns-core = { path = "../core" }
+everruns-platform = { path = "../platform" }  # SessionSqlDbStore contract (EVE-897)
 
 # Async
 tokio = { workspace = true, features = ["rt", "time", "sync"] }

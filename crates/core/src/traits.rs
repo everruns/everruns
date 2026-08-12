@@ -1399,9 +1399,6 @@ impl SubagentNestingPolicy {
     }
 }
 
-/// Type alias for the session SQL DB store trait object.
-pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
-
 /// Resolves user connection tokens (e.g. GitHub) lazily at tool execution time.
 ///
 /// Instead of eagerly injecting tokens at session creation, tools call this
@@ -1738,7 +1735,6 @@ pub enum ToolContextService {
     UtilityLlmService,
     McpInvoker,
     EgressService,
-    SessionSqlDbStore,
     MessageRetriever,
     SessionStore,
     SessionMutator,
@@ -1770,7 +1766,6 @@ impl ToolContextService {
             Self::UtilityLlmService => "UtilityLlmService",
             Self::McpInvoker => "McpInvoker",
             Self::EgressService => "EgressService",
-            Self::SessionSqlDbStore => "SessionSqlDbStore",
             Self::MessageRetriever => "MessageRetriever",
             Self::SessionStore => "SessionStore",
             Self::SessionMutator => "SessionMutator",
@@ -1807,7 +1802,6 @@ pub struct ToolContextServices {
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
     pub mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
-    pub sqldb_store: Option<SessionSqlDbStoreRef>,
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
     pub session_store: Option<Arc<dyn SessionStore>>,
     pub session_mutator: Option<Arc<dyn SessionMutator>>,
@@ -1842,7 +1836,6 @@ impl ToolContextServices {
             ToolContextService::UtilityLlmService => self.utility_llm_service.is_some(),
             ToolContextService::McpInvoker => self.mcp_invoker.is_some(),
             ToolContextService::EgressService => self.egress_service.is_some(),
-            ToolContextService::SessionSqlDbStore => self.sqldb_store.is_some(),
             ToolContextService::MessageRetriever => self.message_retriever.is_some(),
             ToolContextService::SessionStore => self.session_store.is_some(),
             ToolContextService::SessionMutator => self.session_mutator.is_some(),
@@ -1947,9 +1940,6 @@ pub struct ToolContext {
 
     /// Optional outbound egress service for HTTP/API traffic.
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
-
-    /// Optional session SQL database store
-    pub sqldb_store: Option<SessionSqlDbStoreRef>,
 
     /// Optional message retriever for tools that need conversation history access
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
@@ -2083,7 +2073,6 @@ impl ToolContext {
             utility_llm_service: None,
             mcp_invoker: None,
             egress_service: None,
-            sqldb_store: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -2126,7 +2115,6 @@ impl ToolContext {
             utility_llm_service: services.utility_llm_service.clone(),
             mcp_invoker: services.mcp_invoker.clone(),
             egress_service: services.egress_service.clone(),
-            sqldb_store: services.sqldb_store.clone(),
             message_retriever: services.message_retriever.clone(),
             session_store: services.session_store.clone(),
             session_mutator: services.session_mutator.clone(),
@@ -2169,7 +2157,6 @@ impl ToolContext {
             utility_llm_service: None,
             mcp_invoker: None,
             egress_service: None,
-            sqldb_store: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -2215,7 +2202,6 @@ impl ToolContext {
             utility_llm_service: None,
             mcp_invoker: None,
             egress_service: None,
-            sqldb_store: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -2257,7 +2243,6 @@ impl ToolContext {
             workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: Some(file_store),
             storage_store: Some(storage_store),
-            sqldb_store: None,
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
@@ -2291,12 +2276,6 @@ impl ToolContext {
             reasoning_effort_handle: None,
             cancellation: None,
         }
-    }
-
-    /// Add a SQL database store to this context
-    pub fn with_sqldb_store(mut self, sqldb_store: SessionSqlDbStoreRef) -> Self {
-        self.sqldb_store = Some(sqldb_store);
-        self
     }
 
     /// Add a message retriever to this context
@@ -2370,7 +2349,6 @@ impl ToolContext {
             utility_llm_service: None,
             mcp_invoker: None,
             egress_service: None,
-            sqldb_store: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -2621,7 +2599,6 @@ impl std::fmt::Debug for ToolContext {
             )
             .field("utility_llm_service", &self.utility_llm_service.is_some())
             .field("egress_service", &self.egress_service.is_some())
-            .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())
             .field("session_mutator", &self.session_mutator.is_some())

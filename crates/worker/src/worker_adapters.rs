@@ -253,7 +253,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn driver_registry(&self) -> DriverRegistry;
 
     /// Get the session SQL database store.
-    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef;
+    fn sqldb_store(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>;
 
     fn compaction_checkpoint_store(
         &self,

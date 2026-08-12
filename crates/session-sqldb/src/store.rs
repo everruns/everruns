@@ -4,11 +4,11 @@
 // since SQLite operations can take up to 30 seconds (query timeout).
 
 use async_trait::async_trait;
-use everruns_core::session_sqldb::{
+use everruns_core::typed_id::SessionId;
+use everruns_platform::session_sqldb::{
     DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult, SqlQueryResult,
     TableSchema,
 };
-use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 
 use crate::memory::InMemorySqlDbBackend;

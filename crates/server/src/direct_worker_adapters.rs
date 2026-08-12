@@ -280,7 +280,7 @@ pub struct DirectWorkerAdapters {
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
     egress_service: Option<Arc<dyn EgressService>>,
-    sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
+    sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
     /// Platform vector store for Knowledge Index retrieval (`search_index`).
@@ -306,7 +306,7 @@ impl DirectWorkerAdapters {
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
-        sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
+        sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         Self {
             db,
@@ -1639,7 +1639,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.driver_registry.clone()
     }
 
-    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+    fn sqldb_store(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
         self.sqldb_store.clone()
     }
 
@@ -3738,9 +3740,10 @@ mod tests {
         let cap_registry = CapabilityRegistry::new();
         let driver_registry = everruns_worker::create_driver_registry();
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef = Arc::new(
-            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
-        );
+        let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
+            Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
+                sqldb_backend,
+            ));
 
         DirectWorkerAdapters::new(
             db,
@@ -4497,9 +4500,10 @@ mod tests {
         let cap_registry = CapabilityRegistry::new();
         let driver_registry = everruns_worker::create_driver_registry();
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: everruns_core::traits::SessionSqlDbStoreRef = Arc::new(
-            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
-        );
+        let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
+            Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
+                sqldb_backend,
+            ));
 
         DirectWorkerAdapters::new(
             db,

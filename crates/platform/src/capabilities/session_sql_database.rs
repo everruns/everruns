@@ -5,9 +5,9 @@
 // - sql_query: Read-only SELECT queries returning columns + rows as JSON.
 // - sql_schema: Introspect database schema (tables, columns, types).
 
+use crate::session_sqldb::{SessionSqlDbError, SessionSqlDbStoreExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
-use everruns_core::session_sqldb::SessionSqlDbError;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -201,7 +201,7 @@ impl Tool for SqlExecuteTool {
             }
         };
 
-        let store = match &context.sqldb_store {
+        let store = match context.extensions.get::<SessionSqlDbStoreExt>() {
             Some(store) => store,
             None => {
                 return ToolExecutionResult::tool_error(
@@ -209,6 +209,7 @@ impl Tool for SqlExecuteTool {
                 );
             }
         };
+        let store = &store.0;
 
         match store.sql_execute(context.session_id, database, sql).await {
             Ok(result) => ToolExecutionResult::success(json!({
@@ -302,7 +303,7 @@ impl Tool for SqlQueryTool {
             }
         };
 
-        let store = match &context.sqldb_store {
+        let store = match context.extensions.get::<SessionSqlDbStoreExt>() {
             Some(store) => store,
             None => {
                 return ToolExecutionResult::tool_error(
@@ -310,6 +311,7 @@ impl Tool for SqlQueryTool {
                 );
             }
         };
+        let store = &store.0;
 
         match store.sql_query(context.session_id, database, sql).await {
             Ok(result) => {
@@ -405,7 +407,7 @@ impl Tool for SqlSchemaTool {
 
         let table = arguments.get("table").and_then(|v| v.as_str());
 
-        let store = match &context.sqldb_store {
+        let store = match context.extensions.get::<SessionSqlDbStoreExt>() {
             Some(store) => store,
             None => {
                 return ToolExecutionResult::tool_error(
@@ -413,6 +415,7 @@ impl Tool for SqlSchemaTool {
                 );
             }
         };
+        let store = &store.0;
 
         match store.sql_schema(context.session_id, database, table).await {
             Ok(tables) => {

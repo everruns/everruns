@@ -35,7 +35,7 @@ pub struct SessionCommandService {
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
-    sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
+    sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
@@ -49,7 +49,7 @@ impl SessionCommandService {
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
-        sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
+        sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         Self {
             db,

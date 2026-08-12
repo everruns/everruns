@@ -3,20 +3,17 @@
 // Types and async trait for session-scoped SQL databases.
 // Implementations live in the session-sqldb crate.
 //
-// EVE-880 kept this module in core, unlike the other session-service records.
-// The value types here are not persisted control-plane rows: they are the
-// signature vocabulary of `SessionSqlDbStore`, and that trait is pinned to
-// core by `ToolContext::sqldb_store`, which the platform capability reads at
-// execution time. Moving the records alone would leave core naming platform
-// types, which the dependency direction forbids. The whole module moves in
-// EVE-887, when the monolithic optional-field context is replaced by narrow
-// typed services owned beside each capability.
+// EVE-897: this module moved out of core with its trait. The value types are
+// the signature vocabulary of `SessionSqlDbStore`, so records and trait travel
+// together; what pinned them to the kernel was `ToolContext::sqldb_store`.
+// That field is gone — the capability now resolves the store as a typed
+// extension — so the whole family lives beside the capability that uses it.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::typed_id::SessionId;
+use everruns_core::typed_id::SessionId;
 
 /// Metadata about a session database (no content/pages).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,3 +170,11 @@ pub trait SessionSqlDbStore: Send + Sync {
         table: Option<&str>,
     ) -> Result<Vec<TableSchema>, SessionSqlDbError>;
 }
+
+/// Type-keyed wrapper installed on the tool context by hosted presets.
+///
+/// Core carries the generic extension bag but does not name this service: the
+/// session SQL database is a hosted capability's backend, so the capability and
+/// its store contract stay together in platform (EVE-897).
+#[derive(Clone)]
+pub struct SessionSqlDbStoreExt(pub std::sync::Arc<dyn SessionSqlDbStore>);

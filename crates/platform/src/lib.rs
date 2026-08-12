@@ -69,6 +69,12 @@ pub mod session;
 // working-area row with its lifecycle status is control-plane state.
 pub mod workspace;
 
+// Session SQL database store carved out of `everruns-core` (EVE-897). The
+// value types are the signature vocabulary of `SessionSqlDbStore`, so records
+// and trait moved together once the kernel stopped naming the store on
+// `ToolContext`; the capability resolves it as a typed extension.
+pub mod session_sqldb;
+
 // Managed per-session sandbox carved out of `everruns-core` (EVE-880): the
 // persisted state record, the provider SPI integration crates register through
 // inventory, and the create/resume/pause/init lifecycle helpers. Execution
@@ -122,6 +128,12 @@ pub use principal::{Principal, PrincipalStatus};
 pub use session::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource, SessionStatus,
+};
+
+// Session SQL database (EVE-897).
+pub use session_sqldb::{
+    ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SessionSqlDbStoreExt,
+    SqlExecuteResult, SqlQueryResult, TableSchema,
 };
 
 // Managed per-session sandbox (EVE-880).

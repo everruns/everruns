@@ -513,7 +513,7 @@ pub struct WorkerServiceImpl {
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     /// Session SQL database store for session-scoped databases
-    sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
+    sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
@@ -638,7 +638,7 @@ impl WorkerServiceImpl {
 
         // Create session SQL database store (always available, in-memory backend)
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>> =
+        let sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> =
             Some(Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
                 sqldb_backend,
             )));
@@ -851,7 +851,7 @@ impl WorkerServiceImpl {
     #[allow(clippy::result_large_err)]
     fn sqldb_store(
         &self,
-    ) -> Result<&Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>, Status> {
+    ) -> Result<&Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>, Status> {
         self.sqldb_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Session SQL database not available"))
@@ -1094,8 +1094,8 @@ fn leased_resource_to_proto(s: &everruns_core::LeasedResource) -> proto::LeasedR
 }
 
 /// Convert a SessionSqlDbError to a gRPC Status with appropriate error codes.
-fn sqldb_error_to_status(e: everruns_core::session_sqldb::SessionSqlDbError) -> Status {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+fn sqldb_error_to_status(e: everruns_platform::session_sqldb::SessionSqlDbError) -> Status {
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     match &e {
         SessionSqlDbError::DatabaseNotFound(_) => Status::not_found(e.to_string()),
         SessionSqlDbError::DatabaseAlreadyExists(_) => Status::already_exists(e.to_string()),
@@ -1115,7 +1115,7 @@ fn sqldb_error_to_status(e: everruns_core::session_sqldb::SessionSqlDbError) -> 
 
 /// Convert a DatabaseInfo to its proto representation.
 fn db_info_to_proto(
-    db: everruns_core::session_sqldb::DatabaseInfo,
+    db: everruns_platform::session_sqldb::DatabaseInfo,
 ) -> proto::SessionSqlDbDatabaseInfo {
     use everruns_internal_protocol::datetime_to_proto_timestamp;
     proto::SessionSqlDbDatabaseInfo {

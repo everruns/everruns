@@ -21,8 +21,8 @@ use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore,
     SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
-    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
-    ToolContextServices, UserConnectionResolver,
+    SessionScheduleStore, SessionStorageStore, SessionStore, ToolContextServices,
+    UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -178,7 +178,9 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn sqldb_store(&self) -> Option<SessionSqlDbStoreRef> {
+    /// Session SQL database backend. Installed as a typed context extension
+    /// (EVE-897) — the kernel does not name this service.
+    fn sqldb_store(&self) -> Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> {
         None
     }
 
@@ -645,6 +647,11 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         if let Some(search) = adapter.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
+        if let Some(store) = adapter.sqldb_store() {
+            extensions.insert(Arc::new(
+                everruns_platform::session_sqldb::SessionSqlDbStoreExt(store),
+            ));
+        }
         extensions
     };
     ToolContextServices {
@@ -655,7 +662,6 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         utility_llm_service: adapter.utility_llm_service(),
         mcp_invoker,
         egress_service: adapter.egress_service(),
-        sqldb_store: adapter.sqldb_store(),
         message_retriever: Some(adapter.message_store()),
         session_store: Some(adapter.session_store(org_id)),
         session_mutator: Some(adapter.session_mutator(org_id)),

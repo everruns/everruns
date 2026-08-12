@@ -35,9 +35,9 @@ pub enum SqlDbError {
     Internal(String),
 }
 
-impl From<SqlDbError> for everruns_core::session_sqldb::SessionSqlDbError {
+impl From<SqlDbError> for everruns_platform::session_sqldb::SessionSqlDbError {
     fn from(e: SqlDbError) -> Self {
-        use everruns_core::session_sqldb::SessionSqlDbError;
+        use everruns_platform::session_sqldb::SessionSqlDbError;
         match e {
             SqlDbError::DatabaseNotFound(s) => SessionSqlDbError::DatabaseNotFound(s),
             SqlDbError::DatabaseAlreadyExists(s) => SessionSqlDbError::DatabaseAlreadyExists(s),

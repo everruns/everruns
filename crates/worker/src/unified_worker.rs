@@ -2189,7 +2189,10 @@ mod tests {
             fn driver_registry(&self) -> everruns_core::DriverRegistry {
                 unimplemented!()
             }
-            fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+            fn sqldb_store(
+                &self,
+            ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>
+            {
                 unimplemented!()
             }
             fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {

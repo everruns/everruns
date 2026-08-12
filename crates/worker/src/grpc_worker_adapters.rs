@@ -410,7 +410,9 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         self.host_composition.driver_registry().clone()
     }
 
-    fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+    fn sqldb_store(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
         Arc::new(GrpcSessionSqlDbStore::new(self.client.clone()))
     }
 
