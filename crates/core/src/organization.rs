@@ -95,9 +95,8 @@ pub fn org_public_id_from_internal(org_id: i64) -> String {
 ///
 /// `org_public_id_from_internal` encodes the internal `i64` as the low bits of
 /// the public id's 32-hex payload, which round-trips through the `OrgId` UUID.
-/// Used where a tool only has the public [`OrgId`] but a store needs the
-/// internal id (e.g. `search_index` → `KnowledgeIndexSearch`, `search_knowledge`
-/// → `KnowledgeStore`).
+/// Used at host boundaries where a public [`OrgId`] must be projected back to
+/// the deployment's internal organization key.
 pub fn org_internal_id_from_public(org_id: crate::typed_id::OrgId) -> i64 {
     org_id.uuid().as_u128() as i64
 }

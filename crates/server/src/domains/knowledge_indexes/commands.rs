@@ -7,8 +7,8 @@ use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, S
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
 use everruns_core::typed_id::KnowledgeIndexId;
-use everruns_core::vector_store::index_namespace;
 use everruns_core::{DriverId, Policy, ServiceKind};
+use everruns_platform::vector_store::index_namespace;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -608,8 +608,8 @@ mod tests {
     use super::*;
     use crate::domains::common::Ctx;
     use crate::storage::StorageBackend;
-    use everruns_core::vector_store::index_namespace;
     use everruns_core::{Caller, DEFAULT_ORG_ID, ModelId, OrgRole};
+    use everruns_platform::vector_store::index_namespace;
     use std::sync::Arc;
     use uuid::Uuid;
 

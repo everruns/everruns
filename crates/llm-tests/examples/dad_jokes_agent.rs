@@ -10,7 +10,7 @@
 //!
 //! Run with: cargo run -p everruns-llm-tests --example dad_jokes_agent
 
-use everruns_core::capabilities::CurrentTimeCapability;
+use everruns_builtins::CurrentTimeCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;

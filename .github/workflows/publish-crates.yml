@@ -140,7 +140,12 @@ jobs:
               "crates/engine/Cargo.toml": [
                   "everruns-core",
               ],
+              "crates/builtins/Cargo.toml": [
+                  "everruns-capability",
+                  "everruns-core",
+              ],
               "crates/platform/Cargo.toml": [
+                  "everruns-builtins",
                   "everruns-core",
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
@@ -156,6 +161,7 @@ jobs:
                   "everruns-http",
               ],
               "crates/host/Cargo.toml": [
+                  "everruns-builtins",
                   "everruns-core",
                   "everruns-engine",
                   "everruns-http",
@@ -168,6 +174,7 @@ jobs:
               ],
               "crates/everruns/Cargo.toml": [
                   "everruns-capability",
+                  "everruns-builtins",
                   "everruns-core",
                   "everruns-host",
                   "everruns-local",
@@ -179,6 +186,7 @@ jobs:
                   "everruns-host",
               ],
               "crates/local/Cargo.toml": [
+                  "everruns-builtins",
                   "everruns-core",
                   "everruns-host",
                   "everruns-platform",
@@ -287,6 +295,9 @@ jobs:
             # before core, which re-exports it.
             everruns-capability
             everruns-core
+            # Backend-neutral policy implementations publish after their core
+            # contracts and before the host/platform composers that select them.
+            everruns-builtins
             # Environment-backed capability implementations publish after
             # their neutral core contracts and before their host composers.
             everruns-http

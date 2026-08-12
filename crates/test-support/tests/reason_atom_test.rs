@@ -251,8 +251,8 @@ impl ProactiveTestRig {
         stateful: bool,
         fail_compact: bool,
     ) -> Self {
+        use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
         use everruns_core::AgentCapabilityConfig;
-        use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
         use everruns_core::traits::SessionStore;
 
         let (
@@ -346,8 +346,8 @@ impl ProactiveTestRig {
     }
 
     async fn configure_cost_pressure(&self, messages: Vec<Message>) {
+        use everruns_builtins::COMPACTION_CAPABILITY_ID;
         use everruns_core::AgentCapabilityConfig;
-        use everruns_core::capabilities::COMPACTION_CAPABILITY_ID;
         use everruns_core::traits::SessionStore;
 
         self.message_retriever
@@ -837,8 +837,8 @@ async fn test_reason_atom_with_fixed_response() {
 
 #[tokio::test]
 async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_response_id() {
+    use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
@@ -1037,8 +1037,8 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 
 #[tokio::test]
 async fn native_compact_failure_does_not_install_checkpoint() {
+    use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::in_memory::InMemoryEventEmitter;
     use everruns_core::traits::SessionStore;
 
@@ -1205,8 +1205,7 @@ async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history(
     assert_eq!(result.text, "ok");
     assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
     let calls = rig.calls.lock().await;
-    let model_view_bytes =
-        everruns_core::capabilities::estimate_total_tokens(&calls.last().unwrap().0) * 4;
+    let model_view_bytes = everruns_builtins::estimate_total_tokens(&calls.last().unwrap().0) * 4;
     let reduction_percent = 100usize.saturating_sub(model_view_bytes * 100 / baseline_bytes);
     println!(
         "context_cost_ab baseline_prompt_bytes={baseline_bytes} candidate_prompt_bytes={model_view_bytes} reduction_percent={reduction_percent} task_success={}",
@@ -3985,11 +3984,11 @@ async fn test_empty_session_system_prompt_is_ignored() {
 /// persists the replacement (not the leak) in `output.message.completed`.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_output() {
-    use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{
+    use everruns_builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
         REASON_CODE_SYSTEM_PROMPT_LEAK,
     };
+    use everruns_core::AgentCapabilityConfig;
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     // Reuse the standard test environment, then patch the agent to (a) carry
@@ -4139,10 +4138,10 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
 /// delta contains the guarded prompt canary.
 #[tokio::test]
 async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
-    use everruns_core::AgentCapabilityConfig;
-    use everruns_core::capabilities::{
+    use everruns_builtins::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
+    use everruns_core::AgentCapabilityConfig;
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (

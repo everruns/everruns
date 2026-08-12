@@ -307,7 +307,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn knowledge_index_search(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+    ) -> Option<Arc<dyn everruns_platform::vector_store::KnowledgeIndexSearch>> {
         None
     }
 
@@ -391,7 +391,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Knowledge store backing the `search_knowledge` tool. Default: `None`.
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
         None
     }
 

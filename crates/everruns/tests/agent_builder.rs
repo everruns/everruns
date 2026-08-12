@@ -27,6 +27,7 @@ fn missing_model_is_a_typed_error() {
     assert_eq!(err, BuildError::MissingModel);
 }
 
+#[cfg(feature = "builtins")]
 #[test]
 fn invalid_compaction_budget_is_a_typed_error() {
     use everruns::{BuildError, CompactionConfig};

@@ -19,6 +19,21 @@ use everruns_host::{InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFi
 use crate::backends::LocalBackends;
 use crate::profile::LocalProfile;
 
+/// Capability registry for a local profile: the hosted product catalog whose
+/// services `LocalBackends` supplies from SQLite (EVE-885), plus whatever
+/// portable policy capabilities and environment integrations this host selected
+/// (EVE-884 and EVE-883).
+///
+/// Callers that assemble their own [`PlatformDefinition`] for a local profile
+/// should start here, so build-time capability validation sees the same set the
+/// local runtime executes.
+pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
+    let mut registry = everruns_platform::capabilities::hosted_capability_registry();
+    everruns_builtins::register_portable_capabilities(&mut registry)
+        .expect("core and portable built-in catalogs must not collide");
+    everruns_host::compose_runtime_capability_registry(registry)
+}
+
 /// Convenience wrapper around [`InProcessRuntimeBuilder`] that wires a local
 /// profile + SQLite-backed task/schedule stores and a workspace file store.
 pub struct LocalRuntimeBuilder {
@@ -133,9 +148,7 @@ impl LocalRuntimeBuilder {
                     ))
                 });
                 PlatformDefinition::builder()
-                    .capability_registry(everruns_host::compose_runtime_capability_registry(
-                        everruns_core::CapabilityRegistry::with_builtins(),
-                    ))
+                    .capability_registry(local_capability_registry())
                     .driver_registry(everruns_core::DriverRegistry::new())
                     .egress_service(everruns_host::runtime_egress_service())
                     .session_file_system_factory(factory)
@@ -152,5 +165,28 @@ impl LocalRuntimeBuilder {
             .await?;
 
         Ok((runtime, local))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_local_registry_keeps_core_and_full_portable_catalogs() {
+        let registry = local_capability_registry();
+
+        for capability_id in [
+            "session_schedule",
+            "current_time",
+            "compaction",
+            "tool_call_repair",
+            "usage_limit_auto_continue",
+        ] {
+            assert!(
+                registry.has(capability_id),
+                "local registry is missing `{capability_id}`"
+            );
+        }
     }
 }

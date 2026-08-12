@@ -528,8 +528,59 @@ impl Default for RuntimeAgentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::{AgentCapabilityConfig, SystemPromptContext};
+    use crate::capabilities::{AgentCapabilityConfig, Capability, SystemPromptContext};
     use crate::typed_id::AgentId;
+
+    struct ToolFixtureCapability;
+
+    impl Capability for ToolFixtureCapability {
+        fn id(&self) -> &str {
+            "tool_fixture"
+        }
+
+        fn name(&self) -> &str {
+            "Tool Fixture"
+        }
+
+        fn description(&self) -> &str {
+            "Neutral capability fixture with one tool."
+        }
+
+        fn tools(&self) -> Vec<Box<dyn crate::Tool>> {
+            vec![Box::new(crate::tools::EchoTool)]
+        }
+    }
+
+    struct PromptToolFixtureCapability;
+
+    impl Capability for PromptToolFixtureCapability {
+        fn id(&self) -> &str {
+            "prompt_tool_fixture"
+        }
+
+        fn name(&self) -> &str {
+            "Prompt Tool Fixture"
+        }
+
+        fn description(&self) -> &str {
+            "Neutral capability fixture with a prompt and tool."
+        }
+
+        fn system_prompt_addition(&self) -> Option<&str> {
+            Some("Task Management fixture guidance.")
+        }
+
+        fn tools(&self) -> Vec<Box<dyn crate::Tool>> {
+            vec![Box::new(crate::progress_reporting::ReportProgressTool)]
+        }
+    }
+
+    fn fixture_registry() -> CapabilityRegistry {
+        let mut registry = crate::CapabilityRegistry::with_builtins();
+        registry.register(ToolFixtureCapability);
+        registry.register(PromptToolFixtureCapability);
+        registry
+    }
 
     fn test_ctx() -> SystemPromptContext {
         SystemPromptContext::without_file_store(crate::typed_id::SessionId::new())
@@ -637,7 +688,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_capabilities_empty() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_capabilities(&[], &registry, &test_ctx())
@@ -652,17 +703,17 @@ mod tests {
     async fn test_builder_with_capabilities_adds_tools() {
         use crate::tool_types::ToolDefinition;
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
-            .with_capabilities(&["current_time".to_string()], &registry, &test_ctx())
+            .with_capabilities(&["tool_fixture".to_string()], &registry, &test_ctx())
             .await
             .build();
 
         assert_eq!(runtime_agent.tools.len(), 1);
         match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "get_current_time");
+                assert_eq!(tool.name, "echo");
             }
             _ => panic!("expected Builtin variant"),
         }
@@ -693,12 +744,12 @@ mod tests {
         use crate::tool_types::ToolDefinition;
         use uuid::{NoContext, Timestamp, Uuid};
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let ts = Timestamp::now(NoContext);
         let uuid = Uuid::new_v7(ts);
         let agent = AgentDefinition {
             display_name: Some("Test Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
             ..AgentDefinition::new(
                 AgentId::from_uuid(uuid),
                 "test-agent".to_string(),
@@ -716,7 +767,7 @@ mod tests {
         assert_eq!(runtime_agent.tools.len(), 1);
         match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "get_current_time");
+                assert_eq!(tool.name, "echo");
             }
             _ => panic!("expected Builtin variant"),
         }
@@ -804,12 +855,12 @@ mod tests {
     async fn test_builder_additive_capabilities() {
         use crate::tool_types::ToolDefinition;
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // Apply capabilities additively (simulating session-level capabilities)
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Agent prompt.")
-            .with_capabilities(&["current_time".to_string()], &registry, &test_ctx())
+            .with_capabilities(&["tool_fixture".to_string()], &registry, &test_ctx())
             .await
             .build();
 
@@ -817,7 +868,7 @@ mod tests {
         assert_eq!(runtime_agent.tools.len(), 1);
         match &runtime_agent.tools[0] {
             ToolDefinition::Builtin(tool) => {
-                assert_eq!(tool.name, "get_current_time");
+                assert_eq!(tool.name, "echo");
             }
             _ => panic!("expected Builtin variant"),
         }
@@ -828,7 +879,7 @@ mod tests {
         use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let ts = Timestamp::now(NoContext);
         let uuid = Uuid::new_v7(ts);
 
@@ -877,7 +928,7 @@ mod tests {
         use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolDefinition};
         use uuid::{NoContext, Timestamp, Uuid};
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let ts = Timestamp::now(NoContext);
         let uuid = Uuid::new_v7(ts);
 
@@ -894,7 +945,7 @@ mod tests {
 
         let agent = AgentDefinition {
             display_name: Some("Mixed Tool Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
             tools: vec![client_tool],
             ..AgentDefinition::new(
                 AgentId::from_uuid(uuid),
@@ -912,7 +963,7 @@ mod tests {
         // Should have capability tool + client-side tool
         assert_eq!(runtime_agent.tools.len(), 2);
         let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"get_current_time"));
+        assert!(tool_names.contains(&"echo"));
         assert!(tool_names.contains(&"deploy_staging"));
 
         // Verify the client tool is ClientSide variant
@@ -928,14 +979,14 @@ mod tests {
     async fn test_builder_with_agent_and_additive_capabilities() {
         use uuid::{NoContext, Timestamp, Uuid};
 
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
         let ts = Timestamp::now(NoContext);
 
-        // Agent has current_time capability (no system prompt addition)
+        // Agent has a tool-only capability (no system prompt addition).
         let uuid = Uuid::new_v7(ts);
         let agent = AgentDefinition {
             display_name: Some("Test Agent".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("current_time")],
+            capabilities: vec![AgentCapabilityConfig::new("tool_fixture")],
             ..AgentDefinition::new(
                 AgentId::from_uuid(uuid),
                 "test-agent".to_string(),
@@ -943,8 +994,8 @@ mod tests {
             )
         };
 
-        // Session adds stateless_todo_list capability (additive — has system prompt addition)
-        let session_capability_ids = vec!["stateless_todo_list".to_string()];
+        // Session adds a prompt-bearing capability additively.
+        let session_capability_ids = vec!["prompt_tool_fixture".to_string()];
 
         let runtime_agent = RuntimeAgentBuilder::new()
             .with_agent(&agent, &registry, &test_ctx())
@@ -957,8 +1008,8 @@ mod tests {
         // Should have tools from both agent and session capabilities
         assert!(runtime_agent.tools.len() >= 2);
         let tool_names: Vec<&str> = runtime_agent.tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"get_current_time"));
-        assert!(tool_names.contains(&"write_todos"));
+        assert!(tool_names.contains(&"echo"));
+        assert!(tool_names.contains(&"report_progress"));
 
         // System prompt should contain both capability additions and agent prompt
         assert!(runtime_agent.system_prompt.contains("Agent prompt."));
@@ -966,7 +1017,7 @@ mod tests {
         assert!(
             runtime_agent
                 .system_prompt
-                .contains("<capability id=\"stateless_todo_list\">")
+                .contains("<capability id=\"prompt_tool_fixture\">")
         );
         // Base prompt should be wrapped in <system-prompt> tags (no double wrapping)
         let system_prompt_count = runtime_agent
