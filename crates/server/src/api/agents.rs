@@ -15,9 +15,10 @@ use axum::{
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_core::{
-    AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole, PlatformDefinition,
-    ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
+    AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole, ResourceConfigResponse,
+    ScopedMcpServers, evaluate_policies_with,
 };
+use everruns_host::HostComposition;
 use everruns_platform::Agent;
 use everruns_platform::BuiltInHarnessRole;
 use futures::future::try_join_all;
@@ -135,7 +136,7 @@ pub struct AppState {
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     pub grade: DeploymentGrade,
-    pub platform_definition: Arc<PlatformDefinition>,
+    pub host_composition: Arc<HostComposition>,
     /// Operator-composed built-in harness templates (EVE-881).
     pub built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
@@ -148,7 +149,7 @@ impl AppState {
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
         grade: DeploymentGrade,
-        platform_definition: Arc<PlatformDefinition>,
+        host_composition: Arc<HostComposition>,
         built_in_harnesses: Arc<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     ) -> Self {
         Self {
@@ -156,7 +157,7 @@ impl AppState {
             capability_service,
             auth,
             grade,
-            platform_definition,
+            host_composition,
             built_in_harnesses,
             health_check_service: None,
             org_rate_limiter: OrgRateLimiter::default(),
@@ -193,7 +194,7 @@ impl AppState {
             )
             .map(|harness| harness.name.clone()),
         )
-        .with_utility_llm_service(self.platform_definition.utility_llm_service());
+        .with_utility_llm_service(self.host_composition.utility_llm_service());
         if let Some(service) = &self.health_check_service {
             ctx = ctx.with_health_check_service(service.clone());
         }
@@ -1175,7 +1176,7 @@ async fn import_from_example(
         .capabilities
         .iter()
         .map(|c| c.id)
-        .filter(|id| !state.platform_definition.capability_registry().has(id))
+        .filter(|id| !state.host_composition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
         return Err(ErrorResponse::new(format!(

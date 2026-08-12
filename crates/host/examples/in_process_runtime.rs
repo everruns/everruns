@@ -11,7 +11,8 @@
 //! ```
 
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel};
+use everruns_core::{CapabilityRegistry, DriverId, ResolvedModel};
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
@@ -22,9 +23,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
 
-    // Supplying a PlatformDefinition replaces the runtime default capability
+    // Supplying a HostComposition replaces the runtime default capability
     // registry, so register every capability this embedded host will reference.
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     // Per-type builders are useful when an embedder needs stable ids or
     // separate construction. IDs are generated unless `.id(...)` is called.
@@ -46,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The runtime below uses the compact convenience.
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
                 vec![everruns_core::ToolCall {

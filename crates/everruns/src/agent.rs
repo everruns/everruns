@@ -3,7 +3,7 @@
 //! [`Agent::builder`] lets a library user describe an agent — instructions, a
 //! model, optional tools and files — without constructing stored `Harness`,
 //! `Agent`, `Session`, IDs, timestamps, statuses, registries, or a
-//! `PlatformDefinition`. The builder validates the value-first configuration and
+//! `HostComposition`. The builder validates the value-first configuration and
 //! adapts it, inside [`AgentBuilder::build`], to the existing runtime builders.
 //!
 //! The built Agent owns the configured session lifecycle: it opens independent
@@ -668,7 +668,7 @@ impl Agent {
                     framework_capability_registry(false)
                 }
             };
-            let platform = everruns_core::PlatformDefinition::builder()
+            let platform = everruns_host::HostComposition::builder()
                 .capability_registry(registry)
                 .driver_registry(everruns_core::DriverRegistry::new())
                 .egress_service(everruns_host::runtime_egress_service())
@@ -676,7 +676,7 @@ impl Agent {
                     everruns_host::RealDiskSessionFileSystemFactory::new(root),
                 ))
                 .build();
-            builder = builder.platform_definition(platform);
+            builder = builder.host_composition(platform);
         }
         // References and code-defined implementations were normalized and
         // collision-checked together at Agent build time. Register each

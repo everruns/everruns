@@ -892,7 +892,7 @@ Following the agentskills.io specification:
 
 - **ID**: `tool_approval`
 - **Purpose**: Suspends the turn and asks a human before a risky tool runs
-- **Status**: Not registered by default — it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `PlatformDefinition`.
+- **Status**: Not registered by default — it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`.
 - **Tools**: None (contributes a `PreToolUseHook`)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/core/src/capabilities/tool_approval.rs`

@@ -4,7 +4,7 @@
 // event bus and its own `SessionFileSystemFactory`. `LocalBackends` therefore
 // takes the runtime backend bundle (which already carries the caller's event
 // bus) as input, and the file system factory is configured on the embedder's
-// `PlatformDefinition` — never forced here. The individual local stores are
+// `HostComposition` — never forced here. The individual local stores are
 // exposed so an embedder can wire only the pieces it wants.
 
 use std::sync::Arc;

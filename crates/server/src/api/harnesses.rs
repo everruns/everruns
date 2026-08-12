@@ -17,9 +17,9 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    AgentCapabilityConfig, Caller, DeploymentGrade, PlatformDefinition, ResourceConfigResponse,
-    evaluate_policies_with,
+    AgentCapabilityConfig, Caller, DeploymentGrade, ResourceConfigResponse, evaluate_policies_with,
 };
+use everruns_host::HostComposition;
 use everruns_platform::Harness;
 
 use super::common::{
@@ -49,7 +49,7 @@ pub struct AppState {
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
     pub grade: DeploymentGrade,
-    pub platform_definition: Arc<PlatformDefinition>,
+    pub host_composition: Arc<HostComposition>,
 }
 
 impl AppState {
@@ -58,14 +58,14 @@ impl AppState {
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
         grade: DeploymentGrade,
-        platform_definition: Arc<PlatformDefinition>,
+        host_composition: Arc<HostComposition>,
     ) -> Self {
         Self {
             db,
             capability_service,
             auth,
             grade,
-            platform_definition,
+            host_composition,
         }
     }
 
@@ -220,7 +220,7 @@ pub async fn import_harness(
         .capabilities
         .iter()
         .map(|c| c.capability_id())
-        .filter(|id| !state.platform_definition.capability_registry().has(id))
+        .filter(|id| !state.host_composition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
         return Err(ErrorResponse::new(format!(

@@ -14,9 +14,10 @@ use std::time::Instant;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, PlatformDefinition,
+    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
     ResolvedModel, SessionId,
 };
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_lua::LuaCapability;
@@ -94,7 +95,7 @@ struct RunMetrics {
     error: Option<String>,
 }
 
-fn platform() -> PlatformDefinition {
+fn platform() -> HostComposition {
     let mut caps = CapabilityRegistry::new();
     caps.register(BashkitShellCapability);
     caps.register(LuaCapability);
@@ -104,7 +105,7 @@ fn platform() -> PlatformDefinition {
     everruns_openai::register_driver(&mut drivers);
     everruns_test_support::llmsim_driver::register_driver(&mut drivers);
 
-    PlatformDefinition::new(caps, drivers)
+    HostComposition::new(caps, drivers)
 }
 
 async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64) -> RunMetrics {

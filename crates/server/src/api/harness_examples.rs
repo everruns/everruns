@@ -10,7 +10,8 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::harnesses::{HarnessExampleDef, harness_examples};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::{AgentCapabilityConfig, DeploymentGrade, PlatformDefinition};
+use everruns_core::{AgentCapabilityConfig, DeploymentGrade};
+use everruns_host::HostComposition;
 use serde::Serialize;
 use std::sync::Arc;
 use utoipa::ToSchema;
@@ -67,7 +68,7 @@ fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
 pub struct AppState {
     pub auth: AuthState,
     pub grade: DeploymentGrade,
-    pub platform_definition: Arc<PlatformDefinition>,
+    pub host_composition: Arc<HostComposition>,
 }
 
 impl_auth_state!(AppState);
@@ -93,7 +94,7 @@ pub async fn list_examples(
     State(state): State<AppState>,
 ) -> Json<Vec<HarnessExample>> {
     let include_dev = state.grade.experimental_features_enabled();
-    let platform = &state.platform_definition;
+    let platform = &state.host_composition;
 
     let examples: Vec<HarnessExample> = harness_examples()
         .iter()

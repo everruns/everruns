@@ -158,7 +158,7 @@ credential-safe, actionable categories rather than raw provider errors.
 ## Vector store
 
 Embeddings live in an **external vector database**, abstracted behind a
-vendor-neutral `VectorStore` trait selected through `PlatformDefinition`
+vendor-neutral `VectorStore` trait selected through `HostComposition`
 (`crates/platform/src/vector_store.rs`), mirroring how `SessionFileStore` is
 pluggable. OSS depends on no vendor SDK at the core layer.
 
@@ -392,7 +392,7 @@ PR-sized slices, each leaving the tree green:
 2. **Management + storage** — domain, repositories (in-memory + Postgres),
    CRUD API, namespace assignment, OpenAPI.
 3. **Syncout** — GitHub source connector, chunking, embedding, the background
-   sync worker, Turbopuffer backend wired through `PlatformDefinition` and
+   sync worker, Turbopuffer backend wired through `HostComposition` and
    `just start-all`.
 4. **Retrieval** — `search_index` tool, hybrid query + RRF, citation hydration.
 5. **UI** — list/detail/sync-status pages and capability config UI.

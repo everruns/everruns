@@ -35,7 +35,7 @@ turn, so the execution kernel carries none of it):
 - The server composes the active system email sender on `ServerAppBuilder`
   (`email_sender`, defaulting to the environment-configured
   `SystemEmailConfig`); it is not part of the execution-facing
-  `PlatformDefinition`.
+  `HostComposition`.
 - Concrete senders use direct provider HTTP clients; email remains a
   domain-specific host service outside the tenant/agent egress boundary.
 - System email is not governed by tenant/agent egress policy such as

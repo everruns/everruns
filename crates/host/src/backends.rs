@@ -71,7 +71,7 @@ pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
 ///
 /// Use this when you want the public runtime orchestration but your own store
 /// implementations instead of the built-in in-memory ones. Session filesystem
-/// selection is always resolved from `PlatformDefinition`.
+/// selection is always resolved from `HostComposition`.
 #[derive(Clone)]
 pub struct HostBackends {
     /// Harness definitions available to the runtime.

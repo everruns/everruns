@@ -16,6 +16,7 @@
 
 mod llm_test_matrix;
 
+use everruns_host::HostComposition;
 use llm_test_matrix::*;
 
 use async_trait::async_trait;
@@ -23,7 +24,7 @@ use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{CapabilityRegistry, MessageRole, PlatformDefinition};
+use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
@@ -139,7 +140,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
 
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SubagentCapability);
-    let platform = PlatformDefinition::new(capabilities, all_providers_registry());
+    let platform = HostComposition::new(capabilities, all_providers_registry());
 
     let harness_id = HarnessId::from_seed(535);
     let agent_id = AgentId::from_seed(535);
@@ -175,7 +176,7 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     ));
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .backends(backends)
         .with_session_task_registry(registry.clone())
         .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))

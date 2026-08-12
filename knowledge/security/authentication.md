@@ -481,7 +481,7 @@ For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/s
 
 #### Default-Org Harness-Seed Guarantee
 
-The server's background seed task (`seed::spawn_seed_task_with_platform_definition`) provisions the operator-composed built-in harnesses for every organization — including `DEFAULT_ORG_ID` — using the harness set resolved by `ServerAppBuilder` (EVE-881: built-in templates moved off `PlatformDefinition` into server composition). The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
+The server's background seed task (`seed::spawn_seed_task_with_host_composition`) provisions the operator-composed built-in harnesses for every organization — including `DEFAULT_ORG_ID` — using the harness set resolved by `ServerAppBuilder` (EVE-881: built-in templates moved off `HostComposition` into server composition). The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
 
 When default-org auto-join is enabled (above), both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, state.built_in_harnesses)` as a safety net after adding the user to the default org (the re-run is gated together with the membership). Invariants:
 

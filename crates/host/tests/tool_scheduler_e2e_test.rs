@@ -17,9 +17,9 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, PlatformDefinition,
-    ResolvedModel, ToolCall,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ResolvedModel, ToolCall,
 };
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -145,10 +145,10 @@ impl Capability for RecordingCapability {
     }
 }
 
-fn platform_with_recording(log: Arc<Mutex<SchedLog>>) -> PlatformDefinition {
+fn platform_with_recording(log: Arc<Mutex<SchedLog>>) -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(RecordingCapability { log });
-    PlatformDefinition::new(capabilities, DriverRegistry::new())
+    HostComposition::new(capabilities, DriverRegistry::new())
 }
 
 fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
@@ -198,7 +198,7 @@ async fn runtime_emitting_batch(
     let session_id = everruns_core::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform_with_recording(log.clone()))
+        .host_composition(platform_with_recording(log.clone()))
         .llm_sim(
             LlmSimConfig::fixed("Running the requested tools.")
                 .with_tool_call_sequence(vec![batch, vec![]]),

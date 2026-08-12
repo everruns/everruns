@@ -12,9 +12,8 @@
 #![cfg(feature = "lua")]
 
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel, SessionId,
-};
+use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel, SessionId};
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
 use everruns_test_support::LlmSimRuntimeExt;
@@ -28,7 +27,7 @@ const ORCHESTRATION_SCRIPT: &str = r#"
     return total.result
 "#;
 
-fn platform() -> PlatformDefinition {
+fn platform() -> HostComposition {
     let mut caps = CapabilityRegistry::new();
     caps.register(LuaCapability);
     caps.register(LuaCodeModeCapability);
@@ -37,7 +36,7 @@ fn platform() -> PlatformDefinition {
     let mut drivers = DriverRegistry::new();
     everruns_test_support::llmsim_driver::register_driver(&mut drivers);
 
-    PlatformDefinition::new(caps, drivers)
+    HostComposition::new(caps, drivers)
 }
 
 #[tokio::test]
@@ -71,7 +70,7 @@ async fn hides_math_tools_but_runs_them_via_lua() {
         .build();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform())
+        .host_composition(platform())
         .llm_sim(sim)
         .default_model(ResolvedModel {
             model: "llmsim-model".to_string(),

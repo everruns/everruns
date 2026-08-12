@@ -853,11 +853,11 @@ pub async fn register(
             });
 
         // Harness-seed safety net: the async seed task (500 ms delay, see
-        // `seed::spawn_seed_task_with_platform_definition`) may not have
+        // `seed::spawn_seed_task_with_host_composition`) may not have
         // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
         // registers immediately after server startup. Re-run the provisioner
         // using the *platform definition*'s harness set (NOT the OSS default)
-        // so a custom `PlatformDefinition` is never overridden — that was the
+        // so a custom `HostComposition` is never overridden — that was the
         // security concern addressed by PR #1462. The call is idempotent: if
         // seeding has already completed, every harness is "unchanged". See
         // EVE-390 and `knowledge/security/authentication.md`.
@@ -1462,7 +1462,7 @@ async fn oauth_callback_inner(
                     });
 
                 // Harness-seed safety net (see equivalent comment in `register` and
-                // EVE-390). Drive the provisioner from `platform_definition`, not
+                // EVE-390). Drive the provisioner from `host_composition`, not
                 // `oss_built_in_harnesses()`, so a custom platform definition is
                 // never overridden on OAuth signup.
                 if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
@@ -1998,7 +1998,7 @@ async fn get_or_create_admin_user(
 
         // Ensure default org has built-in harnesses (safety net — background
         // seed task may not have completed yet or may have failed silently).
-        // Drive from `platform_definition` (not `oss_built_in_harnesses()`)
+        // Drive from `host_composition` (not `oss_built_in_harnesses()`)
         // so operator-customized harnesses are never overridden — see
         // EVE-390 and PR #1462.
         if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
@@ -2449,7 +2449,7 @@ mod oauth_state_tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
     use async_trait::async_trait;
-    use everruns_core::PlatformDefinition;
+    use everruns_host::HostComposition;
     use everruns_platform::email::{EmailMessage, EmailResult, EmailSender, SentEmail};
     use std::sync::Arc;
     use std::sync::Mutex;
@@ -2458,7 +2458,7 @@ mod oauth_state_tests {
         BuiltinAuthBackend::new(
             AuthConfig::default(),
             Arc::new(StorageBackend::in_memory()),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         )
     }
 
@@ -2482,7 +2482,7 @@ mod oauth_state_tests {
         sender: Arc<dyn EmailSender>,
     ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
         let db = Arc::new(StorageBackend::in_memory());
-        let platform = PlatformDefinition::builder().build();
+        let platform = HostComposition::builder().build();
         (
             BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform))
                 .with_email_sender(sender),
@@ -2546,7 +2546,7 @@ mod oauth_state_tests {
         BuiltinAuthBackend::new(
             config,
             Arc::new(StorageBackend::in_memory()),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         )
     }
 
@@ -2689,7 +2689,7 @@ mod oauth_state_tests {
         let state = BuiltinAuthBackend::new(
             config,
             db.clone(),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         );
         register(
             State(state.clone()),
@@ -2768,7 +2768,7 @@ mod oauth_state_tests {
         let state = BuiltinAuthBackend::new(
             config,
             Arc::new(StorageBackend::in_memory()),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         );
 
         let err = register(
@@ -2803,7 +2803,7 @@ mod oauth_state_tests {
         let state = BuiltinAuthBackend::new(
             config,
             db.clone(),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         );
 
         let err = login(
@@ -3365,7 +3365,7 @@ mod oauth_state_tests {
         let state = BuiltinAuthBackend::new(
             config,
             Arc::new(StorageBackend::in_memory()),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         );
         let err = register(
             State(state),
@@ -3481,7 +3481,7 @@ mod oauth_state_tests {
         BuiltinAuthBackend::new(
             config,
             Arc::new(StorageBackend::in_memory()),
-            Arc::new(crate::platform::oss_platform_definition()),
+            Arc::new(crate::platform::oss_host_composition()),
         )
     }
 

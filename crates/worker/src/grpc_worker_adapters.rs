@@ -19,8 +19,9 @@ use everruns_core::typed_id::{
 };
 use everruns_core::{
     DriverRegistry, EgressService, ExecutionSession, Message, MessageHistory, MessageQuery,
-    PlatformDefinition, UtilityLlmService,
+    UtilityLlmService,
 };
+use everruns_host::HostComposition;
 use everruns_platform::{Agent, Harness};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -44,49 +45,46 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 #[derive(Clone)]
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
-    platform_definition: PlatformDefinition,
+    host_composition: HostComposition,
     stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>>,
 }
 
 impl GrpcWorkerAdapters {
     /// Create new gRPC adapters by connecting to control-plane
     pub async fn connect(grpc_address: &str) -> Result<Self> {
-        Self::connect_with_platform_definition(
+        Self::connect_with_host_composition(
             grpc_address,
-            crate::platform::default_platform_definition(),
+            crate::platform::default_host_composition(),
         )
         .await
     }
 
     /// Create new gRPC adapters with an explicit platform definition.
-    pub async fn connect_with_platform_definition(
+    pub async fn connect_with_host_composition(
         grpc_address: &str,
-        platform_definition: PlatformDefinition,
+        host_composition: HostComposition,
     ) -> Result<Self> {
         let client = GrpcClient::connect(grpc_address).await?;
         Ok(Self {
             client,
-            platform_definition,
+            host_composition,
             stream_heartbeater: None,
         })
     }
 
     /// Create from an existing GrpcClient
     pub fn from_client(client: GrpcClient) -> Self {
-        Self::from_client_with_platform_definition(
-            client,
-            crate::platform::default_platform_definition(),
-        )
+        Self::from_client_with_host_composition(client, crate::platform::default_host_composition())
     }
 
     /// Create from an existing GrpcClient with an explicit platform definition.
-    pub fn from_client_with_platform_definition(
+    pub fn from_client_with_host_composition(
         client: GrpcClient,
-        platform_definition: PlatformDefinition,
+        host_composition: HostComposition,
     ) -> Self {
         Self {
             client,
-            platform_definition,
+            host_composition,
             stream_heartbeater: None,
         }
     }
@@ -405,11 +403,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     fn capability_registry(&self) -> CapabilityRegistry {
-        self.platform_definition.capability_registry().clone()
+        self.host_composition.capability_registry().clone()
     }
 
     fn driver_registry(&self) -> DriverRegistry {
-        self.platform_definition.driver_registry().clone()
+        self.host_composition.driver_registry().clone()
     }
 
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
@@ -438,11 +436,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
-        Some(self.platform_definition.utility_llm_service())
+        Some(self.host_composition.utility_llm_service())
     }
 
     fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
-        Some(self.platform_definition.egress_service())
+        Some(self.host_composition.egress_service())
     }
 
     fn platform_store(

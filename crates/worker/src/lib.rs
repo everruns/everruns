@@ -46,7 +46,7 @@ pub use runner::{AgentRunner, RunnerBackend, create_runner, create_runner_with_b
 
 // Re-export LLM driver factory helpers
 pub use adapters::{create_chat_driver, create_driver_registry};
-pub use platform::{default_platform_definition, default_platform_definition_for_grade};
+pub use platform::{default_host_composition, default_host_composition_for_grade};
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{

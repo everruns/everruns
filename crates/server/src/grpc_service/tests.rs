@@ -14,7 +14,7 @@ async fn test_worker_service_with_runner(
 ) -> WorkerServiceImpl {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::Dev;
-    let platform_definition = crate::oss_platform_definition_for_grade(grade);
+    let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("valid test encryption key"),
@@ -27,7 +27,7 @@ async fn test_worker_service_with_runner(
     let event_service =
         EventService::with_listeners(db.clone(), crate::EventDelivery::in_memory(), vec![]);
 
-    WorkerServiceImpl::new(event_service, db, encryption, runner, platform_definition)
+    WorkerServiceImpl::new(event_service, db, encryption, runner, host_composition)
 }
 
 #[derive(Clone)]
@@ -114,7 +114,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
 async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::Dev;
-    let platform_definition = crate::oss_platform_definition_for_grade(grade);
+    let host_composition = crate::oss_host_composition_for_grade(grade);
     let encryption = Some(Arc::new(
         EncryptionService::new("kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", &[])
             .expect("valid test encryption key"),
@@ -136,7 +136,7 @@ async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
         db,
         encryption,
         Some(runner),
-        platform_definition,
+        host_composition,
     )
 }
 

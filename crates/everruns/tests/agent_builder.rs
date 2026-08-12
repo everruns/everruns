@@ -1,6 +1,6 @@
 //! Compile/build test for the value-first agent API (EVE-832): a clean program
 //! describes an agent importing only `everruns::{Agent, Model}` — no `Harness`,
-//! hosted `Agent` record, ids, timestamps, registries, or `PlatformDefinition`.
+//! hosted `Agent` record, ids, timestamps, registries, or `HostComposition`.
 
 use everruns::{Agent, Model};
 

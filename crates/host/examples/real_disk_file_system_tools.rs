@@ -14,13 +14,14 @@
 // Run with:
 //   cargo run -p everruns-host --example real_disk_file_system_tools
 
+use everruns_host::HostComposition;
 use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
-    HarnessDefinition, PlatformDefinition, ResolvedModel, SessionExecutionState, ToolCall,
+    HarnessDefinition, ResolvedModel, SessionExecutionState, ToolCall,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_integrations_filesystem::FileSystemCapability;
@@ -37,10 +38,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::write(workspace.path().join("input.txt"), "hello from real disk")?;
 
     // 3. Register only the built-in FileSystemCapability — no custom tools.
-    //    PlatformDefinition selects the real-disk session filesystem.
+    //    HostComposition selects the real-disk session filesystem.
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(FileSystemCapability);
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(capabilities)
         .driver_registry(DriverRegistry::new())
         .session_file_system_factory(Arc::new(RealDiskSessionFileSystemFactory::new(
@@ -73,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = "session_00000000000000000000000000000092".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(llmsim)
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),

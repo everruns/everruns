@@ -1,7 +1,8 @@
+use everruns_core::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverRegistry, LlmMessage};
 use everruns_core::events::EventData;
 use everruns_core::llm_retry::LlmRetryConfig;
-use everruns_core::{CapabilityRegistry, PlatformDefinition};
+use everruns_host::HostComposition;
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
@@ -27,10 +28,10 @@ async fn runtime(
 ) -> everruns_host::InProcessRuntime {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::scripted(turns).with_message_capture(capture))
         .provider_retry_config(retry)
         .provider_stall_timeout(Duration::from_millis(5))

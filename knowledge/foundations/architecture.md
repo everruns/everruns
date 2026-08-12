@@ -175,9 +175,9 @@ graph TD
 
 ### Platform Composition
 
-Everruns runtime composition is centered on `PlatformDefinition` in `crates/core/src/platform_definition.rs`.
+Everruns runtime composition is centered on `HostComposition` in `crates/host/src/composition.rs`.
 
-`PlatformDefinition` is the shared bundle for:
+`HostComposition` is the shared bundle for:
 
 - Capabilities
 - LLM drivers
@@ -186,10 +186,10 @@ Everruns runtime composition is centered on `PlatformDefinition` in `crates/core
 - System email sender
 - Outbound egress service
 
-The server and worker builders both accept an explicit `PlatformDefinition`. If none is supplied, they fall back to crate-local presets:
+The server and worker builders both accept an explicit `HostComposition`. If none is supplied, they fall back to crate-local presets:
 
-- `everruns_server::oss_platform_definition()`
-- `everruns_worker::default_platform_definition()`
+- `everruns_server::oss_host_composition()`
+- `everruns_worker::default_host_composition()`
 
 This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, register different LLM drivers, or install a different system email provider without forking Everruns internals.
 
@@ -225,15 +225,15 @@ Adding a new integration crate requires:
 
 Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error — the integration simply does not appear at runtime.
 
-Important: inventory discovery is now confined to default presets. Embedders can bypass those presets entirely by constructing `PlatformDefinition` directly.
+Important: inventory discovery is now confined to default presets. Embedders can bypass those presets entirely by constructing `HostComposition` directly.
 
 ### Server Entrypoint
 
-The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers and embedders to compose their own binary with custom auth, routes, event listeners, background tasks, and a custom `PlatformDefinition`.
+The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers and embedders to compose their own binary with custom auth, routes, event listeners, background tasks, and a custom `HostComposition`.
 
-See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `platform_definition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
+See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `host_composition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
 
-The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/worker/src/app_builder.rs`, which also accepts `platform_definition()`.
+The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/worker/src/app_builder.rs`, which also accepts `host_composition()`.
 
 ### Data Layer
 

@@ -20,7 +20,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// Type-keyed wrapper installed on a [`everruns_core::PlatformDefinition`] by
+/// Type-keyed wrapper installed on an `everruns_host::HostComposition` by
 /// hosted presets. Core carries the generic extension bag but does not name the
 /// Knowledge Index service.
 #[derive(Clone)]
@@ -122,7 +122,7 @@ pub struct VectorMatch {
 }
 
 /// Pluggable embedding store for Knowledge Indexes. Selected through
-/// `PlatformDefinition`; the in-memory backend backs dev/tests, Turbopuffer is
+/// `HostComposition`; the in-memory backend backs dev/tests, Turbopuffer is
 /// the reference production backend.
 #[async_trait]
 pub trait VectorStore: Send + Sync {

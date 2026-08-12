@@ -21,7 +21,7 @@ discipline new capabilities should follow when they need filesystem access.
 
 ## Status
 
-This is the platform-level session filesystem seam. `PlatformDefinition`
+This is the platform-level session filesystem seam. `HostComposition`
 carries a `SessionFileSystemFactory`, and runtime/server hosts resolve a live
 `SessionFileSystem` from host dependencies such as in-memory state, a storage
 backend, or a root directory. It is still compatible with the mount-overlay
@@ -38,7 +38,7 @@ TUI in PR #1839) revealed a real seam: `AgentInstructionsCapability` and
 VFS *is* the workspace) but breaks in an embedded coding-CLI where the
 workspace is a real directory on disk.
 
-The pluggable seam is `PlatformDefinition.session_file_system_factory`, so
+The pluggable seam is `HostComposition.session_file_system_factory`, so
 embedders choose the session filesystem as part of the deployment surface.
 
 ## Decision Process
@@ -470,7 +470,7 @@ Embedders normally configure the platform factory:
 ```rust
 let workspace_root = std::env::current_dir()?;
 
-let platform = PlatformDefinition::builder()
+let platform = HostComposition::builder()
     .session_file_system_factory(Arc::new(
         RealDiskSessionFileSystemFactory::new(workspace_root),
     ))
@@ -486,7 +486,7 @@ let roots = WorkspaceRootSet::new(
 )?;
 
 let runtime = InProcessRuntimeBuilder::new()
-    .platform_definition(platform)
+    .host_composition(platform)
     .session_file_system_factory_context(
         SessionFileSystemFactoryContext::new()
             .with_workspace_roots(Arc::new(roots)),

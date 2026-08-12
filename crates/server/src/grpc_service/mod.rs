@@ -20,7 +20,6 @@ use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
-use everruns_core::PlatformDefinition;
 use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
@@ -29,6 +28,7 @@ use everruns_durable::{
     record_activity_completed, record_activity_failed, record_workflow_cancelled,
     record_workflow_completed, record_workflow_failed,
 };
+use everruns_host::HostComposition;
 use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
@@ -540,14 +540,14 @@ impl WorkerServiceImpl {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-        platform_definition: PlatformDefinition,
+        host_composition: HostComposition,
     ) -> Self {
         Self::with_virtual_registry(
             event_service,
             db,
             encryption,
             runner,
-            platform_definition,
+            host_composition,
             None,
             None,
         )
@@ -558,13 +558,13 @@ impl WorkerServiceImpl {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-        platform_definition: PlatformDefinition,
+        host_composition: HostComposition,
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
         provider_resolver_service: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let capability_registry = platform_definition.capability_registry().clone();
+        let capability_registry = host_composition.capability_registry().clone();
         let session_service = {
             let svc = SessionService::with_registry(db.clone(), capability_registry.clone());
             if let Some(ref reg) = virtual_registry {
@@ -581,20 +581,20 @@ impl WorkerServiceImpl {
         let provider_resolver_service = provider_resolver_service.unwrap_or_else(|| {
             Arc::new(
                 ProviderResolverService::new(db.clone(), encryption.clone())
-                    .with_driver_registry(platform_definition.driver_registry().clone()),
+                    .with_driver_registry(host_composition.driver_registry().clone()),
             )
         });
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),
             encryption.clone(),
-            platform_definition.egress_service(),
+            host_composition.egress_service(),
         );
         let capability_service = Arc::new(CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
             capability_registry,
         ));
-        let utility_llm_service = platform_definition.utility_llm_service();
+        let utility_llm_service = host_composition.utility_llm_service();
         // Hosted connector catalog (EVE-879): defaults to the OSS inventory
         // preset; `ServerAppBuilder` overrides via `set_connector_registry`.
         let connector_registry = crate::platform::oss_connector_registry();
@@ -632,7 +632,7 @@ impl WorkerServiceImpl {
                     db.as_ref().clone(),
                     enc.as_ref().clone(),
                     github_app_minter,
-                    platform_definition.egress_service(),
+                    host_composition.egress_service(),
                 )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
             });
 

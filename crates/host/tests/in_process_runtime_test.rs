@@ -5,9 +5,10 @@ use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, InitialFile, Message,
-    MessageRole, PlatformDefinition, ResolvedModel, SessionFileSystem, SessionFileSystemFactory,
+    MessageRole, ResolvedModel, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
 };
+use everruns_host::HostComposition;
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
     SessionBuilder, TurnStopReason,
@@ -19,10 +20,10 @@ use everruns_test_support::llmsim_driver::LlmSimConfig;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-fn minimal_platform() -> PlatformDefinition {
+fn minimal_platform() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
-    PlatformDefinition::new(capabilities, DriverRegistry::new())
+    HostComposition::new(capabilities, DriverRegistry::new())
 }
 
 fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
@@ -154,10 +155,10 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
 async fn runtime_rejects_tools_missing_required_context_services_before_reason() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SessionTasksCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("model must not be reached"))
         .single_session(|s| {
             s.harness("tasks", "Manage session tasks.")
@@ -193,7 +194,7 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
     let session_id = "session_00000000000000000000000000000021".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
                 vec![ToolCall {
@@ -265,10 +266,10 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
 async fn query_history_reads_messages_through_in_process_reason_act_path() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(
             LlmSimConfig::fixed("History retrieved.").with_tool_call_sequence(vec![
                 vec![ToolCall {
@@ -319,7 +320,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
     let session_id = everruns_core::SessionId::from_seed(797);
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
     let backends = HostBackends::in_memory();
     backends
         .event_log
@@ -332,7 +333,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
         .unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .backends(backends)
         .llm_sim(
             LlmSimConfig::fixed("Seeded history retrieved.").with_tool_call_sequence(vec![
@@ -395,7 +396,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
 #[tokio::test]
 async fn single_session_builder_seeds_runnable_runtime() {
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("single session works"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
@@ -430,7 +431,7 @@ async fn single_session_builder_pins_session_id_when_set() {
     // whose filename encodes the id) must be able to pin it.
     let expected = everruns_core::SessionId::from_seed(481);
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("pinned id works"))
         .single_session(|s| {
             s.harness("h", "h")
@@ -450,7 +451,7 @@ async fn single_session_builder_pins_session_id_when_set() {
 #[tokio::test]
 async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness_network_access(NetworkAccessList::allow_only(["example.com"]))
@@ -475,7 +476,7 @@ async fn single_session_builder_preserves_harness_acl_when_order_changes() {
 #[tokio::test]
 async fn single_session_builder_preserves_agent_acl_when_order_changes() {
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.agent_network_access(NetworkAccessList::allow_only(["example.com"]))
@@ -515,7 +516,7 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
         });
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("No-op"))
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),
@@ -547,7 +548,7 @@ async fn runtime_runs_session_without_agent_entity() {
     let session_id = "session_00000000000000000000000000000041".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Harness-only runtime works"))
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),
@@ -583,7 +584,7 @@ async fn runtime_accepts_explicit_backend_bundle() {
     let session_id = "session_00000000000000000000000000000051".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .backends(HostBackends::in_memory())
         .llm_sim(LlmSimConfig::fixed("Custom backend bundle works"))
         .default_model(ResolvedModel {
@@ -617,7 +618,7 @@ async fn runtime_uses_platform_session_file_system_factory() {
 
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(capabilities)
         .driver_registry(DriverRegistry::new())
         .session_file_system_factory(Arc::new(ContextRealDiskFactory))
@@ -632,7 +633,7 @@ async fn runtime_uses_platform_session_file_system_factory() {
     }];
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .session_file_system_factory_context(
             SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
         )
@@ -657,7 +658,7 @@ async fn workspace_policy_wraps_custom_platform_file_system_factory() {
     let harness_id = "harness_00000000000000000000000000000054".parse().unwrap();
     let session_id = "session_00000000000000000000000000000054".parse().unwrap();
     let tempdir = tempfile::tempdir().unwrap();
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(CapabilityRegistry::new())
         .driver_registry(DriverRegistry::new())
         .session_file_system_factory(Arc::new(ContextRealDiskFactory))
@@ -668,7 +669,7 @@ async fn workspace_policy_wraps_custom_platform_file_system_factory() {
         .unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .session_file_system_factory_context(
             SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
         )
@@ -704,7 +705,7 @@ async fn runtime_exposes_assembled_context() {
     let session_id = "session_00000000000000000000000000000061".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(minimal_platform())
+        .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Context inspection"))
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),
@@ -757,10 +758,10 @@ async fn list_commands_returns_capability_commands_for_session() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
     capabilities.register(BtwCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
@@ -844,10 +845,10 @@ async fn execute_command_dispatches_to_capability_handler() {
     let seen = Arc::new(Mutex::new(Vec::<String>::new()));
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(EchoCapability { seen: seen.clone() });
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "prompt").with_capability("echo"))
         .build()
@@ -894,10 +895,10 @@ async fn execute_btw_command_returns_ephemeral_answer() {
 
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(BtwCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::sequence(vec![
             "main answer".to_string(),
             "the side answer".to_string(),
@@ -1072,10 +1073,10 @@ impl everruns_core::tools::Tool for ConnectionEchoTool {
     }
 }
 
-fn connection_platform() -> PlatformDefinition {
+fn connection_platform() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(ConnectionEchoCapability);
-    PlatformDefinition::new(capabilities, DriverRegistry::new())
+    HostComposition::new(capabilities, DriverRegistry::new())
 }
 
 #[tokio::test]
@@ -1089,7 +1090,7 @@ async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
     let backends = HostBackends::in_memory().with_connection_resolver(resolver);
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(connection_platform())
+        .host_composition(connection_platform())
         .backends(backends)
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "h").agent("a", "a"))
@@ -1120,7 +1121,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
     use everruns_host::RuntimeHostAdapter;
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(connection_platform())
+        .host_composition(connection_platform())
         .llm_sim(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "h").agent("a", "a"))
         .build()
@@ -1147,7 +1148,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let backends = HostBackends::in_memory().with_connection_resolver(resolver);
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(connection_platform())
+        .host_composition(connection_platform())
         .backends(backends)
         .llm_sim(
             LlmSimConfig::fixed("resolving token").with_tool_call_sequence(vec![

@@ -9,11 +9,12 @@
 // `LocalBackends::with_platform_runner` and rebuild, or use the standalone
 // `LocalPlatformStore`.
 
+use everruns_host::HostComposition;
 use std::sync::Arc;
 
+use everruns_core::ResolvedModel;
 use everruns_core::error::Result;
 use everruns_core::traits::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
-use everruns_core::{PlatformDefinition, ResolvedModel};
 use everruns_host::{InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 
 use crate::backends::LocalBackends;
@@ -24,7 +25,7 @@ use crate::profile::LocalProfile;
 /// portable policy capabilities and environment integrations this host selected
 /// (EVE-884 and EVE-883).
 ///
-/// Callers that assemble their own [`PlatformDefinition`] for a local profile
+/// Callers that assemble their own [`HostComposition`] for a local profile
 /// should start here, so build-time capability validation sees the same set the
 /// local runtime executes.
 pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
@@ -43,7 +44,7 @@ pub struct LocalRuntimeBuilder {
     /// Caller-supplied platform definition override. When `Some`, `build()`
     /// installs it as-is instead of the default local one; the caller owns the
     /// session filesystem factory in that case.
-    platform_definition: Option<PlatformDefinition>,
+    host_composition: Option<HostComposition>,
 }
 
 impl LocalRuntimeBuilder {
@@ -54,7 +55,7 @@ impl LocalRuntimeBuilder {
             profile,
             inner: InProcessRuntimeBuilder::new(),
             file_system_factory: None,
-            platform_definition: None,
+            host_composition: None,
         }
     }
 
@@ -62,8 +63,8 @@ impl LocalRuntimeBuilder {
     /// `build()` respects this definition instead of constructing the default
     /// local one, so capability/driver overrides take effect. The caller is
     /// then responsible for the session filesystem factory on their definition.
-    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
-        self.platform_definition = Some(platform_definition);
+    pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
+        self.host_composition = Some(host_composition);
         self
     }
 
@@ -138,8 +139,8 @@ impl LocalRuntimeBuilder {
         // Respect a caller-supplied platform definition; otherwise build the
         // default local one rooted at the profile workspace. Only install the
         // default when the caller has not overridden it, so capability/driver
-        // overrides via `platform_definition(...)` are not silently discarded.
-        let platform_definition = match self.platform_definition {
+        // overrides via `host_composition(...)` are not silently discarded.
+        let host_composition = match self.host_composition {
             Some(pd) => pd,
             None => {
                 let factory = self.file_system_factory.unwrap_or_else(|| {
@@ -147,7 +148,7 @@ impl LocalRuntimeBuilder {
                         self.profile.workspace_root.clone(),
                     ))
                 });
-                PlatformDefinition::builder()
+                HostComposition::builder()
                     .capability_registry(local_capability_registry())
                     .driver_registry(everruns_core::DriverRegistry::new())
                     .egress_service(everruns_host::runtime_egress_service())
@@ -158,7 +159,7 @@ impl LocalRuntimeBuilder {
 
         let runtime = self
             .inner
-            .platform_definition(platform_definition)
+            .host_composition(host_composition)
             .session_file_system_factory_context(SessionFileSystemFactoryContext::new())
             .backends(local.runtime_backends.clone())
             .build()

@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Embedding Specification"
-description: "Embedding contract and `PlatformDefinition`."
+description: "Embedding contract and `HostComposition`."
 tags:
   - everruns
   - foundations
@@ -10,9 +10,9 @@ tags:
 
 ## Abstract
 
-Everruns is embeddable through a shared `PlatformDefinition` composition root. An embedder can assemble a custom runtime surface, then pass the same definition to the control plane and worker so capabilities, LLM drivers, and platform host services stay aligned. Hosted product services — built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879) — are composed on `ServerAppBuilder` instead.
+Everruns is embeddable through a shared `HostComposition`, owned by `everruns-host` — the layer that executes a turn — rather than by the kernel (EVE-887). An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services — built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879) — are composed on `ServerAppBuilder` instead.
 
-This spec defines the contract for embedding. See `crates/core/src/platform_definition.rs` for the public Rust API.
+This spec defines the contract for embedding. See `crates/host/src/composition.rs` for the public Rust API.
 
 ## Goals
 
@@ -23,9 +23,9 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 4. Keep server startup, worker execution, org initialization, and seeding consistent by reading from the same definition.
 5. Preserve the existing OSS experience through default presets.
 
-## PlatformDefinition
+## HostComposition
 
-`PlatformDefinition` is the shared runtime bundle consumed by both server and worker. It currently owns:
+`HostComposition` is the shared runtime bundle consumed by both server and worker. It currently owns:
 
 - Capability registry
 - LLM driver registry
@@ -37,7 +37,7 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.
 
 Hosted control-plane services live on `ServerAppBuilder`, not on
-`PlatformDefinition`: `built_in_harnesses` (EVE-881), `connector_registry`,
+`HostComposition`: `built_in_harnesses` (EVE-881), `connector_registry`,
 and `email_sender` (EVE-879). The connector trait/registry and the email
 contract live in `everruns-platform`.
 
@@ -52,10 +52,10 @@ live filesystem.
 Applications that want to run agents in their own process, without the durable
 engine or control-plane server, should use the application-facing `everruns`
 crate and the Everruns Framework. This document owns the lower-level
-`PlatformDefinition` composition contract, not the normal application path.
+`HostComposition` composition contract, not the normal application path.
 
 Advanced hosts may use `everruns-host`, the only low-level host boundary. It
-consumes the same `PlatformDefinition` type and shared core turn execution,
+consumes the same `HostComposition` type and shared core turn execution,
 keeping low-level in-process hosts aligned with worker behavior.
 
 See [knowledge/framework/](../framework/) for application-facing ownership and
@@ -90,8 +90,8 @@ Everruns provides default presets so OSS behavior remains unchanged unless an em
 
 `crates/server/src/platform.rs` defines:
 
-- `oss_platform_definition()`
-- `oss_platform_definition_for_grade()`
+- `oss_host_composition()`
+- `oss_host_composition_for_grade()`
 - `oss_connector_registry()`
 - `oss_built_in_harnesses()`
 - `system_email_sender()`
@@ -102,8 +102,8 @@ This preset centralizes the current OSS runtime surface, including inventory-dis
 
 `crates/worker/src/platform.rs` defines:
 
-- `default_platform_definition()`
-- `default_platform_definition_for_grade()`
+- `default_host_composition()`
+- `default_host_composition_for_grade()`
 
 The worker preset includes built-in capabilities and built-in LLM drivers. Connectors, harness templates, and email are server-owned composition and never part of the worker surface.
 
@@ -111,7 +111,7 @@ The worker preset includes built-in capabilities and built-in LLM drivers. Conne
 
 ### Server
 
-`ServerAppBuilder` accepts an optional `PlatformDefinition`. When absent, it uses the OSS preset.
+`ServerAppBuilder` accepts an optional `HostComposition`. When absent, it uses the OSS preset.
 
 The server must derive the following from the platform definition:
 
@@ -127,7 +127,7 @@ The server must derive the following from the platform definition:
 
 ### Worker
 
-`WorkerAppBuilder` accepts an optional `PlatformDefinition`. When absent, it uses the worker preset.
+`WorkerAppBuilder` accepts an optional `HostComposition`. When absent, it uses the worker preset.
 
 The worker must derive the following from the platform definition:
 
@@ -160,7 +160,7 @@ Each org receives freshly-generated `harness_id` rows. The default org is the on
 
 Embedders may extend the control plane by:
 
-- Replacing the `PlatformDefinition`
+- Replacing the `HostComposition`
 - Adding routes
 - Adding auth backends
 - Adding event listeners
@@ -172,7 +172,7 @@ Embedders may extend the control plane by:
 
 Embedders may extend execution by:
 
-- Replacing the `PlatformDefinition`
+- Replacing the `HostComposition`
 - Installing a vendor-neutral error reporter (see "Error Reporting Contract" below)
 - Reusing Everruns worker runtime and lifecycle handling
 
@@ -486,7 +486,7 @@ Those may be added later, but they are outside the current embedding contract.
 
 ## Source Index
 
-- `crates/core/src/platform_definition.rs`
+- `crates/host/src/composition.rs`
 - `crates/platform/src/connector.rs`
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`

@@ -2,6 +2,21 @@
 
 ## 2026-08-12
 
+* **Composition root extraction**: Moved `PlatformDefinition` out of
+  `everruns-core` into `everruns-host` as `HostComposition` (EVE-887).
+  Selecting which capabilities, drivers and host services a deployment runs
+  with is composition, not kernel execution configuration, so the bundle now
+  belongs to the layer that executes a turn; core keeps the registries and
+  service contracts it carries. The fields stay owned by their layers
+  (driver registry from `everruns-provider`, capability registry from the
+  neutral capability contract, egress and utility LLM from their own
+  contracts) — no central enum and no vendor branching. Product presets keep
+  inventory discovery confined: the server's OSS preset is
+  `oss_host_composition`, the worker's is `default_host_composition`, and the
+  Framework facade builds its private in-process host from the same focused
+  type without importing either preset. A new core guard fails the build if a
+  composition root reappears in the kernel under any name.
+
 * **Session sandbox record extraction**: Moved the managed per-session sandbox
   — config, persisted state, provider instance and exec/file payloads, the
   `SessionSandboxProvider` SPI with its inventory plugin, and the

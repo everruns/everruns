@@ -3328,6 +3328,7 @@ dependencies = [
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
+ "everruns-host",
  "everruns-http",
  "everruns-integrations-bashkit",
  "everruns-integrations-brave-search",
