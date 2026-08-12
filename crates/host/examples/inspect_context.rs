@@ -10,6 +10,7 @@
 //! cargo run -p everruns-host --example inspect_context
 //! ```
 
+use everruns_host::HostComposition;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 
@@ -17,7 +18,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, ExecutionSession,
-    HarnessDefinition, PlatformDefinition, ResolvedModel, SessionExecutionState,
+    HarnessDefinition, ResolvedModel, SessionExecutionState,
 };
 use everruns_host::InProcessRuntimeBuilder;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -30,10 +31,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("Context example"))
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),

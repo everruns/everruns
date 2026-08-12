@@ -1213,8 +1213,7 @@ impl CapabilityRegistry {
     /// such as `platform_store`, `session_task_registry`, `schedule_store`, SQL
     /// databases, provider credentials, or knowledge stores. Embedders can
     /// still opt into those capabilities by supplying an explicit
-    /// [`PlatformDefinition`](crate::PlatformDefinition) with the required
-    /// backends.
+    /// `everruns_host::HostComposition` carrying the required backends.
     pub fn runtime_builtins() -> Self {
         let mut registry = Self::new();
 

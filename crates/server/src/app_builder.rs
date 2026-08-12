@@ -19,6 +19,7 @@ use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::{api, org_init, seed, services};
+use everruns_host::HostComposition;
 
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
@@ -27,8 +28,7 @@ use async_trait::async_trait;
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
-    ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, PlatformDefinition,
-    SharedErrorReporter,
+    ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, SharedErrorReporter,
 };
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
@@ -53,7 +53,7 @@ use utoipa::OpenApi;
 // =========================================================================
 
 type AuthFactoryFn =
-    Box<dyn FnOnce(Arc<StorageBackend>, Arc<PlatformDefinition>) -> Arc<dyn AuthBackend> + Send>;
+    Box<dyn FnOnce(Arc<StorageBackend>, Arc<HostComposition>) -> Arc<dyn AuthBackend> + Send>;
 
 type MigrationFn =
     Box<dyn FnOnce(PgPool) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send>;
@@ -318,7 +318,7 @@ pub struct ServerContext {
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
-    pub platform_definition: Arc<PlatformDefinition>,
+    pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.
     pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,
     /// System-wide outbound egress service from the platform profile.
@@ -387,7 +387,7 @@ struct HealthState {
 pub struct ServerAppBuilder {
     config: ServerConfig,
     auth_factory: Option<AuthFactoryFn>,
-    platform_definition: Option<PlatformDefinition>,
+    host_composition: Option<HostComposition>,
     built_in_harnesses: Option<Vec<everruns_platform::BuiltInHarnessDefinition>>,
     connector_registry: Option<everruns_platform::connector::ConnectorRegistry>,
     email_sender: Option<Arc<dyn everruns_platform::email::EmailSender>>,
@@ -407,7 +407,7 @@ impl ServerAppBuilder {
         Self {
             config,
             auth_factory: None,
-            platform_definition: None,
+            host_composition: None,
             built_in_harnesses: None,
             connector_registry: None,
             email_sender: None,
@@ -433,7 +433,7 @@ impl ServerAppBuilder {
     /// net in `BuiltinAuthBackend` — see EVE-390).
     pub fn auth(
         mut self,
-        factory: impl FnOnce(Arc<StorageBackend>, Arc<PlatformDefinition>) -> Arc<dyn AuthBackend>
+        factory: impl FnOnce(Arc<StorageBackend>, Arc<HostComposition>) -> Arc<dyn AuthBackend>
         + Send
         + 'static,
     ) -> Self {
@@ -442,8 +442,8 @@ impl ServerAppBuilder {
     }
 
     /// Replace the default OSS runtime surface with an explicit platform definition.
-    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
-        self.platform_definition = Some(platform_definition);
+    pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
+        self.host_composition = Some(host_composition);
         self
     }
 
@@ -451,7 +451,7 @@ impl ServerAppBuilder {
     ///
     /// Defaults to the OSS preset (`crate::platform::oss_built_in_harnesses`).
     /// Product provisioning templates are server composition, not part of the
-    /// shared `PlatformDefinition` runtime surface.
+    /// shared `HostComposition` runtime surface.
     pub fn built_in_harnesses(
         mut self,
         harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
@@ -464,7 +464,7 @@ impl ServerAppBuilder {
     ///
     /// Defaults to the OSS preset (`crate::platform::oss_connector_registry`,
     /// inventory-discovered). Connectors are hosted control-plane composition,
-    /// not part of the shared `PlatformDefinition` runtime surface.
+    /// not part of the shared `HostComposition` runtime surface.
     pub fn connector_registry(
         mut self,
         registry: everruns_platform::connector::ConnectorRegistry,
@@ -478,7 +478,7 @@ impl ServerAppBuilder {
     /// Defaults to the environment-configured sender
     /// (`crate::platform::system_email_sender`; disabled when no provider is
     /// configured). Email delivery is hosted product composition, not part of
-    /// the shared `PlatformDefinition` runtime surface.
+    /// the shared `HostComposition` runtime surface.
     pub fn email_sender(mut self, sender: Arc<dyn everruns_platform::email::EmailSender>) -> Self {
         self.email_sender = Some(sender);
         self
@@ -595,10 +595,10 @@ impl ServerAppBuilder {
     /// Build and run the server. Blocks until shutdown.
     pub async fn run(self) -> Result<()> {
         tracing::info!("everrun-api starting...");
-        let platform_definition = Arc::new(
-            self.platform_definition
+        let host_composition = Arc::new(
+            self.host_composition
                 .clone()
-                .unwrap_or_else(crate::platform::oss_platform_definition),
+                .unwrap_or_else(crate::platform::oss_host_composition),
         );
         // Built-in harness provisioning templates are server composition
         // (EVE-881): resolved here and threaded to seeding, auth safety nets,
@@ -609,7 +609,7 @@ impl ServerAppBuilder {
                 .unwrap_or_else(crate::platform::oss_built_in_harnesses),
         );
         // Connector registry and system email sender are hosted control-plane
-        // services (EVE-879): composed here, not on `PlatformDefinition`.
+        // services (EVE-879): composed here, not on `HostComposition`.
         let connector_registry = self
             .connector_registry
             .clone()
@@ -657,13 +657,13 @@ impl ServerAppBuilder {
         // provider rows (encrypted), which requires the encryption service.
         supervisor.track(
             "seed",
-            seed::spawn_seed_task_with_platform_definition(
+            seed::spawn_seed_task_with_host_composition(
                 db.clone(),
                 seed::SeedAuthContext {
                     mode: auth_config.mode.clone(),
                     admin: auth_config.admin.clone(),
                 },
-                platform_definition.as_ref().clone(),
+                host_composition.as_ref().clone(),
                 built_in_harnesses.as_ref().clone(),
                 encryption.clone(),
             ),
@@ -702,7 +702,7 @@ impl ServerAppBuilder {
             crate::auth::rate_limit::OrgRateLimiter::from_env_with_valkey(valkey_client.clone());
 
         let auth_backend = match self.auth_factory {
-            Some(factory) => factory(db.clone(), platform_definition.clone()),
+            Some(factory) => factory(db.clone(), host_composition.clone()),
             None => {
                 let cfg = auth_config.clone();
                 if let Some(valkey) = valkey_client {
@@ -710,7 +710,7 @@ impl ServerAppBuilder {
                         auth::BuiltinAuthBackend::with_valkey(
                             cfg,
                             db.clone(),
-                            platform_definition.clone(),
+                            host_composition.clone(),
                             valkey,
                         )
                         .with_built_in_harnesses(built_in_harnesses.clone())
@@ -718,7 +718,7 @@ impl ServerAppBuilder {
                     )
                 } else {
                     Arc::new(
-                        auth::BuiltinAuthBackend::new(cfg, db.clone(), platform_definition.clone())
+                        auth::BuiltinAuthBackend::new(cfg, db.clone(), host_composition.clone())
                             .with_built_in_harnesses(built_in_harnesses.clone())
                             .with_email_sender(email_sender.clone()),
                     )
@@ -778,7 +778,7 @@ impl ServerAppBuilder {
                             &db,
                             enc,
                             &auth_config,
-                            platform_definition.egress_service(),
+                            host_composition.egress_service(),
                         ));
                         let service =
                             Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
@@ -805,7 +805,7 @@ impl ServerAppBuilder {
                         &db,
                         &encryption,
                         &auth_config,
-                        platform_definition.egress_service(),
+                        host_composition.egress_service(),
                     );
                     let service =
                         Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
@@ -951,17 +951,17 @@ impl ServerAppBuilder {
             crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
 
-        let mut sessions_state = api::sessions::AppState::with_platform_definition(
+        let mut sessions_state = api::sessions::AppState::with_host_composition(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            platform_definition.as_ref(),
+            host_composition.as_ref(),
             &built_in_harnesses,
             event_delivery.clone(),
         );
         let mut session_service = crate::domains::sessions::SessionService::with_registry(
             db.clone(),
-            platform_definition.capability_registry().clone(),
+            host_composition.capability_registry().clone(),
         )
         .with_virtual_registry(virtual_registry.clone());
         if let Some(service) = &session_sandbox_service {
@@ -1013,7 +1013,7 @@ impl ServerAppBuilder {
             session_service: Arc::new(
                 crate::domains::sessions::SessionService::with_registry(
                     db.clone(),
-                    platform_definition.capability_registry().clone(),
+                    host_composition.capability_registry().clone(),
                 )
                 .with_virtual_registry(virtual_registry.clone()),
             ),
@@ -1031,7 +1031,7 @@ impl ServerAppBuilder {
                 auth: auth_state.clone(),
             }
         });
-        let driver_registry = Arc::new(platform_definition.driver_registry().clone());
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
         let provider_resolver = Arc::new(
             services::ProviderResolverService::new(db.clone(), encryption.clone())
                 .with_driver_registry((*driver_registry).clone()),
@@ -1082,22 +1082,22 @@ impl ServerAppBuilder {
                 provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
             },
-            platform_definition.as_ref(),
+            host_composition.as_ref(),
             &built_in_harnesses,
         );
         let capability_service = Arc::new(
             services::CapabilityService::with_registry(
                 db.clone(),
                 encryption.clone(),
-                platform_definition.capability_registry().clone(),
+                host_composition.capability_registry().clone(),
             )
-            .with_mcp_egress_service(platform_definition.egress_service()),
+            .with_mcp_egress_service(host_composition.egress_service()),
         );
         let mcp_server_service = Arc::new(
             crate::domains::mcp_servers::McpServerService::with_egress_service(
                 db.clone(),
                 encryption.clone(),
-                platform_definition.egress_service(),
+                host_composition.egress_service(),
             ),
         );
         let command_service = Arc::new(
@@ -1106,7 +1106,7 @@ impl ServerAppBuilder {
                 event_service.clone(),
                 provider_resolver.clone(),
                 mcp_server_service.clone(),
-                platform_definition.capability_registry().clone(),
+                host_composition.capability_registry().clone(),
                 driver_registry.as_ref().clone(),
                 sqldb_store.clone(),
             )
@@ -1131,12 +1131,12 @@ impl ServerAppBuilder {
             capability_service.clone(),
             auth_state.clone(),
             grade_for_harnesses,
-            platform_definition.clone(),
+            host_composition.clone(),
         );
         let harness_examples_state = api::harness_examples::AppState {
             auth: auth_state.clone(),
             grade: grade_for_harnesses,
-            platform_definition: platform_definition.clone(),
+            host_composition: host_composition.clone(),
         };
         let commands_state = api::commands::AppState::new(
             capability_service.clone(),
@@ -1147,14 +1147,14 @@ impl ServerAppBuilder {
         let agent_examples_state = api::agent_examples::AppState {
             auth: auth_state.clone(),
             grade,
-            platform_definition: platform_definition.clone(),
+            host_composition: host_composition.clone(),
         };
         let agents_state = api::agents::AppState::new(
             db.clone(),
             capability_service.clone(),
             auth_state.clone(),
             grade,
-            platform_definition.clone(),
+            host_composition.clone(),
             built_in_harnesses.clone(),
         )
         .with_org_rate_limiter(org_rate_limiter.clone());
@@ -1200,7 +1200,7 @@ impl ServerAppBuilder {
         // shared by the agents HTTP state and the MCP endpoint state so the
         // catalog commands work over both surfaces. Gated on the utility LLM
         // (generates/judges cases) and a default harness (hosts the sessions).
-        let utility_llm = platform_definition.utility_llm_service();
+        let utility_llm = host_composition.utility_llm_service();
         let health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>> =
             if utility_llm.is_configured()
                 && let Some(default_harness_name) = everruns_platform::harness_for_role(
@@ -1492,7 +1492,7 @@ impl ServerAppBuilder {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            platform_definition.as_ref(),
+            host_composition.as_ref(),
             &built_in_harnesses,
             notifications_enabled,
             event_delivery.clone(),
@@ -1886,10 +1886,10 @@ impl ServerAppBuilder {
             encryption: encryption.clone(),
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
-            platform_definition: platform_definition.clone(),
+            host_composition: host_composition.clone(),
             email_sender: email_sender.clone(),
-            egress_service: platform_definition.egress_service(),
-            utility_llm_service: platform_definition.utility_llm_service(),
+            egress_service: host_composition.egress_service(),
+            utility_llm_service: host_composition.utility_llm_service(),
             error_reporter: error_reporter.clone(),
         };
 
@@ -1900,7 +1900,7 @@ impl ServerAppBuilder {
             let grpc_event_service = event_service.clone();
             let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
-            let grpc_platform_definition = platform_definition.clone();
+            let grpc_host_composition = host_composition.clone();
             let grpc_connector_registry = connector_registry.clone();
             let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
@@ -1929,7 +1929,7 @@ impl ServerAppBuilder {
                     let grpc_db = grpc_db.clone();
                     let grpc_encryption = grpc_encryption.clone();
                     let grpc_runner = grpc_runner.clone();
-                    let grpc_platform_definition = grpc_platform_definition.clone();
+                    let grpc_host_composition = grpc_host_composition.clone();
                     let grpc_connector_registry = grpc_connector_registry.clone();
                     let grpc_provider_resolver = grpc_provider_resolver.clone();
                     let grpc_permission_resolver = grpc_permission_resolver.clone();
@@ -1945,7 +1945,7 @@ impl ServerAppBuilder {
                             grpc_db,
                             grpc_encryption,
                             Some(grpc_runner),
-                            grpc_platform_definition.as_ref().clone(),
+                            grpc_host_composition.as_ref().clone(),
                             Some(grpc_virtual_registry),
                             Some(grpc_provider_resolver),
                         );
@@ -2230,7 +2230,7 @@ impl ServerAppBuilder {
                     crate::domains::mcp_servers::McpServerService::with_egress_service(
                         db.clone(),
                         encryption.clone(),
-                        platform_definition.egress_service(),
+                        host_composition.egress_service(),
                     ),
                 );
                 let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
@@ -2257,8 +2257,8 @@ impl ServerAppBuilder {
                     event_service.clone(),
                     provider_resolver.clone(),
                     mcp_server_service,
-                    platform_definition.capability_registry().clone(),
-                    platform_definition.driver_registry().clone(),
+                    host_composition.capability_registry().clone(),
+                    host_composition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )
                 .with_connector_registry(connector_registry.clone())
@@ -2266,13 +2266,13 @@ impl ServerAppBuilder {
                 .with_encryption(encryption.clone())
                 .with_workflow_store(durable_store.clone())
                 .with_permission_resolver(auth_state.permission_resolver.clone())
-                .with_utility_llm_service(platform_definition.utility_llm_service())
-                .with_egress_service(platform_definition.egress_service())
+                .with_utility_llm_service(host_composition.utility_llm_service())
+                .with_egress_service(host_composition.egress_service())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone())
                 .with_vector_store(
-                    platform_definition
+                    host_composition
                         .extension::<everruns_platform::VectorStoreExt>()
                         .expect("OSS platform definition installs a vector store")
                         .0
@@ -2290,7 +2290,7 @@ impl ServerAppBuilder {
                         &db,
                         &encryption,
                         &auth_config,
-                        platform_definition.egress_service(),
+                        host_composition.egress_service(),
                     )
                     .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
                 adapters = adapters.with_connection_resolver(connection_resolver);
@@ -2401,7 +2401,7 @@ impl ServerAppBuilder {
             &db,
             &encryption,
             &auth_config,
-            platform_definition.egress_service(),
+            host_composition.egress_service(),
         );
         supervisor.track_optional(
             "memory_source_sync",
@@ -2422,7 +2422,7 @@ impl ServerAppBuilder {
                 memory_connection_resolver,
                 provider_resolver.clone(),
                 driver_registry.clone(),
-                platform_definition
+                host_composition
                     .extension::<everruns_platform::VectorStoreExt>()
                     .expect("OSS platform definition installs a vector store")
                     .0

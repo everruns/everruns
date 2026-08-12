@@ -5,6 +5,7 @@
 //!
 //! Run with: cargo test -p everruns-server --test auth_integration_test
 
+use everruns_host::HostComposition;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -41,7 +42,7 @@ async fn auth_router() -> (Router, Arc<StorageBackend>) {
     let backend = BuiltinAuthBackend::new(
         config,
         db.clone(),
-        std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+        std::sync::Arc::new(everruns_server::platform::oss_host_composition()),
     );
     let router = auth::routes(backend);
     (router, db)
@@ -729,9 +730,7 @@ async fn test_auth_config_returns_full_mode() {
 //    single harness must NOT have OSS defaults re-added on signup. This
 //    preserves the fix from PR #1462 (TM-AUTH-016).
 
-use everruns_core::{
-    CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DriverRegistry, PlatformDefinition,
-};
+use everruns_core::{CapabilityRegistry, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DriverRegistry};
 use everruns_platform::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 use everruns_server::storage::models::CreateOrganizationRow;
 
@@ -750,7 +749,7 @@ fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {
 async fn custom_platform_auth_router(
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
 ) -> (Router, Arc<StorageBackend>) {
-    let platform_definition = PlatformDefinition::new(
+    let host_composition = HostComposition::new(
         CapabilityRegistry::with_builtins(),
         DriverRegistry::default(),
     );
@@ -785,14 +784,14 @@ async fn custom_platform_auth_router(
         ..Default::default()
     };
 
-    let backend = BuiltinAuthBackend::new(config, db.clone(), Arc::new(platform_definition))
+    let backend = BuiltinAuthBackend::new(config, db.clone(), Arc::new(host_composition))
         .with_built_in_harnesses(Arc::new(built_in_harnesses));
     let router = auth::routes(backend);
     (router, db)
 }
 
 #[tokio::test]
-async fn test_register_safety_net_uses_platform_definition_not_oss_defaults() {
+async fn test_register_safety_net_uses_host_composition_not_oss_defaults() {
     let custom_name = "custom-safety-net-harness";
     let (router, db) = custom_platform_auth_router(vec![single_custom_harness(custom_name)]).await;
 

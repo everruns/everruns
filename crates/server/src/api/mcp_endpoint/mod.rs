@@ -52,8 +52,9 @@ use axum::{
 };
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::session_sqldb::SessionSqlDbStore;
-use everruns_core::{Caller, OrgRole, PlatformDefinition};
+use everruns_core::{Caller, OrgRole};
 use everruns_durable::WorkflowEventStore;
+use everruns_host::HostComposition;
 use everruns_platform::validate_org_public_id;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
@@ -342,7 +343,7 @@ impl AppState {
         db: Arc<StorageBackend>,
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
-        platform_definition: &PlatformDefinition,
+        host_composition: &HostComposition,
         built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
@@ -354,7 +355,7 @@ impl AppState {
         Self {
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
-                platform_definition.capability_registry().clone(),
+                host_composition.capability_registry().clone(),
             )),
             message_service: Arc::new(MessageService::new(
                 db.clone(),
@@ -399,7 +400,7 @@ impl AppState {
             )
             .map(|h| h.display_name.clone()),
             sqldb_store,
-            utility_llm_service: platform_definition.utility_llm_service(),
+            utility_llm_service: host_composition.utility_llm_service(),
             health_check_service: None,
             resource_metadata_url: None,
             mcp_resource: None,

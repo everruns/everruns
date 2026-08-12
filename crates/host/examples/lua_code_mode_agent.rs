@@ -20,6 +20,7 @@
 //! Without the `lua` feature the host does not link the Lua integration, so the
 //! example is gated behind it.
 
+use everruns_host::HostComposition;
 #[cfg(not(feature = "lua"))]
 fn main() {
     eprintln!(
@@ -33,8 +34,7 @@ fn main() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_core::driver_registry::DriverRegistry;
     use everruns_core::{
-        AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
-        SessionId,
+        AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel, SessionId,
     };
     use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
     use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut drivers = DriverRegistry::new();
     everruns_test_support::llmsim_driver::register_driver(&mut drivers);
-    let platform = PlatformDefinition::new(caps, drivers);
+    let platform = HostComposition::new(caps, drivers);
 
     // Simulated model: turn 1 calls `lua` with the orchestration script; turn 2
     // returns the final answer. No real API call.
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(sim)
         .default_model(ResolvedModel {
             model: "llmsim-model".to_string(),

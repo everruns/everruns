@@ -6,11 +6,11 @@ runtime, so they transfer to the rest of Everruns.
 
 ## Composition
 
-- **PlatformDefinition** — the shared runtime bundle consumed by the runtime,
+- **HostComposition** — the shared runtime bundle consumed by the runtime,
   server, and worker alike. Owns the capability registry, LLM driver registry,
   connection-provider registry, built-in harness templates, and the
   `SessionFileSystemFactory`. Lives in `everruns-core` so any binary can build
-  one. `PlatformDefinition::new(capabilities, drivers)` is the minimal form.
+  one. `HostComposition::new(capabilities, drivers)` is the minimal form.
 
 - **Harness** — the reusable agent template: a stable `name`, optional system
   prompt, a set of capabilities, optional MCP servers, and config. Harnesses
@@ -77,7 +77,7 @@ runtime, so they transfer to the rest of Everruns.
 ## Advanced host surface
 
 - **InProcessRuntimeBuilder** — the `everruns-host` low-level entrypoint. Set the
-  `PlatformDefinition`, register extra capabilities/drivers, seed
+  `HostComposition`, register extra capabilities/drivers, seed
   harnesses/agents/sessions, configure the default model, optionally register
   `llmsim`, and swap stores via `HostBackends`.
 

@@ -1,22 +1,23 @@
 //! Worker runtime platform helpers.
 //!
-//! Workers honor the same `PlatformDefinition` shape as the server so
+//! Workers honor the same `HostComposition` shape as the server so
 //! embedders can keep execution and control-plane runtime surfaces aligned.
 //! The worker default only includes capabilities and LLM drivers because
 //! connection providers and harness templates are server-owned by default.
 
-use everruns_core::{DeploymentGrade, PlatformDefinition, SystemUtilityLlmConfig};
+use everruns_core::{DeploymentGrade, SystemUtilityLlmConfig};
+use everruns_host::HostComposition;
 use everruns_http::DirectEgressService;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.
-pub fn default_platform_definition() -> PlatformDefinition {
-    default_platform_definition_for_grade(DeploymentGrade::from_env())
+pub fn default_host_composition() -> HostComposition {
+    default_host_composition_for_grade(DeploymentGrade::from_env())
 }
 
 /// Build the default worker-side platform definition for an explicit grade.
-pub fn default_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefinition {
-    PlatformDefinition::builder()
+pub fn default_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
+    HostComposition::builder()
         .capability_registry(
             everruns_platform::capabilities::hosted_capability_registry_for_grade(grade),
         )

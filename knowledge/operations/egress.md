@@ -62,10 +62,10 @@ Reasoning:
   default, or required.
 - `EgressError` separates invalid requests, network access denial, unavailable
   signing, and transport failures.
-- `PlatformDefinition` carries the active `Arc<dyn EgressService>`.
+- `HostComposition` carries the active `Arc<dyn EgressService>`.
 - Runtime tool execution threads the service into `ToolContext`.
 
-The neutral `PlatformDefinition` default is `DisabledEgressService` and fails
+The neutral `HostComposition` default is `DisabledEgressService` and fails
 closed. Hosted server/worker composition explicitly installs
 `everruns_http::DirectEgressService`, which performs outbound HTTP directly;
 advanced embedders can install that implementation or a remote gateway.

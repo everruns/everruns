@@ -18,7 +18,7 @@
 //!   org/principal identity).
 //! - [`LocalBackends`] — composable construction of `HostBackends` + the
 //!   local stores, accepting a caller-provided event bus (via `HostBackends`)
-//!   and file system factory (via the embedder's `PlatformDefinition`).
+//!   and file system factory (via the embedder's `HostComposition`).
 //! - [`LocalRuntimeBuilder`] — optional sugar over `InProcessRuntimeBuilder`.
 //!
 //! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with

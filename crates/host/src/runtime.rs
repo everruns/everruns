@@ -2,6 +2,7 @@
 // Decision: the public runtime is in-memory today, but uses the same core atoms
 // and capability resolution path as the durable worker so behavior stays close.
 
+use crate::HostComposition;
 use crate::backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
 };
@@ -30,7 +31,6 @@ use everruns_core::events::{
 };
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
-use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 #[cfg(feature = "mcp")]
 use everruns_core::resolve_runtime_capabilities;
@@ -304,14 +304,14 @@ fn finish_turn(
 /// Builder for the public in-process runtime.
 ///
 /// The builder owns a standalone runtime bundle:
-/// - `PlatformDefinition` for capabilities and drivers
+/// - `HostComposition` for capabilities and drivers
 /// - in-memory stores for sessions, files, storage, memory, and messages
 /// - seeded harness/agent/session entities
 ///
 /// `build()` returns an [`InProcessRuntime`] that can execute turns in-process
 /// without the durable engine or the control-plane server.
 pub struct InProcessRuntimeBuilder {
-    platform_definition: PlatformDefinition,
+    host_composition: HostComposition,
     /// Provider registered at build time (replacing any same-name provider)
     /// whose named model becomes the runtime default when nothing else set one.
     /// See [`Self::provider_with_default_model`].
@@ -359,7 +359,7 @@ impl InProcessRuntimeBuilder {
     ///   default model via [`Self::default_model`].
     pub fn new() -> Self {
         Self {
-            platform_definition: PlatformDefinition::builder()
+            host_composition: HostComposition::builder()
                 .capability_registry(crate::runtime_capability_registry())
                 .driver_registry(DriverRegistry::new())
                 .egress_service(crate::runtime_egress_service())
@@ -396,14 +396,14 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Replace the platform definition used by the runtime.
-    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
-        self.platform_definition = platform_definition;
+    pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
+        self.host_composition = host_composition;
         self
     }
 
     /// Register an additional capability on the runtime platform.
     pub fn capability<C: Capability + 'static>(mut self, capability: C) -> Self {
-        self.platform_definition
+        self.host_composition
             .capability_registry_mut()
             .register(capability);
         self
@@ -411,7 +411,7 @@ impl InProcessRuntimeBuilder {
 
     /// Replace the platform driver registry.
     pub fn driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
-        *self.platform_definition.driver_registry_mut() = driver_registry;
+        *self.host_composition.driver_registry_mut() = driver_registry;
         self
     }
 
@@ -644,7 +644,7 @@ impl InProcessRuntimeBuilder {
             None => HostBackends::in_memory(),
         };
         let mut file_store = resolve_session_file_system(
-            &self.platform_definition,
+            &self.host_composition,
             self.session_file_system_factory_context.clone(),
         )
         .await?;
@@ -655,7 +655,7 @@ impl InProcessRuntimeBuilder {
         if let Some((provider, model_id)) = self.default_provider.take() {
             let provider_key = provider.id().clone();
             // This convenience adapts into the canonical provider path.
-            self.platform_definition
+            self.host_composition
                 .driver_registry_mut()
                 .replace_provider(provider);
 
@@ -665,7 +665,7 @@ impl InProcessRuntimeBuilder {
         }
 
         for provider in self.providers {
-            self.platform_definition
+            self.host_composition
                 .driver_registry_mut()
                 .register_provider(provider)?;
         }
@@ -689,16 +689,16 @@ impl InProcessRuntimeBuilder {
             .unwrap_or_else(|| DriverId::external(model_spec.provider.as_str()));
         if let Some(config) = legacy_config
             && self
-                .platform_definition
+                .host_composition
                 .driver_registry()
                 .provider(&model_spec.provider)
                 .is_none()
         {
             let driver = self
-                .platform_definition
+                .host_composition
                 .driver_registry()
                 .create_chat_driver(&config)?;
-            self.platform_definition
+            self.host_composition
                 .driver_registry_mut()
                 .register_provider(everruns_core::Provider::new(
                     model_spec.provider.clone(),
@@ -798,7 +798,7 @@ impl InProcessRuntimeBuilder {
 
         let seeded_session_ids = self.sessions.iter().map(|session| session.id).collect();
         let runtime = InProcessRuntime {
-            platform_definition: Arc::new(self.platform_definition),
+            host_composition: Arc::new(self.host_composition),
             harness_store: backends.harness_store,
             agent_store: backends.agent_store,
             session_store: backends.session_store,
@@ -834,10 +834,10 @@ impl InProcessRuntimeBuilder {
 }
 
 async fn resolve_session_file_system(
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
     file_system_factory_context: SessionFileSystemFactoryContext,
 ) -> Result<Arc<dyn SessionFileSystem>> {
-    let file_system_factory = platform_definition.session_file_system_factory();
+    let file_system_factory = host_composition.session_file_system_factory();
     if file_system_factory.is_disabled() {
         Ok(Arc::new(InMemorySessionFileStore::new()))
     } else {
@@ -854,7 +854,7 @@ async fn resolve_session_file_system(
 /// harnesses inside their own process while controlling capabilities,
 /// harness definitions, and driver registrations directly in Rust.
 pub struct InProcessRuntime {
-    platform_definition: Arc<PlatformDefinition>,
+    host_composition: Arc<HostComposition>,
     harness_store: Arc<dyn RuntimeHarnessStore>,
     agent_store: Arc<dyn RuntimeAgentStore>,
     session_store: Arc<dyn RuntimeSessionStore>,
@@ -928,7 +928,7 @@ impl InProcessRuntime {
     #[cfg(feature = "mcp")]
     fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
         Arc::new(everruns_mcp::McpClient::new(
-            self.platform_definition.egress_service(),
+            self.host_composition.egress_service(),
             self.mcp_auth_provider.clone(),
         ))
     }
@@ -951,11 +951,11 @@ impl InProcessRuntime {
             &harness,
             agent,
             session,
-            self.platform_definition.capability_registry(),
+            self.host_composition.capability_registry(),
         );
         let contributed = collect_capability_mcp_servers(
             &resolved.resolved_capability_configs,
-            self.platform_definition.capability_registry(),
+            self.host_composition.capability_registry(),
         );
         let explicit = crate::mcp::merge_session_scoped_servers(&harness, agent, session);
         everruns_core::merge_scoped_mcp_servers(&contributed, &explicit)
@@ -990,7 +990,7 @@ impl InProcessRuntime {
         capability: impl Into<AgentCapabilityConfig>,
     ) -> Result<CapabilityDelta> {
         let mut capability = capability.into();
-        let registry = self.platform_definition.capability_registry();
+        let registry = self.host_composition.capability_registry();
         let registered = registry.get(capability.capability_id()).ok_or_else(|| {
             AgentLoopError::config(format!(
                 "unknown capability: {}",
@@ -1053,7 +1053,7 @@ impl InProcessRuntime {
         session_id: SessionId,
         capability_id: &str,
     ) -> Result<CapabilityDelta> {
-        let registry = self.platform_definition.capability_registry();
+        let registry = self.host_composition.capability_registry();
         let registered = registry.get(capability_id).ok_or_else(|| {
             AgentLoopError::config(format!("unknown capability: {capability_id}"))
         })?;
@@ -1515,7 +1515,7 @@ impl InProcessRuntime {
         request: everruns_core::command::ExecuteCommandRequest,
     ) -> Result<everruns_core::command::CommandResult> {
         let ctx = self.load_context(session_id).await?;
-        let registry = self.platform_definition.capability_registry();
+        let registry = self.host_composition.capability_registry();
         // Context-aware commands (e.g. /btw) get the same store-backed host
         // facilities the server provides; the already-assembled context seeds
         // the host so dispatch and execution assemble it once.
@@ -1527,7 +1527,7 @@ impl InProcessRuntime {
             self.event_history.clone(),
             self.provider_store.clone(),
             registry.clone(),
-            self.platform_definition.driver_registry().clone(),
+            self.host_composition.driver_registry().clone(),
         )
         .with_file_store(self.file_store.clone())
         .with_assembled_context(ctx.clone());
@@ -1561,7 +1561,7 @@ impl InProcessRuntime {
         session_id: SessionId,
     ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
         let ctx = self.load_context(session_id).await?;
-        let registry = self.platform_definition.capability_registry();
+        let registry = self.host_composition.capability_registry();
         let mut seen = std::collections::HashSet::new();
         let mut commands = Vec::new();
         for config in &ctx.resolved_capability_configs {
@@ -1623,7 +1623,7 @@ impl InProcessRuntime {
             self.session_store.as_ref(),
             self.event_history.as_ref(),
             self.provider_store.as_ref(),
-            self.platform_definition.capability_registry(),
+            self.host_composition.capability_registry(),
             session_id,
             harness_id,
             agent_id,
@@ -1716,11 +1716,11 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn capability_registry(&self) -> CapabilityRegistry {
-        self.platform_definition.capability_registry().clone()
+        self.host_composition.capability_registry().clone()
     }
 
     fn driver_registry(&self) -> DriverRegistry {
-        self.platform_definition.driver_registry().clone()
+        self.host_composition.driver_registry().clone()
     }
 
     fn harness_store(&self, _org_id: i64) -> Arc<dyn HarnessStore> {
@@ -1795,11 +1795,11 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
-        Some(self.platform_definition.utility_llm_service())
+        Some(self.host_composition.utility_llm_service())
     }
 
     fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
-        Some(self.platform_definition.egress_service())
+        Some(self.host_composition.egress_service())
     }
 
     fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {

@@ -7,6 +7,7 @@
 // LocalBackends with an llmsim + a test math capability, proving the local
 // stores compose into a working in-process runtime.
 
+use everruns_host::HostComposition;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -20,9 +21,7 @@ use everruns_core::session_task::{
 use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
-use everruns_core::{
-    CapabilityRegistry, DriverId, InputMessage, PlatformDefinition, ResolvedModel, ToolCall,
-};
+use everruns_core::{CapabilityRegistry, DriverId, InputMessage, ResolvedModel, ToolCall};
 use everruns_host::{
     AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
     RealDiskFileStore, RuntimeHostAdapter, SessionBuilder,
@@ -105,14 +104,14 @@ async fn embedder_bus_and_fs_factory_are_used() {
 
     let mut caps = CapabilityRegistry::new();
     caps.register(TestMathCapability);
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(caps)
         .driver_registry(DriverRegistry::new())
         .session_file_system_factory(factory)
         .build();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .backends(local.runtime_backends.clone())
         .llm_sim(
             LlmSimConfig::fixed("Let me calculate.").with_tool_call_sequence(vec![
@@ -185,10 +184,10 @@ async fn seam_task_lifecycle_round_trips_through_injected_registry() {
     let (harness_id, agent_id, session_id) = ids();
     let mut caps = CapabilityRegistry::new();
     caps.register(TestMathCapability);
-    let platform = PlatformDefinition::new(caps, DriverRegistry::new());
+    let platform = HostComposition::new(caps, DriverRegistry::new());
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .backends(local.runtime_backends.clone())
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),

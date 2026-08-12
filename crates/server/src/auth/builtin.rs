@@ -7,7 +7,8 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{OrgRole, PlatformDefinition};
+use everruns_core::OrgRole;
+use everruns_host::HostComposition;
 use everruns_platform::OrgMembership;
 use moka::future::Cache;
 use std::sync::Arc;
@@ -38,7 +39,7 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// HARNESS-SEED SAFETY NET (see also `knowledge/security/authentication.md`):
 /// When default-org auto-join is enabled, `register` and `oauth_callback`
 /// add new users to `DEFAULT_ORG_ID`.
-/// The background seed task (see `seed::spawn_seed_task_with_platform_definition`)
+/// The background seed task (see `seed::spawn_seed_task_with_host_composition`)
 /// provisions built-in harnesses for that org, but it runs asynchronously
 /// with a 500 ms initial delay — so a user who signs up during the startup
 /// window (cold boot, slow DB, or a partial seed failure that will
@@ -49,7 +50,7 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// `oss_built_in_harnesses()`, because that could override an operator's
 /// custom harness set. The fix is to keep the safety net but drive it from
 /// the operator-composed `built_in_harnesses` set owned by this backend
-/// (EVE-881: the templates moved off `PlatformDefinition` into server
+/// (EVE-881: the templates moved off `HostComposition` into server
 /// composition; `ServerAppBuilder` threads its resolved set in via
 /// [`BuiltinAuthBackend::with_built_in_harnesses`]).
 #[derive(Clone)]
@@ -59,7 +60,7 @@ pub struct BuiltinAuthBackend {
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
     /// Platform definition (capability surface, built-in provisioning).
-    pub platform_definition: Arc<PlatformDefinition>,
+    pub host_composition: Arc<HostComposition>,
     /// System email sender for account emails (verification, recovery,
     /// anti-enumeration notices). Server composition threads the operator's
     /// sender in via [`BuiltinAuthBackend::with_email_sender`] (EVE-879);
@@ -104,7 +105,7 @@ impl BuiltinAuthBackend {
     pub fn new(
         config: AuthConfig,
         db: Arc<StorageBackend>,
-        platform_definition: Arc<PlatformDefinition>,
+        host_composition: Arc<HostComposition>,
     ) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
         Self {
@@ -112,7 +113,7 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::new(),
-            platform_definition,
+            host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
@@ -143,7 +144,7 @@ impl BuiltinAuthBackend {
     pub fn with_valkey(
         config: AuthConfig,
         db: Arc<StorageBackend>,
-        platform_definition: Arc<PlatformDefinition>,
+        host_composition: Arc<HostComposition>,
         valkey: ValkeyClient,
     ) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
@@ -152,7 +153,7 @@ impl BuiltinAuthBackend {
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
-            platform_definition,
+            host_composition,
             email_sender: crate::platform::system_email_sender(),
             built_in_harnesses: Arc::new(crate::platform::oss_built_in_harnesses()),
             personal_access_token_cache: build_personal_access_token_cache(),
@@ -634,7 +635,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
             let (user_id, key_id, plaintext_key) =
                 seed_user_with_key(&db, "revoked@example.com", "Revoked User").await;
@@ -665,7 +666,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
             let (user_id, _key_id, plaintext_key) =
                 seed_user_with_key(&db, "user@example.com", "Original Name").await;
@@ -704,7 +705,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
 
             let result = backend
@@ -730,7 +731,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
             let user = db
                 .create_user(CreateUserRow {
@@ -834,7 +835,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
             let user = db
                 .create_user(CreateUserRow {
@@ -938,7 +939,7 @@ mod tests {
             let backend = BuiltinAuthBackend::new(
                 AuthConfig::default(),
                 db.clone(),
-                Arc::new(crate::platform::oss_platform_definition()),
+                Arc::new(crate::platform::oss_host_composition()),
             );
             let user = db
                 .create_user(CreateUserRow {

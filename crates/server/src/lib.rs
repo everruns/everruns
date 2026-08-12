@@ -56,8 +56,8 @@ mod oauth_client;
 pub mod openapi;
 pub mod platform;
 pub use platform::{
-    oss_built_in_harnesses, oss_connector_registry, oss_platform_definition,
-    oss_platform_definition_for_grade,
+    oss_built_in_harnesses, oss_connector_registry, oss_host_composition,
+    oss_host_composition_for_grade,
 };
 pub mod harnesses;
 

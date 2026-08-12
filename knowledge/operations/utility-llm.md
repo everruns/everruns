@@ -20,7 +20,7 @@ work without reusing user-configured model providers or session secrets.
 Server-side system analysis tasks are also sanctioned callers: bounded,
 system-initiated analysis of platform-owned data (e.g., agent configuration
 checks per `knowledge/evaluation/agent-checks.md`). These run inside server domains via the
-`PlatformDefinition` service handle — never as a public ad hoc completion
+`HostComposition` service handle — never as a public ad hoc completion
 endpoint.
 
 ## Core Contract
@@ -33,7 +33,7 @@ endpoint.
   explicitly needs reasoning.
 - `UtilityLlmService::is_configured()` reports whether the deployment has the
   service enabled.
-- `PlatformDefinition` carries the active service as part of the platform
+- `HostComposition` carries the active service as part of the platform
   profile.
 - Runtime tool execution threads the service into `ToolContext`.
 - Concrete implementations use direct provider HTTP clients; the utility LLM
@@ -59,8 +59,8 @@ work, or handle the configuration error returned by completion methods.
 
 The default server and worker platform profiles resolve
 `SystemUtilityLlmConfig::from_env()` during platform construction. Embedders can
-bypass env-based setup by constructing a custom `PlatformDefinition` and calling
-`PlatformDefinition::builder().utility_llm_service(...)`.
+bypass env-based setup by constructing a custom `HostComposition` and calling
+`HostComposition::builder().utility_llm_service(...)`.
 
 ## Non-Goals
 

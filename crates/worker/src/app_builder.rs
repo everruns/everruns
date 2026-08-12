@@ -9,7 +9,8 @@
 //   "Not goals" section.
 
 use anyhow::{Context, Result};
-use everruns_core::{ErrorReport, ErrorReporter, ErrorScope, PlatformDefinition};
+use everruns_core::{ErrorReport, ErrorReporter, ErrorScope};
+use everruns_host::HostComposition;
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::info;
@@ -38,7 +39,7 @@ use crate::{GrpcDurableStore, GrpcWorkerAdapters, TaskWorker, TaskWorkerConfig};
 /// ```
 pub struct WorkerAppBuilder {
     config: TaskWorkerConfig,
-    platform_definition: Option<PlatformDefinition>,
+    host_composition: Option<HostComposition>,
     error_reporter: Option<Arc<dyn ErrorReporter>>,
 }
 
@@ -47,14 +48,14 @@ impl WorkerAppBuilder {
     pub fn new(config: TaskWorkerConfig) -> Self {
         Self {
             config,
-            platform_definition: None,
+            host_composition: None,
             error_reporter: None,
         }
     }
 
     /// Replace the default worker runtime surface with an explicit platform definition.
-    pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
-        self.platform_definition = Some(platform_definition);
+    pub fn host_composition(mut self, host_composition: HostComposition) -> Self {
+        self.host_composition = Some(host_composition);
         self
     }
 
@@ -73,7 +74,7 @@ impl WorkerAppBuilder {
     pub async fn run(self) -> Result<()> {
         let Self {
             config,
-            platform_definition,
+            host_composition,
             error_reporter,
         } = self;
         info!(
@@ -86,16 +87,16 @@ impl WorkerAppBuilder {
             info!("Embedder error reporter installed");
         }
 
-        let platform_definition =
-            platform_definition.unwrap_or_else(crate::platform::default_platform_definition);
+        let host_composition =
+            host_composition.unwrap_or_else(crate::platform::default_host_composition);
         let store = Arc::new(
             GrpcDurableStore::connect_with_timeout(&config.grpc_address, config.connect_timeout)
                 .await
                 .context("Failed to connect durable task store")?,
         );
-        let adapters = GrpcWorkerAdapters::connect_with_platform_definition(
+        let adapters = GrpcWorkerAdapters::connect_with_host_composition(
             &config.grpc_address,
-            platform_definition,
+            host_composition,
         )
         .await
         .context("Failed to connect worker adapters")?;

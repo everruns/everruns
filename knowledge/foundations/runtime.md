@@ -27,7 +27,7 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 1. Preserve a supported low-level public crate for in-process execution and
    existing 0.17.x applications.
-2. Let embedders supply their own `PlatformDefinition` with custom capabilities,
+2. Let embedders supply their own `HostComposition` with custom capabilities,
    LLM drivers, and built-in harness templates.
 3. Run without PostgreSQL, NATS, or the durable engine.
 4. Ship batteries-included in-memory stores so common harnesses work without
@@ -61,7 +61,7 @@ The public entrypoint is `InProcessRuntimeBuilder` in
 
 The builder must allow an embedder to:
 
-- Replace the `PlatformDefinition`
+- Replace the `HostComposition`
 - Register extra capabilities
 - Register or replace runtime providers over protocol drivers
 - Seed harnesses, agents, and sessions
@@ -287,7 +287,7 @@ stays `None` and connection-aware tools fall back to their own guidance
 `crates/server/specs/user-connections.md` for the connection model the resolver
 serves.
 
-Session files are a platform service: `PlatformDefinition` carries a
+Session files are a platform service: `HostComposition` carries a
 `SessionFileSystemFactory`, and the runtime always resolves the concrete
 filesystem from that factory before seeding files or executing turns. Embedders
 can choose `InMemorySessionFileSystemFactory` (default),
@@ -409,7 +409,7 @@ default registry intentionally excludes hosted Everruns product capabilities,
 demos/tests, and capabilities whose tools require optional host backends such as
 `platform_store`, `session_task_registry`, `schedule_store`, SQL databases,
 provider credentials, or knowledge stores. Embedders that provide those
-services can still build an explicit `PlatformDefinition` and register the
+services can still build an explicit `HostComposition` and register the
 larger platform capability set or any selected capability manually.
 
 `everruns-host` must provide the supporting stores those capabilities expect
@@ -491,4 +491,4 @@ test binaries in `crates/host/tests/`.
 - `crates/worker/src/runtime_host.rs`
 - `crates/core/src/runtime_context.rs`
 - `crates/core/src/turn.rs`
-- `crates/core/src/platform_definition.rs`
+- `crates/host/src/composition.rs`

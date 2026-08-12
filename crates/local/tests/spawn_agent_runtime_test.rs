@@ -26,6 +26,7 @@
 // parent sessions inside the same runtime so a background completion wake or
 // previous trigger in one transcript cannot steer the other target's turn.
 
+use everruns_host::HostComposition;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -38,8 +39,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, PlatformDefinition,
-    ResolvedModel, ToolCall,
+    AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, ResolvedModel, ToolCall,
 };
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
@@ -242,7 +242,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SubagentCapability);
     capabilities.register(AgentHandoffCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = HostComposition::new(capabilities, DriverRegistry::new());
 
     // Parent (root) session: harness carries subagents + a configured
     // agent_handoff target pointing at the plain target agent below.
@@ -313,7 +313,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     ));
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .backends(backends)
         .with_session_task_registry(registry.clone())
         .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))

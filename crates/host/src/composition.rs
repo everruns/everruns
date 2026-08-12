@@ -1,50 +1,55 @@
-//! Platform definition for embeddable Everruns deployments.
+//! Execution-surface composition for Everruns hosts.
 //!
-//! `PlatformDefinition` is the shared composition root for server and worker
-//! runtime surface. Embedders can add or remove capabilities and LLM drivers
-//! without patching internal startup code.
+//! [`HostComposition`] is what an embedder assembles to decide which
+//! capabilities, LLM drivers and host services a deployment runs with. It
+//! lives here, in the layer that actually executes a turn, rather than in the
+//! kernel: `everruns-core` owns the registries and service contracts, and the
+//! host owns the bundle that selects a deployment's shape (EVE-887).
 //!
-//! Built-in harness provisioning templates are product composition, not
-//! Framework execution configuration; they moved to `everruns-platform`
-//! (EVE-881) and are wired by the server/platform layer. The connector
-//! catalog and the system email sender followed in EVE-879: user-facing
-//! connections and product email are hosted control-plane services, so the
-//! server composes them directly (`everruns-platform`) instead of carrying
-//! them on every execution host.
+//! Each field is a focused component owned by its own layer — the driver
+//! registry comes from `everruns-provider`, the capability registry from the
+//! neutral capability contract, the egress and utility-LLM services from their
+//! own contracts. This type only carries them together for the runtime; it is
+//! not a registry of registries and adds no vendor branching.
 //!
-//! Server-only concerns such as route wiring, auth backends, and background
-//! task scheduling stay outside this module so the type can be reused from any
-//! binary crate. Platform-wide host services belong here as factories, not as
-//! server-owned concrete dependencies.
+//! Product presets stay out of here. Built-in harness provisioning, connectors,
+//! system email and the hosted service catalog are composed by
+//! server/worker/platform code, and inventory-based discovery is confined to
+//! those presets so an embedder can build a composition by hand without
+//! inheriting a product catalog.
+//!
+//! Server-only concerns such as route wiring, auth backends and background task
+//! scheduling stay outside this module so the type can be reused from any
+//! binary crate.
 
-use crate::{
+use everruns_core::{
     Capability, CapabilityRegistry, DriverRegistry, EgressService, UtilityLlmService,
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory, ToolContextExtensions},
 };
 use std::sync::Arc;
 
-/// Shared definition of the Everruns platform surface.
+/// The execution surface a deployment runs with.
 ///
-/// `PlatformDefinition` lets an embedder decide which capabilities, LLM
-/// drivers, and platform service factories exist at runtime. Server and
-/// worker code should consume the same definition so the control plane and
-/// execution plane stay aligned.
+/// `HostComposition` lets an embedder decide which capabilities, LLM drivers
+/// and host services exist at runtime. Server and worker code compose the same
+/// shape so the control plane and execution plane stay aligned.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// use everruns_core::{DriverRegistry, PlatformDefinition};
+/// use everruns_core::DriverRegistry;
+/// use everruns_host::HostComposition;
 ///
 /// let mut drivers = DriverRegistry::new();
 /// everruns_openai::register_driver(&mut drivers);
 ///
-/// let platform = PlatformDefinition::builder()
+/// let composition = HostComposition::builder()
 ///     .driver_registry(drivers)
 ///     .capability(everruns_core::HumanIntentCapability)
 ///     .build();
 /// ```
 #[derive(Clone)]
-pub struct PlatformDefinition {
+pub struct HostComposition {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     egress_service: Arc<dyn EgressService>,
@@ -53,22 +58,22 @@ pub struct PlatformDefinition {
     extensions: ToolContextExtensions,
 }
 
-impl PlatformDefinition {
-    /// Create a platform definition from explicit registries.
+impl HostComposition {
+    /// Create a composition from explicit registries.
     pub fn new(capability_registry: CapabilityRegistry, driver_registry: DriverRegistry) -> Self {
         Self {
             capability_registry,
             driver_registry,
-            egress_service: Arc::new(crate::DisabledEgressService),
-            utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
+            egress_service: Arc::new(everruns_core::DisabledEgressService),
+            utility_llm_service: Arc::new(everruns_core::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
             extensions: ToolContextExtensions::default(),
         }
     }
 
-    /// Create a builder for fluent platform composition.
-    pub fn builder() -> PlatformDefinitionBuilder {
-        PlatformDefinitionBuilder::new()
+    /// Create a builder for fluent composition.
+    pub fn builder() -> HostCompositionBuilder {
+        HostCompositionBuilder::new()
     }
 
     /// Immutable access to the capability registry.
@@ -101,7 +106,7 @@ impl PlatformDefinition {
         self.utility_llm_service.clone()
     }
 
-    /// Factory for the platform-selected session filesystem implementation.
+    /// Factory for the composition-selected session filesystem implementation.
     pub fn session_file_system_factory(&self) -> Arc<dyn SessionFileSystemFactory> {
         self.session_file_system_factory.clone()
     }
@@ -112,15 +117,15 @@ impl PlatformDefinition {
     }
 }
 
-impl Default for PlatformDefinition {
+impl Default for HostComposition {
     fn default() -> Self {
         Self::new(CapabilityRegistry::new(), DriverRegistry::new())
     }
 }
 
-impl std::fmt::Debug for PlatformDefinition {
+impl std::fmt::Debug for HostComposition {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PlatformDefinition")
+        f.debug_struct("HostComposition")
             .field("capabilities", &self.capability_registry)
             .field("drivers", &self.driver_registry.registered_providers())
             .field("egress_service", &self.egress_service.name())
@@ -134,71 +139,71 @@ impl std::fmt::Debug for PlatformDefinition {
     }
 }
 
-/// Builder for `PlatformDefinition`.
-pub struct PlatformDefinitionBuilder {
-    platform: PlatformDefinition,
+/// Builder for [`HostComposition`].
+pub struct HostCompositionBuilder {
+    composition: HostComposition,
 }
 
-impl PlatformDefinitionBuilder {
+impl HostCompositionBuilder {
     /// Create a new empty builder.
     pub fn new() -> Self {
         Self {
-            platform: PlatformDefinition::default(),
+            composition: HostComposition::default(),
         }
     }
 
     /// Replace the capability registry.
     pub fn capability_registry(mut self, registry: CapabilityRegistry) -> Self {
-        self.platform.capability_registry = registry;
+        self.composition.capability_registry = registry;
         self
     }
 
-    /// Register a capability on the platform.
+    /// Register a capability on the composition.
     pub fn capability(mut self, capability: impl Capability + 'static) -> Self {
-        self.platform.capability_registry.register(capability);
+        self.composition.capability_registry.register(capability);
         self
     }
 
     /// Replace the driver registry.
     pub fn driver_registry(mut self, registry: DriverRegistry) -> Self {
-        self.platform.driver_registry = registry;
+        self.composition.driver_registry = registry;
         self
     }
 
     /// Set the system-wide outbound egress service.
     pub fn egress_service(mut self, service: Arc<dyn EgressService>) -> Self {
-        self.platform.egress_service = service;
+        self.composition.egress_service = service;
         self
     }
 
     /// Set the system-wide utility LLM service.
     pub fn utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
-        self.platform.utility_llm_service = service;
+        self.composition.utility_llm_service = service;
         self
     }
 
-    /// Set the platform-wide session filesystem factory.
+    /// Set the host-wide session filesystem factory.
     pub fn session_file_system_factory(
         mut self,
         factory: Arc<dyn SessionFileSystemFactory>,
     ) -> Self {
-        self.platform.session_file_system_factory = factory;
+        self.composition.session_file_system_factory = factory;
         self
     }
 
     /// Insert a type-keyed service supplied by a crate layered above core.
     pub fn extension<T: std::any::Any + Send + Sync>(mut self, value: Arc<T>) -> Self {
-        self.platform.extensions.insert(value);
+        self.composition.extensions.insert(value);
         self
     }
 
-    /// Build the platform definition.
-    pub fn build(self) -> PlatformDefinition {
-        self.platform
+    /// Build the composition.
+    pub fn build(self) -> HostComposition {
+        self.composition
     }
 }
 
-impl Default for PlatformDefinitionBuilder {
+impl Default for HostCompositionBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -207,56 +212,56 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityStatus, HumanIntentCapability};
     use async_trait::async_trait;
+    use everruns_core::{CapabilityStatus, HumanIntentCapability};
 
     /// Chat driver stub: registration-only, never invoked in these tests.
     struct StubChatDriver;
 
     #[async_trait]
-    impl crate::ChatDriver for StubChatDriver {
+    impl everruns_core::ChatDriver for StubChatDriver {
         async fn chat_completion_stream(
             &self,
-            _endpoint: &crate::ProviderEndpoint,
-            _messages: Vec<crate::LlmMessage>,
-            _config: &crate::LlmCallConfig,
-        ) -> crate::Result<crate::LlmResponseStream> {
+            _endpoint: &everruns_core::ProviderEndpoint,
+            _messages: Vec<everruns_core::LlmMessage>,
+            _config: &everruns_core::LlmCallConfig,
+        ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
             Ok(Box::pin(futures::stream::empty()))
         }
     }
 
     #[test]
-    fn test_platform_definition_builder() {
+    fn composition_builder_registers_capabilities_and_drivers() {
         let mut drivers = DriverRegistry::new();
-        let mut descriptor = crate::driver_registry::DriverDescriptor::chat_only(
-            crate::DriverId::LlmSim,
-            |_config| Box::new(StubChatDriver) as crate::BoxedChatDriver,
+        let mut descriptor = everruns_core::driver_registry::DriverDescriptor::chat_only(
+            everruns_core::DriverId::LlmSim,
+            |_config| Box::new(StubChatDriver) as everruns_core::BoxedChatDriver,
         );
         descriptor.display_name = "Stub".into();
         drivers.register_descriptor_or_replace(descriptor);
 
-        let platform = PlatformDefinition::builder()
+        let composition = HostComposition::builder()
             .driver_registry(drivers.clone())
             .capability(HumanIntentCapability)
             .build();
 
-        assert!(platform.capability_registry().has("human_intent"));
+        assert!(composition.capability_registry().has("human_intent"));
         assert!(
-            platform
+            composition
                 .driver_registry()
-                .has_driver(&crate::DriverId::LlmSim)
+                .has_driver(&everruns_core::DriverId::LlmSim)
         );
     }
 
     #[test]
-    fn test_platform_definition_mutation() {
-        let mut platform = PlatformDefinition::default();
-        platform
+    fn composition_registries_stay_mutable_after_build() {
+        let mut composition = HostComposition::default();
+        composition
             .capability_registry_mut()
             .register(HumanIntentCapability);
 
-        let info = crate::CapabilityInfo::from_core(
-            platform
+        let info = everruns_core::CapabilityInfo::from_core(
+            composition
                 .capability_registry()
                 .get("human_intent")
                 .expect("human_intent registered")

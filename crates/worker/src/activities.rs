@@ -13,7 +13,7 @@
 // Atoms emit events via EventEmitter for observability.
 
 use anyhow::{Context, Result};
-use everruns_core::PlatformDefinition;
+use everruns_host::HostComposition;
 use everruns_host::{
     execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
@@ -97,7 +97,7 @@ pub async fn reason_activity(
     grpc_client: GrpcClient,
     org_id: i64,
     input: ReasonInput,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
     stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>>,
 ) -> Result<ReasonResult> {
     tracing::info!(
@@ -108,9 +108,9 @@ pub async fn reason_activity(
         "Executing reason_activity"
     );
 
-    let mut adapters = GrpcWorkerAdapters::from_client_with_platform_definition(
+    let mut adapters = GrpcWorkerAdapters::from_client_with_host_composition(
         grpc_client,
-        platform_definition.clone(),
+        host_composition.clone(),
     );
     if let Some(hb) = stream_heartbeater {
         adapters = adapters.with_stream_heartbeater(hb);
@@ -143,7 +143,7 @@ pub async fn act_activity(
     grpc_client: GrpcClient,
     org_id: i64,
     input: ActInput,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
 ) -> Result<ActResult> {
     tracing::info!(
         org_id = org_id,
@@ -154,9 +154,9 @@ pub async fn act_activity(
     );
 
     runtime_execute_act_activity(
-        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_platform_definition(
+        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_host_composition(
             grpc_client,
-            platform_definition.clone(),
+            host_composition.clone(),
         )),
         input,
     )

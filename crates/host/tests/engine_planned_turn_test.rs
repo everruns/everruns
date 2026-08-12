@@ -13,12 +13,12 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, PlatformDefinition,
-    ResolvedModel,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ResolvedModel,
 };
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
 };
+use everruns_host::HostComposition;
 use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     TurnStopReason,
@@ -28,10 +28,10 @@ use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use serde_json::json;
 
-fn math_platform() -> PlatformDefinition {
+fn math_platform() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
-    PlatformDefinition::new(capabilities, DriverRegistry::new())
+    HostComposition::new(capabilities, DriverRegistry::new())
 }
 
 fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
@@ -81,7 +81,7 @@ async fn runtime_running(
     let session_id = everruns_core::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(math_platform())
+        .host_composition(math_platform())
         .harness(harness(harness_id))
         .agent(agent(agent_id, max_iterations))
         .session(session(session_id, harness_id, agent_id))

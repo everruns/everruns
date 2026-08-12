@@ -52,7 +52,7 @@ pub struct OrgInitContext<'a> {
 
 /// Post-create org-initialization hook for embedder-provisioned resources.
 ///
-/// `PlatformDefinition` decides *what* a platform is made of; `OrgInitializer`
+/// `HostComposition` decides *what* a platform is made of; `OrgInitializer`
 /// runs *when an organization is created*. OSS invokes every registered
 /// initializer from the shared org-init routine, after built-in harnesses and
 /// the default marketplace are provisioned, so an embedder that must set up

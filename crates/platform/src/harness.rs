@@ -319,7 +319,7 @@ pub fn merge_harness_chain(chain: &[Harness]) -> Option<Harness> {
 // ============================================================================
 // Built-in harness provisioning templates (EVE-881)
 //
-// Moved out of core `PlatformDefinition`: product provisioning templates are
+// Moved out of the core composition root: product provisioning templates are
 // platform/server composition, not Framework execution configuration. IDs are
 // assigned by the seeder at provisioning time — never hardcoded.
 // ============================================================================

@@ -11,6 +11,7 @@
 // Run with:
 //   cargo run -p everruns-host --example real_disk_agent_instructions
 
+use everruns_host::HostComposition;
 use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
@@ -18,7 +19,7 @@ use everruns_builtins::AgentInstructionsCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
-    HarnessDefinition, PlatformDefinition, ResolvedModel, SessionExecutionState,
+    HarnessDefinition, ResolvedModel, SessionExecutionState,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -40,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //    filesystem factory so only the workspace surface is real.
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(AgentInstructionsCapability);
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(capabilities)
         .driver_registry(DriverRegistry::new())
         .session_file_system_factory(Arc::new(RealDiskSessionFileSystemFactory::new(
@@ -53,7 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let session_id = "session_00000000000000000000000000000091".parse().unwrap();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("ack"))
         .default_model(ResolvedModel {
             model: "llmsim-model".into(),

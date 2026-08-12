@@ -34,17 +34,24 @@
 //! loop, and demo fixture capabilities) lives in the `everruns-test-support`
 //! crate; core carries no test implementations.
 //!
+//! Composition is not core's job either. The execution surface an embedder
+//! assembles — capability registry, driver registry, egress, utility LLM and
+//! the session filesystem factory — is `everruns_host::HostComposition`
+//! (EVE-887); core owns the registries themselves, not the bundle that selects
+//! a deployment's shape.
+//!
 //! # Example
 //!
 //! ```
-//! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
+//! use everruns_core::{CapabilityRegistry, DriverRegistry};
 //! use everruns_core::capabilities::HumanIntentCapability;
 //!
 //! let mut capabilities = CapabilityRegistry::new();
 //! capabilities.register(HumanIntentCapability);
+//! assert!(capabilities.get("human_intent").is_some());
 //!
-//! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
-//! assert!(platform.capability_registry().get("human_intent").is_some());
+//! let drivers = DriverRegistry::new();
+//! assert!(drivers.registered_providers().is_empty());
 //! ```
 
 // Runtime types (tool definitions, capability types)
@@ -196,7 +203,6 @@ pub use tool_call_integrity::retain_complete_llm_tool_exchanges;
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
-pub mod platform_definition;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
@@ -376,7 +382,10 @@ pub use credential_provider::{CredentialProvider, EnvCredentialProvider, Provide
 // `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —
 // product provisioning templates are platform/server composition, not
 // Framework execution configuration.
-pub use platform_definition::{PlatformDefinition, PlatformDefinitionBuilder};
+// EVE-887: the composition root moved to `everruns-host` as `HostComposition`.
+// Selecting a deployment's capabilities, drivers and host services is
+// composition, not kernel execution configuration; core owns the registries
+// and service contracts, and the layer that runs a turn owns the bundle.
 // EVE-880: the managed session sandbox record, its provider SPI and lifecycle
 // helpers moved to the `everruns-platform` crate. One provider-backed sandbox
 // per session is control-plane state — a turn reaches it through the sandbox

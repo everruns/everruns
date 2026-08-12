@@ -23,9 +23,10 @@ use everruns_core::typed_id::{
     AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
 };
 use everruns_core::{
-    Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, SessionContextReport,
-    SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
+    Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
+    ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
+use everruns_host::HostComposition;
 use everruns_platform::BuiltInHarnessRole;
 use everruns_platform::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
@@ -438,28 +439,28 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
-        Self::with_platform_definition(
+        Self::with_host_composition(
             db,
             runner,
             auth,
-            &crate::platform::oss_platform_definition(),
+            &crate::platform::oss_host_composition(),
             &crate::platform::oss_built_in_harnesses(),
             crate::event_delivery::EventDelivery::in_memory(),
         )
     }
 
-    pub fn with_platform_definition(
+    pub fn with_host_composition(
         db: Arc<StorageBackend>,
         runner: Arc<dyn AgentRunner>,
         auth: AuthState,
-        platform_definition: &PlatformDefinition,
+        host_composition: &HostComposition,
         built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
-                platform_definition.capability_registry().clone(),
+                host_composition.capability_registry().clone(),
             )),
             event_service: EventService::new(db.clone(), event_delivery.clone()),
             db,

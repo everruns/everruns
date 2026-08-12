@@ -13,9 +13,10 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, Capability, CapabilityRegistry, CapabilityStatus, DriverId,
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
-    PlatformDefinition, ResolvedModel, ScopedMcpServer, ScopedMcpServers, Tool, ToolCall,
-    ToolContext, ToolExecutionResult, ToolResult,
+    ResolvedModel, ScopedMcpServer, ScopedMcpServers, Tool, ToolCall, ToolContext,
+    ToolExecutionResult, ToolResult,
 };
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
@@ -101,8 +102,8 @@ fn scoped_servers() -> ScopedMcpServers {
     servers
 }
 
-fn platform_with_egress(traffic: Arc<Mutex<McpTraffic>>) -> PlatformDefinition {
-    PlatformDefinition::builder()
+fn platform_with_egress(traffic: Arc<Mutex<McpTraffic>>) -> HostComposition {
+    HostComposition::builder()
         .capability_registry(CapabilityRegistry::with_builtins())
         .driver_registry(DriverRegistry::new())
         .egress_service(Arc::new(FakeMcpEgress { traffic }))
@@ -245,7 +246,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
     };
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform_with_egress(traffic.clone()))
+        .host_composition(platform_with_egress(traffic.clone()))
         .llm_sim(
             LlmSimConfig::fixed("Calling the docs MCP tool.")
                 .with_tool_call_sequence(vec![vec![mcp_tool_call], vec![]]),
@@ -318,7 +319,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     capabilities.register(LiveCapability {
         hooks: hooks.clone(),
     });
-    let platform = PlatformDefinition::builder()
+    let platform = HostComposition::builder()
         .capability_registry(capabilities)
         .driver_registry(DriverRegistry::new())
         .egress_service(Arc::new(FakeMcpEgress {
@@ -327,7 +328,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
         .build();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform)
+        .host_composition(platform)
         .llm_sim(LlmSimConfig::scripted(vec![
             SimTurn::Assistant("before activation".to_string()),
             SimTurn::ToolCalls(vec![

@@ -14,9 +14,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
-};
+use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel};
+use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimTurn};
@@ -91,10 +90,10 @@ impl SessionScheduleStore for RecordingScheduleStore {
     }
 }
 
-fn platform_with_capability() -> PlatformDefinition {
+fn platform_with_capability() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(UsageLimitAutoContinueCapability);
-    PlatformDefinition::new(capabilities, DriverRegistry::new())
+    HostComposition::new(capabilities, DriverRegistry::new())
 }
 
 fn llmsim_model() -> ResolvedModel {
@@ -130,7 +129,7 @@ async fn usage_limit_error_schedules_continuation_and_promises_resume() {
     let store_for_factory = store.clone();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform_with_capability())
+        .host_composition(platform_with_capability())
         .llm_sim(LlmSimConfig::scripted(vec![SimTurn::Error(
             SimError::Other(CODEX_USAGE_LIMIT_BODY.to_string()),
         )]))
@@ -198,7 +197,7 @@ async fn usage_limit_error_without_capability_stays_generic() {
     // Same failure and schedule store, but the capability is NOT enabled on the
     // harness. Nothing should be scheduled and the copy must stay generic.
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform_with_capability())
+        .host_composition(platform_with_capability())
         .llm_sim(LlmSimConfig::scripted(vec![SimTurn::Error(
             SimError::Other(CODEX_USAGE_LIMIT_BODY.to_string()),
         )]))

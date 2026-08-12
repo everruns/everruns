@@ -16,7 +16,8 @@ use crate::storage::{
     },
     password::hash_password,
 };
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade, PlatformDefinition};
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DeploymentGrade};
+use everruns_host::HostComposition;
 use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -1341,8 +1342,8 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
     },
 ];
 
-fn enabled_seed_provider_ids(platform_definition: &PlatformDefinition) -> HashSet<Uuid> {
-    let registered_provider_types: HashSet<String> = platform_definition
+fn enabled_seed_provider_ids(host_composition: &HostComposition) -> HashSet<Uuid> {
+    let registered_provider_types: HashSet<String> = host_composition
         .driver_registry()
         .registered_providers()
         .into_iter()
@@ -1356,12 +1357,12 @@ fn enabled_seed_provider_ids(platform_definition: &PlatformDefinition) -> HashSe
         .collect()
 }
 
-async fn seed_providers_with_platform_definition(
+async fn seed_providers_with_host_composition(
     db: &StorageBackend,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
-    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
+    let enabled_provider_ids = enabled_seed_provider_ids(host_composition);
 
     for seed in SEED_PROVIDERS {
         if !enabled_provider_ids.contains(&seed.id) {
@@ -1478,9 +1479,9 @@ where
 async fn seed_default_provider_keys_from_env(
     db: &StorageBackend,
     encryption: &EncryptionService,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
 ) -> anyhow::Result<SeedResult> {
-    seed_default_provider_keys_with_lookup(db, encryption, platform_definition, |provider_type| {
+    seed_default_provider_keys_with_lookup(db, encryption, host_composition, |provider_type| {
         crate::services::provider_resolver::get_default_api_key_from_env(provider_type)
     })
     .await
@@ -1491,14 +1492,14 @@ async fn seed_default_provider_keys_from_env(
 async fn seed_default_provider_keys_with_lookup<F>(
     db: &StorageBackend,
     encryption: &EncryptionService,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
     key_lookup: F,
 ) -> anyhow::Result<SeedResult>
 where
     F: Fn(&str) -> Option<String>,
 {
     let mut result = SeedResult::default();
-    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
+    let enabled_provider_ids = enabled_seed_provider_ids(host_composition);
 
     for seed in SEED_PROVIDERS {
         if !enabled_provider_ids.contains(&seed.id) {
@@ -2175,12 +2176,12 @@ async fn seed_default_org_feature_flags(db: &StorageBackend) -> anyhow::Result<S
 }
 
 /// Seed LLM models into the database (upserts, only when changed)
-async fn seed_models_with_platform_definition(
+async fn seed_models_with_host_composition(
     db: &StorageBackend,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
-    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
+    let enabled_provider_ids = enabled_seed_provider_ids(host_composition);
 
     for seed in SEED_MODELS {
         if !enabled_provider_ids.contains(&seed.provider_id) {
@@ -2325,10 +2326,10 @@ pub struct SeedAuthContext {
 ///
 /// Uses `DeploymentGrade::from_env()` to determine which agents to seed.
 pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> JoinHandle<()> {
-    spawn_seed_task_with_platform_definition(
+    spawn_seed_task_with_host_composition(
         db,
         auth_ctx,
-        crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
+        crate::platform::oss_host_composition_for_grade(DeploymentGrade::from_env()),
         crate::platform::oss_built_in_harnesses(),
         None,
     )
@@ -2342,10 +2343,10 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> Jo
 /// values so single-tenant/dev execution can resolve them via the fail-closed
 /// DB path. Multitenant deployments leave this disabled and never spend
 /// platform-level keys.
-pub fn spawn_seed_task_with_platform_definition(
+pub fn spawn_seed_task_with_host_composition(
     db: Arc<StorageBackend>,
     auth_ctx: SeedAuthContext,
-    platform_definition: PlatformDefinition,
+    host_composition: HostComposition,
     built_in_harnesses: Vec<everruns_platform::BuiltInHarnessDefinition>,
     encryption: Option<Arc<EncryptionService>>,
 ) -> JoinHandle<()> {
@@ -2360,7 +2361,7 @@ pub fn spawn_seed_task_with_platform_definition(
             &db,
             grade,
             &auth_ctx,
-            &platform_definition,
+            &host_composition,
             &built_in_harnesses,
         )
         .await
@@ -2392,7 +2393,7 @@ pub fn spawn_seed_task_with_platform_definition(
                             match seed_default_provider_keys_from_env(
                                 &db,
                                 encryption,
-                                &platform_definition,
+                                &host_composition,
                             )
                             .await
                             {
@@ -2497,18 +2498,18 @@ async fn run_seed_with_retry(
     db: &StorageBackend,
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
     built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> Result<SeedResult, String> {
     let mut retry_count = 0;
     let mut delay = INITIAL_RETRY_DELAY;
 
     loop {
-        match seed_all_with_platform_definition(
+        match seed_all_with_host_composition(
             db,
             grade,
             auth_ctx,
-            platform_definition,
+            host_composition,
             built_in_harnesses,
         )
         .await
@@ -2564,23 +2565,23 @@ pub async fn seed_all(
     grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
 ) -> anyhow::Result<SeedResult> {
-    let platform_definition = crate::platform::oss_platform_definition_for_grade(grade);
-    seed_all_with_platform_definition(
+    let host_composition = crate::platform::oss_host_composition_for_grade(grade);
+    seed_all_with_host_composition(
         db,
         grade,
         auth_ctx,
-        &platform_definition,
+        &host_composition,
         &crate::platform::oss_built_in_harnesses(),
     )
     .await
 }
 
 /// Run all seeders in order using an explicit platform definition.
-pub async fn seed_all_with_platform_definition(
+pub async fn seed_all_with_host_composition(
     db: &StorageBackend,
     _grade: DeploymentGrade,
     auth_ctx: &SeedAuthContext,
-    platform_definition: &PlatformDefinition,
+    host_composition: &HostComposition,
     built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
@@ -2620,7 +2621,7 @@ pub async fn seed_all_with_platform_definition(
     }
 
     // Seed providers (models depend on them)
-    let provider_result = seed_providers_with_platform_definition(db, platform_definition).await?;
+    let provider_result = seed_providers_with_host_composition(db, host_composition).await?;
     tracing::debug!(
         created = provider_result.created,
         updated = provider_result.updated,
@@ -2630,7 +2631,7 @@ pub async fn seed_all_with_platform_definition(
     result.merge(provider_result);
 
     // Seed models (depend on providers)
-    let model_result = seed_models_with_platform_definition(db, platform_definition).await?;
+    let model_result = seed_models_with_host_composition(db, host_composition).await?;
     tracing::debug!(
         created = model_result.created,
         updated = model_result.updated,
@@ -2826,10 +2827,10 @@ mod tests {
     async fn materialize_fills_empty_provider_and_resolves() {
         let db = make_db();
         let encryption = test_encryption();
-        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
 
         // Seed the bare provider rows (no keys).
-        seed_providers_with_platform_definition(&db, &platform)
+        seed_providers_with_host_composition(&db, &platform)
             .await
             .unwrap();
 
@@ -2861,8 +2862,8 @@ mod tests {
     async fn materialize_does_not_clobber_existing_key() {
         let db = make_db();
         let encryption = test_encryption();
-        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_platform_definition(&db, &platform)
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+        seed_providers_with_host_composition(&db, &platform)
             .await
             .unwrap();
 
@@ -2915,8 +2916,8 @@ mod tests {
     async fn materialize_no_env_key_is_noop() {
         let db = make_db();
         let encryption = test_encryption();
-        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
-        seed_providers_with_platform_definition(&db, &platform)
+        let platform = crate::platform::oss_host_composition_for_grade(DeploymentGrade::Dev);
+        seed_providers_with_host_composition(&db, &platform)
             .await
             .unwrap();
 

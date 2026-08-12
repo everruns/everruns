@@ -30,7 +30,7 @@ Registration pattern:
 ```rust,ignore
 let mut drivers = DriverRegistry::new();
 everruns_openai::register_driver(&mut drivers);
-let platform = PlatformDefinition::new(capabilities, drivers);
+let platform = HostComposition::new(capabilities, drivers);
 ```
 
 For an OpenAI-compatible local server (e.g. Ollama, a gateway), keep the
@@ -82,7 +82,7 @@ Registration pattern:
 let mut capabilities = CapabilityRegistry::new();
 capabilities.register(DuckDuckGoCapability);
 capabilities.register(DaytonaCapability);
-let platform = PlatformDefinition::new(capabilities, drivers);
+let platform = HostComposition::new(capabilities, drivers);
 ```
 
 ## Connection-aware integrations (credentials)

@@ -6,6 +6,7 @@
 //! turn idling — and exactly once. The LLM is simulated, so the scenario is
 //! deterministic and runs without credentials.
 
+use everruns_host::HostComposition;
 use everruns_test_support::LlmSimRuntimeExt;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,10 +24,7 @@ use everruns_core::session_task::{
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::SessionId;
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, PlatformDefinition,
-    ResolvedModel,
-};
+use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, ResolvedModel};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
@@ -282,13 +280,13 @@ impl Tool for CompleteChildTool {
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn platform(policy: TaskWakePolicy) -> PlatformDefinition {
+fn platform(policy: TaskWakePolicy) -> HostComposition {
     let mut caps = CapabilityRegistry::new();
     caps.register(WakeDemoCapability { policy });
     caps.register(InfinityContextCapability);
     let mut drivers = DriverRegistry::new();
     everruns_test_support::llmsim_driver::register_driver(&mut drivers);
-    PlatformDefinition::new(caps, drivers)
+    HostComposition::new(caps, drivers)
 }
 
 async fn build_runtime(
@@ -315,7 +313,7 @@ async fn build_runtime(
         .build();
 
     let runtime = InProcessRuntimeBuilder::new()
-        .platform_definition(platform(policy))
+        .host_composition(platform(policy))
         .llm_sim(LlmSimConfig::scripted(script))
         .default_model(ResolvedModel {
             model: "llmsim-model".to_string(),

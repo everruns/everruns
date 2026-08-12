@@ -33,6 +33,7 @@
 mod backends;
 mod builders;
 mod capabilities;
+mod composition;
 pub mod events;
 mod file_store_decorators;
 mod grep_limits;
@@ -55,6 +56,7 @@ pub use backends::{
 pub use builders::{
     AgentBuilder, HarnessBuilder, SeededHarness, SessionBuilder, SingleSessionBuilder,
 };
+pub use composition::{HostComposition, HostCompositionBuilder};
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,

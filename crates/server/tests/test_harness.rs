@@ -214,8 +214,7 @@ impl TestServer {
 
         // Seed default data synchronously (harnesses, agents, providers, etc.)
         let grade = everruns_core::DeploymentGrade::from_env();
-        let platform_definition =
-            Arc::new(everruns_server::oss_platform_definition_for_grade(grade));
+        let host_composition = Arc::new(everruns_server::oss_host_composition_for_grade(grade));
         let built_in_harnesses = Arc::new(everruns_server::oss_built_in_harnesses());
         seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
             .await
@@ -239,7 +238,7 @@ impl TestServer {
         let auth_backend = auth::BuiltinAuthBackend::new(
             auth_config.clone(),
             db.clone(),
-            platform_definition.clone(),
+            host_composition.clone(),
         );
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()))
             .with_db(db.clone());
@@ -259,7 +258,7 @@ impl TestServer {
         };
 
         // Create driver registry
-        let driver_registry = Arc::new(platform_definition.driver_registry().clone());
+        let driver_registry = Arc::new(host_composition.driver_registry().clone());
 
         // Shared event delivery — mirrors production wiring where all services
         // publish to the same broadcast backend that SSE subscribers listen on.
@@ -318,11 +317,11 @@ impl TestServer {
         let auth_state = auth_state.with_system_feature_flags(feature_flags.clone());
 
         // Create module-specific states
-        let sessions_state = api::sessions::AppState::with_platform_definition(
+        let sessions_state = api::sessions::AppState::with_host_composition(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            &platform_definition,
+            &host_composition,
             &built_in_harnesses,
             event_delivery.clone(),
         );
@@ -344,7 +343,7 @@ impl TestServer {
             session_service: Arc::new(
                 everruns_server::domains::sessions::SessionService::with_registry(
                     db.clone(),
-                    platform_definition.capability_registry().clone(),
+                    host_composition.capability_registry().clone(),
                 ),
             ),
             event_service: event_service.clone(),
@@ -384,7 +383,7 @@ impl TestServer {
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
-            platform_definition.capability_registry().clone(),
+            host_composition.capability_registry().clone(),
         ));
         let mcp_service = Arc::new(
             everruns_server::domains::mcp_servers::McpServerService::new(
@@ -408,7 +407,7 @@ impl TestServer {
             capability_service.clone(),
             auth_state.clone(),
             grade,
-            platform_definition.clone(),
+            host_composition.clone(),
         );
         let commands_state = api::commands::AppState::new(
             capability_service.clone(),
@@ -418,7 +417,7 @@ impl TestServer {
                     event_service.clone(),
                     provider_resolver,
                     mcp_service.clone(),
-                    platform_definition.capability_registry().clone(),
+                    host_composition.capability_registry().clone(),
                     driver_registry.as_ref().clone(),
                     sqldb_store.clone(),
                 )
@@ -431,7 +430,7 @@ impl TestServer {
             capability_service.clone(),
             auth_state.clone(),
             grade,
-            platform_definition.clone(),
+            host_composition.clone(),
             built_in_harnesses.clone(),
         );
         let session_files_state = api::session_files::AppState::new(
@@ -611,7 +610,7 @@ impl TestServer {
             db.clone(),
             runner.clone(),
             auth_state.clone(),
-            &platform_definition,
+            &host_composition,
             &built_in_harnesses,
             feature_flags.notifications,
             event_delivery.clone(),

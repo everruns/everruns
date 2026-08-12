@@ -3,11 +3,12 @@
 //! The default OSS platform stays centralized here so server startup, org
 //! initialization, and docs can all point to the same preset. Inventory-based
 //! integration discovery is intentionally confined to this module; embedders
-//! can start from the OSS preset or construct a `PlatformDefinition` manually
+//! can start from the OSS preset or construct a `HostComposition` manually
 //! without depending on inventory registration.
 
 use everruns_core::deployment::DeploymentGrade;
-use everruns_core::{DEFAULT_ORG_ID, PlatformDefinition, SystemUtilityLlmConfig};
+use everruns_core::{DEFAULT_ORG_ID, SystemUtilityLlmConfig};
+use everruns_host::HostComposition;
 use everruns_http::DirectEgressService;
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};
@@ -27,13 +28,13 @@ pub(crate) const fn platform_default_model_id(org_id: i64) -> Option<Uuid> {
     }
 }
 
-/// Build the default OSS `PlatformDefinition` for the current deployment grade.
-pub fn oss_platform_definition() -> PlatformDefinition {
-    oss_platform_definition_for_grade(DeploymentGrade::from_env())
+/// Build the default OSS `HostComposition` for the current deployment grade.
+pub fn oss_host_composition() -> HostComposition {
+    oss_host_composition_for_grade(DeploymentGrade::from_env())
 }
 
-/// Build the default OSS `PlatformDefinition` for an explicit deployment grade.
-pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefinition {
+/// Build the default OSS `HostComposition` for an explicit deployment grade.
+pub fn oss_host_composition_for_grade(grade: DeploymentGrade) -> HostComposition {
     let capability_registry =
         everruns_platform::capabilities::hosted_capability_registry_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
@@ -45,8 +46,8 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     // EVE-879: the connector registry and system email sender are hosted
     // control-plane services, composed on `ServerAppBuilder` (see
     // `oss_connector_registry` / `system_email_sender`), not carried on the
-    // execution-facing `PlatformDefinition`.
-    let mut builder = PlatformDefinition::builder()
+    // execution-facing `HostComposition`.
+    let mut builder = HostComposition::builder()
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
         .egress_service(egress_service)

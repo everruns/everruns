@@ -112,6 +112,7 @@ everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-session-sqldb = { path = "../session-sqldb" }
+everruns-host = { path = "../host" }  # HostComposition, the execution surface the OSS preset builds
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }
