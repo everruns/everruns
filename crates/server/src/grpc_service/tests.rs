@@ -612,7 +612,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         ),
     ));
 
-    let spawn_tool = everruns_core::capabilities::SpawnSubagentAsAgentTool;
+    let spawn_tool = everruns_platform::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
         .execute_with_context(
             serde_json::json!({
@@ -690,7 +690,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             "required_scopes": ["fake_aws:rds:create"]
         }]
     });
-    let handoff_tool = everruns_core::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
+    let handoff_tool = everruns_platform::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
 
     context.connection_resolver = Some(Arc::new(AllowingConnectionResolver));
     let handoff_result = handoff_tool

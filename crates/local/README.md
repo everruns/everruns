@@ -40,7 +40,9 @@ harness engine for building unstoppable agents.
 - **`LocalBackends`** — composable construction of `HostBackends` plus the
   local stores, preserving a caller-supplied event bus and session file-system
   factory.
-- **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`.
+- **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`;
+  its default registry composes neutral core capabilities, the full portable
+  `everruns-builtins` policy catalog, and host integrations.
 
 Session identity, task, and schedule state persist to SQLite. Advanced hosts
 still select their event log independently; the Framework's `LocalConfig`

@@ -2,7 +2,7 @@
 
 Turbopuffer vector-store backend for Everruns Knowledge Indexes.
 
-Implements the vendor-neutral `VectorStore` trait from `everruns-core` against
+Implements the hosted `VectorStore` trait from `everruns-platform` against
 Turbopuffer's v2 HTTP API. This is the reference production backend; the
 in-memory store stays the default and Turbopuffer is **opt-in** via the
 `TURBOPUFFER_API_KEY` environment variable (regional endpoint via

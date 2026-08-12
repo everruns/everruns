@@ -18,14 +18,15 @@ mod llm_test_matrix;
 use everruns_test_support::{TestMathCapability, TestWeatherCapability};
 use llm_test_matrix::*;
 
-use everruns_core::capabilities::{
+use everruns_builtins::{
     AutoToolSearchCapability, ClaudeToolSearchCapability, CurrentTimeCapability,
-    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability,
-    TOOL_SEARCH_TOOL_NAME, ToolSearchCapability,
+    OpenAiToolSearchCapability, StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME,
+    ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_platform::capabilities::SessionCapability;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {

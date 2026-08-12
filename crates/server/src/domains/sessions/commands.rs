@@ -15,8 +15,9 @@ use everruns_core::events::{
 use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
 use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
-use everruns_core::{Message, SessionContextReport, session_title_updated_event};
+use everruns_core::{Message, SessionContextReport};
 use everruns_platform::ANONYMOUS_USER_ID;
+use everruns_platform::capabilities::session_title_updated_event;
 use everruns_platform::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource,

@@ -43,7 +43,7 @@ The capability encapsulates all AGENTS.md logic: reading from the session filesy
 formatting, size limiting, and XML wrapping. It uses config-aware `system_prompt_contribution()`
 async method (via `SystemPromptContext`) to access the session filesystem.
 
-See `crates/core/src/capabilities/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
+See `crates/builtins/src/agent_instructions.rs` for the `AgentInstructionsCapability` implementation.
 
 ## SystemPromptContext
 
@@ -85,7 +85,7 @@ ReasonAtom holds an optional `SessionFileSystem` that is passed to capabilities 
 
 ## Constants
 
-See `crates/core/src/capabilities/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
+See `crates/builtins/src/agent_instructions.rs` for `MAX_AGENTS_MD_SIZE` (32 KiB), `AGENTS_MD_PATH`, `DEFAULT_AGENT_INSTRUCTIONS_FILE`, `MAX_AGENT_INSTRUCTIONS_FILES`, and `AGENT_INSTRUCTIONS_CAPABILITY_ID`.
 
 ## API
 

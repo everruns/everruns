@@ -71,22 +71,10 @@ use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facin
 // Helper Functions
 // ============================================================================
 
-/// Apply the opt-in tool-call repair capability (EVE-600) to a finalized batch
-/// of tool calls. No-op unless `tool_call_repair` is in the resolved capability
-/// set, so the default path stays byte-for-byte unchanged.
-///
-/// For each malformed call this runs deterministic local salvage against the
-/// tool's JSON schema, rewrites `arguments` in place when salvage succeeds, and
-/// emits one `tool.call_repaired` event per malformed call with an outcome label
-/// (`local-salvage` | `re-prompt` | `gave-up`). Un-salvaged calls are left
-/// unchanged so they flow to the existing act-phase error path; the per-call
-/// attempt cap (bounding the corrective re-prompt) is enforced by
-/// `ToolCallRepairConfig`, so there is never an infinite repair loop.
-///
-/// Extracted as a free function (like `repair_dangling_tool_calls`) so it can be
-/// exercised by capability-level tests without constructing a full `ReasonAtom`.
-#[allow(clippy::too_many_arguments)] // all inputs are the per-turn repair context
-async fn apply_tool_call_repair(
+/// Apply capability-owned transforms to the finalized model tool-call batch.
+/// The reason atom owns timing and context; each implementation owns its policy.
+#[allow(clippy::too_many_arguments)]
+async fn apply_finalized_tool_calls_hooks(
     capability_registry: &CapabilityRegistry,
     event_emitter: &dyn EventEmitter,
     session_id: SessionId,
@@ -96,71 +84,19 @@ async fn apply_tool_call_repair(
     tool_calls: &mut [ToolCall],
     iteration: u32,
 ) {
-    use crate::capabilities::{
-        RepairOutcome, SalvageResult, TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairConfig,
-        salvage_tool_arguments,
+    let hook_context = crate::finalized_tool_calls::FinalizedToolCallsContext {
+        event_emitter,
+        session_id,
+        atom_context: context,
+        tool_definitions,
+        iteration,
     };
-
-    // Opt-in: only run when the capability is enabled for this agent.
-    let Some(cfg) = resolved_capability_configs.iter().find(|c| {
-        capability_registry.canonical_id(c.capability_id()) == Some(TOOL_CALL_REPAIR_CAPABILITY_ID)
-    }) else {
-        return;
-    };
-    let repair_config = ToolCallRepairConfig::from_json(cfg.config_value());
-
-    for call in tool_calls.iter_mut() {
-        // Schema for the targeted tool, if its definition is available.
-        let schema = tool_definitions
-            .iter()
-            .find(|t| t.name() == call.name)
-            .map(|t| t.full_parameters().clone());
-
-        let outcome = match salvage_tool_arguments(&call.arguments, schema.as_ref()) {
-            // Well-formed call: nothing to do, do not emit an event.
-            SalvageResult::AlreadyValid => continue,
-            SalvageResult::Repaired(fixed) => {
-                call.arguments = fixed;
-                RepairOutcome::LocalSalvage
-            }
-            // Local salvage failed. The corrective re-prompt is realized by the
-            // outer agent loop retrying on the next reason iteration, so the
-            // per-turn `iteration` (1-based) is the count of attempts already
-            // spent on this turn: prior_attempts = iteration - 1. The bounded
-            // decision is Reprompt while attempts remain, else GaveUp. Either way
-            // the call is left unchanged and flows to the existing error path.
-            SalvageResult::Unsalvageable => {
-                repair_config.outcome_after_failed_salvage(iteration.saturating_sub(1))
-            }
+    for config in resolved_capability_configs {
+        let Some(capability) = capability_registry.get(config.capability_id()) else {
+            continue;
         };
-
-        tracing::info!(
-            session_id = %session_id,
-            turn_id = %context.turn_id,
-            tool_call_id = %call.id,
-            tool_name = %call.name,
-            outcome = outcome.label(),
-            "ReasonAtom: tool-call repair"
-        );
-
-        if let Err(e) = event_emitter
-            .emit(EventRequest::new(
-                session_id,
-                EventContext::from_atom_context(context),
-                crate::events::ToolCallRepairedData {
-                    turn_id: context.turn_id,
-                    tool_call_id: call.id.clone(),
-                    tool_name: call.name.clone(),
-                    outcome: outcome.label().to_string(),
-                },
-            ))
-            .await
-        {
-            tracing::warn!(
-                session_id = %session_id,
-                error = %e,
-                "ReasonAtom: failed to emit tool.call_repaired event"
-            );
+        if let Some(hook) = capability.finalized_tool_calls_hook(config.config_value()) {
+            hook.apply(&hook_context, tool_calls).await;
         }
     }
 }
@@ -462,6 +398,43 @@ fn error_disclosure_override(messages: &[Message]) -> Option<String> {
         .clone()
 }
 
+/// Resolve the message-requested disclosure against the ceiling contributed
+/// by the active capability set. The engine consumes the contribution through
+/// the neutral `Capability` contract and does not know the implementation ID.
+fn resolve_error_disclosure(
+    registry: &CapabilityRegistry,
+    configs: &[crate::AgentCapabilityConfig],
+    requested: Option<&str>,
+) -> ErrorDisclosure {
+    let ceiling = configs
+        .iter()
+        .find_map(|config| {
+            registry
+                .get(config.capability_id())?
+                .error_disclosure(config.config_value())
+        })
+        .unwrap_or_default();
+
+    // THREAT[TM-LLM-024]: client controls may narrow disclosure but never
+    // widen it beyond the operator-selected capability ceiling.
+    requested
+        .and_then(ErrorDisclosure::parse)
+        .map_or(ceiling, |requested| requested.min(ceiling))
+}
+
+fn filter_response_text(
+    registry: &CapabilityRegistry,
+    configs: &[crate::AgentCapabilityConfig],
+    mut text: String,
+) -> String {
+    for config in configs {
+        if let Some(capability) = registry.get(config.capability_id()) {
+            text = capability.filter_response_text(text, config.config_value());
+        }
+    }
+    text
+}
+
 fn is_dynamic_error_placeholder(text: &str) -> bool {
     (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
@@ -610,6 +583,7 @@ fn materially_reduced(before: u64, after: u64) -> bool {
 #[allow(clippy::too_many_arguments)]
 async fn try_apply_native_compaction(
     chat_driver: &dyn crate::ChatDriver,
+    compaction_policy: &dyn crate::compaction_policy::CompactionPolicy,
     checkpoint_store: Option<&Arc<dyn crate::CompactionCheckpointStore>>,
     session_id: SessionId,
     source_sequence: Option<i64>,
@@ -642,7 +616,7 @@ async fn try_apply_native_compaction(
     standalone_input.extend(messages_to_compact_input(messages_to_compact));
     let input_items_before = standalone_input.len();
     let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
-        .then(|| crate::capabilities::estimate_total_tokens(messages_to_compact) as u64);
+        .then(|| compaction_policy.estimate_total_tokens(messages_to_compact) as u64);
     let bytes_before = (!stateful_response_continuation || has_prior_opaque_context)
         .then(|| {
             serde_json::to_vec(&standalone_input)
@@ -1172,15 +1146,9 @@ impl ReasonAtom {
         }
     }
 
-    /// Repair malformed tool-call arguments via the opt-in `tool_call_repair`
-    /// capability (EVE-600). No-op unless the capability is in the resolved set,
-    /// keeping the default path byte-for-byte unchanged. Runs deterministic
-    /// local salvage on each call and emits one `tool.call_repaired` event per
-    /// malformed call with an outcome label. The bounded corrective re-prompt is
-    /// realized by the outer agent loop: an un-salvaged call proceeds unchanged
-    /// to the act phase (today's error path) and the model retries next
-    /// iteration; the per-call attempt cap is enforced by `ToolCallRepairConfig`.
-    async fn repair_malformed_tool_calls(
+    /// Run configured capability hooks after model tool calls are finalized and
+    /// before the assistant message is persisted.
+    async fn apply_finalized_tool_call_hooks(
         &self,
         session_id: SessionId,
         context: &AtomContext,
@@ -1189,7 +1157,7 @@ impl ReasonAtom {
         tool_calls: &mut [ToolCall],
         iteration: u32,
     ) {
-        apply_tool_call_repair(
+        apply_finalized_tool_calls_hooks(
             &self.capability_registry,
             self.event_emitter.as_ref(),
             session_id,
@@ -1294,7 +1262,8 @@ impl ReasonAtom {
 
         let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
-                let error_disclosure = crate::capabilities::resolve_error_disclosure(
+                let error_disclosure = resolve_error_disclosure(
+                    &self.capability_registry,
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
@@ -1537,7 +1506,7 @@ impl ReasonAtom {
         let model_with_provider = assembled.model_with_provider;
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
-        let compaction_config = assembled.compaction_config;
+        let compaction_policy = assembled.compaction_policy;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
         let embedder_metadata = assembled.embedder_metadata;
@@ -1655,7 +1624,7 @@ impl ReasonAtom {
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
         let mut checkpoint_suffix_message_count = 0usize;
 
-        if compaction_config.is_some()
+        if compaction_policy.is_some()
             && let Some(store) = self.compaction_checkpoint_store.as_ref()
             && let Some(checkpoint) = store
                 .get_latest(
@@ -1825,8 +1794,8 @@ impl ReasonAtom {
                             context,
                             partial,
                             iteration,
-                            runtime_agent.max_iterations,
-                            &runtime_agent.tools,
+                            &runtime_agent,
+                            &resolved_capability_configs,
                         )
                         .await;
                 }
@@ -1878,7 +1847,10 @@ impl ReasonAtom {
             &context.turn_id.to_string(),
         )
         .await;
-        let raw_tool_result_bytes = crate::capabilities::total_tool_result_bytes(&patched_messages);
+        let raw_tool_result_bytes = compaction_policy
+            .as_ref()
+            .map(|policy| policy.total_tool_result_bytes(&patched_messages))
+            .unwrap_or(0);
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -2159,8 +2131,9 @@ impl ReasonAtom {
         // the request delta, so its reconstructed transcript is not a valid
         // pressure signal. A restored checkpoint also stays disarmed until a
         // meaningful raw suffix has accumulated.
-        if let Some(ref config) = compaction_config {
-            use crate::capabilities::CompactionStrategy;
+        if let Some(ref policy) = compaction_policy {
+            use crate::compaction_policy::CompactionStrategy;
+            let settings = policy.settings();
             let context_window = chat_driver
                 .effective_context_window(&model_with_provider.model)
                 .or_else(|| {
@@ -2174,13 +2147,13 @@ impl ReasonAtom {
             let checkpoint_rearmed = restored_checkpoint.is_none()
                 || checkpoint_suffix_message_count >= CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES;
             let native_strategy = matches!(
-                config.strategy,
+                settings.strategy,
                 CompactionStrategy::Auto | CompactionStrategy::Native
             );
             let durable_source_available =
                 self.compaction_checkpoint_store.is_some() && message_source_sequence.is_some();
             let estimated_tokens_before =
-                crate::capabilities::estimate_total_tokens(&llm_messages_for_call) as u64;
+                policy.estimate_total_tokens(&llm_messages_for_call) as u64;
             let native_attempt_rearmed = if let (Some(store), Some(source_sequence)) = (
                 self.compaction_checkpoint_store.as_ref(),
                 message_source_sequence,
@@ -2226,15 +2199,11 @@ impl ReasonAtom {
             } else {
                 true
             };
-            let window_pressure = crate::capabilities::should_compact_proactively(
-                &llm_messages_for_call,
-                config,
-                context_window,
-            );
-            let cost_pressure = crate::capabilities::should_compact_for_cost(
+            let window_pressure =
+                policy.should_compact_proactively(&llm_messages_for_call, context_window);
+            let cost_pressure = policy.should_compact_for_cost(
                 estimated_tokens_before as usize,
                 raw_tool_result_bytes,
-                config,
                 prior_usage.as_ref(),
             );
             let local_pressure = !stateful_response_continuation
@@ -2289,7 +2258,7 @@ impl ReasonAtom {
                         streaming_event_context.clone(),
                         ContextCompactingData {
                             reason: CompactionReason::ProactiveBudget,
-                            strategy: config.strategy.to_string(),
+                            strategy: settings.strategy.to_string(),
                             messages_before,
                             tokens_before: Some(estimated_tokens_before),
                             bytes_before: None,
@@ -2299,6 +2268,7 @@ impl ReasonAtom {
 
                 if let Some(applied) = try_apply_native_compaction(
                     chat_driver.as_ref(),
+                    policy.as_ref(),
                     self.compaction_checkpoint_store.as_ref(),
                     session_id,
                     message_source_sequence,
@@ -2351,7 +2321,7 @@ impl ReasonAtom {
             // claim a successful durable compaction event.
             if local_pressure && !native_applied {
                 if matches!(
-                    config.strategy,
+                    settings.strategy,
                     CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
                 ) {
                     let conversation = if has_system_prompt {
@@ -2359,10 +2329,7 @@ impl ReasonAtom {
                     } else {
                         &llm_messages_for_call[..]
                     };
-                    let masked = crate::capabilities::apply_observation_masking(
-                        conversation,
-                        &config.observation_masking,
-                    );
+                    let masked = policy.apply_observation_masking(conversation);
                     if masked.masked_count > 0 {
                         let mut model_view = Vec::new();
                         if has_system_prompt {
@@ -2372,11 +2339,9 @@ impl ReasonAtom {
                         llm_messages_for_call = model_view;
                     }
                 }
-                let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
-                if crate::capabilities::estimate_total_tokens(&llm_messages_for_call)
-                    > budget_tokens
-                {
-                    llm_messages_for_call = crate::capabilities::aggressive_trim(
+                let budget_tokens = (context_window as f32 * settings.budget_percent) as usize;
+                if policy.estimate_total_tokens(&llm_messages_for_call) > budget_tokens {
+                    llm_messages_for_call = policy.aggressive_trim(
                         &llm_messages_for_call,
                         budget_tokens,
                         has_system_prompt,
@@ -2444,13 +2409,13 @@ impl ReasonAtom {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
                     // Context too large — run compaction cascade
-                    use crate::capabilities::{CompactionStrategy, apply_observation_masking};
+                    use crate::compaction_policy::CompactionStrategy;
                     use crate::events::{
                         CompactionReason, CompactionStepData, ContextCompactedData,
                         ContextCompactingData,
                     };
 
-                    let Some(config) = compaction_config.clone() else {
+                    let Some(policy) = compaction_policy.clone() else {
                         tracing::warn!(
                             session_id = %session_id,
                             turn_id = %context.turn_id,
@@ -2458,12 +2423,13 @@ impl ReasonAtom {
                         );
                         return Err(e);
                     };
+                    let settings = policy.settings();
                     let messages_before = llm_messages_for_call.len();
 
                     tracing::info!(
                         session_id = %session_id,
                         turn_id = %context.turn_id,
-                        strategy = %config.strategy,
+                        strategy = %settings.strategy,
                         messages = messages_before,
                         "ReasonAtom: context too large, attempting compaction"
                     );
@@ -2476,11 +2442,11 @@ impl ReasonAtom {
                             streaming_event_context.clone(),
                             ContextCompactingData {
                                 reason: CompactionReason::RequestTooLarge,
-                                strategy: config.strategy.to_string(),
+                                strategy: settings.strategy.to_string(),
                                 messages_before,
-                                tokens_before: Some(crate::capabilities::estimate_total_tokens(
-                                    &llm_messages_for_call,
-                                ) as u64),
+                                tokens_before: Some(
+                                    policy.estimate_total_tokens(&llm_messages_for_call) as u64,
+                                ),
                                 bytes_before: None,
                             },
                         ))
@@ -2490,24 +2456,23 @@ impl ReasonAtom {
                     let mut steps: Vec<CompactionStepData> = Vec::new();
                     let mut strategies_used: Vec<String> = Vec::new();
                     let mut checkpoint_id: Option<String> = None;
-                    let mut tokens_before = Some(crate::capabilities::estimate_total_tokens(
-                        &llm_messages_for_call,
-                    ) as u64);
+                    let mut tokens_before =
+                        Some(policy.estimate_total_tokens(&llm_messages_for_call) as u64);
                     let mut tokens_after = None;
                     let mut bytes_before = None;
                     let mut bytes_after = None;
 
                     // Determine which strategies to run based on config
                     let run_masking = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
                     );
                     let run_native = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Native
                     ) && chat_driver.supports_compact();
                     let run_summarization = matches!(
-                        config.strategy,
+                        settings.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Summarization
                     );
 
@@ -2520,10 +2485,7 @@ impl ReasonAtom {
                             &llm_messages_for_call[..]
                         };
 
-                        let masking_result = apply_observation_masking(
-                            conversation_msgs,
-                            &config.observation_masking,
-                        );
+                        let masking_result = policy.apply_observation_masking(conversation_msgs);
 
                         if masking_result.masked_count > 0 {
                             let mut new_messages = Vec::new();
@@ -2554,6 +2516,7 @@ impl ReasonAtom {
                     if run_native
                         && let Some(applied) = try_apply_native_compaction(
                             chat_driver.as_ref(),
+                            policy.as_ref(),
                             self.compaction_checkpoint_store.as_ref(),
                             session_id,
                             message_source_sequence,
@@ -2589,11 +2552,6 @@ impl ReasonAtom {
                     // Step 3: Summarization (if configured, and native didn't run or isn't available)
                     // Only run if we haven't done native compaction (which already compressed everything)
                     if run_summarization && !strategies_used.contains(&"native".to_string()) {
-                        use crate::capabilities::{
-                            build_summarization_prompt, compose_summary_with_recent,
-                            format_messages_for_summarization,
-                        };
-
                         let step_start = Instant::now();
                         let conversation_msgs = if has_system_prompt {
                             &llm_messages_for_call[1..]
@@ -2608,8 +2566,9 @@ impl ReasonAtom {
                         let recent = &conversation_msgs[conversation_msgs.len() - keep_recent..];
 
                         if !to_summarize.is_empty() {
-                            let summary_prompt = build_summarization_prompt(&config.summarization);
-                            let messages_text = format_messages_for_summarization(to_summarize);
+                            let summary_prompt = policy.summarization_prompt();
+                            let messages_text =
+                                policy.format_messages_for_summarization(to_summarize);
 
                             // Use the LLM to generate a summary
                             let summary_messages = vec![
@@ -2636,9 +2595,8 @@ impl ReasonAtom {
                             let summary_config = crate::driver_registry::LlmCallConfig {
                                 speed: None,
                                 verbosity: None,
-                                model: config
-                                    .summarization
-                                    .model
+                                model: settings
+                                    .summarization_model
                                     .clone()
                                     .unwrap_or_else(|| runtime_agent.model.clone()),
                                 temperature: Some(0.0),
@@ -2667,7 +2625,7 @@ impl ReasonAtom {
                                     let summary_text = response.text;
                                     let system_message =
                                         has_system_prompt.then(|| llm_messages_for_call[0].clone());
-                                    llm_messages_for_call = compose_summary_with_recent(
+                                    llm_messages_for_call = policy.compose_summary_with_recent(
                                         system_message,
                                         &summary_text,
                                         recent,
@@ -2705,14 +2663,15 @@ impl ReasonAtom {
                     if strategies_used.is_empty()
                         || llm_messages_for_call.len() > messages_before / 2
                     {
-                        use crate::capabilities::aggressive_trim;
                         let step_start = Instant::now();
                         // Target: keep roughly half the messages by token budget
-                        let estimated_total =
-                            crate::capabilities::estimate_total_tokens(&llm_messages_for_call);
+                        let estimated_total = policy.estimate_total_tokens(&llm_messages_for_call);
                         let target = estimated_total / 2;
-                        let trimmed =
-                            aggressive_trim(&llm_messages_for_call, target, has_system_prompt);
+                        let trimmed = policy.aggressive_trim(
+                            &llm_messages_for_call,
+                            target,
+                            has_system_prompt,
+                        );
                         if trimmed.len() < llm_messages_for_call.len() {
                             llm_messages_for_call = trimmed;
                             let step_duration = step_start.elapsed().as_millis() as u64;
@@ -2733,9 +2692,8 @@ impl ReasonAtom {
                     let cascade_duration = cascade_start.elapsed().as_millis() as u64;
                     let messages_after = llm_messages_for_call.len();
                     if tokens_after.is_none() {
-                        tokens_after = Some(crate::capabilities::estimate_total_tokens(
-                            &llm_messages_for_call,
-                        ) as u64);
+                        tokens_after =
+                            Some(policy.estimate_total_tokens(&llm_messages_for_call) as u64);
                     }
                     let effective = match (tokens_before, tokens_after) {
                         (Some(before), Some(after)) => materially_reduced(before, after),
@@ -3359,10 +3317,13 @@ impl ReasonAtom {
             && !text.is_empty()
             && tool_calls.is_empty()
         {
-            // Strip the synthetic timestamp prefix first (idempotent with the
-            // later strip at message build) so annotation char offsets computed
-            // here stay valid against the finalized message text.
-            text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+            // Apply deterministic capability-owned response filters before
+            // annotation offsets are computed against the finalized text.
+            text = filter_response_text(
+                &self.capability_registry,
+                &resolved_capability_configs,
+                text,
+            );
             let collected = collect_annotations(
                 &annotation_providers,
                 &runtime_agent.system_prompt,
@@ -3486,15 +3447,11 @@ impl ReasonAtom {
             thinking.clear();
         }
 
-        // Tool-call repair seam (EVE-600). This is the smallest provider-agnostic
-        // hook where a malformed tool call can still be intercepted: `tool_calls`
-        // is finalized here but the assistant message and downstream events have
-        // not been built yet. The opt-in `tool_call_repair` capability runs
-        // deterministic local salvage on each call's `arguments` and emits a
-        // `tool.call_repaired` event per malformed call. When the capability is
-        // disabled (the default) this is a no-op and behavior is unchanged.
+        // Finalized tool-call policy seam. This is the smallest provider-neutral
+        // point where configured capabilities can normalize a complete call
+        // batch before the assistant message and downstream events are built.
         if !tool_calls.is_empty() {
-            self.repair_malformed_tool_calls(
+            self.apply_finalized_tool_call_hooks(
                 session_id,
                 context,
                 &resolved_capability_configs,
@@ -3645,10 +3602,13 @@ impl ReasonAtom {
         }
 
         // 18. Store and emit output.message.completed event with metadata and usage.
-        // Strip any synthetic `[time …]` annotation the model echoed from the
-        // message_metadata model view before persisting/returning it (EVE-710),
-        // so exact-output replies are not polluted by the injected prefix.
-        let text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+        // Apply capability-owned response filters before persisting/returning
+        // the finalized assistant text.
+        let text = filter_response_text(
+            &self.capability_registry,
+            &resolved_capability_configs,
+            text,
+        );
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -3743,8 +3703,8 @@ impl ReasonAtom {
         context: &AtomContext,
         partial: PartialStreamState,
         iteration: u32,
-        max_iterations: usize,
-        tool_definitions: &[ToolDefinition],
+        runtime_agent: &crate::RuntimeAgent,
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
     ) -> Result<ReasonResult> {
         let event_context = EventContext::from_atom_context(context);
         let turn_id = context.turn_id;
@@ -3768,10 +3728,13 @@ impl ReasonAtom {
             ))
             .await;
 
-        // Build the assistant message from accumulated text and persist via event.
-        // Strip any echoed `[time …]` annotation the model produced (EVE-710).
-        let accumulated =
-            crate::capabilities::strip_leading_timestamp_annotations(&partial.accumulated);
+        // Build the assistant message from capability-filtered accumulated text
+        // and persist it via the canonical event path.
+        let accumulated = filter_response_text(
+            &self.capability_registry,
+            resolved_capability_configs,
+            partial.accumulated,
+        );
         let assistant_message = Message::assistant(&accumulated).with_id(message_id);
         let output_message_id = message_id;
         self.event_emitter
@@ -3809,8 +3772,8 @@ impl ReasonAtom {
             text: accumulated,
             tool_calls: vec![],
             has_tool_calls: false,
-            tool_definitions: tool_definitions.to_vec(),
-            max_iterations,
+            tool_definitions: runtime_agent.tools.clone(),
+            max_iterations: runtime_agent.max_iterations,
             error: None,
             user_facing_error: None,
             error_disclosure: None,
@@ -4687,260 +4650,5 @@ mod tests {
             .await
             .unwrap();
         assert!(result.unwrap().accumulated.is_empty());
-    }
-
-    // ====================================================================
-    // Tool-call repair capability integration (EVE-600)
-    // ====================================================================
-
-    mod tool_call_repair_integration {
-        use super::*;
-        use crate::capabilities::{CapabilityRegistry, TOOL_CALL_REPAIR_CAPABILITY_ID};
-        use crate::events::{EventData, EventRequest};
-        use crate::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-        use crate::traits::EventEmitter;
-        use crate::typed_id::{MessageId, SessionId, TurnId};
-        use std::sync::Mutex;
-
-        /// EventEmitter that records every emitted request for assertions.
-        #[derive(Default)]
-        struct RecordingEmitter {
-            events: Mutex<Vec<EventRequest>>,
-        }
-
-        #[async_trait::async_trait]
-        impl EventEmitter for RecordingEmitter {
-            async fn emit(
-                &self,
-                request: EventRequest,
-            ) -> crate::error::Result<crate::events::Event> {
-                let event = request
-                    .clone()
-                    .into_event(crate::typed_id::EventId::new(), 0);
-                self.events.lock().unwrap().push(request);
-                Ok(event)
-            }
-        }
-
-        impl RecordingEmitter {
-            fn repaired_events(&self) -> Vec<(String, String)> {
-                self.events
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .filter_map(|r| match &r.data {
-                        EventData::ToolCallRepaired(d) => {
-                            Some((d.tool_call_id.clone(), d.outcome.clone()))
-                        }
-                        _ => None,
-                    })
-                    .collect()
-            }
-        }
-
-        fn ctx() -> AtomContext {
-            AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new())
-        }
-
-        fn read_file_tool() -> ToolDefinition {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: "read_file".to_string(),
-                display_name: None,
-                description: "read".to_string(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": { "path": { "type": "string" } },
-                    "required": ["path"]
-                }),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: Default::default(),
-                hints: Default::default(),
-                full_parameters: None,
-            })
-        }
-
-        fn malformed_call() -> ToolCall {
-            // Driver passed the raw arg string through as a JSON string (could
-            // not parse it because of prose + single quotes).
-            ToolCall {
-                id: "call_1".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!("here you go: {'path': '/foo'}"),
-            }
-        }
-
-        fn enabled_configs() -> Vec<crate::AgentCapabilityConfig> {
-            vec![crate::AgentCapabilityConfig::new(
-                TOOL_CALL_REPAIR_CAPABILITY_ID,
-            )]
-        }
-
-        async fn run(
-            configs: &[crate::AgentCapabilityConfig],
-            tools: &[ToolDefinition],
-            calls: &mut [ToolCall],
-            emitter: &RecordingEmitter,
-        ) {
-            run_at(configs, tools, calls, emitter, 1).await;
-        }
-
-        async fn run_at(
-            configs: &[crate::AgentCapabilityConfig],
-            tools: &[ToolDefinition],
-            calls: &mut [ToolCall],
-            emitter: &RecordingEmitter,
-            iteration: u32,
-        ) {
-            let registry = CapabilityRegistry::with_builtins();
-            apply_tool_call_repair(
-                &registry,
-                emitter,
-                SessionId::new(),
-                &ctx(),
-                configs,
-                tools,
-                calls,
-                iteration,
-            )
-            .await;
-        }
-
-        #[tokio::test]
-        async fn malformed_call_is_repaired_and_turn_proceeds() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![malformed_call()];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            // Arguments are now a clean object: the act phase can proceed.
-            assert_eq!(calls[0].arguments, json!({ "path": "/foo" }));
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_1".to_string(), "local-salvage".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn observability_event_fires_with_outcome_label() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![malformed_call()];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            let repaired = emitter.repaired_events();
-            assert_eq!(repaired.len(), 1, "exactly one repair event");
-            assert_eq!(repaired[0].1, "local-salvage");
-        }
-
-        #[tokio::test]
-        async fn attempt_cap_honored_and_falls_through_to_error_path() {
-            // Un-salvageable garbage with max_reprompts=0 → gave-up, args unchanged.
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let original = json!("totally not json and no braces at all");
-            let mut calls = vec![ToolCall {
-                id: "call_2".to_string(),
-                name: "read_file".to_string(),
-                arguments: original.clone(),
-            }];
-            let configs = vec![crate::AgentCapabilityConfig::with_config(
-                TOOL_CALL_REPAIR_CAPABILITY_ID,
-                json!({ "max_reprompts": 0 }),
-            )];
-
-            run(&configs, &tools, &mut calls, &emitter).await;
-
-            // Arguments untouched: today's error path still applies downstream.
-            assert_eq!(calls[0].arguments, original);
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_2".to_string(), "gave-up".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn unsalvageable_with_remaining_attempts_labels_reprompt() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![ToolCall {
-                id: "call_3".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!("no json here"),
-            }];
-            // Default max_reprompts (1) → first failure is labelled re-prompt.
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-            assert_eq!(
-                emitter.repaired_events(),
-                vec![("call_3".to_string(), "re-prompt".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn attempt_cap_transitions_to_gave_up_on_later_iteration() {
-            // The bounded re-prompt is driven by the per-turn reason iteration
-            // (prior_attempts = iteration - 1). With the default cap of 1, an
-            // unsalvageable call is `re-prompt` on iteration 1 but `gave-up` once
-            // the turn has already spent an iteration, so the cap actually engages.
-            let tools = vec![read_file_tool()];
-            let garbage = json!("no json here");
-
-            let first = RecordingEmitter::default();
-            let mut calls1 = vec![ToolCall {
-                id: "call_a".to_string(),
-                name: "read_file".to_string(),
-                arguments: garbage.clone(),
-            }];
-            run_at(&enabled_configs(), &tools, &mut calls1, &first, 1).await;
-            assert_eq!(
-                first.repaired_events(),
-                vec![("call_a".to_string(), "re-prompt".to_string())]
-            );
-
-            let later = RecordingEmitter::default();
-            let mut calls2 = vec![ToolCall {
-                id: "call_a".to_string(),
-                name: "read_file".to_string(),
-                arguments: garbage,
-            }];
-            run_at(&enabled_configs(), &tools, &mut calls2, &later, 2).await;
-            assert_eq!(
-                later.repaired_events(),
-                vec![("call_a".to_string(), "gave-up".to_string())]
-            );
-        }
-
-        #[tokio::test]
-        async fn disabled_capability_produces_no_drift() {
-            // No tool_call_repair in the resolved set: arguments are left exactly
-            // as the driver produced them and no event is emitted.
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let original = malformed_call().arguments;
-            let mut calls = vec![malformed_call()];
-
-            run(&[], &tools, &mut calls, &emitter).await;
-
-            assert_eq!(calls[0].arguments, original);
-            assert!(emitter.repaired_events().is_empty());
-        }
-
-        #[tokio::test]
-        async fn well_formed_call_is_untouched_and_silent() {
-            let emitter = RecordingEmitter::default();
-            let tools = vec![read_file_tool()];
-            let mut calls = vec![ToolCall {
-                id: "call_4".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!({ "path": "/already/good" }),
-            }];
-
-            run(&enabled_configs(), &tools, &mut calls, &emitter).await;
-
-            assert_eq!(calls[0].arguments, json!({ "path": "/already/good" }));
-            assert!(emitter.repaired_events().is_empty());
-        }
     }
 }

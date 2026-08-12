@@ -8,7 +8,7 @@ use everruns_core::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResultImage,
 };
 use everruns_core::{
-    GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
+    Message, MessageRetriever, MessageRole, SessionId,
     in_memory::InMemoryMessageRetriever,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
@@ -25,10 +25,7 @@ use uuid::Uuid;
 #[tokio::test]
 async fn test_tool_registry_as_executor() {
     // Create a registry with built-in tools
-    let registry = ToolRegistry::builder()
-        .tool(GetCurrentTimeTool)
-        .tool(EchoTool)
-        .build();
+    let registry = ToolRegistry::builder().tool(EchoTool).build();
 
     // Create a tool call
     let tool_call = ToolCall {
@@ -54,36 +51,6 @@ async fn test_tool_registry_as_executor() {
 
     assert!(result.error.is_none());
     assert_eq!(result.result.unwrap()["echoed"], "Hello, World!");
-}
-
-#[tokio::test]
-async fn test_get_current_time_tool() {
-    let registry = ToolRegistry::builder().tool(GetCurrentTimeTool).build();
-
-    let tool_call = ToolCall {
-        id: "call_time".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: json!({"format": "unix"}),
-    };
-
-    let tool_def = ToolDefinition::Builtin(BuiltinTool {
-        name: "get_current_time".to_string(),
-        display_name: None,
-        description: "Get time".to_string(),
-        parameters: json!({}),
-        policy: ToolPolicy::Auto,
-        category: None,
-        deferrable: DeferrablePolicy::default(),
-        hints: ToolHints::default(),
-        full_parameters: None,
-    });
-
-    let result = registry.execute(&tool_call, &tool_def).await.unwrap();
-
-    assert!(result.error.is_none());
-    let value = result.result.unwrap();
-    assert!(value.get("timestamp").is_some());
-    assert_eq!(value["format"], "unix");
 }
 
 #[tokio::test]
@@ -269,36 +236,9 @@ async fn test_custom_tool_execution() {
 }
 
 #[tokio::test]
-async fn test_multiple_tools_in_registry() {
-    let registry = ToolRegistry::builder()
-        .tool(GetCurrentTimeTool)
-        .tool(EchoTool)
-        .build();
+async fn test_registered_tool_executes() {
+    let registry = ToolRegistry::builder().tool(EchoTool).build();
 
-    // Execute get_current_time
-    let time_call = ToolCall {
-        id: "call_time".to_string(),
-        name: "get_current_time".to_string(),
-        arguments: json!({"format": "unix"}),
-    };
-
-    let time_def = ToolDefinition::Builtin(BuiltinTool {
-        name: "get_current_time".to_string(),
-        display_name: None,
-        description: "Get time".to_string(),
-        parameters: json!({}),
-        policy: ToolPolicy::Auto,
-        category: None,
-        deferrable: DeferrablePolicy::default(),
-        hints: ToolHints::default(),
-        full_parameters: None,
-    });
-
-    let time_result = registry.execute(&time_call, &time_def).await.unwrap();
-    assert!(time_result.error.is_none());
-    assert!(time_result.result.unwrap().get("timestamp").is_some());
-
-    // Execute echo
     let echo_call = ToolCall {
         id: "call_echo".to_string(),
         name: "echo".to_string(),

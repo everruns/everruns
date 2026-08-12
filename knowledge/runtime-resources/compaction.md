@@ -142,7 +142,7 @@ emit a successful durable `context.compacted` event.
 
 ### What Exists
 
-**Compaction capability** (`crates/core/src/capabilities/compaction.rs`):
+**Compaction capability** (`crates/builtins/src/compaction.rs`):
 - Configured explicitly through the `compaction` capability.
 - Contributes the prompt-facing model-view provider that masks stale bulky tool results before provider serialization.
 - Supports proactive budget checks, reactive `RequestTooLarge` recovery, observation masking, native provider compaction when available, summarization, and last-resort trimming.
@@ -304,7 +304,7 @@ summaries when repeated full-history prompts would otherwise keep paying for
 stale `read_file`, exec, listing, or search output. It is enabled by default
 when compaction is enabled, keeps the most recent tool results verbatim, and can
 also trigger from prior usage signals when cache reuse is poor. See
-[`crates/core/src/capabilities/compaction.rs`](../../crates/core/src/capabilities/compaction.rs)
+[`crates/builtins/src/compaction.rs`](../../crates/builtins/src/compaction.rs)
 for the exact configuration fields and defaults.
 
 ### Config Examples
@@ -462,7 +462,7 @@ The existing `llm-history-viewer.tsx` component should display compaction info w
 
 ## Observation Masking
 
-Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/core/src/capabilities/compaction.rs` for the masking algorithm.
+Replaces old tool outputs with one-line summaries, keeping the N most recent verbatim. See `crates/builtins/src/compaction.rs` for the masking algorithm.
 
 ### Tool-Aware Masking (Tier 3)
 
@@ -494,7 +494,7 @@ dropped. Like infinity context's head anchor, losing the opening task leaves the
 model unable to tell what it is doing once the window slides; the system prompt
 is assembled separately and is already exempt.
 
-See `crates/core/src/capabilities/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
+See `crates/builtins/src/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
 
 ## Summarization
 
@@ -580,7 +580,7 @@ Displayed in session detail view and session list (as a subtle indicator when co
 
 Implemented pieces live in the capability and runtime assembly paths:
 
-- `crates/core/src/capabilities/compaction.rs` owns config parsing,
+- `crates/builtins/src/compaction.rs` owns config parsing,
   cost-control model-view masking, observation masking, summarization helpers,
   and compaction metrics types.
 - `crates/core/src/capabilities/mod.rs` exposes the generic

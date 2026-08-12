@@ -447,6 +447,7 @@ mod tests {
     use super::*;
     use crate::atoms::act::ToolCallResult;
     use crate::tool_types::ToolResult;
+    use std::sync::Mutex;
 
     fn make_tool_call_result(connection_required: Option<&str>) -> ToolCallResult {
         ToolCallResult {
@@ -594,6 +595,64 @@ mod tests {
             hints: Default::default(),
             full_parameters: None,
         })
+    }
+
+    struct MarkerHook {
+        name: &'static str,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait]
+    impl PostToolExecHook for MarkerHook {
+        async fn after_exec(
+            &self,
+            _tool_call: &ToolCall,
+            _tool_def: &ToolDefinition,
+            result: &mut ToolResult,
+            _context: &ToolContext,
+        ) {
+            self.calls.lock().unwrap().push(self.name);
+            let value = result
+                .result
+                .take()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            result.result = Some(json!(format!("{value}-{}", self.name)));
+        }
+    }
+
+    #[tokio::test]
+    async fn capability_hooks_run_before_runtime_final_hooks() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let capability_hooks: Vec<Arc<dyn PostToolExecHook>> = vec![Arc::new(MarkerHook {
+            name: "capability",
+            calls: Arc::clone(&calls),
+        })];
+        let final_hooks: Vec<Arc<dyn PostToolExecHook>> = vec![Arc::new(MarkerHook {
+            name: "final",
+            calls: Arc::clone(&calls),
+        })];
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!("start")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        run_post_tool_exec_hooks(
+            &capability_hooks,
+            &final_hooks,
+            &make_tool_call(),
+            &make_tool_def(),
+            &mut result,
+            &ToolContext::new(SessionId::new()),
+        )
+        .await;
+
+        assert_eq!(*calls.lock().unwrap(), ["capability", "final"]);
+        assert_eq!(result.result, Some(json!("start-capability-final")));
     }
 
     #[tokio::test]

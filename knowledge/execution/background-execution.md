@@ -47,7 +47,7 @@ When a new cross-cutting capability is added, extend the auto-activation block r
 
 The capability ships with three layers of tests:
 
-- **Capability unit tests** (`crates/core/src/capabilities/background_execution.rs`): metadata, single-tool contribution, presence in the built-in registry.
+- **Capability unit tests** (`crates/platform/src/capabilities/background_execution.rs`): metadata, single-tool contribution, and hosted-registry activation.
 - **Activation unit tests** (`crates/core/src/capabilities/mod.rs`): positive trigger via `bashkit_shell`, negative trigger with `current_time`, idempotence under explicit + auto-activation.
 - **Lockstep regression** (`crates/core/src/tools.rs`, `crates/core/src/capabilities/mod.rs`): `ToolRegistry::with_defaults()` must not include `spawn_background`.
 

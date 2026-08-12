@@ -284,7 +284,7 @@ pub struct DirectWorkerAdapters {
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
     /// Platform vector store for Knowledge Index retrieval (`search_index`).
-    vector_store: Option<Arc<dyn everruns_core::vector_store::VectorStore>>,
+    vector_store: Option<Arc<dyn everruns_platform::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     in_memory_compaction_checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
@@ -528,7 +528,7 @@ impl DirectWorkerAdapters {
     /// Set the platform vector store for Knowledge Index retrieval.
     pub fn with_vector_store(
         mut self,
-        vector_store: Arc<dyn everruns_core::vector_store::VectorStore>,
+        vector_store: Arc<dyn everruns_platform::vector_store::VectorStore>,
     ) -> Self {
         self.vector_store = Some(vector_store);
         self
@@ -1667,7 +1667,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
     }
 
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
         Some(Arc::new(
             crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),
         ))
@@ -1925,7 +1925,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn knowledge_index_search(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+    ) -> Option<Arc<dyn everruns_platform::vector_store::KnowledgeIndexSearch>> {
         // The service is org-scoped per call via the `org_id` passed to
         // `search`, so a single instance is reused across orgs.
         let vector_store = self.vector_store.clone()?;

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
-use everruns_core::vector_store::{
+use everruns_platform::vector_store::{
     KnowledgeIndexCitation, KnowledgeIndexSearch, VectorQuery, VectorStore,
 };
 

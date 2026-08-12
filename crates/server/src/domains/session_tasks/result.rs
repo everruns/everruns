@@ -2,7 +2,7 @@
 //
 // A task declared with a `result_schema` records a deterministic, schema-valid
 // `result.json` when its child calls `report_result` (see EVE-678,
-// `everruns_core::capabilities::subagents::ReportResultTool`). The validated
+// `everruns_platform::capabilities::subagents::ReportResultTool`). The validated
 // object is written to the owning session's virtual filesystem at
 // `/.tasks/{task_id}/result.json` and the owning `session_tasks` row gets a
 // `result_path` pointer.

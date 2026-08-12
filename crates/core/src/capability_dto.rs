@@ -445,20 +445,35 @@ mod tests {
 
     #[test]
     fn test_from_core_populates_features() {
+        /// Declares features the way the product capabilities do. The ones that
+        /// used to stand in here (`session_storage`) moved out of the kernel
+        /// (EVE-886); what this test covers is the projection.
+        struct FeatureCapability;
+
+        impl crate::capabilities::Capability for FeatureCapability {
+            fn id(&self) -> &str {
+                "feature_fixture"
+            }
+            fn name(&self) -> &str {
+                "Feature Fixture"
+            }
+            fn description(&self) -> &str {
+                "Fixture capability declaring features."
+            }
+            fn features(&self) -> Vec<&'static str> {
+                vec!["secrets", "key_value"]
+            }
+        }
+
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        let schedule_cap = registry.get("session_schedule").unwrap();
-        let info = CapabilityInfo::from_core(schedule_cap.as_ref());
-        assert_eq!(info.features, vec!["schedules"]);
-
-        let storage_cap = registry.get("session_storage").unwrap();
-        let info = CapabilityInfo::from_core(storage_cap.as_ref());
+        let info = CapabilityInfo::from_core(&FeatureCapability);
         assert!(info.features.contains(&"secrets".to_string()));
         assert!(info.features.contains(&"key_value".to_string()));
 
         // Capability with no features
-        let time_cap = registry.get("current_time").unwrap();
-        let info = CapabilityInfo::from_core(time_cap.as_ref());
+        let neutral_cap = registry.get("human_intent").unwrap();
+        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
         assert!(info.features.is_empty());
     }
 
@@ -506,14 +521,15 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // user_hooks is a core-owned High-risk policy capability.
-        let hooks_cap = registry.get("user_hooks").unwrap();
-        let info = CapabilityInfo::from_core(hooks_cap.as_ref());
+        // openrouter_server_tools is a core-owned High-risk capability
+        // (user_hooks moved to everruns-platform in EVE-885).
+        let server_tools_cap = registry.get("openrouter_server_tools").unwrap();
+        let info = CapabilityInfo::from_core(server_tools_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 
-        // current_time is Low risk (default)
-        let time_cap = registry.get("current_time").unwrap();
-        let info = CapabilityInfo::from_core(time_cap.as_ref());
+        // human_intent is Low risk (default)
+        let neutral_cap = registry.get("human_intent").unwrap();
+        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::Low);
     }
 
