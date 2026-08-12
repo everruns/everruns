@@ -839,9 +839,18 @@ impl StorageBackend {
         dispatch!(self, count_harnesses_for_org, org_id)
     }
 
-    /// Count non-deleted agents in an org (for resource limits).
+    /// Count non-deleted, non-built-in agents in an org (for resource limits).
     pub async fn count_agents_for_org(&self, org_id: i64) -> Result<i64> {
         dispatch!(self, count_agents_for_org, org_id)
+    }
+
+    /// Flag an agent as platform-supplied.
+    ///
+    /// Reserved for org bootstrap reconciliation, which must be able to adopt a
+    /// row that already exists — an org seeded before built-in agents shipped
+    /// has the agent but not the flag. No command path calls this.
+    pub async fn mark_agent_built_in(&self, org_id: i64, id: AgentId) -> Result<()> {
+        dispatch!(self, mark_agent_built_in, org_id, id)
     }
 
     /// Count sessions in an org (for resource limits).

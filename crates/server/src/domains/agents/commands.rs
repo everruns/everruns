@@ -341,6 +341,9 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                // Built-in agents come from the platform definition via org
+                // bootstrap. No API-facing creation path may mint one.
+                is_built_in: false,
             };
             let row = ctx
                 .db
@@ -371,6 +374,9 @@ impl Command for CreateAgent {
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
+                // Built-in agents come from the platform definition via org
+                // bootstrap. No API-facing creation path may mint one.
+                is_built_in: false,
             };
             let row = ctx
                 .db
@@ -541,6 +547,9 @@ impl Command for UpdateAgentCmd {
             .id
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))?;
+
+        // Covers archive too: archiving is `status: archived` through here.
+        q::ensure_not_built_in(&ctx.db, ctx.org_id(), &self.id, "modify").await?;
 
         let req = self.req;
 
@@ -729,6 +738,8 @@ impl Command for DeleteAgent {
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))?;
 
+        q::ensure_not_built_in(&ctx.db, ctx.org_id(), &self.id, "delete").await?;
+
         let row = ctx
             .db
             .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
@@ -800,6 +811,11 @@ impl Command for UpsertAgent {
         let req = self.req;
         let public_id = self.id;
 
+        // Upsert addresses an agent by public id, so it reaches an existing
+        // built-in the same way update does. An id that resolves to nothing
+        // falls through to the create path, which cannot mint a built-in.
+        q::ensure_not_built_in(&ctx.db, ctx.org_id(), &public_id, "modify").await?;
+
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
         validate_create_limits(&req)?;
@@ -869,6 +885,8 @@ impl Command for UpsertAgent {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap_or_default()),
+            // See CreateAgent: only org bootstrap mints built-in agents.
+            is_built_in: false,
         };
         let (row, was_created) = ctx
             .db
@@ -1062,6 +1080,17 @@ async fn resolve_agent(ctx: &Ctx, id: &str) -> Result<Agent, CommandError> {
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Agent"))
+}
+
+/// Resolve an agent for a command that mutates its version history.
+///
+/// Versions are part of the definition, so they are protected: a platform
+/// upgrade ships a new built-in version, and an org that rolled its own would
+/// silently diverge. Read-only version commands use [`resolve_agent`] instead.
+async fn resolve_agent_for_mutation(ctx: &Ctx, id: &str) -> Result<Agent, CommandError> {
+    let agent = resolve_agent(ctx, id).await?;
+    q::ensure_not_built_in(&ctx.db, ctx.org_id(), id, "modify").await?;
+    Ok(agent)
 }
 
 async fn resolve_agent_version(
@@ -1312,7 +1341,7 @@ impl Command for CreateAgentVersionCmd {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentVersion, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
         let change_kind = self
             .req
             .change_kind
@@ -1353,7 +1382,7 @@ impl Command for SetDefaultAgentVersion {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        let agent = resolve_agent(ctx, &self.agent_id).await?;
+        let agent = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
         let version = resolve_agent_version(ctx, self.req.version_id).await?;
         if version.agent_id.uuid() != agent.internal_id {
             return Err(CommandError::bad_request(
@@ -1416,7 +1445,7 @@ impl Command for RollbackAgentVersion {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Agent, CommandError> {
-        let current = resolve_agent(ctx, &self.agent_id).await?;
+        let current = resolve_agent_for_mutation(ctx, &self.agent_id).await?;
         let version = resolve_agent_version(ctx, self.version_id).await?;
         if version.agent_id.uuid() != current.internal_id {
             return Err(CommandError::bad_request(
@@ -2760,6 +2789,217 @@ mod tests {
             .await
             .expect("creation allowed once the deleted agent is excluded");
     }
+
+    // ========================================================================
+    // Built-in agent protection (EVE-865)
+    // ========================================================================
+
+    /// Create an agent and flip it to built-in, as org bootstrap does.
+    async fn seed_built_in_agent(db: &StorageBackend, ctx: &Ctx, name: &str) -> Agent {
+        let agent = CreateAgent(basic_agent_request(name))
+            .execute(ctx)
+            .await
+            .expect("seed agent");
+        db.mark_agent_built_in(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
+            .await
+            .expect("mark built-in");
+        agent
+    }
+
+    /// Every guard must answer 400 with the copy-first hint, not 404 or 500.
+    fn assert_built_in_rejection(err: &CommandError) {
+        assert_eq!(err.status().as_u16(), 400, "message: {}", err.message());
+        assert!(
+            err.message().contains("built-in agent"),
+            "expected a built-in rejection, got: {}",
+            err.message()
+        );
+        assert!(
+            err.message().contains("Copy it first"),
+            "rejection must point at the escape hatch, got: {}",
+            err.message()
+        );
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_update() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+
+        let err = UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: UpdateAgentRequest {
+                system_prompt: Some("hijacked".to_string()),
+                ..Default::default()
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("built-in definition is immutable");
+        assert_built_in_rejection(&err);
+
+        // The prompt must actually be unchanged, not merely reported as such.
+        let after = q::get_by_public_id(&db, DEFAULT_ORG_ID, &agent.public_id.to_string())
+            .await
+            .expect("reload")
+            .expect("agent still present");
+        assert_eq!(after.system_prompt, "initial prompt");
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_archive() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+
+        // Archive travels through UpdateAgentCmd as a status change.
+        let err = UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: UpdateAgentRequest {
+                status: Some(AgentStatus::Archived),
+                ..Default::default()
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("built-in agent cannot be archived");
+        assert_built_in_rejection(&err);
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_delete_and_destroy() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+
+        let err = DeleteAgent {
+            id: agent.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("built-in agent cannot be archived away");
+        assert_built_in_rejection(&err);
+
+        let err = DestroyAgent {
+            id: agent.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("built-in agent cannot be destroyed");
+        assert_built_in_rejection(&err);
+
+        assert!(
+            q::get_by_public_id(&db, DEFAULT_ORG_ID, &agent.public_id.to_string())
+                .await
+                .expect("reload")
+                .is_some(),
+            "built-in agent must survive both delete verbs"
+        );
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_upsert() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+
+        let err = UpsertAgent {
+            id: agent.public_id.to_string(),
+            req: basic_agent_request("chat"),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("upsert must not overwrite a built-in");
+        assert_built_in_rejection(&err);
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_rejects_version_mutations() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+        let id = agent.public_id.to_string();
+
+        let err = CreateAgentVersionCmd {
+            agent_id: id.clone(),
+            req: CreateAgentVersionRequest {
+                change_kind: Some(AgentVersionChangeKind::Minor),
+                summary: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("versions are part of the protected definition");
+        assert_built_in_rejection(&err);
+
+        let err = SetDefaultAgentVersion {
+            agent_id: id.clone(),
+            req: SetDefaultAgentVersionRequest {
+                version_id: AgentVersionId::new(),
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("default version is part of the protected definition");
+        assert_built_in_rejection(&err);
+
+        let err = RollbackAgentVersion {
+            agent_id: id,
+            version_id: AgentVersionId::new(),
+            req: RollbackAgentVersionRequest {
+                save_version: false,
+                summary: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("rollback rewrites the protected definition");
+        assert_built_in_rejection(&err);
+    }
+
+    #[tokio::test]
+    async fn built_in_agent_can_be_copied() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = seed_built_in_agent(&db, &ctx, "chat").await;
+
+        let copy = CopyAgent {
+            id: agent.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("copy is the escape hatch and must stay open");
+
+        assert_ne!(copy.public_id, agent.public_id);
+
+        // The copy must be editable, or the escape hatch leads nowhere.
+        UpdateAgentCmd {
+            id: copy.public_id.to_string(),
+            req: UpdateAgentRequest {
+                system_prompt: Some("edited".to_string()),
+                ..Default::default()
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect("the copy is an ordinary editable agent");
+    }
+
+    #[tokio::test]
+    async fn built_in_agents_do_not_count_toward_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        ctx.resource_limits.max_agents_per_org = 1;
+
+        seed_built_in_agent(&db, &ctx, "platform-chat").await;
+
+        // The built-in must not consume the cap, so a user agent still fits.
+        CreateAgent(basic_agent_request("mine"))
+            .execute(&ctx)
+            .await
+            .expect("built-in agent must not consume the org quota");
+    }
 }
 
 // ============================================================================
@@ -2799,6 +3039,8 @@ impl Command for DestroyAgent {
             .id
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid agent ID: {e}")))?;
+
+        q::ensure_not_built_in(&ctx.db, ctx.org_id(), &self.id, "delete").await?;
 
         let row = ctx
             .db

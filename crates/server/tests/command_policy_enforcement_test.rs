@@ -480,6 +480,7 @@ async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
                 network_access: None,
                 max_iterations: None,
                 parallel_tool_calls: None,
+                is_built_in: false,
             },
         )
         .await
@@ -642,6 +643,163 @@ async fn session_file_read_commands_enforce_session_view_policy() {
 const ALLOWED_PUBLIC: &[&str] = &[
     // (none today)
 ];
+
+// ============================================================================
+// Built-in agent protection coverage (EVE-865)
+//
+// A guard that must be remembered will be forgotten the next time someone adds
+// an agent command. This test walks the inventory instead: every mutating
+// command in the `agents` category must be classified as either guarded
+// against built-in agents or deliberately exempt. Adding an eleventh agent
+// command fails CI here until its author decides which it is.
+//
+// This is a classification check, not a behavioral one — the behavior is
+// asserted per verb in `domains::agents::commands::tests`.
+// ============================================================================
+
+/// Agent commands that reject built-in agents via `q::ensure_not_built_in`.
+/// Each has a matching `built_in_agent_rejects_*` test.
+const BUILT_IN_GUARDED_AGENT_COMMANDS: &[&str] = &[
+    "create_agent_version",
+    "delete_agent",
+    "destroy_agent",
+    "rollback_agent_version",
+    "set_default_agent_version",
+    "update_agent",
+    "upsert_agent",
+];
+
+/// Agent commands that are deliberately NOT guarded. Justify every entry.
+///
+/// The rule is definition vs bindings: a command that changes a built-in
+/// agent's own definition is guarded; one that only creates something new, or
+/// attaches an org's own binding around the agent, is not.
+const BUILT_IN_EXEMPT_AGENT_COMMANDS: &[&str] = &[
+    // Creates a fresh agent; cannot mint a built-in (is_built_in is false on
+    // every API-facing creation path).
+    "create_agent",
+    // Same — import is create with a definition body.
+    "import_agent",
+    // The escape hatch. Blocking copy would leave built-in agents unusable as
+    // a starting point, and the rejection message tells users to copy first.
+    "copy_agent",
+    // Forks a *source version* into a brand-new agent. It reads the built-in
+    // and writes elsewhere, so it is a copy, not a mutation — same reasoning
+    // as copy_agent. (EVE-865 listed this as needing a guard; the code shows
+    // it never writes to the source row.)
+    "fork_agent_version",
+    // --- Bindings, not definition -------------------------------------------
+    // These live in adjacent domains and never touch the agents row. An org
+    // must be able to wire a built-in agent into its own environment; a
+    // built-in agent nobody can attach a rule or credential to is unusable.
+    "upsert_agent_check_rule",
+    "delete_agent_check_rule",
+    "create_agent_credential_binding",
+    // Operational probe. Runs the agent to report health; changes no definition.
+    "trigger_agent_health_check",
+    // Produces an analysis report. Non-read-only only because it spends utility
+    // LLM budget and is rate limited; it does not write the agent.
+    "analyze_agent",
+];
+
+/// The guard lives in `Command::execute`, so it must hold over `dispatch()` —
+/// the MCP `execute` tier and gRPC `ExecuteCommand` both route through here.
+/// A route-level check would pass the REST test and miss this one entirely,
+/// leaving the built-in agent editable by any caller holding agent-management
+/// access over MCP — including the agent itself.
+#[tokio::test]
+async fn dispatch_blocks_built_in_agent_mutation() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(DefaultPermissionResolver),
+    );
+    let agent_id = seed_agent(&ctx, "platform-chat").await;
+    let row = ctx
+        .db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id.to_string())
+        .await
+        .expect("load seeded agent")
+        .expect("seeded agent exists");
+    ctx.db
+        .mark_agent_built_in(DEFAULT_ORG_ID, row.id)
+        .await
+        .expect("mark built-in");
+
+    let err = dispatch(
+        "update_agent",
+        serde_json::json!({ "id": agent_id.to_string(), "system_prompt": "hijacked" }),
+        &ctx,
+    )
+    .await
+    .expect_err("MCP execute must not edit a built-in agent");
+
+    assert!(
+        err.message().contains("built-in agent"),
+        "expected the built-in rejection over dispatch, got {err:?}"
+    );
+
+    // An Owner is allowed to update agents in general, so this must be the
+    // built-in guard talking, not a permission denial.
+    assert!(
+        !matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
+        "rejection must come from the built-in guard, not authorization: {err:?}"
+    );
+}
+
+#[test]
+fn every_mutating_agent_command_is_classified_for_built_in_protection() {
+    use everruns_server::domains::common::CommandDescriptor;
+
+    let mut unclassified: Vec<&'static str> = Vec::new();
+    let mut mutating: Vec<&'static str> = Vec::new();
+
+    for desc in inventory::iter::<CommandDescriptor> {
+        let meta = (desc.meta)();
+        if meta.category != "agents" || (desc.read_only)() {
+            continue;
+        }
+        mutating.push(meta.name);
+        if !BUILT_IN_GUARDED_AGENT_COMMANDS.contains(&meta.name)
+            && !BUILT_IN_EXEMPT_AGENT_COMMANDS.contains(&meta.name)
+        {
+            unclassified.push(meta.name);
+        }
+    }
+
+    assert!(
+        !mutating.is_empty(),
+        "no mutating agents commands found — is inventory registration broken?"
+    );
+    assert!(
+        unclassified.is_empty(),
+        "New mutating agent command(s) {unclassified:?} are not classified for \
+         built-in agent protection. Either call `q::ensure_not_built_in` and add \
+         the name to BUILT_IN_GUARDED_AGENT_COMMANDS with a \
+         `built_in_agent_rejects_*` test, or add it to \
+         BUILT_IN_EXEMPT_AGENT_COMMANDS with a written reason. Guard at the \
+         command layer, not the HTTP route — MCP `execute` dispatches the same \
+         descriptors."
+    );
+
+    // Stale entries are as dangerous as missing ones: a renamed command would
+    // leave a guard listed that no longer exists.
+    for name in BUILT_IN_GUARDED_AGENT_COMMANDS
+        .iter()
+        .chain(BUILT_IN_EXEMPT_AGENT_COMMANDS)
+    {
+        assert!(
+            mutating.contains(name),
+            "'{name}' is classified for built-in protection but is no longer a \
+             mutating agents command. Remove the stale entry."
+        );
+    }
+}
 
 /// POST-style helpers intentionally available through MCP `query`.
 /// They do not persist state and each still declares a view policy.

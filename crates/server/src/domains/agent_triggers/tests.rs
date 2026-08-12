@@ -96,6 +96,7 @@ async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_core::typed_i
             network_access: None,
             max_iterations: None,
             parallel_tool_calls: None,
+            is_built_in: false,
         },
     )
     .await
@@ -165,6 +166,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         total_actual_cost_usd: 0.0,
         total_estimated_cost_usd: 0.0,
         total_cost_usd: 0.0,
+        is_built_in: false,
     };
     let trigger = crate::storage::models::AgentTriggerRow {
         id: everruns_core::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
