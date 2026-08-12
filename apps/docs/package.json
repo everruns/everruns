@@ -16,7 +16,7 @@
     "notebooks:exec": "python3 scripts/execute-notebooks.py"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.9",
+    "@astrojs/check": "^0.9.10",
     "@astrojs/markdown-satteri": "^0.3.4",
     "@astrojs/starlight": "^0.41.3",
     "astro": "^7.1.3",
