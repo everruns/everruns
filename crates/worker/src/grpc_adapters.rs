@@ -3862,7 +3862,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
 // GrpcSessionSqlDbStore - SessionSqlDbStore implementation over gRPC
 // ============================================================================
 
-use everruns_core::session_sqldb::{
+use everruns_platform::session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
 };

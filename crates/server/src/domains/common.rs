@@ -404,7 +404,7 @@ pub struct Ctx {
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
-    pub sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
+    pub sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     pub fallback_harness_name: Option<String>,
@@ -639,7 +639,7 @@ impl Ctx {
 
     pub fn with_sqldb_store(
         mut self,
-        store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>,
+        store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
     ) -> Self {
         self.sqldb_store = Some(store);
         self

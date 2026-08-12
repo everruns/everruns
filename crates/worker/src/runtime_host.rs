@@ -295,7 +295,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.connection_resolver())
     }
 
-    fn sqldb_store(&self) -> Option<everruns_core::traits::SessionSqlDbStoreRef> {
+    fn sqldb_store(
+        &self,
+    ) -> Option<std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> {
         Some(self.adapters.sqldb_store())
     }
 

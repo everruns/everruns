@@ -670,7 +670,7 @@ impl ServerAppBuilder {
         );
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
+        let sqldb_store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
         tracing::info!("Session SQL database store initialized (in-memory)");

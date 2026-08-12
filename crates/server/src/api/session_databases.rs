@@ -16,8 +16,8 @@ use axum::{
     routing::get,
 };
 use everruns_core::Caller;
-use everruns_core::session_sqldb::{DatabaseInfo, SessionSqlDbStore};
 use everruns_core::typed_id::SessionId;
+use everruns_platform::session_sqldb::{DatabaseInfo, SessionSqlDbStore};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

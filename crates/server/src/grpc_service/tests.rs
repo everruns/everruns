@@ -1096,7 +1096,7 @@ fn test_grpc_server_tls_panics_on_missing_cert_file() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_not_found() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::DatabaseNotFound("test_db".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::NotFound);
@@ -1104,7 +1104,7 @@ fn test_sqldb_error_to_status_maps_not_found() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_already_exists() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::DatabaseAlreadyExists("test_db".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::AlreadyExists);
@@ -1112,7 +1112,7 @@ fn test_sqldb_error_to_status_maps_already_exists() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_invalid_name() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::InvalidDatabaseName("bad!name".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::InvalidArgument);
@@ -1120,7 +1120,7 @@ fn test_sqldb_error_to_status_maps_invalid_name() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_limit_exceeded() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::LimitExceeded("max 10".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::ResourceExhausted);
@@ -1128,7 +1128,7 @@ fn test_sqldb_error_to_status_maps_limit_exceeded() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_query_error() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::QueryError("syntax error".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::FailedPrecondition);
@@ -1136,7 +1136,7 @@ fn test_sqldb_error_to_status_maps_query_error() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_timeout() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::QueryTimeout(30);
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::DeadlineExceeded);
@@ -1144,7 +1144,7 @@ fn test_sqldb_error_to_status_maps_timeout() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_authorizer_blocked() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::AuthorizerBlocked("DROP TABLE".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::PermissionDenied);
@@ -1152,7 +1152,7 @@ fn test_sqldb_error_to_status_maps_authorizer_blocked() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_result_too_large() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::ResultTooLarge("1MB limit".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::FailedPrecondition);
@@ -1160,7 +1160,7 @@ fn test_sqldb_error_to_status_maps_result_too_large() {
 
 #[test]
 fn test_sqldb_error_to_status_maps_internal() {
-    use everruns_core::session_sqldb::SessionSqlDbError;
+    use everruns_platform::session_sqldb::SessionSqlDbError;
     let err = SessionSqlDbError::Internal("unexpected".into());
     let status = sqldb_error_to_status(err);
     assert_eq!(status.code(), tonic::Code::Internal);
@@ -1238,7 +1238,7 @@ fn test_json_value_to_proto_object() {
 fn test_db_info_to_proto_roundtrip() {
     use chrono::Utc;
     let now = Utc::now();
-    let info = everruns_core::session_sqldb::DatabaseInfo {
+    let info = everruns_platform::session_sqldb::DatabaseInfo {
         name: "test_db".into(),
         size_bytes: 4096,
         page_count: 1,

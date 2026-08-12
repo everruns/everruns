@@ -51,10 +51,10 @@ use axum::{
     routing::post,
 };
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
-use everruns_core::session_sqldb::SessionSqlDbStore;
 use everruns_core::{Caller, OrgRole};
 use everruns_durable::WorkflowEventStore;
 use everruns_host::HostComposition;
+use everruns_platform::session_sqldb::SessionSqlDbStore;
 use everruns_platform::validate_org_public_id;
 use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};

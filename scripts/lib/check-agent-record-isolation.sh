@@ -38,7 +38,10 @@
 #    the moved session-service records (EVE-880): the org-scoped Workspace
 #    row and the managed per-session sandbox (config, persisted state,
 #    provider instance, exec/file payloads) together with the
-#    `SessionSandboxProvider` SPI and its inventory plugin.
+#    `SessionSandboxProvider` SPI and its inventory plugin, nor the session
+#    SQL database store and its value types (EVE-897) — records and trait
+#    travel together because the values are the trait's signature vocabulary,
+#    and the capability resolves the store as a typed context extension.
 
 set -euo pipefail
 
@@ -75,6 +78,7 @@ RECORD_TYPES="${RECORD_TYPES}|Connector|ConnectorPlugin|ConnectorRegistry|Connec
 RECORD_TYPES="${RECORD_TYPES}|EmailAddress|EmailMessage|EmailTag|EmailTemplate|MinimalEmailTemplate|BasicEmailTemplate|RenderedEmail|SentEmail|NoopEmailSender|DisabledEmailSender|ResendEmailSender|ResendEmailConfig|SystemEmailConfig"
 RECORD_TYPES="${RECORD_TYPES}|OAuthClient|OAuthError|TokenSet|PkcePair|ProtectedResourceMetadata|AuthorizationServerMetadata|RegisteredClient|ClientRegistration"
 RECORD_TYPES="${RECORD_TYPES}|Workspace|WorkspaceStatus"
+RECORD_TYPES="${RECORD_TYPES}|SessionSqlDbStore|SessionSqlDbStoreExt|SessionSqlDbError|DatabaseInfo|SqlQueryResult|SqlExecuteResult|TableSchema|ColumnSchema"
 RECORD_TYPES="${RECORD_TYPES}|SessionSandboxConfig|SessionSandboxInitConfig|SessionSandboxStatus|SessionSandboxStatusResponse|SessionSandboxInstance|SessionSandboxState|SessionSandboxExecRequest|SessionSandboxExecResponse|SessionSandboxReadFileResponse|SessionSandboxWriteFileResponse|SessionSandboxProvider|SessionSandboxProviderPlugin"
 # `trait` is included so the sandbox provider SPI cannot reappear in the
 # kernel: integration crates register providers against platform, and a turn

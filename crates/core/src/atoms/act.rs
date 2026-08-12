@@ -320,12 +320,6 @@ where
         vec![Arc::new(act_hooks::OutputHardLimitHook)]
     }
 
-    /// Set the SQL database store on this atom
-    pub fn with_sqldb_store(mut self, store: crate::traits::SessionSqlDbStoreRef) -> Self {
-        self.context_services.sqldb_store = Some(store);
-        self
-    }
-
     /// Set the session storage store on this atom
     pub fn with_storage_store(
         mut self,

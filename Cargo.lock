@@ -3413,6 +3413,7 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "everruns-core",
+ "everruns-platform",
  "parking_lot",
  "rusqlite",
  "serde_json",
