@@ -56,7 +56,7 @@ Configured through normal capability config on harness, agent, or session:
 
 ### Config contract
 
-See `crates/core/src/session_sandbox.rs` for the full type definitions.
+See `crates/platform/src/session_sandbox.rs` for the full type definitions.
 
 - `provider`: required provider id
 - `auto_start`: best-effort sandbox start on session creation
@@ -84,9 +84,9 @@ The session owns exactly one sandbox, and provider selection comes from config.
 
 ## Architecture
 
-### Core
+### Platform
 
-`crates/core/src/session_sandbox.rs` defines:
+`crates/platform/src/session_sandbox.rs` defines:
 
 - config, state, and response types
 - `SessionSandboxProvider` trait
@@ -94,7 +94,7 @@ The session owns exactly one sandbox, and provider selection comes from config.
 - state persistence helpers using session secret storage
 - generic create/resume/pause/delete/init/checkpoint helpers
 
-`crates/core/src/capabilities/session_sandbox.rs` exposes the capability and
+`crates/platform/src/capabilities/session_sandbox.rs` exposes the capability and
 generic tools. Tool execution resolves the configured provider and delegates
 through the trait. After a completed shell or file mutation, the provider
 checkpoint is persisted before the tool result is returned to the runtime.
@@ -103,7 +103,7 @@ checkpoint is persisted before the tool result is returned to the runtime.
 
 Provider implementations live in integration crates and register with:
 
-`everruns_core::SessionSandboxProviderPlugin`
+`everruns_platform::SessionSandboxProviderPlugin`
 
 Daytona is the first implementation and lives in:
 

@@ -1,8 +1,16 @@
 // Session SQL Database types and trait
 //
 // Types and async trait for session-scoped SQL databases.
-// Defined in core so capability tools can depend on them.
 // Implementations live in the session-sqldb crate.
+//
+// EVE-880 kept this module in core, unlike the other session-service records.
+// The value types here are not persisted control-plane rows: they are the
+// signature vocabulary of `SessionSqlDbStore`, and that trait is pinned to
+// core by `ToolContext::sqldb_store`, which the platform capability reads at
+// execution time. Moving the records alone would leave core naming platform
+// types, which the dependency direction forbids. The whole module moves in
+// EVE-887, when the monolithic optional-field context is replaced by narrow
+// typed services owned beside each capability.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

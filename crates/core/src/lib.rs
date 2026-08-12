@@ -139,7 +139,6 @@ pub mod session;
 pub mod session_file;
 pub mod session_path;
 pub mod session_resource;
-pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
 pub mod session_task;
@@ -378,17 +377,10 @@ pub use credential_provider::{CredentialProvider, EnvCredentialProvider, Provide
 // product provisioning templates are platform/server composition, not
 // Framework execution configuration.
 pub use platform_definition::{PlatformDefinition, PlatformDefinitionBuilder};
-pub use session_sandbox::{
-    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SESSION_SANDBOX_CAPABILITY_ID,
-    SESSION_SANDBOX_SECRET_NAME, SessionSandboxConfig, SessionSandboxExecRequest,
-    SessionSandboxExecResponse, SessionSandboxInitConfig, SessionSandboxInstance,
-    SessionSandboxProvider, SessionSandboxProviderPlugin, SessionSandboxReadFileResponse,
-    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
-    SessionSandboxWriteFileResponse, create_session_sandbox_provider, delete_session_sandbox,
-    delete_session_sandbox_state, ensure_session_sandbox_running, load_session_sandbox_state,
-    pause_session_sandbox, run_session_sandbox_init_if_needed, save_session_sandbox_state,
-    session_sandbox_config_from_capabilities, session_sandbox_tool_hints,
-};
+// EVE-880: the managed session sandbox record, its provider SPI and lifecycle
+// helpers moved to the `everruns-platform` crate. One provider-backed sandbox
+// per session is control-plane state — a turn reaches it through the sandbox
+// capability, never through the kernel.
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{

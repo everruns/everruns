@@ -75,7 +75,7 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    everruns_core::SessionSandboxProviderPlugin {
+    everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
         factory: || Box::new(DaytonaSessionSandboxProvider),
     }
 }

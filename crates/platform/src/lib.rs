@@ -69,6 +69,13 @@ pub mod session;
 // working-area row with its lifecycle status is control-plane state.
 pub mod workspace;
 
+// Managed per-session sandbox carved out of `everruns-core` (EVE-880): the
+// persisted state record, the provider SPI integration crates register through
+// inventory, and the create/resume/pause/init lifecycle helpers. Execution
+// reaches a sandbox only through the `session_sandbox` capability, which lives
+// beside this module.
+pub mod session_sandbox;
+
 // Management/reporting aggregates carved out of `everruns-core` (EVE-878):
 // persisted eval definitions/runs/results/datasets, observer records with
 // judge configuration and trace-score lifecycle, and the org/product
@@ -115,6 +122,19 @@ pub use principal::{Principal, PrincipalStatus};
 pub use session::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource, SessionStatus,
+};
+
+// Managed per-session sandbox (EVE-880).
+pub use session_sandbox::{
+    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SESSION_SANDBOX_CAPABILITY_ID,
+    SESSION_SANDBOX_SECRET_NAME, SessionSandboxConfig, SessionSandboxExecRequest,
+    SessionSandboxExecResponse, SessionSandboxInitConfig, SessionSandboxInstance,
+    SessionSandboxProvider, SessionSandboxProviderPlugin, SessionSandboxReadFileResponse,
+    SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
+    SessionSandboxWriteFileResponse, create_session_sandbox_provider, delete_session_sandbox,
+    delete_session_sandbox_state, ensure_session_sandbox_running, load_session_sandbox_state,
+    pause_session_sandbox, run_session_sandbox_init_if_needed, save_session_sandbox_state,
+    session_sandbox_config_from_capabilities, session_sandbox_tool_hints,
 };
 
 // Management/reporting aggregates (EVE-878).

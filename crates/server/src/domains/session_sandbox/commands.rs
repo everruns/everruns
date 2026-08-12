@@ -4,7 +4,7 @@ use super::types::{
     SessionSandboxStatusValue,
 };
 use crate::domains::common::*;
-use everruns_core::{
+use everruns_platform::session_sandbox::{
     create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
     load_session_sandbox_state, pause_session_sandbox,
 };
@@ -15,8 +15,8 @@ fn status_response(
     configured: bool,
     exists: bool,
     provider: Option<String>,
-    state: Option<&everruns_core::SessionSandboxState>,
-    status: Option<everruns_core::SessionSandboxStatusResponse>,
+    state: Option<&everruns_platform::session_sandbox::SessionSandboxState>,
+    status: Option<everruns_platform::session_sandbox::SessionSandboxStatusResponse>,
 ) -> GetSessionSandboxResponse {
     let session_status = status
         .as_ref()
@@ -43,7 +43,7 @@ fn status_response(
 
 fn manage_response_from_state(
     action: SessionSandboxAction,
-    state: &everruns_core::SessionSandboxState,
+    state: &everruns_platform::session_sandbox::SessionSandboxState,
 ) -> ManageSessionSandboxResponse {
     ManageSessionSandboxResponse {
         action,
@@ -225,19 +225,19 @@ mod tests {
     use crate::domains::session_sandbox::SessionSandboxService;
     use crate::domains::sessions::SessionService;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::session_sandbox::{
+    use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, SessionStorageStore};
+    use everruns_platform::session_sandbox::{
         SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
         SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,
         SessionSandboxStatusResponse, SessionSandboxWriteFileResponse,
     };
-    use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, SessionStorageStore};
     use serde_json::json;
     use std::sync::Arc;
 
     struct TestSessionSandboxProvider;
 
     inventory::submit! {
-        everruns_core::SessionSandboxProviderPlugin {
+        everruns_platform::session_sandbox::SessionSandboxProviderPlugin {
             factory: || Box::new(TestSessionSandboxProvider),
         }
     }
@@ -340,7 +340,7 @@ mod tests {
             &self,
             _context: &everruns_core::ToolContext,
             _config: &SessionSandboxConfig,
-            state: &everruns_core::SessionSandboxState,
+            state: &everruns_platform::session_sandbox::SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxStatusResponse {
                 provider: state.provider.clone(),

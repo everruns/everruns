@@ -26,7 +26,6 @@ use crate::storage::{
     },
 };
 use anyhow::Result;
-use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
     DeclarativeCapabilityDefinition, HarnessId, InitialFile, ModelId, MountAccess, MountEntry,
@@ -44,6 +43,7 @@ use everruns_core::{
 use everruns_durable::UpdateField;
 use everruns_mcp::is_mcp_capability;
 use everruns_platform::FeatureFlags;
+use everruns_platform::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_platform::{
     AgentVersionPolicy, MemoryConfig, MemoryMountAccess, capabilities::MEMORY_CAPABILITY_ID,
 };
