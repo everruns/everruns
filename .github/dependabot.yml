@@ -55,3 +55,11 @@ updates:
       # breaks `astro build`. Drop this once astro moves off the default import.
       - dependency-name: "js-yaml"
         update-types: ["version-update:semver-major"]
+      # openapi-typescript 7.13.0 reads `ts.factory` off the typescript package,
+      # which TypeScript 7 no longer exposes that way, so `api-types:check` dies
+      # with "Cannot read properties of undefined (reading
+      # 'createKeywordTypeNode')". Everything else in the UI — typecheck, build,
+      # lint, jest — is already clean on TypeScript 7. Drop this once
+      # openapi-typescript supports it.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
