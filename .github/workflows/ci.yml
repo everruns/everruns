@@ -687,7 +687,12 @@ jobs:
 
       - name: Install shell test dependencies
         run: |
-          sudo apt-get update
+          # `apt-get update` exits non-zero when *any* configured repo fails, and
+          # the runner image ships third-party lists we never install from
+          # (packages.microsoft.com has 403'd and reddened main). Tolerate a
+          # partial refresh; `apt-get install` still fails loudly if a package is
+          # genuinely unavailable.
+          sudo apt-get update || true
           sudo apt-get install -y lsof netcat-openbsd ripgrep
 
           CADDY_VERSION="2.9.1"
@@ -1342,8 +1347,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Ensure jq is available
+        run: |
+          # jq ships with the GitHub-hosted runner image, so the apt path is only
+          # a fallback. See the shell-test job for why the refresh is tolerated.
+          if command -v jq >/dev/null 2>&1; then
+            jq --version
+            exit 0
+          fi
+          sudo apt-get update || true
+          sudo apt-get install -y jq
 
       - name: Download server binary
         uses: actions/download-artifact@v4
