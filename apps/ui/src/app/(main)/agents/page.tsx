@@ -11,7 +11,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { NewAgentLink } from "@/components/dashboard/new-agent-link";
+import { NewAgentLink } from "@/components/agents/new-agent-link";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";

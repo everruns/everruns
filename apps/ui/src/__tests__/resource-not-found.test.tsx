@@ -20,10 +20,7 @@ describe("ResourceNotFound", () => {
       "href",
       "/harnesses",
     );
-    expect(screen.getByRole("link", { name: /Go to dashboard/ })).toHaveAttribute(
-      "href",
-      "/dashboard",
-    );
+    expect(screen.getByRole("link", { name: /Go to chats/ })).toHaveAttribute("href", "/chats");
     expect(screen.getByText("harness_019defa39e937b0c999ef870e8ded53b23")).toBeInTheDocument();
   });
 });

@@ -80,7 +80,7 @@ function AcceptInviteInner() {
                 Your membership is active. Continue to your dashboard.
               </p>
             </div>
-            <Button onClick={() => router.replace("/dashboard")}>Go to dashboard</Button>
+            <Button onClick={() => router.replace("/chats")}>Go to chats</Button>
           </div>
         )}
 
@@ -93,8 +93,8 @@ function AcceptInviteInner() {
                 {errorMessage ?? "This invitation can no longer be used."}
               </p>
             </div>
-            <Button variant="outline" onClick={() => router.replace("/dashboard")}>
-              Go to dashboard
+            <Button variant="outline" onClick={() => router.replace("/chats")}>
+              Go to chats
             </Button>
           </div>
         )}

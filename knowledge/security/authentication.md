@@ -542,7 +542,7 @@ Based on `mode`:
 3. Otherwise, check if user is authenticated via `/v1/auth/me`
 4. If auth bootstrap fails (`/v1/auth/config` error or non-401 `/v1/auth/me` error), block protected routes with an auth-unavailable state
 5. If `/v1/auth/me` returns `401 Unauthorized`, redirect to `/login?return_to=<current_path>` or configured `{AUTH_LOGIN_ORIGIN}/login?return_to=<current_path>` (preserving the user's location)
-6. After login, cookies are set automatically (HTTP-only) and the user is redirected back to `return_to` (default: `/dashboard`)
+6. After login, cookies are set automatically (HTTP-only) and the user is redirected back to `return_to` (default: `/chats`, the landing surface)
 7. Subsequent requests include cookies via `credentials: "include"`
 8. On 401 response, the API client silently attempts `POST /v1/auth/refresh` (using the HttpOnly `refresh_token` cookie) and retries the request
 
@@ -568,7 +568,7 @@ On success, the old refresh token is deleted (rotation) and a new token pair is 
 ### Protected Routes
 
 All routes under `/(main)/*` are protected:
-- `/dashboard`
+- `/chats`
 - `/agents`
 - `/settings`
 

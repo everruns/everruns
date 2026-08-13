@@ -64,6 +64,7 @@ export const config = {
     "/apps/:path*",
     "/capabilities/:path*",
     "/chat/:path*",
+    "/chats/:path*",
     "/dashboard/:path*",
     "/durable/:path*",
     "/evals/:path*",

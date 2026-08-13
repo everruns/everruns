@@ -6,7 +6,7 @@
 // Configure: provisioning checklist + inline LLM provider setup (provider type +
 //   API key). Polling queries drive the checklist; "Skip for now" is preserved.
 // Done: shown after the provider form is submitted OR skipped (replaces the old
-//   redirect straight to /dashboard). The Done subline is conditional — it only
+//   redirect straight to /chats). The Done subline is conditional — it only
 //   claims a provider is connected when one actually exists; a skip shows a
 //   gentle nudge instead. The user proceeds from Done into a real first action.
 
@@ -293,7 +293,7 @@ export default function OrgSetupPage() {
                 Something went wrong loading this organisation. Please retry.
               </p>
             )}
-            <Button variant="outline" onClick={() => router.push("/dashboard")}>
+            <Button variant="outline" onClick={() => router.push("/chats")}>
               Go to dashboard
             </Button>
           </div>

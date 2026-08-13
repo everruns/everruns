@@ -56,7 +56,7 @@ function OnboardingLayoutInner({ children }: { children: React.ReactNode }) {
   // Users that already have an org don't belong on onboarding — send them in.
   useEffect(() => {
     if (!isLoading && isAuthenticated && organizations.length > 0) {
-      router.replace("/dashboard");
+      router.replace("/chats");
     }
   }, [isLoading, isAuthenticated, organizations.length, router]);
 
