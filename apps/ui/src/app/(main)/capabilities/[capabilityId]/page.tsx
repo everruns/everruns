@@ -138,7 +138,6 @@ export default function CapabilityDetailPage({
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Building blocks" },
           { label: "Capabilities", href: "/capabilities" },
           { label: localizedCapabilityName(capability, locale) },
         ]}

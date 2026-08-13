@@ -258,7 +258,7 @@ export default function CapabilitiesPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Capabilities" }]} />
+      <PageBreadcrumb items={[{ label: "Capabilities" }]} />
 
       <PageMasthead
         icon={<CapabilitiesIcon />}

@@ -6,6 +6,7 @@ import ModelsPage from "@/app/(main)/models/page";
 const mockUseSearchParams = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/models",
   useSearchParams: () => mockUseSearchParams(),
 }));
 

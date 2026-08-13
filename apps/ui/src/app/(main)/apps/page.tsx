@@ -79,7 +79,7 @@ export default function AppsPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Apps" }]} />
+      <PageBreadcrumb items={[{ label: "Apps" }]} />
 
       <PageMasthead
         icon={<Rocket />}

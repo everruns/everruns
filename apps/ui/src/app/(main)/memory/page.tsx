@@ -99,7 +99,7 @@ export default function MemoryPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Memory" }]} />
+      <PageBreadcrumb items={[{ label: "Memory" }]} />
 
       <PageMasthead
         icon={<Brain />}

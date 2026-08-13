@@ -152,7 +152,7 @@ export default function ModelsPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Models" }]} />
+      <PageBreadcrumb items={[{ label: "Models" }]} />
 
       <PageMasthead
         icon={<Cpu />}

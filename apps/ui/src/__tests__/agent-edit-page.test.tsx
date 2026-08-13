@@ -7,6 +7,7 @@ const push = jest.fn();
 const replace = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/agents/agent-1/edit",
   useRouter: () => ({
     push,
     replace,

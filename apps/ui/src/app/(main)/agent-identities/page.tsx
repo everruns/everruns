@@ -117,7 +117,7 @@ export default function AgentIdentitiesPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Agent Identities" }]} />
+      <PageBreadcrumb items={[{ label: "Agent Identities" }]} />
 
       <PageMasthead
         icon={<UserRound />}

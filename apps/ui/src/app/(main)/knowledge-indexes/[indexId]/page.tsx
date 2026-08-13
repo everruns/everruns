@@ -125,11 +125,7 @@ export default function KnowledgeIndexDetailPage({
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[
-          { label: "Building blocks" },
-          { label: "Knowledge Indexes", href: "/knowledge-indexes" },
-          { label: index.name },
-        ]}
+        items={[{ label: "Knowledge Indexes", href: "/knowledge-indexes" }, { label: index.name }]}
       />
 
       <PageMasthead

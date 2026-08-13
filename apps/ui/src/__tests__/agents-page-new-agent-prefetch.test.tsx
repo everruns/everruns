@@ -24,6 +24,7 @@ jest.mock("next/link", () => ({
 
 const mockPrefetch = jest.fn();
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/agents",
   useRouter: () => ({
     push: jest.fn(),
     prefetch: mockPrefetch,

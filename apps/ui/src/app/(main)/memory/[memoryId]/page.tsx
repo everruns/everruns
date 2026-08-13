@@ -60,13 +60,7 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
 
   return (
     <PageContainer>
-      <PageBreadcrumb
-        items={[
-          { label: "Building blocks" },
-          { label: "Memory", href: "/memory" },
-          { label: memory.name },
-        ]}
-      />
+      <PageBreadcrumb items={[{ label: "Memory", href: "/memory" }, { label: memory.name }]} />
 
       <PageMasthead
         icon={<Brain />}

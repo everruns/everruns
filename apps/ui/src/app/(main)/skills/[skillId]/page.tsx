@@ -65,11 +65,7 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[
-          { label: "Building blocks" },
-          { label: "Skills", href: "/skills" },
-          { label: getDisplayName(skill) },
-        ]}
+        items={[{ label: "Skills", href: "/skills" }, { label: getDisplayName(skill) }]}
       />
 
       <PageMasthead

@@ -8,6 +8,7 @@ const createAgent = jest.fn();
 const createHarness = jest.fn();
 
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/agents/new",
   useRouter: () => ({ push, back }),
 }));
 

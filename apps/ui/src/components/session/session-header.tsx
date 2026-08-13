@@ -14,7 +14,7 @@ import {
   DropdownMenuPositioner,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { IconTile } from "@/components/layout/page-layout";
+import { IconTile, PageBreadcrumb } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useForkSession } from "@/hooks/use-sessions";
 import { downloadSessionExport } from "@/lib/session-export";
@@ -29,7 +29,6 @@ import { formatTokens } from "@/lib/formatting";
 import { cn, shortenId } from "@/lib/utils";
 import {
   Activity,
-  ArrowLeft,
   Bot,
   Coins,
   Download,
@@ -322,7 +321,7 @@ export function SessionHeader({
   sessionTraceUrl,
   sessionTraceLabel,
   backHref = "/sessions",
-  backLabel = "Back to Sessions",
+  backLabel = "Sessions",
 }: {
   sessionId: string;
   session: Session;
@@ -357,13 +356,16 @@ export function SessionHeader({
 
   return (
     <div className="border-b border-border/70 bg-background/80 px-4 py-3 backdrop-blur-[1px]">
-      <Link
-        href={backHref}
-        className="mb-1.5 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="icon-sharp mr-2 h-4 w-4" />
-        {backLabel}
-      </Link>
+      {/* EVE-869: the breadcrumb names the owning group and keeps the way back —
+          `backLabel` stays navigable to the list, so nothing is lost by dropping
+          the separate back link. */}
+      <PageBreadcrumb
+        className="mb-1.5"
+        items={[
+          { label: backLabel, href: backHref },
+          { label: session.title || `Session ${shortenId(session.id)}` },
+        ]}
+      />
 
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">

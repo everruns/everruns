@@ -7,6 +7,7 @@ let mockSearchParams = new URLSearchParams();
 
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
+  usePathname: () => "/agents/agent-1",
   useRouter: () => ({
     push: jest.fn(),
     replace: jest.fn(),
