@@ -2578,7 +2578,6 @@ dependencies = [
  "globset",
  "hex",
  "http 1.5.0",
- "include_dir",
  "insta",
  "inventory",
  "jsonschema",
