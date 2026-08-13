@@ -15,7 +15,7 @@ use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
 
-const LIVE_MODEL: &str = "gpt-4o-mini";
+const LIVE_MODEL: &str = "gpt-5.6-luna";
 
 fn api_key() -> String {
     std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set for the live test")
@@ -44,13 +44,13 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
         speed: None,
         verbosity: None,
         model: LIVE_MODEL.to_string(),
-        temperature: Some(0.0),
+        temperature: None,
         max_tokens: Some(512),
         tools: vec![
             tool("get_weather", "Get the current weather for a city."),
             tool("get_local_time", "Get the current local time for a city."),
         ],
-        reasoning_effort: None,
+        reasoning_effort: Some("low".to_string()),
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
         provider_opaque_context: None,

@@ -30,11 +30,11 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     let config = LlmCallConfig {
         speed: None,
         verbosity: None,
-        model: "openai/gpt-4o-mini".to_string(),
-        temperature: Some(0.0),
-        max_tokens: Some(16),
+        model: "openai/gpt-5.6-luna".to_string(),
+        temperature: None,
+        max_tokens: Some(128),
         tools: vec![],
-        reasoning_effort: None,
+        reasoning_effort: Some("low".to_string()),
         metadata,
         previous_response_id: None,
         provider_opaque_context: None,
@@ -43,8 +43,8 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         // Exercise the routing-decoration path alongside session_id forwarding.
         openrouter_routing: Some(OpenRouterRoutingConfig {
             models: vec![
-                "openai/gpt-4o-mini".to_string(),
-                "openai/gpt-4o".to_string(),
+                "openai/gpt-5.6-luna".to_string(),
+                "openai/gpt-5.6-terra".to_string(),
             ],
             route: Some(OpenRouterRoute::Fallback),
             ..Default::default()

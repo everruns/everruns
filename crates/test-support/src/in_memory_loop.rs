@@ -115,6 +115,25 @@ pub struct TurnResult {
     pub stop_reason: TurnStopReason,
     /// Turn ID for this turn
     pub turn_id: TurnId,
+    /// Compact request/response evidence for each provider generation in this turn.
+    pub llm_generations: Vec<LlmGenerationSummary>,
+}
+
+/// Request/response evidence retained by the in-memory harness for one LLM call.
+///
+/// This deliberately excludes prompts and tool arguments. It is enough for tests
+/// to distinguish a model declining an advertised tool from the runtime omitting
+/// the tool, or from a provider reporting tool calls that the stream parser lost.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LlmGenerationSummary {
+    /// Tool names advertised by the runtime for this generation.
+    pub available_tools: Vec<String>,
+    /// Tool calls parsed from the provider response.
+    pub output_tool_calls_count: usize,
+    /// Provider finish reasons, normalized by the driver.
+    pub finish_reasons: Vec<String>,
+    /// Whether the provider generation completed successfully.
+    pub success: bool,
 }
 
 impl TurnResult {
@@ -140,6 +159,7 @@ impl TurnResult {
                 error: None,
                 stop_reason,
                 turn_id,
+                llm_generations: vec![],
             },
             TurnOutcome::Failed {
                 error, iterations, ..
@@ -151,6 +171,7 @@ impl TurnResult {
                 error: Some(error),
                 stop_reason,
                 turn_id,
+                llm_generations: vec![],
             },
             TurnOutcome::MaxIterationsReached {
                 response,
@@ -164,6 +185,7 @@ impl TurnResult {
                 error: None,
                 stop_reason,
                 turn_id,
+                llm_generations: vec![],
             },
             // A sealed turn was deliberately stopped (EVE-534). Surface it as a
             // non-success with the seal reason so in-memory callers can observe
@@ -181,6 +203,7 @@ impl TurnResult {
                 error: Some(format!("turn sealed: {reason}")),
                 stop_reason,
                 turn_id,
+                llm_generations: vec![],
             },
         }
     }
@@ -713,10 +736,31 @@ impl InMemoryAgenticLoop {
                 }
 
                 TurnAction::Complete(outcome) => {
-                    return Ok(TurnResult::from_outcome(
-                        outcome,
-                        state_machine.context().turn_id,
-                    ));
+                    let turn_id = state_machine.context().turn_id;
+                    let mut result = TurnResult::from_outcome(outcome, turn_id);
+                    result.llm_generations = self
+                        .event_emitter
+                        .events()
+                        .await
+                        .into_iter()
+                        .filter(|event| event.context.turn_id == Some(turn_id))
+                        .filter_map(|event| {
+                            let EventData::LlmGeneration(data) = event.data else {
+                                return None;
+                            };
+                            Some(LlmGenerationSummary {
+                                available_tools: data
+                                    .tools
+                                    .into_iter()
+                                    .map(|tool| tool.name)
+                                    .collect(),
+                                output_tool_calls_count: data.output.tool_calls.len(),
+                                finish_reasons: data.metadata.finish_reasons.unwrap_or_default(),
+                                success: data.metadata.success,
+                            })
+                        })
+                        .collect();
+                    return Ok(result);
                 }
             }
         }
@@ -966,6 +1010,29 @@ mod tests {
         // Should have reason.* events (input.message is emitted by API layer, not InputAtom)
         let reason_events = runner.events_by_type("reason.started").await;
         assert_eq!(reason_events.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn turn_result_summarizes_llm_generation_contract() {
+        use everruns_builtins::CurrentTimeCapability;
+
+        let runner = InMemoryAgenticLoop::builder()
+            .with_simulated_response("It is noon.")
+            .capability(CurrentTimeCapability)
+            .build()
+            .await
+            .unwrap();
+
+        let result = runner.run_turn("What time is it?").await.unwrap();
+
+        assert_eq!(result.llm_generations.len(), 1);
+        assert_eq!(
+            result.llm_generations[0].available_tools,
+            ["get_current_time"]
+        );
+        assert_eq!(result.llm_generations[0].output_tool_calls_count, 0);
+        assert_eq!(result.llm_generations[0].finish_reasons, ["stop"]);
+        assert!(result.llm_generations[0].success);
     }
 
     #[tokio::test]

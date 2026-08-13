@@ -10,6 +10,7 @@
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
+use everruns_test_support::in_memory_loop::TurnResult;
 
 // ============================================================================
 // Provider + Model configuration
@@ -113,8 +114,9 @@ pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     "ANTHROPIC_API_KEY",
 );
 
-pub const OPENAI_GPT4O_MINI: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-4o-mini", "OPENAI_API_KEY");
+pub const OPENAI_GPT56_LUNA: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.6-luna", "OPENAI_API_KEY")
+        .reasoning_as_text();
 
 pub const OPENAI_GPT52: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY").reasoning_as_text();
@@ -137,14 +139,15 @@ pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig
 )
 .reasoning_as_text();
 
-// OpenRouter routes to upstream providers; gpt-4o-mini is cheap and reliably
-// available. Exercises the Open Responses streaming path (incl. the `[DONE]`
+// OpenRouter routes to upstream providers; Luna is the fast, cost-efficient
+// GPT-5.6 tier. Exercises the Open Responses streaming path (incl. the `[DONE]`
 // terminator) and the OpenRouter request decoration (session_id, routing).
-pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
+pub const OPENROUTER_GPT56_LUNA: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::OpenRouter,
-    "openai/gpt-4o-mini",
+    "openai/gpt-5.6-luna",
     "OPENROUTER_API_KEY",
-);
+)
+.reasoning_as_text();
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
 // API. The point of this case is to exercise our OpenAI-protocol driver's
@@ -313,6 +316,97 @@ pub fn is_transient_transport_error(err: &str) -> bool {
     .any(|s| e.contains(s))
 }
 
+/// Outcome of the request/response contract checks for a live tool-call turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LiveToolCallOutcome {
+    /// The expected tool was advertised and the turn exercised it end-to-end.
+    Exercised,
+    /// The expected tool was advertised, but the model cleanly chose text instead.
+    SamplingMiss,
+    /// A successful provider generation omitted the expected tool.
+    MissingToolDefinition,
+    /// The provider signalled or emitted tool calls, but the turn executed none.
+    ToolCallPipelineMismatch,
+    /// The harness captured no provider-generation evidence for a successful turn.
+    MissingGenerationEvidence,
+}
+
+/// Classify a live tool-call result using request-side and response-side evidence.
+///
+/// A clean `stop` after the expected tool was advertised is model sampling, not a
+/// product regression. Missing request evidence, a missing tool definition, or a
+/// provider/tool-loop count mismatch is a contract failure and must remain fatal.
+pub fn classify_live_tool_call(result: &TurnResult, expected_tool: &str) -> LiveToolCallOutcome {
+    if result.llm_generations.is_empty() {
+        return LiveToolCallOutcome::MissingGenerationEvidence;
+    }
+
+    if result
+        .llm_generations
+        .iter()
+        .filter(|generation| generation.success)
+        .any(|generation| {
+            !generation
+                .available_tools
+                .iter()
+                .any(|tool| tool == expected_tool)
+        })
+    {
+        return LiveToolCallOutcome::MissingToolDefinition;
+    }
+
+    let provider_reported_tool_calls = result.llm_generations.iter().any(|generation| {
+        generation.output_tool_calls_count > 0
+            || generation
+                .finish_reasons
+                .iter()
+                .any(|reason| reason == "tool_calls" || reason == "tool_use")
+    });
+    if provider_reported_tool_calls && result.tool_calls_count == 0 {
+        return LiveToolCallOutcome::ToolCallPipelineMismatch;
+    }
+
+    if result.tool_calls_count > 0 {
+        LiveToolCallOutcome::Exercised
+    } else {
+        LiveToolCallOutcome::SamplingMiss
+    }
+}
+
+/// Enforce live tool-call contracts while keeping clean model sampling misses
+/// out of the merge gate. Returns whether the tool path was exercised.
+pub fn assert_live_tool_call_contract(
+    result: &TurnResult,
+    expected_tool: &str,
+    label: &str,
+) -> bool {
+    let outcome = classify_live_tool_call(result, expected_tool);
+    match outcome {
+        LiveToolCallOutcome::Exercised => true,
+        LiveToolCallOutcome::SamplingMiss => {
+            eprintln!(
+                "::warning title=Live LLM sampling miss::{label} advertised {expected_tool} \
+                 but the model cleanly returned without calling it"
+            );
+            eprintln!("SAMPLING MISS: generations={:?}", result.llm_generations,);
+            false
+        }
+        LiveToolCallOutcome::MissingToolDefinition => panic!(
+            "TOOL CONTRACT FAILURE: {label} did not advertise {expected_tool:?} on every \
+             successful generation; generations={:?}",
+            result.llm_generations,
+        ),
+        LiveToolCallOutcome::ToolCallPipelineMismatch => panic!(
+            "TOOL CONTRACT FAILURE: {label} provider output reported tool calls but the \
+             turn executed none; generations={:?}",
+            result.llm_generations,
+        ),
+        LiveToolCallOutcome::MissingGenerationEvidence => {
+            panic!("TOOL CONTRACT FAILURE: {label} completed without llm.generation evidence")
+        }
+    }
+}
+
 /// Run a live turn with bounded retries against real-model non-determinism and
 /// transient transport failures. `$run` is a block that builds a runner and
 /// awaits a turn, evaluating to a `TurnResult`; it is re-run up to `$max` times.
@@ -354,7 +448,8 @@ macro_rules! run_live_turn {
                     .is_some_and(is_transient_transport_error);
             eprintln!(
                 "{}: attempt {attempt}/{} not acceptable \
-                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}); {}",
+                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}, \
+                 generations={:?}); {}",
                 $config.label(),
                 $max,
                 result.success,
@@ -362,7 +457,12 @@ macro_rules! run_live_turn {
                 result.tool_calls_count,
                 result.iterations,
                 result.error,
-                if attempt < $max { "retrying" } else { "giving up" },
+                result.llm_generations,
+                if attempt < $max {
+                    "retrying"
+                } else {
+                    "giving up"
+                },
             );
             outcome = Some(result);
         }
@@ -389,7 +489,72 @@ pub fn all_providers_registry() -> DriverRegistry {
 
 #[cfg(test)]
 mod quota_detector_tests {
-    use super::is_quota_exhausted;
+    use super::{LiveToolCallOutcome, classify_live_tool_call, is_quota_exhausted};
+    use everruns_core::turn::TurnStopReason;
+    use everruns_core::typed_id::TurnId;
+    use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
+
+    fn tool_result(
+        available_tools: &[&str],
+        output_tool_calls_count: usize,
+        finish_reasons: &[&str],
+        executed_tool_calls: usize,
+    ) -> TurnResult {
+        TurnResult {
+            response: "response".into(),
+            iterations: if executed_tool_calls > 0 { 2 } else { 1 },
+            tool_calls_count: executed_tool_calls,
+            success: true,
+            error: None,
+            stop_reason: TurnStopReason::EndTurn,
+            turn_id: TurnId::new(),
+            llm_generations: vec![LlmGenerationSummary {
+                available_tools: available_tools.iter().map(|name| (*name).into()).collect(),
+                output_tool_calls_count,
+                finish_reasons: finish_reasons
+                    .iter()
+                    .map(|reason| (*reason).into())
+                    .collect(),
+                success: true,
+            }],
+        }
+    }
+
+    #[test]
+    fn classifies_clean_no_call_as_sampling_miss() {
+        let result = tool_result(&["get_current_time"], 0, &["stop"], 0);
+        assert_eq!(
+            classify_live_tool_call(&result, "get_current_time"),
+            LiveToolCallOutcome::SamplingMiss
+        );
+    }
+
+    #[test]
+    fn classifies_missing_definition_as_contract_failure() {
+        let result = tool_result(&[], 0, &["stop"], 0);
+        assert_eq!(
+            classify_live_tool_call(&result, "get_current_time"),
+            LiveToolCallOutcome::MissingToolDefinition
+        );
+    }
+
+    #[test]
+    fn classifies_dropped_tool_call_as_contract_failure() {
+        let result = tool_result(&["get_current_time"], 0, &["tool_calls"], 0);
+        assert_eq!(
+            classify_live_tool_call(&result, "get_current_time"),
+            LiveToolCallOutcome::ToolCallPipelineMismatch
+        );
+    }
+
+    #[test]
+    fn classifies_executed_tool_call_as_covered() {
+        let result = tool_result(&["get_current_time"], 1, &["tool_calls"], 1);
+        assert_eq!(
+            classify_live_tool_call(&result, "get_current_time"),
+            LiveToolCallOutcome::Exercised
+        );
+    }
 
     #[test]
     fn matches_provider_quota_signatures() {
