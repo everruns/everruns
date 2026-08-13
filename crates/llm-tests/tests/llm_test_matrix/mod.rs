@@ -195,6 +195,7 @@ pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
 //   - `insufficient_quota` (OpenAI / OpenRouter)
 //   - `quota` together with `exceeded`/`billing`/`credit` (Gemini, Anthropic,
 //     generic phrasings like "exceeded your current quota")
+//   - OpenRouter's explicit "requires more credits" / "can only afford" 402
 //   - HTTP 429 carrying a quota/billing signature (not a bare rate-limit)
 //
 // Authn/authz signals (`unauthorized`, `forbidden`, `invalid api key`,
@@ -227,6 +228,13 @@ pub fn is_quota_exhausted(err: &str) -> bool {
     // — no "quota" word, and "no credits remaining" isn't an exhaustion phrase
     // below, so match it directly here.
     if e.contains("credit_balance_exhausted") {
+        return true;
+    }
+
+    // OpenRouter reports an account/key credit ceiling as HTTP 402 without a
+    // quota machine code. Require both halves of its affordability message so
+    // a generic payment error or max_tokens validation failure stays fatal.
+    if e.contains("requires more credits") && e.contains("can only afford") {
         return true;
     }
 
@@ -592,6 +600,11 @@ mod quota_detector_tests {
         assert!(is_quota_exhausted(
             "LLM error: credit_balance_exhausted: You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/."
         ));
+        // OpenRouter may reject an otherwise valid request when the requested
+        // output ceiling exceeds the key's remaining credit limit.
+        assert!(is_quota_exhausted(
+            "OpenAI Responses API error (402 Payment Required): This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 24564."
+        ));
         // Case-insensitive.
         assert!(is_quota_exhausted("INSUFFICIENT_QUOTA"));
     }
@@ -618,6 +631,12 @@ mod quota_detector_tests {
         // swallowed (e.g. a declined card or a generic billing notice).
         assert!(!is_quota_exhausted("Please update your billing details"));
         assert!(!is_quota_exhausted("Your credit card was declined"));
+        assert!(!is_quota_exhausted(
+            "402 Payment Required: payment method was declined"
+        ));
+        assert!(!is_quota_exhausted(
+            "Bad request: max_tokens exceeds the model limit"
+        ));
         // Auth/permission failures must never be swallowed as quota.
         assert!(!is_quota_exhausted("401 Unauthorized: invalid api key"));
         assert!(!is_quota_exhausted("403 Forbidden"));
