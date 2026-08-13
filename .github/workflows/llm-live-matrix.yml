@@ -1,0 +1,74 @@
+# Live LLM provider matrix.
+#
+# Split out of the `Integration Tests (PostgreSQL)` job in ci.yml, which runs on
+# pushes to main. These tests call real providers and assert on model behaviour
+# — "the model called the tool", "the model produced thinking blocks" — so they
+# fail for reasons that are not code regressions: a provider changing sampling,
+# a model declining to emit a tool call, transient provider errors. When they
+# gated main, a green PR did not predict a green main, and main went red three
+# times in a row for reasons no PR could have caught.
+#
+# Provider drift is still worth catching, so the matrix runs daily here and can
+# be dispatched on demand. A failure means "investigate provider behaviour",
+# not "main is broken".
+#
+# Secrets: provider API keys come from Doppler. This workflow only ever runs
+# against a repository ref (schedule/dispatch on the default branch), never
+# against PR-authored code, preserving the property the original push gate
+# existed for — PR-controlled `cargo test` (build.rs, proc-macros, test bodies)
+# must never see the Doppler vault.
+name: LLM Live Matrix
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 05:00 UTC daily — after the weekday nightly window, before EU morning.
+    - cron: '0 5 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  llm-live-matrix:
+    name: LLM Live Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # The matrix runs every provider and skips those whose key is absent from
+      # the vault, or whose account is out of quota/credits (a live billing
+      # condition, not a code regression — see `skip_if_quota!` /
+      # `is_quota_exhausted` in crates/llm-tests/tests/llm_test_matrix/mod.rs).
+      # Genuine API/contract breaks still fail the step.
+      #
+      # These suites need no database; they were only colocated with the
+      # PostgreSQL job because that job already had Doppler wired up.
+      - name: Run LLM integration tests (skips providers without API keys or out of quota)
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: |
+          doppler run -- cargo test -p everruns-llm-tests \
+            --test agent_run_basic \
+            --test agent_run_with_thinking \
+            --test subagent_live_test \
+            --all-features

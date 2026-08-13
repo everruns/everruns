@@ -981,24 +981,13 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
-      # Gated to push events so PR-controlled cargo test cannot exfiltrate the
-      # Doppler vault via env (build.rs, proc-macros, test bodies). PR coverage
-      # of the LLM matrix is still mocked in `unit-test`.
-      - name: Run LLM integration tests (skips providers without API keys or out of quota)
-        if: github.event_name == 'push'
-        timeout-minutes: 15
-        # Provider API keys come from Doppler (the repo has no per-provider
-        # GitHub secrets), matching the Slack live step above. `doppler run`
-        # injects ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY /
-        # OPENROUTER_API_KEY; the matrix runs every provider and skips only
-        # those whose key is absent from the vault, or whose account is out of
-        # quota/credits (a live billing condition, not a code regression — see
-        # `skip_if_quota!` / `is_quota_exhausted` in
-        # crates/llm-tests/tests/llm_test_matrix/mod.rs). Genuine API/contract
-        # breaks still fail the step.
-        env:
-          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features
+      # The live LLM matrix moved to .github/workflows/llm-live-matrix.yml
+      # (daily + on demand). Those tests assert on model behaviour — that a
+      # model chose to call a tool, that it emitted thinking blocks — so they
+      # fail for provider-side reasons that are not code regressions. Gating
+      # main on them meant a green PR did not predict a green main, because
+      # they only ran on push. PR coverage of the LLM matrix is still mocked in
+      # `unit-test`; the live suites need no database, so nothing else moved.
 
   # S3 blob-backend integration tests.
   # The PostgreSQL `integration-test` job above only exercises the inline
