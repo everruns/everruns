@@ -136,7 +136,7 @@ async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64
         .build();
 
     let runtime = match InProcessRuntimeBuilder::new()
-        .platform_definition(platform())
+        .host_composition(platform())
         .default_model(model.clone())
         .harness(harness)
         .agent(agent)
@@ -214,7 +214,7 @@ async fn dump_prompts(model: &ResolvedModel) -> anyhow::Result<()> {
             .agent(agent_id)
             .build();
         let runtime = InProcessRuntimeBuilder::new()
-            .platform_definition(platform())
+            .host_composition(platform())
             .default_model(model.clone())
             .harness(harness)
             .agent(agent)
