@@ -232,7 +232,7 @@ impl fmt::Debug for ResolvedProviderRequest {
 }
 
 fn redacted_url(value: &str) -> String {
-    let Ok(mut url) = reqwest::Url::parse(value) else {
+    let Ok(mut url) = url::Url::parse(value) else {
         return "<configured>".to_string();
     };
     let _ = url.set_username("");
@@ -428,8 +428,8 @@ impl ChatDriver for ProviderBoundDriver {
     async fn compact(
         &self,
         _endpoint: &ProviderEndpoint,
-        request: crate::openresponses_protocol::CompactRequest,
-    ) -> Result<Option<crate::openresponses_protocol::CompactResponse>> {
+        request: crate::compact::CompactRequest,
+    ) -> Result<Option<crate::compact::CompactResponse>> {
         self.0
             .driver
             .compact(self.0.endpoint(), request)

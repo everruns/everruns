@@ -14,8 +14,10 @@
 // Design: exponential backoff with 25% jitter, respecting provider retry-after hints.
 // Defaults match official SDKs: 2 retries, 1s initial, 60s max, 2x multiplier.
 
+#[cfg(feature = "http")]
 use crate::error::AgentLoopError;
 use rand::RngExt;
+#[cfg(feature = "http")]
 use std::future::Future;
 use std::time::Duration;
 
@@ -180,6 +182,7 @@ impl RateLimitInfo {
     }
 
     /// Parse rate limit info from Anthropic response headers
+    #[cfg(feature = "http")]
     pub fn from_anthropic_headers(headers: &reqwest::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
@@ -240,6 +243,7 @@ impl RateLimitInfo {
     }
 
     /// Parse rate limit info from OpenAI-compatible response headers.
+    #[cfg(feature = "http")]
     pub fn from_openai_headers(headers: &reqwest::header::HeaderMap) -> Self {
         let mut info = Self::default();
 
@@ -308,6 +312,7 @@ impl RateLimitInfo {
 }
 
 /// Parse duration strings like "1s", "6m0s", "1h30m"
+#[cfg(feature = "http")]
 fn parse_duration_string(s: &str) -> Option<u64> {
     let s = s.trim();
     if s.is_empty() {
@@ -391,6 +396,7 @@ impl RetryMetadata {
 }
 
 /// Check if an HTTP status code is a rate limit error (429)
+#[cfg(feature = "http")]
 pub fn is_rate_limit_status(status: reqwest::StatusCode) -> bool {
     status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
@@ -402,24 +408,13 @@ pub fn is_rate_limit_status(status: reqwest::StatusCode) -> bool {
 /// - 409 Conflict (lock timeout)
 /// - 429 Too Many Requests (rate limit)
 /// - 5xx Server errors (except 501 Not Implemented)
+#[cfg(feature = "http")]
 pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
-    // 408 Request Timeout
-    if status == reqwest::StatusCode::REQUEST_TIMEOUT {
-        return true;
-    }
-    // 409 Conflict (often lock timeout in APIs)
-    if status == reqwest::StatusCode::CONFLICT {
-        return true;
-    }
-    // 429 Too Many Requests
-    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        return true;
-    }
-    // 5xx Server errors (except 501 Not Implemented)
-    if status.is_server_error() && status != reqwest::StatusCode::NOT_IMPLEMENTED {
-        return true;
-    }
-    false
+    is_transient_status(status.as_u16())
+}
+
+fn is_transient_status(status: u16) -> bool {
+    matches!(status, 408 | 409 | 429 | 500 | 502..=599)
 }
 
 /// Check if a `reqwest` error raised while *sending* a request is a transient
@@ -437,12 +432,14 @@ pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
 /// the next request tries to reuse it, and that send fails here rather than
 /// returning an HTTP status — so it must be retried alongside the 429/5xx path
 /// (see `is_transient_error`).
+#[cfg(feature = "http")]
 pub fn is_transient_send_error(err: &reqwest::Error) -> bool {
     err.is_connect() || err.is_timeout() || err.is_request()
 }
 
 /// Build the user-facing message for a request that failed to send, noting how
 /// many retries were exhausted so it mirrors the HTTP-status error path.
+#[cfg(feature = "http")]
 pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
     if attempts > 0 {
         format!("Failed to send request: {err} (after {attempts} retries)")
@@ -509,11 +506,8 @@ pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError)
         );
     }
 
-    if let Some(status) = error
-        .status
-        .and_then(|status| reqwest::StatusCode::from_u16(status).ok())
-    {
-        return is_transient_error(status);
+    if let Some(status) = error.status {
+        return is_transient_status(status);
     }
 
     is_transient_error_message(&error.message)
@@ -528,6 +522,7 @@ pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError)
 /// Lets the [`retry_request`] caller's send closure distinguish a hard error
 /// that must propagate immediately (e.g. an auth-header failure) from a
 /// `reqwest` transport error that should be classified for transient retry.
+#[cfg(feature = "http")]
 pub enum SendOutcome {
     /// A `reqwest` send error (connection/TLS/timeout). Classified via
     /// [`is_transient_send_error`] for retry.
@@ -539,6 +534,7 @@ pub enum SendOutcome {
 
 /// Decision returned by the per-attempt classifier when a response carries a
 /// non-success HTTP status.
+#[cfg(feature = "http")]
 pub enum RetryDecision {
     /// Retry after the given wait duration, recording the supplied rate-limit
     /// info against the retry metadata.
@@ -574,6 +570,7 @@ pub enum RetryDecision {
 ///
 /// On success returns the `reqwest::Response` plus the accumulated
 /// [`RetryMetadata`].
+#[cfg(feature = "http")]
 pub async fn retry_request<S, SFut, C, CFut, E>(
     config: &LlmRetryConfig,
     driver_name: &str,

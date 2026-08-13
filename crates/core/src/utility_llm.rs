@@ -4,16 +4,11 @@
 //! model provider. It is configured once per deployment and deliberately keeps
 //! the model fixed so call sites cannot turn it into a user-selectable model.
 
-use crate::{
-    AgentLoopError, BearerAuth, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
-    OpenResponsesProtocolChatDriver, Provider, Result,
-};
+use crate::{AgentLoopError, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 pub const UTILITY_LLM_MODEL: &str = "gpt-5.5";
-pub const UTILITY_OPENAI_API_KEY_ENV: &str = "UTILITY_OPENAI_API_KEY";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UtilityLlmReasoningEffort {
@@ -79,7 +74,8 @@ impl UtilityLlmRequest {
         self
     }
 
-    fn into_parts(self) -> Result<(Vec<LlmMessage>, LlmCallConfig)> {
+    /// Convert the host-neutral request into the provider-driver inputs.
+    pub fn into_driver_request(self) -> Result<(Vec<LlmMessage>, LlmCallConfig)> {
         if self.messages.is_empty() {
             return Err(AgentLoopError::llm(
                 "utility LLM request must include at least one message",
@@ -148,96 +144,6 @@ impl UtilityLlmService for DisabledUtilityLlmService {
     }
 }
 
-#[derive(Clone)]
-pub struct OpenAiUtilityLlmService {
-    provider: Provider,
-}
-
-impl std::fmt::Debug for OpenAiUtilityLlmService {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAiUtilityLlmService")
-            .field("model", &UTILITY_LLM_MODEL)
-            .field("configured", &true)
-            .finish()
-    }
-}
-
-impl OpenAiUtilityLlmService {
-    pub fn new(api_key: impl Into<String>) -> Self {
-        // THREAT[TM-LLM-021]: Utility LLM credentials must not become agent- or
-        // session-configurable. Keep the key inside this host service.
-        Self {
-            provider: Provider::new("utility-openai", OpenResponsesProtocolChatDriver::new())
-                .base_url("https://api.openai.com/v1")
-                .auth(BearerAuth::new(api_key)),
-        }
-    }
-}
-
-#[async_trait]
-impl UtilityLlmService for OpenAiUtilityLlmService {
-    fn is_configured(&self) -> bool {
-        true
-    }
-
-    async fn chat_completion(&self, request: UtilityLlmRequest) -> Result<LlmResponse> {
-        let (messages, config) = request.into_parts()?;
-        self.provider.chat_completion(messages, &config).await
-    }
-
-    async fn chat_completion_stream(
-        &self,
-        request: UtilityLlmRequest,
-    ) -> Result<LlmResponseStream> {
-        let (messages, config) = request.into_parts()?;
-        self.provider
-            .chat_completion_stream(messages, &config)
-            .await
-    }
-
-    fn name(&self) -> &'static str {
-        "OpenAiUtilityLlmService"
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-pub enum SystemUtilityLlmConfig {
-    Disabled,
-    OpenAi { api_key: String },
-}
-
-impl std::fmt::Debug for SystemUtilityLlmConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Disabled => f.debug_struct("SystemUtilityLlmConfig::Disabled").finish(),
-            Self::OpenAi { .. } => f
-                .debug_struct("SystemUtilityLlmConfig::OpenAi")
-                .field("api_key", &"<redacted>")
-                .finish(),
-        }
-    }
-}
-
-impl SystemUtilityLlmConfig {
-    pub fn from_env() -> Self {
-        match env_opt(UTILITY_OPENAI_API_KEY_ENV) {
-            Some(api_key) => Self::OpenAi { api_key },
-            None => Self::Disabled,
-        }
-    }
-
-    pub fn into_service(self) -> Arc<dyn UtilityLlmService> {
-        match self {
-            Self::Disabled => Arc::new(DisabledUtilityLlmService),
-            Self::OpenAi { api_key } => Arc::new(OpenAiUtilityLlmService::new(api_key)),
-        }
-    }
-}
-
-fn env_opt(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,7 +164,7 @@ mod tests {
     #[test]
     fn request_builds_hardcoded_model_without_reasoning_by_default() {
         let request = UtilityLlmRequest::user_text("summarize this");
-        let (messages, config) = request.into_parts().unwrap();
+        let (messages, config) = request.into_driver_request().unwrap();
 
         assert_eq!(messages.len(), 1);
         assert_eq!(config.model, UTILITY_LLM_MODEL);
@@ -279,7 +185,7 @@ mod tests {
                 "classify this",
             )])
             .with_reasoning_effort(effort)
-            .into_parts()
+            .into_driver_request()
             .unwrap();
 
             assert_eq!(config.reasoning_effort.as_deref(), Some(expected));
@@ -288,21 +194,10 @@ mod tests {
 
     #[test]
     fn request_requires_messages() {
-        let error = UtilityLlmRequest::new(vec![]).into_parts().unwrap_err();
+        let error = UtilityLlmRequest::new(vec![])
+            .into_driver_request()
+            .unwrap_err();
 
         assert!(error.to_string().contains("at least one message"));
-    }
-
-    #[test]
-    fn system_config_debug_redacts_api_key() {
-        let debug = format!(
-            "{:?}",
-            SystemUtilityLlmConfig::OpenAi {
-                api_key: "sk-secret-value".to_string(),
-            }
-        );
-
-        assert!(debug.contains("<redacted>"));
-        assert!(!debug.contains("sk-secret-value"));
     }
 }

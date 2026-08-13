@@ -23,6 +23,7 @@ documentation = "https://docs.rs/everruns-integrations-openai-image"
 # Capability/tool/session runtime lives in core with default features on, the
 # same as the other integration crates.
 everruns-core.workspace = true
+everruns-provider = { workspace = true, features = ["http"] }
 inventory.workspace = true
 
 # HTTP client for the OpenAI Image API (multipart uploads for edits)

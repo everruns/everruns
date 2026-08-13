@@ -45,7 +45,7 @@ impl TurbopufferVectorStore {
         Self {
             // EVE-635: shared client with connect + overall request timeouts so
             // a hung vector-store read cannot block indefinitely.
-            http: everruns_core::driver_helpers::shared_request_http_client(),
+            http: everruns_provider::driver_helpers::shared_request_http_client(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
         }

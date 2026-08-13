@@ -28,6 +28,10 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+pub use crate::compact::{
+    CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
+    CompactResponse, CompactUsage, messages_to_compact_input,
+};
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
@@ -64,7 +68,7 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::OpenResponsesProtocolChatDriver;
+/// use everruns_provider::OpenResponsesProtocolChatDriver;
 ///
 /// let driver = OpenResponsesProtocolChatDriver::new();
 /// // Endpoint and authentication are configured on a runtime Provider.
@@ -558,7 +562,7 @@ impl OpenResponsesProtocolChatDriver {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::{OpenResponsesProtocolChatDriver, CompactRequest, CompactInputItem, CompactContent};
+    /// use everruns_provider::{OpenResponsesProtocolChatDriver, CompactRequest, CompactInputItem, CompactContent};
     ///
     /// let driver = OpenResponsesProtocolChatDriver::new();
     ///
@@ -1805,248 +1809,6 @@ fn handle_streaming_event(
         // All other events: emit empty delta to maintain stream continuity
         _ => LlmStreamEvent::TextDelta(String::new()),
     }
-}
-
-// ============================================================================
-// Compact Endpoint Types (Public API)
-// ============================================================================
-
-/// Request for the /v1/responses/compact endpoint
-///
-/// This endpoint compacts a conversation by replacing prior assistant messages,
-/// tool calls, and tool results with an encrypted compaction item that preserves
-/// latent context but is opaque. User messages are kept verbatim.
-#[derive(Debug, Clone, Serialize)]
-pub struct CompactRequest {
-    /// Model to use for compaction (required)
-    pub model: String,
-    /// Input items to compact (the current conversation window)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub input: Vec<CompactInputItem>,
-    /// Previous response ID (optional, alternative to input)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_response_id: Option<String>,
-    /// System instructions (optional, applies only to the compaction request)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub instructions: Option<String>,
-}
-
-/// Input item for compact request
-///
-/// These are the same types as ResponsesInputItem but exposed publicly
-/// for callers to construct compact requests.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum CompactInputItem {
-    /// A message (user, assistant, or developer)
-    #[serde(rename = "message")]
-    Message {
-        role: String,
-        content: CompactContent,
-    },
-    /// A function call from the assistant
-    #[serde(rename = "function_call")]
-    FunctionCall {
-        call_id: String,
-        name: String,
-        arguments: String,
-    },
-    /// Output from a function call
-    #[serde(rename = "function_call_output")]
-    FunctionCallOutput { call_id: String, output: String },
-    /// A compaction item (from a previous compact call)
-    #[serde(rename = "compaction")]
-    Compaction { encrypted_content: String },
-}
-
-impl From<&CompactOutputItem> for CompactInputItem {
-    fn from(item: &CompactOutputItem) -> Self {
-        match item {
-            CompactOutputItem::Message { role, content } => Self::Message {
-                role: role.clone(),
-                content: content.clone(),
-            },
-            CompactOutputItem::Compaction { encrypted_content } => Self::Compaction {
-                encrypted_content: encrypted_content.clone(),
-            },
-        }
-    }
-}
-
-/// Content for compact input items
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum CompactContent {
-    /// Simple text content
-    Text(String),
-    /// Array of content parts
-    Parts(Vec<CompactContentPart>),
-}
-
-/// Content part for compact input
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum CompactContentPart {
-    /// Text content
-    #[serde(rename = "input_text")]
-    InputText { text: String },
-    /// Image content
-    #[serde(rename = "input_image")]
-    InputImage { image_url: String },
-}
-
-/// Response from the /v1/responses/compact endpoint
-#[derive(Debug, Clone, Deserialize)]
-pub struct CompactResponse {
-    /// The compacted output items
-    pub output: Vec<CompactOutputItem>,
-    /// Token usage information
-    pub usage: Option<CompactUsage>,
-}
-
-/// Output item from compact response
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum CompactOutputItem {
-    /// A user message (kept verbatim)
-    #[serde(rename = "message")]
-    Message {
-        role: String,
-        content: CompactContent,
-    },
-    /// An encrypted compaction item
-    #[serde(rename = "compaction")]
-    Compaction {
-        /// Encrypted content that preserves latent context
-        encrypted_content: String,
-    },
-}
-
-/// Token usage from compact response
-#[derive(Debug, Clone, Deserialize)]
-pub struct CompactUsage {
-    /// Input tokens processed
-    pub input_tokens: Option<u32>,
-    /// Output tokens generated
-    pub output_tokens: Option<u32>,
-    /// Total tokens used
-    pub total_tokens: Option<u32>,
-    /// Authoritative per-request cost in USD, as reported inline by
-    /// OpenAI-compatible gateways (e.g. OpenRouter `usage.cost`). Absent for
-    /// providers that do not return one, matching the two generation decode
-    /// paths in this file (EVE-895).
-    #[serde(default)]
-    pub cost: Option<f64>,
-}
-
-// ============================================================================
-// Compaction Conversion Utilities
-// ============================================================================
-
-impl CompactInputItem {
-    /// Convert an LlmMessage to CompactInputItem(s)
-    ///
-    /// An assistant message with tool_calls is expanded into multiple items:
-    /// one Message for the text content and one FunctionCall for each tool call.
-    pub fn from_llm_message(msg: &LlmMessage) -> Vec<Self> {
-        let mut items = Vec::new();
-
-        let role = match msg.role {
-            LlmMessageRole::System => "developer",
-            LlmMessageRole::User => "user",
-            LlmMessageRole::Assistant => "assistant",
-            LlmMessageRole::Tool => "tool",
-        };
-
-        // Handle tool result messages differently
-        if msg.role == LlmMessageRole::Tool
-            && let Some(tool_call_id) = &msg.tool_call_id
-        {
-            let output = match &msg.content {
-                LlmMessageContent::Text(text) => text.clone(),
-                LlmMessageContent::Parts(parts) => parts
-                    .iter()
-                    .filter_map(|p| match p {
-                        LlmContentPart::Text { text } => Some(text.clone()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join(""),
-            };
-            items.push(CompactInputItem::FunctionCallOutput {
-                call_id: tool_call_id.clone(),
-                output,
-            });
-            return items;
-        }
-
-        // Add message content (if non-empty)
-        let content = Self::content_from_llm_message(msg);
-        let has_content = match &content {
-            CompactContent::Text(t) => !t.is_empty(),
-            CompactContent::Parts(p) => !p.is_empty(),
-        };
-
-        if has_content || msg.tool_calls.is_none() {
-            items.push(CompactInputItem::Message {
-                role: role.to_string(),
-                content,
-            });
-        }
-
-        // Add function calls for assistant messages
-        if msg.role == LlmMessageRole::Assistant
-            && let Some(tool_calls) = &msg.tool_calls
-        {
-            for tc in tool_calls {
-                items.push(CompactInputItem::FunctionCall {
-                    call_id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    arguments: tc.arguments.to_string(),
-                });
-            }
-        }
-
-        items
-    }
-
-    /// Convert LlmMessageContent to CompactContent
-    fn content_from_llm_message(msg: &LlmMessage) -> CompactContent {
-        match &msg.content {
-            LlmMessageContent::Text(text) => CompactContent::Text(text.clone()),
-            LlmMessageContent::Parts(parts) => {
-                let compact_parts: Vec<CompactContentPart> = parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        LlmContentPart::Text { text } => {
-                            Some(CompactContentPart::InputText { text: text.clone() })
-                        }
-                        LlmContentPart::Image { url } => {
-                            // URL is already in data URL format (data:image/png;base64,...)
-                            Some(CompactContentPart::InputImage {
-                                image_url: url.clone(),
-                            })
-                        }
-                        LlmContentPart::Audio { .. } => None, // Audio not supported in compact
-                    })
-                    .collect();
-                if compact_parts.len() == 1
-                    && let CompactContentPart::InputText { text } = &compact_parts[0]
-                {
-                    return CompactContent::Text(text.clone());
-                }
-                CompactContent::Parts(compact_parts)
-            }
-        }
-    }
-}
-
-/// Convert a slice of LlmMessages to CompactInputItems
-pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputItem> {
-    messages
-        .iter()
-        .flat_map(CompactInputItem::from_llm_message)
-        .collect()
 }
 
 // ============================================================================

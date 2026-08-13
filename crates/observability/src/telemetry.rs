@@ -129,7 +129,7 @@ impl Drop for TelemetryGuard {
 /// }
 /// ```
 pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
-    everruns_core::telemetry::install_crypto_provider();
+    everruns_provider::install_ring_crypto_provider();
 
     // Build resource with service info
     let mut resource_attrs = vec![KeyValue::new("service.name", config.service_name.clone())];

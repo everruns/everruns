@@ -12,12 +12,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenAIProtocolChatDriver;
+use everruns_provider::driver_registry::{
     LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
-use everruns_core::llm_retry::LlmRetryConfig;
-use everruns_core::{BearerAuth, Provider};
+use everruns_provider::llm_retry::LlmRetryConfig;
+use everruns_provider::{BearerAuth, Provider};
 use futures::StreamExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;

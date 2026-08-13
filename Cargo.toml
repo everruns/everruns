@@ -185,7 +185,7 @@ everruns-host = { path = "crates/host", version = "0.17.26" }
 everruns-http = { path = "crates/http", version = "0.17.26" }
 everruns-test-support = { path = "crates/test-support", version = "0.17.26", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.17.26" }
-everruns-provider = { path = "crates/provider", version = "0.17.26" }
+everruns-provider = { path = "crates/provider", version = "0.17.26", default-features = false }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
 everruns-mcp = { path = "crates/mcp", version = "0.17.26" }
 everruns-ard = { path = "crates/ard", version = "0.17.26" }

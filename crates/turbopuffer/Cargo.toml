@@ -45,6 +45,7 @@ tracing.workspace = true
 # Internal dependencies
 everruns-core.workspace = true
 everruns-platform.workspace = true
+everruns-provider = { workspace = true, features = ["http"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

@@ -38,6 +38,10 @@ Core owns the registries; it does not own the bundle that selects a
 deployment's shape. An embedder assembles those into an
 `everruns_host::HostComposition` and hands it to the runtime.
 
+Core's default feature set is empty. `openapi` and
+`tree-sitter-outlines` are explicit opt-ins, and concrete protocol drivers and
+TLS/HTTP setup belong to `everruns-provider` and their host startup owners.
+
 `everruns-core` does not register a policy catalog. Applications that want the
 standard backend-neutral policies compose `everruns-builtins`; environment and
 hosted capabilities come from their owning integration or product crates.

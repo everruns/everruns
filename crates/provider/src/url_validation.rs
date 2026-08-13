@@ -10,7 +10,7 @@
 // - Blocks RFC1918 (10.x, 172.16-31.x, 192.168.x)
 // - Blocks IPv6 loopback (::1) and link-local (fe80::)
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
 use std::time::Duration;
 use url::Url;
 
@@ -144,16 +144,19 @@ where
     Ok((url, addrs))
 }
 
-/// Default resolver used in production: `tokio::net::lookup_host` with a
-/// 5-second timeout so a stuck DNS server cannot stall MCP execution.
+/// Default resolver used in production. The system resolver is blocking, so it
+/// runs on Tokio's blocking pool and is bounded by the same five-second timeout.
+/// This keeps the provider contract free of Tokio's networking feature.
 async fn default_dns_resolve(host: String, port: u16) -> Result<Vec<SocketAddr>, std::io::Error> {
-    tokio::time::timeout(
-        DNS_LOOKUP_TIMEOUT,
-        tokio::net::lookup_host(format!("{host}:{port}")),
-    )
-    .await
-    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "DNS lookup timed out"))?
-    .map(|iter| iter.collect())
+    let lookup = tokio::task::spawn_blocking(move || {
+        (host.as_str(), port)
+            .to_socket_addrs()
+            .map(|addresses| addresses.collect())
+    });
+    tokio::time::timeout(DNS_LOOKUP_TIMEOUT, lookup)
+        .await
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "DNS lookup timed out"))?
+        .map_err(|error| std::io::Error::other(format!("DNS lookup task failed: {error}")))?
 }
 
 /// Check if a hostname string is blocked (localhost, private IPs, metadata endpoints).

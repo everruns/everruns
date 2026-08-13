@@ -104,6 +104,7 @@ include_dir = { version = "0.7", optional = true }
 
 [dev-dependencies]
 everruns-builtins.workspace = true
+everruns-provider = { workspace = true, features = ["tls-ring"] }
 a2a-server.workspace = true
 axum.workspace = true
 futures.workspace = true

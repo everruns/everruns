@@ -130,6 +130,29 @@ keeps resume and replay behavior identical across in-memory and durable hosts.
 | `everruns-core/sqlx` | removed — use `everruns-provider` with `features = ["sqlx"]` |
 | `everruns-core/embedded-platform-docs` | removed — it gated nothing; use `everruns-platform/embedded-platform-docs` |
 | `everruns-platform/sqlx` | removed — it forwarded to core's and nothing enabled it |
+| `everruns-core/llm-tests` | removed — use the `everruns-llm-tests` package for live provider tests |
+
+`everruns-core` now has an empty default feature set. OpenAPI derives remain
+available only with `features = ["openapi"]`; structural outlines remain
+available only with `features = ["tree-sitter-outlines"]`. Neither subtree is
+present in a default core build.
+
+Concrete provider protocol and utility-model implementations also moved to
+their effectful owners:
+
+| 0.17 (`everruns_core::`) | 0.18 |
+|---|---|
+| `OpenAIProtocolChatDriver`, `openai_protocol` | `everruns_provider::` |
+| `OpenResponsesProtocolChatDriver`, `openresponses_protocol` | `everruns_provider::` |
+| `driver_helpers`, `stream_reconnect` | `everruns_provider::` |
+| `OpenAiUtilityLlmService`, `SystemUtilityLlmConfig`, `UTILITY_OPENAI_API_KEY_ENV` | `everruns_host::` with `features = ["utility-openai"]` |
+
+Core no longer initializes Rustls. Provider HTTP clients install their ring
+crypto provider when they are first constructed, while server, worker, and CLI
+startup owners install it eagerly. Custom binaries that combine TLS stacks can
+depend on `everruns-provider` with `features = ["tls-ring"]` and call
+`everruns_provider::install_ring_crypto_provider()` once during startup; the
+call is idempotent and safe under concurrent initialization.
 
 ## What deliberately did not move
 
