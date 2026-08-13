@@ -33,7 +33,7 @@ fn accepts_platform_values(_organization: &Organization, _principal: &Principal)
 - App/channel and agent-trigger control-plane records
 - Hosted knowledge, memory, delegation, task, hook, and management capabilities
 - Hosted platform, knowledge-search, and vector-store contracts
-- Product registry composition that layers hosted capabilities over core built-ins
+- Product registry composition that layers portable, environment, and hosted owners
 - Payment, reporting, audit, and governance records
 
 ## Documentation

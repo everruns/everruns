@@ -4031,7 +4031,7 @@ mod tests {
             file_store: Some(store),
             model: None,
         };
-        let mut registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemCapability);
         let collected = collect_capabilities_with_configs(
             &[AgentCapabilityConfig::new(

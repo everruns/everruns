@@ -749,10 +749,8 @@ fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {
 async fn custom_platform_auth_router(
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
 ) -> (Router, Arc<StorageBackend>) {
-    let host_composition = HostComposition::new(
-        CapabilityRegistry::with_builtins(),
-        DriverRegistry::default(),
-    );
+    let host_composition =
+        HostComposition::new(CapabilityRegistry::new(), DriverRegistry::default());
     let db = Arc::new(StorageBackend::in_memory());
 
     // Deliberately do NOT call `seed::seed_all` — this simulates the cold-boot

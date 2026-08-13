@@ -1022,7 +1022,9 @@ pub mod tests {
             Ok(self.wait_for_idle_status.lock().unwrap().clone())
         }
         async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>> {
-            let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins();
+            let mut registry = everruns_core::capabilities::CapabilityRegistry::new();
+            everruns_builtins::register_runtime_capabilities(&mut registry)
+                .expect("test portable catalog must have unique capability IDs");
             let mut caps: Vec<CapabilityInfo> = registry
                 .list()
                 .iter()

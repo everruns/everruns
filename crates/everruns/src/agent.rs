@@ -1221,20 +1221,16 @@ impl AgentBuilder {
 }
 
 fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
-    let registry = if hosted_base {
-        everruns_core::CapabilityRegistry::with_builtins()
-    } else {
-        everruns_core::CapabilityRegistry::runtime_builtins()
-    };
+    let registry = everruns_core::CapabilityRegistry::new();
     #[cfg(feature = "builtins")]
     let registry = {
         let mut registry = registry;
         if hosted_base {
             everruns_builtins::register_portable_capabilities(&mut registry)
-                .expect("core and portable built-in catalogs must not collide");
+                .expect("portable built-in catalog must have unique capability IDs");
         } else {
             everruns_builtins::register_runtime_capabilities(&mut registry)
-                .expect("core and portable runtime catalogs must not collide");
+                .expect("portable runtime catalog must have unique capability IDs");
         }
         registry
     };

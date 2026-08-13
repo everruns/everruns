@@ -103,14 +103,18 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | Knowledge Bases and Indexes, Memories, delegation, subagents, background and scheduled work, user hooks, citations, model scouting, platform management | `everruns_platform::capabilities::` |
 | Session info, session storage, session SQL database, session sandbox | `everruns_platform::capabilities::` |
 | `spawn_background` and its runtime — event sink, admission permits, reattach | `everruns_platform::background_run::` |
-| Portable policy built-ins — compaction, tool search | `everruns_builtins::` |
+| Portable built-ins — human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
+| OpenRouter workspace, model scout, and provider-executed server tools | `everruns_integrations_openrouter_workspace::` |
 | Filesystem, shell, web fetch, Lua | `everruns_integrations_*` |
 | MCP adapter | `everruns_mcp::` |
 | HTTP transports | `everruns_http::` |
 | Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_observability::` |
 | `llmsim` driver, in-memory loop, fixture capabilities | `everruns_test_support::` |
 
-Product presets compose these explicitly. `CapabilityRegistry::runtime_builtins()` deliberately does not advertise capabilities whose backing services are absent — if you were relying on a hosted capability appearing by default, compose `everruns_platform::capabilities::hosted_capability_registry()` instead.
+Product presets compose these explicitly. Core registries are now empty by
+default: use `everruns_host::runtime_capability_registry()` for the Framework
+preset or `everruns_platform::capabilities::hosted_capability_registry()` for
+the hosted product catalog.
 
 ## Features
 

@@ -147,8 +147,8 @@ Contract rules:
   ID/config/definition type in core, host, or platform.
 
 Capability identity/configuration lives in `everruns-capability`. Runtime
-execution contracts, the registry, and effect-neutral kernel built-ins live in
-`everruns-core`. Portable policy implementations live in `everruns-builtins`;
+execution contracts, the registry, and neutral collection algorithms live in
+`everruns-core`. Portable implementations live in `everruns-builtins`;
 environment and hosted implementations live in their owning
 integration/product crates. No implementation bundle registers itself merely
 by being linked. The environment, portable, and hosted isolation guards enforce
@@ -188,7 +188,7 @@ Capability implementations are composed explicitly by the selected host:
 - Portable policy capabilities are defined in **everruns-builtins**. Linking
   the crate has no side effect; registry composition calls its registration
   function explicitly and collision checks are fail-closed.
-- Core owns the registry, contracts, and effect-neutral kernel implementations.
+- Core owns only the registry, contracts, and neutral collection algorithms.
 - `everruns-host::runtime_capability_registry()` and
   `compose_runtime_capability_registry(base)` add feature-selected embedded
   integrations.
@@ -504,7 +504,7 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 ##### Capability-Contributed Skills
 
-Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The built-in `skills` capability then discovers and serves them through the same VFS scan used for filesystem and registry skills — no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/attach_skill.rs` for `SkillContribution` and the underlying mount construction.
+Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-builtins` then discovers and serves them through the same VFS scan used for filesystem and registry skills — no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
 ### Capability Dependencies
 
@@ -895,7 +895,7 @@ Following the agentskills.io specification:
 - **Status**: Not registered by default — it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`.
 - **Tools**: None (contributes a `PreToolUseHook`)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
-- **Source**: `crates/core/src/capabilities/tool_approval.rs`
+- **Source**: `crates/builtins/src/tool_approval.rs`
 - **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints` — `readonly` is never gated, `destructive`/`open_world` always can be, and an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which allows the call — a client with no permission UI keeps working autonomously instead of deadlocking on every mutating tool. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
 #### ProgressGuard
@@ -1094,7 +1094,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 Runtime-default eligibility is based on host services, not risk level. A high-risk
 capability may be runtime-usable when it runs entirely through runtime-provided
 services such as the session filesystem or egress service. A low-risk capability
-must still stay out of `runtime_builtins()` if its tools need optional services
+must still stay out of the host-owned runtime preset if its tools need optional services
 such as platform, task, schedule, provider-credential, or knowledge stores. See `knowledge/foundations/runtime.md` for
 the embedded runtime contract.
 

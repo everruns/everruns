@@ -13,6 +13,18 @@ fn lock_env() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
+    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let mut registry = CapabilityRegistry::new();
+    registry.register_inventory_plugins(|plugin| {
+        (!plugin.experimental_only || grade.experimental_features_enabled())
+            && plugin
+                .feature_flag
+                .is_none_or(|flag| decisions.is_enabled(flag))
+    });
+    registry
+}
+
 #[test]
 fn test_docker_plugin_is_submitted() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
@@ -65,7 +77,7 @@ fn test_docker_not_registered_in_dev_without_flag() {
     let _lock = lock_env();
     // Docker requires FEATURE_DOCKER_CAPABILITY=true even in dev
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(
         !registry.has("docker_container"),
         "Docker Container should NOT be in dev registry without FEATURE_DOCKER_CAPABILITY"
@@ -76,7 +88,7 @@ fn test_docker_not_registered_in_dev_without_flag() {
 fn test_docker_registered_in_dev_with_flag() {
     let _lock = lock_env();
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(
         registry.has("docker_container"),
         "Docker Container should be in dev registry when FEATURE_DOCKER_CAPABILITY=true"
@@ -88,7 +100,7 @@ fn test_docker_registered_in_dev_with_flag() {
 fn test_docker_not_registered_in_prod_registry() {
     let _lock = lock_env();
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         !registry.has("docker_container"),
         "Docker Container should NOT be in prod registry"
@@ -100,7 +112,7 @@ fn test_docker_not_registered_in_prod_even_with_flag() {
     let _lock = lock_env();
     // experimental_only still blocks prod (grade must also allow experimental)
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         !registry.has("docker_container"),
         "Docker Container should NOT be in prod registry (experimental_only blocks it)"
@@ -112,7 +124,7 @@ fn test_docker_not_registered_in_prod_even_with_flag() {
 fn test_docker_capability_metadata() {
     let _lock = lock_env();
     unsafe { std::env::set_var("FEATURE_DOCKER_CAPABILITY", "true") };
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     let cap = registry
         .get("docker_container")
         .expect("Docker Container capability not found");

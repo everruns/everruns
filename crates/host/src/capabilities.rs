@@ -1,6 +1,6 @@
 //! Capability composition for embedded hosts.
 //!
-//! `everruns-core` owns only effect-neutral capability contracts and built-ins.
+//! `everruns-core` owns only neutral capability contracts and registry algorithms.
 //! This module is the opt-in host composition boundary for environment-backed
 //! implementations.
 
@@ -8,15 +8,14 @@ use std::sync::Arc;
 
 use everruns_core::{CapabilityRegistry, EgressService};
 
-/// Return the runtime-safe neutral core preset, optional portable policy
-/// bundle, and integrations enabled as host Cargo features.
+/// Return the runtime-safe portable bundle and integrations enabled as host Cargo features.
 pub fn runtime_capability_registry() -> CapabilityRegistry {
-    let registry = CapabilityRegistry::runtime_builtins();
+    let registry = CapabilityRegistry::new();
     #[cfg(feature = "builtins")]
     let registry = {
         let mut registry = registry;
         everruns_builtins::register_runtime_capabilities(&mut registry)
-            .expect("core and portable runtime catalogs must not collide");
+            .expect("portable runtime catalog must have unique capability IDs");
         registry
     };
     compose_runtime_capability_registry(registry)
@@ -24,8 +23,7 @@ pub fn runtime_capability_registry() -> CapabilityRegistry {
 
 /// Add host integrations selected by Cargo features to an existing registry.
 ///
-/// This lets embedders preserve a broader core preset (for example, the local
-/// profile's schedule capability) while applying the same feature-driven
+/// This lets embedders preserve a caller-owned registry while applying the same feature-driven
 /// environment composition as [`runtime_capability_registry`]. Existing
 /// registrations retain the registry's normal duplicate handling.
 pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> CapabilityRegistry {
@@ -103,6 +101,9 @@ mod tests {
     #[test]
     fn runtime_registry_matches_selected_host_features() {
         let registry = runtime_capability_registry();
+        assert_eq!(registry.has("human_intent"), cfg!(feature = "builtins"));
+        assert_eq!(registry.has("infinity_context"), cfg!(feature = "builtins"));
+        assert_eq!(registry.has("skills"), cfg!(feature = "builtins"));
         assert_eq!(registry.has("current_time"), cfg!(feature = "builtins"));
         assert_eq!(registry.has("compaction"), cfg!(feature = "builtins"));
         assert!(
@@ -115,6 +116,9 @@ mod tests {
         );
         assert_eq!(registry.has("bashkit_shell"), cfg!(feature = "bashkit"));
         assert_eq!(registry.has("web_fetch"), cfg!(feature = "web-fetch"));
+        assert!(!registry.has("openui"));
+        assert!(!registry.has("a2ui"));
+        assert!(!registry.has("openrouter_server_tools"));
 
         if cfg!(feature = "bashkit") {
             assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
@@ -123,10 +127,11 @@ mod tests {
 
     #[test]
     fn composition_preserves_caller_selected_core_capabilities() {
-        let registry = compose_runtime_capability_registry(CapabilityRegistry::with_builtins());
-        // A core-owned capability the caller brought in survives composition.
-        // `session_schedule` used to stand in here; it is hosted and lives in
-        // everruns-platform now (EVE-885), so it is no longer in this preset.
+        let mut selected = CapabilityRegistry::new();
+        #[cfg(feature = "builtins")]
+        everruns_builtins::register_runtime_capabilities(&mut selected).unwrap();
+        let registry = compose_runtime_capability_registry(selected);
+        // A caller-selected capability survives environment composition.
         assert!(registry.has("session_storage"));
         assert_eq!(
             registry.has("session_file_system"),

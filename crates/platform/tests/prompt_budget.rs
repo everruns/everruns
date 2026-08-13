@@ -11,9 +11,8 @@
 // same PR and explain why in the commit message. Lowering a cap is
 // always fine.
 
-use everruns_core::capabilities::{
-    Capability, InfinityContextCapability, SkillsCapability, SystemPromptContext,
-};
+use everruns_builtins::{InfinityContextCapability, SkillsCapability};
+use everruns_core::capabilities::{Capability, SystemPromptContext};
 use everruns_core::typed_id::SessionId;
 use everruns_platform::capabilities::SessionSandboxCapability;
 use everruns_platform::capabilities::{

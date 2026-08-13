@@ -31,7 +31,7 @@ const HOSTED_IDS: &[&str] = &[
 
 #[test]
 fn framework_registry_does_not_advertise_hosted_capabilities() {
-    let registry = CapabilityRegistry::runtime_builtins();
+    let registry = CapabilityRegistry::new();
     for id in HOSTED_IDS {
         assert!(!registry.has(id), "Framework registry advertised {id}");
     }
@@ -40,7 +40,7 @@ fn framework_registry_does_not_advertise_hosted_capabilities() {
 #[test]
 fn product_registration_adds_the_hosted_catalog() {
     let grade = everruns_core::DeploymentGrade::Dev;
-    let mut registry = CapabilityRegistry::with_builtins_for_grade(grade);
+    let mut registry = CapabilityRegistry::new();
     register_hosted_capabilities(&mut registry, grade);
     for id in HOSTED_IDS {
         assert!(registry.has(id), "product registry omitted {id}");

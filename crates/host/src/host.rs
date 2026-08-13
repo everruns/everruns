@@ -8,7 +8,9 @@ use everruns_core::atoms::{
     ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
+use everruns_core::capabilities::{
+    Capability, SystemPromptContext, collect_capabilities_with_configs,
+};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -39,6 +41,46 @@ use everruns_platform::{
 };
 use std::sync::Arc;
 use tracing::warn;
+
+/// Turn-local view that preserves a capability's message filtering while
+/// suppressing every model-visible contribution.
+struct MessageFilterOnlyCapability(Arc<dyn Capability>);
+
+impl Capability for MessageFilterOnlyCapability {
+    fn id(&self) -> &str {
+        self.0.id()
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        self.0.aliases()
+    }
+
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        self.0.status()
+    }
+
+    fn message_filter_provider(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::message_filter::MessageFilterProvider>> {
+        self.0.message_filter_provider()
+    }
+
+    fn message_filter_config(
+        &self,
+        config: &serde_json::Value,
+        compaction_enabled: bool,
+    ) -> serde_json::Value {
+        self.0.message_filter_config(config, compaction_enabled)
+    }
+}
 
 #[cfg(feature = "bashkit")]
 fn bash_hook_dispatcher(
@@ -1336,14 +1378,30 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         }
     }
 
-    let mut reason_capability_registry = adapter.capability_registry();
-    if !query_history_allowed {
-        // Keep Infinity Context's message filter active: persisted history may
-        // contain raw text removed by earlier prompt hooks. Replace only its
-        // model-visible prompt/tool contributions.
-        reason_capability_registry
-            .register(everruns_core::capabilities::InfinityContextFilterOnlyCapability);
-    }
+    let reason_capability_registry = {
+        let mut registry = adapter.capability_registry();
+        if !query_history_allowed {
+            // Persisted history may contain raw text removed by earlier prompt
+            // hooks. Preserve the owning capability's message filter while
+            // suppressing its prompt/tool contributions for this turn. Tool
+            // ownership is discovered through the neutral capability contract;
+            // host does not depend on a concrete implementation or capability ID.
+            let query_history_owner = registry
+                .list()
+                .into_iter()
+                .find(|capability| {
+                    capability
+                        .tool_definitions()
+                        .iter()
+                        .any(|tool| tool.name() == "query_history")
+                })
+                .map(Arc::clone);
+            if let Some(capability) = query_history_owner {
+                registry.register(MessageFilterOnlyCapability(capability));
+            }
+        }
+        registry
+    };
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),

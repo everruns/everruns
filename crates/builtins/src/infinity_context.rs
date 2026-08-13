@@ -50,6 +50,10 @@ impl Capability for InfinityContextFilterOnlyCapability {
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         Some(Arc::new(InfinityContextFilterProvider))
     }
+
+    fn message_filter_config(&self, config: &Value, compaction_enabled: bool) -> Value {
+        message_filter_config(config, compaction_enabled)
+    }
 }
 
 impl Capability for InfinityContextCapability {
@@ -90,6 +94,10 @@ impl Capability for InfinityContextCapability {
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         Some(Arc::new(InfinityContextFilterProvider))
+    }
+
+    fn message_filter_config(&self, config: &Value, compaction_enabled: bool) -> Value {
+        message_filter_config(config, compaction_enabled)
     }
 
     /// All three `InfinityContextConfig` fields are simple numeric knobs users
@@ -197,6 +205,20 @@ impl Capability for InfinityContextCapability {
             },
         ]
     }
+}
+
+fn message_filter_config(base: &Value, compaction_enabled: bool) -> Value {
+    if !compaction_enabled {
+        return base.clone();
+    }
+    let mut config = base.clone();
+    match config.as_object_mut() {
+        Some(map) => {
+            map.insert("compaction_active".to_string(), Value::Bool(true));
+        }
+        None => config = json!({ "compaction_active": true }),
+    }
+    config
 }
 
 const INFINITY_CONTEXT_SYSTEM_PROMPT: &str = r#"## Conversation history
@@ -322,8 +344,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
                 .map(|message| message.id.to_string())
                 .collect();
             let count_before_integrity = messages.len();
-            *messages =
-                crate::tool_call_integrity::retain_complete_message_tool_exchanges(messages, true);
+            *messages = everruns_core::retain_complete_message_tool_exchanges(messages, true);
             total_excluded_count = total_excluded_count
                 .saturating_add(count_before_integrity.saturating_sub(messages.len()));
             let retained_head_len = messages
@@ -1090,6 +1111,22 @@ mod tests {
     }
 
     #[test]
+    fn message_filter_hook_coordinates_with_compaction_without_changing_user_config() {
+        let base = json!({ "context_budget_tokens": 1000 });
+
+        let coordinated = message_filter_config(&base, true);
+        assert_eq!(coordinated["compaction_active"], json!(true));
+        assert_eq!(coordinated["context_budget_tokens"], json!(1000));
+        assert!(base.get("compaction_active").is_none());
+
+        assert_eq!(message_filter_config(&base, false), base);
+        assert_eq!(
+            message_filter_config(&Value::Null, true),
+            json!({ "compaction_active": true })
+        );
+    }
+
+    #[test]
     fn test_filter_provider_defers_eviction_to_compaction() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
@@ -1453,10 +1490,7 @@ mod tests {
             .map(crate::llm_conversions::llm_message_from_message)
             .collect();
         let stateless_view =
-            crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
-                llm_messages,
-                false,
-            );
+            everruns_core::retain_complete_llm_tool_exchanges_for_request(llm_messages, false);
         assert!(
             stateless_view
                 .iter()

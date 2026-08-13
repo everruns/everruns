@@ -14,10 +14,13 @@
 // See knowledge/foundations/llm-drivers.md ("OpenRouter Server Tools") and
 // https://openrouter.ai/docs/guides/features/server-tools.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::capabilities::RiskLevel;
-use crate::driver_registry::{OpenRouterServerTool, OpenRouterServerToolKind};
 use async_trait::async_trait;
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
+};
+use everruns_core::driver_registry::{
+    OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
+};
 use serde_json::{Value, json};
 
 /// Capability ID for OpenRouter server tools.
@@ -249,6 +252,14 @@ impl Capability for OpenRouterServerToolsCapability {
 
         Ok(())
     }
+
+    fn openrouter_routing_config(&self, config: &Value) -> Option<OpenRouterRoutingConfig> {
+        let server_tools = server_tools_from_config(config);
+        (!server_tools.is_empty()).then_some(OpenRouterRoutingConfig {
+            server_tools,
+            ..Default::default()
+        })
+    }
 }
 
 #[cfg(test)]
@@ -256,6 +267,21 @@ mod tests {
     use super::*;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
+
+    #[test]
+    fn capability_hook_contributes_only_non_empty_routing_intent() {
+        let capability = OpenRouterServerToolsCapability;
+        assert!(capability.openrouter_routing_config(&json!({})).is_none());
+
+        let routing = capability
+            .openrouter_routing_config(&json!({ "tools": ["web_search"] }))
+            .expect("selected server tools should contribute routing intent");
+        assert_eq!(routing.server_tools.len(), 1);
+        assert_eq!(
+            routing.server_tools[0].kind,
+            OpenRouterServerToolKind::WebSearch
+        );
+    }
 
     #[test]
     fn schema_lists_every_tool_with_a_title() {

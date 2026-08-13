@@ -4015,7 +4015,7 @@ mod tests {
 
     #[test]
     fn test_capability_usage_snapshot_keeps_resolved_and_exposed_separate() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
         let tool = ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
             name: "demo_tool".to_string(),
             display_name: None,

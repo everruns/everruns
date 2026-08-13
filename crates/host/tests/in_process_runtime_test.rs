@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use everruns_core::capabilities::InfinityContextCapability;
+use everruns_builtins::InfinityContextCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;

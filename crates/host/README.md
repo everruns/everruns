@@ -37,11 +37,11 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 
 ## Integration features
 
-`runtime_capability_registry()` starts from core's effect-neutral runtime
-preset, adds the backend-neutral policy catalog when `builtins` is enabled,
-then adds only the compiled integrations.
+`runtime_capability_registry()` is the Framework runtime preset owner. It
+starts from an empty core registry, adds the runtime-safe portable catalog when
+`builtins` is enabled, then adds only the compiled integrations.
 `compose_runtime_capability_registry(registry)` applies that same feature-driven
-composition to a caller-selected core preset. `runtime_egress_service()`
+composition to a caller-selected registry. `runtime_egress_service()`
 returns the matching direct, policy-aware transport when a network-capable
 integration is selected and a disabled service otherwise. `builtins`,
 `filesystem`, `bashkit`, `web-fetch`, `lua`, and `mcp` are independent host features;

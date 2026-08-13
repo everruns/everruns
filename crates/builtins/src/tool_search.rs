@@ -40,7 +40,7 @@
 // remains as a belt-and-suspenders for the first call before a reveal lands.
 //
 // The capability is registered once and shared across every session/agent (see
-// `CapabilityRegistry::with_builtins`), so the revealed set MUST be keyed by
+// `register_portable_capabilities`), so the revealed set MUST be keyed by
 // session — otherwise reveals would leak across sessions and gradually disable
 // deferral process-wide. `DeferSchemaHook::transform` has no session context of
 // its own, so the hook captures its `session_id` at construction time via

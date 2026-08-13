@@ -57,7 +57,7 @@ assert!(!registry.has("bashkit_shell"));
 # let _ = egress;
 ```
 
-If the host starts from a broader core preset, preserve it and apply the same
+If the host starts from a caller-owned registry, preserve it and apply the same
 feature-selected integrations with
 `everruns_host::compose_runtime_capability_registry(registry)`.
 
@@ -79,6 +79,9 @@ types. The former core paths move as follows:
 | `everruns_core::DirectEgressService` | `everruns_http::DirectEgressService` |
 | `everruns_core::SystemEmailConfig` and Resend types | `everruns_platform::*` |
 | `everruns_core::ModelScoutCapability` and `OpenRouterWorkspaceCapability` | `everruns_integrations_openrouter_workspace::*` |
+| `everruns_core::OpenRouterServerToolsCapability` | `everruns_integrations_openrouter_workspace::OpenRouterServerToolsCapability` |
+| `everruns_core::{HumanIntentCapability, InfinityContextCapability, SkillsCapability, AttachSkillCapability, ToolApprovalCapability}` | `everruns_builtins::*` |
+| `everruns_core::{OpenUiCapability, A2UiCapability}` | `everruns_builtins::*` with `ui-capabilities` |
 | `everruns_core::skill::ProcessCommandExecutor` | `everruns_host::ProcessCommandExecutor` with the host `process` feature |
 
 Continue with [Configure and author capabilities](/framework/advanced-capabilities/)

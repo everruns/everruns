@@ -7,6 +7,18 @@ use everruns_platform::connector::ConnectorPlugin;
 // Force linker to include the integration crate's inventory submissions.
 use everruns_ard as _;
 
+fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
+    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let mut registry = CapabilityRegistry::new();
+    registry.register_inventory_plugins(|plugin| {
+        (!plugin.experimental_only || grade.experimental_features_enabled())
+            && plugin
+                .feature_flag
+                .is_none_or(|flag| decisions.is_enabled(flag))
+    });
+    registry
+}
+
 #[test]
 fn capability_plugin_is_submitted() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
@@ -27,9 +39,9 @@ fn capability_is_experimental_dev_only() {
         .expect("plugin not found");
     assert!(plugin.experimental_only);
 
-    let dev = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let dev = registry_for_grade(DeploymentGrade::Dev);
     assert!(dev.has("resource_discovery"), "should be in dev registry");
-    let prod = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    let prod = registry_for_grade(DeploymentGrade::Prod);
     assert!(
         !prod.has("resource_discovery"),
         "experimental capability should not be in prod registry"
@@ -38,7 +50,7 @@ fn capability_is_experimental_dev_only() {
 
 #[test]
 fn capability_metadata_and_tools() {
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     let cap = registry
         .get("resource_discovery")
         .expect("capability not found");
