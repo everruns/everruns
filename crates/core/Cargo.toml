@@ -89,7 +89,6 @@ rustls.workspace = true
 utoipa = { workspace = true, optional = true }
 
 # Database (optional, for TypedId sqlx support)
-sqlx = { workspace = true, optional = true }
 
 # Note: This crate has NO dependency on storage/contracts - it's purely runtime abstractions
 # Tool types are defined locally in this crate
@@ -119,7 +118,6 @@ include_dir = { version = "0.7", optional = true }
 default = ["llm-tests"]
 embedded-platform-docs = ["dep:include_dir"]
 openapi = ["utoipa", "everruns-provider/openapi"]
-sqlx = ["dep:sqlx", "everruns-provider/sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
 llm-tests = []  # LLM integration tests (requires API keys)
