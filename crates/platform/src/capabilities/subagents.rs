@@ -29,6 +29,7 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, DelegationTargetProvider, RiskLevel,
     SPAWN_AGENT_CONCURRENCY_CLASS, SpawnMode,
 };
+use crate::background_run::{BackgroundRunPermit, try_acquire_background_run_permit};
 use async_trait::async_trait;
 use everruns_core::session::SessionSeedMode;
 use everruns_core::session_task::{
@@ -38,9 +39,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
 use everruns_core::tool_types::ToolHints;
-use everruns_core::tools::{
-    BackgroundRunPermit, Tool, ToolExecutionResult, try_acquire_background_run_permit,
-};
+use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{SessionStore, SpawnClaimResult, ToolContext};
 use everruns_core::typed_id::SessionId;
 
@@ -3604,7 +3603,7 @@ mod tests {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry));
 
-        for index in 0..everruns_core::tools::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+        for index in 0..crate::background_run::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
             let result = spawn(
                 &context,
                 json!({

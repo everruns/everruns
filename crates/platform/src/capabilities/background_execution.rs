@@ -10,7 +10,8 @@
 //! capability contract this implements.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use everruns_core::tools::{SpawnBackgroundTool, Tool};
+use crate::background_run::SpawnBackgroundTool;
+use everruns_core::tools::Tool;
 
 /// Capability id used by the auto-activator in
 /// `collect_capabilities_with_configs`.
@@ -95,7 +96,7 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
         task: &everruns_core::session_task::SessionTask,
         context: &everruns_core::traits::ToolContext,
     ) -> everruns_core::error::Result<()> {
-        everruns_core::tools::reattach_background_run(task, context).await
+        crate::background_run::reattach_background_run(task, context).await
     }
 
     /// Cooperative cancellation: `cancel_task` records `cancel_requested_at`
