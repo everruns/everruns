@@ -2,6 +2,34 @@
 
 ## 2026-08-12
 
+* **EVE-880 closed: three session families stay in the kernel by design.**
+  `Workspace`, the managed sandbox and `session_sqldb` moved to
+  `everruns-platform`. `session_task`, `session_schedule` and
+  `session_resource` stay in `everruns-core`, and the reason is the same in
+  each case: a portable, kernel-resident consumer needs the contract during a
+  turn.
+
+  - `session_task` — `wake_queue` decides mid-turn wakes from the task's wake
+    policy, `task_observer` is the lifecycle SPI, and the record is serialized
+    whole into the canonical `task.created` / `task.updated` /
+    `task.message.*` payloads.
+  - `session_schedule` — `crates/builtins/src/usage_limit_auto_continue.rs`
+    reads `ctx.services.schedule_store` to schedule an auto-resume after a
+    provider usage limit. `everruns-builtins` depends only on
+    `everruns-capability` and `everruns-core`; platform depends on *it*, so
+    moving the contract to platform would put it out of a portable built-in's
+    reach. A typed extension does not help — the wrapper would live in
+    platform, equally invisible.
+  - `session_resource` — `resource_ownership.rs` and the skills capabilities
+    in `crates/core/src/capabilities/`, which are portable and stay.
+
+  Core already owns neutral store contracts of this kind (`SessionFileSystem`,
+  `SessionStorageStore`); these belong with them. The generalisable rule, worth
+  carrying into EVE-888: whether something is a platform record is answered by
+  *who consumes it during a turn*, not by whether it is persisted. All three
+  families that stay are persisted, and all three are load-bearing for
+  portable execution.
+
 * **Background tool runs leave the kernel**: Moved `spawn_background` — the
   tool, its session-task mirroring, the scheduled-monitor path, the background
   event sink, admission-control permits and the reattach entry point — out of
@@ -39,11 +67,10 @@
   store still surfaces as the same structured tool error.
 
   The remaining ~18 optional service fields (~1250 call sites) follow one
-  family per change. This seam unblocks `session_sqldb` only: `session_task`
-  and `session_schedule` are pinned by `crates/core/src/tools.rs` creating
-  monitor and background-tool tasks during execution, and `session_resource`
-  by `resource_ownership.rs` and the portable skills capabilities — both
-  EVE-888 work.
+  family per change. This seam frees `session_sqldb` only. (An earlier version
+  of this entry expected `session_task`, `session_schedule` and
+  `session_resource` to follow under EVE-888; they do not — see the EVE-880
+  closeout below.)
 
 * **Composition root extraction**: Moved `PlatformDefinition` out of
   `everruns-core` into `everruns-host` as `HostComposition` (EVE-887).
