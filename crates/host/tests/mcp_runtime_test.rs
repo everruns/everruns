@@ -104,7 +104,7 @@ fn scoped_servers() -> ScopedMcpServers {
 
 fn platform_with_egress(traffic: Arc<Mutex<McpTraffic>>) -> HostComposition {
     HostComposition::builder()
-        .capability_registry(CapabilityRegistry::with_builtins())
+        .capability_registry(CapabilityRegistry::new())
         .driver_registry(DriverRegistry::new())
         .egress_service(Arc::new(FakeMcpEgress { traffic }))
         .build()
@@ -315,7 +315,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
 async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let traffic = Arc::new(Mutex::new(McpTraffic::default()));
     let hooks = Arc::new(HookCounts::default());
-    let mut capabilities = CapabilityRegistry::with_builtins();
+    let mut capabilities = CapabilityRegistry::new();
     capabilities.register(LiveCapability {
         hooks: hooks.clone(),
     });

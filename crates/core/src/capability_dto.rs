@@ -465,15 +465,23 @@ mod tests {
             }
         }
 
-        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
-
         let info = CapabilityInfo::from_core(&FeatureCapability);
         assert!(info.features.contains(&"secrets".to_string()));
         assert!(info.features.contains(&"key_value".to_string()));
 
-        // Capability with no features
-        let neutral_cap = registry.get("human_intent").unwrap();
-        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
+        struct FeaturelessCapability;
+        impl crate::capabilities::Capability for FeaturelessCapability {
+            fn id(&self) -> &str {
+                "featureless_fixture"
+            }
+            fn name(&self) -> &str {
+                "Featureless Fixture"
+            }
+            fn description(&self) -> &str {
+                "Fixture with no declared features."
+            }
+        }
+        let info = CapabilityInfo::from_core(&FeaturelessCapability);
         assert!(info.features.is_empty());
     }
 
@@ -519,17 +527,38 @@ mod tests {
 
     #[test]
     fn test_from_core_populates_risk_level() {
-        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        struct HighRiskCapability;
+        impl crate::capabilities::Capability for HighRiskCapability {
+            fn id(&self) -> &str {
+                "high_risk_fixture"
+            }
+            fn name(&self) -> &str {
+                "High Risk Fixture"
+            }
+            fn description(&self) -> &str {
+                "Fixture for risk projection."
+            }
+            fn risk_level(&self) -> RiskLevel {
+                RiskLevel::High
+            }
+        }
+        struct LowRiskCapability;
+        impl crate::capabilities::Capability for LowRiskCapability {
+            fn id(&self) -> &str {
+                "low_risk_fixture"
+            }
+            fn name(&self) -> &str {
+                "Low Risk Fixture"
+            }
+            fn description(&self) -> &str {
+                "Fixture for default risk projection."
+            }
+        }
 
-        // openrouter_server_tools is a core-owned High-risk capability
-        // (user_hooks moved to everruns-platform in EVE-885).
-        let server_tools_cap = registry.get("openrouter_server_tools").unwrap();
-        let info = CapabilityInfo::from_core(server_tools_cap.as_ref());
+        let info = CapabilityInfo::from_core(&HighRiskCapability);
         assert_eq!(info.risk_level, RiskLevel::High);
 
-        // human_intent is Low risk (default)
-        let neutral_cap = registry.get("human_intent").unwrap();
-        let info = CapabilityInfo::from_core(neutral_cap.as_ref());
+        let info = CapabilityInfo::from_core(&LowRiskCapability);
         assert_eq!(info.risk_level, RiskLevel::Low);
     }
 

@@ -26,9 +26,9 @@
 //!
 //! Hosted product capabilities — including Knowledge Bases and Indexes,
 //! Memories, delegation, schedules/tasks, user hooks, and platform management
-//! — live in `everruns-platform`. [`CapabilityRegistry::runtime_builtins`]
-//! intentionally does not advertise them. Core exposes only neutral collection
-//! hooks and type-keyed extension seams needed by hosts and capability crates.
+//! — live in `everruns-platform`. Backend-neutral first-party implementations
+//! live in `everruns-builtins`. Core exposes only neutral collection hooks,
+//! registry algorithms, and type-keyed extension seams.
 //!
 //! Deterministic simulation (the `llmsim` driver, the in-memory agentic
 //! loop, and demo fixture capabilities) lives in the `everruns-test-support`
@@ -44,11 +44,9 @@
 //!
 //! ```
 //! use everruns_core::{CapabilityRegistry, DriverRegistry};
-//! use everruns_core::capabilities::HumanIntentCapability;
 //!
-//! let mut capabilities = CapabilityRegistry::new();
-//! capabilities.register(HumanIntentCapability);
-//! assert!(capabilities.get("human_intent").is_some());
+//! let capabilities = CapabilityRegistry::new();
+//! assert!(capabilities.is_empty());
 //!
 //! let drivers = DriverRegistry::new();
 //! assert!(drivers.registered_providers().is_empty());
@@ -198,7 +196,10 @@ mod tool_call_integrity;
 pub use everruns_provider::openai_protocol;
 pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;
-pub use tool_call_integrity::retain_complete_llm_tool_exchanges;
+pub use tool_call_integrity::{
+    retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
+    retain_complete_message_tool_exchanges,
+};
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
@@ -394,24 +395,22 @@ pub use capabilities::SystemPromptContext;
 pub use capabilities::{
     AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel, Capability,
     CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError,
-    HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID,
-    InfinityContextCapability, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES, MountAccess,
-    MountDirectoryBuilder, MountEntry, MountPoint, MountSource, QueryHistoryTool,
-    ResolvedCapabilities, RiskLevel, ToolCallHook, ToolDefinitionHook, apply_capabilities,
-    collect_capabilities, collect_capabilities_with_configs, compute_features,
+    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError, IntegrationPlugin,
+    MAX_RESOLVED_CAPABILITIES, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint,
+    MountSource, ResolvedCapabilities, RiskLevel, ToolCallHook, ToolDefinitionHook,
+    apply_capabilities, collect_capabilities, collect_capabilities_with_configs, compute_features,
     declarative_capability_id, declarative_capability_info, get_dependencies,
     hydrate_declarative_capability_config, hydrate_plugin_capability_config,
     is_declarative_capability, parse_declarative_capability_id, plugin_capability_info,
     resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
-    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,
-    SkillInstructions, SkillMeta, SkillSource, SkillsCapability, discover_skills_from_entries,
-    is_skill_capability, parse_skill_capability_id, skill_capability_id,
+    DeclarativeCapabilityDefinition, DeclarativeCapabilityFile, DeclarativeCapabilitySkill,
 };
 pub use capabilities::{
-    DeclarativeCapabilityDefinition, DeclarativeCapabilityFile, DeclarativeCapabilitySkill,
+    SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapabilityIdExt, SkillContribution,
+    SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
+    parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
 pub use compaction_checkpoint::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,

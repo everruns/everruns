@@ -120,6 +120,7 @@ pub fn register_environment_capabilities(
     registry.register(everruns_integrations_filesystem::FileSystemCapability);
     registry.register(everruns_integrations_bashkit::BashkitShellCapability);
     registry.register(everruns_integrations_web_fetch::WebFetchCapability::from_env());
+    registry.register(everruns_integrations_openrouter_workspace::OpenRouterServerToolsCapability);
     registry.register(everruns_integrations_openrouter_workspace::ModelScoutCapability);
     registry.register(everruns_integrations_openrouter_workspace::OpenRouterWorkspaceCapability);
 
@@ -134,6 +135,20 @@ pub fn register_environment_capabilities(
 fn register_environment_capabilities(
     _registry: &mut everruns_core::capabilities::CapabilityRegistry,
 ) {
+}
+
+/// Register inventory-discovered integrations selected by product deployment policy.
+fn register_inventory_capabilities(
+    registry: &mut everruns_core::CapabilityRegistry,
+    grade: everruns_core::DeploymentGrade,
+) {
+    let feature_decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    registry.register_inventory_plugins(|plugin| {
+        (!plugin.experimental_only || grade.experimental_features_enabled())
+            && plugin
+                .feature_flag
+                .is_none_or(|flag| feature_decisions.is_enabled(flag))
+    });
 }
 
 /// Register every hosted product capability while preserving stable IDs,
@@ -177,11 +192,11 @@ pub fn register_hosted_capabilities(
 pub fn hosted_capability_registry_for_grade(
     grade: everruns_core::DeploymentGrade,
 ) -> everruns_core::capabilities::CapabilityRegistry {
-    let mut registry =
-        everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(grade);
+    let mut registry = everruns_core::capabilities::CapabilityRegistry::new();
     #[cfg(feature = "portable-builtins")]
     everruns_builtins::register_portable_capabilities(&mut registry)
-        .expect("core and portable built-in catalogs must not collide");
+        .expect("portable built-in catalog must have unique capability IDs");
+    register_inventory_capabilities(&mut registry, grade);
     register_hosted_capabilities(&mut registry, grade);
     registry
 }
@@ -207,10 +222,15 @@ mod tests {
     fn hosted_registry_contains_full_portable_policy_catalog() {
         let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Prod);
         for capability_id in [
+            "human_intent",
+            "infinity_context",
+            "skills",
             "current_time",
             "compaction",
             "tool_call_repair",
             "usage_limit_auto_continue",
+            "openui",
+            "a2ui",
         ] {
             assert!(
                 registry.has(capability_id),
@@ -229,6 +249,7 @@ mod tests {
             "web_fetch",
             "model_scout",
             "openrouter_workspace",
+            "openrouter_server_tools",
         ] {
             assert!(
                 registry.has(capability_id),

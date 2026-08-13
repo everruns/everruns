@@ -1579,7 +1579,8 @@ mod tests {
     fn test_skills_dependency_resolution() {
         use crate::capabilities::resolve_dependencies;
 
-        let mut registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let mut registry = crate::capabilities::CapabilityRegistry::new();
+        crate::register_runtime_capabilities(&mut registry).unwrap();
         registry.register(FileSystemDependencyFixture);
         let resolved = resolve_dependencies(&["skills".to_string()], &registry).unwrap();
 
@@ -1608,7 +1609,8 @@ mod tests {
         use crate::capabilities::SystemPromptContext;
         use crate::runtime_agent::RuntimeAgentBuilder;
 
-        let mut registry = crate::capabilities::CapabilityRegistry::with_builtins();
+        let mut registry = crate::capabilities::CapabilityRegistry::new();
+        crate::register_runtime_capabilities(&mut registry).unwrap();
         registry.register(FileSystemDependencyFixture);
         let ctx = SystemPromptContext::without_file_store(crate::typed_id::SessionId::new());
         // Use builder pattern which resolves dependencies automatically

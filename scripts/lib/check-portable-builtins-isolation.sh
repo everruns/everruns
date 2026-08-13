@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-884): portable policy implementations live in the
-# optional everruns-builtins bundle, while core retains only neutral execution
-# contracts and Framework can compile without the bundle.
+# Architecture guard (EVE-884, EVE-901): backend-neutral first-party
+# implementations live in the optional everruns-builtins bundle, provider
+# behavior lives in focused integrations, and core retains only neutral
+# contracts/registry algorithms without selecting a runtime or product preset.
 
 set -euo pipefail
 
@@ -40,6 +41,15 @@ FORBIDDEN_CORE_MODULES=(
   tool_output_persistence
   tool_search
   usage_limit_auto_continue
+  human_intent
+  infinity_context
+  skills
+  skills_scoped
+  attach_skill
+  tool_approval
+  openui
+  a2ui
+  openrouter_server_tools
 )
 
 for module in "${FORBIDDEN_CORE_MODULES[@]}"; do
@@ -49,9 +59,19 @@ for module in "${FORBIDDEN_CORE_MODULES[@]}"; do
   fi
 done
 
-IMPLEMENTATION_PATTERN='pub struct (AgentInstructionsCapability|AutoToolSearchCapability|CompactionCapability|CurrentTimeCapability|ErrorDisclosureCapability|GuardrailsCapability|MessageMetadataCapability|PromptCachingCapability|ToolCallRepairCapability|ToolSearchCapability|UsageLimitAutoContinueCapability)'
+IMPLEMENTATION_PATTERN='pub struct (AgentInstructionsCapability|AutoToolSearchCapability|CompactionCapability|CurrentTimeCapability|ErrorDisclosureCapability|GuardrailsCapability|MessageMetadataCapability|PromptCachingCapability|ToolCallRepairCapability|ToolSearchCapability|UsageLimitAutoContinueCapability|HumanIntentCapability|InfinityContextCapability|SkillsCapability|ScopedSkillsCapability|AttachSkillCapability|ToolApprovalCapability|OpenUiCapability|A2UiCapability|OpenRouterServerToolsCapability)'
 if matches=$(rg -n "$IMPLEMENTATION_PATTERN" crates/core/src --glob '*.rs'); then
   fail "portable policy implementation types remain in core source:"
+  printf '%s\n' "$matches"
+fi
+
+if matches=$(rg -n '(with_builtins|runtime_builtins|with_builtins_for_grade)' crates/core/src --glob '*.rs'); then
+  fail "runtime/product capability preset selection remains in core source:"
+  printf '%s\n' "$matches"
+fi
+
+if matches=$(rg -n 'everruns-(openui|a2ui)' crates/core/Cargo.toml); then
+  fail "UI implementation dependencies remain in crates/core/Cargo.toml:"
   printf '%s\n' "$matches"
 fi
 
@@ -82,6 +102,12 @@ assert_tree_excludes \
   everruns-integrations-web-fetch everruns-integrations-lua \
   reqwest sqlx bashkit fetchkit mlua
 
+CORE_ALL_FEATURES_TREE=$(cargo tree -p everruns-core --all-features -e normal --prefix none)
+assert_tree_excludes \
+  "everruns-core all-feature normal dependency tree" \
+  "$CORE_ALL_FEATURES_TREE" \
+  everruns-builtins everruns-openui everruns-a2ui
+
 FRAMEWORK_MINIMAL_TREE=$(cargo tree -p everruns --no-default-features -e normal --prefix none)
 assert_tree_excludes \
   "everruns --no-default-features normal dependency tree" \
@@ -93,4 +119,4 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-echo "Portable built-ins isolation guard passed: core owns contracts, the bundle stays effect-neutral, and Framework can exclude it."
+echo "Portable built-ins isolation guard passed: core owns neutral contracts/algorithms, focused owners hold implementations and presets, and Framework can exclude the bundle."

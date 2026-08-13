@@ -1,9 +1,12 @@
 //! Portable built-in capabilities for the [Everruns](https://everruns.com) ecosystem.
 //!
 //! `everruns-builtins` is the optional, backend-neutral implementation bundle
-//! for policy capabilities that compose through `everruns-core` execution
-//! contracts. It owns no server, database, network transport, process runner,
-//! interpreter, or hosted service implementation.
+//! for portable capabilities that compose through `everruns-core` execution
+//! contracts. This includes the standard skills, context, and human-intent
+//! implementations as well as policy hooks. It owns no server, database,
+//! network transport, process runner, interpreter, or hosted service
+//! implementation. OpenUI and A2UI prompt capabilities are available behind
+//! the explicit `ui-capabilities` feature.
 //!
 //! # Example
 //!
@@ -24,7 +27,10 @@ use everruns_capability::CapabilityError;
 
 // Public modules support focused imports; the root re-exports below are the
 // curated common surface.
+#[cfg(feature = "ui-capabilities")]
+pub mod a2ui;
 pub mod agent_instructions;
+pub mod attach_skill;
 pub mod auto_tool_search;
 pub mod btw;
 pub mod budgeting;
@@ -34,16 +40,23 @@ pub mod current_time;
 pub mod error_disclosure;
 mod framework_config;
 pub mod guardrails;
+pub mod human_intent;
+pub mod infinity_context;
 pub mod loop_detection;
 pub mod message_metadata;
 pub mod openai_tool_search;
+#[cfg(feature = "ui-capabilities")]
+pub mod openui;
 pub mod parallel_tool_calls;
 pub mod progress_guard;
 pub mod prompt_caching;
 pub mod prompt_canary_guardrail;
 pub mod self_budget;
+pub mod skills;
+pub mod skills_scoped;
 pub mod stateless_todo_list;
 pub mod system_commands;
+pub mod tool_approval;
 pub mod tool_call_repair;
 pub mod tool_output_distillation;
 pub mod tool_output_persistence;
@@ -67,18 +80,21 @@ pub(crate) use everruns_core::{
 #[allow(unused_imports)]
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
-    atoms, budget, capability_types, command, command_host, driver_registry, error, events,
-    guardrail_checks, llm_error_hook, mcp_server, message, message_filter, model_profiles,
-    output_guardrail, provider, session, session_file, session_schedule, tool_fingerprint,
-    tool_narration, tool_output_sanitizer, tool_types, tools, traits, typed_id, user_facing_error,
-    utility_llm,
+    atoms, budget, capability_dto, capability_types, command, command_host, driver_registry, error,
+    events, guardrail_checks, in_memory, llm_conversions, llm_error_hook, mcp_server, message,
+    message_filter, model_profiles, output_guardrail, provider, runtime_agent, session,
+    session_file, session_resource, session_schedule, skill, tool_fingerprint, tool_narration,
+    tool_output_sanitizer, tool_types, tools, traits, typed_id, user_facing_error, utility_llm,
 };
 
+#[cfg(feature = "ui-capabilities")]
+pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
     MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
 };
+pub use attach_skill::AttachSkillCapability;
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
@@ -100,6 +116,11 @@ pub use error_disclosure::{
 };
 pub use framework_config::{CompactionConfig, CompactionStrategy, ToolSearch};
 pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
+pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
+pub use infinity_context::{
+    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, InfinityContextFilterOnlyCapability,
+    QueryHistoryTool,
+};
 pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
@@ -109,6 +130,8 @@ pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     model_supports_native_tool_search,
 };
+#[cfg(feature = "ui-capabilities")]
+pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use parallel_tool_calls::{
     PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
     parallel_tool_calls_from_config,
@@ -121,10 +144,18 @@ pub use prompt_canary_guardrail::{
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
+pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
+pub use skills_scoped::{
+    ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
+};
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
+pub use tool_approval::{
+    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
+    ToolApprover,
+};
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
     TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairCapability, ToolCallRepairConfig,
@@ -147,6 +178,7 @@ pub use usage_limit_auto_continue::{
 /// Internal compatibility namespace for the collocated implementations.
 #[allow(unused_imports)] // Individual implementation and test builds use different subsets.
 pub(crate) mod capabilities {
+    pub(crate) use crate::attach_skill;
     pub(crate) use crate::{
         AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability, CLAUDE_TOOL_SEARCH_CAPABILITY_ID,
         CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, DEFAULT_TOOL_SEARCH_THRESHOLD,
@@ -157,7 +189,7 @@ pub(crate) mod capabilities {
     pub(crate) use everruns_core::capabilities::*;
 }
 
-/// Register the runtime-safe portable policy capabilities in stable order.
+/// Register the runtime-safe portable capabilities in stable order.
 ///
 /// This excludes [`UsageLimitAutoContinueCapability`], whose error hook needs
 /// a schedule store and poller that the default embedded host does not supply.
@@ -167,7 +199,7 @@ pub fn register_runtime_capabilities(
     register_capabilities_atomically(registry, runtime_capabilities())
 }
 
-/// Register every portable policy capability in stable product order.
+/// Register every portable capability in stable product order.
 ///
 /// Registration is explicit: linking this crate has no inventory side effect.
 /// Existing IDs and alias collisions are rejected rather than silently
@@ -179,7 +211,7 @@ pub fn register_portable_capabilities(
     register_capabilities_atomically(registry, portable_capabilities())
 }
 
-/// Build a registry containing only portable policy capabilities.
+/// Build a registry containing only portable capabilities.
 pub fn portable_capability_registry() -> std::result::Result<CapabilityRegistry, CapabilityError> {
     let mut registry = CapabilityRegistry::new();
     register_portable_capabilities(&mut registry)?;
@@ -205,6 +237,11 @@ pub fn register_monitor_tools(registry: &mut everruns_core::ToolRegistry) {
 fn portable_capabilities() -> Vec<Arc<dyn Capability>> {
     let mut capabilities = runtime_capabilities();
     capabilities.push(Arc::new(UsageLimitAutoContinueCapability));
+    #[cfg(feature = "ui-capabilities")]
+    {
+        capabilities.push(Arc::new(OpenUiCapability));
+        capabilities.push(Arc::new(A2UiCapability));
+    }
     capabilities
 }
 
@@ -222,6 +259,9 @@ fn register_capabilities_atomically(
 
 fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
     vec![
+        Arc::new(HumanIntentCapability),
+        Arc::new(InfinityContextCapability),
+        Arc::new(SkillsCapability),
         Arc::new(AgentInstructionsCapability),
         Arc::new(CurrentTimeCapability),
         Arc::new(MessageMetadataCapability),
@@ -252,7 +292,10 @@ fn runtime_capabilities() -> Vec<Arc<dyn Capability>> {
 mod bundle_tests {
     use super::*;
 
-    const PORTABLE_IDS: [&str; 24] = [
+    const RUNTIME_IDS: [&str; 26] = [
+        "human_intent",
+        "infinity_context",
+        "skills",
         "agent_instructions",
         "current_time",
         "message_metadata",
@@ -276,8 +319,18 @@ mod bundle_tests {
         "tool_call_repair",
         "prompt_canary_guardrail",
         "guardrails",
-        "usage_limit_auto_continue",
     ];
+
+    fn portable_ids() -> Vec<&'static str> {
+        let mut ids = RUNTIME_IDS.to_vec();
+        ids.push("usage_limit_auto_continue");
+        #[cfg(feature = "ui-capabilities")]
+        {
+            ids.push("openui");
+            ids.push("a2ui");
+        }
+        ids
+    }
 
     #[test]
     fn bundle_has_the_curated_stable_catalog() {
@@ -286,7 +339,7 @@ mod bundle_tests {
             .iter()
             .map(|capability| capability.id())
             .collect();
-        assert_eq!(ids, PORTABLE_IDS);
+        assert_eq!(ids, portable_ids());
     }
 
     #[test]
@@ -294,22 +347,22 @@ mod bundle_tests {
         let mut registry = CapabilityRegistry::new();
         register_runtime_capabilities(&mut registry).unwrap();
 
-        assert_eq!(registry.len(), PORTABLE_IDS.len() - 1);
+        assert_eq!(registry.len(), RUNTIME_IDS.len());
         assert!(!registry.has(USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID));
     }
 
     #[test]
     fn duplicate_registration_is_rejected_without_replacement() {
         let mut registry = portable_capability_registry().unwrap();
-        let original = Arc::clone(registry.get(AGENT_INSTRUCTIONS_CAPABILITY_ID).unwrap());
+        let original = Arc::clone(registry.get(HUMAN_INTENT_CAPABILITY_ID).unwrap());
 
         let error = register_portable_capabilities(&mut registry).unwrap_err();
 
         assert!(error.is_duplicate());
-        assert_eq!(error.id(), AGENT_INSTRUCTIONS_CAPABILITY_ID);
+        assert_eq!(error.id(), HUMAN_INTENT_CAPABILITY_ID);
         assert!(Arc::ptr_eq(
             &original,
-            registry.get(AGENT_INSTRUCTIONS_CAPABILITY_ID).unwrap()
+            registry.get(HUMAN_INTENT_CAPABILITY_ID).unwrap()
         ));
     }
 

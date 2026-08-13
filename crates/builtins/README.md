@@ -7,10 +7,11 @@
 [![License](https://img.shields.io/crates/l/everruns-builtins.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 This crate owns the backend-neutral implementations that shape agent behavior,
-including context compaction, tool search, budgeting, loop and progress guards,
-prompt caching, tool-call repair, output handling, and guardrails. Linking the
-crate does not register anything: applications choose a registry and call
-`register_portable_capabilities` explicitly.
+including human-intent signaling, infinity context, skills, context compaction,
+tool search, budgeting, loop and progress guards, prompt caching, tool-call
+repair, output handling, and guardrails. Linking the crate does not register
+anything: applications choose a registry and call a registration function
+explicitly.
 Registration rejects ID or alias collisions atomically, leaving the caller's
 registry unchanged on error.
 
@@ -44,10 +45,15 @@ directly when building a custom capability registry or a minimal host.
 ## What It Provides
 
 - Explicit runtime-safe and full-product registration functions
-- Context compaction, tool search, budgeting, prompt caching, and guard policies
+- Human intent, infinity context, skills, compaction, tool search, and guard policies
 - Tool-call repair and output persistence/distillation policy hooks
+- Registry-skill attachment and optional OpenUI/A2UI prompt capabilities
 - Public typed configuration values re-exported by the `everruns` facade
 - Atomic capability-ID and alias collision rejection
+
+The `ui-capabilities` feature enables the OpenUI and A2UI implementations and
+their focused protocol crates. It is selected by the hosted product catalog;
+the embedded runtime bundle remains UI-protocol neutral.
 
 ## Documentation
 

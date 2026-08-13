@@ -10,13 +10,14 @@
 //! specialized embedders — depend on `everruns` plus this crate and the
 //! focused sibling crates they actually need.
 //!
-//! [`runtime_capability_registry`] composes the effect-neutral core registry
-//! with the backend-neutral policy catalog selected by `builtins` and only the
-//! integrations selected by this crate's `filesystem`, `bashkit`, `web-fetch`,
-//! and `lua` features. MCP transport wiring is separately enabled by `mcp`;
+//! [`runtime_capability_registry`] owns the Framework preset: it starts from an
+//! empty core registry, adds the runtime-safe portable catalog selected by
+//! `builtins`, and then adds only the integrations selected by this crate's
+//! `filesystem`, `bashkit`, `web-fetch`, and `lua` features. MCP transport
+//! wiring is separately enabled by `mcp`;
 //! local-process MCP additionally requires `mcp-stdio`.
 //! [`compose_runtime_capability_registry`] applies the selected integrations to
-//! a caller-supplied core registry when a broader preset is required.
+//! a caller-supplied registry when a broader preset is required.
 //! [`runtime_egress_service`] supplies the matching direct transport only when
 //! a network-capable integration is selected.
 //!

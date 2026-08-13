@@ -100,12 +100,6 @@ inventory.workspace = true
 # (EVE-875). Core carries no llmsim dependency or feature; the architecture
 # guard in scripts/lib/check-test-support-isolation.sh enforces it.
 
-# OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.17.26", optional = true }
-
-# A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
-
 [features]
 # Portable optional subtrees stay ON by default for existing core consumers.
 # Hosted A2A/delegation implementations are owned by everruns-platform and no
@@ -115,7 +109,6 @@ everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
 default = ["llm-tests"]
 openapi = ["utoipa", "everruns-provider/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
-ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
 llm-tests = []  # LLM integration tests (requires API keys)
 
 [dev-dependencies]

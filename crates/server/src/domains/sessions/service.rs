@@ -26,14 +26,15 @@ use crate::storage::{
     },
 };
 use anyhow::Result;
+use everruns_builtins::AttachSkillCapability;
 use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
 use everruns_core::{
     DeclarativeCapabilityDefinition, HarnessId, InitialFile, ModelId, MountAccess, MountEntry,
     MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, PrincipalSummary, Rule,
     SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
     capabilities::{
-        AttachSkillCapability, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
-        compute_features, resolve_capability_configs,
+        RiskLevel, SystemPromptContext, collect_capabilities_with_configs, compute_features,
+        resolve_capability_configs,
     },
     is_declarative_capability, is_plugin_capability, is_skill_capability, merge_capabilities,
     merge_initial_files, normalize_initial_file_path, parse_declarative_capability_id,

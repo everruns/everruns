@@ -2543,8 +2543,8 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
 #[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
+    use everruns_builtins::InfinityContextCapability;
     use everruns_core::atoms::ReasonInput;
-    use everruns_core::capabilities::InfinityContextCapability;
     use everruns_core::user_hook_types::HookEvent;
     use everruns_host::execute_reason_activity;
     use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};

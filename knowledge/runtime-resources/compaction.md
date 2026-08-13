@@ -148,7 +148,7 @@ emit a successful durable `context.compacted` event.
 - Supports proactive budget checks, reactive `RequestTooLarge` recovery, observation masking, native provider compaction when available, summarization, and last-resort trimming.
 - Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
 
-**Infinity Context** (`crates/core/src/capabilities/infinity_context.rs`):
+**Infinity Context** (`crates/builtins/src/infinity_context.rs`):
 - Separate, optional capability — not part of compaction. Keeps a recent window + provides the `query_history` tool.
 - **Not freely composable with compaction.** Infinity context evicts during message loading, before compaction runs, so enabling both naively means compaction only sees the recent window. Compaction is the stronger primary strategy (always-present summary); infinity context is a pull-based backstop. When both are enabled, infinity context defers token-budget eviction to compaction. See `knowledge/runtime-resources/infinity-context.md`.
 

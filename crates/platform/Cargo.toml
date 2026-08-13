@@ -43,7 +43,7 @@ embedded-platform-docs = ["dep:include_dir"]
 # EVE-888: the `sqlx` passthrough is gone. The kernel never used sqlx, and the
 # Postgres encode/decode impls for typed IDs live on `everruns-provider`, which
 # the server now depends on directly. No crate enabled this passthrough.
-portable-builtins = ["dep:everruns-builtins"]
+portable-builtins = ["dep:everruns-builtins", "everruns-builtins/ui-capabilities"]
 environment-capabilities = [
     "dep:everruns-integrations-filesystem",
     "dep:everruns-integrations-bashkit",
@@ -103,6 +103,7 @@ utoipa = { workspace = true, optional = true }
 include_dir = { version = "0.7", optional = true }
 
 [dev-dependencies]
+everruns-builtins.workspace = true
 a2a-server.workspace = true
 axum.workspace = true
 futures.workspace = true

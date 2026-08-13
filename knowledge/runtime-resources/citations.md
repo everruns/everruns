@@ -85,10 +85,9 @@ surface maps onto it.
 
 ### Citation approaches are capabilities
 
-Each approach is a `Capability` (`crates/core/src/capabilities/`), registered in
-`CapabilityRegistry::with_builtins_for_grade`, using seams that already exist on
-the trait. They coexist because they all emit into the annotation envelope,
-tagged by `origin`.
+Each approach is a product-owned `Capability`, registered by the hosted
+platform catalog and implemented outside core using neutral trait seams. They
+coexist because they all emit into the annotation envelope, tagged by `origin`.
 
 | Capability | Feed | Emission mechanism |
 | --- | --- | --- |

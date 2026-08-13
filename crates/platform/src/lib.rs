@@ -4,7 +4,8 @@
 //! This crate owns organization, principal, app/channel, trigger, payment,
 //! reporting, audit, and hosted capability implementations used by server and
 //! platform backends. Hosted knowledge, memory, delegation, task, user-hook,
-//! and management capabilities are composed through
+//! and management capabilities, plus the portable and environment catalogs
+//! selected by the hosted product, are composed through
 //! [`capabilities::hosted_capability_registry`]. Normal Framework applications
 //! use `everruns`; its default registry does not advertise these product-owned
 //! capabilities.

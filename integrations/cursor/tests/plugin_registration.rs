@@ -10,6 +10,18 @@ use serde_json::json;
 // Force linker to include the integration crate's inventory submissions.
 use everruns_integrations_cursor as _;
 
+fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
+    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let mut registry = CapabilityRegistry::new();
+    registry.register_inventory_plugins(|plugin| {
+        (!plugin.experimental_only || grade.experimental_features_enabled())
+            && plugin
+                .feature_flag
+                .is_none_or(|flag| decisions.is_enabled(flag))
+    });
+    registry
+}
+
 #[test]
 fn cursor_plugin_is_submitted() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
@@ -24,15 +36,15 @@ fn cursor_plugin_is_submitted() {
 
 #[test]
 fn cursor_plugin_is_registered_in_prod_and_dev() {
-    let dev = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
-    let prod = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    let dev = registry_for_grade(DeploymentGrade::Dev);
+    let prod = registry_for_grade(DeploymentGrade::Prod);
     assert!(dev.has("cursor"), "Cursor should be in dev registry");
     assert!(prod.has("cursor"), "Cursor should be in prod registry");
 }
 
 #[test]
 fn cursor_capability_metadata() {
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     let cap = registry.get("cursor").expect("Cursor capability not found");
     assert_eq!(cap.id(), "cursor");
     assert_eq!(cap.name(), "Cursor");

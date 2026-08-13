@@ -1828,6 +1828,26 @@ mod tests {
 
     struct NarratingGrepTool;
 
+    struct HumanIntentFixtureHook;
+
+    impl crate::capabilities::ToolCallHook for HumanIntentFixtureHook {
+        fn narration(
+            &self,
+            _tool_def: Option<&crate::ToolDefinition>,
+            tool_call: &crate::ToolCall,
+            _phase: crate::tool_narration::ToolNarrationPhase,
+            _locale: Option<&str>,
+            _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+        ) -> Option<String> {
+            crate::tool_types::human_intent(&tool_call.arguments).map(str::to_string)
+        }
+
+        fn transform_for_execution(&self, mut tool_call: crate::ToolCall) -> crate::ToolCall {
+            tool_call.arguments = tool_call.execution_arguments();
+            tool_call
+        }
+    }
+
     #[async_trait]
     impl crate::tools::Tool for NarratingGrepTool {
         fn name(&self) -> &str {
@@ -2586,14 +2606,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_act_atom_uses_tool_call_hooks_for_execution_arguments() {
-        use crate::capabilities::{Capability, HumanIntentCapability};
-
         let mut executor = ToolRegistry::new();
         executor.register(ArgumentEchoTool);
         let tool_def = executor.get("argument_echo").unwrap().to_definition();
         let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter.clone())
-            .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
+            .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
@@ -2668,12 +2686,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_act_atom_strips_human_intent_from_client_tool_calls() {
-        use crate::capabilities::{Capability, HumanIntentCapability};
-
         let executor = ToolRegistry::new();
         let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter)
-            .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
+            .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
         let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {

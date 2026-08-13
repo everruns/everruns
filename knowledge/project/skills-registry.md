@@ -191,7 +191,7 @@ The agent can then read these files using existing session filesystem tools (`re
 
 **Mounting strategy**: registry skills become read-only `MountPoint`s carrying each file inline —
 text or base64 for binaries — built by
-[`AttachSkillCapability`](../../crates/core/src/capabilities/attach_skill.rs) during capability
+[`AttachSkillCapability`](../../crates/builtins/src/attach_skill.rs) during capability
 collection, before any tool runs. The `activate_skill` result carries instructions and metadata
 (`skill`, `description`, fork-mode fields where applicable) and deliberately no companion-file
 listing.
@@ -210,7 +210,7 @@ This approach:
 
 ### Capability-Contributed Skills
 
-Beyond user-uploaded (registry) and filesystem skills, any `Capability` can ship skills in code via `contribute_skills() -> Vec<SkillContribution>`. See `knowledge/execution/capabilities.md` for the trait method and `crates/core/src/capabilities/attach_skill.rs` for `SkillContribution` fields.
+Beyond user-uploaded (registry) and filesystem skills, any `Capability` can ship skills in code via `contribute_skills() -> Vec<SkillContribution>`. See `knowledge/execution/capabilities.md` for the trait method and `crates/core/src/capabilities/skill_contribution.rs` for the neutral `SkillContribution` values.
 
 Contributed skills flow through the **same** discovery/activation path as other skills:
 
@@ -257,7 +257,7 @@ Re-enabling the feature requires BOTH:
 
 See threat-model entry [`TM-TOOL-020`](../security/threat-model.md) for the mitigation state and EVE-388 for follow-up.
 
-Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/core/src/capabilities/skills.rs`). The `preprocess_command_injections` function in `crates/core/src/skill.rs` is kept wired up (with unit tests) so the re-enable follow-up only needs to flip the gate after introducing the provenance field. The function is bounded (`MAX_COMMAND_PLACEHOLDERS_PER_SKILL` = 32 placeholders per activation, concurrency cap of 4 shells) so a trusted-but-large SKILL.md cannot exhaust worker resources.
+Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/builtins/src/skills.rs`). The `preprocess_command_injections` function in `crates/core/src/skill.rs` is kept wired up (with unit tests) so the re-enable follow-up only needs to flip the gate after introducing the provenance field. The function is bounded (`MAX_COMMAND_PLACEHOLDERS_PER_SKILL` = 32 placeholders per activation, concurrency cap of 4 shells) so a trusted-but-large SKILL.md cannot exhaust worker resources.
 
 ## Security Considerations
 
@@ -276,17 +276,18 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 
 | Crate | Responsibility |
 |-------|----------------|
-| `everruns-core` | Skill types, SKILL.md parser, name validation, `AttachSkillCapability` + `SkillsCapability` |
+| `everruns-core` | Skill types, SKILL.md parser, name validation, stable capability identity and contribution values |
+| `everruns-builtins` | `AttachSkillCapability` + `SkillsCapability` implementations |
 | `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
-| `everruns-worker` | No skill-specific role — the `activate_skill` / `list_skills` tools execute in-process in `everruns-core` (`SkillsCapability`) |
+| `everruns-worker` | No skill-specific role — the `activate_skill` / `list_skills` tools execute in-process from `everruns-builtins` (`SkillsCapability`) |
 
 ### Key Components
 
 | Concern | Source |
 |---|---|
 | SKILL.md parsing, name validation, `Skill` types | [`crates/core/src/skill.rs`](../../crates/core/src/skill.rs) |
-| `skills` capability: VFS scan, `list_skills`, `activate_skill` | [`crates/core/src/capabilities/skills.rs`](../../crates/core/src/capabilities/skills.rs) |
-| `skill:{uuid}` mount-only capability for registry skills | [`crates/core/src/capabilities/attach_skill.rs`](../../crates/core/src/capabilities/attach_skill.rs) |
+| `skills` capability: VFS scan, `list_skills`, `activate_skill` | [`crates/builtins/src/skills.rs`](../../crates/builtins/src/skills.rs) |
+| `skill:{uuid}` mount-only capability for registry skills | [`crates/builtins/src/attach_skill.rs`](../../crates/builtins/src/attach_skill.rs) |
 | CRUD, archive extraction, capability listing | [`crates/server/src/domains/skills/`](../../crates/server/src/domains/skills) |
 
 The division that matters: `AttachSkillCapability` only mounts — it contributes no prompt text and no

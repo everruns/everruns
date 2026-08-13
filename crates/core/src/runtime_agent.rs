@@ -576,7 +576,7 @@ mod tests {
     }
 
     fn fixture_registry() -> CapabilityRegistry {
-        let mut registry = crate::CapabilityRegistry::with_builtins();
+        let mut registry = crate::CapabilityRegistry::new();
         registry.register(ToolFixtureCapability);
         registry.register(PromptToolFixtureCapability);
         registry
@@ -721,7 +721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_builder_with_capabilities_keeps_base_prompt_first() {
-        let mut registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemFixture);
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
@@ -809,7 +809,7 @@ mod tests {
 
         // Sample Data depends on Session File System
         // When we request only Sample Data, we should get system prompt from both
-        let mut registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::new();
         registry.register(FileSystemFixture);
         registry.register(SampleDataFixture);
         let runtime_agent = RuntimeAgentBuilder::new()

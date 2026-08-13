@@ -86,12 +86,12 @@ tar.workspace = true
 bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
 
 everruns-capability = { workspace = true }
-everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines", "ui-capabilities"] }
+everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines"] }
 # sqlx Postgres encode/decode for TypedId lives on everruns-provider (EVE-888).
 # The kernel never used sqlx, so the server asks the crate that owns the impls.
 everruns-provider = { path = "../provider", features = ["sqlx"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
-everruns-builtins.workspace = true
+everruns-builtins = { workspace = true, features = ["ui-capabilities"] }
 everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
 # init these rely on stays in core's `telemetry` feature (on by default).

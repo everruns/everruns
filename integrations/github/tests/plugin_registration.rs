@@ -17,7 +17,8 @@ fn plugin_is_submitted() {
 
 #[test]
 fn registry_includes_github_capability_and_blueprint() {
-    let registry = CapabilityRegistry::with_builtins();
+    let mut registry = CapabilityRegistry::new();
+    registry.register_inventory_plugins(|_| true);
 
     let cap = registry
         .get("github_scout")

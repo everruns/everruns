@@ -22,7 +22,6 @@ use crate::capability_types::is_plugin_capability;
 use crate::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
-use crate::deployment::DeploymentGrade;
 use crate::events::TokenUsage;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::message::Message;
@@ -45,8 +44,9 @@ use std::sync::Arc;
 ///
 /// Integration crates use `inventory::submit!` to register their capabilities
 /// without requiring `everruns-core` to know about them at compile time.
-/// The `CapabilityRegistry::with_builtins_for_grade()` method iterates all
-/// registered plugins and includes those matching the current deployment grade.
+/// Host or product composition iterates these descriptors and applies its
+/// deployment-grade and feature-selection policy. Core only owns the neutral
+/// registration contract.
 ///
 /// # Example
 ///
@@ -61,7 +61,7 @@ use std::sync::Arc;
 /// }
 /// ```
 pub struct IntegrationPlugin {
-    /// If true, only registered when `DeploymentGrade::experimental_features_enabled()` is true.
+    /// If true, product composition registers this only for experimental grades.
     pub experimental_only: bool,
     /// If set, only registered when the named deployment feature flag is enabled.
     /// Resolved at registry build time via `ExecutionFeatureDecisions`: internal
@@ -81,22 +81,12 @@ pub use crate::capability_types::{
 };
 
 // ============================================================================
-// Capability Modules
+// Capability contract modules
 // ============================================================================
 
-#[cfg(feature = "ui-capabilities")]
-mod a2ui;
-pub mod attach_skill;
 mod declarative;
 pub mod facts;
-mod human_intent;
-mod infinity_context;
-mod openrouter_server_tools;
-#[cfg(feature = "ui-capabilities")]
-mod openui;
-mod skills;
-mod skills_scoped;
-mod tool_approval;
+pub mod skill_contribution;
 pub mod util;
 
 // Re-export capabilities
@@ -112,13 +102,6 @@ pub const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 /// `spawn_agent` tool. Implementations live in host/integration crates, while
 /// collection keeps the merged tool serialized through this neutral key.
 pub const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
-#[cfg(feature = "ui-capabilities")]
-pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
-pub use attach_skill::{
-    AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillCapabilityIdExt,
-    SkillContribution, SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries,
-    is_skill_capability, parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
-};
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
@@ -127,24 +110,11 @@ pub use declarative::{
     plugin_capability_info, validate_declarative_capability_definition,
 };
 pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
-pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
-pub use infinity_context::{
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, InfinityContextFilterOnlyCapability,
-    QueryHistoryTool,
-};
-pub use openrouter_server_tools::{
-    OPENROUTER_SERVER_TOOLS_CAPABILITY_ID, OpenRouterServerToolsCapability,
-};
-#[cfg(feature = "ui-capabilities")]
-pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
-pub use skills_scoped::{
-    ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
-};
-// Blueprint types are exported directly from the trait definitions above
-pub use tool_approval::{
-    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
-    ToolApprover,
+pub use skill_contribution::{
+    MAX_SKILLS_PER_CAPABILITY, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH,
+    SkillCapabilityIdExt, SkillContribution, SkillInstructions, SkillMeta, SkillSource,
+    discover_skills_from_entries, is_skill_capability, parse_skill_capability_id,
+    reconstruct_skill_md, skill_capability_id,
 };
 
 // ============================================================================
@@ -622,6 +592,18 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Derive the config passed to this capability's message filter.
+    ///
+    /// `compaction_enabled` lets a filter coordinate with a separately selected
+    /// compaction policy without core matching on either capability's ID.
+    fn message_filter_config(
+        &self,
+        config: &serde_json::Value,
+        _compaction_enabled: bool,
+    ) -> serde_json::Value {
+        config.clone()
+    }
+
     /// Returns a provider that can build a prompt-facing model view from
     /// lossless stored messages before provider serialization.
     ///
@@ -664,6 +646,18 @@ pub trait Capability: Send + Sync {
         &self,
         _config: &serde_json::Value,
     ) -> Option<crate::driver_registry::PromptCacheConfig> {
+        None
+    }
+
+    /// Provider routing requested by this capability.
+    ///
+    /// The OpenRouter integration implements this seam for provider-executed
+    /// server tools. Core transports the provider contract without naming a
+    /// capability ID or parsing a first-party capability schema.
+    fn openrouter_routing_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<crate::driver_registry::OpenRouterRoutingConfig> {
         None
     }
 
@@ -1164,18 +1158,8 @@ impl std::fmt::Debug for AgentBlueprint {
 /// ```
 /// use everruns_core::capabilities::CapabilityRegistry;
 ///
-/// let registry = CapabilityRegistry::with_builtins();
-///
-/// // Core presets contain only effect-neutral capabilities. Applications add
-/// // policy and integration bundles through their owning composition crates.
-/// if let Some(cap) = registry.get("human_intent") {
-///     println!("Capability: {}", cap.name());
-/// }
-///
-/// // List all available capabilities
-/// for cap in registry.list() {
-///     println!("{}: {}", cap.id(), cap.name());
-/// }
+/// let registry = CapabilityRegistry::new();
+/// assert!(registry.is_empty());
 /// ```
 #[derive(Clone)]
 pub struct CapabilityRegistry {
@@ -1193,80 +1177,6 @@ impl CapabilityRegistry {
             capabilities: HashMap::new(),
             index: everruns_capability::CapabilityIdIndex::new(),
         }
-    }
-
-    /// Create a registry with the broad effect-neutral core preset registered.
-    ///
-    /// Portable policy implementations live in `everruns-builtins`, and
-    /// environment/product implementations live in their owning composition
-    /// crates. Uses `DeploymentGrade::from_env()` to select grade-gated core
-    /// capabilities. For explicit control, use `with_builtins_for_grade()`.
-    pub fn with_builtins() -> Self {
-        Self::with_builtins_for_grade(DeploymentGrade::from_env())
-    }
-
-    /// Create a registry with capabilities that are usable in the public
-    /// in-process runtime with its default host services.
-    ///
-    /// This intentionally excludes hosted Everruns product capabilities,
-    /// demos/tests, and capabilities whose tools require optional host backends
-    /// such as `platform_store`, `session_task_registry`, `schedule_store`, SQL
-    /// databases, provider credentials, or knowledge stores. Embedders can
-    /// still opt into those capabilities by supplying an explicit
-    /// `everruns_host::HostComposition` carrying the required backends.
-    pub fn runtime_builtins() -> Self {
-        let mut registry = Self::new();
-
-        registry.register(HumanIntentCapability);
-        registry.register(InfinityContextCapability);
-        registry.register(SkillsCapability);
-
-        registry
-    }
-
-    /// Create the broad effect-neutral core preset for a deployment grade.
-    ///
-    /// Experimental capabilities are included via integration plugins in dev environments.
-    /// Non-experimental integration plugins (like Daytona) are included in all environments.
-    pub fn with_builtins_for_grade(grade: DeploymentGrade) -> Self {
-        let mut registry = Self::new();
-
-        // Core capabilities (all environments)
-        registry.register(HumanIntentCapability);
-        registry.register(OpenRouterServerToolsCapability);
-        registry.register(InfinityContextCapability);
-
-        // Skills (filesystem-based discovery + activation, all environments)
-        registry.register(SkillsCapability);
-
-        // Deployment-level execution feature decisions (EVE-878): resolved once
-        // from env + grade; never reads org feature-management records.
-        let feature_decisions = crate::ExecutionFeatureDecisions::from_env(grade);
-
-        // OpenUI/A2UI prompt helpers are product features, not required by embedders.
-        #[cfg(feature = "ui-capabilities")]
-        {
-            registry.register(OpenUiCapability);
-            registry.register(A2UiCapability);
-        }
-
-        // Demo/test fixture capabilities (fake_*, test_math/test_weather,
-        // sample_data, noop) are NOT registered here. They live in the
-        // `everruns-test-support` crate (EVE-875) and are registered
-        // explicitly by tests and examples, never by product registries.
-
-        // External integration plugins (registered via inventory::submit! in integration crates)
-        for plugin in inventory::iter::<IntegrationPlugin>() {
-            if (!plugin.experimental_only || grade.experimental_features_enabled())
-                && plugin
-                    .feature_flag
-                    .is_none_or(|f| feature_decisions.is_enabled(f))
-            {
-                registry.register_boxed((plugin.factory)());
-            }
-        }
-
-        registry
     }
 
     /// Register a capability
@@ -1302,6 +1212,21 @@ impl CapabilityRegistry {
             .insert(canonical.clone(), &capability.aliases())?;
         self.capabilities.insert(canonical, capability);
         Ok(())
+    }
+
+    /// Register inventory-submitted integrations accepted by a caller-owned policy.
+    ///
+    /// Core owns the registry mutation algorithm; host and product composition
+    /// own every deployment-grade and feature decision supplied by `include`.
+    pub fn register_inventory_plugins(
+        &mut self,
+        mut include: impl FnMut(&IntegrationPlugin) -> bool,
+    ) {
+        for plugin in inventory::iter::<IntegrationPlugin>() {
+            if include(plugin) {
+                self.register_boxed((plugin.factory)());
+            }
+        }
     }
 
     /// Get a capability by ID or alias
@@ -1387,7 +1312,7 @@ impl CapabilityRegistry {
 
 impl Default for CapabilityRegistry {
     fn default() -> Self {
-        Self::with_builtins()
+        Self::new()
     }
 }
 
@@ -1410,13 +1335,6 @@ impl CapabilityRegistryBuilder {
     pub fn new() -> Self {
         Self {
             registry: CapabilityRegistry::new(),
-        }
-    }
-
-    /// Create a new builder with the broad effect-neutral core preset.
-    pub fn with_builtins() -> Self {
-        Self {
-            registry: CapabilityRegistry::with_builtins(),
         }
     }
 
@@ -1926,37 +1844,6 @@ fn compaction_is_enabled(
     })
 }
 
-/// Per-agent message-filter config for a capability, injecting the derived
-/// `compaction_active` signal into infinity context when compaction is enabled.
-///
-/// This is the one place capability composition is encoded: infinity context and
-/// compaction are otherwise independent, but if infinity context evicts history
-/// before compaction can summarize it, compaction only ever sees the recent
-/// window. The flag tells infinity context to anchor + provide `query_history`
-/// and let compaction own reduction.
-fn message_filter_config_for(
-    cap_id: &str,
-    base: &serde_json::Value,
-    compaction_on: bool,
-) -> serde_json::Value {
-    if cap_id != INFINITY_CONTEXT_CAPABILITY_ID || !compaction_on {
-        return base.clone();
-    }
-    let mut config = base.clone();
-    match config.as_object_mut() {
-        Some(map) => {
-            map.insert(
-                "compaction_active".to_string(),
-                serde_json::Value::Bool(true),
-            );
-        }
-        None => {
-            config = serde_json::json!({ "compaction_active": true });
-        }
-    }
-    config
-}
-
 /// Collect only message filter providers from capabilities, skipping system
 /// prompt contributions, tools, mounts, and other expensive work.
 ///
@@ -1983,7 +1870,7 @@ pub fn collect_message_filters_only(
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.message_filter_provider() {
                 let config =
-                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
+                    effective.message_filter_config(cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
         }
@@ -2606,16 +2493,9 @@ pub async fn collect_capabilities_with_configs(
                 .parallel_tool_calls_preference(cap_config.config_value())
                 .or(parallel_tool_calls);
 
-            if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
-                let server_tools =
-                    openrouter_server_tools::server_tools_from_config(cap_config.config_value());
-                if !server_tools.is_empty() {
-                    openrouter_routing = Some(crate::driver_registry::OpenRouterRoutingConfig {
-                        server_tools,
-                        ..Default::default()
-                    });
-                }
-            }
+            openrouter_routing = effective
+                .openrouter_routing_config(cap_config.config_value())
+                .or(openrouter_routing);
 
             // Collect mount points
             mounts.extend(effective.mounts());
@@ -2635,7 +2515,7 @@ pub async fn collect_capabilities_with_configs(
             // Collect message filter provider
             if let Some(provider) = effective.message_filter_provider() {
                 let config =
-                    message_filter_config_for(cap_id, cap_config.config_value(), compaction_on);
+                    effective.message_filter_config(cap_config.config_value(), compaction_on);
                 message_filter_providers.push((provider, config));
             }
 
@@ -2767,14 +2647,14 @@ pub struct AppliedCapabilities {
 /// use everruns_core::capabilities::{apply_capabilities, CapabilityRegistry, SystemPromptContext};
 /// use everruns_core::runtime_agent::RuntimeAgent;
 ///
-/// let registry = CapabilityRegistry::with_builtins();
+/// let registry = CapabilityRegistry::new();
 /// let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 /// let ctx = SystemPromptContext::without_file_store(SessionId::new());
 ///
-/// let capability_ids = vec!["human_intent".to_string()];
+/// let capability_ids = Vec::new();
 /// let applied = apply_capabilities(base_runtime_agent, &capability_ids, &registry, &ctx).await;
 ///
-/// assert_eq!(applied.applied_ids, vec!["human_intent"]);
+/// assert!(applied.applied_ids.is_empty());
 /// ```
 pub async fn apply_capabilities(
     base_runtime_agent: RuntimeAgent,
@@ -2835,15 +2715,7 @@ pub async fn apply_capabilities(
 mod tests {
     use super::*;
     use crate::typed_id::SessionId;
-    use std::collections::BTreeSet;
     use uuid::Uuid;
-
-    // Env-var-mutating tests must not run in parallel.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
-    }
 
     /// Test helper: dummy context with no file store
     fn test_ctx() -> SystemPromptContext {
@@ -2870,6 +2742,24 @@ mod tests {
         }
         fn description(&self) -> &str {
             "Contributes nothing."
+        }
+    }
+
+    /// Declares one arbitrary feature to exercise core's neutral projection.
+    struct FeatureFixture;
+
+    impl Capability for FeatureFixture {
+        fn id(&self) -> &str {
+            "feature_fixture"
+        }
+        fn name(&self) -> &str {
+            "Feature Fixture"
+        }
+        fn description(&self) -> &str {
+            "Declares one test-only feature."
+        }
+        fn features(&self) -> Vec<&'static str> {
+            vec!["fixture_feature"]
         }
     }
 
@@ -3168,8 +3058,9 @@ mod tests {
 
     /// Built-in registry plus the local fixture stand-ins above.
     fn fixture_registry() -> CapabilityRegistry {
-        let mut registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::new();
         registry.register(NoopFixture);
+        registry.register(FeatureFixture);
         registry.register(MathFixture);
         registry.register(WeatherFixture);
         registry.register(SampleDataFixture);
@@ -3205,302 +3096,25 @@ mod tests {
 
     #[test]
     fn capability_metadata_is_an_opt_in_host_hatch() {
-        // Core capabilities carry none, so nothing changes for them.
-        assert!(HumanIntentCapability.metadata().is_none());
-
         let metadata = HostAnnotatedCapability.metadata().expect("metadata");
         assert_eq!(metadata["icon"], "sparkles");
         assert_eq!(metadata["group"], "host");
     }
 
-    /// Portable built-in capabilities present in every deployment grade.
-    fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
-        let mut ids = [
-            "human_intent",
-            "infinity_context",
-            "skills",
-            "openrouter_server_tools",
-        ]
-        .into_iter()
-        .collect::<BTreeSet<_>>();
-        if cfg!(feature = "ui-capabilities") {
-            ids.insert("openui");
-            ids.insert("a2ui");
-        }
-        ids
-    }
-
-    /// Capabilities present in the default in-process runtime registry.
-    fn expected_runtime_builtin_ids() -> BTreeSet<&'static str> {
-        ["human_intent", "infinity_context", "skills"]
-            .into_iter()
-            .collect::<BTreeSet<_>>()
-    }
-
-    fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {
-        registry.capabilities.keys().map(String::as_str).collect()
-    }
-
-    // =========================================================================
-    // CapabilityRegistry tests
-    // =========================================================================
-
-    // Note: Integration plugins (docker, daytona, etc.) are registered via inventory::submit!
-    // in external crates. They only appear in the registry when the integration crate is
-    // linked into the final binary. Core tests verify only built-in capabilities.
-    // Integration crates have their own tests for plugin registration.
-
-    #[test]
-    fn test_capability_registry_with_builtins_dev() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
-        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
-    }
-
-    #[test]
-    fn test_capability_registry_with_builtins_prod() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
-        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
-        assert!(!registry.has("docker_container"));
-    }
-
-    #[test]
-    fn test_capability_registry_runtime_builtins() {
-        let _lock = lock_env();
-        unsafe { std::env::remove_var("FEATURE_LUA") };
-        let registry = CapabilityRegistry::runtime_builtins();
-        assert_eq!(registry_ids(&registry), expected_runtime_builtin_ids());
-        for environment_backed in [
-            "session_file_system",
-            "bashkit_shell",
-            "web_fetch",
-            "lua",
-            "lua_code_mode",
-            "model_scout",
-            "openrouter_workspace",
-        ] {
-            assert!(
-                !registry.has(environment_backed),
-                "`{environment_backed}` must be composed outside everruns-core"
-            );
-        }
-
-        for platform_only in [
-            "model_scout",
-            "openrouter_workspace",
-            "openrouter_server_tools",
-            "session_tasks",
-            "session_schedule",
-            "subagents",
-            "background_execution",
-            // Session-service capabilities moved to the product crate with the
-            // rest of the service-backed families (EVE-886); hosts that can
-            // serve them compose them back in.
-            "session",
-            "session_storage",
-            "session_sql_database",
-            "session_sandbox",
-            "knowledge_base",
-            "knowledge_index",
-            "data_knowledge",
-            "research",
-        ] {
-            assert!(
-                !registry.has(platform_only),
-                "`{platform_only}` should not be in the runtime default registry"
-            );
-        }
-    }
-
-    #[test]
-    fn hosted_capabilities_are_not_registered_by_core_feature_flags() {
-        let _lock = lock_env();
-        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
-        assert!(!registry.has("agent_handoff"));
-        assert!(!registry.has("a2a_agent_delegation"));
-        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
-    }
-
     #[test]
     fn test_capability_registry_get() {
-        let registry = CapabilityRegistry::with_builtins();
+        let mut registry = CapabilityRegistry::new();
+        registry.register(NoopFixture);
 
-        let human_intent = registry.get("human_intent").unwrap();
-        assert_eq!(human_intent.id(), "human_intent");
-        assert_eq!(human_intent.status(), CapabilityStatus::Available);
+        let capability = registry.get("noop").unwrap();
+        assert_eq!(capability.id(), "noop");
+        assert_eq!(capability.status(), CapabilityStatus::Available);
     }
 
-    /// Registry-wide invariants for every built-in capability. This replaces the
-    /// per-capability `test_capability_metadata` / `has_tools` / `in_registry`
-    /// boilerplate that only restated hardcoded constants: instead of pinning
-    /// each id/name/tool-list literal, it enforces the properties that actually
-    /// matter across the whole set and would catch a real defect (a blank id, a
-    /// duplicate or dangling dependency, colliding tool names) that constant
-    /// mirrors never could.
     #[test]
-    fn builtin_capabilities_satisfy_registry_invariants() {
-        let registry = CapabilityRegistry::with_builtins();
-
-        for cap in registry.list() {
-            let id = cap.id();
-            assert!(!id.is_empty(), "capability has an empty id");
-            assert!(
-                !cap.name().trim().is_empty(),
-                "capability `{id}` has an empty name"
-            );
-
-            // The registration key is `id()`, so every capability must resolve
-            // by its own id (guards against an id()/registration mismatch).
-            assert!(
-                registry.get(id).is_some(),
-                "capability `{id}` does not resolve by its own id"
-            );
-
-            // Core may declare a dependency on an implementation supplied by
-            // the host composition layer. All other dependencies must resolve
-            // inside the core registry.
-            for dep in cap.dependencies() {
-                assert!(
-                    dep == "session_file_system" || registry.get(dep).is_some(),
-                    "capability `{id}` depends on `{dep}`, which is not registered"
-                );
-            }
-
-            // Tool names must be non-empty and unique within a capability, so
-            // dispatch by name is unambiguous.
-            let mut seen = std::collections::HashSet::new();
-            for tool in cap.tools() {
-                let name = tool.name().to_string();
-                assert!(
-                    !name.is_empty(),
-                    "capability `{id}` exposes a tool with an empty name"
-                );
-                assert!(
-                    seen.insert(name.clone()),
-                    "capability `{id}` exposes duplicate tool name `{name}`"
-                );
-            }
-
-            // Advertised tool definitions must likewise carry non-empty, unique
-            // names so the tool schema a client sees is unambiguous.
-            let mut def_seen = std::collections::HashSet::new();
-            for def in cap.tool_definitions() {
-                let name = def.name().to_string();
-                assert!(
-                    !name.is_empty(),
-                    "capability `{id}` advertises a tool definition with an empty name"
-                );
-                assert!(
-                    def_seen.insert(name.clone()),
-                    "capability `{id}` advertises duplicate tool definition name `{name}`"
-                );
-            }
-        }
-    }
-
-    /// Every built-in production tool must carry backend-authored narration so
-    /// downstream clients (e.g. Yolop) render a concise status line instead of
-    /// the raw tool-call presentation. A tool is considered covered when its
-    /// owning capability's `narrate()` returns `Some` for a representative call,
-    /// or when it opts into data-driven CRUD narration via a `narration_noun`
-    /// hint. Capabilities whose generic display-name presentation is intentional
-    /// are listed in `GENERIC_NARRATION_ALLOWLIST` with a documented reason.
-    ///
-    /// This is the ratchet the tool-narration audit installs: a newly added
-    /// built-in tool that neither narrates nor is allowlisted fails here rather
-    /// than silently falling back to raw presentation.
-    #[test]
-    fn builtin_tools_have_narration_or_documented_generic_fallback() {
-        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use crate::tool_types::ToolCall;
-
-        // (capability_id, reason) — whole capabilities whose tools intentionally
-        // use the generic display-name presentation. Keep the reason specific.
-        const GENERIC_NARRATION_ALLOWLIST: &[(&str, &str)] = &[
-            // Demo / eval fixtures — not a production surface.
-            (
-                "data_knowledge",
-                "demo knowledge scaffold; fixture data only",
-            ),
-            // Platform-admin surface: the mutating `manage_*` tools narrate via
-            // `narration_noun` hints; the read/query/messaging tools are a
-            // low-frequency operator surface where the display-name presentation
-            // ("Read Agents", "Read Sessions") is already clear.
-            (
-                "platform",
-                "operator command surface; tool display names are the intended presentation",
-            ),
-            (
-                "platform_management",
-                "operator admin surface; mutations narrate via narration_noun, reads use display names",
-            ),
-            // Operator model-routing / provider-inspection tooling: specialized,
-            // low-frequency, and the display names read clearly on their own.
-            (
-                "model_scout",
-                "operator model-routing tools; display-name presentation is adequate",
-            ),
-            (
-                "openrouter_workspace",
-                "operator OpenRouter inspection tools; display-name presentation is adequate",
-            ),
-            // Arbitrary sandboxed code execution — there is no bounded, non-secret
-            // argument worth surfacing; "Run Lua" is the honest status.
-            (
-                "lua",
-                "arbitrary sandboxed code execution; display-name presentation is adequate",
-            ),
-        ];
-
-        // Exercise the full portable production registry. Hosted registries
-        // enforce the same invariant in everruns-platform.
-        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
-        let ctx = ToolNarrationContext::default();
-        let mut missing: Vec<String> = Vec::new();
-
-        for cap in registry.list() {
-            let cap_id = cap.id().to_string();
-            if GENERIC_NARRATION_ALLOWLIST
-                .iter()
-                .any(|(id, _)| *id == cap_id)
-            {
-                continue;
-            }
-
-            for tool in cap.tools() {
-                let def = tool.to_definition();
-                // Data-driven CRUD narration (operation + narration_noun) yields a
-                // meaningful line via the generic fallback path.
-                if def.hints().narration_noun.is_some() {
-                    continue;
-                }
-
-                let call = ToolCall {
-                    id: "call_narration_audit".to_string(),
-                    name: tool.name().to_string(),
-                    arguments: serde_json::json!({}),
-                };
-                // Only the Started phase needs checking: `narrate()` returns
-                // `Some`/`None` uniformly across phases for a given tool.
-                if cap
-                    .narrate(Some(&def), &call, ToolNarrationPhase::Started, None, ctx)
-                    .is_none()
-                {
-                    missing.push(format!("{cap_id}::{}", tool.name()));
-                }
-            }
-        }
-
-        assert!(
-            missing.is_empty(),
-            "These built-in tools fall back to raw tool-call presentation. Implement \
-             `Tool::narrate` (see knowledge/execution/tool-narration.md), set a `narration_noun` hint, \
-             or add a documented entry to GENERIC_NARRATION_ALLOWLIST: {missing:?}"
-        );
+    fn default_registry_is_empty_and_selects_no_product_preset() {
+        assert!(CapabilityRegistry::default().is_empty());
+        assert!(CapabilityRegistryBuilder::default().build().is_empty());
     }
 
     #[test]
@@ -3544,17 +3158,15 @@ mod tests {
     #[test]
     fn test_capability_registry_builder() {
         let registry = CapabilityRegistry::builder()
-            .capability(HumanIntentCapability)
+            .capability(NoopFixture)
             .build();
 
-        assert!(registry.has("human_intent"));
+        assert!(registry.has("noop"));
         assert_eq!(registry.len(), 1);
     }
 
     #[test]
     fn test_capability_status() {
-        assert_eq!(HumanIntentCapability.status(), CapabilityStatus::Available);
-
         struct ComingSoonFixture;
         impl Capability for ComingSoonFixture {
             fn id(&self) -> &str {
@@ -3574,15 +3186,9 @@ mod tests {
     }
 
     #[test]
-    fn test_capability_icons_and_categories() {
-        // `session` used to stand in here; it moved to the product crate with
-        // the service-backed families (EVE-886). Icons and categories are a
-        // kernel-owned projection, so a kernel capability covers it.
-        let registry = CapabilityRegistry::with_builtins();
-
-        let skills = registry.get("skills").unwrap();
-        assert_eq!(skills.icon(), SkillsCapability.icon());
-        assert_eq!(skills.category(), SkillsCapability.category());
+    fn test_capability_icons_and_categories_default_none() {
+        assert!(NoopFixture.icon().is_none());
+        assert!(NoopFixture.category().is_none());
     }
 
     #[test]
@@ -3635,7 +3241,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_capabilities_empty() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
         let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.2");
 
         let applied =
@@ -3951,7 +3557,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_xml_wrapping_without_capabilities() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
         let base = RuntimeAgent::new("You are helpful.", "gpt-5.2");
 
         let applied = apply_capabilities(base, &[], &registry, &test_ctx()).await;
@@ -4128,7 +3734,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_empty() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
 
         let resolved = resolve_dependencies(&[], &registry).unwrap();
 
@@ -4203,7 +3809,7 @@ mod tests {
 
     #[test]
     fn test_resolve_dependencies_unknown_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
 
         // Unknown capabilities are silently skipped
         let resolved =
@@ -4597,31 +4203,6 @@ mod tests {
 
         assert_eq!(query.filters.len(), 1);
         assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
-    }
-
-    #[test]
-    fn test_message_filter_config_injects_compaction_active_for_infinity_context() {
-        let base = serde_json::json!({ "context_budget_tokens": 1000 });
-
-        // Infinity context gets the derived flag only when compaction is enabled.
-        let with = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, true);
-        assert_eq!(with["compaction_active"], serde_json::json!(true));
-        assert_eq!(with["context_budget_tokens"], serde_json::json!(1000));
-
-        let without = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, false);
-        assert!(without.get("compaction_active").is_none());
-
-        // Other capabilities are never touched.
-        let other = message_filter_config_for("other", &base, true);
-        assert!(other.get("compaction_active").is_none());
-
-        // A null base is upgraded to an object carrying the flag.
-        let null_base = message_filter_config_for(
-            INFINITY_CONTEXT_CAPABILITY_ID,
-            &serde_json::Value::Null,
-            true,
-        );
-        assert_eq!(null_base["compaction_active"], serde_json::json!(true));
     }
 
     #[test]
@@ -5151,16 +4732,18 @@ mod tests {
 
     #[test]
     fn kernel_capability_features_are_declared_on_the_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
         // `session_storage`/`session_sql_database` moved to the product crate
         // (EVE-886); their feature declarations are covered there. What core
         // owns is the mechanism: a registered capability's `features()` is what
         // `compute_features` reports.
-        let skills = registry.get("skills").expect("skills is kernel-owned");
+        let capability = registry
+            .get("feature_fixture")
+            .expect("feature fixture must be registered");
         assert_eq!(
-            compute_features(&["skills".to_string()], &registry),
-            skills.features()
+            compute_features(&["feature_fixture".to_string()], &registry),
+            capability.features()
         );
     }
 
@@ -5174,7 +4757,7 @@ mod tests {
 
     #[test]
     fn test_compute_features_empty() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = CapabilityRegistry::new();
 
         let features = compute_features(&[], &registry);
         assert!(features.is_empty());
@@ -5182,10 +4765,16 @@ mod tests {
 
     #[test]
     fn test_compute_features_single_capability() {
-        let registry = CapabilityRegistry::with_builtins();
+        let registry = fixture_registry();
 
-        let features = compute_features(&["skills".to_string()], &registry);
-        assert_eq!(features, registry.get("skills").expect("skills").features());
+        let features = compute_features(&["feature_fixture".to_string()], &registry);
+        assert_eq!(
+            features,
+            registry
+                .get("feature_fixture")
+                .expect("feature fixture must be registered")
+                .features()
+        );
     }
 
     #[test]

@@ -7,6 +7,18 @@ use everruns_platform::connector::ConnectorPlugin;
 // Force linker to include the integration crate's inventory submissions.
 use everruns_integrations_e2b as _;
 
+fn registry_for_grade(grade: DeploymentGrade) -> CapabilityRegistry {
+    let decisions = everruns_core::ExecutionFeatureDecisions::from_env(grade);
+    let mut registry = CapabilityRegistry::new();
+    registry.register_inventory_plugins(|plugin| {
+        (!plugin.experimental_only || grade.experimental_features_enabled())
+            && plugin
+                .feature_flag
+                .is_none_or(|flag| decisions.is_enabled(flag))
+    });
+    registry
+}
+
 #[test]
 fn test_e2b_plugin_is_submitted() {
     let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
@@ -38,19 +50,19 @@ fn test_e2b_plugin_is_not_experimental() {
 
 #[test]
 fn test_e2b_registered_in_dev_registry() {
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     assert!(registry.has("e2b"), "E2B should be in dev registry");
 }
 
 #[test]
 fn test_e2b_registered_in_prod_registry() {
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    let registry = registry_for_grade(DeploymentGrade::Prod);
     assert!(registry.has("e2b"), "E2B should be in prod registry");
 }
 
 #[test]
 fn test_e2b_capability_metadata() {
-    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    let registry = registry_for_grade(DeploymentGrade::Dev);
     let cap = registry.get("e2b").expect("E2B capability not found");
 
     assert_eq!(cap.id(), "e2b");

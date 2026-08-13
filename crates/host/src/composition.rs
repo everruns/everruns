@@ -45,7 +45,7 @@ use std::sync::Arc;
 ///
 /// let composition = HostComposition::builder()
 ///     .driver_registry(drivers)
-///     .capability(everruns_core::HumanIntentCapability)
+///     .capability(everruns_builtins::HumanIntentCapability)
 ///     .build();
 /// ```
 #[derive(Clone)]
@@ -213,7 +213,8 @@ impl Default for HostCompositionBuilder {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use everruns_core::{CapabilityStatus, HumanIntentCapability};
+    use everruns_builtins::HumanIntentCapability;
+    use everruns_core::CapabilityStatus;
 
     /// Chat driver stub: registration-only, never invoked in these tests.
     struct StubChatDriver;

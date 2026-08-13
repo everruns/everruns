@@ -145,14 +145,14 @@ primitives under `apps/ui/src/components/ui/`.
 
 ID: `a2ui`. Feature: `a2ui`. Category: `UI`.
 
-Registered as a built-in in `CapabilityRegistry::with_builtins_for_grade`. When
-enabled, the capability appends the A2UI prompt to the agent's system prompt. It
-contributes no tools.
+Registered by the hosted product's portable catalog when
+`everruns-builtins/ui-capabilities` is enabled. The capability appends the A2UI
+prompt to the agent's system prompt and contributes no tools.
 
 The capability coexists with `openui`. Enabling both is legal but wasteful —
 instruct the agent to prefer one. Neither is enabled by default.
 
-Ref: `crates/core/src/capabilities/a2ui.rs`.
+Ref: `crates/builtins/src/a2ui.rs`.
 
 ## UI Integration
 
