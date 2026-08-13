@@ -52,6 +52,35 @@ pub struct KnowledgeIndexCitation {
     pub score: f32,
 }
 
+/// Usage from a single embedding call made while serving a retrieval query.
+///
+/// Retrieval embeds the query once per bound index (indexes may use different
+/// embedding models), so a search reports one entry per call. The caller meters
+/// these — the retrieval seam itself has no event emitter (EVE-894).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EmbeddingCallUsage {
+    /// Provider-side embedding model id (e.g. `text-embedding-3-small`).
+    pub model: String,
+    /// Provider that served the call, when known.
+    pub provider: Option<String>,
+    /// Total tokens the provider billed for this call.
+    pub total_tokens: u32,
+    /// Provider-reported cost in USD, when the provider returns one.
+    pub actual_cost_usd: Option<f64>,
+}
+
+/// Citations plus the embedding usage incurred to produce them.
+///
+/// Usage is reported even when retrieval returns no citations: the embedding
+/// call was billed regardless of whether anything matched (EVE-894).
+#[derive(Debug, Clone, Default)]
+pub struct KnowledgeIndexSearchOutcome {
+    /// Matching chunks, ordered by score (descending).
+    pub citations: Vec<KnowledgeIndexCitation>,
+    /// One entry per embedding call made to serve this query.
+    pub embedding_usage: Vec<EmbeddingCallUsage>,
+}
+
 /// Server-implemented hybrid retrieval over an org's bound Knowledge Indexes.
 ///
 /// Carried on `ToolContext` so the `search_index` agent tool can reach the
@@ -66,13 +95,16 @@ pub trait KnowledgeIndexSearch: Send + Sync {
     /// `index_ids` are the `kidx_` public ids bound in the capability config.
     /// Ids that are missing, cross-org, archived, or deleted are silently
     /// skipped — no existence leak.
+    ///
+    /// Returns the embedding usage alongside the citations so the caller can
+    /// meter query-time embedding spend (EVE-894).
     async fn search(
         &self,
         org_id: i64,
         index_ids: &[String],
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<KnowledgeIndexCitation>>;
+    ) -> Result<KnowledgeIndexSearchOutcome>;
 }
 
 /// Derive the vector-store namespace for an index.

@@ -46,9 +46,13 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
                 vec![first, len, 1.0]
             })
             .collect();
+        // Bill one token per input character and a fixed per-call cost, so
+        // usage assertions distinguish "reported" from "defaulted to zero".
+        let billed: u32 = request.texts.iter().map(|t| t.chars().count() as u32).sum();
         Ok(EmbedResponse {
             embeddings,
-            usage_tokens: Some(0),
+            usage_tokens: Some(billed),
+            actual_cost_usd: Some(0.0001),
         })
     }
 }
@@ -236,7 +240,8 @@ async fn search_returns_ordered_citations() {
             10,
         )
         .await
-        .expect("search");
+        .expect("search")
+        .citations;
 
     assert_eq!(citations.len(), 2, "both chunks should be returned");
     // Highest score first.
@@ -319,7 +324,8 @@ async fn search_excludes_archived_cross_org_and_unknown_without_error() {
             10,
         )
         .await
-        .expect("search must not error on excluded ids");
+        .expect("search must not error on excluded ids")
+        .citations;
 
     // Only the live org-A index contributes results.
     assert_eq!(citations.len(), 1);
@@ -356,6 +362,83 @@ async fn search_respects_top_k_across_indexes() {
     let citations = service
         .search(DEFAULT_ORG_ID, &[idx1, idx2], "alpha", 2)
         .await
-        .expect("search");
+        .expect("search")
+        .citations;
     assert_eq!(citations.len(), 2, "global top_k must cap merged results");
+}
+
+#[tokio::test]
+async fn search_reports_embedding_usage_per_index() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let encryption =
+        Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
+    let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
+    let vector_store: Arc<dyn VectorStore> = Arc::new(InMemoryVectorStore::new());
+
+    let (idx1, _) = seed_populated_index(
+        &db,
+        &vector_store,
+        DEFAULT_ORG_ID,
+        model_id,
+        &[("a.md", "alpha one")],
+    )
+    .await;
+    let (idx2, _) = seed_populated_index(
+        &db,
+        &vector_store,
+        DEFAULT_ORG_ID,
+        model_id,
+        &[("c.md", "alpha three")],
+    )
+    .await;
+
+    let service = build_service(db.clone(), encryption.clone(), vector_store.clone());
+    let outcome = service
+        .search(DEFAULT_ORG_ID, &[idx1, idx2], "alpha", 10)
+        .await
+        .expect("search");
+
+    // Retrieval embeds the query once per bound index, so each call is
+    // reported separately — they may use different embedding models.
+    assert_eq!(
+        outcome.embedding_usage.len(),
+        2,
+        "one usage record per embedding call"
+    );
+    for usage in &outcome.embedding_usage {
+        assert_eq!(usage.total_tokens, "alpha".chars().count() as u32);
+        assert_eq!(usage.actual_cost_usd, Some(0.0001));
+        assert!(
+            usage.provider.is_some(),
+            "usage must name the provider that served the call"
+        );
+    }
+}
+
+#[tokio::test]
+async fn search_reports_embedding_usage_when_nothing_matches() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let encryption =
+        Arc::new(EncryptionService::new(&generate_encryption_key("kek-v1"), &[]).unwrap());
+    let model_id = seed_embedding_model(&db, &encryption, DEFAULT_ORG_ID).await;
+    let vector_store: Arc<dyn VectorStore> = Arc::new(InMemoryVectorStore::new());
+
+    // An index with no chunks: the query is still embedded and billed, but the
+    // vector query matches nothing. The spend must not vanish with the results.
+    let (empty_id, _) =
+        seed_populated_index(&db, &vector_store, DEFAULT_ORG_ID, model_id, &[]).await;
+
+    let service = build_service(db.clone(), encryption.clone(), vector_store.clone());
+    let outcome = service
+        .search(DEFAULT_ORG_ID, &[empty_id], "alpha", 10)
+        .await
+        .expect("search");
+
+    assert!(outcome.citations.is_empty(), "no chunks to match");
+    assert_eq!(
+        outcome.embedding_usage.len(),
+        1,
+        "embedding was billed even though retrieval returned nothing"
+    );
+    assert_eq!(outcome.embedding_usage[0].actual_cost_usd, Some(0.0001));
 }

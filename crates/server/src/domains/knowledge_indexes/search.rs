@@ -15,7 +15,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_platform::vector_store::{
-    KnowledgeIndexCitation, KnowledgeIndexSearch, VectorQuery, VectorStore,
+    EmbeddingCallUsage, KnowledgeIndexCitation, KnowledgeIndexSearch, KnowledgeIndexSearchOutcome,
+    VectorQuery, VectorStore,
 };
 
 use super::embedding::build_embeddings_driver;
@@ -56,14 +57,17 @@ impl KnowledgeIndexSearchService {
     /// Bound indexes may use different embedding models, which makes a single
     /// shared query embedding ambiguous; we embed per index with that index's
     /// own model (the simplest correct behavior).
+    /// Also returns the usage the embedding call incurred, when the provider
+    /// reported any. The usage is returned even if the vector query then
+    /// matches nothing — the embedding was billed either way (EVE-894).
     async fn query_index(
         &self,
         index: &KnowledgeIndexRow,
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<(String, f32)>> {
+    ) -> Result<(Vec<(String, f32)>, Option<EmbeddingCallUsage>)> {
         let Some(namespace) = index.vector_namespace.as_deref() else {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), None));
         };
 
         let embedder = build_embeddings_driver(
@@ -73,6 +77,7 @@ impl KnowledgeIndexSearchService {
             index,
         )
         .await?;
+        let model_id = embedder.model_id.clone();
         let response = embedder
             .driver
             .embed(
@@ -84,6 +89,14 @@ impl KnowledgeIndexSearchService {
             )
             .await
             .map_err(|e| anyhow::anyhow!("embedding request failed: {e}"))?;
+        let usage = response
+            .usage_tokens
+            .map(|total_tokens| EmbeddingCallUsage {
+                model: model_id,
+                provider: Some(embedder.provider_type.clone()),
+                total_tokens,
+                actual_cost_usd: response.actual_cost_usd,
+            });
         let embedding = response
             .embeddings
             .into_iter()
@@ -101,7 +114,10 @@ impl KnowledgeIndexSearchService {
                 },
             )
             .await?;
-        Ok(matches.into_iter().map(|m| (m.id, m.score)).collect())
+        Ok((
+            matches.into_iter().map(|m| (m.id, m.score)).collect(),
+            usage,
+        ))
     }
 }
 
@@ -113,9 +129,9 @@ impl KnowledgeIndexSearch for KnowledgeIndexSearchService {
         index_ids: &[String],
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<KnowledgeIndexCitation>> {
+    ) -> Result<KnowledgeIndexSearchOutcome> {
         if top_k == 0 || query.trim().is_empty() || index_ids.is_empty() {
-            return Ok(Vec::new());
+            return Ok(KnowledgeIndexSearchOutcome::default());
         }
 
         // Resolve the live, in-org indexes. Missing / cross-org / archived /
@@ -145,8 +161,12 @@ impl KnowledgeIndexSearch for KnowledgeIndexSearchService {
             score: f32,
         }
         let mut all_matches: Vec<ScoredMatch> = Vec::new();
+        // Accumulated across indexes so it survives every early return below;
+        // the embedding calls are billed whether or not anything matched.
+        let mut embedding_usage: Vec<EmbeddingCallUsage> = Vec::new();
         for index in &indexes {
-            let matches = self.query_index(index, query, top_k).await?;
+            let (matches, usage) = self.query_index(index, query, top_k).await?;
+            embedding_usage.extend(usage);
             for (chunk_public_id, score) in matches {
                 all_matches.push(ScoredMatch {
                     index_public_id: index.public_id.clone(),
@@ -161,7 +181,10 @@ impl KnowledgeIndexSearch for KnowledgeIndexSearchService {
         all_matches.sort_by(|a, b| b.score.total_cmp(&a.score));
         all_matches.truncate(top_k);
         if all_matches.is_empty() {
-            return Ok(Vec::new());
+            return Ok(KnowledgeIndexSearchOutcome {
+                citations: Vec::new(),
+                embedding_usage,
+            });
         }
 
         // Hydrate chunk text + document citation metadata per index.
@@ -190,7 +213,10 @@ impl KnowledgeIndexSearch for KnowledgeIndexSearchService {
             });
         }
 
-        Ok(citations)
+        Ok(KnowledgeIndexSearchOutcome {
+            citations,
+            embedding_usage,
+        })
     }
 }
 

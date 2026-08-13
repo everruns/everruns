@@ -1755,6 +1755,11 @@ pub struct EmbedResponse {
     /// Total tokens consumed (for usage tracking). `None` if the provider
     /// does not report token counts.
     pub usage_tokens: Option<u32>,
+    /// Actual cost of this call in USD, as reported by the provider inline
+    /// (OpenAI-compatible gateways report `usage.cost`). `None` for providers
+    /// that do not return a cost — direct OpenAI does not, same as the chat
+    /// path (EVE-894).
+    pub actual_cost_usd: Option<f64>,
 }
 
 /// Error returned by [`EmbeddingsDriver::embed`].
