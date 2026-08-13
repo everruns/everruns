@@ -1931,6 +1931,12 @@ pub struct CompactUsage {
     pub output_tokens: Option<u32>,
     /// Total tokens used
     pub total_tokens: Option<u32>,
+    /// Authoritative per-request cost in USD, as reported inline by
+    /// OpenAI-compatible gateways (e.g. OpenRouter `usage.cost`). Absent for
+    /// providers that do not return one, matching the two generation decode
+    /// paths in this file (EVE-895).
+    #[serde(default)]
+    pub cost: Option<f64>,
 }
 
 // ============================================================================

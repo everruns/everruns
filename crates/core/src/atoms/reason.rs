@@ -571,6 +571,8 @@ struct AppliedNativeCompaction {
     bytes_before: Option<u64>,
     bytes_after: Option<u64>,
     duration_ms: u64,
+    /// Provider-reported cost of the compaction call, when reported (EVE-895).
+    cost_usd: Option<f64>,
 }
 
 fn materially_reduced(before: u64, after: u64) -> bool {
@@ -664,6 +666,7 @@ async fn try_apply_native_compaction(
         .as_ref()
         .and_then(|usage| usage.output_tokens)
         .map(u64::from);
+    let cost_usd = compact_response.usage.as_ref().and_then(|usage| usage.cost);
     let bytes_after = serde_json::to_vec(&compact_response.output)
         .ok()
         .map(|value| value.len() as u64);
@@ -731,6 +734,7 @@ async fn try_apply_native_compaction(
         bytes_before,
         bytes_after,
         duration_ms: started.elapsed().as_millis() as u64,
+        cost_usd,
     }))
 }
 
@@ -2288,6 +2292,7 @@ impl ReasonAtom {
                             .tokens_after
                             .and_then(|value| u32::try_from(value).ok()),
                         Some(applied.duration_ms),
+                        applied.cost_usd,
                     ));
                     let steps = vec![CompactionStepData {
                         strategy: "native".to_string(),
@@ -2535,6 +2540,7 @@ impl ReasonAtom {
                                 .tokens_after
                                 .and_then(|value| u32::try_from(value).ok()),
                             Some(applied.duration_ms),
+                            applied.cost_usd,
                         ));
                         checkpoint_id = applied.checkpoint_id;
                         tokens_before = applied.tokens_before;
@@ -3545,8 +3551,36 @@ impl ReasonAtom {
             retry_info,
         );
 
-        // Add compaction info if compaction was performed
+        // Add compaction info if compaction was performed. Compaction is a
+        // separate billable model call on the same turn, so its cost is folded
+        // into the generation's actual cost — `UsageTrackingListener` reads only
+        // `metadata.usage`, so that is the only path to budgets and
+        // `llm_generations`. `compaction.cost_usd` keeps the split visible
+        // (EVE-895).
         if let Some(info) = compaction_info {
+            if let Some(compaction_cost) = info.cost_usd {
+                match generation_data.metadata.usage.as_mut() {
+                    Some(usage) => {
+                        usage.actual_cost_usd =
+                            Some(usage.actual_cost_usd.unwrap_or(0.0) + compaction_cost);
+                    }
+                    // The generation itself reported no usage — a provider may
+                    // price compaction without returning usage on the retry.
+                    // Carry the cost on a usage record of its own rather than
+                    // dropping it, which is the failure this fixes.
+                    None => {
+                        generation_data.metadata.usage = Some(crate::events::TokenUsage {
+                            input_tokens: 0,
+                            output_tokens: 0,
+                            cache_read_tokens: None,
+                            cache_creation_tokens: None,
+                            actual_cost_usd: Some(compaction_cost),
+                            estimated_cost_usd: None,
+                            effective_cost_usd: None,
+                        });
+                    }
+                }
+            }
             generation_data = generation_data.with_compaction(info);
         }
 

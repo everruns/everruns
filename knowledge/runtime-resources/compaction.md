@@ -359,6 +359,23 @@ When the `compaction` capability is present with no config (or `{}`):
 
 ## Events
 
+### Cost
+
+Native compaction is a real billable model call. Providers that report per-call
+cost inline (OpenAI-compatible gateways returning `usage.cost`) have it carried
+through the compaction response onto the generation event two ways:
+
+- `metadata.compaction.cost_usd` keeps it separately attributable, so an
+  operator can see how much of a turn's spend was compaction rather than
+  generation.
+- It is also folded into `metadata.usage.actual_cost_usd`, because the usage
+  listener reads only `metadata.usage` — that is the sole path to budget debits
+  and `llm_generations`.
+
+When the generation itself reports no usage, the compaction cost creates a usage
+record rather than being dropped. Providers that do not report a cost leave both
+fields absent, matching the ordinary generation paths.
+
 ### SSE Event Types
 
 Two new event types for real-time compaction feedback:
