@@ -30,6 +30,10 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/) — share skills across agents.
 - [Publish an agent as a Slack app](/how-to/publish-to-slack/) — deploy an agent to a Slack workspace.
 
+## Upgrading
+
+- [Migrate to 0.18](/how-to/migrate-to-0-18/) — move Rust code off the `everruns-core` paths that changed, with a symbol-by-symbol table of where each type now lives.
+
 ## Operating
 
 - [Automate with the CLI](/how-to/automate-with-the-cli/) — scripting against the CLI with `jq`.
