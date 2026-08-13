@@ -20,9 +20,8 @@ use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore,
-    SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
-    SessionScheduleStore, SessionStorageStore, SessionStore, ToolContextServices,
-    UserConnectionResolver,
+    SessionCreationAuthority, SessionFileSystem, SessionResourceRegistry, SessionScheduleStore,
+    SessionStorageStore, SessionStore, ToolContextServices, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -31,6 +30,7 @@ use everruns_core::{
     UserFacingError, UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
 };
+use everruns_platform::SessionMutator;
 use everruns_platform::capabilities::{
     report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
 };
@@ -647,6 +647,9 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         if let Some(search) = adapter.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
+        extensions.insert(Arc::new(
+            everruns_platform::session_mutator::SessionMutatorExt(adapter.session_mutator(org_id)),
+        ));
         if let Some(store) = adapter.sqldb_store() {
             extensions.insert(Arc::new(
                 everruns_platform::session_sqldb::SessionSqlDbStoreExt(store),
@@ -664,7 +667,6 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         egress_service: adapter.egress_service(),
         message_retriever: Some(adapter.message_store()),
         session_store: Some(adapter.session_store(org_id)),
-        session_mutator: Some(adapter.session_mutator(org_id)),
         agent_store: Some(adapter.agent_store(org_id)),
         connection_resolver: adapter.connection_resolver(),
         schedule_store: adapter.schedule_store(org_id),

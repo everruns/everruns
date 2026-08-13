@@ -274,9 +274,9 @@ pub use traits::{
     NoopPartialStreamStore, NoopStreamHeartbeater, NoopSubagentSpawnStore, OutboundToolRateLimiter,
     PartialStreamState, PartialStreamStore, ProviderStore, ReasoningEffortHandle, ResolvedImage,
     ResolvedModel, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionStorageStore,
-    SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress, SubagentNestingPolicy,
-    SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
+    SessionFileSystemFactoryContext, SessionResourceRegistry, SessionStorageStore, SessionStore,
+    SpawnClaimResult, StreamHeartbeater, StreamProgress, SubagentNestingPolicy, SubagentSpawnStore,
+    ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
     WorkspaceScopedFileSystem,
 };
 pub use user_facing_error::{

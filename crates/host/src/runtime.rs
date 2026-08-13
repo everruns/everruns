@@ -38,8 +38,8 @@ use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context}
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
-    SessionStorageStore, SessionStore, UserConnectionResolver,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionStorageStore,
+    SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
@@ -51,6 +51,7 @@ use everruns_core::{
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
 };
+use everruns_platform::SessionMutator;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::path::Path;

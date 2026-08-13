@@ -7,7 +7,7 @@ use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
     ProviderCredentialStore, ProviderStore, SessionCreationAuthority, SessionFileSystem,
-    SessionMutator, SessionStore,
+    SessionStore,
 };
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
@@ -18,6 +18,7 @@ use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
+use everruns_platform::SessionMutator;
 use std::sync::Arc;
 use uuid::Uuid;
 

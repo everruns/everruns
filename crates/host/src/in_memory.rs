@@ -13,9 +13,10 @@ use everruns_core::session_file::{
 };
 use everruns_core::traits::{
     KeyInfo, SecretInfo, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
+    SessionFileSystemFactoryContext, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_platform::SessionMutator;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;

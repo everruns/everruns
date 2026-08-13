@@ -18,8 +18,7 @@ use everruns_core::tool_narration::{
     ToolNarrationContext, ToolNarrationPhase, narrate_list_directory,
 };
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionMutator,
-    SessionStore,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionStore,
 };
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -31,6 +30,7 @@ use everruns_host::{
     execute_act_activity, multi_root_file_system,
 };
 use everruns_integrations_filesystem::FileSystemCapability;
+use everruns_platform::SessionMutator;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
