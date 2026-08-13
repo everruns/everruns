@@ -8,6 +8,7 @@ publish = false
 async-trait = "0.1"
 everruns-core = { path = "../../../../crates/core" }
 everruns-host = { path = "../../../../crates/host" }
+everruns-platform = { path = "../../../../crates/platform" }
 
 [dev-dependencies]
 everruns-test-support = { path = "../../../../crates/test-support" }

@@ -11,9 +11,8 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
-
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+use chrono::Utc;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -21,11 +20,7 @@ use everruns_core::atoms::{
 use everruns_core::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::error::Result;
-use everruns_core::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
-    InMemoryProviderStore, InMemorySessionStore,
-};
+use everruns_core::events::{Event, EventContext, EventData, EventRequest, InputMessageData};
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
@@ -33,66 +28,12 @@ use everruns_core::tool_types::ToolCall;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use everruns_core::traits::{EventEmitter, ResolvedModel};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId, TurnId};
-
-// ============================================================================
-// Bridging Event Emitter
-// ============================================================================
-
-/// Event emitter that bridges events to message storage
-///
-/// When a `output.message.completed` event is emitted, it also stores the message
-/// in the provided message retriever. This enables full agentic loops
-/// in memory without the database layer.
-#[derive(Clone)]
-struct BridgingEventEmitter {
-    inner: InMemoryEventEmitter,
-    message_retriever: InMemoryMessageRetriever,
-}
-
-impl BridgingEventEmitter {
-    fn new(message_retriever: InMemoryMessageRetriever) -> Self {
-        Self {
-            inner: InMemoryEventEmitter::new(),
-            message_retriever,
-        }
-    }
-
-    async fn events(&self) -> Vec<Event> {
-        self.inner.events().await
-    }
-
-    async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
-        self.inner.events_by_type(event_type).await
-    }
-
-    async fn event_count(&self) -> usize {
-        self.inner.event_count().await
-    }
-
-    async fn clear(&self) {
-        self.inner.clear().await;
-    }
-}
-
-#[async_trait]
-impl EventEmitter for BridgingEventEmitter {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
-        // If this is an output.message.completed event, also store the message
-        if request.data.event_type() == OUTPUT_MESSAGE_COMPLETED
-            && let EventData::OutputMessageCompleted(data) = &request.data
-        {
-            // Store the message in the retriever
-            let _ = self
-                .message_retriever
-                .store(request.session_id, data.message.clone())
-                .await;
-        }
-
-        // Delegate to the inner emitter
-        self.inner.emit(request).await
-    }
-}
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_host::{
+    EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
+    InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
+    InMemorySessionStore, NoopEventSink,
+};
 
 // ============================================================================
 // Turn Result
@@ -387,8 +328,9 @@ impl InMemoryAgenticLoopBuilder {
         let harness_store = InMemoryHarnessStore::new();
         let agent_store = InMemoryAgentStore::new();
         let session_store = InMemorySessionStore::new();
-        let message_retriever = InMemoryMessageRetriever::new();
-        let event_emitter = BridgingEventEmitter::new(message_retriever.clone());
+        let event_log = Arc::new(InMemoryEventLog::new());
+        let message_retriever = EventHistory::new(event_log.clone());
+        let event_emitter = HostEventEmitter::new(event_log.clone(), Arc::new(NoopEventSink));
 
         // Build capability configs for the agent from capabilities
         let agent_capability_configs: Vec<AgentCapabilityConfig> = self
@@ -514,6 +456,7 @@ impl InMemoryAgenticLoopBuilder {
             harness_store,
             agent_store,
             session_store,
+            event_log,
             message_retriever,
             provider_store,
             event_emitter,
@@ -569,14 +512,15 @@ pub struct InMemoryAgenticLoop {
     agent_store: InMemoryAgentStore,
     #[allow(dead_code)]
     session_store: InMemorySessionStore,
-    message_retriever: InMemoryMessageRetriever,
+    event_log: Arc<InMemoryEventLog>,
+    message_retriever: EventHistory,
     #[allow(dead_code)]
     provider_store: InMemoryProviderStore,
-    event_emitter: BridgingEventEmitter,
+    event_emitter: HostEventEmitter,
     tool_registry: ToolRegistry,
-    input_atom: Arc<InputAtom<InMemoryMessageRetriever>>,
+    input_atom: Arc<InputAtom<EventHistory>>,
     reason_atom: Arc<ReasonAtom>,
-    act_atom: Arc<ActAtom<ToolRegistry, BridgingEventEmitter>>,
+    act_atom: Arc<ActAtom<ToolRegistry, HostEventEmitter>>,
     max_iterations: usize,
     reasoning_effort_handle: Option<everruns_core::traits::ReasoningEffortHandle>,
 }
@@ -637,11 +581,31 @@ impl InMemoryAgenticLoop {
             handle.set(None);
         }
 
-        // Add user message
-        let message = self
-            .message_retriever
-            .add(self.session_id, input.into())
-            .await?;
+        // Append the accepted input once. EventHistory supplies the read model
+        // consumed by every atom; there is no writable message-store facade.
+        let input = input.into();
+        let tags = input.tags.clone();
+        let message = Message {
+            id: MessageId::new(),
+            role: input.role,
+            content: input.content,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+            controls: input.controls,
+            metadata: input.metadata,
+            external_actor: None,
+            created_at: Utc::now(),
+        };
+        let mut request = EventRequest::new(
+            self.session_id,
+            EventContext::empty(),
+            InputMessageData::new(message.clone()),
+        );
+        if !tags.is_empty() {
+            request = request.with_tags(tags);
+        }
+        self.event_emitter.emit(request).await?;
 
         // Create turn context and state machine
         let turn_context = TurnContext::new(self.session_id, message.id, self.agent_id, 0);
@@ -739,7 +703,6 @@ impl InMemoryAgenticLoop {
                     let turn_id = state_machine.context().turn_id;
                     let mut result = TurnResult::from_outcome(outcome, turn_id);
                     result.llm_generations = self
-                        .event_emitter
                         .events()
                         .await
                         .into_iter()
@@ -782,12 +745,30 @@ impl InMemoryAgenticLoop {
 
     /// Get all emitted events
     pub async fn events(&self) -> Vec<Event> {
-        self.event_emitter.events().await
+        let limit = EventReadLimit::default();
+        let mut request = EventReadRequest::new(self.session_id, limit);
+        let mut events = Vec::new();
+        loop {
+            let page = self
+                .event_log
+                .read_page(request)
+                .await
+                .expect("in-memory canonical event reads are infallible");
+            events.extend(page.events);
+            let Some(cursor) = page.next_cursor else {
+                return events;
+            };
+            request = EventReadRequest::from_cursor(cursor, limit);
+        }
     }
 
     /// Get events of a specific type
     pub async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
-        self.event_emitter.events_by_type(event_type).await
+        self.events()
+            .await
+            .into_iter()
+            .filter(|event| event.event_type == event_type)
+            .collect()
     }
 
     /// Get the count of messages
@@ -797,23 +778,7 @@ impl InMemoryAgenticLoop {
 
     /// Get the count of events
     pub async fn event_count(&self) -> usize {
-        self.event_emitter.event_count().await
-    }
-
-    /// Clear all events (useful between tests)
-    pub async fn clear_events(&self) {
-        self.event_emitter.clear().await;
-    }
-
-    /// Clear all messages (starts a fresh conversation)
-    pub async fn clear_messages(&self) {
-        self.message_retriever.clear_session(self.session_id).await;
-    }
-
-    /// Reset the loop (clear messages and events)
-    pub async fn reset(&self) {
-        self.clear_messages().await;
-        self.clear_events().await;
+        self.events().await.len()
     }
 
     /// Get conversation as a formatted string
@@ -829,7 +794,7 @@ impl InMemoryAgenticLoop {
     }
 
     /// Access the message retriever directly
-    pub fn message_retriever(&self) -> &InMemoryMessageRetriever {
+    pub fn message_retriever(&self) -> &EventHistory {
         &self.message_retriever
     }
 
@@ -1036,18 +1001,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_reset() {
+    async fn conversation_messages_are_projected_from_single_canonical_writes() {
         let runner = InMemoryAgenticLoop::with_fixed_response("Response")
             .await
             .unwrap();
 
-        runner.run_turn("Test").await.unwrap();
-        assert!(runner.message_count().await.unwrap() > 0);
-        assert!(runner.event_count().await > 0);
+        runner.run_turn("Question").await.unwrap();
 
-        runner.reset().await;
-        assert_eq!(runner.message_count().await.unwrap(), 0);
-        assert_eq!(runner.event_count().await, 0);
+        let messages = runner.messages().await.unwrap();
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text(), Some("Question"));
+        assert_eq!(messages[1].text(), Some("Response"));
+
+        let events = runner.events().await;
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == everruns_core::events::INPUT_MESSAGE)
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_type == everruns_core::events::OUTPUT_MESSAGE_COMPLETED)
+                .count(),
+            1
+        );
+        assert!(events.iter().all(|event| event.sequence.is_some()));
     }
 
     #[tokio::test]

@@ -243,8 +243,8 @@ pub async fn load_execution_snapshot_for_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::in_memory::{InMemoryAgentStore, InMemoryHarnessStore};
     use crate::network_access::NetworkAccessList;
+    use crate::test_fixtures::{TestAgentStore, TestHarnessStore};
     use std::collections::HashMap;
 
     fn harness() -> HarnessDefinition {
@@ -536,9 +536,9 @@ mod tests {
     #[tokio::test]
     async fn loader_fails_on_missing_records_before_execution() {
         let (harness_id, agent_id, session_id) = ids();
-        let harness_store = InMemoryHarnessStore::new();
-        let agent_store = InMemoryAgentStore::new();
-        let session_store = crate::in_memory::InMemorySessionStore::new();
+        let harness_store = TestHarnessStore::new();
+        let agent_store = TestAgentStore::new();
+        let session_store = crate::test_fixtures::TestSessionStore::new();
 
         // Missing session (also the cross-tenant shape: org-scoped stores
         // return None for records outside the caller's org).

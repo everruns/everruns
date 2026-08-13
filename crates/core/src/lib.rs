@@ -217,12 +217,10 @@ pub mod traits;
 pub mod truncation_info;
 pub use everruns_provider::user_facing_error;
 
-// Minimal in-memory implementations of the core store traits. These back the
-// default `everruns-host` backend bundle and core's own unit tests. The
-// deterministic simulator (`llmsim`), the in-memory agentic loop, and the
-// mock/echo/failing test doubles live in the `everruns-test-support` crate
-// (EVE-875) so production builds carry no test implementations.
-pub mod in_memory;
+// Private doubles for collocated unit tests. Public application backends live
+// in everruns-host; reusable deterministic fixtures live in test-support.
+#[cfg(test)]
+mod test_fixtures;
 
 // Turn orchestration (state machine, context, outcomes)
 pub mod turn;

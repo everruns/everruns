@@ -87,6 +87,10 @@ math/weather, sample-data, noop). `everruns-core` carries no llmsim dependency
 or feature, product registries never register the fixtures, and
 `scripts/lib/check-test-support-isolation.sh` (pre-push + CI) enforces both.
 The facade's `Model::simulated` consumes only the crate's `sim` feature.
+Reusable writable message/event fixtures also live in test-support. Concrete
+application-grade agent, harness, session, and provider stores live in
+`everruns-host`; hosted conversation writes append only to its canonical
+`EventLog`, with `EventHistory` providing the read-only message projection.
 
 Telemetry initialization and exporter implementations live in
 `everruns-observability` (EVE-876): OTLP exporter wiring, tracing-subscriber

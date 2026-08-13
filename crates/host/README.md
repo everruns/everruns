@@ -32,6 +32,8 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 
 - Canonical event append, bounded replay, and read-only history projection
 - Backend/store composition and low-level in-process execution
+- Reference `InMemoryAgentStore`, `InMemoryHarnessStore`,
+  `InMemorySessionStore`, and `InMemoryProviderStore` implementations
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Host adapter contracts for worker, local, and advanced integrations
 

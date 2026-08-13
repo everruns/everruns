@@ -8,15 +8,13 @@ use everruns_core::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResultImage,
 };
 use everruns_core::{
-    Message, MessageRetriever, MessageRole, SessionId,
-    in_memory::InMemoryMessageRetriever,
+    Message, MessageRole,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
 };
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use uuid::Uuid;
 
 // =============================================================================
 // Tests for ToolRegistry as ToolExecutor
@@ -263,183 +261,6 @@ async fn test_registered_tool_executes() {
 }
 
 // =============================================================================
-// Message Store Tool Calls Tests
-// =============================================================================
-// These tests verify that messages with tool_calls survive the store/load cycle.
-// This specifically tests the bug fix where tool_calls were not being persisted.
-
-#[tokio::test]
-async fn test_message_retriever_preserves_tool_calls() {
-    let store = InMemoryMessageRetriever::new();
-    let session_id: SessionId = Uuid::now_v7().into();
-
-    // Create an assistant message with tool calls (the critical case)
-    let tool_calls = vec![
-        ToolCall {
-            id: "call_weather".to_string(),
-            name: "get_weather".to_string(),
-            arguments: json!({"city": "Tokyo"}),
-        },
-        ToolCall {
-            id: "call_time".to_string(),
-            name: "get_time".to_string(),
-            arguments: json!({"format": "unix"}),
-        },
-    ];
-
-    let assistant_msg = Message::assistant_with_tools("Let me check that for you.", tool_calls);
-    store.store(session_id, assistant_msg).await.unwrap();
-
-    // Load messages back
-    let loaded = store.load(session_id).await.unwrap();
-    assert_eq!(loaded.len(), 1);
-
-    let loaded_msg = &loaded[0];
-    assert_eq!(loaded_msg.role, MessageRole::Agent);
-    assert_eq!(loaded_msg.text(), Some("Let me check that for you."));
-
-    // Verify tool_calls are preserved - this is the key assertion
-    let loaded_tool_calls = loaded_msg.tool_calls();
-    assert_eq!(loaded_tool_calls.len(), 2);
-    assert_eq!(loaded_tool_calls[0].id, "call_weather");
-    assert_eq!(loaded_tool_calls[0].name, "get_weather");
-    assert_eq!(loaded_tool_calls[1].id, "call_time");
-    assert_eq!(loaded_tool_calls[1].name, "get_time");
-}
-
-#[tokio::test]
-async fn test_message_retriever_full_tool_conversation() {
-    let store = InMemoryMessageRetriever::new();
-    let session_id: SessionId = Uuid::now_v7().into();
-
-    // Simulate a full tool-calling conversation:
-    // 1. User message
-    // 2. Assistant message with tool calls
-    // 3. Tool result messages
-    // 4. Final assistant message
-
-    // 1. User asks a question
-    store
-        .store(session_id, Message::user("What's the weather in Tokyo?"))
-        .await
-        .unwrap();
-
-    // 2. Assistant responds with a tool call
-    let tool_call = ToolCall {
-        id: "call_123".to_string(),
-        name: "get_weather".to_string(),
-        arguments: json!({"city": "Tokyo"}),
-    };
-    let assistant_with_tool = Message::assistant_with_tools("", vec![tool_call.clone()]);
-    store.store(session_id, assistant_with_tool).await.unwrap();
-
-    // 3. Tool result
-    let tool_result = Message::tool_result(
-        "call_123",
-        Some(json!({"temperature": 22, "conditions": "sunny"})),
-        None,
-    );
-    store.store(session_id, tool_result).await.unwrap();
-
-    // 4. Final assistant response
-    store
-        .store(
-            session_id,
-            Message::assistant("The weather in Tokyo is 22°C and sunny!"),
-        )
-        .await
-        .unwrap();
-
-    // Load all messages
-    let messages = store.load(session_id).await.unwrap();
-    assert_eq!(messages.len(), 4);
-
-    // Verify message order and content
-    assert_eq!(messages[0].role, MessageRole::User);
-    assert_eq!(messages[1].role, MessageRole::Agent);
-    assert_eq!(messages[2].role, MessageRole::ToolResult);
-    assert_eq!(messages[3].role, MessageRole::Agent);
-
-    // Verify the assistant message with tool calls has them preserved
-    let assistant_msg = &messages[1];
-    let tool_calls = assistant_msg.tool_calls();
-    assert!(
-        !tool_calls.is_empty(),
-        "Assistant message should have tool_calls"
-    );
-    assert_eq!(tool_calls.len(), 1);
-    assert_eq!(tool_calls[0].name, "get_weather");
-
-    // Verify the tool result has correct content
-    assert_eq!(messages[2].tool_call_id(), Some("call_123"));
-
-    // Verify final response doesn't have tool_calls
-    assert!(messages[3].tool_calls().is_empty());
-}
-
-#[tokio::test]
-async fn test_message_retriever_parallel_tool_calls() {
-    let store = InMemoryMessageRetriever::new();
-    let session_id: SessionId = Uuid::now_v7().into();
-
-    // Create an assistant message with multiple parallel tool calls
-    let tool_calls = vec![
-        ToolCall {
-            id: "call_1".to_string(),
-            name: "get_weather".to_string(),
-            arguments: json!({"city": "Tokyo"}),
-        },
-        ToolCall {
-            id: "call_2".to_string(),
-            name: "get_weather".to_string(),
-            arguments: json!({"city": "London"}),
-        },
-        ToolCall {
-            id: "call_3".to_string(),
-            name: "get_weather".to_string(),
-            arguments: json!({"city": "New York"}),
-        },
-    ];
-
-    store
-        .store(
-            session_id,
-            Message::assistant_with_tools("Let me check all three cities.", tool_calls),
-        )
-        .await
-        .unwrap();
-
-    // Store tool results
-    for (id, city, temp) in [
-        ("call_1", "Tokyo", 22),
-        ("call_2", "London", 15),
-        ("call_3", "New York", 18),
-    ] {
-        store
-            .store(
-                session_id,
-                Message::tool_result(id, Some(json!({"city": city, "temp": temp})), None),
-            )
-            .await
-            .unwrap();
-    }
-
-    // Load and verify
-    let messages = store.load(session_id).await.unwrap();
-    assert_eq!(messages.len(), 4); // 1 assistant + 3 tool results
-
-    // Verify all 3 tool calls are preserved in assistant message
-    let assistant_msg = &messages[0];
-    let loaded_calls = assistant_msg.tool_calls();
-    assert_eq!(loaded_calls.len(), 3);
-
-    // Verify each tool call
-    for (i, expected_city) in ["Tokyo", "London", "New York"].iter().enumerate() {
-        assert_eq!(loaded_calls[i].arguments["city"], *expected_city);
-    }
-}
-
-// =============================================================================
 // Image Tool Result Tests
 // =============================================================================
 
@@ -627,30 +448,6 @@ async fn test_tool_result_with_images_llm_conversion() {
         }
         _ => panic!("Expected Parts content"),
     }
-}
-
-#[tokio::test]
-async fn test_tool_result_with_images_store_roundtrip() {
-    let store = InMemoryMessageRetriever::new();
-    let session_id: SessionId = Uuid::now_v7().into();
-
-    let images = vec![ToolResultImage {
-        base64: "AAAA".to_string(),
-        media_type: "image/png".to_string(),
-    }];
-
-    let msg = Message::tool_result_with_images("call_rt", Some(json!({"ok": true})), images);
-
-    store.store(session_id, msg).await.unwrap();
-
-    let loaded = store.load(session_id).await.unwrap();
-    assert_eq!(loaded.len(), 1);
-
-    let loaded_msg = &loaded[0];
-    assert_eq!(loaded_msg.role, MessageRole::ToolResult);
-    assert_eq!(loaded_msg.tool_call_id(), Some("call_rt"));
-    // Should preserve both ToolResult and Image content parts
-    assert_eq!(loaded_msg.content.len(), 2);
 }
 
 #[test]

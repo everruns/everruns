@@ -15,6 +15,9 @@
 # 4. Product binaries (server/worker) may carry test-support only through the
 #    `sim` surface (the worker's seeded LlmSim provider); the demo `fixtures`
 #    feature must never be linked.
+# 5. Public in-memory backend ownership stays split: application stores in
+#    host, deterministic message/event fixtures in test-support, and no
+#    conversation dual-write bridge.
 
 set -euo pipefail
 
@@ -44,12 +47,12 @@ if matches=$(grep -rnE "$FIXTURE_PATTERN" "${GUARDED_TREES[@]}" --include='*.rs'
   FAILED=1
 fi
 
-# 2. Core: no llmsim / test-support on ANY edge (including dev), so
+# 2. Core: no llmsim / host / test-support on ANY edge (including dev), so
 #    `cargo tree -p everruns-core` stays clean.
 CORE_TREE=$(cargo tree -p everruns-core --edges normal,build,dev --prefix none 2>/dev/null)
-if echo "$CORE_TREE" | grep -qE '^(llmsim|everruns-test-support) '; then
-  echo "everruns-core must not depend on llmsim or everruns-test-support (any edge):"
-  echo "$CORE_TREE" | grep -E '^(llmsim|everruns-test-support) '
+if echo "$CORE_TREE" | grep -qE '^(llmsim|everruns-host|everruns-test-support) '; then
+  echo "everruns-core must not depend on llmsim, everruns-host, or everruns-test-support (any edge):"
+  echo "$CORE_TREE" | grep -E '^(llmsim|everruns-host|everruns-test-support) '
   FAILED=1
 fi
 
@@ -73,6 +76,38 @@ for crate in "${PROVIDER_CRATES[@]}"; do
   fi
 done
 
+# 5. Concrete public backend ownership and canonical-conversation-write guard.
+if [ -e crates/core/src/in_memory.rs ] || grep -qE '^pub mod in_memory;' crates/core/src/lib.rs; then
+  echo "everruns-core must not expose or house the public in_memory backend module."
+  FAILED=1
+fi
+
+if matches=$(grep -rnE 'everruns_core::in_memory|everruns-core::in_memory' crates apps examples tests --include='*.rs' --include='*.md' 2>/dev/null); then
+  echo "Legacy everruns-core in-memory backend imports are forbidden:"
+  echo "$matches"
+  FAILED=1
+fi
+
+for symbol in InMemoryAgentStore InMemoryHarnessStore InMemorySessionStore InMemoryProviderStore; do
+  if ! grep -q "pub struct $symbol" crates/host/src/in_memory.rs; then
+    echo "$symbol must be owned by everruns-host."
+    FAILED=1
+  fi
+done
+
+for symbol in InMemoryMessageRetriever InMemoryEventEmitter; do
+  if ! grep -q "pub struct $symbol" crates/test-support/src/in_memory.rs; then
+    echo "$symbol must be owned by everruns-test-support."
+    FAILED=1
+  fi
+done
+
+if matches=$(grep -rnE 'RuntimeMessageStore|PersistingEventEmitter|BridgingEventEmitter' crates/host/src crates/test-support/src --include='*.rs' 2>/dev/null); then
+  echo "Writable message-store facades and conversation dual-write bridges are forbidden:"
+  echo "$matches"
+  FAILED=1
+fi
+
 # 4. Product binaries (server embeds the worker, which registers the seeded
 #    LlmSim provider): the test-support edge is allowed only with the `sim`
 #    surface — the demo `fixtures` feature must stay unlinked.
@@ -90,4 +125,4 @@ if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
 
-echo "Test-support isolation guard passed: no fixture capabilities or llmsim in production trees."
+echo "Test-support isolation guard passed: fixture and in-memory backend ownership is isolated."

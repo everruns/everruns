@@ -17,7 +17,7 @@ The low-level crates expose focused contracts for:
 
 - core agent, event, capability, and provider values;
 - the sans-I/O turn engine;
-- runtime host phases and in-memory reference stores;
+- runtime host phases, canonical event history, and in-memory reference stores;
 - local SQLite-backed task and schedule state;
 - platform/control-plane entities and durable deployment components.
 

@@ -110,11 +110,18 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | HTTP transports | `everruns_http::` |
 | Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_observability::` |
 | `llmsim` driver, in-memory loop, fixture capabilities | `everruns_test_support::` |
+| `everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` | `everruns_host::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` |
+| `everruns_core::in_memory::{InMemoryMessageRetriever, InMemoryEventEmitter}` | `everruns_test_support::{InMemoryMessageRetriever, InMemoryEventEmitter}` for isolated deterministic tests |
 
 Product presets compose these explicitly. Core registries are now empty by
 default: use `everruns_host::runtime_capability_registry()` for the Framework
 preset or `everruns_platform::capabilities::hosted_capability_registry()` for
 the hosted product catalog.
+
+Hosted conversation history has no writable message-store replacement. Append
+canonical events through `everruns_host::EventLog` / `HostEventEmitter` and
+read messages through `EventHistory`. This avoids message/event dual writes and
+keeps resume and replay behavior identical across in-memory and durable hosts.
 
 ## Features
 

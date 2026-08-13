@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Breaking
 
+- **Moved concrete in-memory backends out of `everruns-core`.** Embedded-host
+  agent, harness, session, and provider stores now live in `everruns-host`.
+  Writable deterministic `InMemoryMessageRetriever` and
+  `InMemoryEventEmitter` fixtures now live in `everruns-test-support`.
+  Hosted conversation history has no writable message-store replacement:
+  append through `EventLog` / `HostEventEmitter` and read through
+  `EventHistory`, preserving canonical-events-only writes.
+
 - **Moved connector, OAuth, and system-email infrastructure out of
   `everruns-core`.** The hosted connector catalog — `Connector`,
   `ConnectorRegistry`, `ConnectorRegistryBuilder`, `ConnectorPlugin`,

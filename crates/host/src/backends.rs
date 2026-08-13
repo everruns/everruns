@@ -4,12 +4,14 @@
 // rebuildable read projection.
 
 use crate::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
-use crate::in_memory::{InMemorySessionStorageStore, InMemorySessionStore};
+use crate::in_memory::{
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStorageStore,
+    InMemorySessionStore,
+};
 use async_trait::async_trait;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::error::Result;
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{

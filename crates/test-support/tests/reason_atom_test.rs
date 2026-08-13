@@ -13,16 +13,16 @@ use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
-    InMemorySessionStore,
-};
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{CompactionCheckpointStore, Controls, Message, ToolCall};
+use everruns_host::{
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
+};
 use everruns_test_support::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
+use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
@@ -235,7 +235,7 @@ struct ProactiveTestRig {
     provider_store: InMemoryProviderStore,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
-    event_emitter: everruns_core::in_memory::InMemoryEventEmitter,
+    event_emitter: InMemoryEventEmitter,
     checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
     harness_id: HarnessId,
     agent_id: Uuid,
@@ -328,7 +328,7 @@ impl ProactiveTestRig {
             provider_store,
             capability_registry,
             driver_registry,
-            event_emitter: everruns_core::in_memory::InMemoryEventEmitter::new(),
+            event_emitter: InMemoryEventEmitter::new(),
             checkpoint_store: Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default()),
             harness_id,
             agent_id,
@@ -763,8 +763,6 @@ fn create_speed_capturing_driver_registry(
 
 #[tokio::test]
 async fn test_reason_atom_with_fixed_response() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -845,7 +843,6 @@ async fn test_reason_atom_with_fixed_response() {
 async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_response_id() {
     use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
         harness_store,
@@ -1045,7 +1042,6 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 async fn native_compact_failure_does_not_install_checkpoint() {
     use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::in_memory::InMemoryEventEmitter;
     use everruns_core::traits::SessionStore;
 
     let (
@@ -1756,8 +1752,6 @@ async fn proactive_attempt_watermark_failures_do_not_abort_model_turn() {
 
 #[tokio::test]
 async fn test_reason_atom_strips_speed_not_advertised_by_model_profile() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -1819,8 +1813,6 @@ async fn test_reason_atom_strips_speed_not_advertised_by_model_profile() {
 
 #[tokio::test]
 async fn test_reason_atom_preserves_speed_advertised_by_model_profile() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2121,8 +2113,6 @@ async fn test_reason_atom_with_different_configs() {
 
 #[tokio::test]
 async fn test_reason_atom_with_multi_turn_conversation() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2333,8 +2323,6 @@ async fn test_reason_atom_with_lorem_response() {
 
 #[tokio::test]
 async fn test_reason_atom_handles_llm_error() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2432,8 +2420,6 @@ async fn test_reason_atom_handles_llm_error() {
 
 #[tokio::test]
 async fn test_reason_atom_emits_output_message_completed_on_success() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2546,8 +2532,6 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
 
 #[tokio::test]
 async fn test_reason_atom_retries_structured_processing_error_before_output() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2632,8 +2616,6 @@ async fn test_reason_atom_retries_structured_processing_error_before_output() {
 /// not surfaced as a failed turn — and without injecting artificial history.
 #[tokio::test(start_paused = true)]
 async fn test_reason_atom_retries_provider_stream_stall_before_output() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2731,8 +2713,6 @@ async fn test_reason_atom_retries_provider_stream_stall_before_output() {
 /// retry budget and eventually return an error rather than retrying forever.
 #[tokio::test(start_paused = true)]
 async fn test_reason_atom_bounds_repeated_provider_stream_stalls() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -2863,8 +2843,6 @@ async fn test_driver_registry_integration() {
 
 #[tokio::test]
 async fn test_reason_atom_handles_model_not_available() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3209,8 +3187,6 @@ impl everruns_core::ChatDriver for ToolCallsThenErrorDriver {
 
 #[tokio::test]
 async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3299,8 +3275,6 @@ impl everruns_core::ChatDriver for TextThenErrorDriver {
 
 #[tokio::test]
 async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3390,8 +3364,6 @@ impl everruns_core::ChatDriver for PureErrorDriver {
 
 #[tokio::test]
 async fn test_reason_atom_exhausts_bounded_processing_error_retries() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3462,8 +3434,6 @@ async fn test_reason_atom_exhausts_bounded_processing_error_retries() {
 
 #[tokio::test]
 async fn test_reason_atom_does_not_retry_non_transient_provider_code() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3522,8 +3492,6 @@ async fn test_reason_atom_does_not_retry_non_transient_provider_code() {
 
 #[tokio::test]
 async fn test_reason_atom_strips_error_placeholder_messages() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3602,8 +3570,6 @@ async fn test_reason_atom_strips_error_placeholder_messages() {
 
 #[tokio::test]
 async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3668,8 +3634,6 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
 
 #[tokio::test]
 async fn test_reason_atom_keeps_non_placeholder_messages_that_share_prefixes() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3824,8 +3788,6 @@ fn create_conversation_capturing_driver_registry(
 
 #[tokio::test]
 async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -3935,8 +3897,6 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
 
 #[tokio::test]
 async fn test_empty_session_system_prompt_is_ignored() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,
@@ -4049,7 +4009,6 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
         REASON_CODE_SYSTEM_PROMPT_LEAK,
     };
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::in_memory::InMemoryEventEmitter;
 
     // Reuse the standard test environment, then patch the agent to (a) carry
     // a system prompt long enough to produce a canary needle and (b) enable
@@ -4202,7 +4161,6 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
         harness_store,
@@ -4315,8 +4273,6 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
 /// case — make sure the hot path doesn't regress.
 #[tokio::test]
 async fn test_no_guardrails_passes_through_unchanged() {
-    use everruns_core::in_memory::InMemoryEventEmitter;
-
     let (
         harness_store,
         agent_store,

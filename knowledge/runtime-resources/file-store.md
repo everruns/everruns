@@ -613,5 +613,5 @@ APIs or the `SessionFileSystem` trait.
 - `crates/server/src/storage/session_file_store.rs` — `DbSessionFileStore`
 - `knowledge/runtime-resources/workspace.md` — `/workspace` mount and session VFS
   semantics
-- `knowledge/foundations/runtime.md` — `RuntimeBackends` and the embedder seam
+- `knowledge/foundations/runtime.md` — `HostBackends` and the embedder seam
 - `knowledge/execution/capabilities.md` — `ToolContext` / `SystemPromptContext` wiring

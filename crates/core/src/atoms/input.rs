@@ -115,13 +115,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::in_memory::InMemoryMessageRetriever;
     use crate::message_retriever::InputMessage;
+    use crate::test_fixtures::TestMessageRetriever;
     use crate::typed_id::{MessageId, SessionId, TurnId};
 
     #[tokio::test]
     async fn test_input_atom_retrieves_message() {
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
 
@@ -142,7 +142,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_input_atom_not_found() {
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let missing_id = MessageId::new();

@@ -5,7 +5,7 @@ description: Configure safe read and write scopes for in-process Everruns agents
 
 `WorkspacePolicy` is the portable security boundary for files visible to an
 in-process agent. Applications configure it through `everruns`; they do not
-need `RealDiskFileStore`, `RuntimeBackends`, or a runtime-owned blocklist.
+need `RealDiskFileStore`, `HostBackends`, or a runtime-owned blocklist.
 
 ```rust
 use everruns::{Agent, Model, WorkspacePolicy};

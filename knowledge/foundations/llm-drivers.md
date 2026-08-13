@@ -850,7 +850,7 @@ single shared seam in `crates/core/src/credential_provider.rs`:
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
 passing it where credentials are needed — e.g.
-`InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
+`everruns_host::InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
 in-memory dev store used by `just start-dev`. **The server path never constructs
 an `EnvCredentialProvider`.**
 

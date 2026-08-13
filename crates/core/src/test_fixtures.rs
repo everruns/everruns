@@ -1,12 +1,8 @@
-// Minimal in-memory implementations of the core store traits.
-//
-// These implementations keep all data in memory. They back the default
-// `everruns-host` backend bundle (`HostBackends::in_memory`) and are useful
-// for standalone examples, unit tests, and quick prototyping.
-//
-// Test doubles (mock/echo/failing tool executors, the mock chat driver) and
-// the deterministic simulator live in the `everruns-test-support` crate
-// (EVE-875), not here.
+#![allow(dead_code)]
+
+// Private, cfg(test)-only doubles for collocated core unit tests. These are not
+// public backends; host owns application stores and test-support owns reusable
+// deterministic fixtures.
 
 use crate::agent_definition::AgentDefinition;
 use crate::credential_provider::CredentialProvider;
@@ -30,7 +26,7 @@ use crate::traits::{AgentStore, HarnessStore, ProviderStore, SessionStore};
 use chrono::Utc;
 
 // ============================================================================
-// InMemoryMessageRetriever - In-memory message storage for testing
+// TestMessageRetriever - In-memory message storage for testing
 // ============================================================================
 
 /// In-memory message retriever
@@ -41,35 +37,35 @@ use chrono::Utc;
 /// Note: Write operations (add, store) are provided as inherent methods
 /// for testing purposes. In production, messages are stored via EventEmitter.
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryMessageRetriever {
+pub(crate) struct TestMessageRetriever {
     messages: Arc<RwLock<HashMap<SessionId, Vec<Message>>>>,
 }
 
-impl InMemoryMessageRetriever {
+impl TestMessageRetriever {
     /// Create a new in-memory message retriever
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             messages: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Get all sessions
-    pub async fn sessions(&self) -> Vec<SessionId> {
+    pub(crate) async fn sessions(&self) -> Vec<SessionId> {
         self.messages.read().await.keys().copied().collect()
     }
 
     /// Clear all messages
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         self.messages.write().await.clear();
     }
 
     /// Clear messages for a specific session
-    pub async fn clear_session(&self, session_id: SessionId) {
+    pub(crate) async fn clear_session(&self, session_id: SessionId) {
         self.messages.write().await.remove(&session_id);
     }
 
     /// Pre-populate with messages (useful for testing)
-    pub async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
+    pub(crate) async fn seed(&self, session_id: SessionId, messages: Vec<Message>) {
         self.messages.write().await.insert(session_id, messages);
     }
 
@@ -77,7 +73,7 @@ impl InMemoryMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventService.
     /// This method is provided for test setup and in-memory usage.
-    pub async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
+    pub(crate) async fn add(&self, session_id: SessionId, input: InputMessage) -> Result<Message> {
         let message = Message {
             id: MessageId::new(),
             role: input.role,
@@ -105,7 +101,7 @@ impl InMemoryMessageRetriever {
     ///
     /// Note: In production, messages are stored via EventEmitter.
     /// This method is provided for test setup and in-memory usage.
-    pub async fn store(&self, session_id: SessionId, message: Message) -> Result<()> {
+    pub(crate) async fn store(&self, session_id: SessionId, message: Message) -> Result<()> {
         self.messages
             .write()
             .await
@@ -117,7 +113,7 @@ impl InMemoryMessageRetriever {
 }
 
 #[async_trait]
-impl MessageRetriever for InMemoryMessageRetriever {
+impl MessageRetriever for TestMessageRetriever {
     async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
         Ok(self
             .messages
@@ -206,7 +202,7 @@ impl MessageRetriever for InMemoryMessageRetriever {
 }
 
 // ============================================================================
-// InMemoryAgentStore - Stores agents in memory
+// TestAgentStore - Stores agents in memory
 // ============================================================================
 
 /// In-memory agent store
@@ -214,43 +210,43 @@ impl MessageRetriever for InMemoryMessageRetriever {
 /// Stores agents in a HashMap keyed by agent ID.
 /// Useful for testing and examples where you want to configure agents without a database.
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryAgentStore {
+pub(crate) struct TestAgentStore {
     agents: Arc<RwLock<HashMap<AgentId, AgentDefinition>>>,
 }
 
-impl InMemoryAgentStore {
+impl TestAgentStore {
     /// Create a new in-memory agent store
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             agents: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Add an agent to the store
-    pub async fn add_agent(&self, agent: AgentDefinition) {
+    pub(crate) async fn add_agent(&self, agent: AgentDefinition) {
         self.agents.write().await.insert(agent.id, agent);
     }
 
     /// Get all agent IDs
-    pub async fn agent_ids(&self) -> Vec<AgentId> {
+    pub(crate) async fn agent_ids(&self) -> Vec<AgentId> {
         self.agents.read().await.keys().copied().collect()
     }
 
     /// Clear all agents
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         self.agents.write().await.clear();
     }
 }
 
 #[async_trait]
-impl AgentStore for InMemoryAgentStore {
+impl AgentStore for TestAgentStore {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
         Ok(self.agents.read().await.get(&agent_id).cloned())
     }
 }
 
 // ============================================================================
-// InMemoryHarnessStore - Stores harnesses in memory
+// TestHarnessStore - Stores harnesses in memory
 // ============================================================================
 
 /// In-memory harness store
@@ -260,33 +256,33 @@ impl AgentStore for InMemoryAgentStore {
 /// itself is the portable, id-free configuration). Useful for testing and
 /// examples where you want to configure harnesses without a database.
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryHarnessStore {
+pub(crate) struct TestHarnessStore {
     harnesses: Arc<RwLock<HashMap<HarnessId, HarnessDefinition>>>,
 }
 
-impl InMemoryHarnessStore {
+impl TestHarnessStore {
     /// Create a new in-memory harness store
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             harnesses: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Add a harness definition to the store under the given id.
-    pub async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) {
+    pub(crate) async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) {
         self.harnesses.write().await.insert(harness_id, harness);
     }
 }
 
 #[async_trait]
-impl HarnessStore for InMemoryHarnessStore {
+impl HarnessStore for TestHarnessStore {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
         Ok(self.harnesses.read().await.get(&harness_id).cloned())
     }
 }
 
 // ============================================================================
-// InMemorySessionStore - Stores sessions in memory
+// TestSessionStore - Stores sessions in memory
 // ============================================================================
 
 /// In-memory session store
@@ -294,43 +290,43 @@ impl HarnessStore for InMemoryHarnessStore {
 /// Stores sessions in a HashMap keyed by session ID.
 /// Useful for testing and examples where you want to configure sessions without a database.
 #[derive(Debug, Default, Clone)]
-pub struct InMemorySessionStore {
+pub(crate) struct TestSessionStore {
     sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
 }
 
-impl InMemorySessionStore {
+impl TestSessionStore {
     /// Create a new in-memory session store
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     /// Add a session to the store
-    pub async fn add_session(&self, session: ExecutionSession) {
+    pub(crate) async fn add_session(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
     }
 
     /// Get all session IDs
-    pub async fn session_ids(&self) -> Vec<SessionId> {
+    pub(crate) async fn session_ids(&self) -> Vec<SessionId> {
         self.sessions.read().await.keys().copied().collect()
     }
 
     /// Clear all sessions
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         self.sessions.write().await.clear();
     }
 }
 
 #[async_trait]
-impl SessionStore for InMemorySessionStore {
+impl SessionStore for TestSessionStore {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
 
 // ============================================================================
-// InMemoryProviderStore - Stores LLM provider configurations in memory
+// TestProviderStore - Stores LLM provider configurations in memory
 // ============================================================================
 
 /// In-memory LLM provider store
@@ -341,21 +337,21 @@ impl SessionStore for InMemorySessionStore {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::in_memory::InMemoryProviderStore;
+/// use everruns_core::test_fixtures::TestProviderStore;
 /// use everruns_core::EnvCredentialProvider;
 ///
-/// let store = InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider).await;
+/// let store = TestProviderStore::from_credential_provider(&EnvCredentialProvider).await;
 /// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY via the injected provider
 /// ```
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryProviderStore {
+pub(crate) struct TestProviderStore {
     models: Arc<RwLock<HashMap<ModelId, ResolvedModel>>>,
     default_model: Arc<RwLock<Option<ResolvedModel>>>,
 }
 
-impl InMemoryProviderStore {
+impl TestProviderStore {
     /// Create a new empty in-memory provider store
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
             default_model: Arc::new(RwLock::new(None)),
@@ -369,7 +365,7 @@ impl InMemoryProviderStore {
     /// the process environment itself; standalone/dev callers pass
     /// [`EnvCredentialProvider`](crate::credential_provider::EnvCredentialProvider)
     /// to opt into env-based credentials.
-    pub async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
+    pub(crate) async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
         let store = Self::new();
 
         // Check for OpenAI first, then Anthropic.
@@ -405,31 +401,31 @@ impl InMemoryProviderStore {
     }
 
     /// Create a provider store with a specific default model
-    pub async fn with_default(model: ResolvedModel) -> Self {
+    pub(crate) async fn with_default(model: ResolvedModel) -> Self {
         let store = Self::new();
         store.set_default_model(model).await;
         store
     }
 
     /// Add a model to the store
-    pub async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
+    pub(crate) async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
         self.models.write().await.insert(model_id, model);
     }
 
     /// Set the default model
-    pub async fn set_default_model(&self, model: ResolvedModel) {
+    pub(crate) async fn set_default_model(&self, model: ResolvedModel) {
         *self.default_model.write().await = Some(model);
     }
 
     /// Clear all models
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         self.models.write().await.clear();
         *self.default_model.write().await = None;
     }
 }
 
 #[async_trait]
-impl ProviderStore for InMemoryProviderStore {
+impl ProviderStore for TestProviderStore {
     async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
@@ -440,7 +436,7 @@ impl ProviderStore for InMemoryProviderStore {
 }
 
 // ============================================================================
-// InMemoryEventEmitter - Stores events in memory for testing
+// TestEventEmitter - Stores events in memory for testing
 // ============================================================================
 
 use crate::events::{Event, EventRequest};
@@ -454,9 +450,9 @@ use crate::traits::EventEmitter;
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::in_memory::InMemoryEventEmitter;
+/// use everruns_core::test_fixtures::TestEventEmitter;
 ///
-/// let emitter = InMemoryEventEmitter::new();
+/// let emitter = TestEventEmitter::new();
 ///
 /// // Emit events...
 ///
@@ -465,14 +461,14 @@ use crate::traits::EventEmitter;
 /// assert_eq!(events.len(), 2);
 /// ```
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryEventEmitter {
+pub(crate) struct TestEventEmitter {
     events: Arc<RwLock<Vec<Event>>>,
     sequence: Arc<RwLock<i32>>,
 }
 
-impl InMemoryEventEmitter {
+impl TestEventEmitter {
     /// Create a new in-memory event emitter
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             events: Arc::new(RwLock::new(Vec::new())),
             sequence: Arc::new(RwLock::new(0)),
@@ -480,23 +476,23 @@ impl InMemoryEventEmitter {
     }
 
     /// Get all emitted events
-    pub async fn events(&self) -> Vec<Event> {
+    pub(crate) async fn events(&self) -> Vec<Event> {
         self.events.read().await.clone()
     }
 
     /// Get the count of emitted events
-    pub async fn event_count(&self) -> usize {
+    pub(crate) async fn event_count(&self) -> usize {
         self.events.read().await.len()
     }
 
     /// Clear all events
-    pub async fn clear(&self) {
+    pub(crate) async fn clear(&self) {
         self.events.write().await.clear();
         *self.sequence.write().await = 0;
     }
 
     /// Get events by type
-    pub async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
+    pub(crate) async fn events_by_type(&self, event_type: &str) -> Vec<Event> {
         self.events
             .read()
             .await
@@ -507,7 +503,7 @@ impl InMemoryEventEmitter {
     }
 
     /// Get events for a specific session
-    pub async fn events_for_session(&self, session_id: Uuid) -> Vec<Event> {
+    pub(crate) async fn events_for_session(&self, session_id: Uuid) -> Vec<Event> {
         self.events
             .read()
             .await
@@ -519,7 +515,7 @@ impl InMemoryEventEmitter {
 }
 
 #[async_trait]
-impl EventEmitter for InMemoryEventEmitter {
+impl EventEmitter for TestEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
         let mut sequence = self.sequence.write().await;
         *sequence += 1;
@@ -540,7 +536,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_message_retriever() {
-        let store = InMemoryMessageRetriever::new();
+        let store = TestMessageRetriever::new();
         let session_id: SessionId = Uuid::now_v7().into();
 
         store
@@ -555,7 +551,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_in_memory_message_retriever_add_and_get() {
-        let store = InMemoryMessageRetriever::new();
+        let store = TestMessageRetriever::new();
         let session_id: SessionId = Uuid::now_v7().into();
 
         // Add a message using the add method
@@ -580,7 +576,7 @@ mod tests {
     /// add() must match the ID stored internally, so that get(returned_id) succeeds.
     #[tokio::test]
     async fn test_message_retriever_add_returns_consistent_id() {
-        let store = InMemoryMessageRetriever::new();
+        let store = TestMessageRetriever::new();
         let session_id: SessionId = Uuid::now_v7().into();
 
         // Add a message
@@ -616,7 +612,7 @@ mod tests {
     async fn test_in_memory_event_emitter() {
         use crate::events::{EventContext, EventRequest, InputMessageData};
 
-        let emitter = InMemoryEventEmitter::new();
+        let emitter = TestEventEmitter::new();
         let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 
@@ -655,7 +651,7 @@ mod tests {
             ReasonStartedData,
         };
 
-        let emitter = InMemoryEventEmitter::new();
+        let emitter = TestEventEmitter::new();
         let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 
@@ -694,7 +690,7 @@ mod tests {
     async fn test_in_memory_event_emitter_filter_by_session() {
         use crate::events::{EventContext, EventRequest, InputMessageData};
 
-        let emitter = InMemoryEventEmitter::new();
+        let emitter = TestEventEmitter::new();
         let session1: SessionId = Uuid::now_v7().into();
         let session2: SessionId = Uuid::now_v7().into();
 
@@ -730,7 +726,7 @@ mod tests {
     async fn test_in_memory_event_emitter_clear() {
         use crate::events::{EventContext, EventRequest, InputMessageData};
 
-        let emitter = InMemoryEventEmitter::new();
+        let emitter = TestEventEmitter::new();
         let session_id: SessionId = Uuid::now_v7().into();
         let event_context = EventContext::empty();
 

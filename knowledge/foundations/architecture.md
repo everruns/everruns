@@ -432,9 +432,10 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
    - `input_message_id` - User message that triggered this turn
    - `exec_id` - Unique identifier for this atom execution
 
-4. **In-Memory Implementations** (for testing/examples):
-   - `InMemoryMessageRetriever`
-   - In-memory stores for testing: `InMemoryAgentStore`, `InMemorySessionStore`, `InMemoryLlmProviderStore`
+4. **Concrete In-Memory Implementations**:
+   - `everruns-host` owns application stores and canonical event history
+   - `everruns-test-support` owns writable deterministic message/event fixtures
+   - `everruns-core` exposes traits and values, not concrete public backends
 
 ### OpenAI Provider (`everruns-openai`)
 

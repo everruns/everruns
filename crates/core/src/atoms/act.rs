@@ -2609,7 +2609,7 @@ mod tests {
         let mut executor = ToolRegistry::new();
         executor.register(ArgumentEchoTool);
         let tool_def = executor.get("argument_echo").unwrap().to_definition();
-        let emitter = crate::in_memory::InMemoryEventEmitter::new();
+        let emitter = crate::test_fixtures::TestEventEmitter::new();
         let atom = ActAtom::new(executor, emitter.clone())
             .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
@@ -2687,7 +2687,7 @@ mod tests {
     #[tokio::test]
     async fn test_act_atom_strips_human_intent_from_client_tool_calls() {
         let executor = ToolRegistry::new();
-        let emitter = crate::in_memory::InMemoryEventEmitter::new();
+        let emitter = crate::test_fixtures::TestEventEmitter::new();
         let atom = ActAtom::new(executor, emitter)
             .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
