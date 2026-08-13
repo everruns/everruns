@@ -355,6 +355,7 @@ impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
         Ok(EmbedResponse {
             embeddings,
             usage_tokens: Some(0),
+            actual_cost_usd: None,
         })
     }
 }

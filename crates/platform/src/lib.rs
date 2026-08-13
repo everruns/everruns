@@ -179,8 +179,9 @@ pub use observer::{
     ScorerMethod, TraceScore, TraceScoreStatus,
 };
 pub use vector_store::{
-    InMemoryVectorStore, KnowledgeIndexCitation, KnowledgeIndexSearch, VectorMatch, VectorQuery,
-    VectorRecord, VectorStore, VectorStoreExt, index_namespace,
+    EmbeddingCallUsage, InMemoryVectorStore, KnowledgeIndexCitation, KnowledgeIndexSearch,
+    KnowledgeIndexSearchOutcome, VectorMatch, VectorQuery, VectorRecord, VectorStore,
+    VectorStoreExt, index_namespace,
 };
 
 // Hosted control-plane orchestration records (EVE-841).

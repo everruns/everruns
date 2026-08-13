@@ -301,6 +301,22 @@ shape so the UI renders both uniformly:
 `id` (`kchk_`) + `source_uri` + `location` give the agent a stable, linkable
 citation that survives re-sync as long as the passage persists.
 
+### Metering
+
+Retrieval embeds the query once per bound index, since indexes may use different
+embedding models. Each call's usage and provider-reported cost travel back with
+the citations, and the `search_index` tool — which holds the session and turn
+context the retrieval seam lacks — emits one `llm.generation` event per call. So
+query-time embedding spend reaches `llm_generations`, the denormalized totals and
+budget debits on the same path chat generations use.
+
+Usage is reported even when retrieval matches nothing: the embedding call was
+billed regardless of whether any chunk scored.
+
+Sync-time embedding spend is **not** ledgered yet. Sync is background work with
+no session, and `llm_generations` requires one; the run's totals are logged only.
+See EVE-898.
+
 ## Capability: `knowledge_index`
 
 * **ID:** `knowledge_index`

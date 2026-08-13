@@ -18,6 +18,10 @@ use serde_json::{Value, json};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::knowledge_store::KnowledgeIndexSearchExt;
+use crate::vector_store::EmbeddingCallUsage;
+use everruns_core::events::{
+    EventData, EventRequest, LLM_GENERATION, LlmGenerationData, TokenUsage,
+};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -361,15 +365,78 @@ impl Tool for SearchIndexTool {
             .search(org_internal, &index_ids, query, top_k)
             .await
         {
-            Ok(citations) => match serde_json::to_value(&citations) {
-                Ok(results) => ToolExecutionResult::success(json!({ "results": results })),
-                Err(e) => ToolExecutionResult::internal_error_msg(format!(
-                    "failed to serialize results: {e}"
-                )),
-            },
+            Ok(outcome) => {
+                // Meter the query-time embedding spend (EVE-894). The retrieval
+                // seam is org-scoped and has no emitter, so the tool — which
+                // holds the session and turn context — reports it.
+                emit_embedding_usage(context, &outcome.embedding_usage).await;
+                match serde_json::to_value(&outcome.citations) {
+                    Ok(results) => ToolExecutionResult::success(json!({ "results": results })),
+                    Err(e) => ToolExecutionResult::internal_error_msg(format!(
+                        "failed to serialize results: {e}"
+                    )),
+                }
+            }
             Err(e) => {
                 ToolExecutionResult::tool_error(format!("Knowledge Index search failed: {e}"))
             }
+        }
+    }
+}
+
+/// Emit one `llm.generation` event per embedding call so retrieval spend reaches
+/// `llm_generations`, the denormalized session/agent totals, and budget debits
+/// on the same path chat generations use (EVE-894).
+///
+/// Best-effort: a failure to record usage must not fail the search the agent
+/// asked for, so errors are logged rather than propagated.
+async fn emit_embedding_usage(context: &ToolContext, usage: &[EmbeddingCallUsage]) {
+    if usage.is_empty() {
+        return;
+    }
+    let (Some(emitter), Some(event_context)) =
+        (&context.event_emitter, context.event_context.clone())
+    else {
+        return;
+    };
+
+    for call in usage {
+        // An embedding call has no messages, tools, or generated output — only
+        // billed usage. The remaining fields stay empty rather than synthesized.
+        let data = LlmGenerationData::success(
+            Vec::new(),
+            Vec::new(),
+            None,
+            Vec::new(),
+            call.model.clone(),
+            call.provider.clone(),
+            Some(TokenUsage {
+                input_tokens: call.total_tokens,
+                output_tokens: 0,
+                cache_read_tokens: None,
+                cache_creation_tokens: None,
+                actual_cost_usd: call.actual_cost_usd,
+                estimated_cost_usd: None,
+                effective_cost_usd: None,
+            }),
+            None,
+            None,
+        );
+        let request = EventRequest {
+            event_type: LLM_GENERATION.to_string(),
+            ts: chrono::Utc::now(),
+            session_id: context.session_id,
+            context: event_context.clone(),
+            data: EventData::LlmGeneration(data),
+            metadata: None,
+            tags: Some(vec!["embedding".to_string()]),
+        };
+        if let Err(e) = emitter.emit(request).await {
+            tracing::warn!(
+                error = %e,
+                model = %call.model,
+                "failed to record embedding usage; search result still returned"
+            );
         }
     }
 }
@@ -498,5 +565,88 @@ mod tests {
             ToolExecutionResult::ToolError(msg) => assert!(msg.contains("query")),
             other => panic!("expected tool error, got {other:?}"),
         }
+    }
+
+    /// EVE-894: retrieval embedding spend must reach the event stream, which is
+    /// what carries it into `llm_generations`, session/agent totals and budget
+    /// debits. Usage is reported even when retrieval matched nothing, because
+    /// the embedding call was billed regardless.
+    #[tokio::test]
+    async fn search_emits_llm_generation_events_for_embedding_usage() {
+        use everruns_core::events::{Event, EventContext};
+        use everruns_core::typed_id::{EventId, MessageId, SessionId, TurnId};
+        use std::sync::{Arc, Mutex};
+
+        struct RecordingEmitter {
+            requests: Arc<Mutex<Vec<EventRequest>>>,
+        }
+
+        #[async_trait]
+        impl everruns_core::traits::EventEmitter for RecordingEmitter {
+            async fn emit(&self, request: EventRequest) -> everruns_core::error::Result<Event> {
+                self.requests
+                    .lock()
+                    .expect("poisoned")
+                    .push(request.clone());
+                Ok(request.into_event(EventId::new(), 1))
+            }
+        }
+
+        struct StubSearch;
+
+        #[async_trait]
+        impl crate::vector_store::KnowledgeIndexSearch for StubSearch {
+            async fn search(
+                &self,
+                _org_id: i64,
+                _index_ids: &[String],
+                _query: &str,
+                _top_k: usize,
+            ) -> anyhow::Result<crate::vector_store::KnowledgeIndexSearchOutcome> {
+                Ok(crate::vector_store::KnowledgeIndexSearchOutcome {
+                    // No citations: the query matched nothing.
+                    citations: Vec::new(),
+                    embedding_usage: vec![EmbeddingCallUsage {
+                        model: "text-embedding-3-small".to_string(),
+                        provider: Some("openai".to_string()),
+                        total_tokens: 7,
+                        actual_cost_usd: Some(0.25),
+                    }],
+                })
+            }
+        }
+
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let cap = KnowledgeIndexCapability;
+        let tools = cap.tools_with_config(&json!({ "indexes": [VALID_ID] }));
+
+        let mut ctx = ToolContext::new(SessionId::new());
+        ctx.org_id = Some(everruns_core::typed_id::OrgId::new());
+        ctx.event_emitter = Some(Arc::new(RecordingEmitter {
+            requests: Arc::clone(&requests),
+        }));
+        ctx.event_context = Some(EventContext::turn(TurnId::new(), MessageId::new()));
+        ctx.extensions
+            .insert(Arc::new(KnowledgeIndexSearchExt(Arc::new(StubSearch))));
+
+        let result = tools[0]
+            .execute_with_context(json!({ "query": "alpha" }), &ctx)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::Success { .. }),
+            "search should succeed, got {result:?}"
+        );
+
+        let emitted = requests.lock().expect("poisoned");
+        assert_eq!(emitted.len(), 1, "one event per embedding call");
+        let EventData::LlmGeneration(data) = &emitted[0].data else {
+            panic!("expected an llm.generation event");
+        };
+        assert_eq!(emitted[0].event_type, LLM_GENERATION);
+        assert_eq!(data.metadata.model, "text-embedding-3-small");
+        assert_eq!(data.metadata.provider.as_deref(), Some("openai"));
+        let usage = data.metadata.usage.as_ref().expect("usage recorded");
+        assert_eq!(usage.input_tokens, 7);
+        assert_eq!(usage.actual_cost_usd, Some(0.25));
     }
 }

@@ -21,6 +21,9 @@ pub struct ResolvedEmbedder {
     pub driver: BoxedEmbeddingsDriver,
     /// Provider-side model identifier (e.g. `text-embedding-3-small`).
     pub model_id: String,
+    /// Provider type that serves the call, named on usage records so embedding
+    /// spend attributes to a provider like chat generations do (EVE-894).
+    pub provider_type: String,
 }
 
 /// Resolve and build the embeddings driver for an index's embedding model.
@@ -67,5 +70,6 @@ pub async fn build_embeddings_driver(
     Ok(ResolvedEmbedder {
         driver,
         model_id: model.model_id,
+        provider_type: resolved.provider_type,
     })
 }

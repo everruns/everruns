@@ -281,6 +281,10 @@ impl KnowledgeIndexSyncService {
         let mut documents = Vec::with_capacity(docs.len());
         let mut records = Vec::new();
         let mut vector_dim: Option<i32> = None;
+        // EVE-894: embedding usage for this sync run. Previously discarded
+        // outright; accumulated here so the spend is at least observable.
+        let mut embed_tokens: u64 = 0;
+        let mut embed_cost_usd: Option<f64> = None;
 
         for doc in docs {
             let pieces = chunk_text(&doc.text, CHUNK_SIZE_CHARS, CHUNK_OVERLAP_CHARS);
@@ -312,14 +316,27 @@ impl KnowledgeIndexSyncService {
                         if response.embeddings.len() != expected {
                             bail!("embeddings provider returned a mismatched batch size");
                         }
-                        Ok::<(usize, Vec<Vec<f32>>), anyhow::Error>((i, response.embeddings))
+                        Ok::<(usize, Vec<Vec<f32>>, Option<u32>, Option<f64>), anyhow::Error>((
+                            i,
+                            response.embeddings,
+                            response.usage_tokens,
+                            response.actual_cost_usd,
+                        ))
                     }
                 }))
                 .buffer_unordered(EMBED_BATCH_CONCURRENCY);
 
             while let Some(result) = embed_stream.next().await {
-                let (i, batch_embeddings) = result?;
+                let (i, batch_embeddings, usage_tokens, actual_cost_usd) = result?;
                 batch_results[i] = Some(batch_embeddings);
+                // EVE-894: sync-time embedding usage is accumulated per run and
+                // reported below. It is not yet written to `llm_generations`:
+                // that table requires a session and index sync is host-triggered
+                // background work with none. See the follow-up issue.
+                embed_tokens = embed_tokens.saturating_add(u64::from(usage_tokens.unwrap_or(0)));
+                if let Some(cost) = actual_cost_usd {
+                    embed_cost_usd = Some(embed_cost_usd.unwrap_or(0.0) + cost);
+                }
             }
 
             // Flatten batches back into a single per-chunk order.
@@ -364,6 +381,15 @@ impl KnowledgeIndexSyncService {
                 chunks: chunk_rows,
             });
         }
+
+        tracing::info!(
+            index_id = %index.public_id,
+            model = %model_id,
+            provider = %embedder.provider_type,
+            embed_tokens,
+            embed_cost_usd,
+            "knowledge index sync embedding usage"
+        );
 
         Ok(PreparedSync {
             documents,

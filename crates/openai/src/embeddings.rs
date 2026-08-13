@@ -39,6 +39,10 @@ struct EmbeddingObject {
 #[derive(Deserialize)]
 struct EmbeddingsUsage {
     total_tokens: u32,
+    /// OpenAI-compatible gateways (OpenRouter and friends) report the real
+    /// post-routing cost inline. Direct OpenAI omits it (EVE-894).
+    #[serde(default)]
+    cost: Option<f64>,
 }
 
 #[async_trait]
@@ -91,6 +95,7 @@ impl EmbeddingsDriver for OpenAIEmbeddingsDriver {
                         return Ok(EmbedResponse {
                             embeddings: data.into_iter().map(|e| e.embedding).collect(),
                             usage_tokens: Some(api_resp.usage.total_tokens),
+                            actual_cost_usd: api_resp.usage.cost,
                         });
                     }
                     let text = response.text().await.unwrap_or_default();
