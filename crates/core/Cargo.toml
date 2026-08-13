@@ -106,8 +106,6 @@ everruns-openui = { path = "../openui", version = "0.17.26", optional = true }
 # A2UI component catalog and prompt generator
 everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
 
-# Compile-time directory embedding for virtual mounts (platform docs)
-
 [features]
 # Portable optional subtrees stay ON by default for existing core consumers.
 # Hosted A2A/delegation implementations are owned by everruns-platform and no
