@@ -40,9 +40,9 @@ openapi = ["dep:utoipa", "everruns-core/openapi"]
 # mirroring core's former build. Off by default; the build script gates the
 # actual embedding on the docs directory existing (EVE-839).
 embedded-platform-docs = ["dep:include_dir", "everruns-core/embedded-platform-docs"]
-# SQLx support for the typed IDs embedded in these entities. Passthrough to core,
-# kept for parity with server builds that enable `everruns-core/sqlx`.
-sqlx = ["everruns-core/sqlx"]
+# EVE-888: the `sqlx` passthrough is gone. The kernel never used sqlx, and the
+# Postgres encode/decode impls for typed IDs live on `everruns-provider`, which
+# the server now depends on directly. No crate enabled this passthrough.
 portable-builtins = ["dep:everruns-builtins"]
 environment-capabilities = [
     "dep:everruns-integrations-filesystem",
