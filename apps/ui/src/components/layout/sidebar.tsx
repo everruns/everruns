@@ -19,36 +19,40 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Search, Menu } from "lucide-react";
 import {
-  Boxes,
-  Brain,
-  Calendar,
-  ChartColumn,
-  ClipboardCheck,
-  FlaskConical,
-  Library,
-  ListTodo,
-  MessageCircle,
-  MessageSquare,
-  Rocket,
-  Search,
-  Server,
-  Settings,
-  Shield,
-  Telescope,
-  UserRound,
-  Workflow,
-  Cog,
-  Menu,
-} from "lucide-react";
-import type { IconComponent } from "@/lib/capability-icons";
-import { registryNavigationItems } from "@/lib/registry-navigation";
+  defaultBottomNavigation,
+  defaultBuildingNavigation,
+  defaultChatsNavigation,
+  defaultDevNavigation,
+  defaultDurableNavigation,
+  defaultNavigationSections,
+  defaultOperationalNavigation,
+  defaultQualityNavigation,
+  defaultRegistriesNavigation,
+} from "@/lib/navigation";
+import type { NavigationItem, NavigationSection } from "@/lib/navigation";
+
+// The navigation model moved to `@/lib/navigation` so `PageBreadcrumb` can read
+// which group owns a route without importing the sidebar (EVE-869). Re-exported
+// here because the sidebar has been its public home.
+export type { NavigationItem, NavigationSection };
+export {
+  defaultBottomNavigation,
+  defaultBuildingNavigation,
+  defaultChatsNavigation,
+  defaultDevNavigation,
+  defaultDurableNavigation,
+  defaultNavigationSections,
+  defaultOperationalNavigation,
+  defaultQualityNavigation,
+  defaultRegistriesNavigation,
+};
 import { useCommandPalette } from "@/hooks/use-command-palette";
 import { useProviders } from "@/hooks/use-providers";
 import { usePolicies } from "@/hooks/use-policies";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
-import type { FeatureFlags } from "@/lib/api/types";
 import { SidebarNavigation } from "./sidebar-navigation";
 import { SidebarChatThreads } from "./sidebar-chat-threads";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
@@ -60,28 +64,6 @@ import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 
 const { version } = packageJson;
 
-export type NavigationItem = {
-  name: string;
-  href: string;
-  icon: IconComponent;
-  activePrefix?: string;
-  /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
-  prefetch?: boolean;
-  flag?: keyof FeatureFlags;
-  exact?: boolean;
-  experimental?: boolean;
-  warningTooltip?: string;
-};
-
-export type NavigationSection = {
-  /** Stable identifier for sections the shell attaches extra chrome to. */
-  id?: string;
-  label?: string;
-  items: NavigationItem[];
-  devOnly?: boolean;
-  defaultCollapsed?: boolean;
-};
-
 export interface SidebarConfig {
   navigation?: NavigationSection[];
   orgActions?: {
@@ -92,86 +74,6 @@ export interface SidebarConfig {
     items?: SidebarUserMenuItemsRenderer;
   };
 }
-
-/**
- * Navigation is grouped by what you do with a thing, not what it is. The placement
- * rule and the dismissed alternatives live in `knowledge/ui/information-architecture.md`;
- * consult it before adding an entity to a group.
- */
-export const defaultChatsNavigation: NavigationItem[] = [
-  { name: "Chats", href: "/chats", icon: MessageCircle },
-];
-
-export const defaultOperationalNavigation: NavigationItem[] = [
-  { name: "Sessions", href: "/sessions", icon: MessageSquare },
-  { name: "Reports", href: "/reports", icon: ChartColumn },
-];
-
-export const defaultBuildingNavigation: NavigationItem[] = [
-  { name: "Agents", href: "/agents", icon: Boxes },
-  { name: "Harnesses", href: "/harnesses", icon: Shield },
-  { name: "Identities", href: "/agent-identities", icon: UserRound },
-  {
-    name: "Knowledge indexes",
-    href: "/knowledge-indexes",
-    icon: Library,
-    flag: "knowledge",
-    experimental: true,
-  },
-  { name: "Memory", href: "/memory", icon: Brain, flag: "memory", experimental: true },
-  { name: "Apps", href: "/apps", icon: Rocket },
-];
-
-export const defaultRegistriesNavigation: NavigationItem[] = registryNavigationItems.map(
-  ({ name, href, icon }) => {
-    const flag = href === "/skills" ? "skills" : href === "/plugins" ? "plugins" : undefined;
-    return { name, href, icon, flag, experimental: Boolean(flag) };
-  },
-);
-
-export const defaultQualityNavigation: NavigationItem[] = [
-  { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
-  {
-    name: "Observers",
-    href: "/observers",
-    icon: Telescope,
-    flag: "observers",
-    experimental: true,
-  },
-];
-
-export const defaultBottomNavigation: NavigationItem[] = [
-  {
-    name: "Settings",
-    href: "/settings/organization",
-    icon: Settings,
-    activePrefix: "/settings",
-    prefetch: false,
-  },
-];
-
-export const defaultDurableNavigation: NavigationItem[] = [
-  { name: "Overview", href: "/durable", icon: Cog, exact: true },
-  { name: "Workers", href: "/durable/workers", icon: Server },
-  { name: "Workflows", href: "/durable/workflows", icon: Workflow },
-  { name: "Queues", href: "/durable/queues", icon: ListTodo },
-  { name: "Schedules", href: "/durable/schedules", icon: Calendar },
-];
-
-export const defaultDevNavigation: NavigationItem[] = [
-  { name: "Dev Tools", href: "/dev", icon: FlaskConical },
-];
-
-export const defaultNavigationSections: NavigationSection[] = [
-  { id: "chats", items: defaultChatsNavigation },
-  { label: "Operational", items: defaultOperationalNavigation },
-  { label: "Building", items: defaultBuildingNavigation },
-  { label: "Registries", items: defaultRegistriesNavigation },
-  { label: "Quality", items: defaultQualityNavigation },
-  { items: defaultBottomNavigation },
-  { label: "Durable Execution", items: defaultDurableNavigation, defaultCollapsed: true },
-  { label: "Dev", items: defaultDevNavigation, devOnly: true },
-];
 
 function isDurableSection(section: NavigationSection) {
   return section.items.some(

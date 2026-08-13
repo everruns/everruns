@@ -314,7 +314,7 @@ export default function SkillsPageClient() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Skills" }]} />
+      <PageBreadcrumb items={[{ label: "Skills" }]} />
 
       <PageMasthead
         icon={<SkillsIcon />}

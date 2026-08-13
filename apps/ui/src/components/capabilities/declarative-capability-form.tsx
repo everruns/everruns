@@ -136,7 +136,6 @@ export function DeclarativeCapabilityForm({
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Building blocks" },
           { label: "Capabilities", href: "/capabilities" },
           { label: mode === "create" ? "New Declarative" : "Edit" },
         ]}

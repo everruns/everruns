@@ -62,7 +62,6 @@ export default function NewAgentIdentityPage() {
     <PageContainer>
       <PageBreadcrumb
         items={[
-          { label: "Building blocks" },
           { label: "Agent Identities", href: "/agent-identities" },
           { label: "New identity" },
         ]}

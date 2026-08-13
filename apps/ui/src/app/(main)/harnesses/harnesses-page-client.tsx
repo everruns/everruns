@@ -136,7 +136,7 @@ export default function HarnessesPageClient() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Harnesses" }]} />
+      <PageBreadcrumb items={[{ label: "Harnesses" }]} />
 
       <PageMasthead
         icon={<Shield />}

@@ -1,4 +1,4 @@
-import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, act, waitFor, fireEvent, within } from "@testing-library/react";
 import { Suspense } from "react";
 
 // Mock next/navigation
@@ -217,7 +217,9 @@ describe("SessionLayout", () => {
     await renderLayout();
 
     await waitFor(() => {
-      expect(screen.getByText("Test Session")).toBeInTheDocument();
+      // The title also appears as the breadcrumb's trailing segment (EVE-869),
+      // so assert the masthead heading specifically.
+      expect(screen.getByRole("heading", { name: "Test Session" })).toBeInTheDocument();
     });
   });
 
@@ -317,13 +319,21 @@ describe("SessionLayout", () => {
     );
   });
 
-  it("renders Back to Sessions link", async () => {
+  it("names the owning group and keeps a link back to the sessions list", async () => {
     await renderLayout();
 
     await waitFor(() => {
-      const backLink = screen.getByRole("link", { name: /back to sessions/i });
+      // EVE-869: the breadcrumb replaced the standalone back link, so it has to
+      // stay navigable to the list — losing the way back is the failure mode.
+      const backLink = screen.getByRole("link", { name: "Sessions" });
       expect(backLink).toHaveAttribute("href", "/sessions");
     });
+
+    // The group is derived from the sidebar section that owns /sessions, and is
+    // a label rather than a link — there is no group index page to point at.
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
+    expect(within(breadcrumb).getByText("Operational")).toBeInTheDocument();
+    expect(within(breadcrumb).queryByRole("link", { name: "Operational" })).toBeNull();
   });
 
   it("renders agent name with link", async () => {

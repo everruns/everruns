@@ -1,3 +1,5 @@
+"use client";
+
 // Unified page layout — the single five-zone skeleton every standard page is built on.
 //
 // Zones (numbered ①–⑤ in the design source):
@@ -16,8 +18,10 @@
 
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { EntityIdentity } from "@/components/ui/entity-identity";
+import { navigationGroupForPath } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 /* ─────────────────────────────── Container ─────────────────────────────── */
@@ -55,16 +59,32 @@ export interface BreadcrumbItem {
 }
 
 /**
- * Zone ① — the context line. Renders `Root → name → mode`; the final item reads as
- * the current location and is never linked.
+ * Zone ① — the context line. Renders `Group → root → name → mode`; the final item
+ * reads as the current location and is never linked.
+ *
+ * The leading group is derived from the sidebar's section table rather than
+ * passed in, so a page's group is never stated in two places that can disagree
+ * and moving a route between groups needs no page-level change (EVE-869). It is
+ * a plain label, not a link — there is no group index page to point at. Pages
+ * outside a labelled group (Chats, Settings) get no prefix.
+ *
+ * Pass `group={false}` for a page that renders a breadcrumb for somewhere other
+ * than its own location, such as a component gallery.
  */
 export function PageBreadcrumb({
   items,
   className,
+  group = true,
 }: {
   items: BreadcrumbItem[];
   className?: string;
+  group?: boolean;
 }) {
+  const pathname = usePathname();
+  const groupLabel = group ? navigationGroupForPath(pathname ?? "") : undefined;
+  if (groupLabel) {
+    items = [{ label: groupLabel }, ...items];
+  }
   return (
     <nav
       aria-label="Breadcrumb"

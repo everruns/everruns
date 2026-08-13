@@ -197,7 +197,8 @@ export default function DevUiComponentsPage() {
         >
           <div className="overflow-hidden border bg-background">
             <PageContainer className="gap-4 p-4">
-              <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Agents" }]} />
+              {/* A gallery sample, not this page's own location — no group prefix. */}
+              <PageBreadcrumb group={false} items={[{ label: "Agents" }]} />
               <PageMasthead
                 icon={<Boxes />}
                 title="Agents"

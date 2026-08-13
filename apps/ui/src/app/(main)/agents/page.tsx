@@ -167,7 +167,7 @@ export default function AgentsPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Agents" }]} />
+      <PageBreadcrumb items={[{ label: "Agents" }]} />
 
       <PageMasthead
         icon={<Boxes />}

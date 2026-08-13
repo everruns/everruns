@@ -153,11 +153,7 @@ export default function AgentIdentityDetailPage({
   return (
     <PageContainer>
       <PageBreadcrumb
-        items={[
-          { label: "Building blocks" },
-          { label: "Agent Identities", href: "/agent-identities" },
-          { label: identity.name },
-        ]}
+        items={[{ label: "Agent Identities", href: "/agent-identities" }, { label: identity.name }]}
       />
 
       <PageMasthead

@@ -122,7 +122,7 @@ export default function KnowledgeIndexesPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Knowledge Indexes" }]} />
+      <PageBreadcrumb items={[{ label: "Knowledge Indexes" }]} />
 
       <PageMasthead
         icon={<Library />}

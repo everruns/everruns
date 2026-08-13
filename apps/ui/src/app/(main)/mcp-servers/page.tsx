@@ -961,7 +961,7 @@ export default function McpServersPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "MCP servers" }]} />
+      <PageBreadcrumb items={[{ label: "MCP servers" }]} />
 
       <PageMasthead
         icon={<McpIcon />}

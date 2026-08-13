@@ -781,7 +781,7 @@ export default function PluginsPage() {
 
   return (
     <PageContainer>
-      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Plugins" }]} />
+      <PageBreadcrumb items={[{ label: "Plugins" }]} />
 
       <PageMasthead
         icon={<PluginsIcon />}
