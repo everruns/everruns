@@ -1,5 +1,59 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-13
+
+* **EVE-897 closed at two families: the `ToolContext` service bag mostly cannot
+  be dismantled.** `session_sqldb` and `session_mutator` now resolve as typed
+  extensions; the other 17 families stay. The reason is structural rather than
+  effortful, and is the durable finding here.
+
+  A capability reads `context.storage_store` today — a field on core's
+  `ToolContext`. Moving `SessionStorageStore` to platform turns that into
+  `context.extensions.get::<SessionStorageStoreExt>()`, and naming that wrapper
+  requires depending on `everruns-platform`. But platform already depends on
+  those crates: `environment-capabilities` pulls in filesystem, bashkit, lua,
+  web-fetch and openrouter-workspace, and `portable-builtins` pulls in
+  `everruns-builtins`. So `consumer -> platform -> consumer` is a dependency
+  cycle, which Cargo rejects outright.
+
+  Of the 17 remaining families, 16 have a consumer below platform. Four are
+  reached from `everruns-builtins`, four from core itself (where the direction
+  is the epic's foundation), and the rest through integration crates — five of
+  which platform depends on, making those cycles too. Only the nine
+  non-cycle integrations could take a new edge, and that means every
+  integration crate pulling all of platform to name a wrapper type.
+
+  The issue assumed these optional fields were hosted services leaking into the
+  kernel. Most are neutral contracts that portable code legitimately needs
+  during a turn — independently the same conclusion EVE-880 reached about
+  `session_schedule`. `ToolContext`'s width is a symptom of many hosted
+  services existing, not of them living in the wrong crate.
+
+  The structural fix, not taken: a neutral contracts crate below builtins,
+  integrations and platform. Worth revisiting only if the bag becomes a
+  concrete maintenance problem rather than an aesthetic one.
+
+  Practical test for the next person asking "should this leave core?" — check
+  the crates *below* platform, not just core's own consumers. Core-side
+  cleanliness is not evidence a move is possible.
+
+  `session_task_registry` is the one clean family left unmoved.
+
+* **Kernel dependency hygiene (EVE-888).** Removed two vestigial features from
+  `everruns-core`: `sqlx` (zero usage in the crate; it only forwarded to
+  `everruns-provider/sqlx`, where the typed-ID Postgres impls live — the server
+  now depends on provider directly) and `embedded-platform-docs` (gated nothing;
+  `include_dir` was unused and the real embedding moved to platform with
+  EVE-839). Core is down to 15 direct dependencies. A manifest-wide sweep
+  matching each declared dependency against source identifiers found no others,
+  so this vein is exhausted.
+
+  `utoipa` stays, and needs no work: it is already `optional = true` behind an
+  `openapi` feature absent from core's defaults. Core's default build resolves
+  zero utoipa crates; the 183 `ToSchema` derives are all
+  `#[cfg_attr(feature = "openapi", ...)]` and compile away unless a consumer
+  opts in. EVE-888's "remove OpenAPI derives" bullet is satisfied as written.
+
 ## 2026-08-12
 
 * **EVE-880 closed: three session families stay in the kernel by design.**
