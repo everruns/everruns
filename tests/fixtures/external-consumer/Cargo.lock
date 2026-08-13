@@ -605,6 +605,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -640,6 +641,7 @@ dependencies = [
  "async-trait",
  "everruns-core",
  "everruns-host",
+ "everruns-platform",
  "everruns-test-support",
  "tokio",
 ]

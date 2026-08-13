@@ -49,11 +49,13 @@ hosted capabilities come from their owning integration or product crates.
 - An LLM driver registry and provider-neutral message, tool, and reasoning types
 - Context assembly shared by embedded, worker, and server execution paths
 - Neutral capability collection hooks and type-keyed host-service extensions
-- Minimal portable in-memory stores for embedding and prototyping
+- Read-only storage traits and canonical event/message contracts
 
 Environment implementations live in `everruns-integrations-filesystem`,
 `everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,
 `everruns-integrations-lua`, `everruns-mcp`, and `everruns-http`.
+Application-grade in-memory backends live in `everruns-host`; deterministic
+writable fixtures live in `everruns-test-support`.
 
 ## Documentation
 

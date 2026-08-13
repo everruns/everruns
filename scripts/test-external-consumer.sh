@@ -17,9 +17,9 @@
 #                             downstream providers fail here if they stop
 #                             compiling without core/host access.
 #   external-event-log        implements the canonical `EventLog`/`EventReader`
-#                             SPI from `everruns-host` and supplies it to host
-#                             composition, so the SPI fails here if it stops
-#                             being implementable without in-crate access.
+#                             SPI and replaces every default `HostBackends`
+#                             store through public traits, so downstream host
+#                             composition fails here if a seam closes.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under

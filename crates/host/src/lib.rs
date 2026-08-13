@@ -83,8 +83,8 @@ pub use host::{
     execute_reason_activity_with_prompt_messages,
 };
 pub use in_memory::{
-    InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
-    InMemorySessionStore,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
+    InMemorySessionFileSystemFactory, InMemorySessionStorageStore, InMemorySessionStore,
 };
 #[cfg(feature = "process")]
 pub use process_command::ProcessCommandExecutor;

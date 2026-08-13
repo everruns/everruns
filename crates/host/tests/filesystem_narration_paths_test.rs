@@ -10,10 +10,6 @@ use everruns_core::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
-    InMemoryProviderStore,
-};
 use everruns_core::tool_narration::{
     ToolNarrationContext, ToolNarrationPhase, narrate_list_directory,
 };
@@ -26,11 +22,13 @@ use everruns_core::{
     SessionExecutionState, ToolCall, WorkspaceRootSet,
 };
 use everruns_host::{
-    InMemorySessionFileStore, RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter,
-    execute_act_activity, multi_root_file_system,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
+    RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity,
+    multi_root_file_system,
 };
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_platform::SessionMutator;
+use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;

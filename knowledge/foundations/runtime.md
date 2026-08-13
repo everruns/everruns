@@ -68,7 +68,7 @@ The builder must allow an embedder to:
 - Seed workspace files
 - Configure a credential-free default `ModelSpec`
 - Optionally register `llmsim` for deterministic local examples and tests
-- Swap the default in-memory stores for custom backends via `RuntimeBackends`
+- Swap the default in-memory stores for custom backends via `HostBackends`
 
 `everruns-host` also exposes `HarnessBuilder`, `AgentBuilder`, and
 `SessionBuilder` as the supported embedder construction path for those seed
@@ -221,19 +221,17 @@ and worker-backed hosts stay aligned.
 - Session store
 - Session virtual filesystem
 - Session key/value + secret store
-- Message retriever
 - Harness store
 - Agent store
 - Provider store
-- Memory store
-- Event emitter
+- Canonical event log and read-only message history projection
 
 These stores are intended to make embedded execution usable out of the box.
 
 ## Custom Backends
 
 Embedders that need persistence across process restarts may supply their own
-backend bundle through `RuntimeBackends`.
+backend bundle through `HostBackends`.
 
 `everruns-host` owns a small set of extension traits for mutable runtime
 domain stores:
@@ -241,23 +239,21 @@ domain stores:
 - `RuntimeHarnessStore`
 - `RuntimeAgentStore`
 - `RuntimeSessionStore`
-- `RuntimeMessageStore`
 - `RuntimeProviderStore`
-- `EventBus` (extends `EventEmitter`; default `collected_events` returns empty)
+- `EventLog` plus its `EventReader` half
 
 These extend the corresponding core traits with the minimal write operations the
 embedded runtime needs for:
 
 - seeding harnesses, agents, sessions, and initial files
-- storing input messages
-- persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
-The event bus is also the projection seam for semantic session mutations. For
-example, automatic or explicit title changes emit `session.title.updated` with
-the originating turn context when available. An embedder such as a desktop host
-can observe that event and update its own session index without replacing or
-forking the `session` capability.
+Conversation persistence is intentionally different: accepted inputs and
+assistant/tool outputs append once to the canonical `EventLog` through
+`HostEventEmitter`. `EventHistory` rebuilds the read-only `MessageRetriever`
+projection. There is no writable message-store backend and no dual-write path.
+The optional `EventSink` observes already-finalized envelopes after commit; it
+is never persistence.
 
 `RuntimeSessionStore` also inherits the live capability mutation methods from
 `SessionMutator`. A custom backend that wants to support
@@ -271,11 +267,11 @@ rebuilds the prompt, definitions, executable registry, and hooks before the
 next reason/act step. This preserves session identity and conversation history
 and avoids two independently mutable copies of the runtime surface.
 
-Use `RuntimeBackends::in_memory()` for the all-in-memory default, then chain
-`.with_message_store(...)`, `.with_storage_store(...)`, etc. to override
-individual non-filesystem stores.
+Use `HostBackends::in_memory()` for the all-in-memory default, then chain
+`.with_event_log(...)`, `.with_storage_store(...)`, etc. to override individual
+non-filesystem stores.
 
-`RuntimeBackends` also carries an optional
+`HostBackends` also carries an optional
 `connection_resolver: Option<Arc<dyn UserConnectionResolver>>`
 (set via `.with_connection_resolver(...)`). When supplied, the runtime exposes
 it through `ToolContext.connection_resolver` so connection-aware capabilities
@@ -333,7 +329,7 @@ externally implementable.
 
 ### Optional host-backend slots
 
-`RuntimeBackends` carries a uniform set of optional, additive backend slots that
+`HostBackends` carries a uniform set of optional, additive backend slots that
 the host forwards into `ActAtom` when present (see
 `crates/host/src/runtime.rs` and `crates/host/src/host.rs`):
 

@@ -8,10 +8,6 @@ use everruns_core::capabilities::{
     Capability, CapabilityStatus, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
-    InMemoryProviderStore,
-};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskUpdate, TaskMessage, apply_task_update, new_session_task,
@@ -27,12 +23,13 @@ use everruns_core::{
     inspect_turn_context, user_facing_error_codes,
 };
 use everruns_host::{
-    InMemorySessionFileStore, ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle,
-    RuntimeTurnPlan, RuntimeTurnState, TurnStopReason, execute_act_activity,
-    execute_input_activity, plan_next_host_turn,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
+    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, RuntimeTurnPlan,
+    RuntimeTurnState, TurnStopReason, execute_act_activity, execute_input_activity,
+    plan_next_host_turn,
 };
 use everruns_platform::SessionMutator;
-use everruns_test_support::TestMathCapability;
+use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;

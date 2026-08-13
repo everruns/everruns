@@ -46,8 +46,11 @@ assert!(result.contains("4"));
   scripting, latency/TTFT simulation, error injection, and effort/message
   capture sinks (`sim` feature)
 - `InMemoryAgenticLoop` — a complete `input → reason → act` loop over
-  in-memory stores, for tests and prototypes with no database or network
-  (`sim` feature)
+  host-owned in-memory stores and a canonical in-memory event log, for tests
+  and prototypes with no database or network (`sim` + `host` features)
+- `InMemoryMessageRetriever` / `InMemoryEventEmitter` — writable deterministic
+  fixtures for isolated atom and trait tests; hosted loops instead append once
+  to an event log and read through `EventHistory`
 - `MockProvider`, `MockToolExecutor`, `EchoToolExecutor`,
   `FailingToolExecutor` — test doubles for the core execution traits
 - Fake demo capabilities — `FakeAwsCapability`, `FakeCrmCapability`,

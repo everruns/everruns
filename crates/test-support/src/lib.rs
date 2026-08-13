@@ -9,7 +9,9 @@
 //!   sequence, and scripted multi-turn responses, latency and error
 //!   injection, effort/message capture (`sim` feature)
 //! - [`in_memory_loop`] — a full in-memory agentic loop with no database or
-//!   network (`sim` feature)
+//!   network (`sim` + `host` features)
+//! - [`in_memory`] — deterministic message and event fixtures for isolated
+//!   tests; hosted loops use canonical event history instead
 //! - [`doubles`] — mock/echo/failing tool executors and a mock chat driver
 //! - [`capabilities`] — fake AWS/CRM/financial/warehouse demo capabilities
 //!   and the test math/weather, sample-data, and noop fixtures
@@ -44,8 +46,10 @@
 pub mod llmsim_driver;
 
 // In-memory agentic loop built on the llmsim driver.
-#[cfg(feature = "sim")]
+#[cfg(all(feature = "sim", feature = "host"))]
 pub mod in_memory_loop;
+
+pub mod in_memory;
 
 // Test doubles for the core execution traits.
 pub mod doubles;
@@ -58,7 +62,8 @@ pub mod capabilities;
 #[cfg(feature = "host")]
 mod runtime_ext;
 
-#[cfg(feature = "sim")]
+pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
+#[cfg(all(feature = "sim", feature = "host"))]
 pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
 #[cfg(feature = "sim")]
 pub use llmsim_driver::{

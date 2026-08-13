@@ -20,15 +20,14 @@ use everruns_core::AgentDefinition;
 
 use everruns_core::driver_registry::LlmStreamEvent;
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
-    InMemorySessionStore,
-};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::provider::DriverId;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::typed_id::{AgentId, HarnessId};
-use everruns_test_support::{LlmSimConfig, LlmSimDriver};
+use everruns_host::{
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
+};
+use everruns_test_support::{InMemoryMessageRetriever, LlmSimConfig, LlmSimDriver};
 use futures::StreamExt;
 
 #[tokio::test]

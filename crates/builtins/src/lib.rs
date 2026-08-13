@@ -81,11 +81,14 @@ pub(crate) use everruns_core::{
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
     atoms, budget, capability_dto, capability_types, command, command_host, driver_registry, error,
-    events, guardrail_checks, in_memory, llm_conversions, llm_error_hook, mcp_server, message,
-    message_filter, model_profiles, output_guardrail, provider, runtime_agent, session,
-    session_file, session_resource, session_schedule, skill, tool_fingerprint, tool_narration,
+    events, guardrail_checks, llm_conversions, llm_error_hook, mcp_server, message, message_filter,
+    model_profiles, output_guardrail, provider, runtime_agent, session, session_file,
+    session_resource, session_schedule, skill, tool_fingerprint, tool_narration,
     tool_output_sanitizer, tool_types, tools, traits, typed_id, user_facing_error, utility_llm,
 };
+
+#[cfg(test)]
+mod test_fixtures;
 
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};

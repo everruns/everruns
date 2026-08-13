@@ -397,13 +397,13 @@ mod tests {
 
     use crate::capabilities::{AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry};
     use crate::harness_definition::HarnessDefinition;
-    use crate::in_memory::{
-        InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
-    };
     use crate::message::Controls;
     use crate::message_retriever::InputMessage;
     use crate::network_access::NetworkAccessList;
     use crate::session::ExecutionSession;
+    use crate::test_fixtures::{
+        TestAgentStore, TestHarnessStore, TestMessageRetriever, TestProviderStore,
+    };
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::typed_id::{AgentId, HarnessId};
 
@@ -518,15 +518,15 @@ mod tests {
         let agent_id = "agent_00000000000000000000000000000081".parse().unwrap();
         let session_id = "session_00000000000000000000000000000081".parse().unwrap();
 
-        let harness_store = InMemoryHarnessStore::new();
+        let harness_store = TestHarnessStore::new();
         harness_store.add_harness(harness_id, harness()).await;
-        let agent_store = InMemoryAgentStore::new();
+        let agent_store = TestAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
-        let session_store = crate::in_memory::InMemorySessionStore::new();
+        let session_store = crate::test_fixtures::TestSessionStore::new();
         session_store
             .add_session(session(session_id, harness_id, agent_id))
             .await;
-        let message_store = InMemoryMessageRetriever::new();
+        let message_store = TestMessageRetriever::new();
         let mut input = InputMessage::user("What is 2 * 3?");
         input.controls = Some(Controls {
             speed: None,
@@ -539,7 +539,7 @@ mod tests {
         });
         message_store.add(session_id, input).await.unwrap();
 
-        let provider_store = InMemoryProviderStore::new();
+        let provider_store = TestProviderStore::new();
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
@@ -587,16 +587,16 @@ mod tests {
         let agent_id = "agent_00000000000000000000000000000084".parse().unwrap();
         let session_id = "session_00000000000000000000000000000084".parse().unwrap();
 
-        let harness_store = InMemoryHarnessStore::new();
+        let harness_store = TestHarnessStore::new();
         harness_store.add_harness(harness_id, harness()).await;
-        let agent_store = InMemoryAgentStore::new();
+        let agent_store = TestAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
         let mut session_record = session(session_id, harness_id, agent_id);
         session_record.locale = Some("en-US".into());
-        let session_store = crate::in_memory::InMemorySessionStore::new();
+        let session_store = crate::test_fixtures::TestSessionStore::new();
         session_store.add_session(session_record).await;
 
-        let message_store = InMemoryMessageRetriever::new();
+        let message_store = TestMessageRetriever::new();
         let mut input = InputMessage::user("Use locale from metadata");
         input.metadata = Some(
             [(
@@ -608,7 +608,7 @@ mod tests {
         );
         message_store.add(session_id, input).await.unwrap();
 
-        let provider_store = InMemoryProviderStore::new();
+        let provider_store = TestProviderStore::new();
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
@@ -653,17 +653,17 @@ mod tests {
         let agent_id = "agent_00000000000000000000000000000082".parse().unwrap();
         let session_id = "session_00000000000000000000000000000082".parse().unwrap();
 
-        let harness_store = InMemoryHarnessStore::new();
+        let harness_store = TestHarnessStore::new();
         harness_store.add_harness(harness_id, harness()).await;
-        let agent_store = InMemoryAgentStore::new();
+        let agent_store = TestAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
-        let session_store = crate::in_memory::InMemorySessionStore::new();
+        let session_store = crate::test_fixtures::TestSessionStore::new();
         session_store
             .add_session(session(session_id, harness_id, agent_id))
             .await;
-        let message_store = InMemoryMessageRetriever::new();
+        let message_store = TestMessageRetriever::new();
 
-        let provider_store = InMemoryProviderStore::new();
+        let provider_store = TestProviderStore::new();
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
@@ -706,24 +706,24 @@ mod tests {
 
         let mut harness_record = harness();
         harness_record.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
-        let harness_store = InMemoryHarnessStore::new();
+        let harness_store = TestHarnessStore::new();
         harness_store.add_harness(harness_id, harness_record).await;
 
-        let agent_store = InMemoryAgentStore::new();
+        let agent_store = TestAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
 
         let mut session_record = session(session_id, harness_id, agent_id);
         session_record.blueprint_id = Some("net_test_blueprint".to_string());
-        let session_store = crate::in_memory::InMemorySessionStore::new();
+        let session_store = crate::test_fixtures::TestSessionStore::new();
         session_store.add_session(session_record).await;
 
-        let message_store = InMemoryMessageRetriever::new();
+        let message_store = TestMessageRetriever::new();
         message_store
             .add(session_id, InputMessage::user("run blueprint"))
             .await
             .unwrap();
 
-        let provider_store = InMemoryProviderStore::new();
+        let provider_store = TestProviderStore::new();
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),

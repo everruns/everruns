@@ -812,7 +812,7 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::in_memory::InMemoryMessageRetriever;
+    use crate::test_fixtures::TestMessageRetriever;
     use crate::typed_id::SessionId;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
@@ -1285,7 +1285,7 @@ mod tests {
         }
 
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         let result = QueryHistoryTool
             .execute_with_context(
                 json!({"message_range": {"from": "bad", "to": 1}}),
@@ -1304,7 +1304,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_history_tool_empty_history() {
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
 
         let result = QueryHistoryTool
             .execute_with_context(
@@ -1325,7 +1325,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_history_tool_searches_history() {
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         retriever
             .seed(
                 session_id,
@@ -1356,7 +1356,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_history_tool_search_no_match() {
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         retriever
             .seed(
                 session_id,
@@ -1383,7 +1383,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_history_tool_reads_range() {
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         retriever
             .seed(
                 session_id,
@@ -1415,7 +1415,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_history_tool_clamps_out_of_bounds_range() {
         let session_id = SessionId::new();
-        let retriever = InMemoryMessageRetriever::new();
+        let retriever = TestMessageRetriever::new();
         retriever
             .seed(
                 session_id,

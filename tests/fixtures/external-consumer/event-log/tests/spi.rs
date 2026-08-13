@@ -4,16 +4,236 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use everruns_core::error::Result as CoreResult;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
-use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt};
+use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
-use everruns_core::typed_id::SessionId;
-use everruns_core::{DriverId, ResolvedModel};
+use everruns_core::traits::{
+    AgentStore, HarnessStore, KeyInfo, ProviderStore, SecretInfo, SessionStorageStore, SessionStore,
+};
+use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_core::{
+    AgentCapabilityConfig, AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore,
+    DriverId, ExecutionSession, ProactiveCompactionAttempt, ResolvedModel,
+};
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,
-    EventReadRequest, EventReader, HostBackends, InProcessRuntimeBuilder,
+    EventReadRequest, EventReader, EventSink, EventSinkError, HostBackends,
+    InProcessRuntimeBuilder, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
+    RuntimeSessionStore,
 };
+use everruns_platform::SessionMutator;
+use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt};
 use external_event_log::ExternalEventLog;
+
+struct ExternalAgentStore(Arc<dyn RuntimeAgentStore>);
+
+#[async_trait]
+impl AgentStore for ExternalAgentStore {
+    async fn get_agent(&self, agent_id: AgentId) -> CoreResult<Option<AgentDefinition>> {
+        self.0.get_agent(agent_id).await
+    }
+}
+
+#[async_trait]
+impl RuntimeAgentStore for ExternalAgentStore {
+    async fn add_agent(&self, agent: AgentDefinition) -> CoreResult<()> {
+        self.0.add_agent(agent).await
+    }
+}
+
+struct ExternalHarnessStore(Arc<dyn RuntimeHarnessStore>);
+
+#[async_trait]
+impl HarnessStore for ExternalHarnessStore {
+    async fn get_harness(&self, harness_id: HarnessId) -> CoreResult<Option<HarnessDefinition>> {
+        self.0.get_harness(harness_id).await
+    }
+}
+
+#[async_trait]
+impl RuntimeHarnessStore for ExternalHarnessStore {
+    async fn add_harness(
+        &self,
+        harness_id: HarnessId,
+        harness: HarnessDefinition,
+    ) -> CoreResult<()> {
+        self.0.add_harness(harness_id, harness).await
+    }
+}
+
+struct ExternalSessionStore(Arc<dyn RuntimeSessionStore>);
+
+#[async_trait]
+impl SessionStore for ExternalSessionStore {
+    async fn get_session(&self, session_id: SessionId) -> CoreResult<Option<ExecutionSession>> {
+        self.0.get_session(session_id).await
+    }
+}
+
+#[async_trait]
+impl SessionMutator for ExternalSessionStore {
+    async fn update_session_title(
+        &self,
+        session_id: SessionId,
+        title: String,
+    ) -> CoreResult<ExecutionSession> {
+        self.0.update_session_title(session_id, title).await
+    }
+
+    async fn upsert_session_capability(
+        &self,
+        session_id: SessionId,
+        capability: AgentCapabilityConfig,
+    ) -> CoreResult<ExecutionSession> {
+        self.0
+            .upsert_session_capability(session_id, capability)
+            .await
+    }
+
+    async fn remove_session_capability(
+        &self,
+        session_id: SessionId,
+        capability_id: &str,
+    ) -> CoreResult<ExecutionSession> {
+        self.0
+            .remove_session_capability(session_id, capability_id)
+            .await
+    }
+}
+
+#[async_trait]
+impl RuntimeSessionStore for ExternalSessionStore {
+    async fn add_session(&self, session: ExecutionSession) -> CoreResult<()> {
+        self.0.add_session(session).await
+    }
+}
+
+struct ExternalProviderStore(Arc<dyn RuntimeProviderStore>);
+
+#[async_trait]
+impl ProviderStore for ExternalProviderStore {
+    async fn get_resolved_model(&self, model_id: ModelId) -> CoreResult<Option<ResolvedModel>> {
+        self.0.get_resolved_model(model_id).await
+    }
+
+    async fn get_default_model(&self) -> CoreResult<Option<ResolvedModel>> {
+        self.0.get_default_model().await
+    }
+}
+
+#[async_trait]
+impl RuntimeProviderStore for ExternalProviderStore {
+    async fn set_default_model(&self, model: ResolvedModel) -> CoreResult<()> {
+        self.0.set_default_model(model).await
+    }
+}
+
+struct ExternalCheckpointStore(Arc<dyn CompactionCheckpointStore>);
+
+#[async_trait]
+impl CompactionCheckpointStore for ExternalCheckpointStore {
+    async fn get_latest(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> CoreResult<Option<CompactionCheckpoint>> {
+        self.0.get_latest(session_id, provider_type, model).await
+    }
+
+    async fn install(&self, checkpoint: CompactionCheckpoint) -> CoreResult<bool> {
+        self.0.install(checkpoint).await
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> CoreResult<Option<ProactiveCompactionAttempt>> {
+        self.0
+            .get_proactive_attempt(session_id, provider_type, model)
+            .await
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) -> CoreResult<()> {
+        self.0
+            .record_proactive_attempt(session_id, provider_type, model, attempt)
+            .await
+    }
+}
+
+struct ExternalStorageStore(Arc<dyn SessionStorageStore>);
+
+#[async_trait]
+impl SessionStorageStore for ExternalStorageStore {
+    async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> CoreResult<()> {
+        self.0.set_value(session_id, key, value).await
+    }
+
+    async fn get_value(&self, session_id: SessionId, key: &str) -> CoreResult<Option<String>> {
+        self.0.get_value(session_id, key).await
+    }
+
+    async fn delete_value(&self, session_id: SessionId, key: &str) -> CoreResult<bool> {
+        self.0.delete_value(session_id, key).await
+    }
+
+    async fn list_keys(&self, session_id: SessionId) -> CoreResult<Vec<KeyInfo>> {
+        self.0.list_keys(session_id).await
+    }
+
+    async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> CoreResult<()> {
+        self.0.set_secret(session_id, name, value).await
+    }
+
+    async fn get_secret(&self, session_id: SessionId, name: &str) -> CoreResult<Option<String>> {
+        self.0.get_secret(session_id, name).await
+    }
+
+    async fn delete_secret(&self, session_id: SessionId, name: &str) -> CoreResult<bool> {
+        self.0.delete_secret(session_id, name).await
+    }
+
+    async fn list_secrets(&self, session_id: SessionId) -> CoreResult<Vec<SecretInfo>> {
+        self.0.list_secrets(session_id).await
+    }
+}
+
+struct ExternalEventSink;
+
+impl EventSink for ExternalEventSink {
+    fn try_send(&self, _event: Event) -> std::result::Result<(), EventSinkError> {
+        Ok(())
+    }
+}
+
+fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
+    let defaults = HostBackends::in_memory();
+    HostBackends {
+        harness_store: Arc::new(ExternalHarnessStore(defaults.harness_store)),
+        agent_store: Arc::new(ExternalAgentStore(defaults.agent_store)),
+        session_store: Arc::new(ExternalSessionStore(defaults.session_store)),
+        event_log: log,
+        compaction_checkpoint_store: Arc::new(ExternalCheckpointStore(
+            defaults.compaction_checkpoint_store,
+        )),
+        provider_store: Arc::new(ExternalProviderStore(defaults.provider_store)),
+        event_sink: Arc::new(ExternalEventSink),
+        storage_store: Arc::new(ExternalStorageStore(defaults.storage_store)),
+        connection_resolver: defaults.connection_resolver,
+        session_task_registry: defaults.session_task_registry,
+        schedule_store_factory: defaults.schedule_store_factory,
+        platform_store_factory: defaults.platform_store_factory,
+    }
+}
 
 fn input(session_id: SessionId, text: &str) -> EventRequest {
     EventRequest::new(
@@ -103,10 +323,14 @@ async fn snapshot_pagination_excludes_concurrent_appends_and_polling_observes_th
 async fn sequence_gaps_are_accepted_and_stay_ordered() {
     let session = SessionId::new();
     let log = ExternalEventLog::new();
-    log.append(input(session, "visible one")).await.expect("append");
+    log.append(input(session, "visible one"))
+        .await
+        .expect("append");
     log.append_hidden(input(session, "internal record"));
     log.append_hidden(input(session, "internal record"));
-    log.append(input(session, "visible two")).await.expect("append");
+    log.append(input(session, "visible two"))
+        .await
+        .expect("append");
     log.append(input(session, "visible three"))
         .await
         .expect("append");
@@ -194,7 +418,10 @@ struct RecordingReader {
 
 #[async_trait]
 impl EventReader for RecordingReader {
-    async fn read_page(&self, request: EventReadRequest) -> Result<EventPage, EventLogError> {
+    async fn read_page(
+        &self,
+        request: EventReadRequest,
+    ) -> std::result::Result<EventPage, EventLogError> {
         self.seen.lock().expect("recorder mutex").push(
             request
                 .cursor()
@@ -244,7 +471,7 @@ async fn the_external_log_serves_host_composition_and_message_projection() {
             base_url: None,
             provider_metadata: None,
         })
-        .backends(HostBackends::in_memory().with_event_log(log.clone()))
+        .backends(external_backends(log.clone()))
         .single_session(|session| {
             session
                 .harness("chat", "You are concise.")

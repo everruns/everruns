@@ -5,22 +5,167 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::AgentCapabilityConfig;
+use everruns_core::agent_definition::AgentDefinition;
+use everruns_core::credential_provider::CredentialProvider;
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::harness_definition::HarnessDefinition;
+use everruns_core::provider::DriverId;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
 use everruns_core::traits::{
-    KeyInfo, SecretInfo, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionStorageStore, SessionStore,
+    AgentStore, HarnessStore, KeyInfo, ProviderStore, ResolvedModel, SecretInfo, SessionFileSystem,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionStorageStore, SessionStore,
 };
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_platform::SessionMutator;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+/// Application-grade in-memory agent store for embedded hosts.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryAgentStore {
+    agents: Arc<RwLock<HashMap<AgentId, AgentDefinition>>>,
+}
+
+impl InMemoryAgentStore {
+    /// Create an empty agent store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace an agent definition.
+    pub async fn add_agent(&self, agent: AgentDefinition) {
+        self.agents.write().await.insert(agent.id, agent);
+    }
+
+    /// Return every configured agent id.
+    pub async fn agent_ids(&self) -> Vec<AgentId> {
+        self.agents.read().await.keys().copied().collect()
+    }
+
+    /// Remove every configured agent.
+    pub async fn clear(&self) {
+        self.agents.write().await.clear();
+    }
+}
+
+#[async_trait]
+impl AgentStore for InMemoryAgentStore {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
+        Ok(self.agents.read().await.get(&agent_id).cloned())
+    }
+}
+
+/// Application-grade in-memory harness store for embedded hosts.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryHarnessStore {
+    harnesses: Arc<RwLock<HashMap<HarnessId, HarnessDefinition>>>,
+}
+
+impl InMemoryHarnessStore {
+    /// Create an empty harness store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or replace a harness definition.
+    pub async fn add_harness(&self, harness_id: HarnessId, harness: HarnessDefinition) {
+        self.harnesses.write().await.insert(harness_id, harness);
+    }
+}
+
+#[async_trait]
+impl HarnessStore for InMemoryHarnessStore {
+    async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
+        Ok(self.harnesses.read().await.get(&harness_id).cloned())
+    }
+}
+
+/// Application-grade in-memory provider store for embedded hosts.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryProviderStore {
+    models: Arc<RwLock<HashMap<ModelId, ResolvedModel>>>,
+    default_model: Arc<RwLock<Option<ResolvedModel>>>,
+}
+
+impl InMemoryProviderStore {
+    /// Create an empty provider store.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Configure a default model from explicitly injected credentials.
+    pub async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
+        let store = Self::new();
+        if let Some(credentials) = provider
+            .resolve(&DriverId::OpenAI)
+            .filter(|credentials| credentials.api_key.is_some())
+        {
+            store
+                .set_default_model(ResolvedModel {
+                    model: "gpt-5.4".to_string(),
+                    provider_type: DriverId::OpenAI,
+                    api_key: credentials.api_key,
+                    base_url: credentials.base_url,
+                    provider_metadata: None,
+                })
+                .await;
+        } else if let Some(credentials) = provider
+            .resolve(&DriverId::Anthropic)
+            .filter(|credentials| credentials.api_key.is_some())
+        {
+            store
+                .set_default_model(ResolvedModel {
+                    model: "claude-sonnet-4-20250514".to_string(),
+                    provider_type: DriverId::Anthropic,
+                    api_key: credentials.api_key,
+                    base_url: credentials.base_url,
+                    provider_metadata: None,
+                })
+                .await;
+        }
+        store
+    }
+
+    /// Create a provider store with one default model.
+    pub async fn with_default(model: ResolvedModel) -> Self {
+        let store = Self::new();
+        store.set_default_model(model).await;
+        store
+    }
+
+    /// Insert or replace a model by id.
+    pub async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
+        self.models.write().await.insert(model_id, model);
+    }
+
+    /// Set the default model used when a session has no explicit model id.
+    pub async fn set_default_model(&self, model: ResolvedModel) {
+        *self.default_model.write().await = Some(model);
+    }
+
+    /// Remove all configured models and the default.
+    pub async fn clear(&self) {
+        self.models.write().await.clear();
+        *self.default_model.write().await = None;
+    }
+}
+
+#[async_trait]
+impl ProviderStore for InMemoryProviderStore {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
+        Ok(self.models.read().await.get(&model_id).cloned())
+    }
+
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
+        Ok(self.default_model.read().await.clone())
+    }
+}
 
 /// In-memory `SessionStore` + `SessionMutator` for embedded runtimes.
 ///
@@ -43,6 +188,16 @@ impl InMemorySessionStore {
     /// Insert or replace a session in the store.
     pub async fn add_session(&self, session: ExecutionSession) {
         self.sessions.write().await.insert(session.id, session);
+    }
+
+    /// Return every configured session id.
+    pub async fn session_ids(&self) -> Vec<SessionId> {
+        self.sessions.read().await.keys().copied().collect()
+    }
+
+    /// Remove every configured session.
+    pub async fn clear(&self) {
+        self.sessions.write().await.clear();
     }
 }
 

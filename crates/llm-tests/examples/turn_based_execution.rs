@@ -29,14 +29,14 @@ use everruns_core::{
     },
     capabilities::CapabilityRegistry,
     driver_registry::DriverRegistry,
-    in_memory::{
-        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
-        InMemoryProviderStore, InMemorySessionStore,
-    },
     session::{ExecutionSession, SessionExecutionState},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     typed_id::{AgentId, HarnessId, TurnId},
 };
+use everruns_host::{
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
+};
+use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
