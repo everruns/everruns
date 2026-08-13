@@ -4,6 +4,7 @@
 //! - `write_session_title`: update session title
 //! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
+use crate::session_mutator::{SessionMutator, SessionMutatorExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::error::{AgentLoopError, Result};
@@ -11,7 +12,7 @@ use everruns_core::events::{EventContext, EventRequest, SessionTitleUpdatedData,
 use everruns_core::session::ExecutionSession;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{EventEmitter, SessionMutator, SessionStore, ToolContext};
+use everruns_core::traits::{EventEmitter, SessionStore, ToolContext};
 use everruns_core::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -257,11 +258,12 @@ impl Tool for WriteSessionTitleTool {
         let Some(session_store) = &context.session_store else {
             return ToolExecutionResult::tool_error("Session store not available in this context");
         };
-        let Some(mutator) = &context.session_mutator else {
+        let Some(mutator) = context.extensions.get::<SessionMutatorExt>() else {
             return ToolExecutionResult::tool_error(
                 "Session mutator not available in this context",
             );
         };
+        let mutator = &mutator.0;
         let Some(event_emitter) = &context.event_emitter else {
             return ToolExecutionResult::tool_error("Event emitter not available in this context");
         };
@@ -413,7 +415,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionMutator for MockSessionMutator {
+    impl SessionMutator for MockSessionMutator {
         async fn update_session_title(
             &self,
             _session_id: SessionId,
@@ -521,9 +523,11 @@ mod tests {
         let input_message_id = MessageId::new();
         let mut context = ToolContext::new(session_id);
         context.session_store = Some(Arc::new(MockSessionStore { session: stored }));
-        context.session_mutator = Some(Arc::new(MockSessionMutator {
-            session: Arc::new(Mutex::new(session)),
-        }));
+        context
+            .extensions
+            .insert(Arc::new(SessionMutatorExt(Arc::new(MockSessionMutator {
+                session: Arc::new(Mutex::new(session)),
+            }))));
         context.event_emitter = Some(Arc::new(emitter.clone()));
         context.event_context = Some(EventContext::turn(turn_id, input_message_id));
 
@@ -566,9 +570,11 @@ mod tests {
         context.session_store = Some(Arc::new(MockSessionStore {
             session: Arc::new(Mutex::new(Some(session.clone()))),
         }));
-        context.session_mutator = Some(Arc::new(MockSessionMutator {
-            session: Arc::new(Mutex::new(session)),
-        }));
+        context
+            .extensions
+            .insert(Arc::new(SessionMutatorExt(Arc::new(MockSessionMutator {
+                session: Arc::new(Mutex::new(session)),
+            }))));
         context.event_emitter = Some(Arc::new(emitter.clone()));
 
         let result = WriteSessionTitleTool

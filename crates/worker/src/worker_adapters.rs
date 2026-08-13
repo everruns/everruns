@@ -643,7 +643,7 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionStore for OrgAdapter<A> {
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
     async fn update_session_title(
         &self,
         session_id: SessionId,

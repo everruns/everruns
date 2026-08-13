@@ -197,7 +197,6 @@ impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
 // SessionStore - For retrieving session information
 // ============================================================================
 
-use crate::capability_types::AgentCapabilityConfig;
 use crate::leased_resource::{LeasedResource, UpsertLeasedResource};
 use crate::session::ExecutionSession;
 
@@ -222,76 +221,9 @@ impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
     }
 }
 
-/// Trait for updating mutable session metadata.
-///
-/// Mutations acknowledge with the refreshed portable execution view, never a
-/// stored platform record (EVE-882).
-#[async_trait]
-pub trait SessionMutator: Send + Sync {
-    /// Update a session's human-readable title.
-    async fn update_session_title(
-        &self,
-        session_id: SessionId,
-        title: String,
-    ) -> Result<ExecutionSession>;
-
-    /// Add or replace a session-scoped capability atomically.
-    ///
-    /// Session backends that support live capability reconfiguration override
-    /// this method. The default keeps existing backends source-compatible and
-    /// fails closed instead of pretending the capability was applied.
-    async fn upsert_session_capability(
-        &self,
-        _session_id: SessionId,
-        _capability: AgentCapabilityConfig,
-    ) -> Result<ExecutionSession> {
-        Err(crate::error::AgentLoopError::store(
-            "session backend does not support live capability reconfiguration",
-        ))
-    }
-
-    /// Remove a session-scoped capability atomically.
-    async fn remove_session_capability(
-        &self,
-        _session_id: SessionId,
-        _capability_id: &str,
-    ) -> Result<ExecutionSession> {
-        Err(crate::error::AgentLoopError::store(
-            "session backend does not support live capability reconfiguration",
-        ))
-    }
-}
-
-#[async_trait]
-impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
-    async fn update_session_title(
-        &self,
-        session_id: SessionId,
-        title: String,
-    ) -> Result<ExecutionSession> {
-        (**self).update_session_title(session_id, title).await
-    }
-
-    async fn upsert_session_capability(
-        &self,
-        session_id: SessionId,
-        capability: AgentCapabilityConfig,
-    ) -> Result<ExecutionSession> {
-        (**self)
-            .upsert_session_capability(session_id, capability)
-            .await
-    }
-
-    async fn remove_session_capability(
-        &self,
-        session_id: SessionId,
-        capability_id: &str,
-    ) -> Result<ExecutionSession> {
-        (**self)
-            .remove_session_capability(session_id, capability_id)
-            .await
-    }
-}
+// EVE-897: `SessionMutator` moved to `everruns-platform`. Mutating stored
+// session metadata is a hosted control-plane service; the capability that
+// uses it resolves `SessionMutatorExt` from the typed extension bag.
 
 // ============================================================================
 // ProviderStore - For retrieving LLM provider configurations
@@ -1737,7 +1669,6 @@ pub enum ToolContextService {
     EgressService,
     MessageRetriever,
     SessionStore,
-    SessionMutator,
     AgentStore,
     ConnectionResolver,
     ScheduleStore,
@@ -1768,7 +1699,6 @@ impl ToolContextService {
             Self::EgressService => "EgressService",
             Self::MessageRetriever => "MessageRetriever",
             Self::SessionStore => "SessionStore",
-            Self::SessionMutator => "SessionMutator",
             Self::AgentStore => "AgentStore",
             Self::ConnectionResolver => "ConnectionResolver",
             Self::ScheduleStore => "SessionScheduleStore",
@@ -1804,7 +1734,6 @@ pub struct ToolContextServices {
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
     pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
     pub session_store: Option<Arc<dyn SessionStore>>,
-    pub session_mutator: Option<Arc<dyn SessionMutator>>,
     pub agent_store: Option<Arc<dyn AgentStore>>,
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
@@ -1838,7 +1767,6 @@ impl ToolContextServices {
             ToolContextService::EgressService => self.egress_service.is_some(),
             ToolContextService::MessageRetriever => self.message_retriever.is_some(),
             ToolContextService::SessionStore => self.session_store.is_some(),
-            ToolContextService::SessionMutator => self.session_mutator.is_some(),
             ToolContextService::AgentStore => self.agent_store.is_some(),
             ToolContextService::ConnectionResolver => self.connection_resolver.is_some(),
             ToolContextService::ScheduleStore => self.schedule_store.is_some(),
@@ -1946,9 +1874,6 @@ pub struct ToolContext {
 
     /// Optional session store for tools that need session metadata access.
     pub session_store: Option<Arc<dyn SessionStore>>,
-
-    /// Optional session mutator for tools that need to update session metadata.
-    pub session_mutator: Option<Arc<dyn SessionMutator>>,
 
     /// Optional agent store for tools that need agent metadata access.
     pub agent_store: Option<Arc<dyn AgentStore>>,
@@ -2075,7 +2000,6 @@ impl ToolContext {
             egress_service: None,
             message_retriever: None,
             session_store: None,
-            session_mutator: None,
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -2117,7 +2041,6 @@ impl ToolContext {
             egress_service: services.egress_service.clone(),
             message_retriever: services.message_retriever.clone(),
             session_store: services.session_store.clone(),
-            session_mutator: services.session_mutator.clone(),
             agent_store: services.agent_store.clone(),
             connection_resolver: services.connection_resolver.clone(),
             schedule_store: services.schedule_store.clone(),
@@ -2159,7 +2082,6 @@ impl ToolContext {
             egress_service: None,
             message_retriever: None,
             session_store: None,
-            session_mutator: None,
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -2204,7 +2126,6 @@ impl ToolContext {
             egress_service: None,
             message_retriever: None,
             session_store: None,
-            session_mutator: None,
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -2250,7 +2171,6 @@ impl ToolContext {
             egress_service: None,
             message_retriever: None,
             session_store: None,
-            session_mutator: None,
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -2290,12 +2210,6 @@ impl ToolContext {
     /// Add a session store to this context.
     pub fn with_session_store(mut self, store: Arc<dyn SessionStore>) -> Self {
         self.session_store = Some(store);
-        self
-    }
-
-    /// Add a session mutator to this context.
-    pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
-        self.session_mutator = Some(mutator);
         self
     }
 
@@ -2351,7 +2265,6 @@ impl ToolContext {
             egress_service: None,
             message_retriever: None,
             session_store: None,
-            session_mutator: None,
             agent_store: None,
             connection_resolver: None,
             schedule_store: None,
@@ -2601,7 +2514,6 @@ impl std::fmt::Debug for ToolContext {
             .field("egress_service", &self.egress_service.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())
-            .field("session_mutator", &self.session_mutator.is_some())
             .field("agent_store", &self.agent_store.is_some())
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())

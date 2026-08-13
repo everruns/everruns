@@ -76,6 +76,12 @@ pub mod workspace;
 // contracts; creating session tasks and schedules is hosted behaviour.
 pub mod background_run;
 
+// Session metadata mutation carved out of `everruns-core` (EVE-897). The
+// kernel never mutated a session; it only carried the trait so a hosted
+// capability could reach it. That capability resolves the store as a typed
+// extension now.
+pub mod session_mutator;
+
 // Session SQL database store carved out of `everruns-core` (EVE-897). The
 // value types are the signature vocabulary of `SessionSqlDbStore`, so records
 // and trait moved together once the kernel stopped naming the store on
@@ -136,6 +142,9 @@ pub use session::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource, SessionStatus,
 };
+
+// Session metadata mutation (EVE-897).
+pub use session_mutator::{SessionMutator, SessionMutatorExt};
 
 // Session SQL database (EVE-897).
 pub use session_sqldb::{

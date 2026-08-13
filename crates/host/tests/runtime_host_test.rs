@@ -17,8 +17,7 @@ use everruns_core::session_task::{
     SessionTaskUpdate, TaskMessage, apply_task_update, new_session_task,
 };
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionMutator,
-    SessionStore,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -32,6 +31,7 @@ use everruns_host::{
     RuntimeTurnPlan, RuntimeTurnState, TurnStopReason, execute_act_activity,
     execute_input_activity, plan_next_host_turn,
 };
+use everruns_platform::SessionMutator;
 use everruns_test_support::TestMathCapability;
 use serde_json::json;
 use std::collections::HashMap;
@@ -405,7 +405,7 @@ impl Tool for ContextParityTool {
             "file_store": context.file_store.is_some(),
             "message_retriever": context.message_retriever.is_some(),
             "session_store": context.session_store.is_some(),
-            "session_mutator": context.session_mutator.is_some(),
+            "session_mutator": context.extensions.get::<everruns_platform::SessionMutatorExt>().is_some(),
             "agent_store": context.agent_store.is_some(),
             "session_task_registry": context.session_task_registry.is_some(),
             "capability_registry": context.capability_registry.is_some(),

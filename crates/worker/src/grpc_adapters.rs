@@ -2643,7 +2643,7 @@ impl everruns_core::traits::UserConnectionResolver for GrpcAdapter {
 // ============================================================================
 
 #[async_trait]
-impl everruns_core::traits::SessionMutator for GrpcOrgAdapter {
+impl everruns_platform::SessionMutator for GrpcOrgAdapter {
     async fn update_session_title(
         &self,
         session_id: everruns_core::SessionId,

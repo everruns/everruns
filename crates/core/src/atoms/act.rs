@@ -54,8 +54,8 @@ use crate::tool_narration::{
 };
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
-    AgentStore, DurableToolResultStore, EventEmitter, SessionFileSystem, SessionMutator,
-    SessionStore, ToolCallClaimResult, ToolContext, ToolExecutor,
+    AgentStore, DurableToolResultStore, EventEmitter, SessionFileSystem, SessionStore,
+    ToolCallClaimResult, ToolContext, ToolExecutor,
 };
 use crate::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
@@ -374,12 +374,6 @@ where
     /// Set session store for context-aware tools.
     pub fn with_session_store(mut self, store: Arc<dyn SessionStore>) -> Self {
         self.context_services.session_store = Some(store);
-        self
-    }
-
-    /// Set session mutator for context-aware tools.
-    pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
-        self.context_services.session_mutator = Some(mutator);
         self
     }
 
