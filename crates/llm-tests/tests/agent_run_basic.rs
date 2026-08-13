@@ -33,10 +33,10 @@ use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
-#[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
-#[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
+#[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
@@ -78,10 +78,10 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
-#[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
-#[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
+#[case::openrouter_gpt56_luna(OPENROUTER_GPT56_LUNA)]
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
@@ -91,14 +91,10 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
         return;
     }
 
-    // Live models are occasionally non-deterministic about emitting a tool call
-    // for this borderline prompt: the "Should have called get_current_time"
-    // assertion has flaked on main across successive pinned models (gpt-oss-120b,
-    // then Anthropic Haiku / OpenAI). This case verifies the driver's
-    // tool-calling *path* end-to-end against each provider — not single-shot
-    // model determinism — so retry (also absorbing transient transport blips)
-    // and require the tool to be called (and the loop to iterate) on at least
-    // one attempt. A non-transient turn failure still surfaces via the asserts.
+    // Retry live sampling and transient transport failures. If all successful
+    // attempts cleanly decline an advertised tool, the contract check below
+    // reports a non-blocking sampling miss. Missing tool definitions and parsed
+    // tool-call mismatches remain merge-blocking failures.
     let Some(result) = run_live_turn!(
         config,
         3,
@@ -122,12 +118,9 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
     };
 
     assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert!(
-        result.tool_calls_count > 0,
-        "Should have called get_current_time (tool_calls_count={}, iterations={})",
-        result.tool_calls_count,
-        result.iterations
-    );
+    if !assert_live_tool_call_contract(&result, "get_current_time", &config.label()) {
+        return;
+    }
     assert!(
         result.iterations > 1,
         "Should have multiple iterations (reason -> act -> reason); iterations={}",
@@ -141,7 +134,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
-#[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
+#[case::openai_gpt56_luna(OPENAI_GPT56_LUNA)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)

@@ -3823,7 +3823,7 @@ mod tests {
         let config = LlmCallConfig {
             speed: None,
             verbosity: None,
-            model: "openai/gpt-4o-mini".to_string(),
+            model: "openai/gpt-5.6-luna".to_string(),
             temperature: None,
             max_tokens: None,
             tools: vec![],
@@ -3859,6 +3859,116 @@ mod tests {
             }
         }
         assert_eq!(text, "hi");
+    }
+
+    /// Deterministic contract coverage for the live matrix's stochastic
+    /// `get_current_time` case: prove the usable tool schema reaches the wire
+    /// and a fragmented OpenResponses tool call survives streaming parse.
+    #[tokio::test]
+    async fn tool_call_contract_covers_request_wire_and_stream_parser() {
+        use futures::StreamExt;
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let body = concat!(
+            "data: {\"type\":\"response.output_item.added\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"get_current_time\",\"arguments\":\"\"}}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\"{\\\"timezone\\\":\\\"UTC\\\"\"}\n\n",
+            "data: {\"type\":\"response.function_call_arguments.delta\",\"item_id\":\"fc_1\",\"delta\":\",\\\"format\\\":\\\"iso8601\\\"}\"}\n\n",
+            "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"get_current_time\",\"arguments\":\"{\\\"timezone\\\":\\\"UTC\\\",\\\"format\\\":\\\"iso8601\\\"}\"}}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"status\":\"completed\",\"model\":\"openai/gpt-5.6-luna\",\"output\":[],\"usage\":{\"input_tokens\":4,\"output_tokens\":2,\"total_tokens\":6}}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+
+        let endpoint = crate::runtime_provider::RuntimeProvider::new(
+            "openrouter-contract-test",
+            OpenResponsesProtocolChatDriver::new(),
+        )
+        .base_url(format!("{}/v1", server.uri()))
+        .auth(crate::runtime_provider::BearerAuth::new("test-key"));
+        let driver = OpenResponsesProtocolChatDriver::new();
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "openai/gpt-5.6-luna".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+                name: "get_current_time".to_string(),
+                display_name: None,
+                description: "Get the current time in a timezone.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "timezone": { "type": "string" },
+                        "format": { "type": "string", "enum": ["iso8601", "unix", "human"] }
+                    },
+                    "required": ["timezone"]
+                }),
+                policy: crate::tool_types::ToolPolicy::Auto,
+                category: None,
+                deferrable: crate::tool_types::DeferrablePolicy::Never,
+                hints: crate::tool_types::ToolHints::default(),
+                full_parameters: None,
+            })],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+        };
+
+        let stream = driver
+            .chat_completion_stream(
+                endpoint.endpoint(),
+                vec![LlmMessage::text(LlmMessageRole::User, "What time is it?")],
+                &config,
+            )
+            .await
+            .expect("stream should start");
+        let events: Vec<_> = stream.collect().await;
+
+        let tool_calls = events
+            .iter()
+            .filter_map(|event| match event.as_ref().expect("valid stream event") {
+                LlmStreamEvent::ToolCalls(calls) => Some(calls),
+                _ => None,
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "call_1");
+        assert_eq!(tool_calls[0].name, "get_current_time");
+        assert_eq!(
+            tool_calls[0].arguments,
+            json!({"timezone": "UTC", "format": "iso8601"})
+        );
+        assert!(events.iter().any(|event| matches!(
+            event.as_ref(),
+            Ok(LlmStreamEvent::Done(metadata))
+                if metadata.finish_reason.as_deref() == Some("tool_calls")
+        )));
+
+        let requests = server.received_requests().await.expect("captured request");
+        let request: serde_json::Value = requests[0].body_json().expect("request JSON");
+        let tool = &request["tools"][0];
+        assert_eq!(tool["type"], "function");
+        assert_eq!(tool["name"], "get_current_time");
+        assert_eq!(tool["parameters"]["type"], "object");
+        assert_eq!(tool["parameters"]["required"], json!(["timezone"]));
     }
 
     // ========================================================================
