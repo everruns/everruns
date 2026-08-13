@@ -106,9 +106,6 @@ everruns-openui = { path = "../openui", version = "0.17.26", optional = true }
 # A2UI component catalog and prompt generator
 everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
 
-# Compile-time directory embedding for virtual mounts (platform docs)
-include_dir = { version = "0.7", optional = true }
-
 [features]
 # Portable optional subtrees stay ON by default for existing core consumers.
 # Hosted A2A/delegation implementations are owned by everruns-platform and no
@@ -116,7 +113,6 @@ include_dir = { version = "0.7", optional = true }
 # Note: OTLP telemetry moved to `everruns-observability` (EVE-876); no core
 # build — default or otherwise — carries exporter dependencies.
 default = ["llm-tests"]
-embedded-platform-docs = ["dep:include_dir"]
 openapi = ["utoipa", "everruns-provider/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]

@@ -39,7 +39,7 @@ openapi = ["dep:utoipa", "everruns-core/openapi"]
 # Embed the workspace `docs/` tree into the platform-management docs tools,
 # mirroring core's former build. Off by default; the build script gates the
 # actual embedding on the docs directory existing (EVE-839).
-embedded-platform-docs = ["dep:include_dir", "everruns-core/embedded-platform-docs"]
+embedded-platform-docs = ["dep:include_dir"]
 # EVE-888: the `sqlx` passthrough is gone. The kernel never used sqlx, and the
 # Postgres encode/decode impls for typed IDs live on `everruns-provider`, which
 # the server now depends on directly. No crate enabled this passthrough.
