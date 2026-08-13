@@ -49,7 +49,7 @@ export function getLoginRedirectPath(
   const currentUrl = pathname + (searchString ? `?${searchString}` : "");
   const loginPath = `${normalizeLoginOrigin(loginOrigin)}/login`;
 
-  if (currentUrl === "/dashboard") {
+  if (currentUrl === "/chats") {
     return loginPath;
   }
 
@@ -156,7 +156,7 @@ export function consumeReturnTo(): string | null {
 export function getPostAuthTarget(returnTo: string | null | undefined): string {
   const sanitized = sanitizeReturnTo(returnTo);
   const stored = consumeReturnTo();
-  return sanitized || stored || "/dashboard";
+  return sanitized || stored || "/chats";
 }
 
 /** Persist a typed login email for the next signup page without serializing PII into the URL. */

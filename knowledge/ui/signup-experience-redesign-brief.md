@@ -355,7 +355,7 @@ failure, never fail org creation (mirror the invite-email pattern). Config depen
 ## B4. Don't show onboarding when logged in (review item 4)
 
 Implement the design's routing legend as one server-state resolver keyed off `auth/me`:
-- onboarded (org exists && setup complete) → `/dashboard`
+- onboarded (org exists && setup complete) → `/chats`
 - mid-onboarding → resume the correct step (B6)
 - no session → entry gateway → PropelAuth
 
@@ -389,7 +389,7 @@ finish *or* skip). Resume state machine (off `auth/me` + that flag):
 authenticated && !email_verified        → Verify
 verified && orgs == 0                    → Create organisation
 verified && org exists && !completed     → Configure (resume wizard for that org)
-verified && onboarded                    → /dashboard
+verified && onboarded                    → /chats
 ```
 
 Makes skip durable and every step resumable. Multi-org users are past Create-org; if their

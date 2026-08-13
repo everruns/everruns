@@ -65,10 +65,15 @@ function isRscRequest(request: Request) {
   return request.headers().rsc === "1";
 }
 
-const DASHBOARD_API_ALLOWLIST = new Set([
+// APIs the landing surface legitimately calls on startup. The point of the
+// tests below is that nothing *else* is fetched — not that this set is minimal.
+const STARTUP_API_ALLOWLIST = new Set([
   "/api/v1/auth/config",
   "/api/v1/auth/me",
   "/api/v1/agents",
+  // Chats needs the harness list to start a thread (EVE-855: Chats is the
+  // landing surface, so this is now a startup call rather than a navigation).
+  "/api/v1/harnesses",
   "/api/v1/capabilities",
   "/api/v1/models",
   "/api/v1/providers",
@@ -80,9 +85,9 @@ const DASHBOARD_API_ALLOWLIST = new Set([
   "/api/v1/durable/config",
 ]);
 
-function isDashboardApi(pathname: string) {
+function isStartupApi(pathname: string) {
   return (
-    DASHBOARD_API_ALLOWLIST.has(pathname) ||
+    STARTUP_API_ALLOWLIST.has(pathname) ||
     /^\/api\/v1\/orgs\/[^/]+(?:\/feature-flags)?$/.test(pathname)
   );
 }
@@ -103,54 +108,33 @@ test.describe("Sidebar navigation prefetch", () => {
     await mockAppApi(page);
   });
 
-  test("Dashboard startup does not prefetch unrelated sidebar routes or APIs", async ({ page }) => {
+  test("Landing-surface startup does not prefetch unrelated sidebar routes or APIs", async ({ page }) => {
     const requests: Request[] = [];
     page.on("request", (request) => requests.push(request));
 
-    await page.goto("/dashboard");
+    await page.goto("/chats");
     await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
     await page.waitForLoadState("networkidle");
 
     const unrelatedRscRequests = requests.filter((request) => {
       const pathname = new URL(request.url()).pathname;
-      return isRscRequest(request) && pathname !== "/dashboard";
+      return isRscRequest(request) && pathname !== "/chats";
     });
     expect(unrelatedRscRequests).toHaveLength(0);
 
     const unrelatedApiRequests = requests.filter((request) => {
       const pathname = new URL(request.url()).pathname;
-      return pathname.startsWith("/api/v1/") && !isDashboardApi(pathname);
+      return pathname.startsWith("/api/v1/") && !isStartupApi(pathname);
     });
     expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
   });
 
-  test("Dashboard startup does not prefetch the agent-creation route", async ({ page }) => {
-    // EVE-785: the empty dashboard shows three links to /agents/new. They must
-    // not eagerly prefetch the agent-creation RSC payload on startup — only on
-    // hover/focus intent or navigation.
-    const agentsNewRscRequests: Request[] = [];
-    page.on("request", (request) => {
-      const pathname = new URL(request.url()).pathname;
-      if (isRscRequest(request) && pathname === "/agents/new") {
-        agentsNewRscRequests.push(request);
-      }
-    });
-
-    await page.goto("/dashboard");
-    await expect(page.getByRole("link", { name: "Create your first agent" })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-
-    expect(agentsNewRscRequests).toHaveLength(0);
-  });
-
-  test("Create-agent link still navigates to /agents/new on click", async ({ page }) => {
-    await page.goto("/dashboard");
-    const createLink = page.getByRole("link", { name: "Create your first agent" });
-    await expect(createLink).toBeVisible();
-    await createLink.click();
-    await expect(page).toHaveURL(/\/agents\/new$/);
-  });
-
+  // EVE-785's dashboard-specific cases are gone with the Dashboard (EVE-855).
+  // They asserted that the empty Dashboard's three "Create your first agent"
+  // links did not eagerly prefetch /agents/new. Chats, the landing surface now,
+  // offers a new-chat form instead and has no such link; the surviving surface
+  // is /agents, covered below.
+  //
   // EVE-793: the Agents-page /agents/new prefetch regression is covered
   // deterministically by the jest test
   // `src/__tests__/agents-page-new-agent-prefetch.test.tsx` (both the masthead
@@ -158,11 +142,11 @@ test.describe("Sidebar navigation prefetch", () => {
   // hover/focus intent). It is intentionally not duplicated here: /agents
   // renders its header from a server-side fetch that this suite's browser-level
   // `page.route` mocks cannot intercept, so the page never reaches a stable
-  // rendered state under these mocks (unlike the client-fetched dashboard
+  // rendered state under these mocks (unlike the client-fetched landing surface
   // widget), which made an /agents e2e case non-deterministic.
 
   test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
-    await page.goto("/dashboard");
+    await page.goto("/chats");
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
     await page.getByRole("link", { name: "Sessions" }).click();
     await expect(page).toHaveURL(/\/sessions$/);
@@ -174,7 +158,7 @@ test.describe("Sidebar navigation prefetch", () => {
       if (isSettingsRscRequest(request)) settingsRequests.push(request);
     });
 
-    await page.goto("/dashboard");
+    await page.goto("/chats");
     await expect(page.getByRole("link", { name: "Settings", exact: true })).toBeVisible();
     await page.waitForLoadState("networkidle");
 

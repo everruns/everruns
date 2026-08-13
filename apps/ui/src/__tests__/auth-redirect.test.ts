@@ -21,8 +21,8 @@ describe("getLoginRedirectPath", () => {
     );
   });
 
-  it("omits return_to for the default dashboard landing page", () => {
-    expect(getLoginRedirectPath("/dashboard", new URLSearchParams())).toBe("/login");
+  it("omits return_to for the default landing page", () => {
+    expect(getLoginRedirectPath("/chats", new URLSearchParams())).toBe("/login");
   });
 
   it("preserves dashboard queries because they are not the default landing page", () => {
@@ -174,8 +174,8 @@ describe("getPostAuthTarget", () => {
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
   });
 
-  it("falls back to dashboard when no safe target exists", () => {
-    expect(getPostAuthTarget("https://evil.com")).toBe("/dashboard");
+  it("falls back to the landing surface when no safe target exists", () => {
+    expect(getPostAuthTarget("https://evil.com")).toBe("/chats");
   });
 });
 

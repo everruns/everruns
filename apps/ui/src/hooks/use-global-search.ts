@@ -23,7 +23,6 @@
 
 import { useMemo } from "react";
 import {
-  LayoutDashboard,
   MessageSquare,
   Shield,
   Boxes,
@@ -121,12 +120,6 @@ function registryPage(item: RegistryNavigationItem, flag?: keyof FeatureFlags): 
 }
 
 const NAVIGATION_PAGES: NavigationPage[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-    keywords: ["home", "overview"],
-  },
   {
     title: "Sessions",
     href: "/sessions",

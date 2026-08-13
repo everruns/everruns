@@ -89,7 +89,7 @@ export default function LoginPage() {
   // Redirect to dashboard if auth is not required
   useEffect(() => {
     if (config && config.mode === "none") {
-      router.replace("/dashboard");
+      router.replace("/chats");
     }
   }, [config, router]);
 
@@ -105,7 +105,7 @@ export default function LoginPage() {
     // Both are sanitized so a poisoned sessionStorage can't redirect off-origin.
     const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
     sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
-    return returnTo || stored || "/dashboard";
+    return returnTo || stored || "/chats";
   };
 
   const hasPasswordAuth = config?.password_auth_enabled ?? false;

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, LayoutDashboard, SearchX } from "lucide-react";
+import { ArrowLeft, MessageCircle, SearchX } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -52,10 +52,10 @@ export function ResourceNotFound({
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             {backLabel}
           </Link>
-          {backHref !== "/dashboard" && (
-            <Link href="/dashboard" className={buttonVariants({ variant: "outline" })}>
-              <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
-              Go to dashboard
+          {backHref !== "/chats" && (
+            <Link href="/chats" className={buttonVariants({ variant: "outline" })}>
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+              Go to chats
             </Link>
           )}
         </div>

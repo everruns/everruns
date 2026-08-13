@@ -34,7 +34,7 @@ export default function MainError({
           </CardDescription>
         </CardHeader>
         <CardContent className="flex justify-center gap-3">
-          <Button variant="outline" onClick={() => router.push("/dashboard")}>
+          <Button variant="outline" onClick={() => router.push("/chats")}>
             Dashboard
           </Button>
           <Button onClick={reset}>Try again</Button>

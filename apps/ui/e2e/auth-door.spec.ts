@@ -41,8 +41,8 @@ test("no-auth login reaches the application instead of a blank redirect loop", a
 
   await page.goto("/login");
 
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+  await expect(page).toHaveURL(/\/chats$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Chats" })).toBeVisible();
 });
 
 test.describe("Unified auth door", () => {

@@ -92,7 +92,7 @@ test("registers and executes WebMCP shell tools", async ({
   ]);
   await installWebMcpHarness(page);
   await mockAppApi(page);
-  await page.goto("/dashboard");
+  await page.goto("/chats");
   await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
 
   await expect
@@ -120,7 +120,7 @@ test("registers and executes WebMCP shell tools", async ({
     if (!tool) throw new Error("everruns_get_context is not registered");
     return JSON.parse((await modelContext.executeTool(tool, "{}")) as string);
   });
-  expect(context).toMatchObject({ organization_id: DEFAULT_ORG_ID, page: "dashboard" });
+  expect(context).toMatchObject({ organization_id: DEFAULT_ORG_ID, page: "chats" });
 
   await page.evaluate(async () => {
     const modelContext = document.modelContext as unknown as {

@@ -26,7 +26,6 @@ import {
 import { Button } from "@/components/ui/button";
 
 const PAGE_ROUTES = {
-  dashboard: "/dashboard",
   agents: "/agents",
   sessions: "/sessions",
   chat: "/chats",
@@ -74,7 +73,7 @@ export function getEverrunsPageContext(pathname: string): {
   if (parts[0] === "sessions" && parts[1]) {
     return { page: "session", resource_type: "session", resource_id: parts[1] };
   }
-  return { page: parts[0] ?? "dashboard" };
+  return { page: parts[0] ?? "chats" };
 }
 
 function WebMcpShellTools({ enabled }: { enabled: boolean }) {

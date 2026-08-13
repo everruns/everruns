@@ -57,7 +57,7 @@ describe("OnboardingLayout", () => {
     expect(mockReplace).not.toHaveBeenCalled();
   });
 
-  it("redirects users who already have an org to the dashboard", async () => {
+  it("redirects users who already have an org to the landing surface", async () => {
     orgState.organizations = [{ public_id: "org-1" }];
 
     render(
@@ -66,7 +66,7 @@ describe("OnboardingLayout", () => {
       </OnboardingLayout>,
     );
 
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/dashboard"));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/chats"));
     expect(screen.queryByText("Onboarding")).not.toBeInTheDocument();
   });
 
