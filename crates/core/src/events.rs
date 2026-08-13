@@ -1776,6 +1776,15 @@ pub struct LlmCompactionInfo {
     /// Duration of the compaction operation in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+
+    /// Provider-reported cost of the compaction call itself, in USD.
+    ///
+    /// Compaction is a separate billable model call, so its cost is also folded
+    /// into the generation's `usage.actual_cost_usd` — that is what budgets and
+    /// `llm_generations` read. This field keeps the split visible, so an
+    /// operator can see how much of a turn's spend was compaction (EVE-895).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
 }
 
 impl LlmCompactionInfo {
@@ -1784,12 +1793,14 @@ impl LlmCompactionInfo {
         input_tokens_before: Option<u32>,
         input_tokens_after: Option<u32>,
         duration_ms: Option<u64>,
+        cost_usd: Option<f64>,
     ) -> Self {
         Self {
             compacted: true,
             input_tokens_before,
             input_tokens_after,
             duration_ms,
+            cost_usd,
         }
     }
 }

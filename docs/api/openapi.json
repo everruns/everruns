@@ -28004,6 +28004,14 @@
             "type": "boolean",
             "description": "Whether compaction was performed"
           },
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Provider-reported cost of the compaction call itself, in USD.\n\nCompaction is a separate billable model call, so its cost is also folded\ninto the generation's `usage.actual_cost_usd` — that is what budgets and\n`llm_generations` read. This field keeps the split visible, so an\noperator can see how much of a turn's spend was compaction (EVE-895)."
+          },
           "duration_ms": {
             "type": [
               "integer",
