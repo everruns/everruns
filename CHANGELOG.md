@@ -145,6 +145,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Chats is now core functionality for every organization: it is always present in navigation and search, requires no feature opt-in, and retains voice as a separately controlled capability.
+- `InMemoryAgenticLoop::seed_events` replays pre-recorded conversation
+  envelopes into a fixture session's event log. It is the supported way to
+  give an in-memory loop a prior conversation now that history projects from
+  canonical events and `EventHistory` is read-only.
 
 ## [0.17.26] - 2026-08-10
 
