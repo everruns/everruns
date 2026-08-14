@@ -131,8 +131,7 @@ mod tests {
     use crate::command_host::{
         CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
     };
-    use crate::session::ExecutionSession;
-    use crate::typed_id::{HarnessId, SessionId};
+    use crate::typed_id::SessionId;
     use crate::user_facing_error::UserFacingErrorContext;
     use std::sync::{Arc, Mutex};
 
@@ -148,10 +147,6 @@ mod tests {
         assert_eq!(commands[0].args.len(), 1);
         assert_eq!(commands[0].args[0].name, "question");
         assert!(commands[0].args[0].required);
-    }
-
-    fn test_session(session_id: SessionId) -> ExecutionSession {
-        ExecutionSession::with_own_workspace(session_id, HarnessId::new())
     }
 
     struct StubHost {
@@ -176,7 +171,7 @@ mod tests {
         async fn turn_context(&self) -> crate::error::Result<CommandTurnContext> {
             let session_id = SessionId::new();
             Ok(CommandTurnContext {
-                session: test_session(session_id),
+                session_id,
                 messages: vec![Message::user("earlier message")],
                 system_prompt: "merged system prompt".to_string(),
                 model: "llmsim-model".to_string(),

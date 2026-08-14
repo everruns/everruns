@@ -24,9 +24,7 @@
 
 use everruns_core::{
     AgentDefinition, EnvCredentialProvider, HarnessDefinition, InputMessage, MessageRetriever,
-    atoms::{
-        ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
-    },
+    atoms::{ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonInput},
     capabilities::CapabilityRegistry,
     driver_registry::DriverRegistry,
     session::{ExecutionSession, SessionExecutionState},
@@ -36,7 +34,9 @@ use everruns_core::{
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
-use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
+use everruns_test_support::{
+    InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -193,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
     let event_emitter = InMemoryEventEmitter::new();
 
     let input_atom = InputAtom::new(message_retriever.clone());
-    let reason_atom = ReasonAtom::new(
+    let reason_atom = reason_atom_with_stores(
         harness_store,
         agent_store.clone(),
         session_store,

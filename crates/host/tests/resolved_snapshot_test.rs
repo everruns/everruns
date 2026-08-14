@@ -5,7 +5,9 @@
 
 use everruns_core::mcp_server::ScopedMcpServer;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
+use everruns_core::{
+    DEFAULT_ORG_ID, DriverId, ResolvedExecutionSnapshot, provider_resolution::ResolvedModel,
+};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
 };
@@ -13,6 +15,7 @@ use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
 
 const HEADER_SECRET: &str = "SECRET-MCP-HEADER-MARKER";
+const PROVIDER_SECRET: &str = "SECRET-PROVIDER-KEY-MARKER";
 const TITLE_MARKER: &str = "UI-TITLE-MARKER";
 
 fn scoped_server_with_secret_header() -> ScopedMcpServer {
@@ -63,6 +66,13 @@ async fn fixture() -> Fixture {
 
     let runtime = InProcessRuntimeBuilder::new()
         .llm_sim(LlmSimConfig::fixed("deterministic-ok"))
+        .default_model(ResolvedModel {
+            model: "llmsim-model".into(),
+            provider_type: DriverId::LlmSim,
+            api_key: Some(PROVIDER_SECRET.into()),
+            base_url: Some("https://credential-bearing-host.invalid".into()),
+            provider_metadata: None,
+        })
         .harness(harness.clone())
         .agent(agent.clone())
         .session(session.clone())
@@ -137,7 +147,18 @@ async fn turn_execution_and_events_stay_free_of_secrets_and_platform_metadata() 
     for surface in [serialized.as_str(), debugged.as_str()] {
         assert!(!surface.contains(HEADER_SECRET), "{surface}");
         assert!(!surface.contains(TITLE_MARKER), "{surface}");
+        assert!(!surface.contains(PROVIDER_SECRET), "{surface}");
     }
+
+    let assembled = fixture
+        .runtime
+        .load_context(fixture.session.id)
+        .await
+        .expect("context loads");
+    let assembled_debug = format!("{assembled:?}");
+    assert!(!assembled_debug.contains(PROVIDER_SECRET));
+    assert!(!assembled_debug.contains("credential-bearing-host.invalid"));
+    assert!(assembled_debug.contains("<opaque>"));
 
     // Event metadata: no emitted event may carry the scoped-MCP credential or
     // platform-only session metadata.

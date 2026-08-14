@@ -51,7 +51,14 @@ Decisions:
 
 ### One implementation, three hosts
 
-Core provides a store-backed `CommandHost` implementation built from the existing store traits (`HarnessStore`, `AgentStore`, `SessionStore`, `MessageRetriever`, `LlmProviderStore`, optional `ImageResolver`/`SessionFileSystem`) plus the capability and driver registries. It reuses `inspect_turn_context` and the reason-path message-building helpers, so the side answer sees exactly what a main turn would.
+Core provides only the credential-free `CommandHost` contract. The concrete
+`everruns_host::StoreCommandHost` is built from the host's store traits
+(`HarnessStore`, `AgentStore`, `SessionStore`, `MessageRetriever`,
+`ProviderStore`, optional `ImageResolver`/`SessionFileSystem`) plus the
+capability and driver registries. It reuses host-owned `inspect_turn_context`
+and the reason-path message-building helpers, so the side answer sees exactly
+what a main turn would. `CommandTurnContext` carries only `session_id`, never a
+session record.
 
 - **Server (full and dev mode)** — `SessionCommandService` wires the store-backed host from its worker adapters and dispatches every system command through `Capability::execute_command`; the bespoke `/btw` executor and its command-name special case are gone.
 - **In-process runtime** — `InProcessRuntime::execute_command` wires the same host from its runtime stores, so embedders get working context-aware commands just by registering the capability.

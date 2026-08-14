@@ -20,9 +20,10 @@
 #                             SPI and replaces every default `HostBackends`
 #                             store through public traits, so downstream host
 #                             composition fails here if a seam closes.
-#   external-execution-contracts implements a neutral per-turn event contract
-#                             from core and the host-owned filesystem factory,
-#                             without importing platform.
+#   external-execution-contracts implements neutral per-turn event and context
+#                             contracts from core, and verifies the concrete
+#                             filesystem/command hosts are host-owned, without
+#                             importing platform.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under

@@ -50,7 +50,7 @@ impl SessionContext {
         context: AssembledTurnContext,
         plugin_warnings: Vec<String>,
     ) -> Self {
-        let model = context.model_with_provider.canonical_parts().0;
+        let model = ModelSpec::on(context.model.provider.clone(), context.model.model.clone());
         let messages = context
             .messages
             .into_iter()

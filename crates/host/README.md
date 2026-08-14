@@ -34,6 +34,8 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 - Backend/store composition and low-level in-process execution
 - Reference `InMemoryAgentStore`, `InMemoryHarnessStore`,
   `InMemorySessionStore`, and `InMemoryProviderStore` implementations
+- Store-backed snapshot/context loading, lifecycle validation, provider/driver
+  resolution, and `StoreCommandHost` completion
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Host adapter contracts for worker, local, and advanced integrations
 
@@ -59,6 +61,12 @@ not need this feature or its HTTP/TLS dependency tree.
 history write path: host execution appends events, while `EventHistory` rebuilds
 messages from bounded, sequence-ordered replay. No writable message store is
 part of the maintained host API.
+
+The execution boundary is value-first: host orchestration resolves stores and
+credential-bearing provider configuration, then passes core a secret-free
+`ResolvedExecutionSnapshot`, filtered messages, model/provider identity, and
+an opaque ready driver. Persisted Agent, Harness, and Session records never
+cross into kernel execution or public context inspection.
 
 ## Documentation
 

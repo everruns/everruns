@@ -342,10 +342,9 @@ impl ResolvedMount {
 /// pin reads to the session's workspace, then guarantee a `/workspace` mount +
 /// cwd — WITHOUT discarding a display policy the embedder already configured.
 ///
-/// This is the single, shared way the reason path
-/// ([`crate::runtime_context::assemble_turn_context`]) and the executor path
-/// (`everruns_host`'s `load_execution_capabilities`) build their prompt
-/// file store. Both used to inline `MountFs::wrap(WorkspaceScopedFileSystem::…)`
+/// This is the single, shared way the host-owned reason context assembler and
+/// executor capability loader build their prompt file store. Both used to
+/// inline `MountFs::wrap(WorkspaceScopedFileSystem::…)`
 /// separately; they drifted from the tool-execution (`act`) path — which wraps
 /// with [`MountFs::wrap_if_needed`] — so a local embedder's real host paths
 /// reached tool narration but were forced back to `/workspace` in the system

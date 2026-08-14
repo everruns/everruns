@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use everruns_core::AgentDefinition;
 use everruns_core::AgentId;
 use everruns_core::MessageRetriever;
-use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
+use everruns_core::atoms::{Atom, AtomContext, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::harness_definition::HarnessDefinition;
@@ -22,7 +22,9 @@ use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
 use everruns_test_support::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
-use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
+use everruns_test_support::{
+    InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
+};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
@@ -386,7 +388,7 @@ impl ProactiveTestRig {
         previous_response_id: Option<&str>,
         checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     ) -> everruns_core::Result<everruns_core::atoms::ReasonResult> {
-        let atom = ReasonAtom::new(
+        let atom = reason_atom_with_stores(
             self.harness_store.clone(),
             self.agent_store.clone(),
             self.session_store.clone(),
@@ -788,7 +790,7 @@ async fn test_reason_atom_with_fixed_response() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -900,7 +902,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     capability_registry.register(CompactionCapability);
     let event_emitter = InMemoryEventEmitter::new();
     let checkpoint_store = Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default());
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
@@ -954,7 +956,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
         )
         .await
         .unwrap();
-    let resumed_atom = ReasonAtom::new(
+    let resumed_atom = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
@@ -1007,7 +1009,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
         })
         .await;
     expect_opaque.store(false, Ordering::SeqCst);
-    let incompatible_atom = ReasonAtom::new(
+    let incompatible_atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -1085,7 +1087,7 @@ async fn native_compact_failure_does_not_install_checkpoint() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(CompactionCapability);
     let checkpoint_store = Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default());
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -1783,7 +1785,7 @@ async fn test_reason_atom_strips_speed_not_advertised_by_model_profile() {
         .await;
 
     let captured_speed = Arc::new(Mutex::new(Some("not-called".to_string())));
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -1844,7 +1846,7 @@ async fn test_reason_atom_preserves_speed_advertised_by_model_profile() {
         .await;
 
     let captured_speed = Arc::new(Mutex::new(None));
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -1905,7 +1907,7 @@ async fn test_reason_atom_with_tool_calls() {
             .with_tool_calls(vec![tool_call.clone()]),
     );
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -1964,7 +1966,7 @@ async fn test_reason_atom_with_echo_response() {
     // Create a driver that echoes the user input
     let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2020,7 +2022,7 @@ async fn test_reason_atom_with_different_configs() {
 
     let driver_registry1 = create_custom_driver_registry(LlmSimConfig::fixed("Response A"));
 
-    let atom1 = ReasonAtom::new(
+    let atom1 = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
@@ -2083,7 +2085,7 @@ async fn test_reason_atom_with_different_configs() {
 
     let driver_registry2 = create_custom_driver_registry(LlmSimConfig::fixed("Response B"));
 
-    let atom2 = ReasonAtom::new(
+    let atom2 = reason_atom_with_stores(
         harness_store.clone(),
         agent_store.clone(),
         session_store.clone(),
@@ -2142,7 +2144,7 @@ async fn test_reason_atom_with_multi_turn_conversation() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2233,7 +2235,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
     let driver_registry =
         create_custom_driver_registry(LlmSimConfig::fixed("It's 22\u{00b0}C and sunny in Tokyo!"));
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2288,7 +2290,7 @@ async fn test_reason_atom_with_lorem_response() {
     // Use lorem ipsum generator
     let driver_registry = create_custom_driver_registry(LlmSimConfig::lorem(100));
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2345,7 +2347,7 @@ async fn test_reason_atom_handles_llm_error() {
     // Use an in-memory event emitter to capture events
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2446,7 +2448,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     // Use an in-memory event emitter to capture events
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2558,7 +2560,7 @@ async fn test_reason_atom_retries_structured_processing_error_before_output() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2646,7 +2648,7 @@ async fn test_reason_atom_retries_provider_stream_stall_before_output() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2742,7 +2744,7 @@ async fn test_reason_atom_bounds_repeated_provider_stream_stalls() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2864,7 +2866,7 @@ async fn test_reason_atom_handles_model_not_available() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -2980,7 +2982,7 @@ async fn test_reason_atom_returns_response_id_from_driver() {
     // Configure driver to return a response_id
     let config = LlmSimConfig::fixed("Hello from response-id test").with_response_id("resp_abc123");
     let driver_registry = create_custom_driver_registry(config);
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3036,7 +3038,7 @@ async fn test_reason_atom_response_id_none_when_driver_omits_it() {
     let config = LlmSimConfig::fixed("No response id");
     let driver_registry = create_custom_driver_registry(config);
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3209,7 +3211,7 @@ async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3295,7 +3297,7 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3391,7 +3393,7 @@ async fn test_reason_atom_exhausts_bounded_processing_error_retries() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3459,7 +3461,7 @@ async fn test_reason_atom_does_not_retry_non_transient_provider_code() {
         })
     });
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3529,7 +3531,7 @@ async fn test_reason_atom_strips_error_placeholder_messages() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3600,7 +3602,7 @@ async fn test_reason_atom_strips_dynamic_error_placeholder_messages() {
     let driver_registry = create_custom_driver_registry(LlmSimConfig::echo());
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3662,7 +3664,7 @@ async fn test_reason_atom_keeps_non_placeholder_messages_that_share_prefixes() {
     let driver_registry = create_conversation_capturing_driver_registry(captured_messages.clone());
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3852,7 +3854,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -3958,7 +3960,7 @@ async fn test_empty_session_system_prompt_is_ignored() {
 
     let event_emitter = InMemoryEventEmitter::new();
 
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -4052,7 +4054,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
     capability_registry.register(PromptCanaryGuardrailCapability);
 
     let event_emitter = InMemoryEventEmitter::new();
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -4210,7 +4212,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
     capability_registry.register(PromptCanaryGuardrailCapability);
 
     let event_emitter = InMemoryEventEmitter::new();
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,
@@ -4289,7 +4291,7 @@ async fn test_no_guardrails_passes_through_unchanged() {
         .await;
     let driver_registry = create_custom_driver_registry(LlmSimConfig::fixed("hello back"));
     let event_emitter = InMemoryEventEmitter::new();
-    let atom = ReasonAtom::new(
+    let atom = reason_atom_with_stores(
         harness_store,
         agent_store,
         session_store,

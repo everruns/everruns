@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Architecture guard (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879): stored
+# Architecture guard (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-905): stored
 # platform persistence records — Agent/AgentVersion (lifecycle status,
 # versioning/publication metadata, fork lineage), Harness (lifecycle status,
 # hierarchy identifiers, built-in flags, display metadata, timestamps) plus
@@ -42,6 +42,10 @@
 #    SQL database store and its value types (EVE-897) — records and trait
 #    travel together because the values are the trait's signature vocabulary,
 #    and the capability resolves the store as a typed context extension.
+# 5. Core turn execution is value-first: store-backed snapshot loading,
+#    topology/lifecycle probing, provider resolution and driver construction,
+#    context inspection, and concrete command completion live in host. Core
+#    retains pure snapshot/context transformations and narrow effect contracts.
 
 set -euo pipefail
 
@@ -126,9 +130,38 @@ for crate in "${PROVIDER_CRATES[@]}"; do
   fi
 done
 
+# 5. Store-backed context orchestration must not drift back into the kernel.
+CORE_CONTEXT_FILES=(
+  crates/core/src/atoms/reason.rs
+  crates/core/src/command_host.rs
+  crates/core/src/dependency_blocker.rs
+  crates/core/src/execution_snapshot.rs
+  crates/core/src/runtime_context.rs
+)
+STORE_ORCHESTRATION_PATTERN='\b(AgentStore|HarnessStore|SessionStore|ProviderStore|DriverRegistry|StoreCommandHost|load_execution_snapshot|inspect_turn_context)\b'
+if matches=$(grep -nE "$STORE_ORCHESTRATION_PATTERN" "${CORE_CONTEXT_FILES[@]}" 2>/dev/null); then
+  echo "Core execution paths must not own store-backed context/provider orchestration (EVE-905):"
+  echo "$matches"
+  FAILED=1
+fi
+
+COMMAND_EFFECT_PATTERN='\b(ChatDriver|ProviderConfig|ProviderEndpoint|LlmCallConfig|ImageResolver|ResolvedImage)\b'
+if matches=$(grep -nE "$COMMAND_EFFECT_PATTERN" crates/core/src/command_host.rs 2>/dev/null); then
+  echo "Concrete provider/image command completion must live in everruns-host (EVE-905):"
+  echo "$matches"
+  FAILED=1
+fi
+
+for host_owner in command_host execution_snapshot runtime_context; do
+  if [ ! -f "crates/host/src/${host_owner}.rs" ]; then
+    echo "everruns-host must own ${host_owner}.rs orchestration (EVE-905)."
+    FAILED=1
+  fi
+done
+
 if [ "$FAILED" -ne 0 ]; then
-  echo "Agent-record isolation guard failed. Stored Agent/AgentVersion, Harness, and Session records, eval/observer/feature-management aggregates, the connector/email infrastructure, and the Workspace/session-sandbox records belong in crates/platform; the OAuth protocol client belongs in crates/mcp (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880)."
+  echo "Agent-record isolation guard failed. Stored records stay in platform and store-backed execution orchestration stays in host (EVE-877, EVE-881, EVE-882, EVE-878, EVE-879, EVE-880, EVE-905)."
   exit 1
 fi
 
-echo "Agent-record isolation guard passed: kernel crates consume AgentDefinition/HarnessDefinition/ExecutionSession and resolved execution features only; platform records, connector/OAuth/email infrastructure, and the Workspace/session-sandbox records stay out of the kernel."
+echo "Agent-record isolation guard passed: kernel execution is value-first; platform records and store-backed context/provider orchestration stay outside core."

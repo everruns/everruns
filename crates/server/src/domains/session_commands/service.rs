@@ -15,11 +15,11 @@ use anyhow::Result;
 use everruns_core::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
-use everruns_core::command_host::StoreCommandHost;
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry};
+use everruns_host::StoreCommandHost;
 use everruns_platform::Harness;
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,

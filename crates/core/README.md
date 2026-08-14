@@ -8,8 +8,9 @@
 
 `everruns-core` defines the provider-neutral contracts that every other Everruns
 crate builds on: agents, harnesses, sessions, messages, events, typed IDs,
-capabilities and tools, the LLM driver registry, and the context assembly that
-drives the `input → reason → act` agent loop. It carries no filesystem, shell,
+capabilities and tools, the LLM driver registry, and pure snapshot/context
+transformations for the `input → reason → act` agent loop. It carries no store
+or provider-loading orchestration, filesystem, shell,
 web-fetch, Lua, MCP-client, concrete HTTP, server, or database runtime of its
 own — hosts and focused integration crates wire these abstractions together.
 Knowledge Bases and Indexes, Memories, delegation, schedules/tasks, user hooks,
@@ -51,7 +52,7 @@ hosted capabilities come from their owning integration or product crates.
 - Agent, harness, session, message, event, and typed ID domain models
 - Capability registry/execution contracts and tool traits for extensions
 - An LLM driver registry and provider-neutral message, tool, and reasoning types
-- Context assembly shared by embedded, worker, and server execution paths
+- Secret-free execution snapshots and pure resolved-context transformations
 - Neutral capability collection hooks and type-keyed host-service extensions
 - Read-only storage traits and canonical event/message contracts
 
@@ -61,6 +62,12 @@ Per-turn effect contracts are organized by concern: `execution_loading`,
 `connection_services`, and `delegation_services`. The crate intentionally has no catch-all `traits`
 module. Deployment composition contracts, including
 `SessionFileSystemFactory`, live in `everruns-host`.
+
+Store-backed snapshot loading, lifecycle/dependency probing, message filtering,
+provider configuration and driver construction, context inspection, and
+`StoreCommandHost` live in `everruns-host`. Core reason execution accepts an
+already assembled credential-safe context or the narrow `TurnContextResolver`
+effect; it never receives provider configuration or stored records.
 
 Environment implementations live in `everruns-integrations-filesystem`,
 `everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,

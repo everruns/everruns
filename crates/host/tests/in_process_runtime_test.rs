@@ -412,10 +412,12 @@ async fn single_session_builder_seeds_runnable_runtime() {
     let session_id = runtime.default_session_id().expect("default session id");
     let context = runtime.load_context(session_id).await.unwrap();
 
-    assert_eq!(context.harness.name, "math");
-    assert_eq!(
-        context.agent.expect("agent").system_prompt,
-        "Use tools when needed."
+    assert!(
+        context
+            .snapshot
+            .instructions
+            .as_deref()
+            .is_some_and(|instructions| instructions.contains("Use tools when needed."))
     );
 
     let result = runtime
@@ -445,7 +447,7 @@ async fn single_session_builder_pins_session_id_when_set() {
 
     assert_eq!(runtime.default_session_id(), Some(expected));
     let context = runtime.load_context(expected).await.unwrap();
-    assert_eq!(context.session.id, expected);
+    assert_eq!(context.session_id(), expected);
 }
 
 #[tokio::test]
@@ -465,7 +467,7 @@ async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let context = runtime.load_context(session_id).await.unwrap();
     assert_eq!(
         context
-            .harness
+            .snapshot
             .network_access
             .as_ref()
             .map(|acl| acl.allowed.clone()),
@@ -490,9 +492,9 @@ async fn single_session_builder_preserves_agent_acl_when_order_changes() {
     let context = runtime.load_context(session_id).await.unwrap();
     assert_eq!(
         context
-            .agent
+            .snapshot
+            .network_access
             .as_ref()
-            .and_then(|a| a.network_access.as_ref())
             .map(|acl| acl.allowed.clone()),
         Some(vec!["example.com".to_string()])
     );
@@ -723,11 +725,8 @@ async fn runtime_exposes_assembled_context() {
 
     let initial_context = runtime.load_context(session_id).await.unwrap();
     assert!(initial_context.messages.is_empty());
-    assert_eq!(initial_context.session.id, session_id);
-    assert_eq!(
-        initial_context.agent.as_ref().map(|agent| agent.id),
-        Some(agent_id)
-    );
+    assert_eq!(initial_context.session_id(), session_id);
+    assert_eq!(initial_context.snapshot.agent_id, Some(agent_id));
 
     runtime
         .run_text_turn(session_id, "What locale and tools do I have?")
@@ -736,10 +735,10 @@ async fn runtime_exposes_assembled_context() {
 
     let context = runtime.load_context(session_id).await.unwrap();
 
-    assert_eq!(context.session.id, session_id);
-    assert_eq!(context.harness.name, "math");
+    assert_eq!(context.session_id(), session_id);
+    assert_eq!(context.snapshot.harness_id, harness_id);
     assert_eq!(context.messages.len(), 2);
-    assert_eq!(context.model_with_provider.model, "llmsim-model");
+    assert_eq!(context.model.model, "llmsim-model");
     assert!(
         context
             .runtime_agent

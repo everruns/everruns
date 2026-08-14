@@ -26,9 +26,6 @@ use crate::session::ExecutionSession;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
-use crate::{
-    execution_loading::AgentStore, execution_loading::HarnessStore, execution_loading::SessionStore,
-};
 
 /// Non-secret MCP scope entry retained by the execution snapshot.
 ///
@@ -119,6 +116,8 @@ pub struct ResolvedExecutionSnapshot {
     pub tags: Vec<String>,
     pub blueprint_id: Option<String>,
     pub blueprint_config: Option<serde_json::Value>,
+    /// Cumulative LLM usage projected from the session for turn accounting.
+    pub cumulative_usage: Option<crate::events::TokenUsage>,
     /// Embedder metadata folded from the harness chain (root base, leaf wins).
     pub embedder_metadata: BTreeMap<String, String>,
 }
@@ -129,11 +128,10 @@ impl ResolvedExecutionSnapshot {
     /// This is the execution projection boundary: it fails when a referenced
     /// agent is missing or does not match the session's agent id. Harness
     /// lifecycle and inheritance validation happen one step earlier, at the
-    /// platform loading seam (EVE-881): parent-chain loading, cycle/error
-    /// handling, and archived/deleted validation run behind the
-    /// [`HarnessStore`] contract, so only the effective, executable
-    /// [`HarnessDefinition`] reaches this projection. Agent lifecycle
-    /// validation likewise fails at the [`AgentStore`] seam (EVE-877). Host
+    /// host loading seam (EVE-881): parent-chain loading, cycle/error handling,
+    /// and archived/deleted validation run before only the effective,
+    /// executable [`HarnessDefinition`] reaches this projection. Agent
+    /// lifecycle validation likewise fails at that host seam (EVE-877). Host
     /// execution never sees a snapshot built from broken record wiring.
     ///
     /// Precedence is applied exactly once, through the same
@@ -199,54 +197,16 @@ impl ResolvedExecutionSnapshot {
             tags: session.tags.clone(),
             blueprint_id: session.blueprint_id.clone(),
             blueprint_config: session.blueprint_config.clone(),
+            cumulative_usage: session.usage.clone(),
             embedder_metadata,
         })
     }
-}
-
-/// Load a session's records and project them into the canonical snapshot.
-///
-/// Store lookups are the cross-tenant boundary: org-scoped stores return
-/// `None` for records outside the caller's organization, which this loader
-/// turns into not-found projection failures before host execution.
-pub async fn load_execution_snapshot(
-    harness_store: &dyn HarnessStore,
-    agent_store: &dyn AgentStore,
-    session_store: &dyn SessionStore,
-    session_id: SessionId,
-) -> Result<ResolvedExecutionSnapshot> {
-    let session = session_store
-        .get_session(session_id)
-        .await?
-        .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
-    load_execution_snapshot_for_session(harness_store, agent_store, &session).await
-}
-
-/// Project a snapshot for an already-loaded session record.
-///
-/// Hosts that fold runtime attachments or other session-scoped overlays into
-/// the record before resolution use this variant.
-pub async fn load_execution_snapshot_for_session(
-    harness_store: &dyn HarnessStore,
-    agent_store: &dyn AgentStore,
-    session: &ExecutionSession,
-) -> Result<ResolvedExecutionSnapshot> {
-    let harness = harness_store
-        .get_harness(session.harness_id)
-        .await?
-        .ok_or_else(|| AgentLoopError::harness_not_found(session.harness_id))?;
-    let agent = match session.agent_id {
-        Some(agent_id) => agent_store.get_agent(agent_id).await?,
-        None => None,
-    };
-    ResolvedExecutionSnapshot::project(&harness, agent.as_ref(), session)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::network_access::NetworkAccessList;
-    use crate::test_fixtures::{TestAgentStore, TestHarnessStore};
     use std::collections::HashMap;
 
     fn harness() -> HarnessDefinition {
@@ -532,46 +492,6 @@ mod tests {
         let session = session(session_id, harness_id, Some(agent_id));
         assert!(
             ResolvedExecutionSnapshot::project(&harness, Some(&other_agent), &session).is_err()
-        );
-    }
-
-    #[tokio::test]
-    async fn loader_fails_on_missing_records_before_execution() {
-        let (harness_id, agent_id, session_id) = ids();
-        let harness_store = TestHarnessStore::new();
-        let agent_store = TestAgentStore::new();
-        let session_store = crate::test_fixtures::TestSessionStore::new();
-
-        // Missing session (also the cross-tenant shape: org-scoped stores
-        // return None for records outside the caller's org).
-        let error =
-            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
-                .await
-                .unwrap_err();
-        assert!(error.to_string().contains("not found"), "{error}");
-
-        // Session present but harness/agent missing.
-        session_store
-            .add_session(session(session_id, harness_id, Some(agent_id)))
-            .await;
-        assert!(
-            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
-                .await
-                .is_err()
-        );
-
-        harness_store.add_harness(harness_id, harness()).await;
-        assert!(
-            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
-                .await
-                .is_err()
-        );
-
-        agent_store.add_agent(agent(agent_id, harness_id)).await;
-        assert!(
-            load_execution_snapshot(&harness_store, &agent_store, &session_store, session_id)
-                .await
-                .is_ok()
         );
     }
 
