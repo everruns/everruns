@@ -2412,7 +2412,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 2.0.20",
  "tokio",
  "tokio-util",
  "trybuild",
@@ -3321,28 +3320,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-scale"
-version = "0.17.26"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns",
- "everruns-core",
- "everruns-durable",
- "everruns-host",
- "everruns-provider",
- "everruns-test-support",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid 1.24.0",
-]
-
-[[package]]
 name = "everruns-sdk"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3411,7 +3388,6 @@ dependencies = [
  "everruns-observability",
  "everruns-platform",
  "everruns-provider",
- "everruns-scale",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-turbopuffer",
@@ -3570,7 +3546,6 @@ dependencies = [
  "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
- "everruns-scale",
  "everruns-test-support",
  "mimalloc",
  "prost-types",

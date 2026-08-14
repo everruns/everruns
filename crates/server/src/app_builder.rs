@@ -34,8 +34,10 @@ use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
 use everruns_observability::{BraintrustListener, OtelEventListener};
-use everruns_scale::{DurableTaskNotifier, RunController};
-use everruns_worker::{RunnerBackend, TaskWorker, TaskWorkerConfig, create_runner_with_backend};
+use everruns_worker::{
+    AgentRunner, DurableTaskNotifier, RunnerBackend, TaskWorker, TaskWorkerConfig,
+    create_runner_with_backend,
+};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::future::Future;
@@ -64,7 +66,7 @@ type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
 #[derive(Clone)]
 struct CoreDeps {
     db: Arc<StorageBackend>,
-    runner: Arc<dyn RunController>,
+    runner: Arc<dyn AgentRunner>,
     auth: auth::AuthState,
     encryption: Option<Arc<EncryptionService>>,
     event_delivery: EventDelivery,
@@ -73,7 +75,7 @@ struct CoreDeps {
 impl CoreDeps {
     fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn RunController>,
+        runner: Arc<dyn AgentRunner>,
         auth: auth::AuthState,
         encryption: Option<Arc<EncryptionService>>,
         event_delivery: EventDelivery,
@@ -134,7 +136,7 @@ impl DurableTaskNotifier for ServerTaskNotifier {
 
 struct StorageInit {
     db: Arc<StorageBackend>,
-    runner: Arc<dyn RunController>,
+    runner: Arc<dyn AgentRunner>,
     shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
     database_url: Option<String>,
     database_unpooled_url: Option<String>,
@@ -314,7 +316,7 @@ pub struct ServerContext {
     pub event_service: Arc<services::EventService>,
     pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
-    pub runner: Arc<dyn RunController>,
+    pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_provider::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.

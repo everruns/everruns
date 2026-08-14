@@ -14,7 +14,7 @@ use everruns_core::{Caller, DEFAULT_ORG_ID};
 use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_platform::InvocationSessionMode;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
 // Serializes the env-mutating cap tests.
@@ -26,7 +26,7 @@ struct RecordingRunner {
 }
 
 #[async_trait]
-impl RunController for RecordingRunner {
+impl AgentRunner for RecordingRunner {
     async fn start_run(
         &self,
         _org_id: i64,

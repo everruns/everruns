@@ -420,7 +420,7 @@ mod tests {
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use everruns_provider::typed_id::PrincipalId;
     use everruns_provider::typed_id::{HarnessId, MessageId};
-    use everruns_scale::RunController;
+    use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
     use uuid::Uuid;
@@ -437,7 +437,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl RunController for RecordingRunner {
+    impl AgentRunner for RecordingRunner {
         async fn start_run(
             &self,
             _org_id: i64,
@@ -559,7 +559,7 @@ mod tests {
             .expect("user participant");
 
         let runner = Arc::new(RecordingRunner::default());
-        let runner_trait: Arc<dyn RunController> = runner.clone();
+        let runner_trait: Arc<dyn AgentRunner> = runner.clone();
         let message_service = Arc::new(crate::domains::messages::MessageService::new(
             db.clone(),
             runner_trait,

@@ -11,19 +11,12 @@
 
 [package]
 name = "everruns-durable"
+publish = false
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-homepage.workspace = true
-repository.workspace = true
-documentation = "https://docs.rs/everruns-durable"
-description = "Generic PostgreSQL-backed durable workflow substrate for Everruns"
-keywords = ["workflow", "postgresql", "durable", "distributed"]
-categories = ["asynchronous", "database"]
-exclude = ["benches/checkpoints/**"]
 
 [dependencies]
 # Async runtime
@@ -57,8 +50,8 @@ hostname = "0.4"
 
 # Benchmark support
 sysinfo = "0.39"
-minijinja = { version = "2", optional = true }
-indicatif = { version = "0.18", optional = true }
+minijinja = "2"
+indicatif = "0.18"
 
 # Fault injection (optional, zero-cost when disabled)
 fail = { workspace = true, optional = true }
@@ -66,34 +59,27 @@ fail = { workspace = true, optional = true }
 [features]
 failpoints = ["fail/failpoints"]
 postgres-tests = []
-benchmarks = ["dep:indicatif", "dep:minijinja"]
 
 [[bench]]
 name = "concurrent_workers"
 harness = false
-required-features = ["benchmarks"]
 
 [[bench]]
 name = "workflow_throughput"
 harness = false
-required-features = ["benchmarks"]
 
 [[bench]]
 name = "cold_start_latency"
 harness = false
-required-features = ["benchmarks"]
 
 [[bench]]
 name = "db_concurrent_workers"
 harness = false
-required-features = ["benchmarks"]
 
 [[bench]]
 name = "db_workflow_throughput"
 harness = false
-required-features = ["benchmarks"]
 
 [[bench]]
 name = "db_cold_start_latency"
 harness = false
-required-features = ["benchmarks"]

@@ -10,7 +10,7 @@ async fn test_worker_service() -> WorkerServiceImpl {
 }
 
 async fn test_worker_service_with_runner(
-    runner: Option<Arc<dyn everruns_scale::RunController>>,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
 ) -> WorkerServiceImpl {
     let db = Arc::new(StorageBackend::in_memory());
     let grade = everruns_core::DeploymentGrade::Dev;
@@ -37,7 +37,7 @@ struct CompletingTestRunner {
 }
 
 #[async_trait::async_trait]
-impl everruns_scale::RunController for CompletingTestRunner {
+impl everruns_worker::AgentRunner for CompletingTestRunner {
     async fn start_run(
         &self,
         org_id: i64,

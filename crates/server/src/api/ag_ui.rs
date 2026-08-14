@@ -112,7 +112,7 @@ impl AgUiState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Arc<dyn everruns_scale::RunController>,
+        runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,

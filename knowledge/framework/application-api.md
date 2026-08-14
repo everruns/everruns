@@ -53,11 +53,8 @@ The Framework owns value-first configuration for:
 
 The application execution boundary is `everruns::Engine`. `Agent` is immutable
 behavior; an Engine owns Agent snapshots, session catalog/runtime state, and
-resume authority. `InMemoryEngine` accepts process-local implementations and
-retains snapshots only for the process lifetime. The public `everruns-scale`
-implementation accepts only versioned, stable registered references and owns
-PostgreSQL catalog, canonical-event, Environment-binding, and durable-turn
-state. It never serializes an arbitrary Agent. `Session` is engine-bound and
+resume authority. `InMemoryEngine` is the first explicit implementation and
+retains snapshots only for the process lifetime. `Session` is engine-bound and
 does not own an Agent or expose the concrete in-process runtime. The object-safe
 `SessionExecution` binding carries Framework identity without backend, store,
 host, or platform DTOs. The separate `everruns-engine` crate owns shared

@@ -33,7 +33,7 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolRegistry;
 use everruns_core::{ContentPart, Message, MessageRole, TextContentPart};
 use everruns_provider::typed_id::{MessageId, SessionId};
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -70,7 +70,7 @@ pub fn spawn_session_scheduler(
     db: Arc<StorageBackend>,
     schedule_service: Arc<SessionScheduleService>,
     event_service: Arc<EventService>,
-    runner: Arc<dyn RunController>,
+    runner: Arc<dyn AgentRunner>,
     probe_tool_registry: Option<Arc<ToolRegistry>>,
     poll_interval: Duration,
 ) -> JoinHandle<()> {
@@ -121,7 +121,7 @@ async fn poll_and_trigger(
     db: &Arc<StorageBackend>,
     schedule_service: &Arc<SessionScheduleService>,
     event_service: &Arc<EventService>,
-    runner: &Arc<dyn RunController>,
+    runner: &Arc<dyn AgentRunner>,
     probe_tool_registry: Option<&ToolRegistry>,
 ) -> anyhow::Result<()> {
     // Build the task registry once per poll iteration; reused for all fired schedules.

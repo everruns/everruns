@@ -31,7 +31,7 @@ use everruns_platform::{
 use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
 };
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 
 use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
@@ -429,7 +429,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub event_service: EventService,
-    pub runner: Arc<dyn RunController>,
+    pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub fallback_default_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
@@ -438,7 +438,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn RunController>, auth: AuthState) -> Self {
+    pub fn new(db: Arc<StorageBackend>, runner: Arc<dyn AgentRunner>, auth: AuthState) -> Self {
         Self::with_host_composition(
             db,
             runner,
@@ -451,7 +451,7 @@ impl AppState {
 
     pub fn with_host_composition(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn RunController>,
+        runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],

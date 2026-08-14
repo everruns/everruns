@@ -34,7 +34,7 @@ use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_platform::{App, AppStatus, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
 use everruns_provider::url_validation::validate_safe_url;
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
@@ -217,7 +217,7 @@ impl SlackState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<crate::storage::EncryptionService>>,
-        runner: Arc<dyn RunController>,
+        runner: Arc<dyn AgentRunner>,
         delivery_dispatcher: Option<Arc<SlackDeliveryDispatcher>>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
@@ -3086,7 +3086,7 @@ mod tests {
     async fn test_inject_thread_context_empty_replies() {
         // When fetch returns empty, inject_thread_context should succeed as no-op
         let db = Arc::new(StorageBackend::in_memory());
-        let runner: Arc<dyn RunController> = Arc::new(NoopRunner);
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
         let state = SlackState::new(
             db,
             None,
@@ -3156,7 +3156,7 @@ mod tests {
     struct NoopRunner;
 
     #[async_trait::async_trait]
-    impl RunController for NoopRunner {
+    impl AgentRunner for NoopRunner {
         async fn start_run(
             &self,
             _org_id: i64,
