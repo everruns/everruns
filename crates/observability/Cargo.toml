@@ -58,6 +58,9 @@ tracing-subscriber.workspace = true
 # web-fetch) that the exporters do not need — they only use the always-on
 # event/trait/telemetry-conventions surface.
 everruns-core = { path = "../core", version = "0.17.0", default-features = false }
+# Server/worker startup selects ring before observability or HTTP clients can
+# initialize rustls. This keeps the concrete TLS choice outside core.
+everruns-provider = { path = "../provider", version = "0.17.0", default-features = false, features = ["tls-ring"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

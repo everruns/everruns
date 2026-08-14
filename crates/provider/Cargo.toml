@@ -32,14 +32,15 @@ regex.workspace = true
 url = "2"
 chrono.workspace = true
 
-# Async + HTTP (shared protocol drivers, retry/stream helpers)
+# Async contracts. HTTP transport is isolated behind the default `http`
+# feature so contract-only consumers such as everruns-core stay transport-free.
 async-trait.workspace = true
 futures.workspace = true
-tokio = { workspace = true, features = ["sync", "rt", "time", "net"] }
-reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"] }
-eventsource-stream = "0.2"
-http = "1"
-bytes = "1"
+tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time"] }
+reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"], optional = true }
+eventsource-stream = { version = "0.2", optional = true }
+http = { version = "1", optional = true }
+bytes = { version = "1", optional = true }
 
 # Encoding / hashing / rng
 base64.workspace = true
@@ -55,12 +56,23 @@ tracing.workspace = true
 # Optional integrations, mirroring everruns-core's feature gating.
 utoipa = { workspace = true, optional = true }
 sqlx = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
 
 [features]
+default = ["http"]
+# Shared protocol drivers, request helpers, and streaming reconnect support.
+http = ["dep:reqwest", "dep:eventsource-stream", "dep:http", "dep:bytes", "tokio/net", "tls-ring"]
+# Process-wide ring selection for products that link multiple rustls providers.
+tls-ring = ["dep:rustls"]
+
 # OpenAPI schema derives (utoipa::ToSchema).
 openapi = ["dep:utoipa"]
 # sqlx Postgres encode/decode for TypedId.
 sqlx = ["dep:sqlx"]
+
+[[test]]
+name = "tls_startup"
+required-features = ["http", "tls-ring"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

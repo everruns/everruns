@@ -50,6 +50,11 @@ integration is selected and a disabled service otherwise. `builtins`,
 `mcp-stdio` additionally enables local-process MCP servers. The
 application-facing `everruns` crate selects the ordinary defaults.
 
+`utility-openai` owns the concrete, environment-configured utility-model
+client used by the server and worker. The provider-neutral `UtilityLlmService`
+contract remains in core; embedders that supply their own implementation do
+not need this feature or its HTTP/TLS dependency tree.
+
 `everruns-engine` remains the sans-I/O planner. Canonical events are the sole
 history write path: host execution appends events, while `EventHistory` rebuilds
 messages from bounded, sequence-ordered replay. No writable message store is

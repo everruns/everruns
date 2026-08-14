@@ -11,12 +11,12 @@
 // exercised by the OpenRouter wire tests), so the fixtures stay readable while
 // still driving the driver's real stream-conversion path end to end.
 
-use everruns_core::OpenResponsesProtocolChatDriver;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenResponsesProtocolChatDriver;
+use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent, ProviderOpaqueContext,
 };
-use everruns_core::{BearerAuth, CompactContent, CompactOutputItem, Provider};
+use everruns_provider::{BearerAuth, CompactContent, CompactOutputItem, Provider};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

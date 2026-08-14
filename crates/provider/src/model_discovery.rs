@@ -11,9 +11,12 @@
 //! no catalog to offer" and callers should keep their curated suggestions,
 //! while `Err` means the catalog request itself failed.
 
+#[cfg(feature = "http")]
 use crate::driver_helpers::shared_request_http_client;
 use crate::driver_registry::{DiscoveredModel, DriverId, DriverRegistry, ProviderConfig};
-use crate::error::{AgentLoopError, Result};
+#[cfg(feature = "http")]
+use crate::error::AgentLoopError;
+use crate::error::Result;
 use crate::model_profiles::get_model_profile;
 
 /// One model offered by a provider, ready for display: the bare id plus
@@ -110,11 +113,13 @@ pub fn enrich_with_profiles(
         .collect()
 }
 
+#[cfg(feature = "http")]
 #[derive(serde::Deserialize)]
 struct OpenAiCompatibleModelsResponse {
     data: Vec<OpenAiCompatibleModel>,
 }
 
+#[cfg(feature = "http")]
 #[derive(serde::Deserialize)]
 struct OpenAiCompatibleModel {
     id: String,
@@ -126,6 +131,7 @@ struct OpenAiCompatibleModel {
 
 /// Discovery fallback for OpenAI-compatible endpoints no driver recognizes:
 /// `GET <base>/models` with bearer auth.
+#[cfg(feature = "http")]
 pub async fn list_openai_compatible_models(
     endpoint: &crate::runtime_provider::ProviderEndpoint,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
@@ -139,6 +145,7 @@ pub async fn list_openai_compatible_models(
     list_openai_compatible_models_with_client(&shared_request_http_client(), &resolved).await
 }
 
+#[cfg(feature = "http")]
 async fn list_openai_compatible_models_with_client(
     client: &reqwest::Client,
     resolved: &crate::runtime_provider::ResolvedProviderRequest,

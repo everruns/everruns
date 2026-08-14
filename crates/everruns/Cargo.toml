@@ -29,6 +29,10 @@ categories = ["development-tools", "asynchronous"]
 name = "lifecycle_hooks"
 required-features = ["macros", "openai"]
 
+[[test]]
+name = "tls_startup"
+required-features = ["openai"]
+
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or

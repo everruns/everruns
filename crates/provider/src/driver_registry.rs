@@ -14,9 +14,9 @@
 // depend on core and register their drivers at startup. Core has no knowledge of
 // specific provider implementations.
 
+use crate::compact::{CompactOutputItem, CompactRequest, CompactResponse};
 use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
-use crate::openresponses_protocol::{CompactOutputItem, CompactRequest, CompactResponse};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};

@@ -16,7 +16,7 @@
 //! - Capability and tool traits for composing agent behavior
 //! - Provider-neutral LLM messages, streams, and driver registration
 //! - Context assembly for the shared `input -> reason -> act` execution flow
-//! - Minimal in-memory store implementations for embedding and prototyping
+//! - Neutral storage, event, capability, and host-service contracts
 //!
 //! Environment-backed implementations are intentionally separate: filesystem,
 //! Bashkit, web fetch, and Lua live in `everruns-integrations-*`; MCP adaptation
@@ -174,11 +174,11 @@ pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
 pub mod compaction_policy;
+pub use everruns_provider::compact;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
-pub use everruns_provider::driver_helpers;
 pub use everruns_provider::driver_registry;
 pub use everruns_provider::error;
 pub mod guardrail_checks;
@@ -193,8 +193,6 @@ pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
 mod tool_call_integrity;
-pub use everruns_provider::openai_protocol;
-pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;
 pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
@@ -210,7 +208,6 @@ pub mod runtime_context;
 /// interface and a host adapter supplies the implementation.
 pub mod subagent_delegation;
 pub use everruns_provider::stream_accumulator;
-pub use everruns_provider::stream_reconnect;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
@@ -333,8 +330,8 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 // turn. The OAuth 2.1 protocol client moved to `everruns-mcp` (its only
 // consumer), and the connector catalog moved to `everruns-platform`.
 pub use utility_llm::{
-    DisabledUtilityLlmService, OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_LLM_MODEL,
-    UTILITY_OPENAI_API_KEY_ENV, UtilityLlmReasoningEffort, UtilityLlmRequest, UtilityLlmService,
+    DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmReasoningEffort, UtilityLlmRequest,
+    UtilityLlmService,
 };
 
 // LLM driver types re-exports
@@ -350,15 +347,11 @@ pub use driver_registry::{
 // LLM retry types re-exports
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 
-// OpenAI Protocol driver (Chat Completions API for backward compatibility)
-pub use openai_protocol::OpenAIProtocolChatDriver;
-
-// Open Responses Protocol driver (https://www.openresponses.org/)
-// Vendor-neutral API standard, recommended for new projects
-pub use openresponses_protocol::{
+// Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
+// protocol drivers live in everruns-provider and the focused provider crates.
+pub use compact::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
-    messages_to_compact_input,
+    CompactResponse, CompactUsage, messages_to_compact_input,
 };
 
 // Tool abstraction re-exports
@@ -516,8 +509,8 @@ pub use model::{
 };
 pub use model_discovery::{
     DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
-    discover_provider_models, enrich_with_profiles, list_openai_compatible_models, match_models,
-    normalize_and_enrich, rank_discovered_models, search_provider_models,
+    discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
+    rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
 // EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`

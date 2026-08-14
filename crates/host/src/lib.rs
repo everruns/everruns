@@ -49,6 +49,8 @@ mod process_command;
 mod real_disk;
 mod runtime;
 mod turn_strategy;
+#[cfg(feature = "utility-openai")]
+mod utility_llm;
 
 pub use backends::{
     HostBackends, PlatformStoreFactory, RuntimeAgentStore, RuntimeHarnessStore,
@@ -94,3 +96,7 @@ pub use runtime::{
     TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
 };
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
+#[cfg(feature = "utility-openai")]
+pub use utility_llm::{
+    OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_OPENAI_API_KEY_ENV,
+};

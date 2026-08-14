@@ -125,7 +125,7 @@ pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::OpenAIProtocolChatDriver;
+/// use everruns_provider::OpenAIProtocolChatDriver;
 ///
 /// let driver = OpenAIProtocolChatDriver::new();
 /// // Endpoint and authentication are configured on a runtime Provider.

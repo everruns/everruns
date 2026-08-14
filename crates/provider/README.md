@@ -15,6 +15,12 @@ ecosystem. Application authors normally use the re-exported provider surface
 through `everruns`; provider implementers depend here to avoid pulling in the
 agent-loop runtime.
 
+The default `http` feature provides the shared protocol implementations and
+selects the ring Rustls provider before constructing their clients. Contract-
+only consumers can use `default-features = false` to avoid HTTP and TLS
+dependencies entirely. The `tls-ring` feature exposes the idempotent startup
+initializer independently for binaries that assemble multiple TLS stacks.
+
 ## Quick Example
 
 ```rust

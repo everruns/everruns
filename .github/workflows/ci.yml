@@ -488,6 +488,24 @@ jobs:
       - name: Check provider isolation
         run: bash scripts/lib/check-provider-isolation.sh
 
+  # Architecture guard (EVE-903): core defaults are empty and its shipped
+  # dependency tree excludes concrete TLS, HTTP, process, database,
+  # interpreter, exporter, OpenAPI, and structural-parser implementations.
+  core-kernel-dependencies:
+    name: Core Kernel Dependency Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Check core kernel dependencies
+        run: bash scripts/lib/check-core-kernel-dependencies.sh
+
   # Architecture guard (EVE-885): hosted knowledge, delegation, task, hook,
   # and management capability implementations live in crates/platform. Core
   # carries portable implementations and neutral contracts only.

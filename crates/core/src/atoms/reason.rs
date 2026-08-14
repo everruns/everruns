@@ -31,6 +31,7 @@ use crate::annotation_hook::{
     AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
 };
 use crate::capabilities::CapabilityRegistry;
+use crate::compact::{CompactRequest, messages_to_compact_input};
 use crate::driver_registry::{
     DriverRegistry, LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmStreamEvent,
@@ -51,7 +52,6 @@ use crate::llm_retry::{
 };
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
-use crate::openresponses_protocol::{CompactRequest, messages_to_compact_input};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,

@@ -9,12 +9,12 @@
 // `finish_reason: "tool_calls"` chunk. Refactors under these tests must keep the
 // golden output byte-identical.
 
-use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenAIProtocolChatDriver;
+use everruns_provider::driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
     LlmStreamEvent,
 };
-use everruns_core::{BearerAuth, Provider};
+use everruns_provider::{BearerAuth, Provider};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

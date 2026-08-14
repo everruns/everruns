@@ -103,7 +103,7 @@ impl OpenAiImageClient {
     }
 
     fn apply_auth(&self, request: RequestBuilder, api_url: &str) -> RequestBuilder {
-        if everruns_core::openai_protocol::is_azure_openai_api_url(api_url) {
+        if everruns_provider::openai_protocol::is_azure_openai_api_url(api_url) {
             request.header("api-key", &self.api_key)
         } else {
             request.bearer_auth(&self.api_key)

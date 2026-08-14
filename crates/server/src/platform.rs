@@ -6,9 +6,9 @@
 //! can start from the OSS preset or construct a `HostComposition` manually
 //! without depending on inventory registration.
 
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::deployment::DeploymentGrade;
-use everruns_core::{DEFAULT_ORG_ID, SystemUtilityLlmConfig};
-use everruns_host::HostComposition;
+use everruns_host::{HostComposition, SystemUtilityLlmConfig};
 use everruns_http::DirectEgressService;
 use everruns_platform::BuiltInHarnessDefinition;
 use everruns_platform::connector::{ConnectorPlugin, ConnectorRegistry};

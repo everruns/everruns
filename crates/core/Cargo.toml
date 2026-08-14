@@ -15,16 +15,16 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-core"
-description = "Core agent abstractions for Everruns - agent loop, events, tools, LLM providers"
+description = "Transport-neutral agent execution contracts for Everruns"
 readme = "README.md"
 keywords = ["agent", "agentic", "llm", "ai", "framework"]
 categories = ["development-tools", "asynchronous"]
 
 [dependencies]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
-# error taxonomy, OpenResponses wire types, URL validation). core re-exports its
-# modules at their original paths.
-everruns-provider = { workspace = true }
+# error taxonomy, compact contracts, URL validation). Core enables no concrete
+# provider transport and re-exports only neutral modules.
+everruns-provider = { workspace = true, default-features = false }
 
 # Neutral capability contract (EVE-873): capability identity, references, and
 # registry index. Only the identity surface — the code-defined authoring
@@ -37,8 +37,9 @@ thiserror.workspace = true
 async-trait.workspace = true
 
 # Async runtime
-# Note: "rt" is needed for tokio::spawn (background tools, parallel act atom)
-tokio = { workspace = true, features = ["sync", "rt", "time", "net"] }
+# `sync` backs channels/locks, `rt` backs parallel turn tasks, and `time` backs
+# bounded retry and stream-liveness timers. Core performs no networking.
+tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time"] }
 # `CancellationToken` for cooperative tool-call cancellation (ToolContext).
 tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
@@ -67,7 +68,6 @@ tracing.workspace = true
 # Encoding
 base64.workspace = true
 sha2.workspace = true
-hex.workspace = true
 
 # Pattern matching
 regex.workspace = true
@@ -81,9 +81,6 @@ tree-sitter = { version = "0.26", optional = true }
 tree-sitter-rust = { version = "0.24", optional = true }
 tree-sitter-typescript = { version = "0.23", optional = true }
 tree-sitter-python = { version = "0.25", optional = true }
-
-# TLS crypto provider (must be installed before any rustls usage)
-rustls.workspace = true
 
 # OpenAPI schema generation (optional, enabled by everruns-server)
 utoipa = { workspace = true, optional = true }
@@ -101,22 +98,15 @@ inventory.workspace = true
 # guard in scripts/lib/check-test-support-isolation.sh enforces it.
 
 [features]
-# Portable optional subtrees stay ON by default for existing core consumers.
-# Hosted A2A/delegation implementations are owned by everruns-platform and no
-# longer appear in any core feature set.
+# Core's default feature set is intentionally empty. Portable structural
+# outlines and OpenAPI derives are explicit opt-ins.
 # Note: OTLP telemetry moved to `everruns-observability` (EVE-876); no core
 # build — default or otherwise — carries exporter dependencies.
-default = ["llm-tests"]
-openapi = ["utoipa", "everruns-provider/openapi"]
+default = []
+openapi = ["dep:utoipa", "everruns-provider/openapi"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
-llm-tests = []  # LLM integration tests (requires API keys)
 
 [dev-dependencies]
-http = "1"
 tokio = { workspace = true, features = ["full", "test-util"] }
-tracing-subscriber.workspace = true
-wiremock = "0.6"
-# Snapshot testing for contract tests
-insta = { version = "1.40", features = ["json", "redactions"] }
-axum.workspace = true
 tempfile.workspace = true
+insta = { version = "1.40", features = ["json", "redactions"] }

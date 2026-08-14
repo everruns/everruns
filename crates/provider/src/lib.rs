@@ -18,8 +18,10 @@
 //! assert_eq!(model.model, "assistant-v2");
 //! ```
 
+pub mod compact;
 pub mod credential_provider;
 pub mod credential_schema;
+#[cfg(feature = "http")]
 pub mod driver_helpers;
 pub mod driver_registry;
 pub mod error;
@@ -29,12 +31,15 @@ pub mod model;
 pub mod model_discovery;
 pub mod model_profiles;
 pub mod model_spec;
+#[cfg(feature = "http")]
 pub mod openai_protocol;
+#[cfg(feature = "http")]
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod provider;
 pub mod runtime_provider;
 pub mod stream_accumulator;
+#[cfg(feature = "http")]
 pub mod stream_reconnect;
 pub mod tool_schema_compat;
 pub mod tool_types;
@@ -50,6 +55,10 @@ pub mod user_facing_error;
 // `everruns_core::<Symbol>`.
 // ============================================================================
 
+pub use compact::{
+    CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
+    CompactResponse, CompactUsage, messages_to_compact_input,
+};
 pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
 pub use credential_schema::{
     CredentialFormSchema, assemble_credential_document, parse_credential_document,
@@ -72,19 +81,19 @@ pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
+#[cfg(feature = "http")]
+pub use model_discovery::list_openai_compatible_models;
 pub use model_discovery::{
     DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
-    discover_provider_models, enrich_with_profiles, list_openai_compatible_models, match_models,
-    normalize_and_enrich, rank_discovered_models, search_provider_models,
+    discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
+    rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use model_spec::{ModelSpec, UnknownProvider};
+#[cfg(feature = "http")]
 pub use openai_protocol::OpenAIProtocolChatDriver;
-pub use openresponses_protocol::{
-    CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
-    messages_to_compact_input,
-};
+#[cfg(feature = "http")]
+pub use openresponses_protocol::{OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension};
 pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
 pub use runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
@@ -104,3 +113,13 @@ pub use user_facing_error::{
     is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
     parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
+
+/// Select ring as the process-wide rustls crypto provider.
+///
+/// Products that link more than one rustls provider call this once during
+/// startup, before constructing TLS clients. Repeated and concurrent calls are
+/// safe: rustls accepts the first installation and later calls are no-ops.
+#[cfg(feature = "tls-ring")]
+pub fn install_ring_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}

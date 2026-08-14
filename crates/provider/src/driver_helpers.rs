@@ -125,6 +125,7 @@ pub fn shared_streaming_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
+            crate::install_ring_crypto_provider();
             harden_builder(
                 reqwest::Client::builder()
                     .connect_timeout(HTTP_CONNECT_TIMEOUT)
@@ -151,6 +152,7 @@ pub fn shared_request_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
+            crate::install_ring_crypto_provider();
             harden_builder(
                 reqwest::Client::builder()
                     .connect_timeout(HTTP_CONNECT_TIMEOUT)
