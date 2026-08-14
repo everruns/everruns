@@ -11,16 +11,16 @@
 
 use std::time::Instant;
 
-use everruns_provider::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
-    model_spec::ModelSpec, SessionId,
-};
+use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_bashkit::BashkitShellCapability;
 use everruns_integrations_lua::LuaCapability;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const HARNESS_PROMPT: &str = "You are a data-processing assistant. You have exactly one \
 code-execution tool. To complete a task you MUST use that tool to read and write files in \
