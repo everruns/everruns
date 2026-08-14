@@ -47,15 +47,18 @@ Framework adaptation or any host application.
   concern (`tool_context`, `execution_loading`, `provider_resolution`,
   `session_files`, `durability`, and sibling modules), never in a catch-all
   service bag.
-- `everruns-engine` owns Input/Reason/Act algorithms, their phase I/O values,
-  concrete portable execution hooks, the tool scheduler, and pure turn planning.
-- `everruns-host` owns embedder-facing orchestration, in-memory stores, turn
+- `everruns-engine` owns the abstract execution contract, serializable turn
+  machine, Input/Reason/Act algorithms, phase values, portable execution hooks,
+  tool scheduler, and pure turn planning.
+- `everruns-host` owns the immediate `InProcessExecution` driver,
+  embedder-facing orchestration, in-memory stores, turn
   execution, store-backed snapshot/context loading, lifecycle and dependency
   probing, provider/driver resolution, command completion, runtime seeding
   helpers, reusable host-phase composition, and lifecycle-effect application.
+- `everruns-durable` owns the checkpointed `DurableExecution` driver and
+  persistence/retry machinery.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
-  execution hosts. They use runtime-owned host execution and turn-strategy
-  planning, while still owning the durable engine implementation, worker
+  execution hosts. They adapt host effects and durable scheduling while owning worker
   polling, retries, and process boundaries.
 
 ## Public Contract
@@ -161,10 +164,15 @@ the workspace-scoping adapter used by turn execution.
 
 Host planning APIs:
 
+- `Execution` / `TurnExecution`
+- `ExecutionTransition`
 - `RuntimeTurnState`
 - `RuntimeActPlan`
 - `RuntimeTurnPlan`
-- `plan_next_host_turn(...)`
+- `advance_host_execution(...)`
+
+`plan_next_host_turn(...)` remains only as a compatibility wrapper for callers
+that have not yet adopted an explicit execution driver.
 
 Terminal host plans carry the same structured stop reason. Durable hosts must
 preserve it in the turn value returned to their downstream caller.

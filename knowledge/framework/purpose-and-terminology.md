@@ -40,8 +40,9 @@ not alternative product names for the Framework.
 
 `everruns` composes the application contract over focused implementation
 crates. Core owns shared agent and provider-facing values; provider owns the
-lean model-driver abstraction; engine owns deterministic turn planning;
-host owns shared effect application, backend composition, event persistence,
+lean model-driver abstraction; engine owns the abstract execution contract,
+state machine, atoms, and deterministic turn planning; host owns the immediate
+in-process driver, shared effect application, backend composition, event persistence,
 and low-level in-process execution; local supplies optional local host state;
 macros implements the tool attribute re-exported by `everruns`; platform owns
 backend control-plane entities.

@@ -103,7 +103,7 @@ Production event routing therefore prefers:
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
-   - `engine/` → `everruns-engine` - Shared turn planning and execution coordination consumed by hosts
+   - `engine/` → `everruns-engine` - Abstract execution contract, state machine, atoms, and turn planning
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
@@ -451,12 +451,13 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 ### Shared Execution Kernel (`everruns-engine`)
 
-`everruns-engine` owns the concrete `InputAtom`, `ReasonAtom`, and `ActAtom`
-algorithms, their serialized phase inputs/results, post-act helpers, tool
-scheduler, infrastructure hooks, and the pure `TurnState` planner. The concrete
-types use inherent `execute` methods; there is no generic public `Atom` trait.
-Hosts inject core/provider contracts and keep deployment composition outside the
-engine.
+`everruns-engine` owns the `Execution` contract, serializable `TurnExecution`
+state machine, concrete `InputAtom`, `ReasonAtom`, and `ActAtom` algorithms,
+their phase values, post-act helpers, tool scheduler, infrastructure hooks, and
+pure turn planner. There is no generic public `Atom` trait. `everruns-host`
+retains state in `InProcessExecution`; `everruns-durable` checkpoints the same
+state through `DurableExecution`. Hosts inject core/provider contracts and keep
+deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:
    - `everruns-host` owns application stores and canonical event history

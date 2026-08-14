@@ -2613,6 +2613,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "cron",
+ "everruns-engine",
+ "everruns-provider",
  "fail",
  "hostname",
  "indicatif",

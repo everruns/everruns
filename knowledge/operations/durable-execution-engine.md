@@ -12,6 +12,11 @@ tags:
 
 Custom PostgreSQL-backed durable execution engine for workflow orchestration with automatic retries, circuit breakers, and distributed task execution.
 
+Agent turns use `everruns-durable::DurableExecution`, the checkpointed driver
+for `everruns-engine::Execution`. The durable crate owns persistence, retries,
+and activity scheduling; it does not own a second copy of atom or turn
+semantics.
+
 ## Goals
 
 1. **Self-contained** - `everruns-durable` crate with no Temporal dependencies

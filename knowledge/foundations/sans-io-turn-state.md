@@ -10,15 +10,13 @@ tags:
 
 ## Abstract
 
-The turn loop was implemented twice. `TurnStateMachine`
-(`crates/core/src/turn.rs`) is a mutable, in-memory machine; `RuntimeTurnState` +
-`plan_next_host_turn` (`crates/host/src/turn_strategy.rs`) is a serializable
-state plus a planner driven by the durable worker. They encode the same phases
-and the same transitions, in different shapes, and neither can be derived from
-the other.
+The turn loop was historically implemented twice: a mutable in-memory machine
+and a serializable planner driven by the durable worker. They encoded the same
+phases and transitions in different shapes, so semantics could drift.
 
-Both real hosts now plan through the engine: the durable worker via
-`plan_next_host_turn`, and the in-process runtime since EVE-842. The mutable
+Both real hosts now advance the engine-owned `TurnExecution`: the durable path
+through `DurableExecution`, and the in-process runtime through
+`InProcessExecution`. The mutable
 machine survives only behind the `in_memory_loop` in `everruns-test-support`
 (moved out of core by EVE-875), which no shipped host drives.
 
@@ -29,10 +27,9 @@ loading messages, calling the model, running tools, emitting events, persisting
 The intended end state is that a durable host is an in-process host that
 persists between steps, rather than a second implementation of the same loop.
 
-Status: the value, planner, in-process rewiring, and shared Input/Reason/Act
-execution kernel have landed. Planning remains pure; phase effects cross
-neutral `everruns-core`/`everruns-provider` contracts. Later effect-extraction
-stages are proposals, not commitments.
+Status: the value, planner, stateful execution contract, immediate and durable
+drivers, and shared Input/Reason/Act kernel have landed. Planning remains pure;
+phase effects cross neutral `everruns-core`/`everruns-provider` contracts.
 
 ## Motivation
 
@@ -119,22 +116,29 @@ per-tool hook contracts, and injected service traits. Both in-process and
 durable paths call the same host composition over these engine executors; core
 has no atom implementation or compatibility module.
 
-### Stage 2 — fold in the durable bookkeeping
+### Stage 1d — one execution machine, two drivers (landed)
 
-Move `RuntimeTurnState`'s fields (iteration, call counts, cumulative usage,
-`previous_response_id`, first-token timing, final-answer preview) onto
-`TurnState`, so one value carries everything a resume needs. `plan_next_host_turn`
-becomes a thin projection of `next_action` rather than a parallel planner.
+`everruns-engine::TurnExecution` owns state advancement as well as planning.
+`everruns-host::InProcessExecution` retains it for the turn lifetime;
+`everruns-durable::DurableExecution` checkpoints the same state between
+activities. A cross-driver conformance test feeds identical outcomes into both
+implementations and compares the resulting engine state.
+
+### Stage 2 — fold in the durable bookkeeping (landed)
+
+`TurnState` owns iteration, call counts, cumulative usage,
+`previous_response_id`, first-token timing, and the final-answer preview in
+one value that carries everything a resume needs. `RuntimeTurnState` is only a
+host compatibility alias for this engine type.
 
 This is where the two representations actually converge, and it is the stage
 that pays for stage 1.
 
-### Stage 3 — introduce effects
+### Stage 3 — introduce effects (landed)
 
-Add `TurnEffect` and have transitions return the events that must be recorded.
-Both hosts apply them through one applier. Engine phases still emit their own
-events through the injected `EventEmitter` at this stage; the effect list is
-asserted against what they emit.
+`TurnLifecycleEffect` carries transition-owned lifecycle recording. Both hosts
+apply it through one host applier. Engine phases still emit phase-local events
+through the injected `EventEmitter`.
 
 ### Stage 4 — move phase recording into transition effects
 
@@ -142,10 +146,11 @@ One effect at a time: a phase stops emitting, the transition returns the effect
 instead, the applier performs it. Each move is a small PR with an unchanged
 event stream as its success bar (event-sequence tests over a fixed scenario).
 
-### Stage 5 — the durable host becomes a persisting in-process host
+### Stage 5 — the durable host becomes a persisting in-process host (landed)
 
-With no I/O left in the machine, the durable path reduces to: deserialize state,
-apply one operation, serialize, schedule. The parallel planner is deleted.
+The durable path restores `DurableExecution`, applies one engine transition,
+checkpoints its `TurnState`, and schedules the returned plan. The immediate
+path retains `InProcessExecution` and applies the same transition directly.
 
 ## Success bars
 
@@ -159,8 +164,8 @@ apply one operation, serialize, schedule. The parallel planner is deleted.
   rebuilds it from the serialized value must produce the same outcome as one
   that keeps it in memory (agentyk's
   `durable_host_replays_state_between_every_engine_step` is the model).
-- **Revertibility.** Until stage 5, `TurnStateMachine` stays; any stage can be
-  reverted without a migration.
+- **Revertibility.** Execution checkpoints remain the existing serialized
+  `TurnState`; no database migration is required by the driver split.
 
 ## Alternatives considered
 
@@ -183,14 +188,17 @@ converge later.
 
 - `crates/core/src/turn.rs` — `TurnStateMachine`, `TurnPhase`, `TurnAction`, `TurnOutcome`
 - `crates/core/src/turn_state.rs` — the stage-1 value
+- `crates/engine/src/machine.rs` — the shared `Execution` contract and serializable
+  `TurnExecution` state machine
 - `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
 - `crates/engine/src/execution/` — the shared Input/Reason/Act algorithms and
   engine-owned phase I/O values
 - `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs` —
   neutral contracts used by the engine and capability authors
-- `crates/host/src/turn_strategy.rs` — `plan_next_host_turn`, the runtime host's thin
-  I/O wrapper over the engine planner (plus compat re-exports of the pre-EVE-840 names),
+- `crates/host/src/turn_strategy.rs` — `advance_host_execution`, the runtime host's thin
+  I/O wrapper over an explicit engine driver (plus the legacy `plan_next_host_turn`
+  compatibility wrapper and pre-EVE-840 type aliases),
   and the host-fact resolvers / effect applier both runtime hosts share
 - `crates/host/src/runtime.rs` — `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)

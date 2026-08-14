@@ -12,16 +12,17 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::ExecutionContext;
 use everruns_durable::{
-    ActivityOptions, ClaimedTask, HeartbeatResponse, StoreError, TaskDefinition,
+    ActivityOptions, ClaimedTask, DurableExecution, HeartbeatResponse, StoreError, TaskDefinition,
     TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
     record_activity_started,
 };
 use everruns_engine::ActInput;
 use everruns_host::{
-    RuntimeActPlan, RuntimeTurnPlan, execute_act_activity as runtime_execute_act_activity,
+    RuntimeActPlan, RuntimeTurnPlan, advance_host_execution,
+    execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
-    execute_reason_activity as runtime_execute_reason_activity, plan_next_host_turn,
+    execute_reason_activity as runtime_execute_reason_activity,
 };
 use everruns_provider::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
@@ -1405,10 +1406,11 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
         );
     }
 
-    match plan_next_host_turn(
+    let mut execution = DurableExecution::new(input.clone());
+    match advance_host_execution(
         &WorkerRuntimeHost::new(adapters.clone()),
+        &mut execution,
         completed_activity,
-        input,
         output,
         pending_user_message_count,
     )

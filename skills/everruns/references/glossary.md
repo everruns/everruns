@@ -104,10 +104,11 @@ phase orchestration instead of duplicating atom wiring:
 - **RuntimeHostAdapter** / **RuntimeSessionLifecycle** — host seams.
 - **execute_input_activity / execute_reason_activity / execute_act_activity** —
   phase-local orchestration entrypoints.
-- **plan_next_host_turn(...)** with **RuntimeTurnState**, **RuntimeActPlan**,
-  **RuntimeTurnPlan** — durable-agnostic turn-strategy planning. The runtime
-  decides the next semantic step; the host owns queueing, retries, scheduling,
-  persistence, and resumption.
+- **advance_host_execution(...)** with an engine **Execution** driver —
+  durable-agnostic turn-strategy advancement. **plan_next_host_turn(...)** is
+  retained as a compatibility wrapper. The runtime decides the next semantic
+  step; the host owns queueing, retries, scheduling, persistence, and
+  resumption.
 
 `InProcessRuntime` itself implements `RuntimeHostAdapter` and drives its own turn
 loop by calling these canonical host activity functions directly.

@@ -65,6 +65,7 @@
 
 pub mod activity;
 pub mod engine;
+pub mod execution;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
@@ -101,6 +102,7 @@ pub mod prelude {
 // Re-export key types at crate root
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
+pub use execution::DurableExecution;
 pub use persistence::{
     CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry, DlqFilter,
     HeartbeatResponse, InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore,

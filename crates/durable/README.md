@@ -8,6 +8,10 @@ surviving process restarts and retrying failed work with backoff and circuit
 breaking. It is an internal building block of the Everruns workspace — the server
 and worker use it to keep long-running agent sessions progressing.
 
+`DurableExecution` is the checkpointed implementation of the shared
+`everruns-engine::Execution` contract. It persists only engine-owned turn state;
+the worker remains responsible for claiming activities and resolving host I/O.
+
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents.
 

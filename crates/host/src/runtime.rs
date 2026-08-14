@@ -3,6 +3,7 @@
 // and capability resolution path as the durable worker so behavior stays close.
 
 use crate::HostComposition;
+use crate::InProcessExecution;
 use crate::SessionFileSystemFactoryContext;
 use crate::backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
@@ -47,9 +48,7 @@ use everruns_core::{
     execution_loading::SessionStore, provider_resolution::ProviderStore,
     session_services::SessionStorageStore,
 };
-use everruns_engine::{
-    ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
-};
+use everruns_engine::{ActOutcome, ActivityOutcome, Execution, HostFacts, reason_schedules_act};
 use everruns_engine::{InputAtomInput, ReasonInput};
 use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
@@ -1119,7 +1118,7 @@ impl InProcessRuntime {
         // host operation each plan names and performs the lifecycle effects the
         // engine returns as data. There is no second copy of the planning brain
         // in the runtime.
-        let mut state = RuntimeTurnState {
+        let state = RuntimeTurnState {
             org_id,
             session_id,
             harness_id: snapshot.harness_id,
@@ -1155,7 +1154,17 @@ impl InProcessRuntime {
             },
         )
         .await?;
-        let mut plan = plan_after_process_input(&state, Some(turn_id), Utc::now());
+        let mut execution = InProcessExecution::new(state);
+        let transition = execution.advance(
+            ActivityOutcome::ProcessInput {
+                turn_id: Some(turn_id),
+            },
+            0,
+            Utc::now(),
+            HostFacts::default(),
+        );
+        crate::turn_strategy::perform_effects(self, org_id, session_id, transition.effects).await;
+        let mut plan = transition.plan;
 
         // Host-side bookkeeping for the returned `TurnResult`. These are
         // summaries of what the host executed, not inputs to any decision.
@@ -1166,8 +1175,8 @@ impl InProcessRuntime {
 
         loop {
             match plan {
-                RuntimeTurnPlan::ScheduleReason(next_state) => {
-                    state = next_state;
+                RuntimeTurnPlan::ScheduleReason(_) => {
+                    let state = execution.state().clone();
                     let mut prompt_message_ids = std::mem::take(&mut pending_prompt_message_ids);
                     prompt_message_ids.extend(
                         self.inject_steering_inputs(session_id, steering.drain())
@@ -1237,26 +1246,26 @@ impl InProcessRuntime {
                     let act_scheduling =
                         crate::turn_strategy::resolve_act_scheduling(self, &state, &reason_result)
                             .await?;
-                    let (next, effects) = plan_after_reason(
-                        &state,
-                        reason_result,
+                    let transition = execution.advance(
+                        ActivityOutcome::Reason(Box::new(reason_result)),
                         pending_user_message_count,
                         Utc::now(),
-                        act_scheduling,
+                        HostFacts {
+                            act_scheduling,
+                            ..HostFacts::default()
+                        },
                     );
-                    crate::turn_strategy::perform_effects(self, org_id, session_id, effects).await;
-                    plan = next;
+                    crate::turn_strategy::perform_effects(
+                        self,
+                        org_id,
+                        session_id,
+                        transition.effects,
+                    )
+                    .await;
+                    plan = transition.plan;
                 }
                 RuntimeTurnPlan::ScheduleAct(act_plan) => {
                     tool_calls_count += act_plan.input.tool_calls.len();
-                    // Same resume contract the durable host applies when it
-                    // dequeues the act task: the plan's response id / iteration
-                    // / request id override the carried state.
-                    state = *act_plan.resume_state;
-                    state.previous_response_id = act_plan.previous_response_id;
-                    state.iteration = act_plan.iteration;
-                    state.request_id = act_plan.request_id;
-
                     let act_result = execute_act_activity(self, act_plan.input).await?;
                     let outcome = ActOutcome {
                         blocked: act_result.blocked,
@@ -1267,10 +1276,23 @@ impl InProcessRuntime {
                             self, org_id, session_id, outcome,
                         )
                         .await;
-                    let (next, effects) =
-                        plan_after_act(&state, outcome, setup_connection_hint_enabled);
-                    crate::turn_strategy::perform_effects(self, org_id, session_id, effects).await;
-                    plan = next;
+                    let transition = execution.advance(
+                        ActivityOutcome::Act(outcome),
+                        0,
+                        Utc::now(),
+                        HostFacts {
+                            setup_connection_hint_enabled,
+                            ..HostFacts::default()
+                        },
+                    );
+                    crate::turn_strategy::perform_effects(
+                        self,
+                        org_id,
+                        session_id,
+                        transition.effects,
+                    )
+                    .await;
+                    plan = transition.plan;
                 }
                 RuntimeTurnPlan::Complete { stop_reason, error } => {
                     steering.close();

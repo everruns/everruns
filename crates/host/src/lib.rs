@@ -43,6 +43,7 @@ mod file_store_decorators;
 mod grep_limits;
 mod host;
 mod in_memory;
+mod in_process_execution;
 #[cfg(feature = "mcp")]
 mod mcp;
 #[cfg(feature = "mcp")]
@@ -98,6 +99,7 @@ pub use in_memory::{
     InMemoryProviderStore, InMemorySessionFileStore, InMemorySessionFileSystemFactory,
     InMemorySessionStorageStore, InMemorySessionStore,
 };
+pub use in_process_execution::InProcessExecution;
 #[cfg(feature = "process")]
 pub use process_command::ProcessCommandExecutor;
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
@@ -113,7 +115,9 @@ pub use session_file_system_factory::{
     DisabledSessionFileSystemFactory, FixedSessionFileSystemFactory, SessionFileSystemFactory,
     SessionFileSystemFactoryContext,
 };
-pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
+pub use turn_strategy::{
+    RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, advance_host_execution, plan_next_host_turn,
+};
 #[cfg(feature = "utility-openai")]
 pub use utility_llm::{
     OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_OPENAI_API_KEY_ENV,

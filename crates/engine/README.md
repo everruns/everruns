@@ -6,14 +6,14 @@
 [![Documentation](https://docs.rs/everruns-engine/badge.svg)](https://docs.rs/everruns-engine)
 [![License](https://img.shields.io/crates/l/everruns-engine.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-engine` owns the portable Input, Reason, and Act algorithms as well as
-the deterministic planner that transforms serializable turn state, activity
-outcomes, and host-resolved facts into the next plan and lifecycle effects.
+`everruns-engine` owns the abstract `Execution` contract, its serializable
+`TurnExecution` state machine, the portable Input/Reason/Act algorithms, and the
+deterministic turn planner. It transforms phase outcomes and host-resolved facts
+into the next plan and ordered lifecycle effects.
 
 Planning is pure. Execution effects cross injected contracts from
 `everruns-core` and `everruns-provider`; the engine does not select a store,
-transport, process runner, server, worker, platform, durable backend, or scale
-deployment.
+transport, process runner, server, worker, platform, or durable backend.
 
 It is a focused implementation crate in the [Everruns](https://everruns.com)
 ecosystem. Framework applications use `everruns`; runtime, worker, durable, and
@@ -32,6 +32,8 @@ fn accepts_plan(_state: &TurnState, _plan: &TurnPlan) {}
 ## What It Provides
 
 - Serializable turn state and activity outcomes
+- A stateful, serializable execution machine shared by all drivers
+- An open execution contract for immediate and checkpointed implementations
 - Pure next-turn planning functions
 - Portable Input, Reason, and Act executors over injected contracts
 - Engine-owned phase input/result types and concrete execution hooks
