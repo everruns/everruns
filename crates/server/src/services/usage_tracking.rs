@@ -84,7 +84,7 @@ impl EventListener for UsageTrackingListener {
             .db
             .create_llm_generation(
                 org_id,
-                event.session_id.uuid(),
+                Some(event.session_id.uuid()),
                 event.context.turn_id.as_ref().map(|id| id.uuid()),
                 Some(event.id.uuid()),
                 data.metadata.model.clone(),

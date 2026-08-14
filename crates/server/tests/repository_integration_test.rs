@@ -3753,3 +3753,59 @@ async fn list_org_session_tasks_pg() {
         "root filter must never cross the org boundary"
     );
 }
+
+/// EVE-898: knowledge-index sync has no session to attribute its embedding
+/// spend to, so `llm_generations.session_id` is nullable. The row must still
+/// insert and stay org-attributed — `org_id` is what usage reporting reads.
+#[tokio::test]
+async fn test_llm_generation_without_session_is_org_attributed() {
+    let backend = create_test_backend().await;
+    let model = format!("text-embedding-test-{}", &Uuid::now_v7().to_string()[..8]);
+
+    backend
+        .create_llm_generation(
+            TEST_ORG_ID,
+            None,
+            None,
+            None,
+            model.clone(),
+            Some("openai".to_string()),
+            8_192,
+            0,
+            0,
+            0,
+            Some(0.000_82),
+            None,
+            None,
+            None,
+            None,
+            chrono::Utc::now(),
+        )
+        .await
+        .expect("session-less generation inserts");
+
+    let pool = create_test_pool().await;
+    let (org_id, session_id, input_tokens, output_tokens, actual_cost_usd): (
+        i64,
+        Option<Uuid>,
+        i64,
+        i64,
+        Option<f64>,
+    ) = sqlx::query_as(
+        r#"
+        SELECT org_id, session_id, input_tokens, output_tokens, actual_cost_usd
+          FROM llm_generations
+         WHERE model = $1
+        "#,
+    )
+    .bind(&model)
+    .fetch_one(&pool)
+    .await
+    .expect("session-less generation is readable");
+
+    assert_eq!(org_id, TEST_ORG_ID, "spend stays attributed to the org");
+    assert_eq!(session_id, None, "no conversation triggered this call");
+    assert_eq!(input_tokens, 8_192);
+    assert_eq!(output_tokens, 0, "embeddings produce vectors, not tokens");
+    assert_eq!(actual_cost_usd, Some(0.000_82));
+}

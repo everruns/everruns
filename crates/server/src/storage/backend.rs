@@ -2873,7 +2873,7 @@ impl StorageBackend {
     pub async fn create_llm_generation(
         &self,
         org_id: i64,
-        session_id: Uuid,
+        session_id: Option<Uuid>,
         turn_id: Option<Uuid>,
         event_id: Option<Uuid>,
         model: String,
