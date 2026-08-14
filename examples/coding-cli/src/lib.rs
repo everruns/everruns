@@ -1,162 +1,283 @@
-//! A minimal coding agent built **only** on the public `everruns` library.
+//! A minimal coding agent built only on the public `everruns` library.
 //!
-//! This example is the executable acceptance test for the OSS library surface
-//! (EVE-835): it depends on `everruns` alone — never on `everruns-core` or
-//! `everruns-host` — and exercises the exact import path an application uses.
-//! It builds an [`Agent`](everruns::Agent) with example-local file tools defined
-//! via [`#[everruns::tool]`](everruns::tool), opens a [`Session`], streams the
-//! session's events, and runs one or more prompts.
-//!
-//! The heavy TUI/MCP variant this replaced needed host internals the public
-//! facade intentionally does not expose. Keeping the example inside the facade
-//! keeps it honest about what a library user can actually build today.
+//! The example opens provider-owned Git workspace heads, binds them through a
+//! Framework [`Environment`], and uses the built-in `session_file_system`
+//! capability. It deliberately contains no process-global workspace state and
+//! no application-defined filesystem tools.
 
-use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use everruns::{Agent, AgentBuilder};
+use anyhow::{Context, Result, anyhow, bail};
+use clap::Parser;
+use everruns::{
+    Agent, AgentBuilder, Environment, LocalConfig, LocalGitWorkspaceProvider, Session, SessionId,
+    Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
+};
 
-/// System prompt describing the agent and the tools it can call.
+/// System prompt for the coding agent.
 pub const SYSTEM_PROMPT: &str = "\
-You are a terminal coding assistant operating inside a workspace directory. \
-Use the `read_file`, `write_file`, and `list_dir` tools to inspect and edit \
-files relative to the workspace root. Prefer small, verifiable changes and \
-explain what you did.";
+You are a terminal coding assistant operating in the selected Git workspace head. \
+Use the Framework `read_file`, `write_file`, `edit_file`, `list_directory`, and \
+related session filesystem tools with paths under `/workspace`. Prefer small, \
+verifiable changes and explain what you did.";
 
-/// The workspace root the file tools resolve paths against.
-///
-/// Set once at startup with [`set_workspace`]; defaults to the process working
-/// directory when unset (e.g. in tests that call the tool impls directly).
-static WORKSPACE: OnceLock<PathBuf> = OnceLock::new();
+/// Command-line interface shared by the binary and its help-contract tests.
+#[derive(Parser, Debug)]
+#[command(
+    name = "ercode",
+    version,
+    about = "Everruns coding CLI on durable Framework workspace heads",
+    long_about = "Run a coding agent in a provider-owned Git workspace head. New heads are \
+isolated by default and survive process exit. Resume reopens the exact head recorded for a typed \
+session; shared-head mode is an explicit opt-in for a second session on an existing shared head.",
+    after_long_help = "Examples:\n  \
+ercode --offline --head feature --base main \"inspect the repository\"\n  \
+ercode --offline --head left --base main\n  \
+ercode --offline --resume session_0123456789abcdef0123456789abcdef\n  \
+ercode --offline --head team --shared\n  \
+ercode --offline --shared-head session_0123456789abcdef0123456789abcdef"
+)]
+pub struct Cli {
+    /// Trusted local Git repository for a new head (default: current directory).
+    #[arg(
+        short = 'C',
+        long = "cwd",
+        value_name = "REPOSITORY",
+        conflicts_with_all = ["resume", "shared_head"]
+    )]
+    cwd: Option<PathBuf>,
 
-/// Point the file tools at `root`. The first call wins; later calls are ignored.
-pub fn set_workspace(root: PathBuf) {
-    let _ = WORKSPACE.set(root);
+    /// Persistent Framework state (default: the OS user state directory).
+    #[arg(long, value_name = "DIRECTORY")]
+    state_dir: Option<PathBuf>,
+
+    /// Create a new named head (isolated unless --shared is also present).
+    #[arg(long, value_name = "NAME", conflicts_with_all = ["resume", "shared_head"])]
+    head: Option<String>,
+
+    /// Git revision used as the base for a new --head.
+    #[arg(long, value_name = "REVISION", requires = "head")]
+    base: Option<String>,
+
+    /// Create the new --head as explicitly shared instead of isolated.
+    #[arg(long, requires = "head")]
+    shared: bool,
+
+    /// Start a new session on the shared head recorded by this typed session id.
+    #[arg(
+        long,
+        value_name = "SESSION_ID",
+        conflicts_with_all = ["head", "resume"]
+    )]
+    shared_head: Option<SessionId>,
+
+    /// Resume this typed session on its exact recorded workspace head.
+    #[arg(
+        long,
+        value_name = "SESSION_ID",
+        conflicts_with_all = ["head", "shared_head"]
+    )]
+    resume: Option<SessionId>,
+
+    /// Deny workspace writes; new isolated heads are read/write by default.
+    #[arg(long)]
+    read_only: bool,
+
+    /// Model id to use with OpenAI (requires OPENAI_API_KEY). Ignored with --offline.
+    #[arg(long, default_value = "gpt-5-mini")]
+    model: String,
+
+    /// Run fully offline with the deterministic simulator (no credentials or network).
+    #[arg(long)]
+    offline: bool,
+
+    /// One-shot prompt. Omit to start an interactive REPL on the selected head.
+    #[arg(value_name = "PROMPT", trailing_var_arg = true)]
+    prompt: Vec<String>,
 }
 
-fn workspace() -> PathBuf {
-    WORKSPACE
-        .get()
-        .cloned()
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-}
-
-/// Resolve a caller-supplied relative path against the workspace root, rejecting
-/// absolute paths and any `..` traversal so a tool call cannot escape the
-/// workspace.
-fn safe_path(rel: &str) -> Result<PathBuf, String> {
-    let path = Path::new(rel);
-    if path.is_absolute() {
-        return Err(format!("path must be relative to the workspace: {rel:?}"));
+impl Cli {
+    pub fn repository(&self) -> Result<PathBuf> {
+        self.cwd
+            .clone()
+            .map(Ok)
+            .unwrap_or_else(|| std::env::current_dir().context("resolve current directory"))
     }
-    if path
-        .components()
-        .any(|c| matches!(c, Component::ParentDir | Component::Prefix(_)))
-    {
-        return Err(format!("path must not contain `..`: {rel:?}"));
+
+    pub fn state_dir(&self) -> Result<PathBuf> {
+        if let Some(path) = &self.state_dir {
+            return Ok(path.clone());
+        }
+        dirs::state_dir()
+            .or_else(dirs::data_local_dir)
+            .map(|root| root.join("everruns").join("ercode"))
+            .ok_or_else(|| anyhow!("cannot resolve an OS user state directory; pass --state-dir"))
     }
-    Ok(workspace().join(path))
+
+    pub fn session_mode(&self) -> SessionMode {
+        if let Some(session_id) = self.resume {
+            SessionMode::Resume { session_id }
+        } else if let Some(recorded_session) = self.shared_head {
+            SessionMode::SharedHead { recorded_session }
+        } else {
+            SessionMode::NewHead {
+                name: self.head.clone().unwrap_or_else(|| "ercode".to_string()),
+                base: self.base.clone(),
+                shared: self.shared,
+            }
+        }
+    }
+
+    pub fn workspace_policy(&self) -> WorkspacePolicy {
+        if self.read_only {
+            WorkspacePolicy::read_only()
+        } else {
+            WorkspacePolicy::read_write()
+        }
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    pub fn offline(&self) -> bool {
+        self.offline
+    }
+
+    pub fn prompt(&self) -> &[String] {
+        &self.prompt
+    }
 }
 
-// --- Tool implementations (plain, directly testable) --------------------
-//
-// The `#[everruns::tool]` attribute replaces the annotated function with a
-// zero-argument constructor, so the real logic lives in these `_impl` helpers
-// that the tools call and the tests exercise directly.
-
-async fn read_file_impl(path: &str) -> Result<String, String> {
-    let resolved = safe_path(path)?;
-    tokio::fs::read_to_string(&resolved)
-        .await
-        .map_err(|e| format!("read {path:?}: {e}"))
+/// Mutually exclusive ways to select the session and workspace head.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SessionMode {
+    NewHead {
+        name: String,
+        base: Option<String>,
+        shared: bool,
+    },
+    SharedHead {
+        recorded_session: SessionId,
+    },
+    Resume {
+        session_id: SessionId,
+    },
 }
 
-async fn write_file_impl(path: &str, contents: &str) -> Result<String, String> {
-    let resolved = safe_path(path)?;
-    if let Some(parent) = resolved.parent() {
-        tokio::fs::create_dir_all(parent)
+/// Public-API wrapper for one trusted local Git repository and its durable state.
+pub struct CodingWorkspace {
+    provider: Arc<LocalGitWorkspaceProvider>,
+    workspace: Option<Workspace>,
+    local: LocalConfig,
+}
+
+impl CodingWorkspace {
+    /// Open durable Framework state without selecting a new repository.
+    ///
+    /// Typed resume and shared-head reuse reopen the recorded workspace through
+    /// its opaque provider binding, so they intentionally use this constructor.
+    pub fn from_state(state_dir: impl AsRef<Path>) -> Result<Self> {
+        let state_dir = state_dir.as_ref();
+        let provider = Arc::new(
+            LocalGitWorkspaceProvider::new(state_dir.join("workspace-provider"))
+                .context("initialize the local Git workspace provider")?,
+        );
+        Ok(Self {
+            provider,
+            workspace: None,
+            local: LocalConfig::new(state_dir.join("runtime")),
+        })
+    }
+
+    /// Open a trusted Git repository through the public local workspace provider.
+    pub async fn open(repository: impl AsRef<Path>, state_dir: impl AsRef<Path>) -> Result<Self> {
+        let mut context = Self::from_state(state_dir)?;
+        let locator = repository.as_ref().to_str().ok_or_else(|| {
+            anyhow!("local Git repository path must be valid UTF-8 for durable resume")
+        })?;
+        let workspace = Workspace::open(context.provider.clone(), locator)
             .await
-            .map_err(|e| format!("create {}: {e}", parent.display()))?;
+            .context("open the trusted local Git repository")?;
+        context.workspace = Some(workspace);
+        Ok(context)
     }
-    tokio::fs::write(&resolved, contents.as_bytes())
-        .await
-        .map_err(|e| format!("write {path:?}: {e}"))?;
-    Ok(format!("wrote {} bytes to {path}", contents.len()))
-}
 
-async fn list_dir_impl(path: &str) -> Result<Vec<String>, String> {
-    let resolved = safe_path(path)?;
-    let mut reader = tokio::fs::read_dir(&resolved)
-        .await
-        .map_err(|e| format!("list {path:?}: {e}"))?;
-    let mut entries = Vec::new();
-    while let Some(entry) = reader
-        .next_entry()
-        .await
-        .map_err(|e| format!("list {path:?}: {e}"))?
-    {
-        entries.push(entry.file_name().to_string_lossy().into_owned());
+    /// Attach durable local session state, the workspace provider, and policy.
+    pub fn configure_agent(&self, builder: AgentBuilder, policy: WorkspacePolicy) -> AgentBuilder {
+        builder
+            .local(self.local.clone())
+            .workspace_provider(self.provider.clone())
+            .workspace_policy(policy)
     }
-    entries.sort();
-    Ok(entries)
+
+    /// Create a provider-owned head. Dropping the handle never destroys it.
+    pub async fn create_head(
+        &self,
+        name: impl Into<String>,
+        base: Option<&str>,
+        shared: bool,
+    ) -> Result<WorkspaceHead> {
+        let workspace = self
+            .workspace
+            .as_ref()
+            .ok_or_else(|| anyhow!("creating a head requires a trusted local Git repository"))?;
+        let mut builder = workspace.head(name);
+        if let Some(base) = base {
+            builder = builder.from_revision(base);
+        }
+        if shared {
+            builder = builder.shared();
+        }
+        builder.create().await.context("create Git workspace head")
+    }
+
+    /// Permanently bind a new session to the selected head before execution.
+    pub async fn start_session(&self, agent: &Agent, head: WorkspaceHead) -> Result<Session> {
+        let environment = Environment::builder()
+            .workspace(head)
+            .build()
+            .context("build the workspace environment")?;
+        agent
+            .session()
+            .environment(environment)
+            .start()
+            .await
+            .context("bind the session to its workspace head")
+    }
+
+    /// Resume a typed session on its exact persisted head.
+    pub async fn resume_session(&self, agent: &Agent, session_id: SessionId) -> Result<Session> {
+        agent
+            .resume(session_id)
+            .await
+            .with_context(|| format!("resume session {session_id} on its recorded head"))
+    }
+
+    /// Start a distinct session on an existing head that was created as shared.
+    pub async fn start_shared_session(
+        &self,
+        agent: &Agent,
+        recorded_session: SessionId,
+    ) -> Result<Session> {
+        let recorded = self.resume_session(agent, recorded_session).await?;
+        let head = recorded
+            .workspace_head()
+            .cloned()
+            .ok_or_else(|| anyhow!("session {recorded_session} has no recorded workspace head"))?;
+        if head.access() != WorkspaceHeadAccess::Shared {
+            bail!(
+                "session {recorded_session} records an isolated head; use --resume for that session or create a head with --shared"
+            );
+        }
+        self.start_session(agent, head).await
+    }
 }
 
-// --- Tools (public library surface via the attribute macro) -------------
-
-/// Read a UTF-8 text file, relative to the workspace root.
-#[everruns::tool]
-async fn read_file(path: String) -> Result<String, String> {
-    read_file_impl(&path).await
-}
-
-/// Create or replace a UTF-8 text file, relative to the workspace root.
-#[everruns::tool]
-async fn write_file(path: String, contents: String) -> Result<String, String> {
-    write_file_impl(&path, &contents).await
-}
-
-/// List the entries of a directory relative to the workspace root (defaults to
-/// the root itself).
-#[everruns::tool]
-async fn list_dir(path: Option<String>) -> Result<serde_json::Value, String> {
-    let rel = path.unwrap_or_else(|| ".".to_string());
-    let entries = list_dir_impl(&rel).await?;
-    Ok(serde_json::json!({ "path": rel, "entries": entries }))
-}
-
-/// Start a coding [`Agent`] builder wired with the file tools.
+/// Start a coding [`Agent`] builder using Framework filesystem tools.
 pub fn agent_builder() -> AgentBuilder {
     Agent::builder()
         .instructions(SYSTEM_PROMPT)
-        .tool(read_file())
-        .tool(write_file())
-        .tool(list_dir())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::tempdir;
-
-    #[tokio::test]
-    async fn write_then_read_round_trips() {
-        let dir = tempdir().unwrap();
-        set_workspace(dir.path().to_path_buf());
-
-        let msg = write_file_impl("notes/hello.txt", "hi there")
-            .await
-            .unwrap();
-        assert!(msg.contains("wrote"), "{msg}");
-        let back = read_file_impl("notes/hello.txt").await.unwrap();
-        assert_eq!(back, "hi there");
-
-        let entries = list_dir_impl(".").await.unwrap();
-        assert!(entries.contains(&"notes".to_string()), "{entries:?}");
-    }
-
-    #[tokio::test]
-    async fn rejects_traversal_and_absolute_paths() {
-        assert!(read_file_impl("../secret").await.is_err());
-        assert!(read_file_impl("/etc/passwd").await.is_err());
-    }
+        .capability("session_file_system")
 }

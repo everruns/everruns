@@ -1,8 +1,7 @@
 //! Acceptance tests for the coding-cli example (EVE-835).
 //!
-//! These prove the example works through the public `everruns` surface and,
-//! crucially, that it never reaches for `everruns-core`/`everruns-host` —
-//! the whole point of the example.
+//! These prove the example works through the public `everruns` surface and
+//! never recreates Framework-owned workspace or filesystem behavior.
 
 use std::path::Path;
 
@@ -48,8 +47,7 @@ async fn session_history_persists_across_two_prompts() {
     assert!(!session.id().is_empty());
 }
 
-/// The example must depend only on `everruns`. Scan its own sources and manifest
-/// for any direct use of the internal crates and fail loudly if one creeps in.
+/// Scan sources and the manifest for internal dependencies or duplicate file tools.
 #[test]
 fn sources_do_not_reference_core_or_host() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -67,16 +65,49 @@ fn sources_do_not_reference_core_or_host() {
         }
     }
 
+    let duplicate_workspace_mechanisms = [
+        "set_workspace",
+        "OnceLock<PathBuf>",
+        "safe_path",
+        "tokio::fs",
+        "#[everruns::tool]",
+    ];
+    for file in ["src/lib.rs", "src/main.rs"] {
+        let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
+        for needle in duplicate_workspace_mechanisms {
+            assert!(
+                !text.contains(needle),
+                "{file} contains `{needle}`; workspace I/O must stay Framework-owned"
+            );
+        }
+    }
+
     // Check dependency declarations, not prose — strip `#` comments per line so a
     // crate named in an explanatory comment is not a false positive.
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     for line in manifest.lines() {
         let code = line.split('#').next().unwrap_or("");
-        for needle in ["everruns-core", "everruns-host", "everruns-anthropic"] {
+        for needle in [
+            "everruns-core",
+            "everruns-host",
+            "everruns-anthropic",
+            "everruns-local",
+        ] {
             assert!(
                 !code.contains(needle),
                 "Cargo.toml declares `{needle}`; the example must depend only on `everruns`"
             );
         }
     }
+}
+
+#[test]
+fn coding_cli_changes_trigger_workspace_rust_ci() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let workflow =
+        std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("read CI workflow");
+    assert!(
+        workflow.contains("- 'examples/coding-cli/**'"),
+        "coding CLI changes must trigger workspace Rust compilation and tests"
+    );
 }

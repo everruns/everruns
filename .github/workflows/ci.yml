@@ -124,6 +124,9 @@ jobs:
             rust:
               - 'crates/**'
               - 'integrations/**'
+              # Public application examples are workspace members and must
+              # compile/test whenever their own code changes.
+              - 'examples/coding-cli/**'
               - 'scripts/cli-e2e-test.sh'
               - 'scripts/lib/check-everruns-examples.sh'
               - 'Cargo.toml'
