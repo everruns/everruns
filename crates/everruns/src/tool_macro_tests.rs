@@ -5,8 +5,8 @@
 //! `pub(crate)` simulator hook. Compile-pass/compile-fail coverage of rejected
 //! signatures lives in `tests/ui/` via `trybuild`.
 
-use everruns_core::ToolCall;
 use everruns_core::tools::Tool as CoreTool;
+use everruns_provider::tool_types::ToolCall;
 use serde_json::{Value, json};
 
 use crate::{Agent, Model};

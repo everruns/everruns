@@ -2,8 +2,8 @@ use super::queries as q;
 use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
 use crate::domains::messages::CreateMessageContext;
-use everruns_core::typed_id::{AgentId, SessionId, SessionParticipantId};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
+use everruns_provider::typed_id::{AgentId, SessionId, SessionParticipantId};
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -417,8 +417,9 @@ mod tests {
         SessionParticipantRow, SessionRow,
     };
     use async_trait::async_trait;
-    use everruns_core::typed_id::{HarnessId, MessageId};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
+    use everruns_provider::typed_id::PrincipalId;
+    use everruns_provider::typed_id::{HarnessId, MessageId};
     use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};

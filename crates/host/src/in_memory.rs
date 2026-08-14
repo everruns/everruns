@@ -5,29 +5,106 @@
 use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_core::AgentCapabilityConfig;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::agent_definition::AgentDefinition;
-use everruns_core::credential_provider::CredentialProvider;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::harness_definition::HarnessDefinition;
-use everruns_core::provider::DriverId;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::{
-    execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, provider_resolution::ProviderStore,
-    provider_resolution::ResolvedModel, session_files::SessionFileSystem,
+    COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointStore,
+    ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker, execution_loading::AgentStore,
+    execution_loading::HarnessStore, execution_loading::SessionStore,
+    provider_resolution::ProviderStore, session_files::SessionFileSystem,
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
 };
 use everruns_platform::SessionMutator;
+use everruns_provider::credential_provider::CredentialProvider;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::runtime_provider::ProviderKey;
+use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+type CheckpointKey = (SessionId, String, String, u32);
+
+/// Application-grade in-memory compaction checkpoint store for embedded hosts.
+#[derive(Debug, Default)]
+pub struct InMemoryCompactionCheckpointStore {
+    checkpoints: RwLock<HashMap<CheckpointKey, CompactionCheckpoint>>,
+    proactive_attempts: ProactiveCompactionAttemptTracker,
+}
+
+#[async_trait]
+impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
+    async fn get_latest(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<CompactionCheckpoint>> {
+        Ok(self
+            .checkpoints
+            .read()
+            .await
+            .get(&(
+                session_id,
+                provider_type.to_string(),
+                model.to_string(),
+                COMPACTION_CHECKPOINT_FORMAT_VERSION,
+            ))
+            .cloned())
+    }
+
+    async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool> {
+        let key = (
+            checkpoint.session_id,
+            checkpoint.provider_type.clone(),
+            checkpoint.model.clone(),
+            checkpoint.format_version,
+        );
+        let mut checkpoints = self.checkpoints.write().await;
+        if checkpoints
+            .get(&key)
+            .is_some_and(|current| current.source_sequence >= checkpoint.source_sequence)
+        {
+            return Ok(false);
+        }
+        checkpoints.insert(key, checkpoint);
+        Ok(true)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<ProactiveCompactionAttempt>> {
+        Ok(self
+            .proactive_attempts
+            .get(session_id, provider_type, model)
+            .await)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) -> Result<()> {
+        self.proactive_attempts
+            .record(session_id, provider_type, model, attempt)
+            .await;
+        Ok(())
+    }
+}
 
 /// Application-grade in-memory agent store for embedded hosts.
 #[derive(Debug, Default, Clone)]
@@ -92,8 +169,10 @@ impl HarnessStore for InMemoryHarnessStore {
 /// Application-grade in-memory provider store for embedded hosts.
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryProviderStore {
-    models: Arc<RwLock<HashMap<ModelId, ResolvedModel>>>,
-    default_model: Arc<RwLock<Option<ResolvedModel>>>,
+    models: Arc<RwLock<HashMap<ModelId, ModelSpec>>>,
+    default_model: Arc<RwLock<Option<ModelSpec>>>,
+    provider_configs:
+        Arc<RwLock<HashMap<ProviderKey, everruns_provider::driver_registry::ProviderConfig>>>,
 }
 
 impl InMemoryProviderStore {
@@ -109,64 +188,86 @@ impl InMemoryProviderStore {
             .resolve(&DriverId::OpenAI)
             .filter(|credentials| credentials.api_key.is_some())
         {
+            let config = everruns_provider::driver_registry::ProviderConfig::new(DriverId::OpenAI)
+                .with_api_key(credentials.api_key.expect("filtered above"));
+            let config = match credentials.base_url {
+                Some(base_url) => config.with_base_url(base_url),
+                None => config,
+            };
+            store.set_provider_config(config).await;
             store
-                .set_default_model(ResolvedModel {
-                    model: "gpt-5.4".to_string(),
-                    provider_type: DriverId::OpenAI,
-                    api_key: credentials.api_key,
-                    base_url: credentials.base_url,
-                    provider_metadata: None,
-                })
+                .set_default_model_spec(ModelSpec::on("openai", "gpt-5.4"))
                 .await;
         } else if let Some(credentials) = provider
             .resolve(&DriverId::Anthropic)
             .filter(|credentials| credentials.api_key.is_some())
         {
+            let config =
+                everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
+                    .with_api_key(credentials.api_key.expect("filtered above"));
+            let config = match credentials.base_url {
+                Some(base_url) => config.with_base_url(base_url),
+                None => config,
+            };
+            store.set_provider_config(config).await;
             store
-                .set_default_model(ResolvedModel {
-                    model: "claude-sonnet-4-20250514".to_string(),
-                    provider_type: DriverId::Anthropic,
-                    api_key: credentials.api_key,
-                    base_url: credentials.base_url,
-                    provider_metadata: None,
-                })
+                .set_default_model_spec(ModelSpec::on("anthropic", "claude-sonnet-4-20250514"))
                 .await;
         }
         store
     }
 
     /// Create a provider store with one default model.
-    pub async fn with_default(model: ResolvedModel) -> Self {
+    pub async fn with_default(model: ModelSpec) -> Self {
         let store = Self::new();
-        store.set_default_model(model).await;
+        store.set_default_model_spec(model).await;
         store
     }
 
     /// Insert or replace a model by id.
-    pub async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
+    pub async fn add_model(&self, model_id: ModelId, model: ModelSpec) {
         self.models.write().await.insert(model_id, model);
     }
 
     /// Set the default model used when a session has no explicit model id.
-    pub async fn set_default_model(&self, model: ResolvedModel) {
+    pub async fn set_default_model_spec(&self, model: ModelSpec) {
         *self.default_model.write().await = Some(model);
+    }
+
+    /// Set credential-bearing construction material independently from model identity.
+    pub async fn set_provider_config(
+        &self,
+        config: everruns_provider::driver_registry::ProviderConfig,
+    ) {
+        self.provider_configs
+            .write()
+            .await
+            .insert(config.provider.clone(), config);
     }
 
     /// Remove all configured models and the default.
     pub async fn clear(&self) {
         self.models.write().await.clear();
         *self.default_model.write().await = None;
+        self.provider_configs.write().await.clear();
     }
 }
 
 #[async_trait]
 impl ProviderStore for InMemoryProviderStore {
-    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
+    async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
 
-    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
+    async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
         Ok(self.default_model.read().await.clone())
+    }
+
+    async fn get_provider_config(
+        &self,
+        provider: &ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        Ok(self.provider_configs.read().await.get(provider).cloned())
     }
 }
 

@@ -1,7 +1,7 @@
 use super::types::{ImageInfo, StoredImageResponse};
 use crate::domains::common::CommandError;
 use crate::storage::{ImageInfoRow, ImageRow};
-use everruns_core::typed_id::ImageId;
+use everruns_provider::typed_id::ImageId;
 
 pub fn parse_image_id(input: &str) -> Result<ImageId, CommandError> {
     input

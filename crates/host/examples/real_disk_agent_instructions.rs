@@ -16,12 +16,13 @@ use everruns_test_support::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use everruns_builtins::AgentInstructionsCapability;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
-    HarnessDefinition, SessionExecutionState, provider_resolution::ResolvedModel,
+    AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
 use tempfile::TempDir;
 
@@ -56,17 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .llm_sim(LlmSimConfig::fixed("ack"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(everruns_host::SeededHarness {
             id: harness_id,
             definition: HarnessDefinition {
-                capabilities: vec![AgentCapabilityConfig::new("agent_instructions")],
+                capabilities: vec![everruns_capability::CapabilityRef::new(
+                    "agent_instructions",
+                )],
                 ..HarnessDefinition::new("coding", "You are a coding assistant.")
             },
         })
@@ -77,7 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .session(ExecutionSession {
             id: session_id,
-            workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
+            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),

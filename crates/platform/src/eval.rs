@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use everruns_core::typed_id::{
+use everruns_provider::typed_id::{
     AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId, ModelId,
     SessionId,
 };

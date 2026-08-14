@@ -14,12 +14,12 @@ use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 use chrono::Utc;
 use everruns_core::Controls;
 use everruns_core::atoms::ReasonResult;
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::typed_id::{SessionId, TurnId};
 use everruns_engine::{
     ActOutcome, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
     plan_next_turn, reason_schedules_act,
 };
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{SessionId, TurnId};
 
 // The turn-planning types live in `everruns-engine` without a `Runtime`
 // prefix. These aliases are the host's stable public names for them, used by

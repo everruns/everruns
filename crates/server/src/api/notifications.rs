@@ -5,6 +5,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::notifications::NotificationService;
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
+use crate::kernel_imports::{Caller, everruns_provider::typed_id::NotificationId};
 use crate::notification_notifications::NotificationNotificationBroadcaster;
 use crate::storage::StorageBackend;
 use axum::{
@@ -16,7 +17,6 @@ use axum::{
 };
 use axum_extra::extract::Query;
 use chrono::{DateTime, Utc};
-use everruns_core::{Caller, NotificationId};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::broadcast;

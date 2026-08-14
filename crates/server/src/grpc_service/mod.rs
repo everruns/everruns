@@ -430,7 +430,11 @@ struct GrpcSessionTaskWaker {
 
 #[async_trait::async_trait]
 impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWaker {
-    async fn wake(&self, session_id: everruns_core::SessionId, text: &str) -> anyhow::Result<()> {
+    async fn wake(
+        &self,
+        session_id: everruns_provider::typed_id::SessionId,
+        text: &str,
+    ) -> anyhow::Result<()> {
         let session = self
             .db
             .get_session_unscoped(session_id)
@@ -447,7 +451,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
             return Ok(());
         };
 
-        let message_id = everruns_core::MessageId::new();
+        let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
         let core_message = everruns_core::Message {
             id: message_id,

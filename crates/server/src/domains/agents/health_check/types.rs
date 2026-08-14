@@ -130,7 +130,7 @@ const STALE_ERROR_MESSAGE: &str =
 
 impl From<AgentHealthCheckRunRow> for HealthCheckRun {
     fn from(row: AgentHealthCheckRunRow) -> Self {
-        use everruns_core::typed_id::AgentId;
+        use everruns_provider::typed_id::AgentId;
         Self {
             id: row.public_id,
             agent_id: row.agent_id.map(|id| AgentId::from_uuid(id).to_string()),

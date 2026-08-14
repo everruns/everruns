@@ -3124,7 +3124,8 @@ mod tests {
             .iter()
             .map(|s| s.capability_id().to_string())
             .collect();
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Build a ToolRegistry exactly as the worker does
@@ -3173,7 +3174,8 @@ mod tests {
             .iter()
             .map(|s| s.capability_id().to_string())
             .collect();
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         // Every tool definition must have a matching tool implementation
@@ -3223,7 +3225,8 @@ mod tests {
             .iter()
             .map(|s| s.capability_id().to_string())
             .collect();
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let collected = collect_capabilities(&cap_ids, &registry, &ctx).await;
 
         let tool_names: Vec<&str> = collected

@@ -12,22 +12,23 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::Event;
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TaskLinks,
     TaskWakePolicy,
 };
-use everruns_core::{
-    CapabilityRegistry, DriverId, InputMessage, ToolCall, provider_resolution::ResolvedModel,
-};
+use everruns_core::{CapabilityRegistry, InputMessage};
 use everruns_host::{
     AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
     RealDiskFileStore, RuntimeHostAdapter, SessionBuilder, SessionFileSystemFactory,
     SessionFileSystemFactoryContext,
 };
 use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt, TestMathCapability};
 
 // ---- Caller-supplied event bus decorator ----------------------------------
@@ -60,16 +61,16 @@ impl SessionFileSystemFactory for FlaggingFactory {
     async fn create_session_file_system(
         &self,
         _context: SessionFileSystemFactoryContext,
-    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
+    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
         self.used.store(true, Ordering::SeqCst);
         Ok(Arc::new(RealDiskFileStore::new(self.root.clone())?))
     }
 }
 
 fn ids() -> (
-    everruns_core::HarnessId,
-    everruns_core::AgentId,
-    everruns_core::SessionId,
+    everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::AgentId,
+    everruns_provider::typed_id::SessionId,
 ) {
     (
         "harness_00000000000000000000000000000091".parse().unwrap(),
@@ -190,13 +191,7 @@ async fn seam_task_lifecycle_round_trips_through_injected_registry() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .backends(local.runtime_backends.clone())
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .llm_sim(LlmSimConfig::fixed("ok"))
         .harness(HarnessBuilder::new("h", "p").id(harness_id).build())
         .agent(AgentBuilder::new("a", "p").id(agent_id).build())

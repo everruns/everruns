@@ -13,11 +13,11 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_platform::vector_store::{
     EmbeddingCallUsage, KnowledgeIndexCitation, KnowledgeIndexSearch, KnowledgeIndexSearchOutcome,
     VectorQuery, VectorStore,
 };
+use everruns_provider::driver_registry::{DriverRegistry, EmbedRequest};
 
 use super::embedding::build_embeddings_driver;
 use crate::services::ProviderResolverService;
@@ -81,7 +81,7 @@ impl KnowledgeIndexSearchService {
         let response = embedder
             .driver
             .embed(
-                &everruns_core::ProviderEndpoint::default(),
+                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
                 EmbedRequest {
                     texts: vec![query.to_string()],
                     model: embedder.model_id,

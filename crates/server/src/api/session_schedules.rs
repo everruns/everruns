@@ -10,7 +10,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::session_schedule::SessionSchedule;
-use everruns_core::typed_id::{ScheduleId, SessionId};
+use everruns_provider::typed_id::{ScheduleId, SessionId};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, UrlBuilder, WithUrls, impl_auth_state,

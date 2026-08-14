@@ -24,10 +24,10 @@ use everruns_core::ard_attachment::{
 use everruns_core::mcp_server::{McpServerTransportType, ScopedMcpServer};
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{validate_safe_url, validate_url_dns_pinned};
 use everruns_http::DirectEgressService;
+use everruns_provider::tool_types::ToolHints;
+use everruns_provider::url_validation::{validate_safe_url, validate_url_dns_pinned};
 
 use crate::client::{
     ArdRegistryClient, CatalogEntry, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER, SearchQuery,

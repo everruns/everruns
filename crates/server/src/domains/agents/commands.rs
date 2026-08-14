@@ -11,12 +11,13 @@ use super::types::{
 };
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
-use crate::max_iterations;
-use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId};
-use everruns_core::{
-    AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
+use crate::kernel_imports::{
+    AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers,
+    everruns_provider::tool_types::ToolDefinition,
 };
+use crate::max_iterations;
 use everruns_platform::{Agent, AgentStatus, AgentVersion, AgentVersionChangeKind};
+use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -1682,7 +1683,7 @@ inventory::submit! { CommandDescriptor::of::<ForkAgentVersion>() }
 pub struct PreviewAgent {
     pub system_prompt: Option<String>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
@@ -1772,7 +1773,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
 pub struct AnalyzeAgent {
     pub system_prompt: Option<String>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
@@ -1949,15 +1950,15 @@ inventory::submit! { CommandDescriptor::of::<CheckAgentName>() }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::CapabilityService;
-    use crate::storage::StorageBackend;
-    use crate::storage::models::CreateHarnessRow;
-    use async_trait::async_trait;
-    use everruns_core::{
+    use crate::kernel_imports::{
         AgentLoopError, Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver,
         LlmResponse, LlmResponseStream, OrgRole, Result as CoreResult, UtilityLlmRequest,
         UtilityLlmService,
     };
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::CreateHarnessRow;
+    use async_trait::async_trait;
     use everruns_platform::FeatureFlags;
     use std::sync::Arc;
     use uuid::Uuid;

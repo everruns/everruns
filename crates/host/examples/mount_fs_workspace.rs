@@ -11,8 +11,9 @@
 //
 // See `knowledge/runtime-resources/file-store.md` for the contract.
 
-use everruns_core::{MountFs, SessionId, WorkspaceRootSet, session_files::SessionFileSystem};
+use everruns_core::{MountFs, WorkspaceRootSet, session_files::SessionFileSystem};
 use everruns_host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 #[tokio::main]

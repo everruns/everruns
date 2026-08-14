@@ -18,7 +18,7 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{ImageId, SessionId};
+use everruns_provider::typed_id::{ImageId, SessionId};
 use image::ImageFormat;
 use image::ImageReader;
 use serde::{Deserialize, Serialize};

@@ -19,6 +19,7 @@ use tracing::error;
 use crate::background::BackgroundExecutableTool;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
+    ToolResultImage,
 };
 use crate::{
     tool_context::ToolContext, tool_context::ToolContextService, tool_context::ToolContextServices,
@@ -35,14 +36,6 @@ use crate::tool_execution::ToolExecutor;
 // ============================================================================
 // Tool Execution Result - Error Handling Contract
 // ============================================================================
-
-/// Image data returned by a tool alongside text results.
-///
-/// This allows tools (built-in or MCP) to return images that are sent
-/// to the LLM as native image content blocks, not stringified JSON.
-// `ToolResultImage` now lives in the provider abstraction (`tool_types`), which
-// is re-exported here so `crate::tools::ToolResultImage` keeps resolving.
-pub use crate::tool_types::ToolResultImage;
 
 /// Result of a tool execution.
 ///
@@ -565,9 +558,9 @@ impl ToolRegistry {
 
     /// Create a tool registry with default built-in tools.
     ///
-    /// This includes:
-    /// - `echo`: Echoes back the provided message
-    /// - `report_progress`: Emits deterministic external progress updates
+    /// This includes `report_progress`, the neutral progress-reporting
+    /// contract tool. Test doubles such as echo tools belong to test-support
+    /// or the test that owns them.
     ///
     /// Test fixture tools (test math/weather) are NOT included: they moved to
     /// the `everruns-test-support` crate (EVE-875) and are registered
@@ -576,7 +569,6 @@ impl ToolRegistry {
         use crate::progress_reporting::ReportProgressTool;
 
         let builder = ToolRegistry::builder()
-            .tool(EchoTool)
             // NOTE: `spawn_background` is intentionally NOT a default tool —
             // it is contributed by the `background_execution` capability,
             // which is auto-activated by
@@ -599,7 +591,7 @@ impl ToolRegistry {
     /// controls such as network ACLs, egress routing, storage, or filesystem
     /// mediation.
     pub fn with_monitor_probe_defaults() -> Self {
-        ToolRegistry::builder().tool(EchoTool).build()
+        Self::new()
     }
 
     /// Register a tool with the registry.
@@ -789,9 +781,11 @@ impl Default for ToolRegistryBuilder {
 // Built-in Tools
 // ============================================================================
 
-/// A tool that echoes back its arguments (useful for testing)
+/// A tool that echoes back its arguments (useful for testing).
+#[cfg(test)]
 pub struct EchoTool;
 
+#[cfg(test)]
 #[async_trait]
 impl Tool for EchoTool {
     fn name(&self) -> &str {
@@ -839,12 +833,14 @@ impl Tool for EchoTool {
     }
 }
 
-/// A tool that always fails (useful for testing error handling)
+/// A tool that always fails (useful for testing error handling).
+#[cfg(test)]
 pub struct FailingTool {
     error_message: String,
     use_internal_error: bool,
 }
 
+#[cfg(test)]
 impl FailingTool {
     /// Create a failing tool with a tool-level error
     pub fn with_tool_error(message: impl Into<String>) -> Self {
@@ -863,12 +859,14 @@ impl FailingTool {
     }
 }
 
+#[cfg(test)]
 impl Default for FailingTool {
     fn default() -> Self {
         Self::with_tool_error("Tool execution failed")
     }
 }
 
+#[cfg(test)]
 #[async_trait]
 impl Tool for FailingTool {
     fn name(&self) -> &str {
@@ -1192,7 +1190,6 @@ mod tests {
         let registry = ToolRegistry::with_defaults();
 
         // Core execution-contract tools only.
-        assert!(registry.has("echo"), "should have echo");
         // spawn_background is contributed by the background_execution
         // capability (auto-activated) — it must NOT be in defaults.
         assert!(
@@ -1218,25 +1215,28 @@ mod tests {
             assert!(!registry.has(tool), "`{tool}` must not be a core default");
         }
 
-        assert_eq!(registry.len(), 2, "should have two core default tools");
+        assert_eq!(registry.len(), 1, "should have one core default tool");
     }
 
     #[tokio::test]
     async fn test_with_defaults_tools_are_executable() {
         let registry = ToolRegistry::with_defaults();
 
-        // Test echo tool execution
+        // The neutral progress contract remains executable as a core default.
         let tool_call = ToolCall {
             id: "call_1".to_string(),
-            name: "echo".to_string(),
-            arguments: serde_json::json!({"message": "hello from defaults"}),
+            name: "report_progress".to_string(),
+            arguments: serde_json::json!({
+                "status": "completed",
+                "summary": "Boundary audit complete"
+            }),
         };
 
-        let tool_def = registry.get("echo").unwrap().to_definition();
+        let tool_def = registry.get("report_progress").unwrap().to_definition();
         let result = registry.execute(&tool_call, &tool_def).await.unwrap();
 
         assert!(result.error.is_none());
-        assert_eq!(result.result.unwrap()["echoed"], "hello from defaults");
+        assert_eq!(result.result.unwrap()["summary"], "Boundary audit complete");
     }
 
     /// Regression: with_defaults() must NOT include capability-provided tools like

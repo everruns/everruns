@@ -16,9 +16,9 @@
 //!
 //! # Main Surfaces
 //!
-//! - Agent, harness, session, message, event, and typed ID models
+//! - Agent, harness, session, message, and event models
 //! - Capability and tool traits for composing agent behavior
-//! - Provider-neutral LLM messages, streams, and driver registration
+//! - Provider-neutral execution inputs and effect contracts
 //! - Context assembly for the shared `input -> reason -> act` execution flow
 //! - Neutral storage, event, capability, and host-service contracts
 //!
@@ -39,15 +39,18 @@
 //! crate; core carries no test implementations.
 //!
 //! Composition is not core's job either. The execution surface an embedder
-//! assembles — capability registry, driver registry, egress, utility LLM and
+//! assembles — capability registry, provider registry, egress, utility LLM and
 //! the session filesystem factory — is `everruns_host::HostComposition`
-//! (EVE-887); core owns the registries themselves, not the bundle that selects
-//! a deployment's shape.
+//! (EVE-887); core owns the execution contracts, not the bundle that selects a
+//! deployment's shape. Provider identity, driver registration, typed IDs, and
+//! LLM wire abstractions live in `everruns-provider` and are imported from
+//! that crate directly.
 //!
 //! # Example
 //!
 //! ```
-//! use everruns_core::{CapabilityRegistry, DriverRegistry};
+//! use everruns_core::CapabilityRegistry;
+//! use everruns_provider::DriverRegistry;
 //!
 //! let capabilities = CapabilityRegistry::new();
 //! assert!(capabilities.is_empty());
@@ -56,11 +59,16 @@
 //! assert!(drivers.registered_providers().is_empty());
 //! ```
 
+// Published library code is safe-only. Unit tests use Rust 2024's unsafe
+// environment mutation APIs under process-wide test locks.
+#![cfg_attr(not(test), forbid(unsafe_code))]
+#![deny(rustdoc::broken_intra_doc_links)]
+
 // Runtime types (tool definitions, capability types)
 pub mod annotation_hook;
 pub mod capability_types;
 pub mod tool_fingerprint;
-pub use everruns_provider::tool_types;
+use everruns_provider::tool_types;
 
 // User-defined hooks (see knowledge/runtime-resources/user-hooks.md)
 pub mod hook_adapter;
@@ -101,7 +109,7 @@ pub mod error_reporter;
 
 // Typed ID system (type-safe prefixed identifiers)
 // See knowledge/foundations/id-schema.md for specification
-pub use everruns_provider::typed_id;
+use everruns_provider::typed_id;
 
 // Budget types (budgets, ledger, rules, actions)
 pub mod background;
@@ -113,8 +121,6 @@ pub mod agent_definition;
 pub mod agent_identity;
 pub mod ard_attachment;
 pub mod capability_dto;
-pub use everruns_provider::credential_provider;
-pub use everruns_provider::credential_schema;
 // EVE-878: the persisted eval aggregates (`Eval`, `EvalCase`, `EvalRun`,
 // `EvalCaseResult`, `EvalRunDataset`, targets/scorers and their lifecycle
 // enums) moved to the `everruns-platform` crate — they are product
@@ -125,9 +131,8 @@ pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
-pub use everruns_provider::model;
-pub use everruns_provider::model_discovery;
-pub use everruns_provider::model_profiles;
+use everruns_provider::model;
+use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
@@ -141,9 +146,9 @@ pub mod network_access;
 pub mod organization;
 pub mod payment;
 pub mod principal;
-pub use everruns_provider::model_spec;
-pub use everruns_provider::provider;
-pub use everruns_provider::runtime_provider;
+use everruns_provider::model_spec;
+use everruns_provider::provider;
+use everruns_provider::runtime_provider;
 pub mod session;
 pub mod session_file;
 pub mod session_path;
@@ -166,7 +171,6 @@ pub mod progress_reporting;
 pub mod resource_names;
 
 // URL validation for SSRF prevention (shared utility)
-pub use everruns_provider::url_validation;
 
 // Plugin compiler (directory → declarative capability definition)
 // See knowledge/integrations/plugins.md
@@ -178,26 +182,24 @@ pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
 pub mod compaction_policy;
-pub use everruns_provider::compact;
+use everruns_provider::compact;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
-pub use everruns_provider::driver_registry;
-pub use everruns_provider::error;
+use everruns_provider::driver_registry;
+use everruns_provider::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
-pub use everruns_provider::llm_retry;
-// Adapters from core domain types (Message, RuntimeAgent, ResolvedModel) to the
-// provider driver types. Lives on the core side to keep the crate dependency
-// one-directional (core -> everruns-provider).
+use everruns_provider::llm_retry;
+// Adapters from core domain types to provider driver types. Lives on the core
+// side to keep the crate dependency one-directional (core -> everruns-provider).
 pub mod llm_conversions;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
 mod tool_call_integrity;
-pub use everruns_provider::openresponses_types;
 pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
     retain_complete_message_tool_exchanges,
@@ -222,11 +224,10 @@ pub mod session_services;
 pub mod subagent_delegation;
 pub mod tool_context;
 pub mod tool_execution;
-pub use everruns_provider::stream_accumulator;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod truncation_info;
-pub use everruns_provider::user_facing_error;
+use everruns_provider::user_facing_error;
 
 // Private doubles for collocated unit tests. Public application backends live
 // in everruns-host; reusable deterministic fixtures live in test-support.
@@ -256,10 +257,7 @@ pub use durability::{
     DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
     StreamProgress, ToolCallClaimResult,
 };
-pub use error::{
-    AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
-    StoreResultExt, classify_fs_error, from_json, json_val,
-};
+pub(crate) use error::{AgentLoopError, Result};
 pub use event_emitter::EventEmitter;
 pub use execution_loading::{HarnessStore, SessionStore};
 pub use execution_snapshot::{ResolvedExecutionSnapshot, SnapshotMcpServer};
@@ -279,7 +277,7 @@ pub use message_filter::{
 };
 pub use message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
-pub use provider_resolution::{ProviderStore, ResolvedModel};
+pub use provider_resolution::ProviderStore;
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
     AssembledTurnContext, ResolvedModelExecution, ResolvedRuntimeCapabilities,
@@ -292,11 +290,8 @@ pub use session_services::{
 };
 pub use tool_context::{ReasoningEffortHandle, ToolContext};
 pub use tool_execution::{OutboundToolRateLimiter, ToolExecutor};
-pub use user_facing_error::{
-    ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
-    classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
-    is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
-    parse_usage_limit_reset_at, trim_error_chain_prefixes,
+pub(crate) use user_facing_error::{
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,
 };
 pub use workspace_policy::{WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError};
 pub use workspace_roots::{
@@ -351,41 +346,21 @@ pub use utility_llm::{
     UtilityLlmService,
 };
 
-// LLM driver types re-exports
-pub use driver_registry::{
-    BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
-    DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
-    EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
-    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
-    ProviderMetadata, ProviderOpaqueContext, ServiceKind, fold_system_messages,
+// Private provider-contract imports used by kernel implementation modules.
+pub(crate) use driver_registry::{
+    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
+    ProviderOpaqueContext,
 };
-
-// LLM retry types re-exports
-pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
 // protocol drivers live in everruns-provider and the focused provider crates.
-pub use compact::{
-    CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, messages_to_compact_input,
-};
+pub(crate) use compact::CompactInputItem;
+#[cfg(test)]
+pub(crate) use compact::CompactOutputItem;
 
 // Tool abstraction re-exports
-pub use tools::{
-    EchoTool, FailingTool, Tool, ToolExecutionResult, ToolInternalError, ToolRegistry,
-    ToolRegistryBuilder, ToolResultImage,
-};
+pub use tools::{Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder};
 
-// Shared credential form schema (provider drivers + connection providers)
-pub use credential_schema::{
-    CredentialFormSchema, assemble_credential_document, parse_credential_document,
-};
-
-// Pluggable provider credential source (drivers never read env directly).
-// EVE-879: the trait lives in `everruns-provider` (provider authentication is
-// a provider-crate contract); core re-exports it unchanged.
-pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
 // EVE-881: `BuiltInHarnessDefinition`, `BuiltInHarnessRole`, and
 // `BuiltInCapabilityDefinition` moved to the `everruns-platform` crate —
 // product provisioning templates are platform/server composition, not
@@ -401,16 +376,15 @@ pub use credential_provider::{CredentialProvider, EnvCredentialProvider, Provide
 
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
-    AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel, Capability,
-    CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    CollectedCapabilities, DECLARATIVE_CAPABILITY_PREFIX, DependencyError, IntegrationPlugin,
-    MAX_RESOLVED_CAPABILITIES, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint,
-    MountSource, ResolvedCapabilities, RiskLevel, ToolCallHook, ToolDefinitionHook,
-    apply_capabilities, collect_capabilities, collect_capabilities_with_configs, compute_features,
-    declarative_capability_id, declarative_capability_info, get_dependencies,
-    hydrate_declarative_capability_config, hydrate_plugin_capability_config,
-    is_declarative_capability, parse_declarative_capability_id, plugin_capability_info,
-    resolve_dependencies, validate_declarative_capability_definition,
+    AgentBlueprint, AppliedCapabilities, BlueprintModel, Capability, CapabilityRegistry,
+    CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
+    DECLARATIVE_CAPABILITY_PREFIX, DependencyError, IntegrationPlugin, MAX_RESOLVED_CAPABILITIES,
+    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, ResolvedCapabilities,
+    RiskLevel, ToolCallHook, ToolDefinitionHook, apply_capabilities, collect_capabilities,
+    collect_capabilities_with_configs, compute_features, declarative_capability_id,
+    declarative_capability_info, get_dependencies, hydrate_declarative_capability_config,
+    hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
+    plugin_capability_info, resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
     DeclarativeCapabilityDefinition, DeclarativeCapabilityFile, DeclarativeCapabilitySkill,
@@ -422,8 +396,7 @@ pub use capabilities::{
 };
 pub use compaction_checkpoint::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
-    CompactionCheckpointStore, InMemoryCompactionCheckpointStore, ProactiveCompactionAttempt,
-    ProactiveCompactionAttemptTracker,
+    CompactionCheckpointStore, ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker,
 };
 
 // Atoms re-exports (stateless atomic operations)
@@ -433,22 +406,14 @@ pub use atoms::{
     ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 
-// Tool types (runtime types defined in this crate)
-pub use tool_types::{
-    BuiltinTool, ClientSideTool, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
-    ToolHints, ToolPolicy, ToolResult,
-};
+pub(crate) use tool_types::ToolDefinition;
+#[cfg(test)]
+pub(crate) use tool_types::{BuiltinTool, ClientSideTool, ToolCall, ToolResult};
 
-// Plugin capability ID helpers — mirrors the declarative_capability_id trio.
-pub use capability_types::{
-    PLUGIN_CAPABILITY_PREFIX, is_plugin_capability, parse_plugin_capability_id,
-    plugin_capability_id,
-};
-
-// Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
+pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
 // Domain entity re-exports
-// Note: Provider entity is in the provider module. Import as: everruns_core::provider::Provider
+// Provider entities live in `everruns-provider`; import them from that crate.
 // EVE-877: the stored `Agent`/`AgentVersion` persistence records, their
 // lifecycle/versioning enums, and the public-name/persistence helpers moved to
 // the `everruns-platform` crate. Core keeps only the portable authored
@@ -520,16 +485,6 @@ pub use mcp_server::{
     merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
     sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };
-pub use model::{
-    CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
-    ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
-};
-pub use model_discovery::{
-    DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
-    discover_provider_models, enrich_with_profiles, match_models, normalize_and_enrich,
-    rank_discovered_models, search_provider_models,
-};
-pub use model_profiles::{get_model_profile, get_model_vendor};
 // EVE-837/EVE-845: `Organization`, `OrgMembership`, the `ANONYMOUS_USER_*`
 // constants, and the public-id generation/validation helpers moved to the
 // `everruns-platform` crate. `OrgRole` (portable turn authorization via
@@ -548,14 +503,8 @@ pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, 
 // the `everruns-platform` crate. `PrincipalSummary` and the `PrincipalKind` that
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
 // `AgentIdentity`.
-pub use model_spec::{ModelSpec, UnknownProvider};
 pub use principal::{PrincipalKind, PrincipalSummary};
-pub use provider::{Provider as ProviderRecord, ProviderStatus, ProviderTraceConfig};
-pub use runtime_provider::{
-    BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
-    ProviderRegistry, ResolvedProviderRequest, RuntimeProvider, RuntimeProviderRegistry,
-    StaticHeaderAuth,
-};
+pub(crate) use runtime_provider::{ProviderEndpoint, ProviderKey};
 // EVE-882: the persisted `Session` aggregate and its product lifecycle enums
 // (`SessionStatus`, `SessionSource`, `SessionActivity`, participants) moved to
 // the `everruns-platform` crate. Core keeps only the portable execution view
@@ -586,14 +535,7 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use task_observer::{ObservingTaskRegistry, TaskTransition, TaskTransitionObserver};
-pub use typed_id::{
-    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
-    EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
-    IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
-    MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
-    PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
-    SessionId, SessionParticipantId, SkillId, TriggerId, TurnId, TypedId, WorkspaceId,
-};
+pub(crate) use typed_id::{AgentId, HarnessId};
 pub use wake_queue::{PendingWake, SessionWakeQueue, wake_text_for};
 
 // Permissions re-exports
@@ -606,11 +548,6 @@ pub use permissions::{
 
 // Dependency blocker re-exports
 pub use dependency_blocker::DependencyBlocker;
-
-// URL validation re-exports
-pub use url_validation::{
-    UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,
-};
 
 // Deployment configuration
 pub use deployment::DeploymentGrade;

@@ -11,10 +11,10 @@
 //! `everruns_core::ExecutionSession`, never a stored platform record (EVE-882).
 
 use async_trait::async_trait;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::ExecutionSession;
-use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::error::Result;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::SessionId;
 
 /// Trait for updating mutable session metadata.
 ///
@@ -39,7 +39,7 @@ pub trait SessionMutator: Send + Sync {
         _session_id: SessionId,
         _capability: AgentCapabilityConfig,
     ) -> Result<ExecutionSession> {
-        Err(everruns_core::error::AgentLoopError::store(
+        Err(everruns_provider::error::AgentLoopError::store(
             "session backend does not support live capability reconfiguration",
         ))
     }
@@ -50,7 +50,7 @@ pub trait SessionMutator: Send + Sync {
         _session_id: SessionId,
         _capability_id: &str,
     ) -> Result<ExecutionSession> {
-        Err(everruns_core::error::AgentLoopError::store(
+        Err(everruns_provider::error::AgentLoopError::store(
             "session backend does not support live capability reconfiguration",
         ))
     }

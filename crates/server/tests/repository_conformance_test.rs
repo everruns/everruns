@@ -9,9 +9,10 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use everruns_core::TriggerId;
+use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::{AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId};
+use everruns_provider::typed_id::TriggerId;
+use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow,

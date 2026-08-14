@@ -16,9 +16,9 @@ use anyhow::{Context, Result, anyhow, bail};
 use futures::StreamExt;
 
 use everruns_core::connection_services::UserConnectionResolver;
-use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
-use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
 use everruns_platform::vector_store::{VectorRecord, VectorStore};
+use everruns_provider::driver_registry::{DriverRegistry, EmbedRequest};
+use everruns_provider::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
 use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -308,7 +308,7 @@ impl KnowledgeIndexSyncService {
                         let expected = texts.len();
                         let response = driver
                             .embed(
-                                &everruns_core::ProviderEndpoint::default(),
+                                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
                                 EmbedRequest { texts, model },
                             )
                             .await

@@ -21,6 +21,7 @@ Add whichever crates the table points you at:
 everruns-platform = "0.18"   # persisted records, hosted service contracts
 everruns-host     = "0.18"   # execution composition and host wiring
 everruns-provider = "0.18"   # provider SPI, typed IDs, sqlx impls
+everruns-capability = "0.18" # capability identity/configuration contract
 everruns-mcp      = "0.18"   # MCP adapter and the OAuth protocol client
 ```
 
@@ -194,6 +195,49 @@ depend on `everruns-provider` with `features = ["tls-ring"]` and call
 `everruns_provider::install_ring_crypto_provider()` once during startup; the
 call is idempotent and safe under concurrent initialization.
 
+## Provider and typed-ID imports
+
+Provider-owned modules are no longer compatibility-exported by
+`everruns-core`. Low-level consumers must add `everruns-provider` directly.
+This keeps credentials and concrete driver assembly out of the neutral kernel
+and makes the dependency owner visible in `Cargo.toml`.
+
+| 0.17 core path | 0.18 direct path |
+|---|---|
+| `everruns_core::driver_registry::*` | `everruns_provider::driver_registry::*` |
+| `everruns_core::model::*` | `everruns_provider::model::*` |
+| `everruns_core::model_profiles::*` | `everruns_provider::model_profiles::*` |
+| `everruns_core::model_spec::ModelSpec` | `everruns_provider::model_spec::ModelSpec` |
+| `everruns_core::provider::*` | `everruns_provider::provider::*` |
+| `everruns_core::runtime_provider::*` | `everruns_provider::runtime_provider::*` |
+| `everruns_core::typed_id::*` | `everruns_provider::typed_id::*` |
+| `everruns_core::error::*` | `everruns_provider::error::*` |
+| `everruns_core::tool_types::*` | `everruns_provider::tool_types::*` |
+| `everruns_core::capability_types::{CapabilityId, CapabilityRef, CapabilityError}` | `everruns_capability::{CapabilityId, CapabilityRef, CapabilityError}` |
+| `everruns_core::AgentCapabilityConfig` | `everruns_capability::CapabilityRef` |
+| core plugin capability ID/validation helpers | the same symbol in `everruns_capability` |
+| `everruns_core::ExecutionPhase` or `message::ExecutionPhase` | `everruns_provider::execution_phase::ExecutionPhase` |
+| `everruns_core::ToolResultImage` or `tools::ToolResultImage` | `everruns_provider::tool_types::ToolResultImage` |
+| other root-level provider symbols | the same root symbol in `everruns_provider` |
+
+The credential-bearing `everruns_core::ResolvedModel` is removed. Store and
+transport boundaries now resolve two separate values:
+
+- `ModelSpec`, safe to serialize and pass through the kernel; and
+- a host-owned runtime `Provider` (or internal `ProviderConfig`) containing
+  endpoint and authentication state.
+
+`ProviderStore::get_model_spec` and `get_default_model_spec` return only the
+first value. Hosts obtain provider configuration separately and join it only
+while constructing a non-serializable driver/provider execution value.
+
+The public core test/backend conveniences are gone as well:
+
+| removed core value | replacement |
+|---|---|
+| `EchoTool`, `FailingTool` | define the small test `Tool` locally, or use test-support executors |
+| `InMemoryCompactionCheckpointStore` | `everruns_host::InMemoryCompactionCheckpointStore` |
+
 ## What deliberately did not move
 
 Worth knowing so you do not go looking:
@@ -207,4 +251,8 @@ The rule these follow: whether something belongs in the kernel is decided by whe
 
 ## Getting unstuck
 
-If a symbol is not in these tables, `everruns_core` still re-exports a good deal from `everruns-provider` at its original path — `typed_id`, `model`, `error`, `driver_registry`, `tool_types` and others resolve unchanged. For anything else, the crate-level docs on `everruns-core` record where each family went and why.
+If a symbol is not in these tables, import it from the crate that defines it;
+`everruns-core` no longer acts as a compatibility facade for provider-owned
+APIs. Framework applications can continue to prefer the higher-level
+`everruns` facade. The crate-level docs on `everruns-core` record where each
+remaining family lives and why.

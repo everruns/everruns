@@ -17,6 +17,7 @@ use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactor
 use crate::turn_strategy::{RuntimeTurnPlan, RuntimeTurnState};
 use async_trait::async_trait;
 use chrono::Utc;
+use everruns_capability::plugin_capability_id;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{AtomContext, InputAtomInput, ReasonInput};
 #[cfg(feature = "mcp")]
@@ -25,8 +26,6 @@ use everruns_core::capabilities::{
     Capability, CapabilityRegistry, CapabilityStatus, resolve_capability_configs,
 };
 use everruns_core::config_layer::AgentConfigOverlay;
-use everruns_core::driver_registry::{DriverId, DriverRegistry};
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, SessionStartedData,
 };
@@ -39,21 +38,22 @@ use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::turn::TurnStopReason;
-use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
-    plugin_capability_id, session_files::SessionFileSystem,
+    InputMessage, MessageRetriever, ResolvedExecutionSnapshot, session_files::SessionFileSystem,
 };
 use everruns_core::{
     connection_services::UserConnectionResolver, event_emitter::EventEmitter,
     execution_loading::AgentStore, execution_loading::HarnessStore,
     execution_loading::SessionStore, provider_resolution::ProviderStore,
-    provider_resolution::ResolvedModel, session_services::SessionStorageStore,
+    session_services::SessionStorageStore,
 };
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
 };
 use everruns_platform::SessionMutator;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -129,7 +129,7 @@ pub struct TurnResult {
     /// Structured reason the turn stopped.
     pub stop_reason: TurnStopReason,
     /// Turn identifier used to correlate emitted events.
-    pub turn_id: everruns_core::typed_id::TurnId,
+    pub turn_id: everruns_provider::typed_id::TurnId,
 }
 
 /// An application message accepted for a specific in-process turn.
@@ -274,7 +274,7 @@ pub struct CapabilityDelta {
 /// machine kept in `pending_error`), and a failed turn reports no response and
 /// no tool calls, matching the previous `TurnOutcome::Failed` mapping.
 fn finish_turn(
-    turn_id: everruns_core::typed_id::TurnId,
+    turn_id: everruns_provider::typed_id::TurnId,
     stop_reason: TurnStopReason,
     error: Option<String>,
     response: String,
@@ -318,10 +318,9 @@ pub struct InProcessRuntimeBuilder {
     /// Provider registered at build time (replacing any same-name provider)
     /// whose named model becomes the runtime default when nothing else set one.
     /// See [`Self::provider_with_default_model`].
-    default_provider: Option<(everruns_core::Provider, String)>,
-    providers: Vec<everruns_core::Provider>,
-    model_spec: Option<everruns_core::ModelSpec>,
-    legacy_provider_config: Option<everruns_core::ProviderConfig>,
+    default_provider: Option<(everruns_provider::runtime_provider::Provider, String)>,
+    providers: Vec<everruns_provider::runtime_provider::Provider>,
+    model_spec: Option<everruns_provider::model_spec::ModelSpec>,
     backends: Option<HostBackends>,
     workspace_policy: Option<everruns_core::WorkspacePolicy>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
@@ -332,14 +331,14 @@ pub struct InProcessRuntimeBuilder {
     seeded_files: Vec<(SessionId, InitialFile)>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
-    provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
+    provider_retry_config: Option<everruns_provider::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
     /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`].
     ///
     /// Keyed by `plugin:{name}`. Agents and harnesses reference these by the
     /// same `plugin:{name}` capability ref; the hydrated config carries the
     /// compiled `DeclarativeCapabilityDefinition` so no registry entry is needed.
-    plugin_capability_configs: Vec<AgentCapabilityConfig>,
+    plugin_capability_configs: Vec<everruns_capability::CapabilityRef>,
     /// Non-fatal warnings collected during plugin compilation.
     plugin_warnings: Vec<String>,
 }
@@ -371,7 +370,6 @@ impl InProcessRuntimeBuilder {
             default_provider: None,
             providers: Vec::new(),
             model_spec: None,
-            legacy_provider_config: None,
             backends: None,
             workspace_policy: None,
             session_file_system_factory_context: SessionFileSystemFactoryContext::new(),
@@ -418,8 +416,8 @@ impl InProcessRuntimeBuilder {
         self
     }
 
-    /// Register a canonical runtime provider selected by [`ModelSpec`](everruns_core::ModelSpec).
-    pub fn provider(mut self, provider: everruns_core::Provider) -> Self {
+    /// Register a canonical runtime provider selected by [`ModelSpec`](everruns_provider::model_spec::ModelSpec).
+    pub fn provider(mut self, provider: everruns_provider::runtime_provider::Provider) -> Self {
         self.providers.push(provider);
         self
     }
@@ -433,25 +431,22 @@ impl InProcessRuntimeBuilder {
     /// `llmsim` provider and routes it through here.
     pub fn provider_with_default_model(
         mut self,
-        provider: everruns_core::Provider,
+        provider: everruns_provider::runtime_provider::Provider,
         model_id: impl Into<String>,
     ) -> Self {
         self.default_provider = Some((provider, model_id.into()));
         self
     }
 
-    /// Set the runtime default model used when sessions/agents do not override it.
-    pub fn default_model(mut self, model: ResolvedModel) -> Self {
-        let (spec, provider_config) = model.canonical_parts();
-        self.model_spec = Some(spec);
-        self.legacy_provider_config = Some(provider_config);
+    /// Select the runtime's default credential-free model specification.
+    pub fn default_model(mut self, model: everruns_provider::model_spec::ModelSpec) -> Self {
+        self.model_spec = Some(model);
         self
     }
 
     /// Select a credential-free model served by a provider registered on this builder.
-    pub fn model_spec(mut self, model: everruns_core::ModelSpec) -> Self {
+    pub fn model_spec(mut self, model: everruns_provider::model_spec::ModelSpec) -> Self {
         self.model_spec = Some(model);
-        self.legacy_provider_config = None;
         self
     }
 
@@ -515,7 +510,7 @@ impl InProcessRuntimeBuilder {
     /// Override the bounded provider-recovery policy for this runtime.
     pub fn provider_retry_config(
         mut self,
-        config: everruns_core::llm_retry::LlmRetryConfig,
+        config: everruns_provider::llm_retry::LlmRetryConfig,
     ) -> Self {
         self.provider_retry_config = Some(config);
         self
@@ -619,17 +614,20 @@ impl InProcessRuntimeBuilder {
         let hydrated_config = serde_json::to_value(&compiled.definition)
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
         self.plugin_capability_configs
-            .push(AgentCapabilityConfig::with_config(cap_id, hydrated_config));
+            .push(everruns_capability::CapabilityRef::with_config(
+                cap_id,
+                hydrated_config,
+            ));
 
         Ok(self)
     }
 
-    /// Return a hydrated `AgentCapabilityConfig` for a previously loaded plugin.
+    /// Return a hydrated `everruns_capability::CapabilityRef` for a previously loaded plugin.
     ///
     /// Returns `None` when no plugin with that name was loaded via
     /// [`Self::with_plugin_dir`]. Primarily used by callers that need the
     /// hydrated config to seed it onto a harness or agent before building.
-    pub fn plugin_capability(&self, name: &str) -> Option<AgentCapabilityConfig> {
+    pub fn plugin_capability(&self, name: &str) -> Option<everruns_capability::CapabilityRef> {
         let cap_id = plugin_capability_id(name);
         self.plugin_capability_configs
             .iter()
@@ -663,7 +661,10 @@ impl InProcessRuntimeBuilder {
                 .replace_provider(provider);
 
             if self.model_spec.is_none() {
-                self.model_spec = Some(everruns_core::ModelSpec::on(provider_key, model_id));
+                self.model_spec = Some(everruns_provider::model_spec::ModelSpec::on(
+                    provider_key,
+                    model_id,
+                ));
             }
         }
 
@@ -676,60 +677,15 @@ impl InProcessRuntimeBuilder {
         let model_spec = self.model_spec.ok_or_else(|| {
             AgentLoopError::config(
                 "in-process runtime requires a default model; call \
-                 InProcessRuntimeBuilder::default_model(...) or \
+                 InProcessRuntimeBuilder::model_spec(...) or \
                  InProcessRuntimeBuilder::provider_with_default_model(...) \
                  (e.g. the everruns-test-support `.llm_sim(...)` extension)",
             )
         })?;
 
-        // `ResolvedModel` is a 0.17 compatibility input. Adapt it once into a
-        // canonical registered provider; no credential-bearing model state is
-        // retained by the runtime execution path.
-        let legacy_config = self.legacy_provider_config.take();
-        let provider_type = legacy_config
-            .as_ref()
-            .map(|config| config.provider_type.clone())
-            .unwrap_or_else(|| DriverId::external(model_spec.provider.as_str()));
-        if let Some(config) = legacy_config
-            && self
-                .host_composition
-                .driver_registry()
-                .provider(&model_spec.provider)
-                .is_none()
-        {
-            let driver = self
-                .host_composition
-                .driver_registry()
-                .create_chat_driver(&config)?;
-            self.host_composition
-                .driver_registry_mut()
-                .register_provider(everruns_core::Provider::new(
-                    model_spec.provider.clone(),
-                    driver,
-                ))?;
-        }
-
-        let provider_metadata = if provider_type.as_str() == model_spec.provider.as_str() {
-            None
-        } else {
-            Some(everruns_core::ProviderMetadata {
-                extra: Some(serde_json::json!({
-                    "provider_id": model_spec.provider.as_str(),
-                })),
-                ..Default::default()
-            })
-        };
-        let default_model = ResolvedModel {
-            model: model_spec.model,
-            provider_type,
-            api_key: None,
-            base_url: None,
-            provider_metadata,
-        };
-
         backends
             .provider_store
-            .set_default_model(default_model)
+            .set_default_model_spec(model_spec)
             .await?;
 
         // Hydrate bare plugin: refs in harnesses/agents/sessions with the
@@ -880,7 +836,7 @@ pub struct InProcessRuntime {
     platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
-    provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
+    provider_retry_config: Option<everruns_provider::llm_retry::LlmRetryConfig>,
     provider_stall_timeout: Option<std::time::Duration>,
     #[cfg(feature = "mcp")]
     mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
@@ -990,7 +946,7 @@ impl InProcessRuntime {
     pub async fn activate_capability(
         &self,
         session_id: SessionId,
-        capability: impl Into<AgentCapabilityConfig>,
+        capability: impl Into<everruns_capability::CapabilityRef>,
     ) -> Result<CapabilityDelta> {
         let mut capability = capability.into();
         let registry = self.host_composition.capability_registry();
@@ -1620,9 +1576,9 @@ impl InProcessRuntime {
     async fn inspect_context_with_ids(
         &self,
         session_id: SessionId,
-        harness_id: everruns_core::HarnessId,
+        harness_id: everruns_provider::typed_id::HarnessId,
         agent_id: Option<AgentId>,
-        mcp_tool_definitions: &[everruns_core::ToolDefinition],
+        mcp_tool_definitions: &[everruns_provider::tool_types::ToolDefinition],
     ) -> Result<AssembledTurnContext> {
         crate::inspect_turn_context(
             self.harness_store.as_ref(),
@@ -1810,7 +1766,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.host_composition.egress_service())
     }
 
-    fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {
+    fn provider_retry_config(&self) -> Option<everruns_provider::llm_retry::LlmRetryConfig> {
         self.provider_retry_config.clone()
     }
 
@@ -1840,12 +1796,12 @@ fn effective_overlay(
 /// Only replaces entries whose config is empty / `null`; entries that already
 /// carry a non-empty config are left unchanged so explicit overrides are honoured.
 fn hydrate_plugin_refs(
-    capabilities: &mut [AgentCapabilityConfig],
-    plugin_configs: &[AgentCapabilityConfig],
+    capabilities: &mut [everruns_capability::CapabilityRef],
+    plugin_configs: &[everruns_capability::CapabilityRef],
 ) {
     for cap in capabilities.iter_mut() {
         let cap_id = cap.capability_id();
-        if !everruns_core::is_plugin_capability(cap_id) {
+        if !everruns_capability::is_plugin_capability(cap_id) {
             continue;
         }
         // Only replace if the config is missing / empty so explicit overrides are honoured.

@@ -167,7 +167,7 @@ async fn create_session_rejects_unknown_workspace() {
 #[tokio::test]
 async fn create_session_rejects_legacy_workspace_with_mismatched_id() {
     use everruns_core::DEFAULT_ORG_ID;
-    use everruns_core::typed_id::WorkspaceId;
+    use everruns_provider::typed_id::WorkspaceId;
     use everruns_server::storage::models::CreateWorkspaceRow;
 
     let server = TestServer::in_memory().await;

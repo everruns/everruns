@@ -9,7 +9,7 @@ use everruns_core::session_task::{
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-fn registry_err(e: everruns_core::AgentLoopError) -> CommandError {
+fn registry_err(e: everruns_provider::error::AgentLoopError) -> CommandError {
     CommandError::internal(anyhow::anyhow!(e))
 }
 
@@ -561,7 +561,7 @@ impl Command for CreateTaskPushConfig {
 
         // SSRF: validate the URL against private/internal ranges before persist.
         // Delivery additionally pins DNS (see build_task_webhook_request).
-        everruns_core::validate_safe_url(&self.url)
+        everruns_provider::url_validation::validate_safe_url(&self.url)
             .map_err(|e| CommandError::bad_request(format!("Invalid webhook URL: {e}")))?;
 
         let event_filter = normalize_event_filter(self.event_filter)?;
@@ -683,7 +683,8 @@ mod tests {
         TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SESSION,
         TASK_KIND_SUBAGENT, TaskLinks, TaskMessagePart, TaskWakePolicy,
     };
-    use everruns_core::{Caller, DEFAULT_ORG_ID, HarnessId, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID};
+    use everruns_provider::typed_id::{HarnessId, PrincipalId};
     use std::sync::Arc;
 
     // -------------------------------------------------------------------------
@@ -738,7 +739,7 @@ mod tests {
     }
 
     /// Create a session in the in-memory database, returning its ID.
-    async fn create_session(db: &Arc<StorageBackend>) -> everruns_core::SessionId {
+    async fn create_session(db: &Arc<StorageBackend>) -> everruns_provider::typed_id::SessionId {
         ensure_base_harness(db, None).await;
 
         db.create_session(CreateSessionRow {
@@ -780,7 +781,7 @@ mod tests {
     async fn create_session_in_org(
         db: &Arc<StorageBackend>,
         org_id: i64,
-    ) -> everruns_core::SessionId {
+    ) -> everruns_provider::typed_id::SessionId {
         db.create_session(CreateSessionRow {
             source: everruns_platform::SessionSource::Api,
             org_id,
@@ -820,8 +821,8 @@ mod tests {
     /// returning its ID. Used to build a delegation tree in tests.
     async fn create_child_session(
         db: &Arc<StorageBackend>,
-        parent: everruns_core::SessionId,
-    ) -> everruns_core::SessionId {
+        parent: everruns_provider::typed_id::SessionId,
+    ) -> everruns_provider::typed_id::SessionId {
         db.create_session(CreateSessionRow {
             source: everruns_platform::SessionSource::Api,
             org_id: DEFAULT_ORG_ID,
@@ -1155,7 +1156,7 @@ mod tests {
                 spec: serde_json::json!({}),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
-                    child_session_id: Some(everruns_core::SessionId::new()),
+                    child_session_id: Some(everruns_provider::typed_id::SessionId::new()),
                     ..Default::default()
                 },
                 wake_policy: TaskWakePolicy::Silent,
@@ -1548,7 +1549,10 @@ mod tests {
     // Per-task push configs (EVE-682)
     // -------------------------------------------------------------------------
 
-    async fn make_task(db: &Arc<StorageBackend>, session_id: everruns_core::SessionId) -> String {
+    async fn make_task(
+        db: &Arc<StorageBackend>,
+        session_id: everruns_provider::typed_id::SessionId,
+    ) -> String {
         let ctx = test_ctx(db.clone());
         q::registry_for_ctx(&ctx)
             .create(CreateSessionTask {

@@ -5,15 +5,17 @@
 
 use std::collections::HashMap;
 
-pub use everruns_core::driver_registry::{
-    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
-};
+use everruns_capability::plugin_capability_id;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, AgentId, DEFAULT_ORG_PUBLIC_ID, ExecutionSession,
-    HarnessDefinition, HarnessId, ModelId, ScopedMcpServers, SessionExecutionState, SessionId,
-    ToolDefinition, plugin_capability_id,
+    AgentDefinition, DEFAULT_ORG_PUBLIC_ID, ExecutionSession, HarnessDefinition, ScopedMcpServers,
+    SessionExecutionState,
 };
+pub use everruns_provider::driver_registry::{
+    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
+};
+use everruns_provider::tool_types::ToolDefinition;
+use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
 /// A portable harness definition seeded under an embedder-chosen id.
 ///
@@ -41,7 +43,7 @@ pub struct HarnessBuilder {
     name: String,
     system_prompt: String,
     default_model_id: Option<ModelId>,
-    capabilities: Vec<AgentCapabilityConfig>,
+    capabilities: Vec<everruns_capability::CapabilityRef>,
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     parallel_tool_calls: Option<bool>,
@@ -92,19 +94,22 @@ impl HarnessBuilder {
         self
     }
 
-    pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn capability(mut self, capability: impl Into<everruns_capability::CapabilityRef>) -> Self {
         self.capabilities.push(capability.into());
         self
     }
 
-    pub fn with_capability(self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn with_capability(
+        self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.capability(capability)
     }
 
     pub fn capabilities<I, C>(mut self, capabilities: I) -> Self
     where
         I: IntoIterator<Item = C>,
-        C: Into<AgentCapabilityConfig>,
+        C: Into<everruns_capability::CapabilityRef>,
     {
         self.capabilities
             .extend(capabilities.into_iter().map(Into::into));
@@ -201,7 +206,7 @@ pub struct AgentBuilder {
     description: Option<String>,
     system_prompt: String,
     default_model_id: Option<ModelId>,
-    capabilities: Vec<AgentCapabilityConfig>,
+    capabilities: Vec<everruns_capability::CapabilityRef>,
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
@@ -266,19 +271,22 @@ impl AgentBuilder {
         self
     }
 
-    pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn capability(mut self, capability: impl Into<everruns_capability::CapabilityRef>) -> Self {
         self.capabilities.push(capability.into());
         self
     }
 
-    pub fn with_capability(self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn with_capability(
+        self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.capability(capability)
     }
 
     pub fn capabilities<I, C>(mut self, capabilities: I) -> Self
     where
         I: IntoIterator<Item = C>,
-        C: Into<AgentCapabilityConfig>,
+        C: Into<everruns_capability::CapabilityRef>,
     {
         self.capabilities
             .extend(capabilities.into_iter().map(Into::into));
@@ -361,7 +369,7 @@ pub struct SessionBuilder {
     locale: Option<String>,
     tags: Vec<String>,
     model_id: Option<ModelId>,
-    capabilities: Vec<AgentCapabilityConfig>,
+    capabilities: Vec<everruns_capability::CapabilityRef>,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
     system_prompt: Option<String>,
@@ -457,19 +465,22 @@ impl SessionBuilder {
         self
     }
 
-    pub fn capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn capability(mut self, capability: impl Into<everruns_capability::CapabilityRef>) -> Self {
         self.capabilities.push(capability.into());
         self
     }
 
-    pub fn with_capability(self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn with_capability(
+        self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.capability(capability)
     }
 
     pub fn capabilities<I, C>(mut self, capabilities: I) -> Self
     where
         I: IntoIterator<Item = C>,
-        C: Into<AgentCapabilityConfig>,
+        C: Into<everruns_capability::CapabilityRef>,
     {
         self.capabilities
             .extend(capabilities.into_iter().map(Into::into));
@@ -529,7 +540,7 @@ impl SessionBuilder {
     pub fn build(self) -> ExecutionSession {
         ExecutionSession {
             id: self.id,
-            workspace_id: everruns_core::WorkspaceId::from_uuid((self.id).uuid()),
+            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((self.id).uuid()),
             organization_id: self.organization_id,
             harness_id: self.harness_id,
             agent_id: self.agent_id,
@@ -603,18 +614,27 @@ impl SingleSessionBuilder {
     }
 
     /// Add a harness-level capability.
-    pub fn with_capability(self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn with_capability(
+        self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.harness_capability(capability)
     }
 
     /// Add a harness-level capability.
-    pub fn harness_capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn harness_capability(
+        mut self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.harness = self.harness.capability(capability);
         self
     }
 
     /// Add an agent-level capability.
-    pub fn agent_capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn agent_capability(
+        mut self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.agent = self.agent.capability(capability);
         self
     }
@@ -628,7 +648,7 @@ impl SingleSessionBuilder {
     /// session. The builder looks up the hydrated config at build time from the
     /// `plugin_capability_configs` accumulated by `with_plugin_dir` calls.
     ///
-    /// If you need to pass the fully hydrated `AgentCapabilityConfig` (e.g.
+    /// If you need to pass the fully hydrated `everruns_capability::CapabilityRef` (e.g.
     /// from [`InProcessRuntimeBuilder::plugin_capability`]), use
     /// [`Self::agent_capability`] directly.
     pub fn agent_plugin(mut self, name: &str) -> Self {
@@ -637,7 +657,10 @@ impl SingleSessionBuilder {
     }
 
     /// Add a session-level capability.
-    pub fn session_capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
+    pub fn session_capability(
+        mut self,
+        capability: impl Into<everruns_capability::CapabilityRef>,
+    ) -> Self {
         self.session = self.session.capability(capability);
         self
     }

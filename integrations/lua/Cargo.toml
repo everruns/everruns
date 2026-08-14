@@ -18,6 +18,7 @@ default = []
 
 [dependencies]
 everruns-core.workspace = true
+everruns-provider.workspace = true
 async-trait.workspace = true
 base64.workspace = true
 mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send", "serialize"] }

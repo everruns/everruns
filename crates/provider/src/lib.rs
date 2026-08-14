@@ -5,8 +5,8 @@
 //! provider assembly, shared protocol drivers, stream/retry helpers, model
 //! profiles, typed IDs, credential schemas, and the LLM error taxonomy. It is a
 //! focused implementation crate in the [Everruns](https://everruns.com)
-//! ecosystem; application authors normally use its re-exports through
-//! `everruns`.
+//! ecosystem. Low-level consumers import provider-owned contracts from this
+//! crate directly; Framework users normally use the `everruns` facade.
 //!
 //! # Example
 //!
@@ -50,9 +50,8 @@ pub mod user_facing_error;
 // ============================================================================
 // Convenience root re-exports
 //
-// Mirror the root-level re-exports `everruns-core` exposes for these modules,
-// so provider crates can use `everruns_provider::<Symbol>` exactly as they used
-// `everruns_core::<Symbol>`.
+// These root exports are the canonical low-level provider API. `everruns-core`
+// consumes a narrow subset privately and deliberately does not mirror them.
 // ============================================================================
 
 pub use compact::{

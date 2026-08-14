@@ -7,6 +7,7 @@ use crate::domains::common::{Command, Ctx};
 use crate::domains::session_storage::{
     BatchSetSessionSecrets, DeleteSessionSecret, ListSessionSecrets, ListSessionStorage,
 };
+use crate::kernel_imports::{Caller, everruns_provider::typed_id::SessionId};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use axum::{
@@ -15,7 +16,6 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{Caller, SessionId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;

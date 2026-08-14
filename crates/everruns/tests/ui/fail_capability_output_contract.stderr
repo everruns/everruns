@@ -1,15 +1,15 @@
-error[E0277]: the trait bound `NotSerializableOrSchema: everruns::capability::JsonSchema` is not satisfied
+error[E0277]: the trait bound `NotSerializableOrSchema: JsonSchema` is not satisfied
   --> tests/ui/fail_capability_output_contract.rs:14:19
    |
 14 |     type Output = NotSerializableOrSchema;
    |                   ^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
    |
-help: the trait `everruns::capability::JsonSchema` is not implemented for `NotSerializableOrSchema`
+help: the trait `JsonSchema` is not implemented for `NotSerializableOrSchema`
   --> tests/ui/fail_capability_output_contract.rs:8:1
    |
  8 | struct NotSerializableOrSchema;
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-   = help: the following other types implement trait `everruns::capability::JsonSchema`:
+   = help: the following other types implement trait `JsonSchema`:
              &'a T
              &'a mut T
              ()

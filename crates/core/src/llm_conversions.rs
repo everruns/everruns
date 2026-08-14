@@ -2,7 +2,7 @@
 //! types in `everruns-provider`.
 //!
 //! These adapters live here (not in `everruns-provider`) because they depend on
-//! core domain types (`Message`, `RuntimeAgent`, `ResolvedModel`). Keeping them
+//! core domain types (`Message`, `RuntimeAgent`). Keeping them
 //! on the core side keeps the crate dependency one-directional: core depends on
 //! everruns-provider, never the reverse. The orphan rule also prevents these
 //! from being `From` impls in core (both the `From` trait and the driver types
@@ -13,12 +13,12 @@ use uuid::Uuid;
 
 use crate::driver_registry::{
     LlmCallConfig, LlmCallConfigBuilder, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, ProviderConfig, truncate_tool_result,
+    LlmMessageRole, truncate_tool_result,
 };
+use crate::image_services::ResolvedImage;
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolCall;
-use crate::{image_services::ResolvedImage, provider_resolution::ResolvedModel};
 
 /// Convert a [`Message`] into an [`LlmMessage`] (text-only; images become
 /// placeholders). For multimodal messages use
@@ -193,13 +193,6 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
 /// Start an [`LlmCallConfigBuilder`] from a [`RuntimeAgent`].
 pub fn llm_call_config_builder_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfigBuilder {
     LlmCallConfigBuilder::from_config(llm_call_config_from_agent(runtime_agent))
-}
-
-/// Build the default provider lookup config for an application-registered
-/// provider. Hosted stores override it with their independently resolved
-/// endpoint and authentication material.
-pub fn provider_config_from_resolved_model(model: &ResolvedModel) -> ProviderConfig {
-    model.canonical_parts().1
 }
 
 #[cfg(test)]

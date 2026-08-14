@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
-use everruns_core::typed_id::HarnessId;
+use everruns_provider::typed_id::HarnessId;
 use std::collections::HashMap;
 use uuid::Uuid;
 

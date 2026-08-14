@@ -15,10 +15,11 @@
 //! - PostgreSQL with migrations applied
 //! - Uses LlmSim for workflow tests, no real API keys needed
 
-use everruns_core::provider::Provider;
-use everruns_core::{Model, SessionFile};
+use everruns_core::SessionFile;
 use everruns_platform::Agent;
 use everruns_platform::Session;
+use everruns_provider::model::Model;
+use everruns_provider::provider::Provider;
 use serde_json::{Value, json};
 
 const SERVER_BASE_URL: &str = "http://localhost:9000";

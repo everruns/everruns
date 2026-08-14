@@ -20,10 +20,11 @@
 use std::sync::Arc;
 
 use everruns_core::{
-    AgentId, Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
-    Permission, PermissionResolver, SessionSeedMode,
+    Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
+    PermissionResolver, SessionSeedMode,
 };
 use everruns_platform::FeatureFlags;
+use everruns_provider::typed_id::AgentId;
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;

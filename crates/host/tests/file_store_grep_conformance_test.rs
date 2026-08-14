@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use everruns_core::session_files::SessionFileSystem;
-use everruns_core::typed_id::SessionId;
 use everruns_core::{GREP_MAX_RETURN_BYTES, GrepOptions};
 use everruns_host::{InMemorySessionFileStore, RealDiskFileStore};
+use everruns_provider::typed_id::SessionId;
 use tempfile::TempDir;
 
 async fn assert_regex_contract(store: Arc<dyn SessionFileSystem>) {

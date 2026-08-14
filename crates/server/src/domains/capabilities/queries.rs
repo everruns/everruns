@@ -9,13 +9,13 @@
 
 use super::types::CapabilityInfo;
 use super::types::{DeclarativeCapability, DeclarativeCapabilityRow};
-use crate::storage::StorageBackend;
-use everruns_core::{
-    AgentCapabilityConfig, DeclarativeCapabilityDefinition, DeclarativeCapabilityId,
-    declarative_capability_id, hydrate_declarative_capability_config,
+use crate::kernel_imports::{
+    AgentCapabilityConfig, DeclarativeCapabilityDefinition, declarative_capability_id,
+    everruns_provider::typed_id::DeclarativeCapabilityId, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, is_plugin_capability,
     parse_declarative_capability_id, parse_plugin_capability_id,
 };
+use crate::storage::StorageBackend;
 
 /// Filter capabilities by search query (name/description match).
 pub fn filter_by_search(capabilities: &mut Vec<CapabilityInfo>, search: &str) {

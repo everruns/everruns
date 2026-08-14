@@ -211,7 +211,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 /// `find_task_executor` and an adapter-backed context builder; tests inject
 /// their own.
 async fn reconcile_orphans<F, C>(
-    candidates: Vec<(everruns_core::SessionId, String)>,
+    candidates: Vec<(everruns_provider::typed_id::SessionId, String)>,
     registry: &std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>,
     input: &SessionTaskReaperInput,
     executor_for: F,
@@ -219,7 +219,7 @@ async fn reconcile_orphans<F, C>(
 ) -> ReapSummary
 where
     F: Fn(&str) -> Option<std::sync::Arc<dyn everruns_core::session_task::TaskExecutor>>,
-    C: Fn(everruns_core::SessionId) -> ToolContext,
+    C: Fn(everruns_provider::typed_id::SessionId) -> ToolContext,
 {
     let mut summary = ReapSummary {
         candidates: candidates.len(),
@@ -529,7 +529,8 @@ mod tests {
         SessionTaskState, TASK_KIND_SUBAGENT, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy,
         apply_task_update, new_session_task,
     };
-    use everruns_core::{Result as CoreResult, SessionId};
+    use everruns_provider::error::Result as CoreResult;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -689,7 +690,7 @@ mod tests {
             _task: &SessionTask,
             _context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
-            Err(everruns_core::error::AgentLoopError::tool(
+            Err(everruns_provider::error::AgentLoopError::tool(
                 "simulated start failure",
             ))
         }

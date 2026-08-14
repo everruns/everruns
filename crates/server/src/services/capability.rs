@@ -21,12 +21,12 @@ use crate::domains::mcp_servers::McpServerService;
 use crate::domains::skills::queries as skill_q;
 use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
+use everruns_capability::{CapabilityId, is_plugin_capability, parse_plugin_capability_id};
 use everruns_core::capabilities::{Capability, CapabilityRegistry, SkillCapabilityIdExt};
 use everruns_core::{
-    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition,
-    RiskLevel, Skill, declarative_capability_info, is_declarative_capability, is_plugin_capability,
-    parse_declarative_capability_id, parse_plugin_capability_id, plugin_capability_info,
-    skill_capability_id,
+    Caller, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition, RiskLevel, Skill,
+    declarative_capability_info, is_declarative_capability, parse_declarative_capability_id,
+    plugin_capability_info, skill_capability_id,
 };
 use everruns_mcp::{McpCapability, McpCapabilityIdExt, mcp_capability_id};
 use moka::future::Cache;
@@ -543,14 +543,14 @@ impl CapabilityService {
         &self,
         org_id: i64,
         base_system_prompt: &str,
-        capability_configs: &[everruns_core::AgentCapabilityConfig],
-    ) -> Result<(String, Vec<everruns_core::ToolDefinition>)> {
+        capability_configs: &[everruns_capability::CapabilityRef],
+    ) -> Result<(String, Vec<everruns_provider::tool_types::ToolDefinition>)> {
         use everruns_core::capabilities::{
             SystemPromptContext, collect_capabilities_with_configs, resolve_capability_configs,
         };
 
         let mut system_prompt_parts: Vec<String> = Vec::new();
-        let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
+        let mut tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition> = Vec::new();
 
         // Plugin and declarative definitions are deliberately not persisted in
         // agent config. Resolve their current, exact definitions before the
@@ -566,7 +566,7 @@ impl CapabilityService {
         // Separate built-in capabilities from MCP capabilities
         // Skill capabilities (skill:{uuid}) are mount-only; skip in preview.
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
-        let mut builtin_cap_configs: Vec<everruns_core::AgentCapabilityConfig> = Vec::new();
+        let mut builtin_cap_configs: Vec<everruns_capability::CapabilityRef> = Vec::new();
 
         for cap_config in &capability_configs {
             let cap_ref = &cap_config.typed_id();
@@ -585,7 +585,8 @@ impl CapabilityService {
 
         // Collect from resolved capabilities (includes dependencies in correct order)
         // Preview has no session context, so dynamic capabilities (agent_instructions) return None
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let collected = collect_capabilities_with_configs(&resolved, &self.registry, &ctx).await;
         if let Some(prefix) = collected.system_prompt_prefix() {
             system_prompt_parts.push(prefix);
@@ -643,7 +644,7 @@ impl CapabilityService {
 mod tests {
     use super::*;
     use crate::storage::memory::InMemoryDatabase;
-    use everruns_core::SkillId;
+    use everruns_provider::typed_id::SkillId;
 
     fn make_service() -> CapabilityService {
         let db = Arc::new(StorageBackend::InMemory(Arc::new(InMemoryDatabase::new())));
@@ -814,7 +815,8 @@ mod tests {
                 .create_declarative_capability(
                     1,
                     CreateDeclarativeCapabilityRow {
-                        public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                        public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new()
+                            .to_string(),
                         name: "hidden_fetch".to_string(),
                         display_name: Some("Hidden Fetch".to_string()),
                         description: "test".to_string(),

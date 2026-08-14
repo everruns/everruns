@@ -10,8 +10,11 @@ use super::types::{
 };
 use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::domains::common::*;
-use everruns_core::typed_id::McpServerId;
-use everruns_core::{McpServer, McpServerAuthMode, McpServerStatus, Policy, validate_safe_url};
+use crate::kernel_imports::{
+    McpServer, McpServerAuthMode, McpServerStatus, Policy,
+    everruns_provider::url_validation::validate_safe_url,
+};
+use everruns_provider::typed_id::McpServerId;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

@@ -13,7 +13,7 @@ use std::fmt;
 use crate::Provider;
 
 /// API key environment variable, matching the repo-wide convention documented on
-/// `everruns_core::credential_provider::EnvCredentialProvider`.
+/// `everruns_provider::credential_provider::EnvCredentialProvider`.
 const OPENAI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 /// Optional base-URL override environment variable (OpenAI-compatible proxies,
 /// self-hosted endpoints, Azure gateways).

@@ -89,7 +89,7 @@ impl SearchKnowledgeTool {
 impl Tool for SearchKnowledgeTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -212,11 +212,11 @@ impl Tool for SearchKnowledgeTool {
         true
     }
 
-    fn deferrable_policy(&self) -> everruns_core::tool_types::DeferrablePolicy {
+    fn deferrable_policy(&self) -> everruns_provider::tool_types::DeferrablePolicy {
         // "Consult-first" tool: keep its full schema directly callable so the
         // model invokes it rather than routing through tool-search. See
         // knowledge/execution/tool-search.md (never-defer) and knowledge/runtime-resources/okf-adoption.md.
-        everruns_core::tool_types::DeferrablePolicy::Never
+        everruns_provider::tool_types::DeferrablePolicy::Never
     }
 }
 
@@ -464,7 +464,7 @@ mod tests {
 
     use crate::knowledge_store::{KnowledgeSearchHit, KnowledgeStore, KnowledgeStoreExt};
     use everruns_core::tool_context::ToolContext;
-    use everruns_core::typed_id::{DEFAULT_ORG_ID, SessionId};
+    use everruns_provider::typed_id::{DEFAULT_ORG_ID, SessionId};
     use std::sync::Arc;
 
     struct MockKnowledgeStore {
@@ -475,13 +475,13 @@ mod tests {
     impl KnowledgeStore for MockKnowledgeStore {
         async fn search_knowledge(
             &self,
-            _org_id: everruns_core::typed_id::OrgId,
+            _org_id: everruns_provider::typed_id::OrgId,
             kb_public_ids: &[String],
             _query: &str,
             _kind: Option<&str>,
             _tags: &[String],
             _limit: usize,
-        ) -> everruns_core::error::Result<Vec<KnowledgeSearchHit>> {
+        ) -> everruns_provider::error::Result<Vec<KnowledgeSearchHit>> {
             if kb_public_ids.is_empty() {
                 Ok(Vec::new())
             } else {

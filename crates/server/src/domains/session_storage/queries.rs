@@ -1,7 +1,7 @@
 use crate::domains::common::CommandError;
 use crate::domains::session_resources::queries::parse_session_id;
 use crate::storage::StorageBackend;
-use everruns_core::SessionId;
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 pub async fn verify_session_ownership(

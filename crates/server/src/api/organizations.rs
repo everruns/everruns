@@ -155,12 +155,12 @@ pub struct UpdateOrganizationRequest {
     /// Default LLM model for this organization. Must be an enabled model.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
-    pub default_model_id: Option<everruns_core::ModelId>,
+    pub default_model_id: Option<everruns_provider::typed_id::ModelId>,
     /// Default harness to preselect in the UI for new sessions.
     /// Mutually exclusive with `default_harness_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
-    pub default_harness_id: Option<everruns_core::HarnessId>,
+    pub default_harness_id: Option<everruns_provider::typed_id::HarnessId>,
     /// Alternative to `default_harness_id` — looked up by stable name within the org.
     /// Mutually exclusive with `default_harness_id`.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -169,7 +169,7 @@ pub struct UpdateOrganizationRequest {
     /// Base harness to use when a session is started without an explicit harness_id.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000601")]
-    pub base_harness_id: Option<everruns_core::HarnessId>,
+    pub base_harness_id: Option<everruns_provider::typed_id::HarnessId>,
     /// Org-level default provider per service (EVE-569). Maps a service kind
     /// (`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id
     /// used as that service's default, consulted after an explicit binding and
@@ -177,8 +177,12 @@ pub struct UpdateOrganizationRequest {
     /// the whole map; each referenced provider must exist in the org.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<std::collections::HashMap<String, String>>)]
-    pub default_provider_per_service:
-        Option<std::collections::HashMap<everruns_core::ServiceKind, everruns_core::ProviderId>>,
+    pub default_provider_per_service: Option<
+        std::collections::HashMap<
+            everruns_provider::driver_registry::ServiceKind,
+            everruns_provider::typed_id::ProviderId,
+        >,
+    >,
 }
 
 /// Response for organization operations
@@ -190,18 +194,20 @@ pub struct OrganizationResponse {
     pub name: String,
     /// Default LLM model for the organization.
     #[schema(value_type = Option<String>)]
-    pub default_model_id: Option<everruns_core::ModelId>,
+    pub default_model_id: Option<everruns_provider::typed_id::ModelId>,
     /// Default harness to preselect in the UI.
     #[schema(value_type = Option<String>)]
-    pub default_harness_id: Option<everruns_core::HarnessId>,
+    pub default_harness_id: Option<everruns_provider::typed_id::HarnessId>,
     /// Base harness used when session creation omits harness_id.
     #[schema(value_type = Option<String>)]
-    pub base_harness_id: Option<everruns_core::HarnessId>,
+    pub base_harness_id: Option<everruns_provider::typed_id::HarnessId>,
     /// Org-level default provider per service (EVE-569), keyed by service kind.
     /// Empty when no org defaults are configured.
     #[schema(value_type = std::collections::HashMap<String, String>)]
-    pub default_provider_per_service:
-        std::collections::HashMap<everruns_core::ServiceKind, everruns_core::ProviderId>,
+    pub default_provider_per_service: std::collections::HashMap<
+        everruns_provider::driver_registry::ServiceKind,
+        everruns_provider::typed_id::ProviderId,
+    >,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated

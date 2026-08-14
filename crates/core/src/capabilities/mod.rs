@@ -18,7 +18,6 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
-use crate::capability_types::is_plugin_capability;
 use crate::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
@@ -32,6 +31,7 @@ use crate::tools::{Tool, ToolExecutionResult, ToolRegistry};
 use crate::typed_id::SessionId;
 use crate::{session_files::SessionFileSystem, tool_context::ToolContext};
 use async_trait::async_trait;
+use everruns_capability::is_plugin_capability;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -74,11 +74,10 @@ pub struct IntegrationPlugin {
 
 inventory::collect!(IntegrationPlugin);
 
-// Re-export capability types from capability_types module
 pub use crate::capability_types::{
-    AgentCapabilityConfig, CapabilityId, CapabilityStatus, MountAccess, MountDirectoryBuilder,
-    MountEntry, MountPoint, MountSource,
+    CapabilityStatus, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
 };
+use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 
 // ============================================================================
 // Capability contract modules

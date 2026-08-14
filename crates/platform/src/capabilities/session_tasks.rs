@@ -17,9 +17,9 @@ use everruns_core::session_task::{
     NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
     TaskMessage, find_task_executor,
 };
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;
@@ -152,7 +152,7 @@ pub struct ListTasksTool;
 impl Tool for ListTasksTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -271,7 +271,7 @@ pub struct GetTaskTool;
 impl Tool for GetTaskTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -371,7 +371,7 @@ pub struct MessageTaskTool;
 impl Tool for MessageTaskTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -509,7 +509,7 @@ pub struct CancelTaskTool;
 impl Tool for CancelTaskTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -625,7 +625,7 @@ pub struct WaitTaskTool;
 impl Tool for WaitTaskTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -750,7 +750,7 @@ pub(crate) mod tests {
         TaskInputRequest, TaskLinks, TaskMessageDirection, TaskMessagePart, TaskWakePolicy,
         apply_task_update, generate_task_message_id, new_session_task,
     };
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -767,7 +767,7 @@ pub(crate) mod tests {
         async fn create(
             &self,
             input: CreateSessionTask,
-        ) -> everruns_core::error::Result<SessionTask> {
+        ) -> everruns_provider::error::Result<SessionTask> {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(id) = &input.id
                 && let Some(existing) = tasks.get(id)
@@ -784,7 +784,7 @@ pub(crate) mod tests {
             _session_id: SessionId,
             task_id: &str,
             update: SessionTaskUpdate,
-        ) -> everruns_core::error::Result<Option<SessionTask>> {
+        ) -> everruns_provider::error::Result<Option<SessionTask>> {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
                 return Ok(None);
@@ -797,7 +797,7 @@ pub(crate) mod tests {
             &self,
             _session_id: SessionId,
             task_id: &str,
-        ) -> everruns_core::error::Result<Option<SessionTask>> {
+        ) -> everruns_provider::error::Result<Option<SessionTask>> {
             Ok(self.tasks.lock().unwrap().get(task_id).cloned())
         }
 
@@ -805,7 +805,7 @@ pub(crate) mod tests {
             &self,
             session_id: SessionId,
             filter: Option<&SessionTaskFilter>,
-        ) -> everruns_core::error::Result<Vec<SessionTask>> {
+        ) -> everruns_provider::error::Result<Vec<SessionTask>> {
             let tasks = self.tasks.lock().unwrap();
             Ok(tasks
                 .values()
@@ -824,7 +824,7 @@ pub(crate) mod tests {
             &self,
             _session_id: SessionId,
             task_id: &str,
-        ) -> everruns_core::error::Result<Option<SessionTask>> {
+        ) -> everruns_provider::error::Result<Option<SessionTask>> {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
                 return Ok(None);
@@ -839,11 +839,11 @@ pub(crate) mod tests {
             session_id: SessionId,
             task_id: &str,
             message: NewTaskMessage,
-        ) -> everruns_core::error::Result<TaskMessage> {
+        ) -> everruns_provider::error::Result<TaskMessage> {
             let stored = {
                 let tasks = self.tasks.lock().unwrap();
                 let Some(task) = tasks.get(task_id) else {
-                    return Err(everruns_core::error::AgentLoopError::tool(format!(
+                    return Err(everruns_provider::error::AgentLoopError::tool(format!(
                         "no task {task_id}"
                     )));
                 };
@@ -853,7 +853,7 @@ pub(crate) mod tests {
             if let Some(expected) = message.expected_attempt
                 && expected != stored.attempt
             {
-                return Err(everruns_core::error::AgentLoopError::store(format!(
+                return Err(everruns_provider::error::AgentLoopError::store(format!(
                     "Stale attempt {expected} for task {task_id} (current attempt {})",
                     stored.attempt
                 )));
@@ -899,7 +899,7 @@ pub(crate) mod tests {
             task_id: &str,
             limit: Option<u32>,
             after_id: Option<&str>,
-        ) -> everruns_core::error::Result<Vec<TaskMessage>> {
+        ) -> everruns_provider::error::Result<Vec<TaskMessage>> {
             let messages = self.messages.lock().unwrap();
             let all = messages.get(task_id).cloned().unwrap_or_default();
             let mut iter: Box<dyn Iterator<Item = TaskMessage>> = if let Some(cursor) = after_id {
@@ -948,7 +948,7 @@ pub(crate) mod tests {
             task: &SessionTask,
             _message: &TaskMessage,
             _context: &ToolContext,
-        ) -> everruns_core::error::Result<()> {
+        ) -> everruns_provider::error::Result<()> {
             TEST_DELIVERED.lock().unwrap().push(task.id.clone());
             Ok(())
         }
@@ -957,7 +957,7 @@ pub(crate) mod tests {
             &self,
             task: &SessionTask,
             _context: &ToolContext,
-        ) -> everruns_core::error::Result<()> {
+        ) -> everruns_provider::error::Result<()> {
             TEST_CANCELED.lock().unwrap().push(task.id.clone());
             Ok(())
         }

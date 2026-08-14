@@ -11,11 +11,13 @@
 // only the effective `HarnessDefinition`; the stored chain remains available
 // to server-side callers via the inherent `get_harness_chain`.
 
-use async_trait::async_trait;
-use everruns_core::{
-    AgentCapabilityConfig, AgentLoopError, HarnessDefinition, HarnessId, Result, StoreResultExt,
-    execution_loading::HarnessStore, from_json,
+use crate::kernel_imports::{
+    AgentCapabilityConfig, HarnessDefinition, everruns_provider::error::AgentLoopError,
+    everruns_provider::error::Result, everruns_provider::error::StoreResultExt,
+    everruns_provider::error::from_json, everruns_provider::typed_id::HarnessId,
+    execution_loading::HarnessStore,
 };
+use async_trait::async_trait;
 use everruns_platform::{Harness, HarnessStatus, resolve_execution_harness};
 use std::collections::HashSet;
 

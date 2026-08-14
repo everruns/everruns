@@ -7,3 +7,4 @@ publish = false
 [dependencies]
 everruns-builtins = { path = "../../../../crates/builtins" }
 everruns-core = { path = "../../../../crates/core", default-features = false }
+everruns-provider = { path = "../../../../crates/provider", default-features = false }

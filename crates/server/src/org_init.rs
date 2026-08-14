@@ -14,13 +14,15 @@
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
 //   This ensures "default" means seeded, not privileged.
 
+use crate::kernel_imports::{
+    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::PluginMarketplaceId,
+};
 use crate::storage::{
     StorageBackend,
     models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use everruns_core::{HarnessId, PluginMarketplaceId};
 use everruns_durable::UpdateField;
 use everruns_platform::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,

@@ -175,7 +175,7 @@ async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
     let owner_principal_id = server
         .db
         .create_principal(everruns_server::storage::CreatePrincipalRow {
-            id: everruns_core::PrincipalId::new(),
+            id: everruns_provider::typed_id::PrincipalId::new(),
             org_id: everruns_core::DEFAULT_ORG_ID,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -255,7 +255,7 @@ async fn create_reporting_repair_session(server: &TestServer, org_id: i64, suffi
     let principal = server
         .db
         .create_principal(CreatePrincipalRow {
-            id: everruns_core::PrincipalId::new(),
+            id: everruns_provider::typed_id::PrincipalId::new(),
             org_id,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),

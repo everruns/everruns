@@ -5,24 +5,25 @@
 
 use crate::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
 use crate::in_memory::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStorageStore,
-    InMemorySessionStore,
+    InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
+    InMemoryProviderStore, InMemorySessionStorageStore, InMemorySessionStore,
 };
 use async_trait::async_trait;
 use everruns_core::agent_definition::AgentDefinition;
-use everruns_core::error::Result;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::SessionTaskRegistry;
-use everruns_core::typed_id::{HarnessId, SessionId};
 use everruns_core::{
     connection_services::UserConnectionResolver, execution_loading::AgentStore,
     execution_loading::HarnessStore, execution_loading::SessionStore,
-    provider_resolution::ProviderStore, provider_resolution::ResolvedModel,
-    session_services::SessionScheduleStore, session_services::SessionStorageStore,
+    provider_resolution::ProviderStore, session_services::SessionScheduleStore,
+    session_services::SessionStorageStore,
 };
 use everruns_platform::PlatformStore;
 use everruns_platform::SessionMutator;
+use everruns_provider::error::Result;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::typed_id::{HarnessId, SessionId};
 use std::sync::Arc;
 
 /// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a
@@ -68,8 +69,8 @@ pub trait RuntimeSessionStore: SessionStore + SessionMutator + Send + Sync {
 /// Provider store contract for runtime lookup and default-model configuration.
 #[async_trait]
 pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
-    /// Set the runtime default model.
-    async fn set_default_model(&self, model: ResolvedModel) -> Result<()>;
+    /// Set the runtime default credential-free model selection.
+    async fn set_default_model_spec(&self, model: ModelSpec) -> Result<()>;
 }
 
 /// Non-filesystem backend bundle supplied to an execution host.
@@ -127,9 +128,7 @@ impl HostBackends {
             agent_store: Arc::new(InMemoryAgentStore::new()),
             session_store: Arc::new(InMemorySessionStore::new()),
             event_log: Arc::new(InMemoryEventLog::new()),
-            compaction_checkpoint_store: Arc::new(
-                everruns_core::InMemoryCompactionCheckpointStore::default(),
-            ),
+            compaction_checkpoint_store: Arc::new(InMemoryCompactionCheckpointStore::default()),
             provider_store: Arc::new(InMemoryProviderStore::new()),
             event_sink: Arc::new(NoopEventSink),
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
@@ -243,8 +242,8 @@ impl RuntimeSessionStore for InMemorySessionStore {
 
 #[async_trait]
 impl RuntimeProviderStore for InMemoryProviderStore {
-    async fn set_default_model(&self, model: ResolvedModel) -> Result<()> {
-        InMemoryProviderStore::set_default_model(self, model).await;
+    async fn set_default_model_spec(&self, model: ModelSpec) -> Result<()> {
+        InMemoryProviderStore::set_default_model_spec(self, model).await;
         Ok(())
     }
 }

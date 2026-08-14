@@ -7,11 +7,10 @@
 use super::{GetSessionFacets, ListSessions, SessionFilterArgs, SessionService};
 use crate::domains::common::{Command, Ctx};
 use crate::storage::{CreateEventRow, CreateSessionRow, StorageBackend};
-use everruns_core::typed_id::AgentId;
-use everruns_core::{
-    Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole, PrincipalId, SessionId,
-};
+use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
 use everruns_platform::SessionSource;
+use everruns_provider::typed_id::AgentId;
+use everruns_provider::typed_id::{PrincipalId, SessionId};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;

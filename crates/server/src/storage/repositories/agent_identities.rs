@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
-use everruns_core::AgentIdentityId;
+use everruns_provider::typed_id::AgentIdentityId;
 
 impl Database {
     // ============================================

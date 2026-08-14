@@ -16,6 +16,9 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::kernel_imports::{
+    Caller, ContentPart, ExternalActor, MessageRole, everruns_provider::typed_id::MessageId,
+};
 use ag_ui_core::event::{
     BaseEvent as AgUiBaseEvent, Event as AgUiEvent,
     MessagesSnapshotEvent as AgUiMessagesSnapshotEvent, RunErrorEvent as AgUiRunErrorEvent,
@@ -50,12 +53,12 @@ use everruns_core::events::{
     ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData,
     ToolCompletedData, ToolStartedData, TurnFailedData,
 };
-use everruns_core::message::ExecutionPhase;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use everruns_core::{
-    Caller, ContentPart, ExternalActor, MessageId, MessageRole, typed_id::ImageId,
-};
 use everruns_platform::{AgUiChannelConfig, AgUiToolVisibility, App, AppStatus};
+use everruns_provider::execution_phase::ExecutionPhase;
+use everruns_provider::typed_id::ImageId;
+#[cfg(test)]
+use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -1531,15 +1534,14 @@ fn too_many_requests(message: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ag_ui_core::event::EventType as AgUiEventType;
-    use chrono::Duration as ChronoDuration;
-    use everruns_core::events::TurnFailedData;
-    use everruns_core::message::ExecutionPhase;
-    use everruns_core::user_facing_error_codes;
-    use everruns_core::{
+    use crate::kernel_imports::{
         Event, EventContext, Message, MessageId, OutputMessageCompletedData,
         OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
     };
+    use ag_ui_core::event::EventType as AgUiEventType;
+    use chrono::Duration as ChronoDuration;
+    use everruns_core::events::TurnFailedData;
+    use everruns_provider::execution_phase::ExecutionPhase;
 
     #[test]
     fn test_expired_age_seconds_within_window() {
@@ -1596,7 +1598,7 @@ mod tests {
     }
 
     fn test_app() -> App {
-        use everruns_core::typed_id::{AppId, HarnessId, PrincipalId};
+        use everruns_provider::typed_id::{AppId, HarnessId, PrincipalId};
 
         let now = chrono::Utc::now();
         App {

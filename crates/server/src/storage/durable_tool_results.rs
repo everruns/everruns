@@ -1,11 +1,11 @@
 // PostgreSQL implementation of DurableToolResultStore (EVE-530, EVE-533).
 
 use async_trait::async_trait;
-use everruns_core::error::AgentLoopError;
 use everruns_core::{
     durability::DurableToolCallStatus, durability::DurableToolResultStore,
     durability::ToolCallClaimResult,
 };
+use everruns_provider::error::AgentLoopError;
 use sqlx::PgPool;
 use uuid::Uuid;
 

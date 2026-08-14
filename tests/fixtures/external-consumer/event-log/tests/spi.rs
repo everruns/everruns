@@ -4,18 +4,19 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::error::Result as CoreResult;
+use everruns_provider::error::Result as CoreResult;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
 use everruns_core::{
     execution_loading::AgentStore, execution_loading::HarnessStore, session_services::KeyInfo, provider_resolution::ProviderStore, session_services::SecretInfo, session_services::SessionStorageStore, execution_loading::SessionStore,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore,
-    DriverId, ExecutionSession, ProactiveCompactionAttempt, provider_resolution::ResolvedModel,
+    AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore, ExecutionSession,
+    ProactiveCompactionAttempt,
 };
+use everruns_provider::{model_spec::ModelSpec, provider::DriverId};
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,
     EventReadRequest, EventReader, EventSink, EventSinkError, HostBackends,
@@ -84,7 +85,7 @@ impl SessionMutator for ExternalSessionStore {
     async fn upsert_session_capability(
         &self,
         session_id: SessionId,
-        capability: AgentCapabilityConfig,
+        capability: everruns_capability::CapabilityRef,
     ) -> CoreResult<ExecutionSession> {
         self.0
             .upsert_session_capability(session_id, capability)
@@ -113,19 +114,19 @@ struct ExternalProviderStore(Arc<dyn RuntimeProviderStore>);
 
 #[async_trait]
 impl ProviderStore for ExternalProviderStore {
-    async fn get_resolved_model(&self, model_id: ModelId) -> CoreResult<Option<ResolvedModel>> {
-        self.0.get_resolved_model(model_id).await
+    async fn get_model_spec(&self, model_id: ModelId) -> CoreResult<Option<ModelSpec>> {
+        self.0.get_model_spec(model_id).await
     }
 
-    async fn get_default_model(&self) -> CoreResult<Option<ResolvedModel>> {
-        self.0.get_default_model().await
+    async fn get_default_model_spec(&self) -> CoreResult<Option<ModelSpec>> {
+        self.0.get_default_model_spec().await
     }
 }
 
 #[async_trait]
 impl RuntimeProviderStore for ExternalProviderStore {
-    async fn set_default_model(&self, model: ResolvedModel) -> CoreResult<()> {
-        self.0.set_default_model(model).await
+    async fn set_default_model_spec(&self, model: ModelSpec) -> CoreResult<()> {
+        self.0.set_default_model_spec(model).await
     }
 }
 
@@ -402,7 +403,7 @@ fn cursor_and_page_construction_reject_inconsistent_positions() {
     ));
 
     // A page may not return events beyond the snapshot it claims.
-    let event: Event = input(session, "one").into_event(everruns_core::EventId::new(), 5);
+    let event: Event = input(session, "one").into_event(everruns_provider::typed_id::EventId::new(), 5);
     assert!(matches!(
         EventPage::new(vec![event], None, 4).expect_err("sequence beyond snapshot"),
         EventLogError::InvalidRead { .. }
@@ -464,13 +465,7 @@ async fn the_external_log_serves_host_composition_and_message_projection() {
     let log = Arc::new(ExternalEventLog::new());
     let runtime = InProcessRuntimeBuilder::new()
         .llm_sim(LlmSimConfig::fixed("Four."))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("obviously-not-a-real-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .backends(external_backends(log.clone()))
         .single_session(|session| {
             session

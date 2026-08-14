@@ -2,9 +2,12 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::LeasedResourceId, everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::{LeasedResourceId, ScheduleId, SessionId};
 
 impl InMemoryDatabase {
     // ============================================

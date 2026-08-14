@@ -6,9 +6,9 @@
 use crate::api::common::deserialize_nullable_update_field;
 use crate::domains::common::deserialize_opt_json_value_lenient;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{AgentId, AgentIdentityId, AgentVersionId, HarnessId};
 use everruns_durable::UpdateField;
 use everruns_platform::{AgentVersionPolicy, AppStatus, ChannelType};
+use everruns_provider::typed_id::{AgentId, AgentIdentityId, AgentVersionId, HarnessId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 

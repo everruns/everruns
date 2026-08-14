@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 
 /// Metadata about a session database (no content/pages).
 #[derive(Debug, Clone, Serialize, Deserialize)]

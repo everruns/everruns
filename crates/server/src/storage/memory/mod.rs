@@ -55,13 +55,19 @@ mod workspaces;
 #[cfg(test)]
 mod tests;
 
-use chrono::{DateTime, Utc};
-use everruns_core::{
-    AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
-    HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
-    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SessionParticipantId,
-    SkillId, TriggerId,
+use crate::kernel_imports::{
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, everruns_provider::typed_id::AgentId,
+    everruns_provider::typed_id::AgentIdentityId, everruns_provider::typed_id::AgentVersionId,
+    everruns_provider::typed_id::EventId, everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::LeasedResourceId,
+    everruns_provider::typed_id::McpServerId, everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::NotificationId,
+    everruns_provider::typed_id::PluginMarketplaceId, everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::ProviderId, everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId, everruns_provider::typed_id::SessionParticipantId,
+    everruns_provider::typed_id::SkillId, everruns_provider::typed_id::TriggerId,
 };
+use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 #[cfg(test)]

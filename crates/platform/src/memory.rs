@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use everruns_core::typed_id::{AgentId, MemoryId};
+use everruns_provider::typed_id::{AgentId, MemoryId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

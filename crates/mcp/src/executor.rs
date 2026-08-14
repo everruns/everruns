@@ -12,7 +12,9 @@ use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_core::{AgentLoopError, McpToolInvoker, ToolCall, ToolResult, parse_mcp_tool_name};
+use everruns_core::{McpToolInvoker, parse_mcp_tool_name};
+use everruns_provider::error::{AgentLoopError, Result as CoreResult};
+use everruns_provider::tool_types::{ToolCall, ToolResult};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -238,7 +240,7 @@ impl McpExecutor {
 
 #[async_trait]
 impl McpToolInvoker for McpExecutor {
-    async fn invoke(&self, tool_call: &ToolCall) -> everruns_core::Result<ToolResult> {
+    async fn invoke(&self, tool_call: &ToolCall) -> CoreResult<ToolResult> {
         self.execute_mcp_tool(tool_call).await.map_err(|e| {
             tracing::error!(error = %e, "MCP tool execution failed");
             AgentLoopError::tool(e.to_string())

@@ -1,7 +1,8 @@
 //! Deployment-selected session filesystem factories.
 
 use async_trait::async_trait;
-use everruns_core::{AgentLoopError, Result, WorkspaceRootSet, session_files::SessionFileSystem};
+use everruns_core::{WorkspaceRootSet, session_files::SessionFileSystem};
+use everruns_provider::error::{AgentLoopError, Result};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;

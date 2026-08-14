@@ -18,7 +18,7 @@ pub use everruns_core::events::{
     Event, EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
 };
 pub use everruns_core::message::ContentPart;
-pub use everruns_core::typed_id::SessionId;
+pub use everruns_provider::typed_id::SessionId;
 
 // ============================================================================
 // Dataset Record (input)
@@ -302,7 +302,7 @@ pub fn make_output_event_with_tool_call(
     tool_arguments: serde_json::Value,
     sequence: i32,
 ) -> Event {
-    let tool_call = everruns_core::tool_types::ToolCall {
+    let tool_call = everruns_provider::tool_types::ToolCall {
         id: tool_call_id.into(),
         name: tool_name.into(),
         arguments: tool_arguments,

@@ -13,27 +13,30 @@ use std::sync::Arc;
 
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use chrono::Utc;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
 };
-use everruns_core::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
-use everruns_core::driver_registry::{DriverId, DriverRegistry};
-use everruns_core::error::Result;
+use everruns_core::capabilities::{Capability, CapabilityRegistry};
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventContext, EventData, EventRequest, InputMessageData};
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
-use everruns_core::tool_types::ToolCall;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-use everruns_core::{event_emitter::EventEmitter, provider_resolution::ResolvedModel};
 use everruns_host::{
     EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
     InMemorySessionStore, NoopEventSink, StoreTurnContextResolver,
 };
+use everruns_provider::driver_registry::ProviderConfig;
+use everruns_provider::driver_registry::{DriverId, DriverRegistry};
+use everruns_provider::error::Result;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::tool_types::ToolCall;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 
 // ============================================================================
 // Turn Result
@@ -154,11 +157,43 @@ impl TurnResult {
 // Builder
 // ============================================================================
 
+/// Credential-free model identity plus optional host-owned provider configuration.
+pub struct InMemoryModelConfig {
+    model: ModelSpec,
+    provider_config: Option<ProviderConfig>,
+}
+
+impl InMemoryModelConfig {
+    /// Split the credential-free model identity from its optional host-owned configuration.
+    pub fn into_parts(self) -> (ModelSpec, Option<ProviderConfig>) {
+        (self.model, self.provider_config)
+    }
+}
+
+impl From<ModelSpec> for InMemoryModelConfig {
+    fn from(model: ModelSpec) -> Self {
+        Self {
+            model,
+            provider_config: None,
+        }
+    }
+}
+
+impl From<(ModelSpec, ProviderConfig)> for InMemoryModelConfig {
+    fn from((model, provider_config): (ModelSpec, ProviderConfig)) -> Self {
+        Self {
+            model,
+            provider_config: Some(provider_config),
+        }
+    }
+}
+
 /// Builder for creating an `InMemoryAgenticLoop`
 pub struct InMemoryAgenticLoopBuilder {
     agent_name: String,
     system_prompt: String,
-    model: Option<ResolvedModel>,
+    model: Option<ModelSpec>,
+    provider_config: Option<ProviderConfig>,
     driver_registry: Option<DriverRegistry>,
     llm_sim_config: Option<LlmSimConfig>,
     tools: Vec<Box<dyn Tool>>,
@@ -181,6 +216,7 @@ impl InMemoryAgenticLoopBuilder {
             agent_name: "Test Agent".to_string(),
             system_prompt: "You are a helpful assistant.".to_string(),
             model: None,
+            provider_config: None,
             driver_registry: None,
             llm_sim_config: Some(LlmSimConfig::default()),
             tools: vec![],
@@ -236,15 +272,11 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::provider_resolution::ResolvedModel;
-    /// use everruns_core::provider::DriverId;
+    /// use everruns_core::{DriverId, ModelSpec, ProviderConfig};
     ///
-    /// let model = ResolvedModel {
-    ///     model: "claude-sonnet-4-20250514".to_string(),
-    ///     provider_type: DriverId::Anthropic,
-    ///     api_key: Some(std::env::var("ANTHROPIC_API_KEY").unwrap()),
-    ///     base_url: None,
-    /// };
+    /// let model = ModelSpec::on("anthropic", "claude-sonnet-4-20250514");
+    /// let config = ProviderConfig::new(DriverId::Anthropic)
+    ///     .with_api_key(std::env::var("ANTHROPIC_API_KEY").unwrap());
     ///
     /// let runner = InMemoryAgenticLoop::builder()
     ///     .model(model)
@@ -252,9 +284,17 @@ impl InMemoryAgenticLoopBuilder {
     ///     .build()
     ///     .await?;
     /// ```
-    pub fn model(mut self, model: ResolvedModel) -> Self {
-        self.model = Some(model);
+    pub fn model(mut self, config: impl Into<InMemoryModelConfig>) -> Self {
+        let config = config.into();
+        self.model = Some(config.model);
+        self.provider_config = config.provider_config;
         self.llm_sim_config = None;
+        self
+    }
+
+    /// Set credentials and endpoint configuration for the selected provider.
+    pub fn provider_config(mut self, config: ProviderConfig) -> Self {
+        self.provider_config = Some(config);
         self
     }
 
@@ -263,7 +303,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::driver_registry::DriverRegistry;
+    /// use everruns_provider::driver_registry::DriverRegistry;
     ///
     /// let mut driver_registry = DriverRegistry::new();
     /// everruns_anthropic::register_driver(&mut driver_registry);
@@ -350,7 +390,7 @@ impl InMemoryAgenticLoopBuilder {
         // definitions so ReasonAtom returns them and ActAtom executes them
         // (rather than treating them as unknown). Capability-provided tools are
         // already surfaced through the capability registry.
-        let explicit_tool_definitions: Vec<everruns_core::tool_types::ToolDefinition> =
+        let explicit_tool_definitions: Vec<everruns_provider::tool_types::ToolDefinition> =
             self.tools.iter().map(|tool| tool.to_definition()).collect();
 
         // Create agent
@@ -379,22 +419,19 @@ impl InMemoryAgenticLoopBuilder {
 
         // Create provider store and driver registry
         let provider_store = InMemoryProviderStore::new();
+        if let Some(config) = self.provider_config {
+            provider_store.set_provider_config(config).await;
+        }
         let driver_registry =
             if let (Some(model), Some(registry)) = (self.model, self.driver_registry) {
                 // Use provided model and driver registry
-                provider_store.set_default_model(model).await;
+                provider_store.set_default_model_spec(model).await;
                 registry
             } else {
                 // Use LlmSim (default or explicitly configured)
                 let config = self.llm_sim_config.unwrap_or_default();
-                let model = ResolvedModel {
-                    model: "llmsim-model".to_string(),
-                    provider_type: DriverId::LlmSim,
-                    api_key: Some("fake-key".to_string()),
-                    base_url: None,
-                    provider_metadata: None,
-                };
-                provider_store.set_default_model(model).await;
+                let model = ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model".to_string());
+                provider_store.set_default_model_spec(model).await;
 
                 // Create the driver once and share it across calls.
                 // This ensures sequence-based responses work correctly
@@ -874,7 +911,7 @@ impl InMemoryAgenticLoop {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::ToolCall;
+    /// use everruns_provider::tool_types::ToolCall;
     /// use serde_json::json;
     ///
     /// let tool_call = ToolCall {

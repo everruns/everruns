@@ -5,13 +5,13 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use everruns_core::error::Result;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message::Message;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
-use everruns_core::typed_id::{EventId, MessageId, SessionId};
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

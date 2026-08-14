@@ -11,11 +11,11 @@
 
 use std::time::Instant;
 
-use everruns_core::driver_registry::DriverRegistry;
+use everruns_provider::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
     AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
-    provider_resolution::ResolvedModel, SessionId,
+    model_spec::ModelSpec, SessionId,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -108,7 +108,13 @@ fn platform() -> HostComposition {
     HostComposition::new(caps, drivers)
 }
 
-async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64) -> RunMetrics {
+async fn run_one(
+    task: &Task,
+    capability: &str,
+    model: &ModelSpec,
+    api_key: &str,
+    seed: u64,
+) -> RunMetrics {
     let harness_id = HarnessId::from_seed(seed as u128);
     let agent_id = AgentId::from_seed(seed as u128);
     let session_id = SessionId::from_seed(seed as u128);
@@ -137,6 +143,7 @@ async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64
 
     let runtime = match InProcessRuntimeBuilder::new()
         .host_composition(platform())
+        .provider(everruns_anthropic::provider("anthropic", api_key))
         .default_model(model.clone())
         .harness(harness)
         .agent(agent)
@@ -196,7 +203,7 @@ async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64
 
 /// Print the fully assembled system prompt each arm sends to the model (harness
 /// + agent + the execution capability's own contribution). No model call.
-async fn dump_prompts(model: &ResolvedModel) -> anyhow::Result<()> {
+async fn dump_prompts(model: &ModelSpec) -> anyhow::Result<()> {
     for capability in ["virtual_bash", "lua"] {
         let harness_id = HarnessId::from_seed(1);
         let agent_id = AgentId::from_seed(1);
@@ -215,6 +222,7 @@ async fn dump_prompts(model: &ResolvedModel) -> anyhow::Result<()> {
             .build();
         let runtime = InProcessRuntimeBuilder::new()
             .host_composition(platform())
+            .provider(everruns_anthropic::provider("anthropic", "dump-only"))
             .default_model(model.clone())
             .harness(harness)
             .agent(agent)
@@ -242,13 +250,7 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(1);
 
-    let model = ResolvedModel {
-        model: model_name.clone(),
-        provider_type: DriverId::Anthropic,
-        api_key: Some(api_key),
-        base_url: None,
-        provider_metadata: None,
-    };
+    let model = ModelSpec::on((DriverId::Anthropic).as_str(), model_name.clone());
 
     // `--dump-prompts` prints the assembled prompts and exits (no model call).
     if std::env::args().any(|a| a == "--dump-prompts") {
@@ -274,7 +276,7 @@ async fn main() -> anyhow::Result<()> {
         for arm in arms {
             for _ in 0..runs {
                 seed += 1;
-                let m = run_one(task, arm, &model, seed).await;
+                let m = run_one(task, arm, &model, &api_key, seed).await;
                 let e = agg.entry(arm).or_default();
                 e.0 += m.graded_ok as usize;
                 e.1 += 1;

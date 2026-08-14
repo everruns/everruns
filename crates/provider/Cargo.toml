@@ -2,9 +2,9 @@
 # Decision: Foundation crate that holds the driver-facing types the LLM provider
 # interface is built on (typed IDs, credential form schema, user-facing error
 # taxonomy, OpenResponses wire types, URL validation). Extracted from
-# everruns-core so provider crates can depend on this instead of core. core
-# depends on this crate and re-exports these modules at their existing paths, so
-# the rest of the workspace is unaffected during the migration.
+# everruns-core so provider crates can depend on this instead of core. Core
+# consumes a narrow subset privately; callers use this crate's canonical API
+# instead of compatibility exports from core.
 
 [package]
 name = "everruns-provider"

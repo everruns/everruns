@@ -23,6 +23,7 @@ tracing.workspace = true
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["tree-sitter-outlines"] }
+everruns-provider.workspace = true
 # Telemetry init (OTLP exporter + tracing-subscriber layers) — installed
 # explicitly by the worker binary; core no longer ships it (EVE-876).
 everruns-observability = { workspace = true }

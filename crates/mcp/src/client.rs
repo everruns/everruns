@@ -6,9 +6,9 @@ use crate::http::HttpTransport;
 use crate::result::map_tool_call_result;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
 use anyhow::Result;
-use everruns_core::{
-    EgressService, McpToolCallResult, McpToolDefinition, ToolResult, ToolResultImage,
-};
+use everruns_core::{EgressService, McpToolCallResult, McpToolDefinition};
+use everruns_provider::ToolResultImage;
+use everruns_provider::tool_types::ToolResult;
 use serde_json::Value;
 use std::sync::Arc;
 

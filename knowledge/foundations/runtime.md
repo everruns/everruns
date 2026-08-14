@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Runtime Specification"
-description: "The low-level execution host and 0.17.x embedded-runtime compatibility contract."
+description: "The supported low-level execution host contract."
 tags:
   - everruns
   - foundations
@@ -25,8 +25,7 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Goals
 
-1. Preserve a supported low-level public crate for in-process execution and
-   existing 0.17.x applications.
+1. Preserve a supported low-level public crate for in-process execution.
 2. Let embedders supply their own `HostComposition` with custom capabilities,
    LLM drivers, and built-in harness templates.
 3. Run without PostgreSQL, NATS, or the durable engine.
@@ -78,7 +77,7 @@ The builder must allow an embedder to:
 `SessionBuilder` as the supported embedder construction path for those seed
 models. The core structs remain public data models and may still be constructed
 directly, but embedders should prefer the builders so new optional core fields
-can be defaulted inside the runtime crate instead of forcing every embedder to
+can be defaulted inside the host crate instead of forcing every embedder to
 update struct literals. `InProcessRuntimeBuilder::single_session(...)` is the
 recommended compact path for the common one-harness, one-agent, one-session
 runtime shape and records the generated session id for

@@ -18,13 +18,13 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::HarnessDefinition;
-use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::error::AgentLoopError;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_file::InitialFile;
-use everruns_core::typed_id::{HarnessId, ModelId};
+use everruns_provider::error::AgentLoopError;
+use everruns_provider::typed_id::{HarnessId, ModelId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -122,7 +122,7 @@ pub struct Harness {
     #[serde(default)]
     #[cfg_attr(
         feature = "openapi",
-        schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)
+        schema(value_type = Vec<crate::CapabilityRefSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this harness.
@@ -205,7 +205,7 @@ impl Harness {
     ///
     /// Archived and deleted records fail here — before host execution — with
     /// the same error the snapshot projection historically produced.
-    pub fn execution_definition(&self) -> everruns_core::Result<HarnessDefinition> {
+    pub fn execution_definition(&self) -> everruns_provider::error::Result<HarnessDefinition> {
         match self.status {
             HarnessStatus::Active => Ok(self.definition()),
             HarnessStatus::Archived | HarnessStatus::Deleted => {
@@ -245,7 +245,7 @@ impl From<&Harness> for everruns_core::AgentConfigOverlay {
 pub fn resolve_execution_harness(
     chain: &[Harness],
     expected_leaf: HarnessId,
-) -> everruns_core::Result<HarnessDefinition> {
+) -> everruns_provider::error::Result<HarnessDefinition> {
     let Some(leaf) = chain.last() else {
         return Err(AgentLoopError::harness_not_found(expected_leaf));
     };
@@ -347,7 +347,7 @@ pub enum BuiltInHarnessRole {
 /// historical provisioning name (EVE-873): built-in provisioning uses the
 /// same reference/config representation as persisted attachments and the
 /// Framework instead of a second semantic model.
-pub use everruns_core::capability_types::AgentCapabilityConfig as BuiltInCapabilityDefinition;
+pub use everruns_capability::CapabilityRef as BuiltInCapabilityDefinition;
 
 /// Built-in harness template provisioned during org initialization.
 ///

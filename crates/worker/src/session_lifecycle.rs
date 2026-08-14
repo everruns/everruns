@@ -11,10 +11,9 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::typed_id::{MessageId, SessionId, TurnId};
-use everruns_core::{
-    DependencyBlocker, Message, TokenUsage, UserFacingError, user_facing_error_codes,
-};
+use everruns_core::{DependencyBlocker, Message, TokenUsage};
+use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
+use everruns_provider::user_facing_error::{UserFacingError, codes as user_facing_error_codes};
 use tracing::warn;
 
 use crate::worker_adapters::WorkerAdapters;

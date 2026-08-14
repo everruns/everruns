@@ -528,7 +528,8 @@ impl Default for RuntimeAgentBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::{AgentCapabilityConfig, Capability, SystemPromptContext};
+    use crate::AgentCapabilityConfig;
+    use crate::capabilities::{Capability, SystemPromptContext};
     use crate::typed_id::AgentId;
 
     struct ToolFixtureCapability;

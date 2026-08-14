@@ -6,6 +6,14 @@
 // Cleanup claiming and retry transitions stay in storage/backend APIs because
 // they are server/worker control-plane concerns, not tool concerns.
 
+use crate::kernel_imports::{
+    LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::typed_id::SessionId,
+};
+use crate::kernel_imports::{
+    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
+};
 use async_trait::async_trait;
 use chrono::{TimeDelta, Utc};
 use everruns_core::resource_ownership::{
@@ -13,12 +21,6 @@ use everruns_core::resource_ownership::{
     LEASED_RESOURCE_TYPE_KEY,
 };
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
-use everruns_core::{
-    AgentLoopError, LeasedResource, LeasedResourceStatus, Result, SessionId, UpsertLeasedResource,
-};
-use everruns_core::{
-    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
-};
 
 use super::backend::StorageBackend;
 use super::models::{LeasedResourceRow, ReleaseLeasedResourceRow, UpsertLeasedResourceRow};
@@ -282,7 +284,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Lease test session".to_string()),
             locale: None,

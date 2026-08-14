@@ -693,7 +693,11 @@ fn decorate_mcp_capability_refs(value: &mut serde_json::Value) {
             let capability_ref = object
                 .get("id")
                 .and_then(serde_json::Value::as_str)
-                .and_then(|value| value.parse::<everruns_core::McpServerId>().ok())
+                .and_then(|value| {
+                    value
+                        .parse::<everruns_provider::typed_id::McpServerId>()
+                        .ok()
+                })
                 .map(|id| format!("mcp:{}", id.uuid()));
             if let Some(capability_ref) = capability_ref {
                 object

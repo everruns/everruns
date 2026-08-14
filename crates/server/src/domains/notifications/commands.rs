@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::types::{ListNotificationsResponse, Notification};
 use crate::domains::common::*;
-use everruns_core::NotificationId;
+use everruns_provider::typed_id::NotificationId;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

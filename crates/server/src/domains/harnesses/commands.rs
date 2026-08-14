@@ -7,10 +7,14 @@ use super::queries as q;
 use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, UpdateHarnessRequest};
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
-use everruns_core::{
-    AgentCapabilityConfig, HarnessId, Policy, ScopedMcpServers, ToolDefinition,
+use crate::kernel_imports::{
+    AgentCapabilityConfig, Policy, ScopedMcpServers,
+    everruns_provider::openresponses_types::{
+        MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH,
+    },
+    everruns_provider::tool_types::ToolDefinition,
+    everruns_provider::typed_id::HarnessId,
     merge_scoped_mcp_servers,
-    openresponses_types::{MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH},
 };
 use everruns_platform::{Harness, HarnessStatus};
 use serde::Deserialize;
@@ -799,7 +803,7 @@ pub struct PreviewHarness {
     #[serde(default)]
     pub parent_harness_id: Option<HarnessId>,
     #[serde(default)]
-    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
     pub capabilities: Vec<AgentCapabilityConfig>,
     #[serde(default)]
     pub mcp_servers: ScopedMcpServers,
@@ -949,11 +953,11 @@ inventory::submit! { CommandDescriptor::of::<CheckHarnessName>() }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::CapabilityService;
-    use crate::storage::StorageBackend;
-    use everruns_core::{
+    use crate::kernel_imports::{
         Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
     };
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
     use std::sync::Arc;
     use uuid::Uuid;
 

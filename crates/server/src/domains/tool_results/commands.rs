@@ -3,8 +3,8 @@ use super::types::{ClientToolResult, SubmitToolResultsResponse};
 use crate::domains::common::*;
 use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
-use everruns_core::typed_id::{MessageId, TurnId};
 use everruns_platform::SessionStatus;
+use everruns_provider::typed_id::{MessageId, TurnId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

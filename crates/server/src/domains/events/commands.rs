@@ -2,8 +2,8 @@ use super::queries as q;
 use crate::domains::common::*;
 use crate::storage::models::ListEventsParams;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::EventId;
 use everruns_core::{Event, VALID_EVENT_TYPES};
+use everruns_provider::typed_id::EventId;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

@@ -6,13 +6,13 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_resources::ListSessionResources;
+use crate::kernel_imports::{Caller, SessionResourceEntry, everruns_provider::typed_id::SessionId};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, State},
     routing::get,
 };
-use everruns_core::{Caller, SessionId, SessionResourceEntry};
 use std::sync::Arc;
 
 use super::common::{ApiResult, impl_auth_state};

@@ -8,6 +8,10 @@
 // Wake policy: after a state transition the registry calls the optional waker
 // best-effort (log on error, never fail the operation).
 
+use crate::kernel_imports::{
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::typed_id::SessionId,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::event_emitter::EventEmitter;
@@ -19,7 +23,6 @@ use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection,
     generate_task_message_id, new_session_task, task_message_text,
 };
-use everruns_core::{AgentLoopError, Result, SessionId};
 
 use super::backend::StorageBackend;
 use super::models::NewSessionTaskMessageRow;

@@ -6,9 +6,11 @@ use super::types::{
 use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, SOURCE_TYPES};
 use crate::domains::common::*;
 use crate::domains::git_sources::normalize_github_repository;
-use everruns_core::typed_id::KnowledgeIndexId;
-use everruns_core::{DriverId, Policy, ServiceKind};
+use crate::kernel_imports::{
+    Policy, everruns_provider::driver_registry::ServiceKind, everruns_provider::provider::DriverId,
+};
 use everruns_platform::vector_store::index_namespace;
+use everruns_provider::typed_id::KnowledgeIndexId;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -96,8 +98,8 @@ const INVALID_EMBEDDING_MODEL: &str =
 /// one response so the API cannot be used as a model/provider existence oracle.
 async fn require_embedding_model(
     ctx: &Ctx,
-    model_id: everruns_core::ModelId,
-) -> Result<everruns_core::ModelId, CommandError> {
+    model_id: everruns_provider::typed_id::ModelId,
+) -> Result<everruns_provider::typed_id::ModelId, CommandError> {
     // THREAT[TM-AUTHZ-015]: resolve both resources inside the caller's org and
     // collapse every invalid binding into one non-enumerable response.
     let model = ctx
@@ -232,7 +234,7 @@ pub struct CreateKnowledgeIndex {
     pub source_config: Option<serde_json::Value>,
     #[schema(value_type = String)]
     /// Embedding model used to embed chunks. Required.
-    pub embedding_model_id: everruns_core::ModelId,
+    pub embedding_model_id: everruns_provider::typed_id::ModelId,
 }
 
 impl From<CreateKnowledgeIndexRequest> for CreateKnowledgeIndex {
@@ -607,8 +609,8 @@ inventory::submit! { CommandDescriptor::of::<ListKnowledgeIndexDocuments>() }
 mod tests {
     use super::*;
     use crate::domains::common::Ctx;
+    use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, ModelId, OrgRole};
     use crate::storage::StorageBackend;
-    use everruns_core::{Caller, DEFAULT_ORG_ID, ModelId, OrgRole};
     use everruns_platform::vector_store::index_namespace;
     use std::sync::Arc;
     use uuid::Uuid;

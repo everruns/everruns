@@ -1,7 +1,9 @@
 // Budget storage (PostgreSQL)
 
+use crate::kernel_imports::{
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::SessionId,
+};
 use anyhow::Result;
-use everruns_core::{AgentId, SessionId};
 use uuid::Uuid;
 
 use crate::storage::Database;

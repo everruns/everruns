@@ -3,8 +3,8 @@
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::tool_narration::ToolNarrationPhase;
-use everruns_core::tool_types::ToolCall;
 use everruns_platform::connector::ConnectorPlugin;
+use everruns_provider::tool_types::ToolCall;
 use serde_json::json;
 
 // Force linker to include the integration crate's inventory submissions.

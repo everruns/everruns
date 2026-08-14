@@ -16,7 +16,7 @@ use std::sync::Mutex;
 
 use async_trait::async_trait;
 use everruns_core::events::{Event, EventRequest};
-use everruns_core::typed_id::{EventId, SessionId};
+use everruns_provider::typed_id::{EventId, SessionId};
 use everruns_host::{
     EventCursor, EventDurability, EventLog, EventLogError, EventPage, EventReadRequest, EventReader,
 };

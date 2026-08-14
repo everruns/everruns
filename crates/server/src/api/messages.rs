@@ -23,7 +23,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{MessageId, SessionId, SessionParticipantId};
+use everruns_provider::typed_id::{MessageId, SessionId, SessionParticipantId};
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;

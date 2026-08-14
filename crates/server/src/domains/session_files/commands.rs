@@ -601,8 +601,8 @@ mod tests {
     use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
     use everruns_core::{
         Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, Permission, PermissionResolver,
-        PrincipalId,
     };
+    use everruns_provider::typed_id::PrincipalId;
     use serde_json::json;
     use std::sync::Arc;
     use uuid::Uuid;

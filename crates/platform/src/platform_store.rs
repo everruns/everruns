@@ -11,12 +11,12 @@ use crate::harness::{Harness, resolve_execution_harness};
 use async_trait::async_trait;
 use everruns_core::SessionContextReport;
 use everruns_core::capability_dto::CapabilityInfo;
-use everruns_core::error::Result;
 use everruns_core::session::SessionSeedMode;
-use everruns_core::typed_id::SessionParticipantId;
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::SessionParticipantId;
 
 use crate::session::{Session, SessionParticipant};
-use everruns_core::typed_id::{
+use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
 use std::collections::HashSet;
@@ -38,21 +38,21 @@ pub trait PlatformStore: Send + Sync {
 
     /// Search the authoritative domain-command catalog.
     async fn platform_discover(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_core::error::AgentLoopError::config(
+        Err(everruns_provider::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against read-only domain commands.
     async fn platform_query(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_core::error::AgentLoopError::config(
+        Err(everruns_provider::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
 
     /// Execute a bounded script against the full authorized command catalog.
     async fn platform_execute(&self, _arguments: serde_json::Value) -> Result<String> {
-        Err(everruns_core::error::AgentLoopError::config(
+        Err(everruns_provider::error::AgentLoopError::config(
             "Platform command surface is not available in this host",
         ))
     }
@@ -79,7 +79,7 @@ pub trait PlatformStore: Send + Sync {
 
         while let Some(harness_id) = current_id {
             if !seen.insert(harness_id) {
-                return Err(everruns_core::error::AgentLoopError::tool(format!(
+                return Err(everruns_provider::error::AgentLoopError::tool(format!(
                     "Harness inheritance cycle detected at {harness_id}"
                 )));
             }
@@ -267,7 +267,7 @@ pub trait PlatformStore: Send + Sync {
             || request.budget_root_session_id.is_some()
             || request.seed != SessionSeedMode::Fresh
         {
-            return Err(everruns_core::error::AgentLoopError::tool(
+            return Err(everruns_provider::error::AgentLoopError::tool(
                 "platform store does not support goal, lineage, budget-root override, or seeded session creation",
             ));
         }
@@ -440,7 +440,7 @@ pub mod tests {
     use crate::app::{App, AppChannel, AppStatus, ChannelType};
     use crate::harness::HarnessStatus;
     use crate::session::{Session, SessionStatus};
-    use everruns_core::AgentCapabilityConfig;
+    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
     /// Mock PlatformStore for unit tests.
     ///
@@ -505,7 +505,7 @@ pub mod tests {
                 },
                 extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
-                    public_id: everruns_core::typed_id::AgentId::new(),
+                    public_id: everruns_provider::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
                     name: "test-agent".to_string(),
                     display_name: Some("Test Agent".to_string()),
@@ -513,7 +513,7 @@ pub mod tests {
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,
 
-                    harness_id: everruns_core::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
+                    harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                     default_version_id: None,
                     forked_from_agent_id: None,
                     forked_from_version_id: None,
@@ -553,11 +553,11 @@ pub mod tests {
                     name: "test-app".to_string(),
                     description: Some("test app".to_string()),
                     harness_id: HarnessId::new(),
-                    agent_id: Some(everruns_core::typed_id::AgentId::new()),
+                    agent_id: Some(everruns_provider::typed_id::AgentId::new()),
                     agent_version_policy: crate::app::AgentVersionPolicy::Default,
                     agent_version_id: None,
-                    agent_identity_id: Some(everruns_core::typed_id::AgentIdentityId::new()),
-                    owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                    agent_identity_id: Some(everruns_provider::typed_id::AgentIdentityId::new()),
+                    owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                     resolved_owner_user_id: None,
                     owner: None,
                     effective_owner: None,
@@ -576,13 +576,15 @@ pub mod tests {
                         activity: Default::default(),
                         // Default 1:1 session<->workspace: workspace.id mirrors the session id.
                         id: session_id,
-                        workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+                        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(
+                            session_id.uuid(),
+                        ),
                         organization_id: "org_00000000000000000000000000000001".to_string(),
                         harness_id: HarnessId::new(),
                         agent_id: None,
                         agent_version_id: None,
                         agent_identity_id: None,
-                        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                        owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                         resolved_owner_user_id: None,
                         owner: None,
                         effective_owner: None,
@@ -707,7 +709,7 @@ pub mod tests {
         }
         async fn get_agent_by_id(
             &self,
-            _id: everruns_core::typed_id::AgentId,
+            _id: everruns_provider::typed_id::AgentId,
         ) -> Result<Option<Agent>> {
             Ok(Some(self.agent.clone()))
         }
@@ -726,7 +728,7 @@ pub mod tests {
         }
         async fn update_agent(
             &self,
-            _id: everruns_core::typed_id::AgentId,
+            _id: everruns_provider::typed_id::AgentId,
             name: Option<&str>,
             display_name: Option<&str>,
             _desc: Option<&str>,
@@ -741,7 +743,7 @@ pub mod tests {
             }
             Ok(a)
         }
-        async fn delete_agent(&self, _id: everruns_core::typed_id::AgentId) -> Result<()> {
+        async fn delete_agent(&self, _id: everruns_provider::typed_id::AgentId) -> Result<()> {
             Ok(())
         }
         async fn list_apps(
@@ -881,14 +883,14 @@ pub mod tests {
         async fn list_sessions(
             &self,
             _limit: Option<usize>,
-            _agent_id: Option<everruns_core::typed_id::AgentId>,
+            _agent_id: Option<everruns_provider::typed_id::AgentId>,
         ) -> Result<Vec<Session>> {
             Ok(vec![self.session.clone()])
         }
         async fn create_session(
             &self,
             hid: HarnessId,
-            aid: Option<everruns_core::typed_id::AgentId>,
+            aid: Option<everruns_provider::typed_id::AgentId>,
             title: Option<&str>,
             locale: Option<&str>,
             blueprint_id: Option<&str>,
@@ -958,7 +960,7 @@ pub mod tests {
             agent_id: AgentId,
         ) -> Result<SessionParticipant> {
             let participant = SessionParticipant {
-                id: everruns_core::typed_id::SessionParticipantId::new(),
+                id: everruns_provider::typed_id::SessionParticipantId::new(),
                 session_id,
                 kind: crate::session::SessionParticipantKind::Agent,
                 agent_id: Some(agent_id),

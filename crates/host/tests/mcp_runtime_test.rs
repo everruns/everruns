@@ -9,15 +9,17 @@
 
 use async_trait::async_trait;
 use everruns_core::command::{CommandDescriptor, CommandSource};
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentCapabilityConfig, Capability, CapabilityRegistry, CapabilityStatus, DriverId,
-    EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
-    ScopedMcpServer, ScopedMcpServers, Tool, ToolCall, ToolExecutionResult, ToolResult,
-    provider_resolution::ResolvedModel, tool_context::ToolContext,
+    Capability, CapabilityRegistry, CapabilityStatus, EgressRequest, EgressResponse, EgressResult,
+    EgressService, EgressStreamResponse, ScopedMcpServer, ScopedMcpServers, Tool,
+    ToolExecutionResult, tool_context::ToolContext,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::{ToolCall, ToolResult};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use serde_json::{Value, json};
@@ -149,7 +151,7 @@ impl everruns_core::atoms::PreToolUseHook for CountingPreHook {
     async fn before_exec(
         &self,
         tool_call: ToolCall,
-        _tool_def: &everruns_core::ToolDefinition,
+        _tool_def: &everruns_provider::tool_types::ToolDefinition,
         _context: &ToolContext,
     ) -> everruns_core::atoms::PreToolUseDecision {
         self.0.pre.fetch_add(1, Ordering::SeqCst);
@@ -164,7 +166,7 @@ impl everruns_core::atoms::PostToolExecHook for CountingPostHook {
     async fn after_exec(
         &self,
         _tool_call: &ToolCall,
-        _tool_def: &everruns_core::ToolDefinition,
+        _tool_def: &everruns_provider::tool_types::ToolDefinition,
         _result: &mut ToolResult,
         _context: &ToolContext,
     ) {
@@ -235,9 +237,9 @@ impl Capability for LiveCapability {
 async fn runtime_discovers_and_executes_scoped_mcp_tool() {
     let traffic = Arc::new(Mutex::new(McpTraffic::default()));
     let seed = 808u128;
-    let harness_id = everruns_core::HarnessId::from_seed(seed);
-    let agent_id = everruns_core::AgentId::from_seed(seed);
-    let session_id = everruns_core::SessionId::from_seed(seed);
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
 
     let mcp_tool_call = ToolCall {
         id: "call_1".to_string(),
@@ -251,13 +253,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
             LlmSimConfig::fixed("Calling the docs MCP tool.")
                 .with_tool_call_sequence(vec![vec![mcp_tool_call], vec![]]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(
             HarnessBuilder::new("mcp", "You are an MCP test assistant.")
                 .id(harness_id)
@@ -379,7 +375,10 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     assert_eq!(traffic.lock().unwrap().tools_list_calls, 0);
 
     let invalid = runtime
-        .activate_capability(session_id, AgentCapabilityConfig::new("live_test"))
+        .activate_capability(
+            session_id,
+            everruns_capability::CapabilityRef::new("live_test"),
+        )
         .await
         .expect_err("invalid config must fail before mutation");
     assert!(invalid.to_string().contains("enabled must be true"));
@@ -387,7 +386,10 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let delta = runtime
         .activate_capability(
             session_id,
-            AgentCapabilityConfig::with_config("live_test", json!({ "enabled": true })),
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
         )
         .await
         .expect("activation succeeds");
@@ -395,7 +397,10 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
     let duplicate = runtime
         .activate_capability(
             session_id,
-            AgentCapabilityConfig::with_config("live_test", json!({ "enabled": true })),
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
         )
         .await
         .expect("activation is idempotent");

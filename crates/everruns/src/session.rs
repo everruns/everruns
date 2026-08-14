@@ -10,13 +10,14 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::Arc;
 
+use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::turn::TurnStopReason;
-use everruns_core::typed_id::{MessageId, TurnId};
-use everruns_core::{AgentLoopError, InputMessage, SessionId};
 use everruns_host::{
     AcceptedTurnInput, InProcessRuntime, TurnResult, TurnSteering, TurnSteeringPushError,
 };
+use everruns_provider::error::AgentLoopError;
+use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
 use crate::Agent;
@@ -813,11 +814,12 @@ mod tests {
 
     use everruns_core::events::EventData;
     use everruns_core::turn::TurnStopReason;
-    use everruns_core::{ContentPart, InputMessage, MessageRole, TurnId};
+    use everruns_core::{ContentPart, InputMessage, MessageRole};
     use everruns_host::{
         EventHistory, EventHistoryReadLimit, EventHistoryReadRequest, EventReadLimit,
         EventReadRequest, TurnResult,
     };
+    use everruns_provider::typed_id::TurnId;
 
     use super::Turn;
     use crate::{Agent, Model};
@@ -978,7 +980,7 @@ mod tests {
 
     use std::time::Duration;
 
-    use everruns_core::ToolCall;
+    use everruns_provider::tool_types::ToolCall;
     use serde_json::json;
 
     use crate::{CancellationToken, RunOptions, SessionEvent, SessionEventKind};

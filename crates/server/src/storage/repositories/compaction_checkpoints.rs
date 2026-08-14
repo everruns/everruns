@@ -1,5 +1,5 @@
 use anyhow::Result;
-use everruns_core::SessionId;
+use everruns_provider::typed_id::SessionId;
 
 use super::Database;
 use crate::storage::models::{CompactionCheckpointRow, InstallCompactionCheckpointRow};

@@ -5,8 +5,8 @@ use everruns_core::session_task::{
     SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_SUBAGENT, TaskInputRequest, TaskLinks,
     TaskWakePolicy,
 };
-use everruns_core::typed_id::SessionId;
 use everruns_local::{LocalSessionTaskRegistry, SqliteDb};
+use everruns_provider::typed_id::SessionId;
 
 fn create_input(session_id: SessionId, kind: &str) -> CreateSessionTask {
     CreateSessionTask {

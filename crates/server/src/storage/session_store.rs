@@ -6,12 +6,13 @@
 // Decision: org_id and org_public_id are baked into the struct at
 // construction time, matching the Grpc/Adapter store pattern.
 
+use crate::kernel_imports::{
+    ExecutionSession, TokenUsage, everruns_provider::error::AgentLoopError,
+    everruns_provider::error::Result, everruns_provider::error::StoreResultExt,
+    everruns_provider::typed_id::SessionId, execution_loading::SessionStore,
+};
 use crate::max_iterations;
 use async_trait::async_trait;
-use everruns_core::{
-    AgentLoopError, ExecutionSession, Result, SessionId, StoreResultExt, TokenUsage,
-    execution_loading::SessionStore,
-};
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 
 use super::repositories::Database;
@@ -119,7 +120,9 @@ impl DbSessionStore {
                         row.last_turn_status.as_deref(),
                     ),
                     id: row.id,
-                    workspace_id: everruns_core::WorkspaceId::from_uuid(row.workspace_id),
+                    workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(
+                        row.workspace_id,
+                    ),
                     organization_id: self.org_public_id.clone(),
                     harness_id,
                     agent_id: row.agent_id,

@@ -10,30 +10,32 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::typed_id::{
-    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
-};
 use everruns_core::{
-    AgentDefinition, DriverRegistry, EgressService, ExecutionSession, HarnessDefinition, Message,
-    MessageHistory, MessageQuery, ToolDefinition, UtilityLlmService,
+    AgentDefinition, EgressService, ExecutionSession, HarnessDefinition, Message, MessageHistory,
+    MessageQuery, UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
     image_services::ImageArtifactStore, image_services::ImageResolver,
-    image_services::ResolvedImage, provider_resolution::ResolvedModel,
-    session_services::LeasedResourceStore, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
+    image_services::ResolvedImage, session_services::LeasedResourceStore,
+    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+};
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 // EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
 // see the projected `AgentDefinition` / resolved execution snapshot.
 use everruns_platform::{Agent, Harness};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::tool_types::ToolDefinition;
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -113,20 +115,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Get model with provider configuration
-    async fn get_resolved_model(
-        &self,
-        org_id: i64,
-        model_id: Uuid,
-    ) -> Result<Option<ResolvedModel>>;
+    async fn get_model_spec(&self, org_id: i64, model_id: Uuid) -> Result<Option<ModelSpec>>;
 
     /// Get default model configuration
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>>;
+    async fn get_default_model_spec(&self, org_id: i64) -> Result<Option<ModelSpec>>;
 
     async fn get_provider_config(
         &self,
         org_id: i64,
-        provider: &everruns_core::ProviderKey,
-    ) -> Result<Option<everruns_core::ProviderConfig>>;
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>>;
 
     // =========================================================================
     // Image Resolution Operations
@@ -210,7 +208,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
         if options.before_context != 0 || options.after_context != 0 {
-            return Err(everruns_core::AgentLoopError::tool(
+            return Err(everruns_provider::error::AgentLoopError::tool(
                 "this worker adapter does not support grep context",
             ));
         }
@@ -483,7 +481,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_core::SessionId, String)>>;
+    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>>;
 
     /// Session task registry for the reaper to call `update` through.
     /// Must include an event emitter so task.updated events fire on reap.
@@ -517,7 +515,7 @@ pub struct TurnContext {
     pub agent: Option<Agent>,
     pub session: ExecutionSession,
     pub messages: Vec<Message>,
-    pub model: Option<ResolvedModel>,
+    pub model: Option<ModelSpec>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
@@ -669,20 +667,20 @@ impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for OrgAdapter<A> {
-    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
+    async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
         self.adapters
-            .get_resolved_model(self.org_id, model_id.uuid())
+            .get_model_spec(self.org_id, model_id.uuid())
             .await
     }
 
-    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
-        self.adapters.get_default_model(self.org_id).await
+    async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
+        self.adapters.get_default_model_spec(self.org_id).await
     }
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_core::ProviderKey,
-    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
         self.adapters
             .get_provider_config(self.org_id, provider)
             .await

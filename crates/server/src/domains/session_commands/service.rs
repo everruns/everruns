@@ -9,6 +9,10 @@
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
+use crate::kernel_imports::{
+    AgentDefinition, Caller, CapabilityRegistry,
+    everruns_provider::driver_registry::DriverRegistry, everruns_provider::error::AgentLoopError,
+};
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
@@ -17,10 +21,9 @@ use everruns_core::command::{
 };
 use everruns_core::execution_loading::AgentStore;
 use everruns_core::runtime_context::resolve_runtime_capabilities;
-use everruns_core::typed_id::SessionId;
-use everruns_core::{AgentDefinition, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry};
 use everruns_host::StoreCommandHost;
 use everruns_platform::Harness;
+use everruns_provider::typed_id::SessionId;
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
     AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore, WorkerAdapters,

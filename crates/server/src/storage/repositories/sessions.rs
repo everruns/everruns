@@ -5,9 +5,9 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::AgentIdentityId;
-use everruns_core::PrincipalId;
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_provider::typed_id::AgentIdentityId;
+use everruns_provider::typed_id::PrincipalId;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 

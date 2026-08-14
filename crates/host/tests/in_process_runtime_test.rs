@@ -1,12 +1,10 @@
 use async_trait::async_trait;
 use everruns_builtins::InfinityContextCapability;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, InitialFile, Message,
-    MessageRole, ToolCall, WorkspacePolicy, provider_resolution::ResolvedModel,
-    session_files::SessionFileSystem,
+    AgentDefinition, CapabilityRegistry, ExecutionSession, InitialFile, Message, MessageRole,
+    WorkspacePolicy, session_files::SessionFileSystem,
 };
 use everruns_host::HostComposition;
 use everruns_host::{
@@ -14,6 +12,10 @@ use everruns_host::{
     SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
 use everruns_platform::capabilities::SessionTasksCapability;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -26,14 +28,14 @@ fn minimal_platform() -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
         .capability("test_math")
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
+fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")
@@ -42,9 +44,9 @@ fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
 }
 
 fn session(
-    session_id: everruns_core::SessionId,
-    harness_id: everruns_core::HarnessId,
-    agent_id: Option<everruns_core::AgentId>,
+    session_id: everruns_provider::typed_id::SessionId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    agent_id: Option<everruns_provider::typed_id::AgentId>,
 ) -> ExecutionSession {
     let builder = SessionBuilder::new(harness_id)
         .id(session_id)
@@ -67,19 +69,19 @@ impl SessionFileSystemFactory for ContextRealDiskFactory {
     async fn create_session_file_system(
         &self,
         context: SessionFileSystemFactoryContext,
-    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
-        let root = context
-            .get::<PathBuf>()
-            .ok_or_else(|| everruns_core::AgentLoopError::config("missing real-disk root"))?;
+    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
+        let root = context.get::<PathBuf>().ok_or_else(|| {
+            everruns_provider::error::AgentLoopError::config("missing real-disk root")
+        })?;
         Ok(Arc::new(RealDiskFileStore::new(root.as_path())?))
     }
 }
 
 #[test]
 fn per_type_builders_produce_portable_execution_values() {
-    let harness_id = everruns_core::HarnessId::from_seed(51);
-    let agent_id = everruns_core::AgentId::from_seed(51);
-    let session_id = everruns_core::SessionId::from_seed(51);
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(51);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(51);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(51);
 
     let harness = HarnessBuilder::new("math", "prompt").id(harness_id).build();
     let agent = AgentBuilder::new("math-agent", "prompt")
@@ -205,13 +207,7 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
                 vec![],
             ]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
         .session(session(session_id, harness_id, Some(agent_id)))
@@ -315,9 +311,9 @@ async fn query_history_reads_messages_through_in_process_reason_act_path() {
 
 #[tokio::test]
 async fn query_history_reads_seeded_resumed_session_messages() {
-    let harness_id = everruns_core::HarnessId::from_seed(797);
-    let agent_id = everruns_core::AgentId::from_seed(797);
-    let session_id = everruns_core::SessionId::from_seed(797);
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(797);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(797);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(797);
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(InfinityContextCapability);
     let platform = HostComposition::new(capabilities, DriverRegistry::new());
@@ -345,13 +341,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
                 vec![],
             ]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(
             HarnessBuilder::new("history", "Use conversation history when needed.")
                 .id(harness_id)
@@ -431,7 +421,7 @@ async fn single_session_builder_seeds_runnable_runtime() {
 async fn single_session_builder_pins_session_id_when_set() {
     // Embedders that need the id ahead of build (e.g. a JSONL session log
     // whose filename encodes the id) must be able to pin it.
-    let expected = everruns_core::SessionId::from_seed(481);
+    let expected = everruns_provider::typed_id::SessionId::from_seed(481);
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("pinned id works"))
@@ -520,13 +510,7 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("No-op"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(math_harness)
         .agent(agent(agent_id))
         .session(session(session_id, harness_id, Some(agent_id)))
@@ -552,13 +536,7 @@ async fn runtime_runs_session_without_agent_entity() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Harness-only runtime works"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .session(session(session_id, harness_id, None))
         .build()
@@ -589,13 +567,7 @@ async fn runtime_accepts_explicit_backend_bundle() {
         .host_composition(minimal_platform())
         .backends(HostBackends::in_memory())
         .llm_sim(LlmSimConfig::fixed("Custom backend bundle works"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
         .session(session(session_id, harness_id, Some(agent_id)))
@@ -709,13 +681,7 @@ async fn runtime_exposes_assembled_context() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Context inspection"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
         .session(session(session_id, harness_id, Some(agent_id)))
@@ -829,7 +795,7 @@ async fn execute_command_dispatches_to_capability_handler() {
             &self,
             request: &ExecuteCommandRequest,
             ctx: &CommandExecutionContext,
-        ) -> everruns_core::Result<CommandResult> {
+        ) -> everruns_provider::error::Result<CommandResult> {
             let arg = request.arguments.clone().unwrap_or_default();
             self.seen.lock().unwrap().push(arg.clone());
             Ok(CommandResult {
@@ -976,9 +942,9 @@ struct StaticTokenResolver {
 impl everruns_core::connection_services::UserConnectionResolver for StaticTokenResolver {
     async fn get_connection_token(
         &self,
-        _session_id: everruns_core::SessionId,
+        _session_id: everruns_provider::typed_id::SessionId,
         provider: &str,
-    ) -> everruns_core::Result<Option<String>> {
+    ) -> everruns_provider::error::Result<Option<String>> {
         Ok((provider == self.provider).then(|| self.token.clone()))
     }
 }
@@ -1137,7 +1103,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
 async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let harness_id = "harness_00000000000000000000000000000061".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000061".parse().unwrap();
-    let session_id: everruns_core::SessionId =
+    let session_id: everruns_provider::typed_id::SessionId =
         "session_00000000000000000000000000000061".parse().unwrap();
 
     let resolver = Arc::new(StaticTokenResolver {
@@ -1159,13 +1125,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
                 vec![],
             ]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(
             HarnessBuilder::new("conn", "You resolve connection tokens.")
                 .id(harness_id)
@@ -1213,8 +1173,10 @@ const MICROSOFT_DOCS_PLUGIN_DIR: &str = concat!(
 
 /// Build a minimal runtime with the microsoft-docs plugin loaded and a single
 /// session whose agent enables `plugin:microsoft-docs`.
-async fn runtime_with_microsoft_docs_plugin()
--> (everruns_host::InProcessRuntime, everruns_core::SessionId) {
+async fn runtime_with_microsoft_docs_plugin() -> (
+    everruns_host::InProcessRuntime,
+    everruns_provider::typed_id::SessionId,
+) {
     use std::path::Path;
 
     let plugin_dir = Path::new(MICROSOFT_DOCS_PLUGIN_DIR);

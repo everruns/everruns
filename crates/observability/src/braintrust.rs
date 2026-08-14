@@ -2286,8 +2286,8 @@ mod tests {
         TurnCompletedData, TurnStartedData,
     };
     use everruns_core::message::Message;
-    use everruns_core::tool_types::ToolCall;
-    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use everruns_provider::tool_types::ToolCall;
+    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use tokio::time::sleep;
     use uuid::Uuid;
@@ -3217,7 +3217,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_tool_events() {
-        use everruns_core::tool_types::ToolCall;
+        use everruns_provider::tool_types::ToolCall;
 
         let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();

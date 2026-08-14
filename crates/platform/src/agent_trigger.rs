@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 // Reuse the app-side invocation/schedule config so schedule triggers and
 // schedule channels share one shape. Do not duplicate these.
 use crate::app::InvocationSessionMode;
-use everruns_core::typed_id::{AgentId, TriggerId};
+use everruns_provider::typed_id::{AgentId, TriggerId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;

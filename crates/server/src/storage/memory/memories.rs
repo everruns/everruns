@@ -142,7 +142,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         scope: &str,
-        owner_agent_id: Option<everruns_core::AgentId>,
+        owner_agent_id: Option<everruns_provider::typed_id::AgentId>,
         owner_user_id: Option<Uuid>,
     ) -> Result<Option<MemoryRow>> {
         Ok(self

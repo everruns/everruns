@@ -9,12 +9,15 @@
 // GitHub App connections: mints a fresh 1h installation token on each request.
 // Legacy OAuth connections: decrypts the stored token.
 
+use crate::kernel_imports::{
+    EgressService, McpServerAuthMode, everruns_provider::error::AgentLoopError,
+    everruns_provider::error::Result,
+};
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
 use everruns_core::connection_services::UserConnectionResolver;
-use everruns_core::typed_id::SessionId;
-use everruns_core::{AgentLoopError, EgressService, McpServerAuthMode, Result};
+use everruns_provider::typed_id::SessionId;
 use moka::sync::Cache;
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
@@ -575,10 +578,10 @@ impl UserConnectionResolver for NoopConnectionResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel_imports::{DEFAULT_ORG_ID, PrincipalId};
     use crate::storage::InMemoryDatabase;
     use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
     use everruns_core::connection_services::UserConnectionResolver;
-    use everruns_core::{DEFAULT_ORG_ID, PrincipalId};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     const TEST_KEY: &str = "kek-v1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";

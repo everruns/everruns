@@ -11,8 +11,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use everruns_core::EventListener;
 use everruns_core::events::{Event, EventData, TURN_COMPLETED};
-use everruns_core::typed_id::TraceScoreId;
 use everruns_platform::observer::{ObserverMatch, ObserverScope, ObserverScorerConfig};
+use everruns_provider::typed_id::TraceScoreId;
 use tracing::{error, instrument};
 use uuid::Uuid;
 

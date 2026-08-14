@@ -34,12 +34,13 @@ tracing.workspace = true
 uuid.workspace = true
 
 everruns-core.workspace = true
+everruns-capability.workspace = true
 everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
 everruns-http = { workspace = true, optional = true }
 everruns-mcp = { workspace = true, optional = true }
 everruns-platform.workspace = true
-everruns-provider = { workspace = true, optional = true, features = ["http"] }
+everruns-provider.workspace = true
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
@@ -55,7 +56,7 @@ bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "dep:everruns-http
 web-fetch = ["dep:everruns-integrations-web-fetch", "dep:everruns-http"]
 lua = ["dep:everruns-integrations-lua", "dep:everruns-http"]
 process = []
-utility-openai = ["dep:everruns-provider"]
+utility-openai = ["everruns-provider/http"]
 
 [[example]]
 name = "real_disk_file_system_tools"

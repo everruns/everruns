@@ -15,8 +15,8 @@ use crate::storage::models::UpdateEvalCaseResultRow;
 use anyhow::Result;
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
 use everruns_core::message::{TextAnnotation, VerificationStatus};
-use everruns_core::typed_id::SessionId;
 use everruns_platform::eval::*;
+use everruns_provider::typed_id::SessionId;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -297,7 +297,7 @@ async fn execute_case_inner(
             &caller,
             harness_id,
             agent_id,
-            agent_id.map(everruns_core::typed_id::AgentId::from_uuid),
+            agent_id.map(everruns_provider::typed_id::AgentId::from_uuid),
             everruns_platform::SessionSource::Eval,
             CreateSessionRequest {
                 source: None,
@@ -848,7 +848,7 @@ async fn score_citation_judged(
     final_content: &str,
     annotations: &[TextAnnotation],
     rubric: Option<&str>,
-    model_id: Option<everruns_core::typed_id::ModelId>,
+    model_id: Option<everruns_provider::typed_id::ModelId>,
     pass_threshold: f64,
 ) -> Score {
     if annotations.is_empty() {

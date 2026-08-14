@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::{Map, Value};
 
-use everruns_core::typed_id::EvalResultId;
 use everruns_platform::eval::*;
+use everruns_provider::typed_id::EvalResultId;
 
 use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
@@ -912,14 +912,14 @@ fn run_artifact_export_value(result: &EvalCaseResult) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::typed_id::EvalCaseId;
+    use everruns_provider::typed_id::EvalCaseId;
     use std::collections::BTreeMap;
     use uuid::Uuid;
 
     #[test]
     fn run_artifact_export_maps_patch_to_model_patch() {
         let result = EvalCaseResult {
-            public_id: everruns_core::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
+            public_id: everruns_provider::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
             internal_id: Uuid::nil(),
             eval_case_id: EvalCaseId::from_uuid(Uuid::now_v7()),
             case_name: Some("astropy__astropy-12907".to_string()),
@@ -952,7 +952,7 @@ mod tests {
     #[test]
     fn run_artifact_export_preserves_existing_model_patch() {
         let result = EvalCaseResult {
-            public_id: everruns_core::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
+            public_id: everruns_provider::typed_id::EvalResultId::from_uuid(Uuid::now_v7()),
             internal_id: Uuid::nil(),
             eval_case_id: EvalCaseId::from_uuid(Uuid::now_v7()),
             case_name: Some("collision-case".to_string()),

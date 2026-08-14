@@ -3,9 +3,11 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::ImageId, everruns_provider::typed_id::SkillId,
+};
 use anyhow::Result;
 use anyhow::anyhow;
-use everruns_core::{ImageId, SkillId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

@@ -2,7 +2,7 @@ use crate::domains::common::{CommandError, Ctx};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::queries::get_session;
 use everruns_core::ToolExecutionResult;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 pub fn session_sandbox_service(ctx: &Ctx) -> Result<&Arc<SessionSandboxService>, CommandError> {

@@ -20,6 +20,7 @@ use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
+use crate::kernel_imports::{Caller, Policy, everruns_provider::typed_id::AgentIdentityId};
 use crate::services::PrincipalService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
@@ -27,8 +28,6 @@ use crate::storage::models::{
     UpdateAgentTrigger,
 };
 use chrono::Utc;
-use everruns_core::typed_id::{AgentId, SessionId, TriggerId};
-use everruns_core::{AgentIdentityId, Caller, Policy};
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
@@ -37,6 +36,7 @@ use everruns_platform::{AgentAction, AuditEvent};
 use everruns_platform::{
     AgentTrigger, AgentTriggerType, InvocationSessionMode, ScheduleTriggerConfig,
 };
+use everruns_provider::typed_id::{AgentId, SessionId, TriggerId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::str::FromStr;
@@ -1012,10 +1012,10 @@ async fn ensure_identity_for_agent(
 
 #[derive(Debug, Clone)]
 struct TriggerExecutionContext {
-    harness_id: everruns_core::HarnessId,
-    owner_principal_id: everruns_core::PrincipalId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    owner_principal_id: everruns_provider::typed_id::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
-    agent_identity_id: Option<everruns_core::AgentIdentityId>,
+    agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     app_id: Option<Uuid>,
 }
 
@@ -1182,8 +1182,8 @@ async fn dispatch_trigger_message(
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_id: SessionId,
-    harness_id: everruns_core::HarnessId,
-    owner_principal_id: everruns_core::PrincipalId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    owner_principal_id: everruns_provider::typed_id::PrincipalId,
     rendered_message: String,
 ) -> Result<(), CommandError> {
     let metadata = Some(
@@ -1243,7 +1243,7 @@ fn emit_agent_trigger_audit_event(
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_id: SessionId,
-    owner_principal_id: everruns_core::PrincipalId,
+    owner_principal_id: everruns_provider::typed_id::PrincipalId,
     created_session: bool,
 ) {
     // Reuse the AppInvocationStarted action — the audit token space has no

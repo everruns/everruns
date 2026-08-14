@@ -1,9 +1,9 @@
 # Core Agent Abstractions
 # Decision: Keep the loop logic DB-agnostic via traits (EventEmitter, MessageStore, ToolExecutor)
 # Decision: Use async_trait for trait definitions to support async operations
-# Decision: Tool types and domain entities are defined here (runtime types)
-# Decision: Domain entities (Agent, Session, LlmProvider, etc.) are in core for shared use by API and worker
-# Decision: Use OpenAI Protocol as the base for LLM Provider abstractions
+# Decision: Core owns transport- and persistence-neutral execution contracts.
+# Decision: Provider identity, typed IDs, LLM wire types, and driver contracts
+# are imported privately from everruns-provider, never re-exported by core.
 
 [package]
 name = "everruns-core"
@@ -23,7 +23,7 @@ categories = ["development-tools", "asynchronous"]
 [dependencies]
 # Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
 # error taxonomy, compact contracts, URL validation). Core enables no concrete
-# provider transport and re-exports only neutral modules.
+# provider transport and does not re-export provider-owned modules.
 everruns-provider = { workspace = true, default-features = false }
 
 # Neutral capability contract (EVE-873): capability identity, references, and
@@ -39,7 +39,7 @@ async-trait.workspace = true
 # Async runtime
 # `sync` backs channels/locks, `rt` backs parallel turn tasks, and `time` backs
 # bounded retry and stream-liveness timers. Core performs no networking.
-tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time"] }
+tokio = { version = "1.50", default-features = false, features = ["sync", "rt", "time", "macros"] }
 # `CancellationToken` for cooperative tool-call cancellation (ToolContext).
 tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true

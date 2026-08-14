@@ -16,12 +16,12 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use crate::kernel_imports::{
+    CapabilityId,
+    everruns_provider::typed_id::{McpServerId, SessionId, SkillId},
+};
 use anyhow::Result;
 use everruns_core::capabilities::SkillCapabilityIdExt;
-use everruns_core::{
-    CapabilityId,
-    typed_id::{McpServerId, SessionId, SkillId},
-};
 use everruns_mcp::McpCapabilityIdExt;
 use uuid::Uuid;
 
@@ -249,7 +249,7 @@ mod tests {
             description: None,
             system_prompt: String::new(),
             default_model_id: None,
-            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
+            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),
@@ -286,8 +286,8 @@ mod tests {
 
     #[tokio::test]
     async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
+        use crate::kernel_imports::{capabilities::skill_capability_id, typed_id::SkillId};
         use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
-        use everruns_core::{capabilities::skill_capability_id, typed_id::SkillId};
         use everruns_mcp::mcp_capability_id;
 
         let db = StorageBackend::in_memory();

@@ -805,11 +805,11 @@ mod tests {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
-                crate::tools::ToolResultImage {
+                everruns_provider::ToolResultImage {
                     base64: "a".repeat(32),
                     media_type: "image/png".to_string(),
                 },
-                crate::tools::ToolResultImage {
+                everruns_provider::ToolResultImage {
                     base64: "b".repeat(MAX_TOOL_RESULT_BYTES + 1),
                     media_type: "image/png".to_string(),
                 },
@@ -840,15 +840,15 @@ mod tests {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
             images: Some(vec![
-                crate::tools::ToolResultImage {
+                everruns_provider::ToolResultImage {
                     base64: "a".repeat(half),
                     media_type: "image/png".to_string(),
                 },
-                crate::tools::ToolResultImage {
+                everruns_provider::ToolResultImage {
                     base64: "b".repeat(half),
                     media_type: "image/png".to_string(),
                 },
-                crate::tools::ToolResultImage {
+                everruns_provider::ToolResultImage {
                     base64: "c".repeat(half),
                     media_type: "image/png".to_string(),
                 },
@@ -879,7 +879,7 @@ mod tests {
         let mut result = ToolResult {
             tool_call_id: "call_test".into(),
             result: Some(json!({"ok": true})),
-            images: Some(vec![crate::tools::ToolResultImage {
+            images: Some(vec![everruns_provider::ToolResultImage {
                 base64: "a".repeat(MAX_TOOL_RESULT_BYTES + 1),
                 media_type: "image/png".to_string(),
             }]),

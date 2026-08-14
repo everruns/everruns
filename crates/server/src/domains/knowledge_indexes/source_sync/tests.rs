@@ -6,14 +6,14 @@ use crate::storage::StorageBackend;
 use crate::storage::encryption::{EncryptionService, generate_encryption_key};
 use crate::storage::models::{CreateKnowledgeIndexRow, CreateModelRow, CreateProviderRow};
 use async_trait::async_trait;
-use everruns_core::CredentialFormSchema;
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_core::driver_registry::{
+use everruns_platform::vector_store::{InMemoryVectorStore, VectorQuery, index_namespace};
+use everruns_provider::credential_schema::CredentialFormSchema;
+use everruns_provider::driver_registry::{
     BoxedEmbeddingsDriver, DriverDescriptor, DriverId, EmbedResponse, EmbeddingsDriver,
     EmbeddingsDriverError, ServiceKind,
 };
-use everruns_core::typed_id::KnowledgeIndexId;
-use everruns_platform::vector_store::{InMemoryVectorStore, VectorQuery, index_namespace};
+use everruns_provider::typed_id::KnowledgeIndexId;
 
 // ----------------------------- chunk_text -----------------------------
 
@@ -115,7 +115,11 @@ fn live_stored_github_url_retry_reads_bashkit_knowledge_root() {
 
 // ------------------------- sync claim/complete/fail -------------------------
 
-async fn seed_index(db: &StorageBackend, org_id: i64, model_id: everruns_core::ModelId) -> Uuid {
+async fn seed_index(
+    db: &StorageBackend,
+    org_id: i64,
+    model_id: everruns_provider::typed_id::ModelId,
+) -> Uuid {
     let public_id = KnowledgeIndexId::new().to_string();
     let vector_namespace = index_namespace(org_id, &public_id);
     let row = db
@@ -142,7 +146,7 @@ async fn seed_embedding_model(
     db: &StorageBackend,
     encryption: &EncryptionService,
     org_id: i64,
-) -> everruns_core::ModelId {
+) -> everruns_provider::typed_id::ModelId {
     let encrypted = encryption.encrypt_string("test-key").expect("encrypt");
     let provider = db
         .create_provider(
@@ -340,7 +344,7 @@ struct DeterministicEmbeddingsDriver;
 impl EmbeddingsDriver for DeterministicEmbeddingsDriver {
     async fn embed(
         &self,
-        _endpoint: &everruns_core::ProviderEndpoint,
+        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
         request: EmbedRequest,
     ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError> {
         let embeddings = request

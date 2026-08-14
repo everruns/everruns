@@ -3,9 +3,11 @@
 use super::super::models::*;
 use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::InMemoryDatabase;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::EventId, everruns_provider::typed_id::SessionId,
+};
 use anyhow::Result;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::{EventId, SessionId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

@@ -11,7 +11,7 @@ use serde_json::Value;
 /// Mitigation: Reuse shared URL validation so localhost, RFC1918, link-local,
 /// and metadata endpoints are rejected before any Browserless API call.
 pub(crate) fn validate_browserless_url(url: &str) -> Result<(), ToolExecutionResult> {
-    everruns_core::validate_safe_url(url)
+    everruns_provider::url_validation::validate_safe_url(url)
         .map(|_| ())
         .map_err(|e| ToolExecutionResult::tool_error(format!("URL is blocked by policy: {e}")))
 }

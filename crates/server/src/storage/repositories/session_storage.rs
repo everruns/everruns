@@ -145,7 +145,7 @@ impl Database {
     /// Read a session-scoped MCP OAuth grant as one database snapshot.
     pub async fn get_mcp_oauth_session_credentials(
         &self,
-        session_id: everruns_core::SessionId,
+        session_id: everruns_provider::typed_id::SessionId,
         server_id: uuid::Uuid,
     ) -> Result<Option<McpOAuthSessionCredentialsRow>> {
         let access_name = everruns_core::mcp_oauth_session_secret_name(server_id, "access_token");

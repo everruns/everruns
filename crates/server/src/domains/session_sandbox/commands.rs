@@ -362,7 +362,7 @@ mod tests {
         }
     }
 
-    async fn create_test_harness(db: &StorageBackend) -> everruns_core::HarnessId {
+    async fn create_test_harness(db: &StorageBackend) -> everruns_provider::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
@@ -385,7 +385,9 @@ mod tests {
         .id
     }
 
-    async fn create_test_session(db: &Arc<StorageBackend>) -> everruns_core::typed_id::SessionId {
+    async fn create_test_session(
+        db: &Arc<StorageBackend>,
+    ) -> everruns_provider::typed_id::SessionId {
         let harness_id = create_test_harness(db.as_ref()).await;
         db.set_harness_capabilities(
             harness_id.uuid(),
@@ -412,7 +414,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("test".to_string()),
             locale: None,

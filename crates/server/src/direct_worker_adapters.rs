@@ -6,35 +6,35 @@
 // This implementation provides the same interface as GrpcWorkerAdapters
 // but with direct access to the storage backend, domains, and infra helpers.
 
-use async_trait::async_trait;
-use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
-use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityRegistry, collect_message_filters_only,
+use crate::kernel_imports::{
+    Caller, ContentPart, EgressRequest, EgressRequestKind, EgressService, EventData, Message,
+    MessageRole, ToolResultContentPart, UtilityLlmService,
+    everruns_provider::driver_registry::DriverRegistry, everruns_provider::provider::DriverId,
+    everruns_provider::tool_types::ToolDefinition, resolve_runtime_capabilities,
 };
+use crate::kernel_imports::{
+    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
+    everruns_provider::model_spec::ModelSpec, image_services::CreateStoredImage,
+    image_services::ImageArtifactStore, image_services::ResolvedImage, image_services::StoredImage,
+    image_services::StoredImageInfo, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
+};
+use async_trait::async_trait;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
+use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
 use everruns_core::connection_services::ProviderCredentials;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_core::{
-    Caller, ContentPart, DriverId, DriverRegistry, EgressRequest, EgressRequestKind, EgressService,
-    EventData, Message, MessageRole, ToolDefinition, ToolResultContentPart, UtilityLlmService,
-    resolve_runtime_capabilities,
-};
-use everruns_core::{
-    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
-    image_services::CreateStoredImage, image_services::ImageArtifactStore,
-    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
-    provider_resolution::ResolvedModel, tool_execution::BudgetChecker,
-    tool_execution::PaymentAuthority,
-};
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Harness, HarnessStatus, merge_harness};
 use everruns_platform::{Session, SessionParticipant, SessionStatus};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
@@ -126,7 +126,10 @@ impl ImageArtifactStore for DirectImageArtifactStore {
         })
     }
 
-    async fn get_image(&self, image_id: everruns_core::ImageId) -> Result<Option<StoredImage>> {
+    async fn get_image(
+        &self,
+        image_id: everruns_provider::typed_id::ImageId,
+    ) -> Result<Option<StoredImage>> {
         let row = self
             .db
             .get_image(self.org_id, image_id.uuid())
@@ -148,7 +151,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
 
     async fn get_image_info(
         &self,
-        image_id: everruns_core::ImageId,
+        image_id: everruns_provider::typed_id::ImageId,
     ) -> Result<Option<StoredImageInfo>> {
         let row = self
             .db
@@ -291,7 +294,7 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_platform::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
-    in_memory_compaction_checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
+    in_memory_compaction_checkpoint_store: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -330,7 +333,7 @@ impl DirectWorkerAdapters {
             runner: None,
             encryption: None,
             in_memory_compaction_checkpoint_store: Arc::new(
-                everruns_core::InMemoryCompactionCheckpointStore::default(),
+                everruns_host::InMemoryCompactionCheckpointStore::default(),
             ),
             proactive_compaction_attempts: Arc::new(
                 everruns_core::ProactiveCompactionAttemptTracker::default(),
@@ -386,7 +389,7 @@ impl DirectWorkerAdapters {
                 ),
                 id: r.id,
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
-                workspace_id: everruns_core::WorkspaceId::from_uuid(r.workspace_id),
+                workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(r.workspace_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 agent_version_id: r.agent_version_id,
@@ -779,11 +782,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // LLM Provider Operations
     // =========================================================================
 
-    async fn get_resolved_model(
-        &self,
-        org_id: i64,
-        model_id: Uuid,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_model_spec(&self, org_id: i64, model_id: Uuid) -> Result<Option<ModelSpec>> {
         let resolved = self
             .provider_resolver
             .resolve_model(org_id, model_id)
@@ -793,19 +792,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve model")
             })?;
 
-        Ok(resolved.map(|r| ResolvedModel {
-            model: r.model_id,
-            provider_type: string_to_provider_type(&r.provider_type),
-            api_key: None,
-            base_url: None,
-            provider_metadata: Some(everruns_core::ProviderMetadata {
-                extra: Some(serde_json::json!({ "provider_id": r.provider_id })),
-                ..Default::default()
-            }),
-        }))
+        Ok(resolved.map(|r| ModelSpec::on(r.provider_id, r.model_id)))
     }
 
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
+    async fn get_default_model_spec(&self, org_id: i64) -> Result<Option<ModelSpec>> {
         let resolved = self
             .provider_resolver
             .resolve_default_model(org_id)
@@ -815,38 +805,31 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve default model")
             })?;
 
-        Ok(resolved.map(|r| ResolvedModel {
-            model: r.model_id,
-            provider_type: string_to_provider_type(&r.provider_type),
-            api_key: None,
-            base_url: None,
-            provider_metadata: Some(everruns_core::ProviderMetadata {
-                extra: Some(serde_json::json!({ "provider_id": r.provider_id })),
-                ..Default::default()
-            }),
-        }))
+        Ok(resolved.map(|r| ModelSpec::on(r.provider_id, r.model_id)))
     }
 
     async fn get_provider_config(
         &self,
         org_id: i64,
-        provider: &everruns_core::ProviderKey,
-    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
         let resolved = self
             .provider_resolver
-            .resolve_runtime_provider(org_id, provider.as_str())
+            .resolve_runtime_provider_config(org_id, provider.as_str())
             .await
             .map_err(|error| {
                 tracing::error!(%error, "Failed to resolve provider");
                 store_error("Failed to resolve provider")
             })?;
-        Ok(resolved.map(|value| everruns_core::ProviderConfig {
-            provider: provider.clone(),
-            provider_type: string_to_provider_type(&value.provider_type),
-            api_key: Some(value.credentials.api_key),
-            base_url: value.credentials.base_url,
-            metadata: everruns_core::ProviderMetadata::default(),
-        }))
+        Ok(
+            resolved.map(|value| everruns_provider::driver_registry::ProviderConfig {
+                provider: provider.clone(),
+                provider_type: string_to_provider_type(&value.provider_type),
+                api_key: value.api_key,
+                base_url: value.base_url,
+                metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
+            }),
+        )
     }
 
     // =========================================================================
@@ -1599,27 +1582,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
-            self.get_resolved_model(org_id, model_id.uuid()).await?
+            self.get_model_spec(org_id, model_id.uuid()).await?
         } else if let Some(ref a) = agent {
             if let Some(model_id) = a.default_model_id {
-                self.get_resolved_model(org_id, model_id.uuid()).await?
+                self.get_model_spec(org_id, model_id.uuid()).await?
             } else if let Some(ref h) = harness {
                 if let Some(model_id) = h.default_model_id {
-                    self.get_resolved_model(org_id, model_id.uuid()).await?
+                    self.get_model_spec(org_id, model_id.uuid()).await?
                 } else {
-                    self.get_default_model(org_id).await?
+                    self.get_default_model_spec(org_id).await?
                 }
             } else {
-                self.get_default_model(org_id).await?
+                self.get_default_model_spec(org_id).await?
             }
         } else if let Some(ref h) = harness {
             if let Some(model_id) = h.default_model_id {
-                self.get_resolved_model(org_id, model_id.uuid()).await?
+                self.get_model_spec(org_id, model_id.uuid()).await?
             } else {
-                self.get_default_model(org_id).await?
+                self.get_default_model_spec(org_id).await?
             }
         } else {
-            self.get_default_model(org_id).await?
+            self.get_default_model_spec(org_id).await?
         };
 
         Ok(TurnContext {
@@ -1973,7 +1956,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn mark_leased_resource_released(
         &self,
-        resource_id: everruns_core::LeasedResourceId,
+        resource_id: everruns_provider::typed_id::LeasedResourceId,
         expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<bool> {
         Ok(self
@@ -1986,7 +1969,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn mark_leased_resource_cleanup_failed(
         &self,
-        resource_id: everruns_core::LeasedResourceId,
+        resource_id: everruns_provider::typed_id::LeasedResourceId,
         expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
         retry_after_seconds: u32,
         error: &str,
@@ -2012,7 +1995,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_core::SessionId, String)>> {
+    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>> {
         self.db
             .list_orphaned_session_task_ids(stale_after, limit)
             .await
@@ -2215,8 +2198,8 @@ impl DirectWorkerAdapters {
         capability_rows: &[AgentCapabilityRow],
     ) -> Result<Vec<ToolDefinition>> {
         use everruns_core::mcp_server::mcp_tool_name;
-        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         use everruns_mcp::parse_mcp_capability_id;
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
 
         let mut mcp_tools = Vec::new();
 
@@ -2270,7 +2253,7 @@ impl DirectWorkerAdapters {
                         policy: ToolPolicy::Auto,
                         category: None,
                         deferrable: DeferrablePolicy::default(),
-                        hints: everruns_core::tool_types::ToolHints::default()
+                        hints: everruns_provider::tool_types::ToolHints::default()
                             .with_open_world(true),
                         full_parameters: None,
                     })
@@ -2340,7 +2323,11 @@ struct DirectSessionTaskWaker {
 
 #[async_trait::async_trait]
 impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskWaker {
-    async fn wake(&self, session_id: everruns_core::SessionId, text: &str) -> anyhow::Result<()> {
+    async fn wake(
+        &self,
+        session_id: everruns_provider::typed_id::SessionId,
+        text: &str,
+    ) -> anyhow::Result<()> {
         // Fetch session without org-scope to get harness_id and org_id.
         let session = self
             .db
@@ -2358,7 +2345,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskW
             return Ok(());
         };
 
-        let message_id = everruns_core::MessageId::new();
+        let message_id = everruns_provider::typed_id::MessageId::new();
         let now = chrono::Utc::now();
         let core_message = everruns_core::Message {
             id: message_id,
@@ -2755,7 +2742,7 @@ impl DirectPlatformStore {
             .collect()
     }
 
-    async fn resolve_caller(&self) -> everruns_core::error::Result<Caller> {
+    async fn resolve_caller(&self) -> everruns_provider::error::Result<Caller> {
         self.resolved_caller
             .get_or_try_init(|| async {
                 // Platform tools must execute as the session owner. Do not replace
@@ -2785,7 +2772,7 @@ impl DirectPlatformStore {
             .cloned()
     }
 
-    async fn command_ctx(&self) -> everruns_core::error::Result<crate::domains::common::Ctx> {
+    async fn command_ctx(&self) -> everruns_provider::error::Result<crate::domains::common::Ctx> {
         let caller = self.resolve_caller().await?;
         let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
             &self.db,
@@ -2825,7 +2812,7 @@ impl DirectPlatformStore {
         &self,
         name: &str,
         params: serde_json::Value,
-    ) -> everruns_core::error::Result<T>
+    ) -> everruns_provider::error::Result<T>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -2841,7 +2828,7 @@ impl DirectPlatformStore {
         &self,
         name: &str,
         params: serde_json::Value,
-    ) -> everruns_core::error::Result<Option<T>>
+    ) -> everruns_provider::error::Result<Option<T>>
     where
         T: serde::de::DeserializeOwned,
     {
@@ -2862,7 +2849,7 @@ impl DirectPlatformStore {
         &self,
         operation: crate::services::platform_command_surface::Operation,
         arguments: serde_json::Value,
-    ) -> everruns_core::error::Result<String> {
+    ) -> everruns_provider::error::Result<String> {
         let base_url = Self::base_url_from_env();
         let context = crate::api::mcp_endpoint::catalog::CatalogContext {
             domain_ctx: self.command_ctx().await?,
@@ -2919,7 +2906,7 @@ impl SessionCreationAuthority for DirectPlatformStore {
     async fn authorize_session_creation(
         &self,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<SessionId> {
+    ) -> everruns_provider::error::Result<SessionId> {
         if session_id != self.session_id {
             return Err(AgentLoopError::tool(
                 "session-creation authority is scoped to the current session",
@@ -2944,7 +2931,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn platform_discover(
         &self,
         arguments: serde_json::Value,
-    ) -> everruns_core::error::Result<String> {
+    ) -> everruns_provider::error::Result<String> {
         self.invoke_platform_command_surface(
             crate::services::platform_command_surface::Operation::Discover,
             arguments,
@@ -2955,7 +2942,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn platform_query(
         &self,
         arguments: serde_json::Value,
-    ) -> everruns_core::error::Result<String> {
+    ) -> everruns_provider::error::Result<String> {
         self.invoke_platform_command_surface(
             crate::services::platform_command_surface::Operation::Query,
             arguments,
@@ -2966,7 +2953,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn platform_execute(
         &self,
         arguments: serde_json::Value,
-    ) -> everruns_core::error::Result<String> {
+    ) -> everruns_provider::error::Result<String> {
         self.invoke_platform_command_surface(
             crate::services::platform_command_surface::Operation::Execute,
             arguments,
@@ -2978,12 +2965,15 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     // Harness Operations
     // =========================================================================
 
-    async fn list_harnesses(&self) -> everruns_core::error::Result<Vec<Harness>> {
+    async fn list_harnesses(&self) -> everruns_provider::error::Result<Vec<Harness>> {
         self.execute_domain_command("list_harnesses", serde_json::json!({}))
             .await
     }
 
-    async fn get_harness(&self, id: HarnessId) -> everruns_core::error::Result<Option<Harness>> {
+    async fn get_harness(
+        &self,
+        id: HarnessId,
+    ) -> everruns_provider::error::Result<Option<Harness>> {
         self.execute_domain_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -2996,7 +2986,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         system_prompt: Option<&str>,
         parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
-    ) -> everruns_core::error::Result<Harness> {
+    ) -> everruns_provider::error::Result<Harness> {
         self.execute_domain_command(
             "create_harness",
             serde_json::json!({
@@ -3023,7 +3013,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         description: Option<&str>,
         system_prompt: Option<&str>,
         parent_harness_id: Option<Option<HarnessId>>,
-    ) -> everruns_core::error::Result<Harness> {
+    ) -> everruns_provider::error::Result<Harness> {
         let mut params = serde_json::Map::from_iter([(
             "id".to_string(),
             serde_json::Value::String(id.to_string()),
@@ -3069,7 +3059,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             .await
     }
 
-    async fn delete_harness(&self, id: HarnessId) -> everruns_core::error::Result<()> {
+    async fn delete_harness(&self, id: HarnessId) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command(
                 "delete_harness",
@@ -3083,7 +3073,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         id: HarnessId,
         new_name: Option<&str>,
-    ) -> everruns_core::error::Result<Harness> {
+    ) -> everruns_provider::error::Result<Harness> {
         let harness: Harness = self
             .execute_domain_command("copy_harness", serde_json::json!({ "id": id.to_string() }))
             .await?;
@@ -3100,7 +3090,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     // Agent Operations
     // =========================================================================
 
-    async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
+    async fn list_agents(&self) -> everruns_provider::error::Result<Vec<Agent>> {
         let page: CommandPage<Agent> = self
             .execute_domain_command(
                 "list_agents",
@@ -3110,7 +3100,10 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         Ok(page.data)
     }
 
-    async fn get_agent_by_id(&self, id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
+    async fn get_agent_by_id(
+        &self,
+        id: AgentId,
+    ) -> everruns_provider::error::Result<Option<Agent>> {
         self.execute_domain_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3122,7 +3115,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         description: Option<&str>,
         system_prompt: &str,
         capabilities: &[String],
-    ) -> everruns_core::error::Result<Agent> {
+    ) -> everruns_provider::error::Result<Agent> {
         self.execute_domain_command(
             "create_agent",
             serde_json::json!({
@@ -3147,7 +3140,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         display_name: Option<&str>,
         description: Option<&str>,
         system_prompt: Option<&str>,
-    ) -> everruns_core::error::Result<Agent> {
+    ) -> everruns_provider::error::Result<Agent> {
         let mut params = serde_json::Map::from_iter([(
             "id".to_string(),
             serde_json::Value::String(id.to_string()),
@@ -3181,7 +3174,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             .await
     }
 
-    async fn delete_agent(&self, id: AgentId) -> everruns_core::error::Result<()> {
+    async fn delete_agent(&self, id: AgentId) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
             .await?;
@@ -3196,7 +3189,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         search: Option<&str>,
         include_archived: bool,
-    ) -> everruns_core::error::Result<Vec<everruns_platform::App>> {
+    ) -> everruns_provider::error::Result<Vec<everruns_platform::App>> {
         let mut params = serde_json::Map::new();
         if let Some(search) = search {
             params.insert(
@@ -3216,8 +3209,8 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn get_app(
         &self,
-        id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<Option<everruns_platform::App>> {
+        id: everruns_provider::typed_id::AppId,
+    ) -> everruns_provider::error::Result<Option<everruns_platform::App>> {
         self.execute_domain_lookup("get_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
@@ -3228,10 +3221,10 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         description: Option<&str>,
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
-        agent_identity_id: Option<everruns_core::AgentIdentityId>,
+        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
         channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
-    ) -> everruns_core::error::Result<everruns_platform::App> {
+    ) -> everruns_provider::error::Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([
             (
                 "name".to_string(),
@@ -3275,13 +3268,13 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn update_app(
         &self,
-        id: everruns_core::AppId,
+        id: everruns_provider::typed_id::AppId,
         name: Option<&str>,
         description: Option<&str>,
         harness_id: Option<HarnessId>,
         agent_id: Option<AgentId>,
-        agent_identity_id: Option<Option<everruns_core::AgentIdentityId>>,
-    ) -> everruns_core::error::Result<everruns_platform::App> {
+        agent_identity_id: Option<Option<everruns_provider::typed_id::AgentIdentityId>>,
+    ) -> everruns_provider::error::Result<everruns_platform::App> {
         let mut params = serde_json::Map::from_iter([(
             "id".to_string(),
             serde_json::Value::String(id.to_string()),
@@ -3326,14 +3319,20 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
             .await
     }
 
-    async fn delete_app(&self, id: everruns_core::AppId) -> everruns_core::error::Result<()> {
+    async fn delete_app(
+        &self,
+        id: everruns_provider::typed_id::AppId,
+    ) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command("delete_app", serde_json::json!({ "id": id.to_string() }))
             .await?;
         Ok(())
     }
 
-    async fn destroy_app(&self, id: everruns_core::AppId) -> everruns_core::error::Result<()> {
+    async fn destroy_app(
+        &self,
+        id: everruns_provider::typed_id::AppId,
+    ) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command("destroy_app", serde_json::json!({ "id": id.to_string() }))
             .await?;
@@ -3342,27 +3341,27 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn publish_app(
         &self,
-        id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<everruns_platform::App> {
+        id: everruns_provider::typed_id::AppId,
+    ) -> everruns_provider::error::Result<everruns_platform::App> {
         self.execute_domain_command("publish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
 
     async fn unpublish_app(
         &self,
-        id: everruns_core::AppId,
-    ) -> everruns_core::error::Result<everruns_platform::App> {
+        id: everruns_provider::typed_id::AppId,
+    ) -> everruns_provider::error::Result<everruns_platform::App> {
         self.execute_domain_command("unpublish_app", serde_json::json!({ "id": id.to_string() }))
             .await
     }
 
     async fn add_app_channel(
         &self,
-        app_id: everruns_core::AppId,
+        app_id: everruns_provider::typed_id::AppId,
         channel_type: everruns_platform::ChannelType,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> everruns_core::error::Result<everruns_platform::AppChannel> {
+    ) -> everruns_provider::error::Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),
@@ -3385,12 +3384,12 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn update_app_channel(
         &self,
-        app_id: everruns_core::AppId,
-        channel_id: everruns_core::AppChannelId,
+        app_id: everruns_provider::typed_id::AppId,
+        channel_id: everruns_provider::typed_id::AppChannelId,
         channel_type: Option<everruns_platform::ChannelType>,
         channel_config: Option<&serde_json::Value>,
         enabled: Option<bool>,
-    ) -> everruns_core::error::Result<everruns_platform::AppChannel> {
+    ) -> everruns_provider::error::Result<everruns_platform::AppChannel> {
         let mut params = serde_json::Map::from_iter([
             (
                 "app_id".to_string(),
@@ -3419,9 +3418,9 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
 
     async fn delete_app_channel(
         &self,
-        app_id: everruns_core::AppId,
-        channel_id: everruns_core::AppChannelId,
-    ) -> everruns_core::error::Result<()> {
+        app_id: everruns_provider::typed_id::AppId,
+        channel_id: everruns_provider::typed_id::AppChannelId,
+    ) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command(
                 "delete_app_channel",
@@ -3442,7 +3441,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         limit: Option<usize>,
         agent_id: Option<AgentId>,
-    ) -> everruns_core::error::Result<Vec<Session>> {
+    ) -> everruns_provider::error::Result<Vec<Session>> {
         let page: CommandPage<Session> = self
             .execute_domain_command(
                 "list_sessions",
@@ -3464,7 +3463,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
         parent_session_id: Option<SessionId>,
-    ) -> everruns_core::error::Result<Session> {
+    ) -> everruns_provider::error::Result<Session> {
         self.execute_domain_command(
             "create_session",
             serde_json::json!({
@@ -3488,7 +3487,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn create_session_with_options(
         &self,
         request: everruns_platform::PlatformCreateSessionRequest,
-    ) -> everruns_core::error::Result<Session> {
+    ) -> everruns_provider::error::Result<Session> {
         self.execute_domain_command(
             "create_session",
             serde_json::json!({
@@ -3516,7 +3515,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn get_session_by_id(
         &self,
         id: SessionId,
-    ) -> everruns_core::error::Result<Option<Session>> {
+    ) -> everruns_provider::error::Result<Option<Session>> {
         self.execute_domain_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
@@ -3528,7 +3527,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         agent_id: AgentId,
-    ) -> everruns_core::error::Result<SessionParticipant> {
+    ) -> everruns_provider::error::Result<SessionParticipant> {
         self.execute_domain_command(
             "add_session_participant",
             serde_json::json!({
@@ -3543,7 +3542,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn get_session_context_report(
         &self,
         id: SessionId,
-    ) -> everruns_core::error::Result<everruns_core::SessionContextReport> {
+    ) -> everruns_provider::error::Result<everruns_core::SessionContextReport> {
         self.execute_domain_command(
             "get_session_context_report",
             serde_json::json!({ "session_id": id.to_string() }),
@@ -3551,7 +3550,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         .await
     }
 
-    async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {
+    async fn delete_session(&self, id: SessionId) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command(
                 "delete_session",
@@ -3569,7 +3568,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         content: &str,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let _: serde_json::Value = self
             .execute_domain_command(
                 "create_message",
@@ -3588,7 +3587,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         limit: Option<usize>,
-    ) -> everruns_core::error::Result<Vec<everruns_platform::PlatformMessage>> {
+    ) -> everruns_provider::error::Result<Vec<everruns_platform::PlatformMessage>> {
         let mut messages: Vec<crate::api::messages::Message> = self
             .execute_domain_command(
                 "list_messages",
@@ -3640,7 +3639,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
         &self,
         session_id: SessionId,
         timeout_secs: Option<u64>,
-    ) -> everruns_core::error::Result<String> {
+    ) -> everruns_provider::error::Result<String> {
         let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(120));
         let start = std::time::Instant::now();
         let poll_interval = std::time::Duration::from_millis(500);
@@ -3687,7 +3686,7 @@ impl everruns_platform::PlatformStore for DirectPlatformStore {
     async fn list_capabilities(
         &self,
         search: Option<&str>,
-    ) -> everruns_core::error::Result<Vec<everruns_core::CapabilityInfo>> {
+    ) -> everruns_provider::error::Result<Vec<everruns_core::CapabilityInfo>> {
         let mut params = serde_json::Map::new();
         params.insert("limit".to_string(), serde_json::json!(200));
         if let Some(search) = search {
@@ -4029,7 +4028,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id,
             title: Some("platform-store-test".to_string()),
             locale: None,
@@ -4360,7 +4359,7 @@ mod tests {
             description: None,
             system_prompt: String::new(),
             default_model_id: None,
-            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
+            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             tags: vec![],
             initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
@@ -4446,7 +4445,7 @@ mod tests {
         // Agent seeded in org 1 should be visible via org 1's platform store
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
         let agent = store_org1
-            .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
+            .get_agent_by_id(everruns_provider::typed_id::AgentId::from_uuid(agent_id))
             .await
             .unwrap();
         assert!(agent.is_some(), "agent should be visible in org 1");
@@ -4454,7 +4453,7 @@ mod tests {
         // Same agent must NOT be visible via org 2's platform store
         let store_org2 = adapters.platform_store(org2.org_id, session_org2);
         let agent = store_org2
-            .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
+            .get_agent_by_id(everruns_provider::typed_id::AgentId::from_uuid(agent_id))
             .await
             .unwrap();
         assert!(agent.is_none(), "agent must NOT be visible in org 2");
@@ -4985,7 +4984,7 @@ mod tests {
                 agent_config_hash: None,
                 agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: None,
                 locale: None,
@@ -5026,20 +5025,20 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn get_resolved_model_returns_none_for_missing() {
+    async fn get_model_spec_returns_none_for_missing() {
         let adapters = test_adapters();
         let result = adapters
-            .get_resolved_model(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+            .get_model_spec(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
             .await
             .unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
-    async fn get_default_model_returns_none_when_no_providers() {
+    async fn get_default_model_spec_returns_none_when_no_providers() {
         let adapters = test_adapters();
         let result = adapters
-            .get_default_model(everruns_core::DEFAULT_ORG_ID)
+            .get_default_model_spec(everruns_core::DEFAULT_ORG_ID)
             .await
             .unwrap();
         assert!(result.is_none());

@@ -39,9 +39,9 @@ use everruns_core::events::{
     OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_FAILED,
     TurnCancelledData, TurnFailedData,
 };
-use everruns_core::message::ExecutionPhase;
 use everruns_core::{Caller, ContentPart, ExternalActor};
 use everruns_platform::{App, AppStatus, FcpChannelConfig};
+use everruns_provider::execution_phase::ExecutionPhase;
 use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;

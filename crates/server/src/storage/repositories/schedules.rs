@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{LeasedResourceId, ScheduleId, SessionId};
+use everruns_provider::typed_id::{LeasedResourceId, ScheduleId, SessionId};
 
 impl Database {
     // ============================================

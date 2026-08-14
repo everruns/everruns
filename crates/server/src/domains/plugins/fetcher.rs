@@ -11,11 +11,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use crate::kernel_imports::{EgressRequest, EgressRequestKind, EgressService};
 use everruns_core::plugins::PluginFileSet;
 use everruns_core::plugins::{MAX_PLUGIN_FILE_BYTES, MAX_PLUGIN_FILES, MAX_PLUGIN_TOTAL_BYTES};
-use everruns_core::{
-    EgressRequest, EgressRequestKind, EgressService, url_validation::validate_url_dns_pinned,
-};
+use everruns_provider::url_validation::validate_url_dns_pinned;
 
 /// Cap on the total unpacked tarball bytes before applying plugin limits.
 /// GitHub only provides whole-repository archives for relative marketplace

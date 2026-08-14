@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
-use everruns_core::typed_id::{AgentId, HarnessId};
+use everruns_provider::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

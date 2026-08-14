@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-core` defines the provider-neutral contracts that every other Everruns
-crate builds on: agents, harnesses, sessions, messages, events, typed IDs,
-capabilities and tools, the LLM driver registry, and pure snapshot/context
+crate builds on: agents, harnesses, sessions, messages, events, capabilities
+and tools, and pure snapshot/context
 transformations for the `input → reason → act` agent loop. It carries no store
 or provider-loading orchestration, filesystem, shell,
 web-fetch, Lua, MCP-client, concrete HTTP, server, or database runtime of its
@@ -26,7 +26,8 @@ contracts instead of on server internals.
 ## Quick Example
 
 ```rust
-use everruns_core::{CapabilityRegistry, DriverRegistry};
+use everruns_core::CapabilityRegistry;
+use everruns_provider::DriverRegistry;
 
 let capabilities = CapabilityRegistry::new();
 let drivers = DriverRegistry::new();
@@ -35,8 +36,8 @@ assert!(capabilities.is_empty());
 assert!(drivers.registered_providers().is_empty());
 ```
 
-Core owns the registries; it does not own the bundle that selects a
-deployment's shape. An embedder assembles those into an
+Core owns the capability registry and execution contracts; provider owns the
+driver registry. Neither owns the bundle that selects a deployment's shape. An embedder assembles those into an
 `everruns_host::HostComposition` and hands it to the runtime.
 
 Core's default feature set is empty. `openapi` and
@@ -49,9 +50,9 @@ hosted capabilities come from their owning integration or product crates.
 
 ## What It Provides
 
-- Agent, harness, session, message, event, and typed ID domain models
+- Agent, harness, session, message, and event domain models
 - Capability registry/execution contracts and tool traits for extensions
-- An LLM driver registry and provider-neutral message, tool, and reasoning types
+- Provider-neutral execution inputs and effect contracts
 - Secret-free execution snapshots and pure resolved-context transformations
 - Neutral capability collection hooks and type-keyed host-service extensions
 - Read-only storage traits and canonical event/message contracts

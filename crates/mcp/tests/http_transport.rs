@@ -10,12 +10,13 @@
 use async_trait::async_trait;
 use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
-    McpServerAuthMode, ToolCall,
+    McpServerAuthMode,
 };
 use everruns_mcp::{
     McpClient, McpConnection, McpExecutor, McpSecretBinding, StaticAuthProvider,
     StaticConnectionResolver,
 };
+use everruns_provider::tool_types::ToolCall;
 use serde_json::json;
 use std::sync::{Arc, Mutex};
 

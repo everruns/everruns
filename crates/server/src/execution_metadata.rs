@@ -4,7 +4,7 @@
 // - Keep provenance in event.metadata so it does not change message payload shape.
 // - Record both initiator and acting_principal, but keep external_actor separate.
 
-use everruns_core::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId, TriggerId};
+use everruns_provider::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId, TriggerId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 

@@ -14,8 +14,8 @@ mod test_harness;
 
 use axum::http::{Method, StatusCode};
 use everruns_core::capability_types::VirtualFileTree;
-use everruns_core::typed_id::SessionId;
 use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
+use everruns_provider::typed_id::SessionId;
 use everruns_server::storage::models::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

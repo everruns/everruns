@@ -3,11 +3,11 @@
 // Encapsulates durable principal lifecycle, lineage validation, and default
 // owner assignment for first-wave owned entities.
 
-use anyhow::{Result, anyhow};
-use everruns_core::{
-    Caller, ExternalActor, PrincipalId, PrincipalKind, PrincipalSummary,
-    org_public_id_from_internal,
+use crate::kernel_imports::{
+    Caller, ExternalActor, PrincipalKind, PrincipalSummary,
+    everruns_provider::typed_id::PrincipalId, org_public_id_from_internal,
 };
+use anyhow::{Result, anyhow};
 use everruns_durable::UpdateField;
 use everruns_platform::{ANONYMOUS_USER_ID, Principal, PrincipalStatus};
 use serde_json::json;
@@ -137,7 +137,7 @@ impl PrincipalService {
     pub async fn ensure_agent_identity_principal(
         &self,
         org_id: i64,
-        agent_identity_id: everruns_core::AgentIdentityId,
+        agent_identity_id: everruns_provider::typed_id::AgentIdentityId,
         parent_principal_id: PrincipalId,
     ) -> Result<PrincipalRow> {
         let parent = self
@@ -198,7 +198,7 @@ impl PrincipalService {
     pub async fn default_owner_principal(
         &self,
         caller: &Caller,
-        agent_identity_id: Option<everruns_core::AgentIdentityId>,
+        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     ) -> Result<PrincipalRow> {
         let base_user_id = caller.user_id.or({
             if !caller.is_internal && caller.org_id == everruns_core::DEFAULT_ORG_ID {
@@ -230,7 +230,7 @@ impl PrincipalService {
         org_id: i64,
         current_owner_principal_id: PrincipalId,
         current_resolved_owner_user_id: Option<Uuid>,
-        agent_identity_id: Option<everruns_core::AgentIdentityId>,
+        agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     ) -> Result<PrincipalRow> {
         let current_owner = self
             .db
@@ -280,7 +280,7 @@ impl PrincipalService {
     pub async fn sync_agent_identity_status(
         &self,
         org_id: i64,
-        agent_identity_id: everruns_core::AgentIdentityId,
+        agent_identity_id: everruns_provider::typed_id::AgentIdentityId,
         status: PrincipalStatus,
     ) -> Result<()> {
         let Some(existing) = self
@@ -372,8 +372,8 @@ pub fn row_to_principal(row: PrincipalRow) -> Principal {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel_imports::{AgentIdentityId, DEFAULT_ORG_ID};
     use crate::storage::{CreateAgentIdentityRow, CreateUserRow, StorageBackend};
-    use everruns_core::{AgentIdentityId, DEFAULT_ORG_ID};
     use everruns_platform::{ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME};
 
     async fn create_user_with_principal(

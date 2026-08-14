@@ -7,7 +7,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use anyhow::anyhow;
-use everruns_core::McpServerId;
+use everruns_provider::typed_id::McpServerId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {

@@ -24,7 +24,7 @@ use everruns_core::events::{
     OUTPUT_MESSAGE_COMPLETED, OutputMessageCompletedData, TURN_CANCELLED, TURN_COMPLETED,
     TURN_FAILED, TURN_STARTED,
 };
-use everruns_core::message::ExecutionPhase;
+use everruns_provider::execution_phase::ExecutionPhase;
 use serde::{Deserialize, Serialize};
 
 use crate::api::app_endpoint_auth::{
@@ -232,7 +232,7 @@ pub async fn post_message(
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
-    let session_id = match session_id.parse::<everruns_core::typed_id::SessionId>() {
+    let session_id = match session_id.parse::<everruns_provider::typed_id::SessionId>() {
         Ok(id) => id,
         Err(_) => return not_found().into_response(),
     };
@@ -292,7 +292,7 @@ pub async fn get_session(
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
-    let session_id = match session_id.parse::<everruns_core::typed_id::SessionId>() {
+    let session_id = match session_id.parse::<everruns_provider::typed_id::SessionId>() {
         Ok(id) => id,
         Err(_) => return not_found().into_response(),
     };
@@ -351,7 +351,7 @@ pub async fn cancel_session(
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
-    let session_id = match session_id.parse::<everruns_core::typed_id::SessionId>() {
+    let session_id = match session_id.parse::<everruns_provider::typed_id::SessionId>() {
         Ok(id) => id,
         Err(_) => return not_found().into_response(),
     };
@@ -474,7 +474,7 @@ fn verify_api_key(
 /// (TM-APIKEY-004).
 async fn read_session_output(
     db: &Arc<StorageBackend>,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<(&'static str, Vec<AgentMessage>)> {
     let filter_types = vec![
         OUTPUT_MESSAGE_COMPLETED.to_string(),
@@ -545,10 +545,10 @@ fn content_parts_to_text(parts: &[ContentPart]) -> String {
 /// Mirrors the A2A `tasks/cancel` behavior.
 async fn cancel_session_turn(
     state: &AppApiState,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, TurnCancelledData};
-    use everruns_core::typed_id::{MessageId, TurnId};
+    use everruns_provider::typed_id::{MessageId, TurnId};
 
     if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
         tracing::warn!(session_id = %session_id, error = %err, "api_endpoint cancel: cancel_run failed");
@@ -667,8 +667,9 @@ mod tests {
     fn project_session_output_returns_only_final_assistant_text() {
         use chrono::Utc;
         use everruns_core::ContentPart;
-        use everruns_core::message::{ExecutionPhase, Message};
-        use everruns_core::typed_id::{EventId, SessionId};
+        use everruns_core::message::Message;
+        use everruns_provider::execution_phase::ExecutionPhase;
+        use everruns_provider::typed_id::{EventId, SessionId};
         use serde_json::json;
 
         let sid = SessionId::new();

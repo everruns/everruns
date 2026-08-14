@@ -1,6 +1,6 @@
 use crate::domains::common::CommandError;
 use crate::domains::session_resources::queries::parse_session_id;
-use everruns_core::SessionId;
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 pub fn parse_owned_session_id(input: &str) -> Result<SessionId, CommandError> {

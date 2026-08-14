@@ -9,11 +9,11 @@
 
 use std::sync::Arc;
 
-use everruns_core::error::Result;
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_core::typed_id::{PrincipalId, SessionId};
 use everruns_host::{HostBackends, PlatformStoreFactory, ScheduleStoreFactory};
 use everruns_platform::PlatformStore;
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{PrincipalId, SessionId};
 
 use crate::db::SqliteDb;
 use crate::platform_store::{LocalPlatformStore, LocalSessionRunner};
@@ -55,8 +55,9 @@ impl LocalBackends {
     pub fn new(profile: LocalProfile, runtime_backends: HostBackends) -> Result<Self> {
         profile
             .ensure_dirs()
-            .map_err(|e| everruns_core::AgentLoopError::config(e.to_string()))?;
-        let db = SqliteDb::open(profile.db_path()).map_err(everruns_core::AgentLoopError::from)?;
+            .map_err(|e| everruns_provider::error::AgentLoopError::config(e.to_string()))?;
+        let db = SqliteDb::open(profile.db_path())
+            .map_err(everruns_provider::error::AgentLoopError::from)?;
         Self::with_db(profile, runtime_backends, db)
     }
 
@@ -129,7 +130,7 @@ impl LocalBackends {
         LocalScheduleRunner::new(self.schedule_store()?, runner)
             .with_config(config)
             .start()
-            .map_err(everruns_core::AgentLoopError::from)
+            .map_err(everruns_provider::error::AgentLoopError::from)
     }
 
     /// Attach a platform store factory built from a caller-supplied

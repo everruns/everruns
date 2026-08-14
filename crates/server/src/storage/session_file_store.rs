@@ -3,12 +3,13 @@
 // This module implements the core SessionFileSystem trait for persisting
 // session files to the database.
 
-use async_trait::async_trait;
-use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, Result,
-    SessionFile, SessionId, StoreResultExt, session_file::build_grep_search_result,
-    session_files::SessionFileSystem,
+use crate::kernel_imports::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt, everruns_provider::typed_id::SessionId,
+    session_file::build_grep_search_result, session_files::SessionFileSystem,
 };
+use async_trait::async_trait;
 use regex::Regex;
 
 use super::models::{CreateSessionFileRow, UpdateSessionFile};

@@ -11,13 +11,14 @@
 
 #![cfg(feature = "lua")]
 
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, SessionId, provider_resolution::ResolvedModel,
-};
+use everruns_core::CapabilityRegistry;
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
@@ -74,13 +75,10 @@ async fn hides_math_tools_but_runs_them_via_lua() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform())
         .llm_sim(sim)
-        .default_model(ResolvedModel {
-            model: "llmsim-model".to_string(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".to_string()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on(
+            (DriverId::LlmSim).as_str(),
+            "llmsim-model".to_string(),
+        ))
         .harness(harness)
         .agent(agent)
         .session(session)

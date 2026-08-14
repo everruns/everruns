@@ -10,7 +10,7 @@ use crate::limits::{MAX_DATABASES_PER_SESSION, MAX_DB_SIZE_BYTES, MAX_SESSION_TO
 use crate::types::{DatabaseInfo, SqlExecuteResult, SqlQueryResult, TableSchema};
 use crate::validation::validate_database_name;
 use chrono::Utc;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use parking_lot::{Mutex, RwLock};
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -261,7 +261,7 @@ impl Default for InMemorySqlDbBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
 
     fn session_id() -> SessionId {
         SessionId::from(uuid::Uuid::new_v4())

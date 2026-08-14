@@ -3,9 +3,13 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::EventId,
+    everruns_provider::typed_id::HarnessId, everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::SessionId,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::{AgentId, EventId, HarnessId, PrincipalId, SessionId};
 use everruns_platform::{SessionActivity, SessionStatus};
 
 use uuid::Uuid;

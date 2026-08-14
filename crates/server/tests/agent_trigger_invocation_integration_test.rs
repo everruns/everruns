@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 use everruns_core::DEFAULT_ORG_ID;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use everruns_server::domains::agent_triggers::invoke_agent_trigger;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;

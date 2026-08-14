@@ -11,15 +11,16 @@ use crate::domains::models::{
     CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
     ListProviderModels, ModelService, UpdateModel,
 };
+use crate::kernel_imports::{
+    Caller, ResourceConfigResponse, evaluate_policies_with, everruns_provider::model::Model,
+    everruns_provider::model::ModelSource, everruns_provider::model::ModelWithProvider,
+};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
-};
-use everruns_core::{
-    Caller, Model, ModelSource, ModelWithProvider, ResourceConfigResponse, evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;

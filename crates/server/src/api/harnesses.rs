@@ -16,9 +16,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{
-    AgentCapabilityConfig, Caller, DeploymentGrade, ResourceConfigResponse, evaluate_policies_with,
-};
+use everruns_core::{Caller, DeploymentGrade, ResourceConfigResponse, evaluate_policies_with};
 use everruns_host::HostComposition;
 use everruns_platform::Harness;
 
@@ -248,12 +246,15 @@ pub async fn import_harness(
         None
     };
 
-    let capabilities: Vec<AgentCapabilityConfig> = example
+    let capabilities: Vec<everruns_capability::CapabilityRef> = example
         .definition
         .capabilities
         .iter()
         .map(|cap| {
-            AgentCapabilityConfig::with_config(cap.typed_id().clone(), cap.config_value().clone())
+            everruns_capability::CapabilityRef::with_config(
+                cap.typed_id().clone(),
+                cap.config_value().clone(),
+            )
         })
         .collect();
 

@@ -64,7 +64,7 @@ impl Capability for BackgroundExecutionCapability {
         vec![Box::new(SpawnBackgroundTool)]
     }
 
-    fn auto_activates_for(&self, tools: &[everruns_core::tool_types::ToolDefinition]) -> bool {
+    fn auto_activates_for(&self, tools: &[everruns_provider::tool_types::ToolDefinition]) -> bool {
         tools
             .iter()
             .any(|tool| tool.hints().supports_background == Some(true))
@@ -95,7 +95,7 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
         &self,
         task: &everruns_core::session_task::SessionTask,
         context: &everruns_core::tool_context::ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         crate::background_run::reattach_background_run(task, context).await
     }
 
@@ -107,7 +107,7 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
         &self,
         _task: &everruns_core::session_task::SessionTask,
         _context: &everruns_core::tool_context::ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         Ok(())
     }
 }
@@ -134,7 +134,7 @@ mod tests {
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t1".to_string(),
-            session_id: everruns_core::SessionId::new(),
+            session_id: everruns_provider::typed_id::SessionId::new(),
             root_session_id: None,
             kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
@@ -171,7 +171,7 @@ mod tests {
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t2".to_string(),
-            session_id: everruns_core::SessionId::new(),
+            session_id: everruns_provider::typed_id::SessionId::new(),
             root_session_id: None,
             kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
@@ -208,7 +208,7 @@ mod tests {
         let exec = BackgroundToolTaskExecutor;
         let task = SessionTask {
             id: "t3".to_string(),
-            session_id: everruns_core::SessionId::new(),
+            session_id: everruns_provider::typed_id::SessionId::new(),
             root_session_id: None,
             kind: everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),

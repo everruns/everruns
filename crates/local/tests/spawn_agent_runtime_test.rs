@@ -31,17 +31,11 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{
     SessionTaskRegistry, SessionTaskState, TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{
-    AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, ToolCall,
-    provider_resolution::ResolvedModel,
-};
+use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
@@ -49,6 +43,12 @@ use everruns_host::{
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::Result;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::ToolCall;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{
     LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern,
@@ -76,9 +76,9 @@ struct RuntimeRunner {
 
 impl RuntimeRunner {
     fn runtime(&self) -> Result<&InProcessRuntime> {
-        self.runtime
-            .get()
-            .ok_or_else(|| everruns_core::AgentLoopError::config("runtime not initialized yet"))
+        self.runtime.get().ok_or_else(|| {
+            everruns_provider::error::AgentLoopError::config("runtime not initialized yet")
+        })
     }
 }
 
@@ -107,7 +107,7 @@ impl LocalSessionRunner for RuntimeRunner {
         if result.success {
             Ok(())
         } else {
-            Err(everruns_core::AgentLoopError::tool(format!(
+            Err(everruns_provider::error::AgentLoopError::tool(format!(
                 "child turn failed: {}",
                 result.error.unwrap_or_default()
             )))
@@ -203,14 +203,8 @@ fn spawn_agent_sim(handoff_target_id: &str) -> LlmSimConfig {
     }
 }
 
-fn llmsim_model() -> ResolvedModel {
-    ResolvedModel {
-        model: "llmsim-model".into(),
-        provider_type: DriverId::LlmSim,
-        api_key: Some("fake-key".into()),
-        base_url: None,
-        provider_metadata: None,
-    }
+fn llmsim_model() -> ModelSpec {
+    ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model")
 }
 
 /// Poll the registry until the task reaches a terminal state or the deadline
@@ -260,7 +254,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     let parent_harness = HarnessBuilder::new("orchestrator", "You delegate work to other agents.")
         .id(parent_harness_id)
         .capability("subagents")
-        .capability(AgentCapabilityConfig::with_config(
+        .capability(everruns_capability::CapabilityRef::with_config(
             "agent_handoff",
             serde_json::json!({
                 "targets": [{

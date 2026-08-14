@@ -7,7 +7,7 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::seed::{SEED_AGENTS, SeedAgent};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::{AgentCapabilityConfig, DeploymentGrade};
+use everruns_core::DeploymentGrade;
 use everruns_host::HostComposition;
 use serde::Serialize;
 use std::sync::Arc;
@@ -27,8 +27,8 @@ pub struct AgentExample {
     /// Tags for categorization
     pub tags: Vec<String>,
     /// Capability IDs this example uses
-    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
-    pub capabilities: Vec<AgentCapabilityConfig>,
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    pub capabilities: Vec<everruns_capability::CapabilityRef>,
     /// Whether this example requires dev/experimental mode
     pub dev_only: bool,
 }
@@ -44,7 +44,7 @@ fn seed_to_example(seed: &SeedAgent) -> AgentExample {
             .iter()
             .map(|cap| {
                 let config = cap.config.map_or_else(|| serde_json::json!({}), |f| f());
-                AgentCapabilityConfig::with_config(cap.id.to_string(), config)
+                everruns_capability::CapabilityRef::with_config(cap.id.to_string(), config)
             })
             .collect(),
         dev_only: seed.dev_only,

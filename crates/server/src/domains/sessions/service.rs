@@ -14,6 +14,25 @@ use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
+use crate::kernel_imports::{
+    AgentCapabilityConfig, Caller, CapabilityRegistry, everruns_provider::typed_id::AgentId,
+};
+use crate::kernel_imports::{
+    DeclarativeCapabilityDefinition, InitialFile, MountAccess, MountEntry, MountPoint, MountSource,
+    OrgRole, Permission, Policy, PrincipalSummary, Rule, SessionFile, SessionSeedMode, TokenUsage,
+    capabilities::{
+        RiskLevel, SystemPromptContext, collect_capabilities_with_configs, compute_features,
+        resolve_capability_configs,
+    },
+    everruns_provider::typed_id::HarnessId,
+    everruns_provider::typed_id::ModelId,
+    everruns_provider::typed_id::PrincipalId,
+    everruns_provider::typed_id::SessionId,
+    everruns_provider::typed_id::WorkspaceId,
+    is_declarative_capability, is_plugin_capability, is_skill_capability, merge_capabilities,
+    merge_initial_files, normalize_initial_file_path, parse_declarative_capability_id,
+    parse_skill_capability_id,
+};
 use crate::max_iterations;
 use crate::org_init;
 use crate::server::ResourceLimitsConfig;
@@ -27,20 +46,6 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_builtins::AttachSkillCapability;
-use everruns_core::{AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry};
-use everruns_core::{
-    DeclarativeCapabilityDefinition, HarnessId, InitialFile, ModelId, MountAccess, MountEntry,
-    MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, PrincipalSummary, Rule,
-    SessionFile, SessionId, SessionSeedMode, TokenUsage, WorkspaceId,
-    capabilities::{
-        RiskLevel, SystemPromptContext, collect_capabilities_with_configs, compute_features,
-        resolve_capability_configs,
-    },
-    is_declarative_capability, is_plugin_capability, is_skill_capability, merge_capabilities,
-    merge_initial_files, normalize_initial_file_path, parse_declarative_capability_id,
-    parse_skill_capability_id,
-    typed_id::MemoryId,
-};
 use everruns_durable::UpdateField;
 use everruns_mcp::is_mcp_capability;
 use everruns_platform::FeatureFlags;
@@ -49,6 +54,7 @@ use everruns_platform::{
     AgentVersionPolicy, MemoryConfig, MemoryMountAccess, capabilities::MEMORY_CAPABILITY_ID,
 };
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
+use everruns_provider::typed_id::MemoryId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -618,7 +624,9 @@ impl SessionService {
                             self.db
                                 .get_agent_version(
                                     org_id,
-                                    everruns_core::AgentVersionId::from_uuid(version_id),
+                                    everruns_provider::typed_id::AgentVersionId::from_uuid(
+                                        version_id,
+                                    ),
                                 )
                                 .await?
                         } else {
@@ -786,7 +794,7 @@ impl SessionService {
                 // the session report a workspace_id that 404s against the
                 // workspace API. Reject it with actionable guidance rather than
                 // silently misrendering.
-                if everruns_core::WorkspaceId::from_uuid(workspace.id).to_string()
+                if everruns_provider::typed_id::WorkspaceId::from_uuid(workspace.id).to_string()
                     != workspace.public_id
                 {
                     return Err(BadRequestError::new(format!(
@@ -2862,13 +2870,13 @@ mod tests {
     use crate::domains::{
         agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest,
     };
+    use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
         CreateHarnessRow, CreateMemoryFileRow, CreateModelRow, CreateOrganizationRow,
         CreateProviderRow, StorageBackend, UpdateAgent,
     };
     use everruns_core::capabilities::Capability;
-    use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
 
     #[test]
     fn sanitize_session_capabilities_removes_daytona_base_url_overrides() {
@@ -4419,7 +4427,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("Corrupt Session".to_string()),
                 locale: None,
@@ -4626,7 +4634,7 @@ mod tests {
         db.create_declarative_capability(
             owner.org_id,
             CreateDeclarativeCapabilityRow {
-                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
                 name: "hidden_admin_tool".to_string(),
                 display_name: Some("Hidden Admin Tool".to_string()),
                 description: "wraps a high-risk built-in".to_string(),
@@ -4759,7 +4767,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("Mount Test".to_string()),
                 locale: None,

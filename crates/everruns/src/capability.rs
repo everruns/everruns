@@ -81,8 +81,9 @@
 use std::sync::Arc;
 
 use everruns_core::capabilities::Capability as CoreCapability;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool as CoreTool, ToolExecutionResult};
-use everruns_core::{ToolHints, tool_context::ToolContext};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 pub use everruns_capability::definition::{
@@ -279,8 +280,10 @@ mod tests {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
 
+    use everruns_core::tool_context::ToolContext;
     use everruns_core::tools::Tool as _;
-    use everruns_core::{SessionId, ToolCall, tool_context::ToolContext};
+    use everruns_provider::tool_types::ToolCall;
+    use everruns_provider::typed_id::SessionId;
     use everruns_test_support::LlmSimConfig;
     use serde_json::{Value, json};
     use tokio::sync::Notify;

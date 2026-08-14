@@ -10,9 +10,9 @@ use super::queries as q;
 use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillRequest};
 use super::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::domains::common::*;
-use everruns_core::{
-    Policy, SKILL_CAPABILITY_PREFIX, Skill, SkillContent, SkillFileEntry, SkillId, SkillStatus,
-    SkillUsage, parse_skill_md,
+use crate::kernel_imports::{
+    Policy, SKILL_CAPABILITY_PREFIX, Skill, SkillContent, SkillFileEntry, SkillStatus, SkillUsage,
+    everruns_provider::typed_id::SkillId, parse_skill_md,
 };
 use serde::Deserialize;
 use std::collections::HashMap;

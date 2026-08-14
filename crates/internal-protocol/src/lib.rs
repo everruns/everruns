@@ -11,7 +11,7 @@
 // Decision: Proto is transport layer, Rust schemas remain source of truth
 
 use chrono::{DateTime, TimeZone, Utc};
-use everruns_core::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
+use everruns_provider::typed_id::{EventId, ExecId, MessageId, SessionId, TurnId};
 use prost_types::{ListValue, Struct, Value, value::Kind};
 
 // Generated protobuf code
@@ -1899,20 +1899,20 @@ mod tests {
     #[test]
     fn test_proto_agent_includes_capability_ids() {
         use chrono::Utc;
-        use everruns_core::AgentCapabilityConfig;
+        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
         use uuid::Uuid;
 
         // Create an Agent with capabilities
         let id = Uuid::now_v7();
         let agent = everruns_platform::Agent {
-            public_id: everruns_core::AgentId::from_uuid(id),
+            public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
             display_name: Some("Test Agent".to_string()),
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
-            harness_id: everruns_core::HarnessId::new(),
+            harness_id: everruns_provider::typed_id::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -1973,14 +1973,14 @@ mod tests {
         // Create an Agent without capabilities
         let id = Uuid::now_v7();
         let agent = everruns_platform::Agent {
-            public_id: everruns_core::AgentId::from_uuid(id),
+            public_id: everruns_provider::typed_id::AgentId::from_uuid(id),
             internal_id: id,
             name: "test-agent".to_string(),
             display_name: Some("Test Agent".to_string()),
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
-            harness_id: everruns_core::HarnessId::new(),
+            harness_id: everruns_provider::typed_id::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -2166,22 +2166,22 @@ mod tests {
     #[test]
     fn test_proto_session_roundtrip_includes_organization_id() {
         use chrono::Utc;
-        use everruns_core::AgentCapabilityConfig;
+        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
         let now = Utc::now();
-        let session_id = everruns_core::SessionId::new();
+        let session_id = everruns_provider::typed_id::SessionId::new();
         let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
             // Equality invariant: workspace.id == session.id for default sessions.
-            workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),
-            harness_id: everruns_core::HarnessId::new(),
+            harness_id: everruns_provider::typed_id::HarnessId::new(),
             agent_id: None,
             agent_version_id: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,
             effective_owner: None,
@@ -2210,7 +2210,7 @@ mod tests {
             is_pinned: None,
             active_schedule_count: None,
             features: vec![],
-            parent_session_id: Some(everruns_core::SessionId::new()),
+            parent_session_id: Some(everruns_provider::typed_id::SessionId::new()),
             forked_from_session_id: None,
             forked_from_sequence: None,
             blueprint_id: Some("oracle".to_string()),
@@ -2375,21 +2375,21 @@ mod tests {
     #[test]
     fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
         use chrono::Utc;
-        use everruns_core::AgentCapabilityConfig;
+        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
         let now = Utc::now();
-        let session_id = everruns_core::SessionId::new();
+        let session_id = everruns_provider::typed_id::SessionId::new();
         let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
-            workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),
-            harness_id: everruns_core::HarnessId::new(),
+            harness_id: everruns_provider::typed_id::HarnessId::new(),
             agent_id: None,
             agent_version_id: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,
             effective_owner: None,

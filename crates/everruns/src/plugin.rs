@@ -3,7 +3,7 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use everruns_core::plugin_capability_id;
+use everruns_capability::plugin_capability_id;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 
 /// Failure while reading or compiling a local plugin directory.

@@ -9,7 +9,8 @@ use crate::storage::models::*;
 use everruns_core::EventListener;
 use everruns_core::budget::BudgetAction;
 use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
-use everruns_core::{AgentId, PrincipalId, org_public_id_from_internal};
+use everruns_core::org_public_id_from_internal;
+use everruns_provider::typed_id::{AgentId, PrincipalId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -1314,7 +1315,7 @@ async fn test_check_budgets_for_child_respects_exhausted_root_budget() {
     assert!(result.should_stop());
     assert_eq!(
         result.budget_id,
-        Some(everruns_core::typed_id::BudgetId::from_uuid(budget.id))
+        Some(everruns_provider::typed_id::BudgetId::from_uuid(budget.id))
     );
     assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));
 }

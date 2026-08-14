@@ -1,14 +1,14 @@
+use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
 use everruns_core::capabilities::{
-    AgentCapabilityConfig, Capability, CapabilityId, CapabilityRegistry, SystemPromptContext,
-    collect_capabilities_with_configs,
+    Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
 use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-use everruns_core::tool_types::ToolCall;
-use everruns_core::{AgentId, HarnessId, SessionId};
 use everruns_platform::capabilities::{
     AgentHandoffCapability, SessionScheduleCapability, SubagentCapability,
     register_hosted_capabilities,
 };
+use everruns_provider::tool_types::ToolCall;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 
 const HOSTED_IDS: &[&str] = &[
     "research",

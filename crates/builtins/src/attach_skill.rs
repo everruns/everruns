@@ -12,8 +12,10 @@
 // - Depends on `session_file_system` for VFS mounting
 
 #[cfg(test)]
-use crate::capability_types::{CapabilityId, CapabilityStatus};
+use crate::capability_types::CapabilityStatus;
 use crate::capability_types::{MountDirectoryBuilder, MountPoint};
+#[cfg(test)]
+use everruns_capability::CapabilityId;
 
 use super::Capability;
 pub use everruns_core::capabilities::{

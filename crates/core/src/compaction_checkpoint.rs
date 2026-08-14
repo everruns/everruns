@@ -3,7 +3,9 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
+#[cfg(test)]
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::ProviderOpaqueContext;
@@ -82,6 +84,7 @@ pub trait CompactionCheckpointStore: Send + Sync {
     ) -> Result<()>;
 }
 
+#[cfg(test)]
 type CheckpointKey = (SessionId, String, String, u32);
 type AttemptKey = (SessionId, String, String);
 
@@ -150,13 +153,15 @@ impl ProactiveCompactionAttemptTracker {
     }
 }
 
-/// In-memory implementation used by embedded runtimes and entry-point tests.
+/// In-memory implementation used by collocated unit tests.
+#[cfg(test)]
 #[derive(Debug, Default)]
 pub struct InMemoryCompactionCheckpointStore {
     checkpoints: RwLock<HashMap<CheckpointKey, CompactionCheckpoint>>,
     proactive_attempts: ProactiveCompactionAttemptTracker,
 }
 
+#[cfg(test)]
 #[async_trait]
 impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
     async fn get_latest(

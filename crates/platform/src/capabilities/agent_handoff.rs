@@ -24,9 +24,9 @@ use everruns_core::session_task::{
 };
 use everruns_core::subagent_delegation::PlatformCreateSessionRequest;
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::typed_id::{AgentId, HarnessId};
+use everruns_provider::tool_types::ToolHints;
+use everruns_provider::typed_id::{AgentId, HarnessId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -623,7 +623,7 @@ fn handoff_error(status: &str, state: SessionTaskState) -> Option<TaskError> {
 
 async fn handoff_result(
     store: &dyn everruns_core::subagent_delegation::SubagentSessionDelegate,
-    child_session_id: everruns_core::typed_id::SessionId,
+    child_session_id: everruns_provider::typed_id::SessionId,
     status: &str,
 ) -> Result<String, ToolExecutionResult> {
     let messages = store
@@ -636,7 +636,7 @@ async fn handoff_result(
 
 fn spawn_handoff_background_watcher(
     context: &ToolContext,
-    child_session_id: everruns_core::typed_id::SessionId,
+    child_session_id: everruns_provider::typed_id::SessionId,
     first_message: String,
     task_id: String,
     task_attempt: i32,
@@ -822,7 +822,7 @@ impl SpawnAgentHandoffTool {
 impl Tool for SpawnAgentHandoffTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1295,14 +1295,14 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(everruns_core::error::AgentLoopError::tool(
+            return Err(everruns_provider::error::AgentLoopError::tool(
                 "agent handoff task delivery requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(everruns_core::error::AgentLoopError::tool(format!(
+            return Err(everruns_provider::error::AgentLoopError::tool(format!(
                 "agent handoff task {} has no child session link",
                 task.id
             )));
@@ -1315,14 +1315,14 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let Some(store) = context.subagent_delegate.as_ref() else {
-            return Err(everruns_core::error::AgentLoopError::tool(
+            return Err(everruns_provider::error::AgentLoopError::tool(
                 "agent handoff task cancellation requires platform_store context",
             ));
         };
         let Some(child_id) = task.links.child_session_id else {
-            return Err(everruns_core::error::AgentLoopError::tool(format!(
+            return Err(everruns_provider::error::AgentLoopError::tool(format!(
                 "agent handoff task {} has no child session link",
                 task.id
             )));
@@ -1339,7 +1339,7 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         if task.state.is_terminal() {
             return Ok(());
         }
@@ -1373,13 +1373,13 @@ mod tests {
     use crate::PlatformStoreSubagentDelegate;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
-    use everruns_core::Result;
     use everruns_core::connection_services::UserConnectionResolver;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart,
     };
     use everruns_core::tools::{Tool, ToolExecutionResult};
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::error::Result;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashSet;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -1845,12 +1845,12 @@ mod tests {
         // already folded into the child's configuration.
         let mut child_harness = store_value.harness.clone();
         child_harness.id = child_harness_id;
-        child_harness.capabilities = vec![everruns_core::AgentCapabilityConfig::with_config(
+        child_harness.capabilities = vec![everruns_capability::CapabilityRef::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
         )];
         store_value.session.harness_id = child_harness_id;
-        store_value.agent.capabilities = vec![everruns_core::AgentCapabilityConfig::with_config(
+        store_value.agent.capabilities = vec![everruns_capability::CapabilityRef::with_config(
             "web_fetch",
             json!({"max_bytes": 2048}),
         )];
@@ -1892,11 +1892,11 @@ mod tests {
     #[tokio::test]
     async fn spawn_agent_handoff_invite_rejects_capability_conflict() {
         let mut store_value = MockPlatformStore::new();
-        store_value.session.capabilities = vec![everruns_core::AgentCapabilityConfig::with_config(
+        store_value.session.capabilities = vec![everruns_capability::CapabilityRef::with_config(
             "web_fetch",
             json!({"max_bytes": 1024}),
         )];
-        store_value.agent.capabilities = vec![everruns_core::AgentCapabilityConfig::with_config(
+        store_value.agent.capabilities = vec![everruns_capability::CapabilityRef::with_config(
             "web_fetch",
             json!({"max_bytes": 2048}),
         )];

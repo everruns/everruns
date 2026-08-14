@@ -340,7 +340,7 @@ pub async fn invoke_a2a(
 struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
-    channel_public_id: everruns_core::typed_id::AppChannelId,
+    channel_public_id: everruns_provider::typed_id::AppChannelId,
     session_mode: everruns_platform::app::InvocationSessionMode,
 }
 
@@ -368,7 +368,7 @@ async fn authenticate_request(
     }
 
     let channel_id_typed = channel_id
-        .parse::<everruns_core::typed_id::AppChannelId>()
+        .parse::<everruns_provider::typed_id::AppChannelId>()
         .map_err(|e| bad_request(format!("Invalid channel ID: {e}")))?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
     if channel.channel_type != everruns_platform::ChannelType::A2a {
@@ -671,12 +671,14 @@ async fn handle_message_send(
 /// response. We use the underlying session id as the task id, so the lookup
 /// is just a session existence check followed by event-derived state
 /// computation.
-fn task_id_from_params(params: &Value) -> Result<everruns_core::typed_id::SessionId, &'static str> {
+fn task_id_from_params(
+    params: &Value,
+) -> Result<everruns_provider::typed_id::SessionId, &'static str> {
     let raw = params
         .get("id")
         .and_then(Value::as_str)
         .ok_or("Invalid params: missing required `id`")?;
-    raw.parse::<everruns_core::typed_id::SessionId>()
+    raw.parse::<everruns_provider::typed_id::SessionId>()
         .map_err(|_| "Invalid params: `id` is not a known task id")
 }
 
@@ -817,7 +819,7 @@ async fn handle_tasks_cancel(
 }
 
 fn build_task_json(
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
     state_label: &str,
     error_message: Option<&str>,
 ) -> Value {
@@ -844,7 +846,7 @@ fn build_task_json(
 /// most recent turn lifecycle event.
 async fn derive_task_state_from_events(
     db: &Arc<StorageBackend>,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<&'static str> {
     use everruns_core::events::{TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED};
     let filter_types = vec![
@@ -877,11 +879,11 @@ async fn derive_task_state_from_events(
 
 async fn cancel_a2a_session_turn(
     state: &AppA2aState,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> anyhow::Result<()> {
     use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
     use everruns_core::message::Message;
-    use everruns_core::typed_id::{MessageId, TurnId};
+    use everruns_provider::typed_id::{MessageId, TurnId};
 
     // Best-effort cancel of the active workflow run. Errors are logged but
     // not surfaced — the turn-cancelled event is what tasks/get keys off.
@@ -1274,7 +1276,7 @@ pub async fn agent_card(
         return Err(not_found());
     }
     let channel_id_typed = channel_id
-        .parse::<everruns_core::typed_id::AppChannelId>()
+        .parse::<everruns_provider::typed_id::AppChannelId>()
         .map_err(|_| not_found())?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
     if channel.channel_type != everruns_platform::ChannelType::A2a || !channel.enabled {
@@ -1590,7 +1592,7 @@ mod tests {
     #[test]
     fn translate_turn_completed_emits_terminal_status_update() {
         use everruns_core::events::TurnCompletedData;
-        use everruns_core::typed_id::TurnId;
+        use everruns_provider::typed_id::TurnId;
         let data = EventData::TurnCompleted(TurnCompletedData {
             turn_id: TurnId::new(),
             iterations: 1,
@@ -1615,7 +1617,7 @@ mod tests {
     #[test]
     fn translate_turn_failed_emits_terminal_status_update() {
         use everruns_core::events::TurnFailedData;
-        use everruns_core::typed_id::TurnId;
+        use everruns_provider::typed_id::TurnId;
         let data = EventData::TurnFailed(TurnFailedData {
             turn_id: TurnId::new(),
             error: "boom".into(),
@@ -1631,7 +1633,7 @@ mod tests {
     #[test]
     fn translate_unrelated_event_returns_none() {
         use everruns_core::events::OutputMessageStartedData;
-        use everruns_core::typed_id::{MessageId, TurnId};
+        use everruns_provider::typed_id::{MessageId, TurnId};
         let data = EventData::OutputMessageStarted(OutputMessageStartedData {
             turn_id: TurnId::new(),
             message_id: MessageId::new(),

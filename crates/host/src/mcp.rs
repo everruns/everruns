@@ -12,11 +12,12 @@ use std::{collections::HashMap, sync::Arc};
 use everruns_core::capabilities::Capability;
 use everruns_core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, McpServerTransportType, ScopedMcpServer,
-    ScopedMcpServers, ToolDefinition, merge_scoped_mcp_servers,
+    ScopedMcpServers, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{
     McpCapability, McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver,
 };
+use everruns_provider::tool_types::ToolDefinition;
 use futures::{StreamExt, stream};
 use uuid::Uuid;
 

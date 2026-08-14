@@ -6,8 +6,8 @@
 //   captured when a user sends a message.
 
 use async_trait::async_trait;
-use everruns_core::typed_id::{MessageId, NotificationId, SessionId};
 use everruns_core::{Event, EventData, EventListener, TURN_COMPLETED};
+use everruns_provider::typed_id::{MessageId, NotificationId, SessionId};
 use serde_json::json;
 use std::sync::Arc;
 use tracing::{error, instrument};
@@ -210,8 +210,9 @@ fn format_duration(duration_ms: u64) -> String {
 mod tests {
     use super::*;
     use crate::storage::{CreateSessionRow, StorageBackend};
+    use everruns_core::Event;
     use everruns_core::events::{EventContext, TurnCompletedData};
-    use everruns_core::{Event, typed_id::TurnId};
+    use everruns_provider::typed_id::TurnId;
 
     fn turn_completed_event(
         session_id: SessionId,
@@ -220,7 +221,7 @@ mod tests {
         duration_ms: u64,
     ) -> Event {
         Event {
-            id: everruns_core::EventId::new(),
+            id: everruns_provider::typed_id::EventId::new(),
             event_type: TURN_COMPLETED.to_string(),
             ts: chrono::Utc::now(),
             session_id,
@@ -276,7 +277,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("Inbox".to_string()),
                 locale: None,

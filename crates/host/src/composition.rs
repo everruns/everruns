@@ -24,9 +24,10 @@
 
 use crate::{DisabledSessionFileSystemFactory, SessionFileSystemFactory};
 use everruns_core::{
-    Capability, CapabilityRegistry, DriverRegistry, EgressService, UtilityLlmService,
+    Capability, CapabilityRegistry, EgressService, UtilityLlmService,
     tool_context::ToolContextExtensions,
 };
+use everruns_provider::driver_registry::DriverRegistry;
 use std::sync::Arc;
 
 /// The execution surface a deployment runs with.
@@ -221,13 +222,14 @@ mod tests {
     struct StubChatDriver;
 
     #[async_trait]
-    impl everruns_core::ChatDriver for StubChatDriver {
+    impl everruns_provider::driver_registry::ChatDriver for StubChatDriver {
         async fn chat_completion_stream(
             &self,
-            _endpoint: &everruns_core::ProviderEndpoint,
-            _messages: Vec<everruns_core::LlmMessage>,
-            _config: &everruns_core::LlmCallConfig,
-        ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+            _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+            _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+            _config: &everruns_provider::driver_registry::LlmCallConfig,
+        ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        {
             Ok(Box::pin(futures::stream::empty()))
         }
     }
@@ -235,9 +237,11 @@ mod tests {
     #[test]
     fn composition_builder_registers_capabilities_and_drivers() {
         let mut drivers = DriverRegistry::new();
-        let mut descriptor = everruns_core::driver_registry::DriverDescriptor::chat_only(
-            everruns_core::DriverId::LlmSim,
-            |_config| Box::new(StubChatDriver) as everruns_core::BoxedChatDriver,
+        let mut descriptor = everruns_provider::driver_registry::DriverDescriptor::chat_only(
+            everruns_provider::provider::DriverId::LlmSim,
+            |_config| {
+                Box::new(StubChatDriver) as everruns_provider::driver_registry::BoxedChatDriver
+            },
         );
         descriptor.display_name = "Stub".into();
         drivers.register_descriptor_or_replace(descriptor);
@@ -251,7 +255,7 @@ mod tests {
         assert!(
             composition
                 .driver_registry()
-                .has_driver(&everruns_core::DriverId::LlmSim)
+                .has_driver(&everruns_provider::provider::DriverId::LlmSim)
         );
     }
 

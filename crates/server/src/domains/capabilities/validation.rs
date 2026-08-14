@@ -11,12 +11,12 @@
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use anyhow::Result;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_capability::{is_plugin_capability, parse_plugin_capability_id};
 use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityRegistry, declarative_capability_id,
-    is_declarative_capability, is_skill_capability, parse_declarative_capability_id,
-    parse_skill_capability_id,
+    CapabilityRegistry, declarative_capability_id, is_declarative_capability, is_skill_capability,
+    parse_declarative_capability_id, parse_skill_capability_id,
 };
-use everruns_core::{is_plugin_capability, parse_plugin_capability_id};
 use everruns_mcp::{is_mcp_capability, parse_mcp_capability_id};
 
 use crate::domains::common::CommandError;
@@ -178,7 +178,9 @@ mod tests {
     use crate::storage::models::{
         CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreatePluginInstallRow, CreateSkillRow,
     };
-    use everruns_core::{DEFAULT_ORG_ID, PluginInstallId, plugin_capability_id};
+    use everruns_capability::plugin_capability_id;
+    use everruns_core::DEFAULT_ORG_ID;
+    use everruns_provider::typed_id::PluginInstallId;
     use std::sync::Arc;
     use uuid::Uuid;
 
@@ -267,7 +269,7 @@ mod tests {
         db.create_declarative_capability(
             DEFAULT_ORG_ID,
             CreateDeclarativeCapabilityRow {
-                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                public_id: everruns_provider::typed_id::DeclarativeCapabilityId::new().to_string(),
                 name: "research_pack".to_string(),
                 display_name: Some("Research Pack".to_string()),
                 description: "Research defaults".to_string(),

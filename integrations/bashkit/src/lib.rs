@@ -41,6 +41,9 @@ use everruns_core::capabilities::{
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
+#[cfg(test)]
+use everruns_provider::error;
+use everruns_provider::{tool_types, typed_id};
 pub use hook_dispatch::BashkitShellHookDispatcher;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -1391,7 +1394,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_core::Result<Option<SessionFile>> {
+        ) -> everruns_provider::error::Result<Option<SessionFile>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, encoding)) = files.get(&(session_id, path.clone())) {
@@ -1441,7 +1444,7 @@ mod tests {
             path: &str,
             content: &str,
             encoding: &str,
-        ) -> everruns_core::Result<SessionFile> {
+        ) -> everruns_provider::error::Result<SessionFile> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             files.insert(
@@ -1468,7 +1471,7 @@ mod tests {
             session_id: SessionId,
             path: &str,
             _recursive: bool,
-        ) -> everruns_core::Result<bool> {
+        ) -> everruns_provider::error::Result<bool> {
             let path = Self::normalize_path(path);
             let mut files = self.files.lock().unwrap();
             Ok(files.remove(&(session_id, path)).is_some())
@@ -1478,7 +1481,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_core::Result<Vec<FileInfo>> {
+        ) -> everruns_provider::error::Result<Vec<FileInfo>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             let dirs = self.directories.lock().unwrap();
@@ -1575,7 +1578,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_core::Result<Option<FileStat>> {
+        ) -> everruns_provider::error::Result<Option<FileStat>> {
             let path = Self::normalize_path(path);
             let files = self.files.lock().unwrap();
             if let Some((content, _)) = files.get(&(session_id, path.clone())) {
@@ -1598,7 +1601,7 @@ mod tests {
             session_id: SessionId,
             pattern: &str,
             path_pattern: Option<&str>,
-        ) -> everruns_core::Result<Vec<GrepMatch>> {
+        ) -> everruns_provider::error::Result<Vec<GrepMatch>> {
             let regex = regex::Regex::new(pattern)
                 .map_err(|e| anyhow::anyhow!("invalid pattern: {}", e))?;
             let files = self.files.lock().unwrap();
@@ -1633,7 +1636,7 @@ mod tests {
             &self,
             session_id: SessionId,
             path: &str,
-        ) -> everruns_core::Result<FileInfo> {
+        ) -> everruns_provider::error::Result<FileInfo> {
             let path = Self::normalize_path(path);
             let mut dirs = self.directories.lock().unwrap();
             dirs.insert((session_id, path.clone()), true);

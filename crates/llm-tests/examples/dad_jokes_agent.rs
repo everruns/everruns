@@ -11,9 +11,9 @@
 //! Run with: cargo run -p everruns-llm-tests --example dad_jokes_agent
 
 use everruns_builtins::CurrentTimeCapability;
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::provider::DriverId;
-use everruns_core::provider_resolution::ResolvedModel;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 
 const DAD_JOKES_SYSTEM_PROMPT: &str = r#"You are a Dad Jokes Bot - the world's greatest purveyor of groan-worthy humor!
@@ -59,19 +59,20 @@ async fn main() -> anyhow::Result<()> {
     everruns_anthropic::register_driver(&mut driver_registry);
 
     // Configure the model
-    let model = ResolvedModel {
-        model: "claude-sonnet-4-20250514".to_string(),
-        provider_type: DriverId::Anthropic,
-        api_key: Some(api_key),
-        base_url: None,
-        provider_metadata: None,
-    };
+    let model = ModelSpec::on(
+        (DriverId::Anthropic).as_str(),
+        "claude-sonnet-4-20250514".to_string(),
+    );
 
     // Build the agent with current_time capability
     let runner = InMemoryAgenticLoop::builder()
         .agent_name("Dad Jokes Bot")
         .system_prompt(DAD_JOKES_SYSTEM_PROMPT)
-        .model(model)
+        .model((
+            model,
+            everruns_provider::driver_registry::ProviderConfig::new(DriverId::Anthropic)
+                .with_api_key(api_key),
+        ))
         .driver_registry(driver_registry)
         .capability(CurrentTimeCapability)
         .max_iterations(5)

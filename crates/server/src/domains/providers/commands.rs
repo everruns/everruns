@@ -2,8 +2,10 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
-use everruns_core::provider::Provider;
-use everruns_core::{DriverId, Policy, ProviderStatus};
+use crate::kernel_imports::{
+    Policy, everruns_provider::provider::DriverId, everruns_provider::provider::ProviderStatus,
+};
+use everruns_provider::provider::Provider;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -30,7 +32,7 @@ pub struct CreateProvider {
     /// Trace/observability link configuration override (driver defaults apply
     /// when omitted).
     #[serde(default)]
-    pub trace: Option<everruns_core::ProviderTraceConfig>,
+    pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
 }
 
 impl Command for CreateProvider {
@@ -158,7 +160,7 @@ pub struct UpdateProvider {
     /// Trace/observability link configuration override (merged into stored
     /// settings, preserving other keys).
     #[serde(default)]
-    pub trace: Option<everruns_core::ProviderTraceConfig>,
+    pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
 }
 
 impl Command for UpdateProvider {

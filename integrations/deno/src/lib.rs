@@ -164,7 +164,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = DenoCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_core::SessionId::new(),
+            everruns_provider::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1000 → 1300: EVE-778 grew the shared EXEC_OUTPUT_HINT with the

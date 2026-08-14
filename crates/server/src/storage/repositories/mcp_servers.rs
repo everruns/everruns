@@ -6,7 +6,7 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
-use everruns_core::typed_id::McpServerId;
+use everruns_provider::typed_id::McpServerId;
 use uuid::Uuid;
 
 impl Database {

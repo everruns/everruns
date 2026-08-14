@@ -19,7 +19,6 @@
 //! `TM-DAYTONA-008` in `knowledge/security/threat-model.md`.
 
 use everruns_core::SessionFile;
-use everruns_core::ToolHints;
 use everruns_core::exec_tool_result::ExecToolResultPayload;
 use everruns_core::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
@@ -35,6 +34,7 @@ use everruns_core::tool_output_sanitizer::{
     parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -187,7 +187,7 @@ pub struct DaytonaCreateSandboxTool;
 impl Tool for DaytonaCreateSandboxTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -458,7 +458,7 @@ pub struct DaytonaExecTool;
 impl Tool for DaytonaExecTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -625,7 +625,7 @@ pub struct DaytonaReadFileTool;
 impl Tool for DaytonaReadFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -753,7 +753,7 @@ pub struct DaytonaWriteFileTool;
 impl Tool for DaytonaWriteFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -864,7 +864,7 @@ pub struct DaytonaDownloadWorkspaceTool;
 impl Tool for DaytonaDownloadWorkspaceTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1067,7 +1067,7 @@ pub struct DaytonaListSnapshotsTool;
 impl Tool for DaytonaListSnapshotsTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1180,7 +1180,7 @@ pub struct DaytonaListSandboxesTool;
 impl Tool for DaytonaListSandboxesTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1266,7 +1266,7 @@ pub struct DaytonaManageSandboxTool;
 impl Tool for DaytonaManageSandboxTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1394,7 +1394,7 @@ pub struct DaytonaGitCloneTool;
 impl Tool for DaytonaGitCloneTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1619,7 +1619,7 @@ pub struct DaytonaGitCredentialsTool;
 impl Tool for DaytonaGitCredentialsTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -2010,7 +2010,7 @@ pub struct DaytonaApiCallTool;
 impl Tool for DaytonaApiCallTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -2359,12 +2359,12 @@ mod tests {
     // Mock SessionStorageStore for integration tests
     // ========================================================================
 
-    use everruns_core::error::Result;
-    use everruns_core::typed_id::SessionId;
     use everruns_core::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
     };
+    use everruns_provider::error::Result;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -3635,7 +3635,7 @@ mod tests {
     // ========================================================================
 
     use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-    use everruns_core::tool_types::ToolCall;
+    use everruns_provider::tool_types::ToolCall;
 
     fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
         let call = ToolCall {

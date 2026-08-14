@@ -5,25 +5,26 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::typed_id::{
-    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
-};
 use everruns_core::{
-    DriverRegistry, EgressService, ExecutionSession, Message, MessageHistory, MessageQuery,
-    UtilityLlmService,
+    EgressService, ExecutionSession, Message, MessageHistory, MessageQuery, UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, image_services::ImageArtifactStore,
-    image_services::ResolvedImage, provider_resolution::ResolvedModel,
+    image_services::ResolvedImage,
 };
 use everruns_host::HostComposition;
 use everruns_platform::{Agent, Harness};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::typed_id::{
+    AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -191,29 +192,25 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // LLM Provider Operations
     // =========================================================================
 
-    async fn get_resolved_model(
-        &self,
-        org_id: i64,
-        model_id: Uuid,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_model_spec(&self, org_id: i64, model_id: Uuid) -> Result<Option<ModelSpec>> {
         let store = GrpcProviderStore::new(self.client.clone(), org_id);
-        everruns_core::provider_resolution::ProviderStore::get_resolved_model(
+        everruns_core::provider_resolution::ProviderStore::get_model_spec(
             &store,
             ModelId::from_uuid(model_id),
         )
         .await
     }
 
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
+    async fn get_default_model_spec(&self, org_id: i64) -> Result<Option<ModelSpec>> {
         let store = GrpcProviderStore::new(self.client.clone(), org_id);
-        everruns_core::provider_resolution::ProviderStore::get_default_model(&store).await
+        everruns_core::provider_resolution::ProviderStore::get_default_model_spec(&store).await
     }
 
     async fn get_provider_config(
         &self,
         org_id: i64,
-        provider: &everruns_core::ProviderKey,
-    ) -> Result<Option<everruns_core::ProviderConfig>> {
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
         self.client
             .get_provider_config(org_id, provider.as_str())
             .await
@@ -613,7 +610,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         &self,
         stale_after: chrono::Duration,
         limit: i64,
-    ) -> Result<Vec<(everruns_core::SessionId, String)>> {
+    ) -> Result<Vec<(everruns_provider::typed_id::SessionId, String)>> {
         self.client
             .list_orphaned_session_tasks(stale_after.num_seconds(), limit)
             .await

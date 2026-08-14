@@ -47,10 +47,11 @@ mod error_tests {
 #[cfg(test)]
 pub(crate) mod test_support {
     use async_trait::async_trait;
-    use everruns_core::{
-        AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream, Result,
-        UtilityLlmRequest, UtilityLlmService,
+    use everruns_core::{UtilityLlmRequest, UtilityLlmService};
+    use everruns_provider::driver_registry::{
+        LlmCompletionMetadata, LlmResponse, LlmResponseStream,
     };
+    use everruns_provider::error::{AgentLoopError, Result};
     use std::sync::Arc;
 
     /// Utility LLM stub that returns a fixed completion text.

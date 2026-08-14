@@ -11,8 +11,8 @@ use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::SessionId;
 use everruns_durable::UpdateField;
+use everruns_provider::typed_id::SessionId;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{DeserializeOwned, Error as DeError},
@@ -1624,7 +1624,7 @@ impl ResourceUrlable for everruns_core::Skill {
     }
 }
 
-impl ResourceUrlable for everruns_core::provider::Provider {
+impl ResourceUrlable for everruns_provider::provider::Provider {
     fn api_path() -> &'static str {
         "v1/providers"
     }
@@ -1639,7 +1639,7 @@ impl ResourceUrlable for everruns_core::provider::Provider {
     }
 }
 
-impl ResourceUrlable for everruns_core::model::Model {
+impl ResourceUrlable for everruns_provider::model::Model {
     fn api_path() -> &'static str {
         "v1/models"
     }
@@ -1654,7 +1654,7 @@ impl ResourceUrlable for everruns_core::model::Model {
     }
 }
 
-impl ResourceUrlable for everruns_core::ModelWithProvider {
+impl ResourceUrlable for everruns_provider::model::ModelWithProvider {
     fn api_path() -> &'static str {
         "v1/models"
     }

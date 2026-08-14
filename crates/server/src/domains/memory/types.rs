@@ -1,7 +1,7 @@
 use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{AgentId, MemoryId};
 use everruns_durable::UpdateField;
+use everruns_provider::typed_id::{AgentId, MemoryId};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

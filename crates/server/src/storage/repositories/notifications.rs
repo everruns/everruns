@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{MessageId, NotificationId};
+use everruns_provider::typed_id::{MessageId, NotificationId};
 use uuid::Uuid;
 
 impl Database {

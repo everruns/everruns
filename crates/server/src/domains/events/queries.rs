@@ -1,7 +1,7 @@
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::sessions::SessionService;
 use crate::services::EventService;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
 pub fn parse_session_id(input: &str) -> Result<SessionId, CommandError> {
