@@ -1308,14 +1308,14 @@ pub fn render_group_headline_with_locale(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GroupHeadlineAction {
+pub struct GroupHeadlineAction {
     tool_name: String,
     narration: String,
     repeated_narration: String,
 }
 
 impl GroupHeadlineAction {
-    pub(crate) fn new(tool_call: &ToolCall, narration: String, repeated_narration: String) -> Self {
+    pub fn new(tool_call: &ToolCall, narration: String, repeated_narration: String) -> Self {
         Self {
             tool_name: tool_call.name.clone(),
             narration,
@@ -1325,7 +1325,7 @@ impl GroupHeadlineAction {
 }
 
 /// Retain only arguments that distinguish operation types within a tool family.
-pub(crate) fn tool_call_for_group_summary(tool_call: &ToolCall) -> ToolCall {
+pub fn tool_call_for_group_summary(tool_call: &ToolCall) -> ToolCall {
     let mut arguments = serde_json::Map::new();
     for key in ["operation", "action"] {
         if let Some(value) = tool_call.arguments.get(key) {
@@ -1340,10 +1340,7 @@ pub(crate) fn tool_call_for_group_summary(tool_call: &ToolCall) -> ToolCall {
 }
 
 /// Collapse equivalent actions and bound a batch headline to two distinct summaries.
-pub(crate) fn summarize_group_actions(
-    actions: &[GroupHeadlineAction],
-    locale: Option<&str>,
-) -> String {
+pub fn summarize_group_actions(actions: &[GroupHeadlineAction], locale: Option<&str>) -> String {
     let strings = backend_strings(locale);
     if actions.is_empty() {
         return strings.working.to_string();

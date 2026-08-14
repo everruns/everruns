@@ -7,13 +7,14 @@
 
 use async_trait::async_trait;
 use everruns_core::AgentDefinition;
+use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
-use everruns_core::atoms::{Atom, AtomContext, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::{CompactionCheckpointStore, Controls, Message};
+use everruns_engine::{ReasonInput, ReasonResult};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
@@ -145,11 +146,11 @@ fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
     registry
 }
 
-/// Create an AtomContext for testing
-fn create_context(session_id: Uuid) -> AtomContext {
+/// Create an ExecutionContext for testing
+fn create_context(session_id: Uuid) -> ExecutionContext {
     let turn_id = TurnId::new();
     let input_message_id = MessageId::new();
-    AtomContext::new(SessionId::from_uuid(session_id), turn_id, input_message_id)
+    ExecutionContext::new(SessionId::from_uuid(session_id), turn_id, input_message_id)
 }
 
 #[derive(Clone, Debug)]
@@ -364,7 +365,7 @@ impl ProactiveTestRig {
     async fn execute(
         &self,
         previous_response_id: Option<&str>,
-    ) -> everruns_provider::error::Result<everruns_core::atoms::ReasonResult> {
+    ) -> everruns_provider::error::Result<ReasonResult> {
         self.execute_with_checkpoint_store(previous_response_id, self.checkpoint_store.clone())
             .await
     }
@@ -404,7 +405,7 @@ impl ProactiveTestRig {
         &self,
         previous_response_id: Option<&str>,
         checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
-    ) -> everruns_provider::error::Result<everruns_core::atoms::ReasonResult> {
+    ) -> everruns_provider::error::Result<ReasonResult> {
         let atom = reason_atom_with_stores(
             self.harness_store.clone(),
             self.agent_store.clone(),
@@ -3117,7 +3118,7 @@ async fn test_reason_atom_response_id_none_when_driver_omits_it() {
 async fn test_previous_response_id_round_trips_through_serde() {
     // ReasonInput with previous_response_id
     let input = ReasonInput {
-        context: AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
+        context: ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
         harness_id: HarnessId::new(),
         agent_id: None,
         org_id: 0,
@@ -3135,7 +3136,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
 
     // ReasonInput without previous_response_id (omitted via skip_serializing_if)
     let input_none = ReasonInput {
-        context: AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
+        context: ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new()),
         harness_id: HarnessId::new(),
         agent_id: None,
         org_id: 0,
@@ -3150,7 +3151,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
     );
 
     // ReasonResult with response_id
-    let result = everruns_core::atoms::ReasonResult {
+    let result = ReasonResult {
         text: "test".to_string(),
         tool_calls: vec![],
         tool_definitions: vec![],
@@ -3171,8 +3172,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
     };
     let result_json = serde_json::to_value(&result).unwrap();
     assert_eq!(result_json["response_id"], "resp_out_456");
-    let result_rt: everruns_core::atoms::ReasonResult =
-        serde_json::from_value(result_json).unwrap();
+    let result_rt: ReasonResult = serde_json::from_value(result_json).unwrap();
     assert_eq!(result_rt.response_id.as_deref(), Some("resp_out_456"));
 }
 

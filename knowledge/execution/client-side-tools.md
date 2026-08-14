@@ -25,7 +25,7 @@ status-code tables.
   owns the tagged tool-definition model and exact client-side tool fields.
 - [`crates/server/src/domains/agents/types.rs`](../../crates/server/src/domains/agents/types.rs)
   owns agent create/update request validation and deprecation behavior.
-- [`crates/core/src/atoms/act_hooks.rs`](../../crates/core/src/atoms/act_hooks.rs)
+- [`crates/engine/src/execution/act_hooks.rs`](../../crates/engine/src/execution/act_hooks.rs)
   owns client-call detection, request-event emission, output limiting, and
   pause signaling.
 - [`crates/core/src/events.rs`](../../crates/core/src/events.rs) owns the exact

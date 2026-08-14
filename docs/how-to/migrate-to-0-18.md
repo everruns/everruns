@@ -75,6 +75,26 @@ The single biggest change for embedders. `PlatformDefinition` no longer exists.
 
 The type is otherwise identical — same fields, same builder methods. It moved to the layer that executes a turn, because selecting a deployment's capabilities and drivers is composition rather than kernel configuration.
 
+### Input/Reason/Act execution kernel
+
+Concrete phase execution moved out of `everruns-core`. Import phase algorithms
+and their I/O values from `everruns-engine`; keep neutral effect contracts in
+core.
+
+| 0.17 | 0.18 |
+|---|---|
+| `everruns_core::atoms::{InputAtom, InputAtomInput, InputAtomResult}` | `everruns_engine::{InputAtom, InputAtomInput, InputAtomResult}` |
+| `everruns_core::atoms::{ReasonAtom, ReasonInput, ReasonResult}` | `everruns_engine::{ReasonAtom, ReasonInput, ReasonResult}` |
+| `everruns_core::atoms::{ActAtom, ActInput, ActResult, ToolCallResult}` | `everruns_engine::{ActAtom, ActInput, ActResult, ToolCallResult}` |
+| `everruns_core::atoms::AtomContext` | `everruns_core::ExecutionContext` (also re-exported by `everruns-engine`) |
+| `everruns_core::atoms::{PreToolUseHook, PostToolExecHook, PreToolUseDecision}` | `everruns_core::tool_hooks::*` |
+
+The generic `Atom` trait was removed; it had no production dynamic-dispatch
+use. Call the concrete executor's inherent async `execute` method. There is no
+core compatibility module in 0.18. Serialized phase payloads retain the same
+fields, so durable records remain readable even though the Rust ownership path
+changed.
+
 ### Turn context and command completion
 
 Store-backed turn preparation now belongs to `everruns-host`. Core keeps the
@@ -89,7 +109,7 @@ effects used by custom hosts.
 | `everruns_core::load_execution_snapshot_for_session` | `everruns_host::load_execution_snapshot_for_session` |
 | `everruns_core::StoreCommandHost` | `everruns_host::StoreCommandHost` |
 
-`ReasonAtom::new` no longer accepts harness, agent, session, and provider stores
+`everruns_engine::ReasonAtom::new` no longer accepts harness, agent, session, and provider stores
 or a driver registry. Construct an `everruns_host::StoreTurnContextResolver`
 from those host services, then pass that resolver plus the narrow message,
 capability, and event effects to the atom. Hosts that already loaded a

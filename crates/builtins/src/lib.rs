@@ -70,6 +70,7 @@ pub(crate) use everruns_core::capabilities::{
     ModelViewContext, ModelViewProvider, RiskLevel, SystemPromptContext, ToolDefinitionHook,
     Volatility,
 };
+pub(crate) use everruns_core::tool_hooks;
 #[allow(unused_imports)]
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
@@ -78,11 +79,10 @@ pub(crate) use everruns_core::{
 #[allow(unused_imports)]
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
-    atoms, budget, capability_dto, capability_types, command, command_host, events,
-    guardrail_checks, llm_conversions, llm_error_hook, mcp_server, message, message_filter,
-    output_guardrail, runtime_agent, session, session_file, session_files, session_resource,
-    session_schedule, skill, tool_context, tool_fingerprint, tool_narration, tool_output_sanitizer,
-    tools, utility_llm,
+    budget, capability_dto, capability_types, command, command_host, events, guardrail_checks,
+    llm_conversions, llm_error_hook, mcp_server, message, message_filter, output_guardrail,
+    runtime_agent, session, session_file, session_files, session_resource, session_schedule, skill,
+    tool_context, tool_fingerprint, tool_narration, tool_output_sanitizer, tools, utility_llm,
 };
 #[allow(unused_imports)]
 pub(crate) use everruns_provider::driver_registry::{

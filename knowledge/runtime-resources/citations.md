@@ -104,7 +104,7 @@ surface only appears when some citation capability is active.
 
 The reason atom already runs end-of-message guardrails on the fully-assembled
 assistant text before the `Message` is built
-(`evaluate_post_generation_guardrails` in `crates/core/src/atoms/reason.rs`,
+(`evaluate_post_generation_guardrails` in `crates/engine/src/execution/reason.rs`,
 trait `PostGenerationOutputGuardrail` in `crates/core/src/output_guardrail.rs`).
 Those are **block/allow only**. Citations need a **mutating sibling in the same
 family**: a `PostGenerationAnnotationHook` that receives the assembled text (and

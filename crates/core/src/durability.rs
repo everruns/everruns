@@ -147,19 +147,3 @@ pub trait PartialStreamStore: Send + Sync {
         turn_id: &str,
     ) -> Result<Option<PartialStreamState>>;
 }
-
-/// Core-local test double that always reports no partial stream.
-#[cfg(test)]
-pub(crate) struct NoopPartialStreamStore;
-
-#[cfg(test)]
-#[async_trait]
-impl PartialStreamStore for NoopPartialStreamStore {
-    async fn get_partial_stream(
-        &self,
-        _session_id: SessionId,
-        _turn_id: &str,
-    ) -> Result<Option<PartialStreamState>> {
-        Ok(None)
-    }
-}

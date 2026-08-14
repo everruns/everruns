@@ -25,7 +25,7 @@ use std::sync::Arc;
 /// [`ReasoningEffortHandle::set`] mid-turn so that *subsequent* LLM steps in the
 /// same turn use the new effort, without waiting for the next turn.
 ///
-/// When the handle holds `None`, the [`crate::atoms::ReasonAtom`] falls back to
+/// When the handle holds `None`, the engine reason phase falls back to
 /// the effort resolved from the latest user message's `controls` — so callers
 /// that never set an override see no behavior change.
 #[derive(Clone, Default)]

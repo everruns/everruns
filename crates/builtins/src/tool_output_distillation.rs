@@ -39,7 +39,7 @@ use serde_json::{Value, json};
 
 use super::tool_output_persistence::{annotate_truncated_output, persist_output};
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::atoms::PostToolExecHook;
+use crate::tool_hooks::PostToolExecHook;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use everruns_core::tool_context::ToolContext;
 

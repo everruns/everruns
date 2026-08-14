@@ -1,11 +1,9 @@
 //! EVE-840 dependency-direction guard.
 //!
-//! The allowed direction is `everruns-engine -> everruns-core`. The engine is
-//! the pure, sans-IO turn planner: it must never depend on the hosts that drive
-//! it (host/server/worker) or the backend crates (platform/durable). If it
-//! did, the planning brain could no longer be shared by every host without
-//! dragging a host's I/O in with it. This test fails the engine build the moment
-//! a manifest edit introduces one of those reverse edges.
+//! The allowed direction is `everruns-engine -> core/provider/capability`.
+//! Planning is sans I/O and the execution kernel reaches effects only through
+//! injected contracts. Deployment hosts and backends depend on engine, never
+//! the reverse.
 
 use std::path::Path;
 
@@ -21,11 +19,28 @@ fn engine_manifest_has_no_edge_to_hosts_or_backends() {
         "everruns-worker",
         "everruns-platform",
         "everruns-durable",
+        "everruns-scale",
     ] {
         assert!(
             !manifest.contains(forbidden),
             "everruns-engine must not depend on {forbidden} \
-             (the engine is a pure, sans-IO planner; hosts depend on it, not the reverse)"
+             (deployment hosts and backends depend on the shared engine, not the reverse)"
         );
     }
+}
+
+#[test]
+fn core_no_longer_owns_atom_implementations() {
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    assert!(
+        !workspace.join("crates/core/src/atoms").exists(),
+        "everruns-core must not regain an atom implementation directory"
+    );
+
+    let core_lib = std::fs::read_to_string(workspace.join("crates/core/src/lib.rs"))
+        .expect("read core lib.rs");
+    assert!(
+        !core_lib.contains("pub mod atoms"),
+        "everruns-core must not expose the removed atom compatibility module"
+    );
 }

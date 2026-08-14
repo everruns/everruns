@@ -15,53 +15,13 @@ use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
+pub(crate) use everruns_core::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::AtomContext;
+use super::ExecutionContext;
 use super::act::ActResult;
-
-// ============================================================================
-// PreToolUseHook trait (per-tool, async, can mutate or block)
-// ============================================================================
-
-/// Decision returned by a `PreToolUseHook::before_exec` call.
-#[derive(Debug, Clone)]
-pub enum PreToolUseDecision {
-    /// Continue with the (possibly mutated) tool call.
-    Continue(ToolCall),
-    /// Refuse to execute this tool call. The hook supplies the error
-    /// message the model and audit log will see; the tool is not invoked.
-    Block {
-        tool_call: ToolCall,
-        reason: String,
-        /// Optional user-facing message surfaced through the runtime
-        /// (when the runtime knows how to render it).
-        user_message: Option<String>,
-    },
-}
-
-/// Hook that runs before each individual tool execution.
-///
-/// Unlike `PostToolExecHook`, pre-hooks can both *mutate* the tool call
-/// (returning `Continue` with a modified `ToolCall`) and *block* it
-/// (returning `Block`, which aborts execution for that single tool call
-/// without affecting sibling calls in the batch).
-///
-/// Hooks chain sequentially in registration order; each hook sees the
-/// previous hook's mutated `ToolCall`. The first hook to return `Block`
-/// wins — subsequent hooks in the chain are not consulted for the same
-/// call.
-#[async_trait]
-pub trait PreToolUseHook: Send + Sync {
-    async fn before_exec(
-        &self,
-        tool_call: ToolCall,
-        tool_def: &ToolDefinition,
-        context: &ToolContext,
-    ) -> PreToolUseDecision;
-}
 
 /// Run every registered `PreToolUseHook` against `tool_call`. Hooks chain
 /// sequentially; the first `Block` aborts the chain and is returned. If
@@ -82,45 +42,6 @@ pub(super) async fn run_pre_tool_use_hooks(
         }
     }
     PreToolUseDecision::Continue(tool_call)
-}
-
-// ============================================================================
-// PostToolExecHook trait (per-tool, async)
-// ============================================================================
-
-/// Hook that runs after each individual tool execution completes.
-///
-/// Unlike `PostActHook` (which runs once after all tools in a batch),
-/// `PostToolExecHook` runs per-tool and can:
-/// - Persist tool output to session VFS (EVE-222)
-/// - Inject metadata into the result (e.g. `full_output` path)
-/// - Enforce hard limits on result size (EVE-225)
-///
-/// Hooks are async because they may perform I/O (VFS writes).
-/// Capability-contributed hooks run first, then final (infrastructure) hooks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum PostToolExecHookPriority {
-    /// Inspect/block output before other hooks can persist or transform it.
-    Guardrail = 0,
-    /// Default post-tool hook ordering for mutating/observability hooks.
-    Normal = 100,
-}
-
-#[async_trait]
-pub trait PostToolExecHook: Send + Sync {
-    /// Ordering within the capability-contributed hook phase.
-    fn priority(&self) -> PostToolExecHookPriority {
-        PostToolExecHookPriority::Normal
-    }
-
-    /// Called after a tool returns its result, before ActAtom emits events.
-    async fn after_exec(
-        &self,
-        tool_call: &ToolCall,
-        tool_def: &ToolDefinition,
-        result: &mut ToolResult,
-        context: &ToolContext,
-    );
 }
 
 /// Execute post-tool-exec hooks on a single tool result.
@@ -147,8 +68,9 @@ pub(super) async fn run_post_tool_exec_hooks(
 // ============================================================================
 
 /// Maximum tool result size in bytes before truncation (64 KiB).
-/// Large results consume context window, increase cost, and expand the
-/// prompt injection surface (TM-AGENT-012).
+///
+/// THREAT[TM-AGENT-012]: large results consume context window, increase cost,
+/// and expand the prompt injection surface.
 const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 
 const TRUNCATION_SUFFIX: &str =
@@ -403,7 +325,7 @@ impl PostActHook for ClientSideToolHook {
 /// 2. Emits events for each action
 pub(super) async fn run_post_act_hooks<E: EventEmitter>(
     hooks: &[Box<dyn PostActHook>],
-    context: &AtomContext,
+    context: &ExecutionContext,
     result: &mut ActResult,
     tool_definitions: &[ToolDefinition],
     event_emitter: &E,
@@ -419,7 +341,7 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
                 } => {
                     let event = EventRequest::new(
                         context.session_id,
-                        EventContext::from_atom_context(context),
+                        EventContext::from_execution_context(context),
                         ToolCallRequestedData::with_definitions_and_locale(
                             &tool_calls,
                             &action_defs,
@@ -445,7 +367,7 @@ pub(super) async fn run_post_act_hooks<E: EventEmitter>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::atoms::act::ToolCallResult;
+    use crate::execution::act::ToolCallResult;
     use crate::tool_types::ToolResult;
     use std::sync::Mutex;
 

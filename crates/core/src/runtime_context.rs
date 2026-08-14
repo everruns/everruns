@@ -332,7 +332,7 @@ mod tests {
     impl ChatDriver for CredentialCapturingDriver {
         async fn chat_completion_stream(
             &self,
-            _endpoint: &crate::ProviderEndpoint,
+            _endpoint: &everruns_provider::ProviderEndpoint,
             _messages: Vec<crate::LlmMessage>,
             _config: &crate::LlmCallConfig,
         ) -> crate::Result<crate::LlmResponseStream> {

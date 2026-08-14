@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::atoms::{PreToolUseDecision, PreToolUseHook};
 use crate::capabilities::{Capability, CapabilityStatus};
+use crate::tool_hooks::{PreToolUseDecision, PreToolUseHook};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::typed_id::SessionId;
 use everruns_core::tool_context::ToolContext;

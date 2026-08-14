@@ -602,7 +602,7 @@ Implemented pieces live in the capability and runtime assembly paths:
   and compaction metrics types.
 - `crates/core/src/capabilities/mod.rs` exposes the generic
   `ModelViewProvider` hook so compaction remains capability-owned.
-- `crates/core/src/atoms/reason.rs` invokes compaction only when the resolved
+- `crates/engine/src/execution/reason.rs` invokes compaction only when the resolved
   capability config includes `compaction`; without it, context-limit errors are
   returned to the caller.
 - `crates/core/src/events.rs` defines compaction events and generation metadata.

@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
+use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
-use everruns_core::atoms::ReasonResult;
-use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
     Capability, CapabilityStatus, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -20,6 +19,7 @@ use everruns_core::{
     execution_loading::SessionStore, provider_resolution::ProviderStore,
     session_files::SessionFileSystem,
 };
+use everruns_engine::{ActInput, InputAtomInput, ReasonResult};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
     ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, RuntimeTurnPlan,
@@ -448,7 +448,7 @@ impl Capability for ContextParityCapability {
 struct OverlayHook;
 
 #[async_trait]
-impl everruns_core::atoms::PostToolExecHook for OverlayHook {
+impl everruns_core::tool_hooks::PostToolExecHook for OverlayHook {
     async fn after_exec(
         &self,
         _tool_call: &ToolCall,
@@ -487,7 +487,7 @@ impl Capability for GateCapability {
         CapabilityStatus::Available
     }
 
-    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
         vec![Arc::new(BlockEchoHook)]
     }
 }
@@ -514,7 +514,7 @@ impl Capability for ComingSoonGateCapability {
         CapabilityStatus::ComingSoon
     }
 
-    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
         vec![Arc::new(BlockEchoHook)]
     }
 }
@@ -522,21 +522,21 @@ impl Capability for ComingSoonGateCapability {
 struct BlockEchoHook;
 
 #[async_trait]
-impl everruns_core::atoms::PreToolUseHook for BlockEchoHook {
+impl everruns_core::tool_hooks::PreToolUseHook for BlockEchoHook {
     async fn before_exec(
         &self,
         tool_call: ToolCall,
         _tool_def: &everruns_provider::tool_types::ToolDefinition,
         _context: &ToolContext,
-    ) -> everruns_core::atoms::PreToolUseDecision {
+    ) -> everruns_core::tool_hooks::PreToolUseDecision {
         if tool_call.name == "overlay_echo" {
-            everruns_core::atoms::PreToolUseDecision::Block {
+            everruns_core::tool_hooks::PreToolUseDecision::Block {
                 tool_call,
                 reason: "denied by test policy".into(),
                 user_message: None,
             }
         } else {
-            everruns_core::atoms::PreToolUseDecision::Continue(tool_call)
+            everruns_core::tool_hooks::PreToolUseDecision::Continue(tool_call)
         }
     }
 }
@@ -564,7 +564,7 @@ impl Capability for OverlayEchoCapability {
         vec![Box::new(OverlayEchoTool)]
     }
 
-    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PostToolExecHook>> {
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>> {
         vec![Arc::new(OverlayHook)]
     }
 }
@@ -874,7 +874,7 @@ async fn input_activity_emits_lifecycle_events_and_marks_session_active() {
         &adapter,
         1,
         InputAtomInput {
-            context: AtomContext::new(session_id, turn_id, input_message.id),
+            context: ExecutionContext::new(session_id, turn_id, input_message.id),
         },
     )
     .await
@@ -933,7 +933,7 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -994,7 +994,7 @@ async fn act_activity_persists_full_output_before_the_hard_limit() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1063,7 +1063,7 @@ async fn runtime_host_services_reach_final_tool_context_in_parity() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1136,7 +1136,7 @@ async fn act_activity_uses_capability_tool_narration_on_act_path() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1229,7 +1229,7 @@ async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1301,7 +1301,7 @@ async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_p
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1372,7 +1372,7 @@ async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1442,7 +1442,7 @@ async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1516,7 +1516,7 @@ async fn act_activity_runs_capability_pre_tool_hook_and_blocks() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -1603,7 +1603,7 @@ async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 input_message_id,
@@ -2350,8 +2350,8 @@ impl Capability for LifecycleHookCapability {
 #[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_blocks_turn_before_reason() {
-    use everruns_core::atoms::ReasonInput;
     use everruns_core::user_hook_types::HookEvent;
+    use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
 
     let mut adapter = mock_host();
@@ -2390,7 +2390,7 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
         &adapter,
         1,
         ReasonInput {
-            context: AtomContext::new(session_id, turn_id, user_message.id),
+            context: ExecutionContext::new(session_id, turn_id, user_message.id),
             harness_id,
             agent_id: None,
             org_id: 1,
@@ -2421,8 +2421,8 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
 #[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
-    use everruns_core::atoms::ReasonInput;
     use everruns_core::user_hook_types::HookEvent;
+    use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity_with_prompt_messages;
 
     let mut adapter = mock_host();
@@ -2469,7 +2469,11 @@ async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
         &adapter,
         1,
         ReasonInput {
-            context: AtomContext::new(session_id, TurnId::from_uuid(Uuid::now_v7()), original.id),
+            context: ExecutionContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                original.id,
+            ),
             harness_id,
             agent_id: None,
             org_id: 1,
@@ -2492,8 +2496,8 @@ async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
 #[cfg(feature = "bashkit")]
 #[tokio::test]
 async fn user_prompt_submit_hook_allow_does_not_block() {
-    use everruns_core::atoms::ReasonInput;
     use everruns_core::user_hook_types::HookEvent;
+    use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
 
     let mut adapter = mock_host();
@@ -2534,7 +2538,7 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
         &adapter,
         1,
         ReasonInput {
-            context: AtomContext::new(session_id, turn_id, user_message.id),
+            context: ExecutionContext::new(session_id, turn_id, user_message.id),
             harness_id,
             agent_id: None,
             org_id: 1,
@@ -2561,8 +2565,8 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
 #[tokio::test]
 async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_builtins::InfinityContextCapability;
-    use everruns_core::atoms::ReasonInput;
     use everruns_core::user_hook_types::HookEvent;
+    use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
     use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
 
@@ -2622,7 +2626,7 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
         &adapter,
         1,
         ReasonInput {
-            context: AtomContext::new(session_id, turn_id, user_message.id),
+            context: ExecutionContext::new(session_id, turn_id, user_message.id),
             harness_id,
             agent_id: None,
             org_id: 1,
@@ -2677,10 +2681,10 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
 
 #[tokio::test]
 async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
-    use everruns_core::atoms::ReasonInput;
     use everruns_core::session_task::{
         SessionTaskState, TASK_KIND_AGENT_HANDOFF, TaskLinks, TaskWakePolicy,
     };
+    use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
     use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
 
@@ -2740,7 +2744,7 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
         &adapter,
         1,
         ReasonInput {
-            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            context: ExecutionContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
             harness_id,
             agent_id: None,
             org_id: 1,
@@ -2769,7 +2773,7 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            context: ExecutionContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
             harness_id,
             agent_id: None,
             tool_calls: vec![ToolCall {
@@ -2795,7 +2799,7 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
         &adapter,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            context: ExecutionContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
             harness_id,
             agent_id: None,
             tool_calls: vec![ToolCall {

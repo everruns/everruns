@@ -1,4 +1,4 @@
-//! Deterministic, sans-I/O turn planning for Everruns execution hosts.
+//! Shared turn planning and Input/Reason/Act execution for Everruns hosts.
 //!
 //! Given a serializable [`TurnState`], parsed [`ActivityOutcome`], and
 //! host-resolved [`HostFacts`], its pure functions return the next [`TurnPlan`]
@@ -6,11 +6,13 @@
 //! focused crate lets runtime, worker, durable, and custom hosts in the
 //! [Everruns](https://everruns.com) ecosystem share one turn model.
 //!
-//! The engine performs no I/O: no stores, sockets, process execution, event
-//! emission, or `Utc::now()`. Hosts resolve those facts, pass `now` in, call the
-//! planner, and perform the returned effects. This makes the loop testable as
-//! table tests over values, and lets an in-process host and a durable host share
-//! one implementation of turn semantics.
+//! Planning is sans I/O: hosts pass resolved facts and perform returned
+//! lifecycle effects. The execution phases are portable async algorithms over
+//! injected core/provider contracts such as [`everruns_core::MessageRetriever`],
+//! [`everruns_core::EventEmitter`], and [`everruns_core::ToolExecutor`]. The
+//! crate does not select stores, transports, processes, or deployment services.
+//! In-process and durable hosts therefore share both phase behavior and turn
+//! transitions without introducing an engine-to-host dependency.
 //!
 //! # Example
 //!
@@ -21,8 +23,43 @@
 //! # let _ = accepts_plan;
 //! ```
 
+mod execution;
+#[cfg(test)]
+mod test_fixtures;
 mod turn;
 
+// Internal aliases keep the execution algorithms focused on their contracts
+// while preserving the one-way engine -> core/provider/capability boundary.
+pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+pub(crate) use everruns_core::{
+    COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
+    CompactionCheckpointStore, EgressService, McpToolInvoker, MessageQuery,
+    ProactiveCompactionAttempt, RuntimeAgent, UtilityLlmService, annotation_hook, capabilities,
+    compaction_policy, connection_services, delegation_services, durability, event_emitter, events,
+    execution_loading, finalized_tool_calls, image_services, llm_conversions, llm_error_hook,
+    localization, message, message_retriever, mount_fs, network_access, output_guardrail,
+    runtime_context, session_files, session_services, session_task, subagent_delegation,
+    tool_context, tool_execution, tool_fingerprint, tool_narration, tools,
+};
+pub(crate) use everruns_provider::user_facing_error::{
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,
+};
+pub(crate) use everruns_provider::{
+    ChatDriver, CompactInputItem, ProviderEndpoint, ProviderOpaqueContext, compact,
+    driver_registry, error, llm_retry, model, model_profiles, tool_types, typed_id,
+};
+
+pub(crate) mod tool_call_integrity {
+    pub(crate) use everruns_core::{
+        retain_complete_llm_tool_exchanges_for_request, retain_complete_message_tool_exchanges,
+    };
+}
+
+pub use execution::{
+    ActAtom, ActInput, ActResult, ClientSideToolHook, ConnectionSetupHook, ExecutionContext,
+    InputAtom, InputAtomInput, InputAtomResult, OutputHardLimitHook, PostActAction, PostActHook,
+    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
+};
 pub use turn::{
     ActOutcome, ActPlan, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
     TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,

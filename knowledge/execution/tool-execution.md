@@ -343,7 +343,10 @@ Because this runs uniformly for all tools, it is the right place to gate tools t
 
 ### PostToolExecHook (per-tool hooks)
 
-`PostToolExecHook` is an async hook that runs after each individual tool execution, before ActAtom emits events. Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`.
+`PostToolExecHook` is an async contract in `everruns-core::tool_hooks` that runs
+after each individual tool execution, before the engine Act phase emits events.
+Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`; the
+engine owns hook ordering and execution.
 
 Two hook slots run in sequence:
 1. **Capability hooks** (`post_tool_hooks`) — from active capabilities (e.g. `tool_output_persistence`)
@@ -355,7 +358,7 @@ Current hooks:
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.
-- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/atoms/act_hooks.rs`.
+- **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/engine/src/execution/act_hooks.rs`.
 
 ### Loop Detection (EVE-227)
 
@@ -392,7 +395,7 @@ See `crates/builtins/src/loop_detection.rs`.
 
 ### Tool Scheduling
 
-`ActAtom` receives the whole batch of tool calls the model emitted in one turn and decides *how* to run them. The policy lives in `crates/core/src/atoms/tool_scheduler.rs`; it is driven entirely by per-tool `ToolHints`, not hardcoded per tool name.
+`ActAtom` receives the whole batch of tool calls the model emitted in one turn and decides *how* to run them. The policy lives in `crates/engine/src/execution/tool_scheduler.rs`; it is driven entirely by per-tool `ToolHints`, not hardcoded per tool name.
 
 - **Concurrent by default.** Calls with no `concurrency_class` run concurrently. Read-only tools and unannotated/MCP/dynamic tools therefore parallelize freely (permissive default).
 - **Class serialization.** Calls that share a non-empty `concurrency_class` run sequentially in arrival order, so mutations to the same shared resource cannot interleave. Annotated classes today: `session_workspace` (bash, `write_file`/`edit_file`/`delete_file`), `session_sql` (`sql_execute`), `session_todos` (`write_todos`), `session_storage` (`kv_store`/`secret_store`), `session_memory` (`remember`/`forget`). Different classes run in parallel with each other.

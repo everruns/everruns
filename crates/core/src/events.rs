@@ -208,7 +208,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
 // Event Context
 // ============================================================================
 
-use crate::atoms::AtomContext;
+use crate::execution_context::ExecutionContext;
 
 /// Context for event correlation and tracing
 ///
@@ -256,8 +256,8 @@ impl EventContext {
         Self::default()
     }
 
-    /// Create a full context from an AtomContext
-    pub fn from_atom_context(ctx: &AtomContext) -> Self {
+    /// Create a full event context from an execution context.
+    pub fn from_execution_context(ctx: &ExecutionContext) -> Self {
         Self {
             turn_id: Some(ctx.turn_id),
             input_message_id: Some(ctx.input_message_id),
@@ -3125,13 +3125,13 @@ mod tests {
     }
 
     #[test]
-    fn test_event_context_from_atom_context() {
+    fn test_event_context_from_execution_context() {
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
 
-        let atom_ctx = AtomContext::new(session_id, turn_id, input_message_id);
-        let context = EventContext::from_atom_context(&atom_ctx);
+        let atom_ctx = ExecutionContext::new(session_id, turn_id, input_message_id);
+        let context = EventContext::from_execution_context(&atom_ctx);
 
         assert_eq!(context.turn_id, Some(turn_id));
         assert_eq!(context.input_message_id, Some(input_message_id));

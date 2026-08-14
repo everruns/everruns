@@ -11,7 +11,7 @@
 //! 3. **Act**: Execute tools if needed (using ActAtom)
 //! 4. **Repeat**: Loop until no more tool calls
 //!
-//! This demonstrates the new AtomContext pattern which tracks:
+//! This demonstrates the new ExecutionContext pattern which tracks:
 //! - session_id: The session
 //! - turn_id: Unique identifier for this turn
 //! - input_message_id: The message that triggered this turn
@@ -23,12 +23,12 @@
 //! Run with: cargo run -p everruns-llm-tests --example turn_based_execution
 
 use everruns_core::{
-    AgentDefinition, HarnessDefinition, InputMessage, MessageRetriever,
-    atoms::{ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonInput},
+    AgentDefinition, ExecutionContext, HarnessDefinition, InputMessage, MessageRetriever,
     capabilities::CapabilityRegistry,
     session::{ExecutionSession, SessionExecutionState},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
 };
+use everruns_engine::{ActAtom, ActInput, InputAtom, InputAtomInput, ReasonInput};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
@@ -182,7 +182,7 @@ async fn main() -> anyhow::Result<()> {
     // Create Turn Context
     // =========================================================================
     let turn_id = TurnId::new();
-    let base_context = AtomContext::new(session_id.into(), turn_id, user_message.id);
+    let base_context = ExecutionContext::new(session_id.into(), turn_id, user_message.id);
 
     println!("Turn ID: {}", turn_id);
     println!("Input Message ID: {}\n", user_message.id);

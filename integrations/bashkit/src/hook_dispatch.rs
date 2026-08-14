@@ -602,10 +602,10 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn end_to_end_audit_log_hook_writes_workspace_file() {
-        use crate::atoms::PostToolExecHook;
         use crate::hook_adapter::PostToolUseHookAdapter;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
         use crate::user_hook_types::{ExecutorSpec, HookEvent, HookSource, OnError, UserHookSpec};
+        use everruns_core::tool_hooks::PostToolExecHook;
 
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();
@@ -732,12 +732,12 @@ mod tests {
     // ------------------------------------------------------------------
     #[tokio::test]
     async fn end_to_end_pre_tool_use_blocks_destructive_bash() {
-        use crate::atoms::{PreToolUseDecision, PreToolUseHook};
         use crate::hook_adapter::PreToolUseHookAdapter;
         use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
         use crate::user_hook_types::{
             ExecutorSpec, HookEvent, HookMatcher, HookSource, OnError, UserHookSpec,
         };
+        use everruns_core::tool_hooks::{PreToolUseDecision, PreToolUseHook};
 
         let mock = Arc::new(MockFileStore::default());
         let store: Arc<dyn SessionFileSystem> = mock.clone();

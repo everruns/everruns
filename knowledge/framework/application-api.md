@@ -57,8 +57,9 @@ resume authority. `InMemoryEngine` is the first explicit implementation and
 retains snapshots only for the process lifetime. `Session` is engine-bound and
 does not own an Agent or expose the concrete in-process runtime. The object-safe
 `SessionExecution` binding carries Framework identity without backend, store,
-host, or platform DTOs. `everruns-engine` remains the shared turn-planning
-kernel; this application SPI does not replace or absorb it.
+host, or platform DTOs. The separate `everruns-engine` crate owns shared
+Input/Reason/Act execution and turn planning; the application `Engine` SPI owns
+sessions and does not replace or absorb that lower-level kernel.
 
 These APIs adapt into the same in-process host, provider registry, model
 selection, plugin compiler, MCP client, and engine execution that an advanced
@@ -72,7 +73,9 @@ execution. The facade-only acceptance fixture enforces that boundary and is
 intentionally stricter than the requirement for a complete execution host.
 
 An advanced system integrator may combine `everruns` with `everruns-host` and
-focused MCP, provider, and integration crates. That modular composition is
+focused engine, MCP, provider, and integration crates. `everruns-engine` is the
+portable executor/planner boundary; `everruns-host` supplies deployment
+composition and lifecycle I/O. That modular composition is
 healthy: success means the host composes focused crates deliberately, not that
 every transport, backend, or integration is re-exported by one facade.
 

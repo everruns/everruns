@@ -7,8 +7,8 @@
 // never touches a store, socket, process, event bus, or `Utc::now()` — the host
 // resolves those facts, passes `now` in, and performs the returned effects.
 
+use crate::{ActInput, ExecutionContext, ReasonResult};
 use chrono::{DateTime, Utc};
-use everruns_core::atoms::{ActInput, AtomContext, ReasonResult};
 use everruns_core::events::{TokenUsage, TurnCompletedData};
 use everruns_core::turn::TurnStopReason;
 use everruns_provider::typed_id::{
@@ -334,7 +334,7 @@ pub fn plan_after_reason(
         let plan = ActPlan {
             input: ActInput {
                 org_id: Some(state.org_id),
-                context: AtomContext {
+                context: ExecutionContext {
                     session_id: state.session_id,
                     turn_id: state.turn_id.unwrap_or_default(),
                     input_message_id: state.input_message_id,

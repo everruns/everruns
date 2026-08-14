@@ -7,10 +7,9 @@
 //! Note: The input.message event is emitted by the API when the message is stored,
 //! not by this atom. This atom simply retrieves the already-stored message.
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use super::{Atom, AtomContext};
+use super::ExecutionContext;
 use crate::error::{AgentLoopError, Result};
 use crate::message::Message;
 use crate::message_retriever::MessageRetriever;
@@ -23,7 +22,7 @@ use crate::message_retriever::MessageRetriever;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputAtomInput {
     /// Atom execution context
-    pub context: AtomContext,
+    pub context: ExecutionContext,
 }
 
 /// Result of the InputAtom
@@ -54,27 +53,19 @@ where
 
 impl<M> InputAtom<M>
 where
-    M: MessageRetriever,
+    M: MessageRetriever + Send + Sync,
 {
     /// Create a new InputAtom
     pub fn new(message_retriever: M) -> Self {
         Self { message_retriever }
     }
-}
-
-#[async_trait]
-impl<M> Atom for InputAtom<M>
-where
-    M: MessageRetriever + Send + Sync,
-{
-    type Input = InputAtomInput;
-    type Output = InputAtomResult;
-
-    fn name(&self) -> &'static str {
+    /// Stable phase name used by logs and durable activity adapters.
+    pub fn name(&self) -> &'static str {
         "input"
     }
 
-    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+    /// Retrieve the turn's already-persisted input message.
+    pub async fn execute(&self, input: InputAtomInput) -> Result<InputAtomResult> {
         let InputAtomInput { context } = input;
 
         tracing::debug!(
@@ -131,7 +122,7 @@ mod tests {
             .await
             .unwrap();
 
-        let context = AtomContext::new(session_id, turn_id, user_message.id);
+        let context = ExecutionContext::new(session_id, turn_id, user_message.id);
         let atom = InputAtom::new(retriever);
 
         let result = atom.execute(InputAtomInput { context }).await.unwrap();
@@ -147,7 +138,7 @@ mod tests {
         let turn_id = TurnId::new();
         let missing_id = MessageId::new();
 
-        let context = AtomContext::new(session_id, turn_id, missing_id);
+        let context = ExecutionContext::new(session_id, turn_id, missing_id);
         let atom = InputAtom::new(retriever);
 
         let result = atom.execute(InputAtomInput { context }).await;

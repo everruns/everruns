@@ -1,12 +1,11 @@
-# The turn engine: the sans-IO turn planner for the Everruns agentic runtime.
+# The shared turn engine for the Everruns agentic runtime.
 #
 # Decision (EVE-840, Sans-IO Turn State epic): the authoritative turn-planning
-# brain lives here as pure, deterministic functions — no stores, sockets,
-# process execution, event emission, or `Utc::now()`. Hosts (in-process,
-# durable, custom) resolve facts and perform the returned lifecycle effects.
+# brain and portable Input/Reason/Act algorithms live here. Planning remains
+# pure; execution effects cross injected contracts owned by core/provider.
 #
-# Dependency direction is strictly `engine -> core`. The engine never depends on
-# runtime/server/worker/platform/durable (enforced by
+# Dependency direction is strictly `engine -> core/provider/capability`. The engine never
+# depends on host/server/worker/platform/durable/scale (enforced by
 # crates/engine/tests/dependency_direction.rs).
 
 [package]
@@ -19,22 +18,27 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-engine"
-description = "Sans-IO turn planning for Everruns execution hosts with deterministic state transitions"
+description = "Shared Input/Reason/Act execution and sans-IO turn planning for Everruns hosts"
 readme = "README.md"
 keywords = ["agent", "agentic", "llm", "ai", "state-machine"]
 categories = ["development-tools", "asynchronous"]
 
 [dependencies]
-# Domain value types the planner transitions over: turn state fields, the
-# reason/act atom I/O shapes, the event payloads returned as effects, the
-# user-facing error taxonomy, and the typed IDs. Direction is engine -> core.
+# Neutral contracts and domain value types used by the portable execution
+# algorithms and planner. Direction is engine -> core/provider/capability.
 everruns-core = { workspace = true }
+everruns-capability = { workspace = true }
 everruns-provider.workspace = true
 
+async-trait.workspace = true
 chrono.workspace = true
+futures.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time", "macros"] }
+tokio-util = { version = "0.7", default-features = false }
 tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-serde_json.workspace = true
-uuid.workspace = true

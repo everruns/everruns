@@ -4,8 +4,8 @@
 // tool traffic and injects a warning into the next tool result when the turn is
 // spending many tools on investigation without edits or validation.
 
-use crate::atoms::{PostToolExecHook, PostToolExecHookPriority};
 use crate::capabilities::{Capability, CapabilityStatus};
+use crate::tool_hooks::{PostToolExecHook, PostToolExecHookPriority};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use async_trait::async_trait;
 use everruns_core::tool_context::ToolContext;

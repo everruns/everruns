@@ -16,7 +16,6 @@
 //! - Failure of the LLM call should be "normal" result, should user message that LLM call failed
 //! - Reason should be cancellable, cancellation should stop LLM call and exit with message
 
-use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -26,7 +25,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 
-use super::{Atom, AtomContext};
+use super::ExecutionContext;
 use crate::annotation_hook::{
     AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
 };
@@ -77,7 +76,7 @@ async fn apply_finalized_tool_calls_hooks(
     capability_registry: &CapabilityRegistry,
     event_emitter: &dyn EventEmitter,
     session_id: SessionId,
-    context: &AtomContext,
+    context: &ExecutionContext,
     resolved_capability_configs: &[crate::AgentCapabilityConfig],
     tool_definitions: &[ToolDefinition],
     tool_calls: &mut [ToolCall],
@@ -86,7 +85,7 @@ async fn apply_finalized_tool_calls_hooks(
     let hook_context = crate::finalized_tool_calls::FinalizedToolCallsContext {
         event_emitter,
         session_id,
-        atom_context: context,
+        execution_context: context,
         tool_definitions,
         iteration,
     };
@@ -452,7 +451,7 @@ fn is_dynamic_error_placeholder(text: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReasonInput {
     /// Atom execution context
-    pub context: AtomContext,
+    pub context: ExecutionContext,
     /// Harness ID for loading base configuration
     pub harness_id: HarnessId,
     /// Agent ID for loading configuration (optional)
@@ -1058,16 +1057,14 @@ impl ReasonAtom {
     }
 }
 
-#[async_trait]
-impl Atom for ReasonAtom {
-    type Input = ReasonInput;
-    type Output = ReasonResult;
-
-    fn name(&self) -> &'static str {
+impl ReasonAtom {
+    /// Stable phase name used by logs and durable activity adapters.
+    pub fn name(&self) -> &'static str {
         "reason"
     }
 
-    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+    /// Execute a reason phase using host-injected portable contracts.
+    pub async fn execute(&self, input: ReasonInput) -> Result<ReasonResult> {
         self.execute_inner(input, None).await
     }
 }
@@ -1088,7 +1085,7 @@ impl ReasonAtom {
     async fn emit_capability_usage_snapshot(
         &self,
         session_id: SessionId,
-        context: &AtomContext,
+        context: &ExecutionContext,
         resolved_capability_configs: &[crate::AgentCapabilityConfig],
         tool_definitions: &[ToolDefinition],
     ) {
@@ -1105,7 +1102,7 @@ impl ReasonAtom {
             .event_emitter
             .emit(EventRequest::new(
                 session_id,
-                EventContext::from_atom_context(context),
+                EventContext::from_execution_context(context),
                 CapabilityUsageData { records },
             ))
             .await
@@ -1123,7 +1120,7 @@ impl ReasonAtom {
     async fn apply_finalized_tool_call_hooks(
         &self,
         session_id: SessionId,
-        context: &AtomContext,
+        context: &ExecutionContext,
         resolved_capability_configs: &[crate::AgentCapabilityConfig],
         tool_definitions: &[ToolDefinition],
         tool_calls: &mut [ToolCall],
@@ -1179,7 +1176,7 @@ impl ReasonAtom {
         let parent_span_id = trace_id.clone(); // Parent is the turn
 
         // Create event context from atom context with span info
-        let event_context = EventContext::from_atom_context(&context).with_span(
+        let event_context = EventContext::from_execution_context(&context).with_span(
             trace_id.clone(),
             reason_span_id.clone(),
             Some(parent_span_id.clone()),
@@ -1272,7 +1269,7 @@ impl ReasonAtom {
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
 
                 // Emit reason.completed event (same span as reason.started, parent is turn)
-                let completed_context = EventContext::from_atom_context(&context).with_span(
+                let completed_context = EventContext::from_execution_context(&context).with_span(
                     trace_id.clone(),
                     reason_span_id.clone(), // Same span_id as started
                     Some(parent_span_id.clone()),
@@ -1372,11 +1369,12 @@ impl ReasonAtom {
 
                     // Emit output.message.completed event (stores message as event with proper turn context)
                     // output.message.completed is child of reason span
-                    let error_msg_context = EventContext::from_atom_context(&context).with_span(
-                        trace_id.clone(),
-                        Uuid::now_v7().to_string(),   // Own span_id
-                        Some(reason_span_id.clone()), // Parent is reason span
-                    );
+                    let error_msg_context = EventContext::from_execution_context(&context)
+                        .with_span(
+                            trace_id.clone(),
+                            Uuid::now_v7().to_string(),   // Own span_id
+                            Some(reason_span_id.clone()), // Parent is reason span
+                        );
                     if let Err(emit_err) = self
                         .event_emitter
                         .emit(EventRequest::new(
@@ -1402,7 +1400,7 @@ impl ReasonAtom {
                 }
 
                 // Emit reason.completed event for failure (same span as started, parent is turn)
-                let completed_context = EventContext::from_atom_context(&context).with_span(
+                let completed_context = EventContext::from_execution_context(&context).with_span(
                     trace_id.clone(),
                     reason_span_id.clone(), // Same span_id as started
                     Some(parent_span_id.clone()),
@@ -1459,7 +1457,7 @@ impl ReasonAtom {
         harness_id: HarnessId,
         agent_id: Option<AgentId>,
         org_id: i64,
-        context: &AtomContext,
+        context: &ExecutionContext,
         trace_id: &str,
         reason_span_id: &str,
         previous_response_id: Option<String>,
@@ -1768,7 +1766,7 @@ impl ReasonAtom {
                 Ok(Some(_)) => {
                     // Empty accumulated: restart clean — fall through to normal LLM call.
                     // Emit reason.recovered { mode: Restart } for observability.
-                    let recovery_ctx = EventContext::from_atom_context(context);
+                    let recovery_ctx = EventContext::from_execution_context(context);
                     let _ = self
                         .event_emitter
                         .emit(EventRequest::new(
@@ -1803,7 +1801,7 @@ impl ReasonAtom {
         // 10. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
         // has a matching ToolResult before the LLM call. Consults durable_tool_results
         // when available to replay settled results or synthesize interrupted placeholders.
-        let repair_event_context = EventContext::from_atom_context(context);
+        let repair_event_context = EventContext::from_execution_context(context);
         let patched_messages = repair_dangling_tool_calls(
             &messages,
             self.durable_tool_result_store.as_deref(),
@@ -1984,7 +1982,7 @@ impl ReasonAtom {
 
         // 13. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
-        let streaming_event_context = EventContext::from_atom_context(context);
+        let streaming_event_context = EventContext::from_execution_context(context);
 
         // Arm output guardrails for this stream. Each guardrail sees the
         // assembled system prompt and its own per-capability config (already
@@ -3211,11 +3209,12 @@ impl ReasonAtom {
 
                         // No useful output collected — treat as a real failure.
                         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
-                        let event_context = EventContext::from_atom_context(context).with_span(
-                            trace_id.to_string(),
-                            Uuid::now_v7().to_string(),
-                            Some(reason_span_id.to_string()),
-                        );
+                        let event_context = EventContext::from_execution_context(context)
+                            .with_span(
+                                trace_id.to_string(),
+                                Uuid::now_v7().to_string(),
+                                Some(reason_span_id.to_string()),
+                            );
                         let tools_summary: Vec<ToolDefinitionSummary> =
                             runtime_agent.tools.iter().map(|t| t.into()).collect();
                         let generation_data = LlmGenerationData::failure(
@@ -3383,7 +3382,7 @@ impl ReasonAtom {
         // carries the replacement instead of the model's withheld tokens.
         // The original tokens are never persisted or replayed.
         if let Some(ref t) = tripped {
-            let replaced_event_context = EventContext::from_atom_context(context).with_span(
+            let replaced_event_context = EventContext::from_execution_context(context).with_span(
                 trace_id.to_string(),
                 Uuid::now_v7().to_string(),
                 Some(reason_span_id.to_string()),
@@ -3474,7 +3473,7 @@ impl ReasonAtom {
         });
 
         // 16. Emit llm.generation event (child of reason span)
-        let event_context = EventContext::from_atom_context(context).with_span(
+        let event_context = EventContext::from_execution_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
             Some(reason_span_id.to_string()),
@@ -3643,7 +3642,7 @@ impl ReasonAtom {
         }
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
-        let message_event_context = EventContext::from_atom_context(context).with_span(
+        let message_event_context = EventContext::from_execution_context(context).with_span(
             trace_id.to_string(),
             Uuid::now_v7().to_string(),
             Some(reason_span_id.to_string()),
@@ -3696,13 +3695,13 @@ impl ReasonAtom {
     async fn finalize_partial_stream(
         &self,
         session_id: SessionId,
-        context: &AtomContext,
+        context: &ExecutionContext,
         partial: PartialStreamState,
         iteration: u32,
         runtime_agent: &crate::RuntimeAgent,
         resolved_capability_configs: &[crate::AgentCapabilityConfig],
     ) -> Result<ReasonResult> {
-        let event_context = EventContext::from_atom_context(context);
+        let event_context = EventContext::from_execution_context(context);
         let turn_id = context.turn_id;
         let message_id = partial.message_id;
 
@@ -4069,7 +4068,7 @@ mod tests {
         use crate::events::EventContext;
         use crate::typed_id::SessionId;
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4094,7 +4093,7 @@ mod tests {
             Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
         ];
 
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4119,7 +4118,7 @@ mod tests {
             Message::user("Actually, never mind"),
         ];
 
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4193,7 +4192,7 @@ mod tests {
         ];
 
         let store = MockSettledStore;
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4267,7 +4266,7 @@ mod tests {
         ];
 
         let store = MockInterruptedStore;
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4345,7 +4344,7 @@ mod tests {
         ];
 
         let store = MockRunningStore;
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4422,7 +4421,7 @@ mod tests {
         ];
 
         let store = MockErrorStore;
-        let emitter = crate::event_emitter::NoopEventEmitter;
+        let emitter = crate::test_fixtures::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4589,7 +4588,7 @@ mod tests {
     // ContinuePartial recovery tests (EVE-532)
     // =========================================================================
 
-    use crate::durability::NoopPartialStreamStore;
+    use crate::test_fixtures::NoopPartialStreamStore;
     use crate::{durability::PartialStreamState, durability::PartialStreamStore};
 
     struct MockPartialStore(Option<PartialStreamState>);

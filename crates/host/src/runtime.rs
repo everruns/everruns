@@ -18,8 +18,8 @@ use crate::turn_strategy::{RuntimeTurnPlan, RuntimeTurnState};
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_capability::plugin_capability_id;
+use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
-use everruns_core::atoms::{AtomContext, InputAtomInput, ReasonInput};
 #[cfg(feature = "mcp")]
 use everruns_core::capabilities::collect_capability_mcp_servers;
 use everruns_core::capabilities::{
@@ -50,6 +50,7 @@ use everruns_core::{
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
 };
+use everruns_engine::{InputAtomInput, ReasonInput};
 use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::{AgentLoopError, Result};
@@ -1138,7 +1139,7 @@ impl InProcessRuntime {
         };
 
         let base_context = |exec: bool| {
-            let context = AtomContext::new(session_id, turn_id, input_message.id)
+            let context = ExecutionContext::new(session_id, turn_id, input_message.id)
                 .with_workspace_id(snapshot.workspace_id);
             if exec { context.next_exec() } else { context }
         };

@@ -16,11 +16,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::atoms::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use crate::hook_executor::{
     BashHookDispatcher, BashHookExecutor, ExecutorOpts, HookExecutor, HookPayload,
 };
 use crate::tool_context::ToolContext;
+use crate::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::user_hook_types::{
     ExecutorSpec, HookEvent, HookOutcome, HookSource, OnError, UserHookSpec,

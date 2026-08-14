@@ -510,7 +510,7 @@ impl FinalizedToolCallsHook for ToolCallRepairHook {
 
             tracing::info!(
                 session_id = %context.session_id,
-                turn_id = %context.atom_context.turn_id,
+                turn_id = %context.execution_context.turn_id,
                 tool_call_id = %call.id,
                 tool_name = %call.name,
                 outcome = outcome.label(),
@@ -521,9 +521,9 @@ impl FinalizedToolCallsHook for ToolCallRepairHook {
                 .event_emitter
                 .emit(EventRequest::new(
                     context.session_id,
-                    EventContext::from_atom_context(context.atom_context),
+                    EventContext::from_execution_context(context.execution_context),
                     ToolCallRepairedData {
-                        turn_id: context.atom_context.turn_id,
+                        turn_id: context.execution_context.turn_id,
                         tool_call_id: call.id.clone(),
                         tool_name: call.name.clone(),
                         outcome: outcome.label().to_string(),
@@ -622,7 +622,7 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 mod tests {
     use super::*;
     use everruns_core::Event;
-    use everruns_core::atoms::AtomContext;
+    use everruns_core::ExecutionContext;
     use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{EventData, EventRequest};
     use everruns_provider::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
@@ -684,12 +684,13 @@ mod tests {
         let hook = capability
             .finalized_tool_calls_hook(config)
             .expect("tool-call repair contributes its finalized-call hook");
-        let atom_context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let execution_context =
+            ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let definitions = [read_file_definition()];
         let context = FinalizedToolCallsContext {
             event_emitter: emitter,
             session_id: SessionId::new(),
-            atom_context: &atom_context,
+            execution_context: &execution_context,
             tool_definitions: &definitions,
             iteration,
         };

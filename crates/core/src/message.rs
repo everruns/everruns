@@ -1053,7 +1053,7 @@ impl Message {
 ///
 /// This is the simple, store-free patcher used by out-of-band completions
 /// (see `crate::command_host`). The main reason path uses the durable-store-aware
-/// `repair_dangling_tool_calls` in `crate::atoms::reason` instead (EVE-533),
+/// the execution kernel's transcript-repair path instead (EVE-533),
 /// which can replay settled results rather than synthesizing cancellations.
 pub fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
     let mut result = Vec::new();

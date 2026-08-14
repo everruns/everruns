@@ -16,7 +16,7 @@ specialized embedder that must replace storage or orchestration components.
 The low-level crates expose focused contracts for:
 
 - core agent, event, capability, and provider values;
-- the sans-I/O turn engine;
+- the shared Input/Reason/Act kernel and sans-I/O turn planner;
 - runtime host phases, canonical event history, and in-memory reference stores;
 - local SQLite-backed task and schedule state;
 - platform/control-plane entities and durable deployment components.
@@ -26,6 +26,19 @@ crates it actually needs. `everruns-host` is the only low-level host boundary:
 there is no separate runtime crate. It is healthy for such a host to use
 low-level extension traits; the goal is not to re-export every backend through
 one facade.
+
+## Two engine boundaries
+
+`everruns::Engine` is the application SPI that owns Agent snapshots, sessions,
+history, and resume authority. Implement it when replacing session ownership.
+
+`everruns-engine` is the lower-level shared execution kernel. A custom host uses
+its `InputAtom`, `ReasonAtom`, `ActAtom`, phase I/O values, and `TurnState`
+planner while implementing the narrow contracts from `everruns-core`. The
+kernel performs portable effects only through those injected ports and has no
+dependency on host, platform, server, worker, durable, or scale crates. Do not
+copy the phase loop into a custom backend; compose the engine kernel and keep
+deployment-specific service selection in the host layer.
 
 Conversation persistence is the one backend with a single write path. Replace it
 by implementing the canonical `EventLog`/`EventReader` SPI and passing it to

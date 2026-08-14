@@ -57,6 +57,7 @@ impl TurnContextResolver for ExternalTurnContextResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_engine::{ExecutionContext, InputAtomInput};
 
     fn assert_event_contract<T: EventEmitter>() {}
     fn assert_factory_contract<T: SessionFileSystemFactory>() {}
@@ -67,6 +68,13 @@ mod tests {
         assert_event_contract::<ExternalEventEmitter>();
         assert_factory_contract::<ExternalSessionFileSystemFactory>();
         assert_turn_context_contract::<ExternalTurnContextResolver>();
+        let context = ExecutionContext::new(
+            everruns_provider::typed_id::SessionId::new(),
+            everruns_provider::typed_id::TurnId::new(),
+            everruns_provider::typed_id::MessageId::new(),
+        );
+        let input = InputAtomInput { context };
+        assert!(!input.context.exec_id.uuid().is_nil());
         assert_eq!(ExternalSessionFileSystemFactory.name(), "external");
         assert!(
             std::any::type_name::<everruns_host::StoreCommandHost>()

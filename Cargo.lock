@@ -2634,11 +2634,17 @@ dependencies = [
 name = "everruns-engine"
 version = "0.17.26"
 dependencies = [
+ "async-trait",
  "chrono",
+ "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "futures",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tokio-util",
  "tracing",
  "uuid 1.24.0",
 ]
@@ -3076,6 +3082,7 @@ dependencies = [
  "everruns-bedrock",
  "everruns-builtins",
  "everruns-core",
+ "everruns-engine",
  "everruns-fireworks",
  "everruns-gemini",
  "everruns-host",
@@ -3467,6 +3474,7 @@ dependencies = [
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
+ "everruns-engine",
  "everruns-host",
  "everruns-platform",
  "everruns-provider",
@@ -3512,6 +3520,7 @@ dependencies = [
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
+ "everruns-engine",
  "everruns-fireworks",
  "everruns-gemini",
  "everruns-host",

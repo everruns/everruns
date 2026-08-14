@@ -340,7 +340,7 @@ re-executes a completed tool.
 | Microsoft MAI driver | `crates/mai/src/driver.rs` |
 | Fireworks AI driver | `crates/fireworks/src/driver.rs` |
 | Meta Model API driver | `crates/meta/src/driver.rs` |
-| Error handling | `crates/core/src/atoms/reason.rs` |
+| Error handling | `crates/engine/src/execution/reason.rs` |
 
 ## OpenAI Driver Variants
 
@@ -661,7 +661,7 @@ stream that produced no tokens within its window — is treated the same way as 
 in-band transient error: before any output it is classified transient and routed
 through the same bounded retry path, re-issuing the identical request with no
 artificial history; after output, or once the retry budget is exhausted, it
-fails the turn. See `crates/core/src/atoms/reason.rs`.
+fails the turn. See `crates/engine/src/execution/reason.rs`.
 
 ### Rate Limit Header Support
 

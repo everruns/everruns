@@ -147,22 +147,22 @@ impl Tool for LiveTool {
 struct CountingPreHook(Arc<HookCounts>);
 
 #[async_trait]
-impl everruns_core::atoms::PreToolUseHook for CountingPreHook {
+impl everruns_core::tool_hooks::PreToolUseHook for CountingPreHook {
     async fn before_exec(
         &self,
         tool_call: ToolCall,
         _tool_def: &everruns_provider::tool_types::ToolDefinition,
         _context: &ToolContext,
-    ) -> everruns_core::atoms::PreToolUseDecision {
+    ) -> everruns_core::tool_hooks::PreToolUseDecision {
         self.0.pre.fetch_add(1, Ordering::SeqCst);
-        everruns_core::atoms::PreToolUseDecision::Continue(tool_call)
+        everruns_core::tool_hooks::PreToolUseDecision::Continue(tool_call)
     }
 }
 
 struct CountingPostHook(Arc<HookCounts>);
 
 #[async_trait]
-impl everruns_core::atoms::PostToolExecHook for CountingPostHook {
+impl everruns_core::tool_hooks::PostToolExecHook for CountingPostHook {
     async fn after_exec(
         &self,
         _tool_call: &ToolCall,
@@ -203,11 +203,11 @@ impl Capability for LiveCapability {
         vec![Box::new(LiveTool)]
     }
 
-    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> {
         vec![Arc::new(CountingPreHook(self.hooks.clone()))]
     }
 
-    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PostToolExecHook>> {
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>> {
         vec![Arc::new(CountingPostHook(self.hooks.clone()))]
     }
 

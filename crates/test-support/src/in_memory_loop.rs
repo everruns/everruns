@@ -14,10 +14,8 @@ use std::sync::Arc;
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use chrono::Utc;
 use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_core::ExecutionContext;
 use everruns_core::agent_definition::AgentDefinition;
-use everruns_core::atoms::{
-    ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
-};
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventContext, EventData, EventRequest, InputMessageData};
@@ -26,6 +24,9 @@ use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
+use everruns_engine::{
+    ActAtom, ActInput, InputAtom, InputAtomInput, ReasonAtom, ReasonInput, ReasonResult,
+};
 use everruns_host::{
     EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
@@ -654,7 +655,7 @@ impl InMemoryAgenticLoop {
         let mut state_machine = TurnStateMachine::new(turn_context, self.max_iterations);
 
         // Track last reason result for ActAtom
-        let mut last_reason_result: Option<everruns_core::atoms::ReasonResult> = None;
+        let mut last_reason_result: Option<ReasonResult> = None;
         // Track response_id from last reason call for chaining
         let mut previous_response_id: Option<String> = None;
 
@@ -662,7 +663,7 @@ impl InMemoryAgenticLoop {
         loop {
             match state_machine.next_action() {
                 TurnAction::ExecuteInput => {
-                    let base_context = AtomContext::new(
+                    let base_context = ExecutionContext::new(
                         state_machine.context().session_id,
                         state_machine.context().turn_id,
                         state_machine.context().input_message_id,
@@ -676,7 +677,7 @@ impl InMemoryAgenticLoop {
                 }
 
                 TurnAction::ExecuteReason => {
-                    let base_context = AtomContext::new(
+                    let base_context = ExecutionContext::new(
                         state_machine.context().session_id,
                         state_machine.context().turn_id,
                         state_machine.context().input_message_id,
@@ -717,7 +718,7 @@ impl InMemoryAgenticLoop {
                     let reason_result = last_reason_result
                         .take()
                         .expect("ExecuteAct requires prior ReasonResult with tool calls");
-                    let base_context = AtomContext::new(
+                    let base_context = ExecutionContext::new(
                         state_machine.context().session_id,
                         state_machine.context().turn_id,
                         state_machine.context().input_message_id,

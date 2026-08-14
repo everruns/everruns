@@ -27,7 +27,6 @@
 //! - Act and each tool call should emit start/end events
 //! - Act and each tool call should be cancellable, and this is also "normal" result
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::future::Future;
@@ -36,9 +35,9 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use super::ExecutionContext;
 use super::act_hooks::{self, PostActHook};
 use super::tool_scheduler;
-use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
     ActCompletedData, ActStartedData, EventContext, EventRequest, ToolCompletedData,
@@ -101,7 +100,7 @@ pub struct ActInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org_id: Option<i64>,
     /// Atom execution context
-    pub context: AtomContext,
+    pub context: ExecutionContext,
     /// Harness ID (needed for scheduling follow-up reason activity)
     pub harness_id: HarnessId,
     /// Agent ID (needed for scheduling follow-up reason activity, optional)
@@ -566,20 +565,18 @@ where
     }
 }
 
-#[async_trait]
-impl<T, E> Atom for ActAtom<T, E>
+impl<T, E> ActAtom<T, E>
 where
     T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
-    type Input = ActInput;
-    type Output = ActResult;
-
-    fn name(&self) -> &'static str {
+    /// Stable phase name used by logs and durable activity adapters.
+    pub fn name(&self) -> &'static str {
         "act"
     }
 
-    async fn execute(&self, input: Self::Input) -> Result<Self::Output> {
+    /// Execute one scheduled tool-call batch through injected contracts.
+    pub async fn execute(&self, input: ActInput) -> Result<ActResult> {
         let ActInput {
             context,
             tool_calls,
@@ -683,7 +680,7 @@ where
         let parent_span_id = trace_id.clone(); // Parent is the turn
 
         // Create event context from atom context with span info
-        let event_context = EventContext::from_atom_context(&context).with_span(
+        let event_context = EventContext::from_execution_context(&context).with_span(
             trace_id.clone(),
             act_span_id.clone(),
             Some(parent_span_id.clone()),
@@ -801,7 +798,7 @@ where
         let act_duration_ms = act_start.elapsed().as_millis() as u64;
 
         // Emit act.completed event (same span as act.started, parent is turn)
-        let completed_context = EventContext::from_atom_context(&context).with_span(
+        let completed_context = EventContext::from_execution_context(&context).with_span(
             trace_id.clone(),
             act_span_id.clone(), // Same span_id as started
             Some(parent_span_id.clone()),
@@ -894,13 +891,13 @@ where
 {
     fn render_tool_narration(
         &self,
-        atom_context: &AtomContext,
+        execution_context: &ExecutionContext,
         tool_def: Option<&ToolDefinition>,
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
     ) -> String {
-        let wrapped_store = self.wrap_file_store_for_narration(atom_context);
+        let wrapped_store = self.wrap_file_store_for_narration(execution_context);
         let ctx = ToolNarrationContext::new(wrapped_store.as_deref());
         for hook in &self.tool_call_hooks {
             if let Some(narration) = hook.narration(tool_def, tool_call, phase, locale, ctx) {
@@ -912,7 +909,7 @@ where
 
     fn render_group_headline(
         &self,
-        atom_context: &AtomContext,
+        execution_context: &ExecutionContext,
         tool_calls: &[ToolCall],
         tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
         phase: ToolNarrationPhase,
@@ -923,7 +920,7 @@ where
         }
         if let [tool_call] = tool_calls {
             return Some(self.render_tool_narration(
-                atom_context,
+                execution_context,
                 tool_map.get(tool_call.name.as_str()).copied(),
                 tool_call,
                 phase,
@@ -935,10 +932,15 @@ where
             .iter()
             .map(|tool_call| {
                 let tool_def = tool_map.get(tool_call.name.as_str()).copied();
-                let narration =
-                    self.render_tool_narration(atom_context, tool_def, tool_call, phase, locale);
+                let narration = self.render_tool_narration(
+                    execution_context,
+                    tool_def,
+                    tool_call,
+                    phase,
+                    locale,
+                );
                 let repeated_narration = self.render_tool_narration(
-                    atom_context,
+                    execution_context,
                     tool_def,
                     &tool_call_for_group_summary(tool_call),
                     phase,
@@ -955,10 +957,10 @@ where
     /// path-bearing narration uses the same mount resolver and workspace key.
     fn wrap_file_store_for_narration(
         &self,
-        atom_context: &AtomContext,
+        execution_context: &ExecutionContext,
     ) -> Option<Arc<dyn SessionFileSystem>> {
         let store = self.context_services.file_store.as_ref()?.clone();
-        let store = if let Some(workspace_id) = atom_context.workspace_id {
+        let store = if let Some(workspace_id) = execution_context.workspace_id {
             crate::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id)
         } else {
             store
@@ -982,7 +984,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn execute_single_tool(
         &self,
-        context: &AtomContext,
+        context: &ExecutionContext,
         tool_call: ToolCall,
         tool_def: Option<&ToolDefinition>,
         trace_id: &str,
@@ -1003,7 +1005,7 @@ where
         let tool_span_id = Uuid::now_v7().to_string();
 
         // Create event context from atom context (with act span as parent)
-        let event_context = EventContext::from_atom_context(context).with_span(
+        let event_context = EventContext::from_execution_context(context).with_span(
             trace_id.to_string(),
             tool_span_id.clone(),
             Some(act_span_id.to_string()),
@@ -1024,7 +1026,7 @@ where
                 .map(|(id, name)| (id.to_string(), name.map(str::to_string)))
         });
 
-        // Per-org outbound tool-call rate limiting (TM-TOOL-009).
+        // THREAT[TM-TOOL-009]: enforce the injected per-org outbound tool-call limit.
         // Checked before tool.started so a denied call emits no events and leaves
         // no unmatched started/completed pair in UI or telemetry.
         if let (Some(limiter), Some(ref org_id)) = (
@@ -1827,10 +1829,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event_emitter::NoopEventEmitter;
+    use crate::test_fixtures::NoopEventEmitter;
     use crate::tools::ToolRegistry;
     use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use async_trait::async_trait;
+    use everruns_core::{Capability, DisabledUtilityLlmService, Tool, ToolExecutionResult};
+    use everruns_provider::{BuiltinTool, ClientSideTool};
     use serde_json::json;
 
     struct ArgumentEchoTool;
@@ -1842,8 +1846,8 @@ mod tests {
     impl crate::capabilities::ToolCallHook for HumanIntentFixtureHook {
         fn narration(
             &self,
-            _tool_def: Option<&crate::ToolDefinition>,
-            tool_call: &crate::ToolCall,
+            _tool_def: Option<&ToolDefinition>,
+            tool_call: &ToolCall,
             _phase: crate::tool_narration::ToolNarrationPhase,
             _locale: Option<&str>,
             _ctx: crate::tool_narration::ToolNarrationContext<'_>,
@@ -1851,7 +1855,7 @@ mod tests {
             crate::tool_types::human_intent(&tool_call.arguments).map(str::to_string)
         }
 
-        fn transform_for_execution(&self, mut tool_call: crate::ToolCall) -> crate::ToolCall {
+        fn transform_for_execution(&self, mut tool_call: ToolCall) -> ToolCall {
             tool_call.arguments = tool_call.execution_arguments();
             tool_call
         }
@@ -1871,13 +1875,13 @@ mod tests {
             json!({"type": "object"})
         }
 
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
-            crate::ToolExecutionResult::success(json!({}))
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(json!({}))
         }
 
         fn narrate(
             &self,
-            tool_call: &crate::ToolCall,
+            tool_call: &ToolCall,
             phase: crate::tool_narration::ToolNarrationPhase,
             locale: Option<&str>,
             _ctx: crate::tool_narration::ToolNarrationContext<'_>,
@@ -1893,7 +1897,7 @@ mod tests {
     struct NarratingCapability;
 
     #[async_trait]
-    impl crate::Capability for NarratingCapability {
+    impl Capability for NarratingCapability {
         fn id(&self) -> &str {
             "narrating_test"
         }
@@ -1906,7 +1910,7 @@ mod tests {
             "Test-only narration capability"
         }
 
-        fn tools(&self) -> Vec<Box<dyn crate::Tool>> {
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
             vec![Box::new(NarratingGrepTool)]
         }
     }
@@ -1930,8 +1934,8 @@ mod tests {
             })
         }
 
-        async fn execute(&self, arguments: serde_json::Value) -> crate::ToolExecutionResult {
-            crate::ToolExecutionResult::success(arguments)
+        async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(arguments)
         }
     }
 
@@ -1951,7 +1955,7 @@ mod tests {
             .collect::<std::collections::HashMap<_, _>>();
         let atom = ActAtom::new(ToolRegistry::new(), NoopEventEmitter)
             .with_tool_call_hooks(vec![Arc::new(CapabilityNarrationHook(capability))]);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let tool_calls = vec![
             ToolCall {
                 id: "grep-1".to_string(),
@@ -2008,16 +2012,16 @@ mod tests {
             })
         }
 
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
-            crate::ToolExecutionResult::tool_error("context required")
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("context required")
         }
 
         async fn execute_with_context(
             &self,
             _arguments: serde_json::Value,
             context: &crate::tool_context::ToolContext,
-        ) -> crate::ToolExecutionResult {
-            crate::ToolExecutionResult::success(json!({
+        ) -> ToolExecutionResult {
+            ToolExecutionResult::success(json!({
                 "utility_llm_service": context.utility_llm_service.is_some(),
                 "configured": context
                     .utility_llm_service
@@ -2063,7 +2067,7 @@ mod tests {
         fn parameters_schema(&self) -> serde_json::Value {
             json!({ "type": "object", "properties": {} })
         }
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
             // Enter: bump counters in a short critical section (no await held).
             {
                 let mut obs = self.obs.lock().unwrap();
@@ -2094,7 +2098,7 @@ mod tests {
                     *n -= 1;
                 }
             }
-            crate::ToolExecutionResult::success(json!({ "tool": self.name }))
+            ToolExecutionResult::success(json!({ "tool": self.name }))
         }
     }
 
@@ -2129,7 +2133,7 @@ mod tests {
             json!({ "type": "object", "properties": {} })
         }
 
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
             struct DropSignal {
                 tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
             }
@@ -2162,7 +2166,7 @@ mod tests {
         if cpu_bound {
             hints = hints.with_cpu_bound(true);
         }
-        ToolDefinition::Builtin(crate::BuiltinTool {
+        ToolDefinition::Builtin(BuiltinTool {
             name: name.to_string(),
             display_name: None,
             description: "records scheduling order".to_string(),
@@ -2181,7 +2185,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2209,9 +2213,9 @@ mod tests {
         executor.register(UtilityLlmContextProbeTool);
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter)
-            .with_utility_llm_service(Arc::new(crate::DisabledUtilityLlmService));
+            .with_utility_llm_service(Arc::new(DisabledUtilityLlmService));
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2222,7 +2226,7 @@ mod tests {
                 name: "utility_llm_context_probe".to_string(),
                 arguments: json!({}),
             }],
-            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+            tool_definitions: vec![ToolDefinition::Builtin(BuiltinTool {
                 name: "utility_llm_context_probe".to_string(),
                 display_name: None,
                 description: "checks context".to_string(),
@@ -2276,7 +2280,7 @@ mod tests {
         });
 
         let atom = ActAtom::new(executor, NoopEventEmitter);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         // Call order: writer_a, reader, writer_b. writer_a and writer_b share
         // class "ws" (writer_b is cpu_bound → executed on its own task).
@@ -2375,15 +2379,15 @@ mod tests {
             true
         }
 
-        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
-            crate::ToolExecutionResult::tool_error("requires context")
+        async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("requires context")
         }
 
         async fn execute_with_context(
             &self,
             _arguments: serde_json::Value,
             context: &crate::tool_context::ToolContext,
-        ) -> crate::ToolExecutionResult {
+        ) -> ToolExecutionResult {
             let token = context
                 .cancellation
                 .clone()
@@ -2398,7 +2402,7 @@ mod tests {
                     let _ = tx.send(());
                 }
             });
-            crate::ToolExecutionResult::success(json!({ "spawned": true }))
+            ToolExecutionResult::success(json!({ "spawned": true }))
         }
     }
 
@@ -2413,7 +2417,7 @@ mod tests {
         executor.register(DetachedWorkTool::new(cancelled_tx));
 
         let atom = ActAtom::new(executor, NoopEventEmitter);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2448,7 +2452,7 @@ mod tests {
         executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
 
         let atom = ActAtom::new(executor, NoopEventEmitter);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2487,7 +2491,7 @@ mod tests {
         executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
 
         let atom = ActAtom::new(executor, NoopEventEmitter);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2530,7 +2534,7 @@ mod tests {
             });
         }
         let atom = ActAtom::new(executor, NoopEventEmitter);
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2579,7 +2583,7 @@ mod tests {
         let event_emitter = NoopEventEmitter;
         let atom = ActAtom::new(executor, event_emitter);
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2622,7 +2626,7 @@ mod tests {
         let atom = ActAtom::new(executor, emitter.clone())
             .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2652,6 +2656,19 @@ mod tests {
         );
 
         let events = emitter.events().await;
+        assert_eq!(
+            events
+                .iter()
+                .map(|event| event.event_type.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "act.started",
+                "tool.started",
+                "tool.completed",
+                "act.completed",
+            ],
+            "all hosts must observe the engine-owned phase order",
+        );
         let act_started = events
             .iter()
             .find(|event| event.event_type == "act.started")
@@ -2700,7 +2717,7 @@ mod tests {
         let atom = ActAtom::new(executor, emitter)
             .with_tool_call_hooks(vec![std::sync::Arc::new(HumanIntentFixtureHook)]);
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2714,7 +2731,7 @@ mod tests {
                     "human_intent": "Clicking approve"
                 }),
             }],
-            tool_definitions: vec![crate::ToolDefinition::ClientSide(crate::ClientSideTool {
+            tool_definitions: vec![ToolDefinition::ClientSide(ClientSideTool {
                 name: "browser_click".to_string(),
                 display_name: None,
                 description: "Click button".to_string(),
@@ -2821,7 +2838,7 @@ mod tests {
             .with_org_id(OrgId::from_seed(1))
             .with_outbound_tool_rate_limiter(Arc::new(DenyAll));
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2832,7 +2849,7 @@ mod tests {
                 name: "argument_echo".to_string(),
                 arguments: json!({"value": "should_not_reach"}),
             }],
-            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+            tool_definitions: vec![ToolDefinition::Builtin(BuiltinTool {
                 name: "argument_echo".to_string(),
                 display_name: None,
                 description: "echo".to_string(),
@@ -2886,7 +2903,7 @@ mod tests {
             .with_org_id(OrgId::from_seed(1))
             .with_outbound_tool_rate_limiter(Arc::new(AllowAll));
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let input = ActInput {
             org_id: Some(1),
             context,
@@ -2897,7 +2914,7 @@ mod tests {
                 name: "argument_echo".to_string(),
                 arguments: json!({"value": "hello"}),
             }],
-            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+            tool_definitions: vec![ToolDefinition::Builtin(BuiltinTool {
                 name: "argument_echo".to_string(),
                 display_name: None,
                 description: "echo".to_string(),
@@ -3028,7 +3045,7 @@ mod tests {
     fn make_act_input_with_store(
         tool_call: ToolCall,
         tool_defs: Vec<ToolDefinition>,
-        context: AtomContext,
+        context: ExecutionContext,
     ) -> ActInput {
         ActInput {
             org_id: None,
@@ -3045,7 +3062,7 @@ mod tests {
     }
 
     fn arg_echo_tool_def(side_effect: SideEffectClass) -> ToolDefinition {
-        ToolDefinition::Builtin(crate::BuiltinTool {
+        ToolDefinition::Builtin(BuiltinTool {
             name: "argument_echo".to_string(),
             display_name: None,
             description: "echo".to_string(),
@@ -3067,7 +3084,7 @@ mod tests {
         let atom =
             ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
 
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
         let tc = ToolCall {
             id: "c1".to_string(),
             name: "argument_echo".to_string(),
@@ -3104,7 +3121,7 @@ mod tests {
 
         // Pre-populate as settled.
         {
-            let stored_result = serde_json::to_value(crate::ToolResult {
+            let stored_result = serde_json::to_value(ToolResult {
                 tool_call_id: "c1".to_string(),
                 result: Some(json!({"value": "hello"})),
                 images: None,
@@ -3132,7 +3149,7 @@ mod tests {
         let atom =
             ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
 
-        let context = AtomContext::new(
+        let context = ExecutionContext::new(
             SessionId::new(),
             TurnId::from_uuid(Uuid::nil()),
             MessageId::new(),
@@ -3180,7 +3197,7 @@ mod tests {
         let atom =
             ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
 
-        let context = AtomContext::new(
+        let context = ExecutionContext::new(
             SessionId::new(),
             TurnId::from_uuid(Uuid::nil()),
             MessageId::new(),
@@ -3239,7 +3256,7 @@ mod tests {
         let atom =
             ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
 
-        let context = AtomContext::new(
+        let context = ExecutionContext::new(
             SessionId::new(),
             TurnId::from_uuid(Uuid::nil()),
             MessageId::new(),

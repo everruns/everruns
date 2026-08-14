@@ -29,9 +29,29 @@ if grep -R -n -E --include='*.rs' '\bResolvedModel\b' crates/core/src; then
 fi
 
 if grep -n -E \
-  '^pub mod (in_memory|openai_protocol|openresponses_protocol|model_discovery|runtime_provider|driver_registry|typed_id|tool_types);' \
+  '^pub mod (atoms|in_memory|openai_protocol|openresponses_protocol|model_discovery|runtime_provider|driver_registry|typed_id|tool_types);' \
   crates/core/src/lib.rs; then
   fail "everruns-core exposes a forbidden implementation/compatibility module"
+fi
+
+if [ -e crates/core/src/atoms ]; then
+  fail "everruns-core still contains atom execution implementation"
+fi
+
+if grep -R -n -E --include='*.rs' \
+  'pub (struct|trait) (ActAtom|InputAtom|ReasonAtom|Atom)\b' crates/core/src; then
+  fail "everruns-core must expose contracts, not concrete atom executors"
+fi
+
+for engine_source in input.rs reason.rs act.rs act_hooks.rs tool_scheduler.rs; do
+  if [ ! -f "crates/engine/src/execution/$engine_source" ]; then
+    fail "everruns-engine is missing execution kernel source: $engine_source"
+  fi
+done
+
+if grep -R -n -E --include='*.rs' 'everruns_core::atoms|crate::atoms' \
+  crates integrations examples tests; then
+  fail "Rust consumers must use everruns-engine executors or concern-owned core contracts"
 fi
 
 if ! grep -q -E '^#!\[cfg_attr\(not\(test\), forbid\(unsafe_code\)\)\]' crates/core/src/lib.rs; then

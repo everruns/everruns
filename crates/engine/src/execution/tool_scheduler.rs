@@ -143,6 +143,7 @@ where
     let semaphore = Arc::new(Semaphore::new(config.max_concurrency.max(1)));
     let run = &run;
 
+    // THREAT[TM-DOS-015]: the semaphore bounds global act-batch fan-out.
     // Each group runs its members sequentially; groups run concurrently. A
     // permit is held only for the duration of an individual call, so the cap
     // bounds total in-flight executions across all groups.

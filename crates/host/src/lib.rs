@@ -1,7 +1,8 @@
 //! Shared effectful host orchestration for Everruns execution adapters.
 //!
-//! `everruns-host` sits between the pure `everruns-engine` planner and the
-//! application, worker, and local adapters that apply its effects. It is a
+//! `everruns-host` composes the shared `everruns-engine` execution kernel for
+//! application, worker, and local adapters. It resolves deployment services,
+//! credentials, and stores, then applies the engine planner's effects. It is a
 //! transitive implementation boundary, not the ordinary application
 //! entrypoint; applications in the [Everruns](https://everruns.com) ecosystem
 //! should normally depend on `everruns`.

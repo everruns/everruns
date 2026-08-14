@@ -22,17 +22,17 @@ Both real hosts now plan through the engine: the durable worker via
 machine survives only behind the `in_memory_loop` in `everruns-test-support`
 (moved out of core by EVE-875), which no shipped host drives.
 
-This spec proposes converging them on one **sans-IO** representation: a
+This spec converges them on one **sans-IO** representation: a
 serializable `TurnState` whose transitions are pure functions, with all I/O —
 loading messages, calling the model, running tools, emitting events, persisting
-— performed by the host that drives it. The intended end state is that a durable
-host is an in-process host that persists between steps, rather than a second
-implementation of the same loop.
+— performed by portable engine phases through contracts injected by the host.
+The intended end state is that a durable host is an in-process host that
+persists between steps, rather than a second implementation of the same loop.
 
-Status: **stage 1 landed** (the value type and its equivalence proof); the
-planner has since been extracted into `everruns-engine` (EVE-840) and the
-in-process runtime rewired onto it (EVE-842). Later stages are proposals, not
-commitments.
+Status: the value, planner, in-process rewiring, and shared Input/Reason/Act
+execution kernel have landed. Planning remains pure; phase effects cross
+neutral `everruns-core`/`everruns-provider` contracts. Later effect-extraction
+stages are proposals, not commitments.
 
 ## Motivation
 
@@ -43,7 +43,7 @@ left state the host had to reconstruct by hand — is the shape of failure this
 produces: the durable path had to re-derive knowledge that the in-process path
 simply held in memory.
 
-**Atoms own their I/O, so the machine is not the whole truth.** `ReasonAtom`
+**Historically, atoms owned their I/O, so the machine was not the whole truth.** `ReasonAtom`
 loads messages, calls the provider, emits events, and stores results;
 `ActAtom` does the same around tools. What a turn "is" therefore lives partly in
 the state machine, partly in whatever each atom did on the way through, and
@@ -80,8 +80,9 @@ point:
 
 - Changing turn semantics. Every stage is behavior-preserving; a stage that
   changes what a turn does is a different change.
-- Removing atoms. Atoms stay as the units of work; what moves is who performs
-  their side effects.
+- Renaming the durable activity protocol. Input, Reason, and Act remain the
+  serialized units of work, but they are concrete engine phases rather than a
+  generic public `Atom` polymorphism.
 - Replacing the durable engine. Task scheduling, retries, and the DLQ are
   unaffected — the durable host keeps owning those.
 
@@ -109,6 +110,15 @@ operation each `TurnPlan` names and performs the returned `TurnLifecycleEffect`s
 `crates/host/tests/engine_planned_turn_test.rs` carries the behavior-preserving
 evidence and the restart-between-steps property.
 
+### Stage 1c — one execution kernel, two hosts (landed)
+
+The concrete Input, Reason, and Act algorithms, phase I/O values, post-act
+helpers, scheduler, and infrastructure hooks live beside the planner in
+`everruns-engine`. `everruns-core` retains the neutral `ExecutionContext`,
+per-tool hook contracts, and injected service traits. Both in-process and
+durable paths call the same host composition over these engine executors; core
+has no atom implementation or compatibility module.
+
 ### Stage 2 — fold in the durable bookkeeping
 
 Move `RuntimeTurnState`'s fields (iteration, call counts, cumulative usage,
@@ -122,13 +132,13 @@ that pays for stage 1.
 ### Stage 3 — introduce effects
 
 Add `TurnEffect` and have transitions return the events that must be recorded.
-Both hosts apply them through one applier. Atoms still emit their own events at
-this stage; the effect list is asserted against what they emit, which is how the
-vocabulary is kept honest rather than invented.
+Both hosts apply them through one applier. Engine phases still emit their own
+events through the injected `EventEmitter` at this stage; the effect list is
+asserted against what they emit.
 
-### Stage 4 — move the recording out of the atoms
+### Stage 4 — move phase recording into transition effects
 
-One effect at a time: an atom stops emitting, the transition returns the effect
+One effect at a time: a phase stops emitting, the transition returns the effect
 instead, the applier performs it. Each move is a small PR with an unchanged
 event stream as its success bar (event-sequence tests over a fixed scenario).
 
@@ -175,6 +185,10 @@ converge later.
 - `crates/core/src/turn_state.rs` — the stage-1 value
 - `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
+- `crates/engine/src/execution/` — the shared Input/Reason/Act algorithms and
+  engine-owned phase I/O values
+- `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs` —
+  neutral contracts used by the engine and capability authors
 - `crates/host/src/turn_strategy.rs` — `plan_next_host_turn`, the runtime host's thin
   I/O wrapper over the engine planner (plus compat re-exports of the pre-EVE-840 names),
   and the host-fact resolvers / effect applier both runtime hosts share

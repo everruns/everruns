@@ -22,6 +22,11 @@
 //! - Context assembly for the shared `input -> reason -> act` execution flow
 //! - Neutral storage, event, capability, and host-service contracts
 //!
+//! Concrete Input/Reason/Act algorithms and their phase I/O values live in
+//! `everruns-engine`. Core owns only concern-specific contracts such as
+//! [`ExecutionContext`] and [`tool_hooks`]; it exposes no generic atom
+//! extension trait or executor compatibility module.
+//!
 //! Environment-backed implementations are intentionally separate: filesystem,
 //! Bashkit, web fetch, and Lua live in `everruns-integrations-*`; MCP adaptation
 //! lives in `everruns-mcp`; and concrete runtime HTTP transport lives in
@@ -80,6 +85,7 @@ pub mod user_hook_types;
 pub mod deployment;
 pub mod egress;
 pub mod exec_tool_result;
+pub mod execution_context;
 pub mod execution_snapshot;
 pub mod utility_llm;
 
@@ -131,7 +137,6 @@ pub mod harness_definition;
 pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
-use everruns_provider::model;
 use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
@@ -176,13 +181,11 @@ pub mod resource_names;
 // See knowledge/integrations/plugins.md
 pub mod plugins;
 
-pub mod atoms;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;
 pub mod compaction_checkpoint;
 pub mod compaction_policy;
-use everruns_provider::compact;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
@@ -192,7 +195,6 @@ use everruns_provider::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
-use everruns_provider::llm_retry;
 // Adapters from core domain types to provider driver types. Lives on the core
 // side to keep the crate dependency one-directional (core -> everruns-provider).
 pub mod llm_conversions;
@@ -224,6 +226,7 @@ pub mod session_services;
 pub mod subagent_delegation;
 pub mod tool_context;
 pub mod tool_execution;
+pub mod tool_hooks;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod truncation_info;
@@ -290,9 +293,7 @@ pub use session_services::{
 };
 pub use tool_context::{ReasoningEffortHandle, ToolContext};
 pub use tool_execution::{OutboundToolRateLimiter, ToolExecutor};
-pub(crate) use user_facing_error::{
-    ErrorDisclosure, UserFacingError, UserFacingErrorContext, codes as user_facing_error_codes,
-};
+pub(crate) use user_facing_error::ErrorDisclosure;
 pub use workspace_policy::{WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError};
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
@@ -348,15 +349,14 @@ pub use utility_llm::{
 
 // Private provider-contract imports used by kernel implementation modules.
 pub(crate) use driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
+    LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
     ProviderOpaqueContext,
 };
 
 // Transport-neutral native compaction contracts. Concrete OpenAI/OpenResponses
 // protocol drivers live in everruns-provider and the focused provider crates.
-pub(crate) use compact::CompactInputItem;
 #[cfg(test)]
-pub(crate) use compact::CompactOutputItem;
+pub(crate) use everruns_provider::compact::CompactOutputItem;
 
 // Tool abstraction re-exports
 pub use tools::{Tool, ToolExecutionResult, ToolInternalError, ToolRegistry, ToolRegistryBuilder};
@@ -399,16 +399,11 @@ pub use compaction_checkpoint::{
     CompactionCheckpointStore, ProactiveCompactionAttempt, ProactiveCompactionAttemptTracker,
 };
 
-// Atoms re-exports (stateless atomic operations)
-pub use atoms::{
-    ActAtom, ActInput, ActResult, Atom, AtomContext, ClientSideToolHook, ConnectionSetupHook,
-    InputAtom, InputAtomInput, InputAtomResult, PostActAction, PostActHook, PostToolExecHook,
-    ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
-};
+pub use execution_context::ExecutionContext;
 
 pub(crate) use tool_types::ToolDefinition;
 #[cfg(test)]
-pub(crate) use tool_types::{BuiltinTool, ClientSideTool, ToolCall, ToolResult};
+pub(crate) use tool_types::{BuiltinTool, ToolCall};
 
 pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
@@ -504,7 +499,7 @@ pub use payment::{MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, 
 // backs it stay here — they are embedded by `Session`/`SessionSchedule`/
 // `AgentIdentity`.
 pub use principal::{PrincipalKind, PrincipalSummary};
-pub(crate) use runtime_provider::{ProviderEndpoint, ProviderKey};
+pub(crate) use runtime_provider::ProviderKey;
 // EVE-882: the persisted `Session` aggregate and its product lifecycle enums
 // (`SessionStatus`, `SessionSource`, `SessionActivity`, participants) moved to
 // the `everruns-platform` crate. Core keeps only the portable execution view
