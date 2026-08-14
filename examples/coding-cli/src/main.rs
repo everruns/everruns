@@ -1,73 +1,74 @@
-//! `ercode` — a minimal terminal coding agent built only on the `everruns`
-//! public library (EVE-835).
-//!
-//! Run one prompt and exit, or drop into a REPL that keeps one [`Session`]'s
-//! history across turns. Offline by default (deterministic simulator); pass a
-//! real model with `--model` once `OPENAI_API_KEY` is set.
+//! `ercode` — a terminal coding agent on public Framework workspace APIs.
 
 use std::io::Write;
-use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use everruns::Model;
-use everruns::{OpenAI, Session, SessionEventKind};
-use everruns_coding_cli::{agent_builder, set_workspace};
+use everruns::{Model, OpenAI, Session, SessionEventKind, WorkspaceHeadAccess};
+use everruns_coding_cli::{Cli, CodingWorkspace, SessionMode, agent_builder};
 use tokio::io::{AsyncBufReadExt, BufReader};
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "ercode",
-    version,
-    about = "Everruns coding CLI — a minimal coding agent built on the everruns library"
-)]
-struct Cli {
-    /// Workspace root the agent's file tools operate inside (default: current dir).
-    #[arg(short = 'C', long = "cwd")]
-    cwd: Option<PathBuf>,
-
-    /// Model id to use with OpenAI (requires OPENAI_API_KEY). Ignored with --offline.
-    #[arg(long, default_value = "gpt-5-mini")]
-    model: String,
-
-    /// Run fully offline with the deterministic simulator (no credentials, no network).
-    #[arg(long)]
-    offline: bool,
-
-    /// One-shot prompt. Omit to start an interactive REPL.
-    #[arg(trailing_var_arg = true)]
-    prompt: Vec<String>,
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    let root = match cli.cwd {
-        Some(dir) => dir,
-        None => std::env::current_dir().context("resolve current directory")?,
+    let state_dir = cli.state_dir()?;
+    let session_mode = cli.session_mode();
+    let workspace = match &session_mode {
+        SessionMode::NewHead { .. } => CodingWorkspace::open(cli.repository()?, &state_dir).await?,
+        SessionMode::SharedHead { .. } | SessionMode::Resume { .. } => {
+            CodingWorkspace::from_state(&state_dir)?
+        }
     };
-    set_workspace(root);
 
-    let agent = if cli.offline {
-        agent_builder()
+    let builder = workspace.configure_agent(agent_builder(), cli.workspace_policy());
+    let agent = if cli.offline() {
+        builder
             .model(Model::simulated(
-                "Offline simulator: set up a real model with --model to use the tools.",
+                "Offline simulator: configure a real model to execute coding tool calls.",
             ))
             .build()
     } else {
         let provider = OpenAI::from_env()
             .context("configure OpenAI (set OPENAI_API_KEY, or pass --offline)")?;
-        agent_builder().provider(provider).model(cli.model).build()
+        builder.provider(provider).model(cli.model()).build()
     }
     .context("build the coding agent")?;
 
-    let session = agent.session();
+    let session = match session_mode {
+        SessionMode::NewHead { name, base, shared } => {
+            let head = workspace.create_head(name, base.as_deref(), shared).await?;
+            workspace.start_session(&agent, head).await?
+        }
+        SessionMode::SharedHead { recorded_session } => {
+            workspace
+                .start_shared_session(&agent, recorded_session)
+                .await?
+        }
+        SessionMode::Resume { session_id } => workspace.resume_session(&agent, session_id).await?,
+    };
 
-    if cli.prompt.is_empty() {
+    let head = session
+        .workspace_head()
+        .context("session did not bind a workspace head")?;
+    let access = match head.access() {
+        WorkspaceHeadAccess::Isolated => "isolated",
+        WorkspaceHeadAccess::Shared => "shared",
+    };
+    eprintln!(
+        "session={} workspace={} head={} name={:?} access={} base={}",
+        session.session_id(),
+        head.workspace_id(),
+        head.id(),
+        head.name(),
+        access,
+        head.base().unwrap_or("HEAD")
+    );
+    eprintln!("state={}", state_dir.display());
+
+    if cli.prompt().is_empty() {
         repl(&session).await
     } else {
-        run_prompt(&session, &cli.prompt.join(" ")).await
+        run_prompt(&session, &cli.prompt().join(" ")).await
     }
 }
 
@@ -76,7 +77,6 @@ async fn run_prompt(session: &Session, prompt: &str) -> Result<()> {
     let mut events = session.events();
     let turn = session.run(prompt).await.context("run turn")?;
 
-    // Events emitted during the turn are buffered on the stream; drain them.
     while let Some(event) = events.try_recv().context("read turn events")? {
         match event.kind {
             SessionEventKind::ToolStarted { tool_name, .. } => eprintln!("  → {tool_name}"),
@@ -98,7 +98,7 @@ async fn run_prompt(session: &Session, prompt: &str) -> Result<()> {
     Ok(())
 }
 
-/// Interactive REPL: each line is a turn; history accumulates in the session.
+/// Interactive REPL: each line is a turn on the same session and exact head.
 async fn repl(session: &Session) -> Result<()> {
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     eprintln!("ercode — type a prompt, or Ctrl-D to exit.");
