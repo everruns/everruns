@@ -7,7 +7,7 @@ overrides:
   fast-uri: 3.1.5
   js-yaml: 4.3.1
   mermaid: 11.16.1
-  nanoid: 3.3.17
+  nanoid: 3.3.18
   postcss: 8.5.23
   prismjs: 1.30.0
   sharp: 0.35.3
@@ -34,8 +34,11 @@ minimumReleaseAgeStrict: true
 # executable subtree — XSS, via @streamdown/mermaid > mermaid), mermaid 11.16.1
 # (prototype pollution in the config APIs and in architecture diagrams, CSS
 # injection into sibling elements, and XY-chart/radar DoS — one release fixes
-# all five), and nanoid 3.3.17 (custom generators loop indefinitely at size 0,
-# via @tailwindcss/postcss > postcss).
+# all five), and nanoid 3.3.18 (custom generators loop indefinitely at size 0,
+# via @tailwindcss/postcss > postcss). GHSA-2v37-7h3g-55p8 was widened to
+# `<3.3.18` on 2026-08-13 after 3.3.17 proved an incomplete fix, so 3.3.17 —
+# pinned here as the patched release — was still inside the advisory. 3.3.18 is
+# the actual fix.
 # All exact-pinned via the overrides above, so an exemption cannot pull any other
 # freshly published version; it only lets the security fix land before maturity.
 minimumReleaseAgeExclude:
