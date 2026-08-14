@@ -38,9 +38,9 @@ use crate::skill::{
 };
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use everruns_core::{session_files::SessionFileSystem, tool_context::ToolContext};
 use serde_json::{Value, json};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;

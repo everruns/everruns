@@ -20,10 +20,12 @@ use crate::background::BackgroundExecutableTool;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
-use crate::traits::{ToolContext, ToolContextService, ToolContextServices};
+use crate::{
+    tool_context::ToolContext, tool_context::ToolContextService, tool_context::ToolContextServices,
+};
 
 use crate::error::Result;
-use crate::traits::ToolExecutor;
+use crate::tool_execution::ToolExecutor;
 // EVE-888: `spawn_background`, its session-task mirroring, the background
 // event sink and the reattach path moved to `everruns-platform`
 // (`background_run`). Creating session tasks and schedules is hosted behaviour;
@@ -911,6 +913,61 @@ impl Tool for FailingTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct RequiresOrgId;
+
+    #[async_trait]
+    impl Tool for RequiresOrgId {
+        fn name(&self) -> &str {
+            "requires_org_id"
+        }
+
+        fn description(&self) -> &str {
+            "Exercises required ToolContext service validation"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            serde_json::json!({"type": "object", "additionalProperties": false})
+        }
+
+        fn required_context_services(&self) -> &'static [ToolContextService] {
+            &[ToolContextService::OrgId]
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(Value::Null)
+        }
+    }
+
+    #[test]
+    fn required_context_service_validation_is_structured() {
+        let mut registry = ToolRegistry::new();
+        registry.register(RequiresOrgId);
+
+        let error = registry
+            .validate_context_services(&ToolContextServices::default())
+            .expect_err("missing required service must fail before tool exposure");
+
+        assert!(matches!(
+            error,
+            crate::AgentLoopError::Configuration(message)
+                if message.contains("requires_org_id") && message.contains("OrgId")
+        ));
+    }
+
+    #[test]
+    fn required_context_service_validation_accepts_supplied_service() {
+        let mut registry = ToolRegistry::new();
+        registry.register(RequiresOrgId);
+        let services = ToolContextServices {
+            org_id: Some(crate::typed_id::OrgId::from_seed(1)),
+            ..ToolContextServices::default()
+        };
+
+        registry
+            .validate_context_services(&services)
+            .expect("advertised required service should validate");
+    }
 
     #[tokio::test]
     async fn test_echo_tool() {

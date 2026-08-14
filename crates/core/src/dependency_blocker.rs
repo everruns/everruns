@@ -4,8 +4,8 @@
 // duplicate harness/agent status checks and error messages.
 
 use crate::error::Result;
-use crate::traits::{AgentStore, HarnessStore};
 use crate::typed_id::{AgentId, HarnessId};
+use crate::{execution_loading::AgentStore, execution_loading::HarnessStore};
 
 /// Reason why execution was blocked before it started.
 #[derive(Debug, Clone, Copy)]

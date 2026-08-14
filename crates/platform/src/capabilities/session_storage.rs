@@ -9,9 +9,9 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
 
 // Reserve internal KV prefixes from the user-facing kv_store. Reference the
@@ -566,9 +566,9 @@ impl Tool for SecretStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::traits::SessionStorageStore;
+    use everruns_core::session_services::SessionStorageStore;
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{KeyInfo, Result};
+    use everruns_core::{Result, session_services::KeyInfo};
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -578,7 +578,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionStorageStore for TestStorageStore {
+    impl everruns_core::session_services::SessionStorageStore for TestStorageStore {
         async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
             self.values
                 .lock()
@@ -630,7 +630,7 @@ mod tests {
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> Result<Vec<everruns_core::SecretInfo>> {
+        ) -> Result<Vec<everruns_core::session_services::SecretInfo>> {
             Ok(Vec::new())
         }
     }

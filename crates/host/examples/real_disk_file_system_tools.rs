@@ -21,7 +21,7 @@ use std::sync::Arc;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
-    HarnessDefinition, ResolvedModel, SessionExecutionState, ToolCall,
+    HarnessDefinition, SessionExecutionState, ToolCall, provider_resolution::ResolvedModel,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use everruns_integrations_filesystem::FileSystemCapability;

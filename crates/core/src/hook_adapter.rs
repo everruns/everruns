@@ -20,8 +20,8 @@ use crate::atoms::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use crate::hook_executor::{
     BashHookDispatcher, BashHookExecutor, ExecutorOpts, HookExecutor, HookPayload,
 };
+use crate::tool_context::ToolContext;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
 use crate::user_hook_types::{
     ExecutorSpec, HookEvent, HookOutcome, HookSource, OnError, UserHookSpec,
 };

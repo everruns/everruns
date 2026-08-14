@@ -2,8 +2,10 @@
 //
 // Tests the CAS semantics of InMemorySubagentSpawnStore without a database.
 
-use everruns_core::traits::{SpawnClaimResult, SubagentSpawnStore};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
+};
 use everruns_server::storage::memory::subagent_spawn_handles::InMemorySubagentSpawnStore;
 use uuid::Uuid;
 

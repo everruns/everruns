@@ -12,7 +12,9 @@
 #![cfg(feature = "lua")]
 
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel, SessionId};
+use everruns_core::{
+    AgentId, CapabilityRegistry, DriverId, HarnessId, SessionId, provider_resolution::ResolvedModel,
+};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};

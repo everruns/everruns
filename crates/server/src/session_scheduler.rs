@@ -29,8 +29,8 @@ use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_MONITOR,
 };
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolRegistry;
-use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::{MessageId, SessionId};
 use everruns_core::{ContentPart, Message, MessageRole, TextContentPart};
 use everruns_worker::AgentRunner;

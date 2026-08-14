@@ -23,7 +23,7 @@ use llm_test_matrix::*;
 use rstest::rstest;
 
 use everruns_builtins::CurrentTimeCapability;
-use everruns_core::traits::ResolvedModel;
+use everruns_core::provider_resolution::ResolvedModel;
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_test_support::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 

@@ -15,7 +15,7 @@
 /// It is purely a *view*; addressing is done by [`crate::mount_fs::MountFs`].
 pub const WORKSPACE_PREFIX: &str = "/workspace";
 
-/// Compiled filter for [`crate::traits::SessionFileSystem::grep_files`].
+/// Compiled filter for [`crate::session_files::SessionFileSystem::grep_files`].
 ///
 /// Patterns containing glob metacharacters use segment-aware glob semantics.
 /// A basename-only glob (for example `*.rs`) matches at any depth. Patterns

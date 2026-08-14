@@ -7,9 +7,9 @@
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
 
 pub const SESSION_SCHEDULE_CAPABILITY_ID: &str = "session_schedule";
@@ -399,7 +399,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use everruns_core::session_schedule::SessionSchedule;
-    use everruns_core::traits::SessionScheduleStore;
+    use everruns_core::session_services::SessionScheduleStore;
     use everruns_core::typed_id::{ScheduleId, SessionId};
     use std::sync::{Arc, Mutex};
 

@@ -2,6 +2,7 @@
 // Decision: runtime ships batteries-included in-memory stores for public
 // embedding so common capabilities work without depending on server internals.
 
+use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::AgentCapabilityConfig;
@@ -15,11 +16,13 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
-use everruns_core::traits::{
-    AgentStore, HarnessStore, KeyInfo, ProviderStore, ResolvedModel, SecretInfo, SessionFileSystem,
-    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionStorageStore, SessionStore,
-};
 use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_core::{
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    provider_resolution::ResolvedModel, session_files::SessionFileSystem,
+    session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
+};
 use everruns_platform::SessionMutator;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;

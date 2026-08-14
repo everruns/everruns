@@ -11,7 +11,7 @@
 //! ```
 
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{CapabilityRegistry, DriverId, ResolvedModel};
+use everruns_core::{CapabilityRegistry, DriverId, provider_resolution::ResolvedModel};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;

@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::MessageRetriever;
-use everruns_core::ToolContext;
 use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
@@ -12,15 +11,18 @@ use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskUpdate, TaskMessage, apply_task_update, new_session_task,
 };
-use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionStore,
-};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, EventData,
-    ExecutionSession, HarnessDefinition, InputMessage, ResolvedModel, SessionExecutionState,
-    TokenUsage, Tool, ToolCall, ToolExecutionResult, ToolRegistry, ToolResult,
-    inspect_turn_context, user_facing_error_codes,
+    ExecutionSession, HarnessDefinition, InputMessage, SessionExecutionState, TokenUsage, Tool,
+    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
+    provider_resolution::ResolvedModel, user_facing_error_codes,
+};
+use everruns_core::{
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem,
 };
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,

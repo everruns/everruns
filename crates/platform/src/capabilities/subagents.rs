@@ -40,8 +40,11 @@ use everruns_core::session_task::{
 use everruns_core::subagent_delegation::{PlatformCreateSessionRequest, SubagentSessionDelegate};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{SessionStore, SpawnClaimResult, ToolContext};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    delegation_services::SpawnClaimResult, execution_loading::SessionStore,
+    tool_context::ToolContext,
+};
 
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
@@ -104,7 +107,7 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 16,
-                    "default": everruns_core::traits::DEFAULT_MAX_SUBAGENT_DEPTH,
+                    "default": everruns_core::delegation_services::DEFAULT_MAX_SUBAGENT_DEPTH,
                     "description": "Maximum child depth allowed from a top-level session. Top-level sessions are depth 0; setting 0 blocks all subagent spawning."
                 },
                 "max_depth": {
@@ -117,7 +120,7 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 1024,
-                    "default": everruns_core::traits::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
+                    "default": everruns_core::delegation_services::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum non-terminal descendant subagent tasks allowed under one root session. Counts queued, running, and awaiting_input tasks."
                 },
                 "max_concurrent_descendant_tasks": {
@@ -130,21 +133,21 @@ impl Capability for SubagentCapability {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 10000,
-                    "default": everruns_core::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
+                    "default": everruns_core::delegation_services::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum descendant subagent task records allowed under one root session before rejecting new spawns."
                 },
                 "max_active_detached_tasks": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 1024,
-                    "default": everruns_core::traits::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+                    "default": everruns_core::delegation_services::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
                     "description": "Maximum non-terminal detached peer sessions allowed under one origin root session. Detached spawns reset depth but are still capped here so a loop cannot run unbounded (EVE-767)."
                 },
                 "max_total_detached_tasks": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 10000,
-                    "default": everruns_core::traits::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+                    "default": everruns_core::delegation_services::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
                     "description": "Maximum detached peer session task records allowed under one origin root session before rejecting new detached spawns."
                 }
             }
@@ -385,7 +388,7 @@ use super::util::{get_subagent_delegate, require_str_nonblank as require_str};
 
 fn get_session_store(
     context: &ToolContext,
-) -> Result<&dyn everruns_core::traits::SessionStore, ToolExecutionResult> {
+) -> Result<&dyn everruns_core::execution_loading::SessionStore, ToolExecutionResult> {
     context
         .session_store
         .as_ref()
@@ -1176,7 +1179,7 @@ async fn spawn_create_and_wait(
     lifetime: SpawnLifetime,
     seed: SessionSeedMode,
     settle_ctx: Option<(
-        &dyn everruns_core::traits::SubagentSpawnStore,
+        &dyn everruns_core::delegation_services::SubagentSpawnStore,
         &str,
         uuid::Uuid,
         uuid::Uuid,
@@ -1410,7 +1413,7 @@ async fn run_subagent_wait_and_settle(
     blueprint_param: &Option<String>,
     task_id: Option<String>,
     settle_ctx: Option<(
-        &dyn everruns_core::traits::SubagentSpawnStore,
+        &dyn everruns_core::delegation_services::SubagentSpawnStore,
         &str,
         uuid::Uuid,
     )>,
@@ -1479,7 +1482,7 @@ async fn settle_subagent_outcome(
     status: &str,
     task_id: Option<&str>,
     settle_ctx: Option<(
-        &dyn everruns_core::traits::SubagentSpawnStore,
+        &dyn everruns_core::delegation_services::SubagentSpawnStore,
         &str,
         uuid::Uuid,
     )>,
@@ -1660,7 +1663,8 @@ fn spawn_background_watcher(
                         claim_token,
                     ) {
                         (Some(spawn_store), Some(tool_call_id), Some(token)) => Some((
-                            spawn_store.as_ref() as &dyn everruns_core::traits::SubagentSpawnStore,
+                            spawn_store.as_ref()
+                                as &dyn everruns_core::delegation_services::SubagentSpawnStore,
                             tool_call_id.as_str(),
                             token,
                         )),
@@ -1991,8 +1995,8 @@ mod tests {
 
     #[test]
     fn subagent_nesting_policy_resolves_platform_org_agent_precedence() {
-        let platform =
-            everruns_core::traits::SubagentNestingPolicy::default().with_platform_default(4);
+        let platform = everruns_core::delegation_services::SubagentNestingPolicy::default()
+            .with_platform_default(4);
         assert_eq!(platform.max_subagent_depth(), 4);
 
         let org = platform.with_org_override(Some(3));
@@ -2041,13 +2045,51 @@ mod tests {
     // Spawn handle tests (EVE-535)
     // =========================================================================
 
-    use everruns_core::traits::{NoopSubagentSpawnStore, SpawnClaimResult, SubagentSpawnStore};
+    use everruns_core::{
+        delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
+    };
     use std::sync::Arc;
 
-    /// NoopSubagentSpawnStore always returns Claimed with a fresh token.
+    struct TestSubagentSpawnStore;
+
+    #[async_trait]
+    impl SubagentSpawnStore for TestSubagentSpawnStore {
+        async fn try_claim_spawn(
+            &self,
+            _parent_session_id: SessionId,
+            _tool_call_id: &str,
+            claim_token: uuid::Uuid,
+        ) -> everruns_core::Result<SpawnClaimResult> {
+            Ok(SpawnClaimResult::Claimed {
+                spawn_handle_id: uuid::Uuid::new_v4(),
+                claim_token,
+            })
+        }
+
+        async fn register_child_session(
+            &self,
+            _spawn_handle_id: uuid::Uuid,
+            _claim_token: uuid::Uuid,
+            _child_session_id: SessionId,
+        ) -> everruns_core::Result<()> {
+            Ok(())
+        }
+
+        async fn settle_spawn(
+            &self,
+            _parent_session_id: SessionId,
+            _tool_call_id: &str,
+            _claim_token: uuid::Uuid,
+            _terminal_status: &str,
+            _terminal_result: &str,
+        ) -> everruns_core::Result<()> {
+            Ok(())
+        }
+    }
+
     #[tokio::test]
-    async fn noop_spawn_store_always_claims() {
-        let store = NoopSubagentSpawnStore;
+    async fn spawn_store_contract_can_claim() {
+        let store = TestSubagentSpawnStore;
         let parent = everruns_core::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
@@ -2062,10 +2104,9 @@ mod tests {
         );
     }
 
-    /// NoopSubagentSpawnStore register and settle are always successful.
     #[tokio::test]
-    async fn noop_spawn_store_register_and_settle_are_noops() {
-        let store = NoopSubagentSpawnStore;
+    async fn spawn_store_contract_registers_and_settles() {
+        let store = TestSubagentSpawnStore;
         let parent = everruns_core::typed_id::SessionId::new();
         let child = everruns_core::typed_id::SessionId::new();
         let handle_id = uuid::Uuid::new_v4();
@@ -2085,7 +2126,7 @@ mod tests {
     /// Arc<dyn SubagentSpawnStore> blanket impl delegates correctly.
     #[tokio::test]
     async fn arc_spawn_store_delegates() {
-        let store: Arc<dyn SubagentSpawnStore> = Arc::new(NoopSubagentSpawnStore);
+        let store: Arc<dyn SubagentSpawnStore> = Arc::new(TestSubagentSpawnStore);
         let parent = everruns_core::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
@@ -2106,8 +2147,8 @@ mod tests {
     use crate::{PlatformStore, PlatformStoreSubagentDelegate};
     use chrono::Utc;
     use everruns_core::session_file::SessionFile;
+    use everruns_core::session_files::SessionFileSystem;
     use everruns_core::session_task::SessionTaskRegistry;
-    use everruns_core::traits::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -2126,7 +2167,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionCreationAuthority for MockSessionCreationAuthority {
+    impl everruns_core::delegation_services::SessionCreationAuthority for MockSessionCreationAuthority {
         async fn authorize_session_creation(
             &self,
             _session_id: everruns_core::typed_id::SessionId,
@@ -2142,7 +2183,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionStore for MockSessionStore {
+    impl everruns_core::execution_loading::SessionStore for MockSessionStore {
         async fn get_session(
             &self,
             session_id: everruns_core::typed_id::SessionId,
@@ -2536,7 +2577,8 @@ mod tests {
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
+                .with_agent_override(Some(0)),
         );
 
         let linked = spawn(
@@ -2644,7 +2686,7 @@ mod tests {
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default()
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
                 .with_agent_detached_task_caps_override(Some(1), Some(4)),
         );
 
@@ -2682,7 +2724,7 @@ mod tests {
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default()
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
                 .with_agent_detached_task_caps_override(Some(1), Some(4)),
         );
         let root = store.session.id;
@@ -2911,7 +2953,8 @@ mod tests {
     async fn spawn_agent_subagent_depth_zero_restores_hard_block() {
         let store = Arc::new(MockPlatformStore::new());
         let mut context = spawn_context(&store, None).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
+                .with_agent_override(Some(0)),
         );
         context.session_task_registry = Some(Arc::new(InMemorySessionTaskRegistry::default()));
 
@@ -2936,7 +2979,7 @@ mod tests {
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default()
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
                 .with_agent_task_caps_override(Some(1), Some(200)),
         );
 
@@ -2973,7 +3016,7 @@ mod tests {
         let store = Arc::new(MockPlatformStore::new());
         *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        let policy = everruns_core::traits::SubagentNestingPolicy::default()
+        let policy = everruns_core::delegation_services::SubagentNestingPolicy::default()
             .with_agent_override(Some(4))
             .with_agent_task_caps_override(Some(2), Some(200));
         let root_context =
@@ -3032,7 +3075,7 @@ mod tests {
         *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
-            everruns_core::traits::SubagentNestingPolicy::default()
+            everruns_core::delegation_services::SubagentNestingPolicy::default()
                 .with_agent_task_caps_override(Some(16), Some(1)),
         );
 

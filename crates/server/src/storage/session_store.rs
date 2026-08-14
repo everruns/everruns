@@ -10,7 +10,7 @@ use crate::max_iterations;
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, ExecutionSession, Result, SessionId, StoreResultExt, TokenUsage,
-    traits::SessionStore,
+    execution_loading::SessionStore,
 };
 use everruns_platform::{Session, SessionActivity, SessionSource, SessionStatus};
 

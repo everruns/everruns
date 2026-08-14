@@ -19,7 +19,7 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };
-use everruns_core::traits::PaymentAuthority;
+use everruns_core::tool_execution::PaymentAuthority;
 use everruns_core::typed_id::{AgentId, PaymentAttemptId, SessionId};
 use serde_json::json;
 use sha2::{Digest, Sha256};

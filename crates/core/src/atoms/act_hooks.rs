@@ -13,7 +13,7 @@
 
 use crate::events::{EventContext, EventRequest, ToolCallRequestedData};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{EventEmitter, ToolContext};
+use crate::{event_emitter::EventEmitter, tool_context::ToolContext};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
@@ -572,7 +572,7 @@ mod tests {
     // OutputHardLimitHook tests (EVE-225)
     // ========================================================================
 
-    use crate::traits::ToolContext;
+    use crate::tool_context::ToolContext;
     use crate::typed_id::SessionId;
 
     fn make_tool_call() -> ToolCall {

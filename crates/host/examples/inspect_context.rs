@@ -18,7 +18,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, ExecutionSession,
-    HarnessDefinition, ResolvedModel, SessionExecutionState,
+    HarnessDefinition, SessionExecutionState, provider_resolution::ResolvedModel,
 };
 use everruns_host::InProcessRuntimeBuilder;
 use everruns_test_support::llmsim_driver::LlmSimConfig;

@@ -3,11 +3,11 @@
 use async_trait::async_trait;
 use everruns_core::ToolHints;
 use everruns_core::exec_tool_result::ExecToolResultPayload;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
 use tracing::warn;
 

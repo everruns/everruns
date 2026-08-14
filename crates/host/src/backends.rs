@@ -14,11 +14,13 @@ use everruns_core::error::Result;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::SessionTaskRegistry;
-use everruns_core::traits::{
-    AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionScheduleStore,
-    SessionStorageStore, SessionStore, UserConnectionResolver,
-};
 use everruns_core::typed_id::{HarnessId, SessionId};
+use everruns_core::{
+    connection_services::UserConnectionResolver, execution_loading::AgentStore,
+    execution_loading::HarnessStore, execution_loading::SessionStore,
+    provider_resolution::ProviderStore, provider_resolution::ResolvedModel,
+    session_services::SessionScheduleStore, session_services::SessionStorageStore,
+};
 use everruns_platform::PlatformStore;
 use everruns_platform::SessionMutator;
 use std::sync::Arc;

@@ -2,8 +2,8 @@
 
 use everruns_core::UpsertLeasedResource;
 use everruns_core::resource_ownership::verify_owned_external_resource_if_available;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::ToolContext;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

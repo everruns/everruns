@@ -13,7 +13,8 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ResolvedModel,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
+    provider_resolution::ResolvedModel,
 };
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,

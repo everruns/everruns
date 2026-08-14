@@ -13,8 +13,8 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use serde_json::Value;
 
 pub const BUDGETING_CAPABILITY_ID: &str = "budgeting";
@@ -213,8 +213,8 @@ mod tests {
     #[tokio::test]
     async fn test_check_budget_tool_with_mock_checker() {
         use crate::budget::{BudgetSummary, BudgetToolResponse};
-        use crate::traits::BudgetChecker;
         use crate::typed_id::SessionId;
+        use everruns_core::tool_execution::BudgetChecker;
         use std::sync::Arc;
 
         struct MockBudgetChecker;

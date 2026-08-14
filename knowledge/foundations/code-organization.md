@@ -113,6 +113,13 @@ composes the complete hosted-product catalog. The
 the implementation modules and their shell/interpreter/transport dependencies
 out of core and the default Framework dependency tree.
 
+Core's per-turn service contracts follow the same ownership rule internally:
+loading, provider resolution, tool context, filesystem, session services,
+durability, events, images, connections, and delegation each have a focused module. A generic
+`traits` module is not a public boundary. Host-only construction contracts,
+including `SessionFileSystemFactory`, live in `everruns-host` with the
+composition that consumes them.
+
 Hosted capability implementations live in `everruns-platform` (EVE-885):
 Knowledge Bases and Indexes, Memories, subagent/agent/A2A delegation,
 background and scheduled session work, user hooks, citations, model scouting,

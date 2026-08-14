@@ -4,8 +4,8 @@
 // the active `SessionFileSystem` display identity. The contract is documented
 // in `knowledge/runtime-resources/file-store.md` under "Model-visible path identity".
 
+use crate::session_files::SessionFileSystem;
 use crate::session_path::WORKSPACE_PREFIX;
-use crate::traits::SessionFileSystem;
 use serde_json::Value;
 
 /// Expected path identity for a filesystem backend.

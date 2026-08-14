@@ -6,10 +6,11 @@
 use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{
-    KeyInfo, SecretInfo, SessionStorageStore, ToolContext, UserConnectionResolver,
-};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    connection_services::UserConnectionResolver, session_services::KeyInfo,
+    session_services::SecretInfo, session_services::SessionStorageStore, tool_context::ToolContext,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;

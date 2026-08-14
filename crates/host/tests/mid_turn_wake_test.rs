@@ -22,10 +22,13 @@ use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskWakePolicy, apply_task_update,
     generate_task_message_id, new_session_task,
 };
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::SessionId;
-use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, ResolvedModel};
+use everruns_core::{
+    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
+    provider_resolution::ResolvedModel,
+};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 

@@ -9,8 +9,8 @@ use std::collections::HashSet;
 
 use crate::leased_resource::LeasedResourceStatus;
 use crate::session_resource::{SessionResourceFilter, SessionResourceStatus};
+use crate::tool_context::ToolContext;
 use crate::tools::ToolExecutionResult;
-use crate::traits::ToolContext;
 
 /// Reserved metadata key storing the provider name on session-resource entries
 /// auto-registered from leased resources.
@@ -190,8 +190,8 @@ mod tests {
     use crate::error::Result;
     use crate::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
     use crate::session_resource::{RegisterSessionResource, SessionResourceEntry};
-    use crate::traits::{LeasedResourceStore, SessionResourceRegistry};
     use crate::typed_id::{LeasedResourceId, SessionId};
+    use crate::{session_services::LeasedResourceStore, session_services::SessionResourceRegistry};
 
     #[derive(Default)]
     struct TestLeasedResourceStore {

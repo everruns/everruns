@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use everruns_core::AgentCapabilityConfig;
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::execution_loading::SessionStore;
 use everruns_core::session::ExecutionSession;
-use everruns_core::traits::SessionStore;
 use everruns_core::typed_id::{HarnessId, SessionId};
 use everruns_host::{RuntimeSessionStore, SessionBuilder};
 use everruns_platform::SessionMutator;
@@ -164,7 +164,7 @@ fn store_error(error: impl std::fmt::Display) -> AgentLoopError {
 
 #[cfg(test)]
 mod tests {
-    use everruns_core::traits::SessionStore;
+    use everruns_core::execution_loading::SessionStore;
     use everruns_host::RuntimeSessionStore;
 
     use super::*;

@@ -4,8 +4,8 @@
 //! Decision: Container/network names include session UUID for multi-tenant isolation.
 
 use everruns_core::leased_resource::UpsertLeasedResource;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};

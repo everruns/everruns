@@ -5,8 +5,8 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, KeyInfo, Result, SecretInfo, SessionId, StoreResultExt,
-    traits::SessionStorageStore,
+    AgentLoopError, Result, SessionId, StoreResultExt, session_services::KeyInfo,
+    session_services::SecretInfo, session_services::SessionStorageStore,
 };
 
 use super::encryption::EncryptionService;

@@ -14,17 +14,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::Event;
+use everruns_core::session_files::SessionFileSystem;
 use everruns_core::session_task::{
     CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TaskLinks,
     TaskWakePolicy,
 };
-use everruns_core::traits::{
-    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+use everruns_core::{
+    CapabilityRegistry, DriverId, InputMessage, ToolCall, provider_resolution::ResolvedModel,
 };
-use everruns_core::{CapabilityRegistry, DriverId, InputMessage, ResolvedModel, ToolCall};
 use everruns_host::{
     AgentBuilder, EventSink, EventSinkError, HarnessBuilder, HostBackends, InProcessRuntimeBuilder,
-    RealDiskFileStore, RuntimeHostAdapter, SessionBuilder,
+    RealDiskFileStore, RuntimeHostAdapter, SessionBuilder, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext,
 };
 use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
 use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt, TestMathCapability};

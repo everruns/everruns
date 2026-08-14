@@ -314,10 +314,10 @@ mod tests {
 
     use crate::llm_error_hook::{LlmErrorContext, LlmErrorHook, LlmErrorHookServices};
     use crate::session_schedule::SessionSchedule;
-    use crate::traits::SessionScheduleStore;
     use crate::typed_id::{PrincipalId, ScheduleId, SessionId};
     use crate::user_facing_error::UserFacingErrorFields;
     use crate::user_facing_error_codes;
+    use everruns_core::session_services::SessionScheduleStore;
     use std::sync::Mutex;
 
     /// Records the one-shot schedules the handler creates so tests can assert on

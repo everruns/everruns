@@ -549,7 +549,7 @@ impl EventService {
 /// Core EventEmitter bridge so storage-layer registries (session tasks) can
 /// emit through the same persistence + delivery path as the worker.
 #[async_trait::async_trait]
-impl everruns_core::traits::EventEmitter for EventService {
+impl everruns_core::event_emitter::EventEmitter for EventService {
     async fn emit(&self, request: EventRequest) -> everruns_core::Result<everruns_core::Event> {
         EventService::emit(self, request)
             .await

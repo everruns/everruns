@@ -27,7 +27,6 @@ use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::{DeferrablePolicy, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
@@ -39,6 +38,8 @@ use bashkit::{
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
+use everruns_core::session_files::SessionFileSystem;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
 pub use hook_dispatch::BashkitShellHookDispatcher;
 use serde_json::{Value, json};
@@ -1344,9 +1345,9 @@ impl SearchProvider for SessionSearchProvider {
 mod tests {
     use super::*;
     use crate::session_file::FileInfo;
-    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use crate::{FileStat, GrepMatch};
+    use everruns_core::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
 

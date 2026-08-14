@@ -2031,13 +2031,13 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _model_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::traits::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
                 unimplemented!()
             }
             async fn get_default_model(
                 &self,
                 _org_id: i64,
-            ) -> CoreResult<Option<everruns_core::traits::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
                 unimplemented!()
             }
             async fn get_provider_config(
@@ -2051,14 +2051,15 @@ mod tests {
                 &self,
                 _org_id: i64,
                 _image_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::traits::ResolvedImage>> {
+            ) -> CoreResult<Option<everruns_core::image_services::ResolvedImage>> {
                 unimplemented!()
             }
             async fn resolve_images_batch(
                 &self,
                 _org_id: i64,
                 _image_ids: &[Uuid],
-            ) -> CoreResult<HashMap<Uuid, everruns_core::traits::ResolvedImage>> {
+            ) -> CoreResult<HashMap<Uuid, everruns_core::image_services::ResolvedImage>>
+            {
                 unimplemented!()
             }
             async fn read_file(
@@ -2195,19 +2196,21 @@ mod tests {
             {
                 unimplemented!()
             }
-            fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
+            fn storage_store(
+                &self,
+            ) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
                 unimplemented!()
             }
             fn image_artifact_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::traits::ImageArtifactStore> {
+            ) -> Arc<dyn everruns_core::image_services::ImageArtifactStore> {
                 unimplemented!()
             }
             fn provider_credential_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::traits::ProviderCredentialStore> {
+            ) -> Arc<dyn everruns_core::connection_services::ProviderCredentialStore> {
                 unimplemented!()
             }
             fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
@@ -2225,16 +2228,18 @@ mod tests {
             }
             fn connection_resolver(
                 &self,
-            ) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+            ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
                 unimplemented!()
             }
-            fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+            fn leased_resource_store(
+                &self,
+            ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
                 unimplemented!()
             }
             fn schedule_store(
                 &self,
                 _org_id: i64,
-            ) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+            ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
                 unimplemented!()
             }
             fn reaper_session_task_registry(

@@ -11,7 +11,7 @@ use everruns_core::capabilities::{
 use everruns_core::session_file::SessionFile;
 use everruns_core::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolResultImage};
-use everruns_core::traits::{CreateStoredImage, ToolContext};
+use everruns_core::{image_services::CreateStoredImage, tool_context::ToolContext};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::LazyLock;
@@ -883,7 +883,7 @@ async fn resolve_client_config(
 }
 
 async fn get_first_secret(
-    store: &dyn everruns_core::traits::SessionStorageStore,
+    store: &dyn everruns_core::session_services::SessionStorageStore,
     context: &ToolContext,
     names: &[&str],
 ) -> anyhow::Result<Option<String>> {
@@ -1181,10 +1181,12 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use everruns_core::Result;
-    use everruns_core::traits::{
-        KeyInfo, ProviderCredentialStore, ProviderCredentials, SecretInfo, SessionStorageStore,
-    };
+    use everruns_core::connection_services::ProviderCredentials;
     use everruns_core::typed_id::SessionId;
+    use everruns_core::{
+        connection_services::ProviderCredentialStore, session_services::KeyInfo,
+        session_services::SecretInfo, session_services::SessionStorageStore,
+    };
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 

@@ -25,8 +25,8 @@ use super::{
     AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 

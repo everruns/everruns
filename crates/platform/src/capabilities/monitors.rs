@@ -34,7 +34,7 @@ impl TaskExecutor for MonitorTaskExecutor {
     async fn cancel(
         &self,
         task: &everruns_core::session_task::SessionTask,
-        context: &everruns_core::traits::ToolContext,
+        context: &everruns_core::tool_context::ToolContext,
     ) -> everruns_core::error::Result<()> {
         // Attempt to cancel the linked schedule.
         if let Some(schedule_id_str) = task.spec.get("schedule_id").and_then(|v| v.as_str()) {
@@ -101,8 +101,8 @@ mod tests {
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, TaskLinks, TaskWakePolicy,
     };
-    use everruns_core::traits::{SessionScheduleStore, ToolContext};
     use everruns_core::typed_id::{ScheduleId, SessionId};
+    use everruns_core::{session_services::SessionScheduleStore, tool_context::ToolContext};
     use std::sync::{Arc, Mutex};
 
     // -------------------------------------------------------------------------

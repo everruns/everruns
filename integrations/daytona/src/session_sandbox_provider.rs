@@ -1,8 +1,8 @@
 //! Daytona implementation of the provider-neutral session_sandbox contract.
 
 use everruns_core::exec_tool_result::ExecToolResultPayload;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::ToolContext;
 use everruns_platform::session_sandbox::{
     SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
     SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,

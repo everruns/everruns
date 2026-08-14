@@ -1,3 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["app", "builtin-pack", "capability-pack", "event-log", "provider-pack"]
+members = [
+    "app",
+    "builtin-pack",
+    "capability-pack",
+    "event-log",
+    "execution-contracts",
+    "provider-pack",
+]

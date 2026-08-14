@@ -9,8 +9,11 @@ use async_trait::async_trait;
 use everruns_core::ard_attachment::{ArdAttachment, ArdAttachmentTarget};
 use everruns_core::error::Result;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
+    tool_context::ToolContext,
+};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use wiremock::matchers::{method, path};

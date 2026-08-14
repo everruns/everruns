@@ -29,7 +29,7 @@ use crate::hook_executor::{
     BashExecOutput, BashHookDispatcher, ExecutorOpts, HOOK_PAYLOAD_DIR, HOOK_PAYLOAD_WORKSPACE_DIR,
     HookPayload, payload_filename, standard_hook_env,
 };
-use crate::traits::SessionFileSystem;
+use everruns_core::session_files::SessionFileSystem;
 
 /// Trimmed-down ExecutionLimits for hook commands. Hooks are short,
 /// side-effect-y scripts, not agent-authored programs: keep the
@@ -219,10 +219,10 @@ mod tests {
     use crate::error::Result;
     use crate::hook_executor::{BashHookExecutor, HOOK_PAYLOAD_DIR, HookExecutor};
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use crate::user_hook_types::{HookEvent, HookId, HookOutcome};
     use chrono::Utc;
+    use everruns_core::session_files::SessionFileSystem;
     use serde_json::json;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -663,7 +663,7 @@ mod tests {
             connection_required: None,
             raw_output: None,
         };
-        let ctx = crate::traits::ToolContext::new(SessionId::from(Uuid::nil()));
+        let ctx = crate::ToolContext::new(SessionId::from(Uuid::nil()));
 
         adapter
             .after_exec(&tool_call, &tool_def, &mut result, &ctx)
@@ -790,7 +790,7 @@ mod tests {
             hints: ToolHints::default(),
             full_parameters: None,
         });
-        let ctx = crate::traits::ToolContext::new(SessionId::from(Uuid::nil()));
+        let ctx = crate::ToolContext::new(SessionId::from(Uuid::nil()));
 
         // 1. Destructive call → matcher fires → executor returns Block.
         let bad = crate::tool_types::ToolCall {

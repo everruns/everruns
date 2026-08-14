@@ -26,9 +26,9 @@ use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tool_types::ToolCall;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use everruns_core::traits::{EventEmitter, ResolvedModel};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_core::{event_emitter::EventEmitter, provider_resolution::ResolvedModel};
 use everruns_host::{
     EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
@@ -165,7 +165,7 @@ pub struct InMemoryAgenticLoopBuilder {
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
     parallel_tool_calls: Option<bool>,
-    reasoning_effort_handle: Option<everruns_core::traits::ReasoningEffortHandle>,
+    reasoning_effort_handle: Option<everruns_core::tool_context::ReasoningEffortHandle>,
 }
 
 impl Default for InMemoryAgenticLoopBuilder {
@@ -197,7 +197,7 @@ impl InMemoryAgenticLoopBuilder {
     /// same `run_turn` observe the new effort.
     pub fn reasoning_effort_handle(
         mut self,
-        handle: everruns_core::traits::ReasoningEffortHandle,
+        handle: everruns_core::tool_context::ReasoningEffortHandle,
     ) -> Self {
         self.reasoning_effort_handle = Some(handle);
         self
@@ -236,7 +236,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::traits::ResolvedModel;
+    /// use everruns_core::provider_resolution::ResolvedModel;
     /// use everruns_core::provider::DriverId;
     ///
     /// let model = ResolvedModel {
@@ -522,7 +522,7 @@ pub struct InMemoryAgenticLoop {
     reason_atom: Arc<ReasonAtom>,
     act_atom: Arc<ActAtom<ToolRegistry, HostEventEmitter>>,
     max_iterations: usize,
-    reasoning_effort_handle: Option<everruns_core::traits::ReasoningEffortHandle>,
+    reasoning_effort_handle: Option<everruns_core::tool_context::ReasoningEffortHandle>,
 }
 
 impl InMemoryAgenticLoop {

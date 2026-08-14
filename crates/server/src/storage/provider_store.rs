@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, ModelId, Result, StoreResultExt,
     provider::DriverId,
-    traits::{ProviderStore, ResolvedModel},
+    {provider_resolution::ProviderStore, provider_resolution::ResolvedModel},
 };
 
 use super::{encryption::EncryptionService, repositories::Database};

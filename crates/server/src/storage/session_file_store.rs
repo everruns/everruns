@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, Result,
     SessionFile, SessionId, StoreResultExt, session_file::build_grep_search_result,
-    traits::SessionFileSystem,
+    session_files::SessionFileSystem,
 };
 use regex::Regex;
 

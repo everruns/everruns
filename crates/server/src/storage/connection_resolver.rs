@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Duration, Utc};
-use everruns_core::traits::UserConnectionResolver;
+use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{AgentLoopError, EgressService, McpServerAuthMode, Result};
 use moka::sync::Cache;
@@ -577,7 +577,7 @@ mod tests {
     use super::*;
     use crate::storage::InMemoryDatabase;
     use crate::storage::models::{CreateMcpServerRow, CreateSessionRow, CreateUserConnectionRow};
-    use everruns_core::traits::UserConnectionResolver;
+    use everruns_core::connection_services::UserConnectionResolver;
     use everruns_core::{DEFAULT_ORG_ID, PrincipalId};
     use std::sync::atomic::{AtomicUsize, Ordering};
 

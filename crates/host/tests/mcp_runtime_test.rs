@@ -13,8 +13,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::{
     AgentCapabilityConfig, Capability, CapabilityRegistry, CapabilityStatus, DriverId,
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
-    ResolvedModel, ScopedMcpServer, ScopedMcpServers, Tool, ToolCall, ToolContext,
-    ToolExecutionResult, ToolResult,
+    ScopedMcpServer, ScopedMcpServers, Tool, ToolCall, ToolExecutionResult, ToolResult,
+    provider_resolution::ResolvedModel, tool_context::ToolContext,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};

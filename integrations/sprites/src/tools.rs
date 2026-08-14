@@ -1,11 +1,11 @@
 //! Tool implementations for Sprites operations.
 
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

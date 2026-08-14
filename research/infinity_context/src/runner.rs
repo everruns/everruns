@@ -17,7 +17,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::provider::DriverId;
-use everruns_core::traits::ResolvedModel;
+use everruns_core::provider_resolution::ResolvedModel;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

@@ -5,8 +5,8 @@
 // `BackgroundExecutableTool` implementation.
 
 use crate::error::Result;
+use crate::tool_context::ToolContext;
 use crate::tools::ToolExecutionResult;
-use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

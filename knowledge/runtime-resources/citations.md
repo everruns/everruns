@@ -28,7 +28,8 @@ in [Phasing](#phasing).
 
 Grounding already exists in everruns, but it dies as opaque tool-result JSON:
 `search_index` returns `KnowledgeIndexCitation` (`crates/platform/src/vector_store.rs`)
-and `search_knowledge` returns `KnowledgeSearchHit` (`crates/core/src/traits.rs`),
+and `search_knowledge` returns `KnowledgeSearchHit`
+(`crates/platform/src/knowledge_store.rs`),
 each carrying a stable id (`kchk_…` / `kbe_…`), `source_uri`, `location`, and a
 `snippet`. But nothing ties those sources to the *specific sentence* the model
 wrote, nothing renders them as a linkable affordance (there is no citation UI

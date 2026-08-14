@@ -28,7 +28,7 @@ use everruns_core::events::{
     VoiceSessionEndedData, VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
 };
 use everruns_core::message::ExecutionPhase;
-use everruns_core::traits::LeasedResourceStore;
+use everruns_core::session_services::LeasedResourceStore;
 use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
     Caller, ContentPart, Event, InputContentPart, LeasedResource, ServiceKind, ToolCall,

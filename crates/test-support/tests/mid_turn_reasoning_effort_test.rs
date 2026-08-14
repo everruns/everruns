@@ -15,7 +15,7 @@ use everruns_core::message::{ContentPart, MessageRole};
 use everruns_core::message::{Controls, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{ReasoningEffortHandle, ToolContext};
+use everruns_core::{tool_context::ReasoningEffortHandle, tool_context::ToolContext};
 use everruns_test_support::InMemoryAgenticLoop;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 

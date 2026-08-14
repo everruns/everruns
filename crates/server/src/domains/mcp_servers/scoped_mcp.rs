@@ -7,8 +7,8 @@
 
 use anyhow::{Result, anyhow};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
+use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
     Capability, EgressService, McpServerAuthMode, ScopedMcpServers, SessionId, ToolDefinition,
     merge_scoped_mcp_servers, resolve_runtime_capabilities, validate_safe_url,

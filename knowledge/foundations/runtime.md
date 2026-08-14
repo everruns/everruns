@@ -42,8 +42,11 @@ so embedded execution stays behaviorally aligned with the main runtime.
 `everruns-host` sits above `everruns-core` and below Framework adaptation or
 any host application.
 
-- `everruns-core` owns atoms, traits, capabilities, event types, and shared
-  domain/runtime types.
+- `everruns-core` owns atoms, neutral per-turn contracts, capabilities, event
+  types, and shared domain/runtime types. Contracts are grouped by execution
+  concern (`tool_context`, `execution_loading`, `provider_resolution`,
+  `session_files`, `durability`, and sibling modules), never in a catch-all
+  service bag.
 - `everruns-host` owns embedder-facing orchestration, in-memory stores, turn
   execution, runtime seeding helpers, reusable host-phase execution, and shared
   turn-strategy planning.
@@ -147,6 +150,11 @@ declare hard service requirements, and host assembly validates the active
 registry before reason exposes its definitions to the model. Missing services
 are configuration errors that name the tool and service; deliberately
 service-free tests may continue to use `ToolContext::new`.
+
+Deployment-selected construction is a host concern. In particular,
+`SessionFileSystemFactory` and its type-erased factory context live in
+`everruns-host`; core retains only the `SessionFileSystem` effect contract and
+the workspace-scoping adapter used by turn execution.
 
 Host planning APIs:
 

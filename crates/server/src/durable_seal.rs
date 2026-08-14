@@ -18,11 +18,11 @@
 
 use std::sync::Arc;
 
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, OutputMessageCompletedData, SessionIdledData,
     TurnSealedData,
 };
-use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{MessageId, SessionId, TurnId};
 use everruns_core::{Caller, Message, TURN_STARTED, UserFacingError, user_facing_error_codes};
 use everruns_durable::SealedTaskInfo;

@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::traits::SessionScheduleStore;
+use crate::session_services::SessionScheduleStore;
 use crate::typed_id::SessionId;
 use crate::user_facing_error::UserFacingErrorFields;
 use serde_json::Value;

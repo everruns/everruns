@@ -7,12 +7,12 @@ use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result as CoreResult};
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventData, EventRequest, OutputMessageCompletedData};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
 use everruns_core::tools::ToolResultImage;
-use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;

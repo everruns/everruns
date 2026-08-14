@@ -31,8 +31,8 @@ use crate::tool_output_sanitizer::{
     output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
+use everruns_core::{session_files::SessionFileSystem, tool_context::ToolContext};
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
 const MAX_PERSISTED_STREAM_BYTES: usize = 1024 * 1024; // 1 MiB
@@ -550,8 +550,8 @@ mod tests {
 
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileSystem;
     use chrono::Utc;
+    use everruns_core::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
     use uuid::Uuid;

@@ -10,8 +10,10 @@
 // lease refresh.
 
 use anyhow::{Result, anyhow};
-use everruns_core::traits::{SessionStorageStore, UserConnectionResolver};
 use everruns_core::{LeasedResource, SessionId};
+use everruns_core::{
+    connection_services::UserConnectionResolver, session_services::SessionStorageStore,
+};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 

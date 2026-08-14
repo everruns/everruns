@@ -16,16 +16,19 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::traits::{
-    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, PaymentAuthority,
-    ProviderCredentialStore, ResolvedImage, ResolvedModel, SessionCreationAuthority,
-};
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
     AgentDefinition, DriverRegistry, EgressService, ExecutionSession, HarnessDefinition, Message,
     MessageHistory, MessageQuery, ToolDefinition, UtilityLlmService,
+};
+use everruns_core::{
+    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
+    image_services::ImageArtifactStore, image_services::ImageResolver,
+    image_services::ResolvedImage, provider_resolution::ResolvedModel,
+    session_services::LeasedResourceStore, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 // EVE-877: the stored Agent record moved to `everruns-platform`. WorkerAdapters
 // still transports it between control plane and worker; host/engine only ever
@@ -278,7 +281,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Get the session storage store for kv_store/secret_store tools.
-    fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore>;
+    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore>;
 
     /// Get the image artifact store for tool-side image persistence.
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore>;
@@ -301,7 +304,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     ) -> Arc<dyn everruns_platform::PlatformStore>;
 
     /// Get the user connection resolver for lazy token lookup.
-    fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
+    fn connection_resolver(
+        &self,
+    ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver>;
 
     /// Get the Knowledge Index search service for the `search_index` tool,
     /// scoped to the given org. Returns None when retrieval is not available
@@ -321,7 +326,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// without the registry RPC — follow-up work).
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
         None
     }
 
@@ -336,7 +341,10 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
-    fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
+    fn schedule_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore>;
 
     /// Get the budget checker for the current turn, if available.
     ///
@@ -376,19 +384,23 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
         None
     }
 
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable idempotency — suitable for dev/test environments).
-    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+    fn durable_tool_result_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
         None
     }
 
     /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
     /// Default: `None` (no spawn dedup — suitable for dev/test environments).
-    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+    fn subagent_spawn_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
         None
     }
 
@@ -399,7 +411,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::durability::StreamHeartbeater>> {
         None
     }
 
@@ -574,7 +586,7 @@ pub type AdapterSessionFileStore<A> = SessionAdapter<A>;
 // --- Org-scoped trait impls ---
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::execution_loading::AgentStore for OrgAdapter<A> {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<AgentDefinition>> {
         // Loading seam (EVE-877): project the stored record into the portable
         // execution definition; archived/deleted records fail here, before
@@ -604,7 +616,7 @@ impl<A: WorkerAdapters> everruns_core::traits::AgentStore for OrgAdapter<A> {
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::execution_loading::HarnessStore for OrgAdapter<A> {
     async fn get_harness(&self, harness_id: HarnessId) -> Result<Option<HarnessDefinition>> {
         // Loading seam (EVE-881): WorkerAdapters transports the pre-merged
         // stored record; project it into the portable execution definition,
@@ -634,7 +646,7 @@ impl<A: WorkerAdapters> everruns_core::traits::HarnessStore for OrgAdapter<A> {
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::execution_loading::SessionStore for OrgAdapter<A> {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         self.adapters
             .get_session(self.org_id, session_id.uuid())
@@ -656,7 +668,7 @@ impl<A: WorkerAdapters> everruns_platform::SessionMutator for OrgAdapter<A> {
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::ProviderStore for OrgAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::provider_resolution::ProviderStore for OrgAdapter<A> {
     async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         self.adapters
             .get_resolved_model(self.org_id, model_id.uuid())
@@ -711,7 +723,7 @@ impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for SessionAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::event_emitter::EventEmitter for SessionAdapter<A> {
     async fn emit(&self, mut request: EventRequest) -> Result<Event> {
         if let Some(extra) = &self.event_metadata {
             let mut metadata = request
@@ -729,7 +741,7 @@ impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for SessionAdapter<A
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionFileSystem for SessionAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::session_files::SessionFileSystem for SessionAdapter<A> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.adapters.read_file(session_id.uuid(), path).await
     }

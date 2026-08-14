@@ -14,9 +14,10 @@ use anyhow::Context;
 use async_trait::async_trait;
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, Event, EventData, EventListener, LeasedResourceStore,
-    SessionResourceRegistry, SessionStorageStore, ToolContext, UserConnectionResolver,
-    merge_capabilities,
+    AgentCapabilityConfig, Event, EventData, EventListener,
+    connection_services::UserConnectionResolver, merge_capabilities,
+    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
+    session_services::SessionStorageStore, tool_context::ToolContext,
 };
 use everruns_platform::session_sandbox::{
     SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
@@ -258,7 +259,10 @@ impl EventListener for SessionSandboxEventListener {
 mod tests {
     use super::*;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::{DEFAULT_ORG_ID, InitialFile, SessionStorageStore, UserConnectionResolver};
+    use everruns_core::{
+        DEFAULT_ORG_ID, InitialFile, connection_services::UserConnectionResolver,
+        session_services::SessionStorageStore,
+    };
     use everruns_platform::session_sandbox::{
         SessionSandboxExecRequest, SessionSandboxExecResponse, SessionSandboxInstance,
         SessionSandboxProvider, SessionSandboxReadFileResponse, SessionSandboxState,

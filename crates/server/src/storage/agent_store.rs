@@ -13,7 +13,7 @@ use crate::max_iterations;
 use async_trait::async_trait;
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, AgentId, DependencyBlocker, Result, StoreResultExt,
-    from_json, traits::AgentStore,
+    execution_loading::AgentStore, from_json,
 };
 use everruns_platform::{Agent, AgentStatus};
 

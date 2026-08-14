@@ -1248,7 +1248,7 @@ impl WorkerService for WorkerServiceImpl {
             limit: req.limit as usize,
             max_bytes: req.max_bytes as usize,
         };
-        let grep_result = everruns_core::SessionFileSystem::grep_files_with_options(
+        let grep_result = everruns_core::session_files::SessionFileSystem::grep_files_with_options(
             &self.session_file_service,
             everruns_core::SessionId::from_uuid(session_id),
             &req.pattern,
@@ -4690,7 +4690,7 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<ExecuteMachinePaymentRequest>,
     ) -> Result<Response<ExecuteMachinePaymentResponse>, Status> {
         use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
-        use everruns_core::traits::PaymentAuthority;
+        use everruns_core::tool_execution::PaymentAuthority;
         use everruns_core::typed_id::{AgentId, SessionId};
 
         let req = request.into_inner();

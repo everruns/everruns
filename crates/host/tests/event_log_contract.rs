@@ -2,13 +2,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use async_trait::async_trait;
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     Event, EventContext, EventRequest, InputMessageData, OutputMessageCompletedData,
     OutputMessageDeltaData, OutputMessageReplacedData, ToolCompletedData, TurnStartedData,
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_core::traits::EventEmitter;
 use everruns_core::{EventId, MessageId, SessionId, TurnId};
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest,

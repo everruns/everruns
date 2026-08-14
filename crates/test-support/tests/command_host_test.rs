@@ -3,7 +3,7 @@
 // Moved from `everruns-core` (EVE-875): core no longer ships the simulator,
 // so these tests live with the test-support crate that does.
 
-use everruns_core::traits::ResolvedModel;
+use everruns_core::provider_resolution::ResolvedModel;
 use everruns_core::user_facing_error::UserFacingErrorContext;
 use everruns_core::{
     AgentLoopError, CapabilityRegistry, DisabledCommandHost, DriverRegistry, SessionId,

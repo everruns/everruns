@@ -45,7 +45,7 @@ pub struct PlatformCreateSessionRequest {
 }
 
 /// The narrow set of child-session operations a delegation provider needs.
-/// Implemented by a host adapter and carried on [`ToolContext`](crate::ToolContext)
+/// Implemented by a host adapter and carried on [`ToolContext`](crate::tool_context::ToolContext)
 /// as an optional service.
 #[async_trait]
 pub trait SubagentSessionDelegate: Send + Sync {

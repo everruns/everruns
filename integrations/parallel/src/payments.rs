@@ -13,11 +13,11 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_narration::{
     generic_phrase, labeled_phrase, safe_arg_str, truncate, url_display,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use serde::Deserialize;
 use serde_json::{Value, json};
 

@@ -21,12 +21,13 @@ use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::{ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
-use crate::traits::{SessionFileSystem, ToolContext, ToolContextService};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
 };
+use everruns_core::session_files::SessionFileSystem;
+use everruns_core::tool_context::{ToolContext, ToolContextService};
 use everruns_core::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -2237,9 +2238,9 @@ mod tests {
     }
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use chrono::Utc;
+    use everruns_core::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;

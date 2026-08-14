@@ -103,7 +103,7 @@ fn build_connection_resolver(
     encryption: &Arc<EncryptionService>,
     auth_config: &auth::AuthConfig,
     egress: Arc<dyn everruns_core::EgressService>,
-) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
     Arc::new(crate::storage::DbConnectionResolver::new(
         db.as_ref().clone(),
         encryption.as_ref().clone(),
@@ -117,7 +117,7 @@ fn optional_connection_resolver(
     encryption: &Option<Arc<EncryptionService>>,
     auth_config: &auth::AuthConfig,
     egress: Arc<dyn everruns_core::EgressService>,
-) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
     encryption
         .as_ref()
         .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
@@ -769,11 +769,12 @@ impl ServerAppBuilder {
             match db.as_ref() {
                 crate::storage::StorageBackend::Postgres(database) => match &encryption {
                     Some(enc) => {
-                        let storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
-                            Arc::new(crate::storage::create_db_session_storage_store(
-                                database.clone(),
-                                enc.as_ref().clone(),
-                            ));
+                        let storage_store: Arc<
+                            dyn everruns_core::session_services::SessionStorageStore,
+                        > = Arc::new(crate::storage::create_db_session_storage_store(
+                            database.clone(),
+                            enc.as_ref().clone(),
+                        ));
                         let connection_resolver = Some(build_connection_resolver(
                             &db,
                             enc,
@@ -2233,24 +2234,25 @@ impl ServerAppBuilder {
                         host_composition.egress_service(),
                     ),
                 );
-                let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
-                    match db.as_ref() {
-                        crate::storage::StorageBackend::Postgres(database) => {
-                            if let Some(enc) = &encryption {
-                                Arc::new(crate::storage::create_db_session_storage_store(
-                                    database.clone(),
-                                    enc.as_ref().clone(),
-                                ))
-                            } else {
-                                Arc::new(
+                let session_storage_store: Arc<
+                    dyn everruns_core::session_services::SessionStorageStore,
+                > = match db.as_ref() {
+                    crate::storage::StorageBackend::Postgres(database) => {
+                        if let Some(enc) = &encryption {
+                            Arc::new(crate::storage::create_db_session_storage_store(
+                                database.clone(),
+                                enc.as_ref().clone(),
+                            ))
+                        } else {
+                            Arc::new(
                                 crate::storage::create_db_session_storage_store_without_encryption(
                                     database.clone(),
                                 ),
                             )
-                            }
                         }
-                        crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
-                    };
+                    }
+                    crate::storage::StorageBackend::InMemory(mem_db) => mem_db.clone(),
+                };
 
                 let mut adapters = DirectWorkerAdapters::new(
                     db.clone(),
@@ -2285,14 +2287,15 @@ impl ServerAppBuilder {
                 // decrypt stored tokens, so install a no-op resolver instead of leaving the
                 // slot empty — `runtime_host::connection_resolver()` always calls into the
                 // adapter at runtime and would otherwise panic.
-                let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
-                    optional_connection_resolver(
-                        &db,
-                        &encryption,
-                        &auth_config,
-                        host_composition.egress_service(),
-                    )
-                    .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
+                let connection_resolver: Arc<
+                    dyn everruns_core::connection_services::UserConnectionResolver,
+                > = optional_connection_resolver(
+                    &db,
+                    &encryption,
+                    &auth_config,
+                    host_composition.egress_service(),
+                )
+                .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
                 adapters = adapters.with_connection_resolver(connection_resolver);
 
                 let worker_config = TaskWorkerConfig::dev_mode();

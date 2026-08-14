@@ -13,9 +13,11 @@ use everruns_core::resource_ownership::{
     LEASED_RESOURCE_TYPE_KEY,
 };
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
-use everruns_core::traits::{LeasedResourceStore, SessionResourceRegistry};
 use everruns_core::{
     AgentLoopError, LeasedResource, LeasedResourceStatus, Result, SessionId, UpsertLeasedResource,
+};
+use everruns_core::{
+    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
 };
 
 use super::backend::StorageBackend;
@@ -266,7 +268,7 @@ mod tests {
         LEASED_RESOURCE_EXTERNAL_ID_KEY, LEASED_RESOURCE_ID_KEY, LEASED_RESOURCE_PROVIDER_KEY,
         LEASED_RESOURCE_TYPE_KEY,
     };
-    use everruns_core::traits::SessionResourceRegistry;
+    use everruns_core::session_services::SessionResourceRegistry;
     use serde_json::json;
 
     async fn create_test_session(db: &StorageBackend) -> SessionId {

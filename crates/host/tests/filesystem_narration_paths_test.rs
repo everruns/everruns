@@ -13,13 +13,15 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_narration::{
     ToolNarrationContext, ToolNarrationPhase, narrate_list_directory,
 };
-use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionStore,
-};
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, EventData, ExecutionSession, HarnessDefinition, MountFs,
     SessionExecutionState, ToolCall, WorkspaceRootSet,
+};
+use everruns_core::{
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem,
 };
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,

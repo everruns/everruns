@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use everruns_core::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
-use everruns_core::traits::SessionResourceRegistry;
+use everruns_core::session_services::SessionResourceRegistry;
 use everruns_core::{AgentLoopError, Result, SessionId};
 
 use super::backend::StorageBackend;

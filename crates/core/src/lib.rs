@@ -6,9 +6,13 @@
 //! the control plane.
 //!
 //! The crate is deliberately storage-agnostic. Agent execution is expressed in
-//! terms of traits such as [`MessageRetriever`], [`ToolExecutor`],
+//! terms of focused contracts such as [`MessageRetriever`], [`ToolExecutor`],
 //! [`EventEmitter`], and [`ProviderStore`], while host crates decide whether
 //! those traits are backed by memory, PostgreSQL, gRPC, or another system.
+//! Per-turn contracts are grouped by concern in modules such as
+//! [`tool_context`], [`execution_loading`], [`provider_resolution`],
+//! [`session_files`], [`durability`], and [`event_emitter`]; there is no
+//! catch-all service-traits module.
 //!
 //! # Main Surfaces
 //!
@@ -198,19 +202,29 @@ pub use tool_call_integrity::{
     retain_complete_llm_tool_exchanges, retain_complete_llm_tool_exchanges_for_request,
     retain_complete_message_tool_exchanges,
 };
+pub mod connection_services;
+pub mod delegation_services;
+pub mod durability;
+pub mod event_emitter;
+pub mod execution_loading;
+pub mod image_services;
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
+pub mod provider_resolution;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
+pub mod session_files;
+pub mod session_services;
 /// Narrow child-session delegation contract: core owns the host-neutral
 /// interface and a host adapter supplies the implementation.
 pub mod subagent_delegation;
+pub mod tool_context;
+pub mod tool_execution;
 pub use everruns_provider::stream_accumulator;
 pub mod tool_output_sanitizer;
 pub mod tools;
-pub mod traits;
 pub mod truncation_info;
 pub use everruns_provider::user_facing_error;
 
@@ -236,14 +250,23 @@ pub use command_host::{
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
+pub use connection_services::UserConnectionResolver;
+pub use delegation_services::{SpawnClaimResult, SubagentNestingPolicy, SubagentSpawnStore};
+pub use durability::{
+    DurableToolResultStore, PartialStreamState, PartialStreamStore, StreamHeartbeater,
+    StreamProgress, ToolCallClaimResult,
+};
 pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
+pub use event_emitter::EventEmitter;
+pub use execution_loading::{HarnessStore, SessionStore};
 pub use execution_snapshot::{
     ResolvedExecutionSnapshot, SnapshotMcpServer, load_execution_snapshot,
     load_execution_snapshot_for_session,
 };
+pub use image_services::{ImageResolver, ResolvedImage};
 pub use llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
@@ -259,22 +282,18 @@ pub use message_filter::{
 };
 pub use message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
+pub use provider_resolution::{ProviderStore, ResolvedModel};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
     AssembledTurnContext, ResolvedRuntimeCapabilities, assemble_turn_context, inspect_turn_context,
     resolve_runtime_capabilities,
 };
-pub use traits::{
-    DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, KeyInfo, LeasedResourceStore, NoopDurableToolResultStore, NoopEventEmitter,
-    NoopPartialStreamStore, NoopStreamHeartbeater, NoopSubagentSpawnStore, OutboundToolRateLimiter,
-    PartialStreamState, PartialStreamStore, ProviderStore, ReasoningEffortHandle, ResolvedImage,
-    ResolvedModel, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionResourceRegistry, SessionStorageStore, SessionStore,
-    SpawnClaimResult, StreamHeartbeater, StreamProgress, SubagentNestingPolicy, SubagentSpawnStore,
-    ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
-    WorkspaceScopedFileSystem,
+pub use session_files::{SessionFileSystem, WorkspaceScopedFileSystem};
+pub use session_services::{
+    KeyInfo, LeasedResourceStore, SecretInfo, SessionResourceRegistry, SessionStorageStore,
 };
+pub use tool_context::{ReasoningEffortHandle, ToolContext};
+pub use tool_execution::{OutboundToolRateLimiter, ToolExecutor};
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,

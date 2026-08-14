@@ -20,6 +20,9 @@
 #                             SPI and replaces every default `HostBackends`
 #                             store through public traits, so downstream host
 #                             composition fails here if a seam closes.
+#   external-execution-contracts implements a neutral per-turn event contract
+#                             from core and the host-owned filesystem factory,
+#                             without importing platform.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under
@@ -64,3 +67,8 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-event-log
 
 echo "External event log implements the public host SPI under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-execution-contracts
+
+echo "External execution contracts compile against focused core and host seams under -D warnings."

@@ -14,7 +14,7 @@
 use async_trait::async_trait;
 use everruns_core::{
     AgentCapabilityConfig, AgentLoopError, HarnessDefinition, HarnessId, Result, StoreResultExt,
-    from_json, traits::HarnessStore,
+    execution_loading::HarnessStore, from_json,
 };
 use everruns_platform::{Harness, HarnessStatus, resolve_execution_harness};
 use std::collections::HashSet;

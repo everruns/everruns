@@ -2,8 +2,11 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::traits::{KeyInfo, SecretInfo, ToolContext, UserConnectionResolver};
-use everruns_core::{SessionStorageStore, typed_id::SessionId};
+use everruns_core::{
+    connection_services::UserConnectionResolver, session_services::KeyInfo,
+    session_services::SecretInfo, tool_context::ToolContext,
+};
+use everruns_core::{session_services::SessionStorageStore, typed_id::SessionId};
 use everruns_platform::session_sandbox::{
     SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxInstance,
     create_session_sandbox_provider,

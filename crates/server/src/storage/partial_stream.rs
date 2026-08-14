@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use everruns_core::error::AgentLoopError;
-use everruns_core::traits::{PartialStreamState, PartialStreamStore};
 use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_core::{durability::PartialStreamState, durability::PartialStreamStore};
 use sqlx::PgPool;
 
 /// PostgreSQL-backed partial-stream store.
