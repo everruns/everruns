@@ -2,7 +2,10 @@
 
 use async_trait::async_trait;
 use everruns_core::error::AgentLoopError;
-use everruns_core::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+use everruns_core::{
+    durability::DurableToolCallStatus, durability::DurableToolResultStore,
+    durability::ToolCallClaimResult,
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 

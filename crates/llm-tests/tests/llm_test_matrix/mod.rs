@@ -9,7 +9,7 @@
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
-use everruns_core::traits::ResolvedModel;
+use everruns_core::provider_resolution::ResolvedModel;
 use everruns_test_support::in_memory_loop::TurnResult;
 
 // ============================================================================

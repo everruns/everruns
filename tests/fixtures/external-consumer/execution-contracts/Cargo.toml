@@ -1,0 +1,10 @@
+[package]
+name = "external-execution-contracts"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+async-trait = "0.1"
+everruns-core = { path = "../../../../crates/core" }
+everruns-host = { path = "../../../../crates/host", default-features = false }

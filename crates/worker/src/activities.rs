@@ -98,7 +98,7 @@ pub async fn reason_activity(
     org_id: i64,
     input: ReasonInput,
     host_composition: &HostComposition,
-    stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>>,
+    stream_heartbeater: Option<Arc<dyn everruns_core::durability::StreamHeartbeater>>,
 ) -> Result<ReasonResult> {
     tracing::info!(
         org_id = org_id,

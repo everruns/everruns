@@ -27,7 +27,7 @@ use anyhow::Result;
 use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskError, find_task_executor,
 };
-use everruns_core::traits::ToolContext;
+use everruns_core::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -636,7 +636,7 @@ mod tests {
         async fn start(
             &self,
             task: &SessionTask,
-            context: &everruns_core::traits::ToolContext,
+            context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             assert!(
                 context.file_store.is_some(),
@@ -649,7 +649,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::traits::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -666,7 +666,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::traits::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -687,7 +687,7 @@ mod tests {
         async fn start(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::traits::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Err(everruns_core::error::AgentLoopError::tool(
                 "simulated start failure",
@@ -697,7 +697,7 @@ mod tests {
         async fn cancel(
             &self,
             _task: &SessionTask,
-            _context: &everruns_core::traits::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
         ) -> CoreResult<()> {
             Ok(())
         }
@@ -708,7 +708,7 @@ mod tests {
     struct MockStorageStore;
 
     #[async_trait]
-    impl everruns_core::traits::SessionStorageStore for MockStorageStore {
+    impl everruns_core::session_services::SessionStorageStore for MockStorageStore {
         async fn set_value(
             &self,
             _session_id: SessionId,
@@ -733,7 +733,7 @@ mod tests {
         async fn list_keys(
             &self,
             _session_id: SessionId,
-        ) -> CoreResult<Vec<everruns_core::KeyInfo>> {
+        ) -> CoreResult<Vec<everruns_core::session_services::KeyInfo>> {
             Ok(vec![])
         }
 
@@ -761,7 +761,7 @@ mod tests {
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> CoreResult<Vec<everruns_core::SecretInfo>> {
+        ) -> CoreResult<Vec<everruns_core::session_services::SecretInfo>> {
             Ok(vec![])
         }
     }
@@ -770,7 +770,7 @@ mod tests {
     struct MockFileStore;
 
     #[async_trait]
-    impl everruns_core::traits::SessionFileSystem for MockFileStore {
+    impl everruns_core::session_files::SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -871,9 +871,10 @@ mod tests {
         // executor_for(kind) → None means "not found / non-reattachable"
         executor_for: impl Fn(&str) -> Option<Arc<dyn TaskExecutor>>,
     ) -> serde_json::Value {
-        let storage: Arc<dyn everruns_core::traits::SessionStorageStore> =
+        let storage: Arc<dyn everruns_core::session_services::SessionStorageStore> =
             Arc::new(MockStorageStore);
-        let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(MockFileStore);
+        let file_store: Arc<dyn everruns_core::session_files::SessionFileSystem> =
+            Arc::new(MockFileStore);
         let registry_dyn: Arc<dyn SessionTaskRegistry> = registry;
 
         let summary =

@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use crate::atoms::{PreToolUseDecision, PreToolUseHook};
 use crate::capabilities::{Capability, CapabilityStatus};
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::ToolContext;
 use crate::typed_id::SessionId;
+use everruns_core::tool_context::ToolContext;
 
 pub const TOOL_APPROVAL_CAPABILITY_ID: &str = "tool_approval";
 

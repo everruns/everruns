@@ -225,7 +225,9 @@ mod tests {
     use crate::domains::session_sandbox::SessionSandboxService;
     use crate::domains::sessions::SessionService;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, SessionStorageStore};
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, InitialFile, session_services::SessionStorageStore,
+    };
     use everruns_platform::session_sandbox::{
         SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,
         SessionSandboxInstance, SessionSandboxProvider, SessionSandboxReadFileResponse,
@@ -250,7 +252,7 @@ mod tests {
 
         async fn create(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
             Ok(SessionSandboxInstance {
@@ -264,7 +266,7 @@ mod tests {
 
         async fn resume(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -273,7 +275,7 @@ mod tests {
 
         async fn pause(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             instance: &SessionSandboxInstance,
         ) -> Result<SessionSandboxInstance, everruns_core::ToolExecutionResult> {
@@ -282,7 +284,7 @@ mod tests {
 
         async fn delete(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
         ) -> Result<(), everruns_core::ToolExecutionResult> {
@@ -291,7 +293,7 @@ mod tests {
 
         async fn exec(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             _request: &SessionSandboxExecRequest,
@@ -310,7 +312,7 @@ mod tests {
 
         async fn read_file(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -324,7 +326,7 @@ mod tests {
 
         async fn write_file(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             _instance: &SessionSandboxInstance,
             path: &str,
@@ -338,7 +340,7 @@ mod tests {
 
         async fn status(
             &self,
-            _context: &everruns_core::ToolContext,
+            _context: &everruns_core::tool_context::ToolContext,
             _config: &SessionSandboxConfig,
             state: &everruns_platform::session_sandbox::SessionSandboxState,
         ) -> Result<SessionSandboxStatusResponse, everruns_core::ToolExecutionResult> {

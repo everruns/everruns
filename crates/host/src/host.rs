@@ -19,18 +19,23 @@ use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::tools::Tool;
-use everruns_core::traits::{
-    AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
-    LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore,
-    SessionCreationAuthority, SessionFileSystem, SessionResourceRegistry, SessionScheduleStore,
-    SessionStorageStore, SessionStore, ToolContextServices, UserConnectionResolver,
-};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     ErrorDisclosure, ResolvedExecutionSnapshot, TokenUsage, ToolDefinition, ToolRegistry,
     UserFacingError, UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
     resolve_runtime_capabilities,
+};
+use everruns_core::{
+    connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
+    delegation_services::SessionCreationAuthority, event_emitter::EventEmitter,
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, image_services::ImageArtifactStore,
+    image_services::ImageResolver, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem, session_services::LeasedResourceStore,
+    session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
+    session_services::SessionStorageStore, tool_context::ToolContextServices,
+    tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
 };
 use everruns_platform::SessionMutator;
 use everruns_platform::capabilities::{
@@ -288,31 +293,37 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
         None
     }
 
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable claim/settle — every execution runs tools fresh).
-    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+    fn durable_tool_result_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
         None
     }
 
     /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
     /// Default: `None` (no spawn dedup — dev/test mode or hosts without durable execution).
-    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+    fn subagent_spawn_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
         None
     }
 
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
-    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::durability::StreamHeartbeater>> {
         None
     }
 
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
-    fn partial_stream_store(&self) -> Option<Arc<dyn everruns_core::PartialStreamStore>> {
+    fn partial_stream_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::durability::PartialStreamStore>> {
         None
     }
 
@@ -327,7 +338,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     fn reasoning_effort_handle(
         &self,
         _session_id: SessionId,
-    ) -> Option<everruns_core::ReasoningEffortHandle> {
+    ) -> Option<everruns_core::tool_context::ReasoningEffortHandle> {
         None
     }
 
@@ -360,12 +371,12 @@ struct RuntimeExecutionCapabilities {
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
     pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
-    subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
+    subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
 }
 
 fn subagent_nesting_policy_from_configs(
     resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
-) -> everruns_core::SubagentNestingPolicy {
+) -> everruns_core::delegation_services::SubagentNestingPolicy {
     let subagents_config = resolved_capability_configs.iter().find(|config| {
         config.capability_id() == everruns_platform::capabilities::SUBAGENTS_CAPABILITY_ID
     });
@@ -401,7 +412,7 @@ fn subagent_nesting_policy_from_configs(
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
 
-    everruns_core::SubagentNestingPolicy::default()
+    everruns_core::delegation_services::SubagentNestingPolicy::default()
         .with_agent_override(configured_depth)
         .with_agent_task_caps_override(configured_max_active, configured_max_total)
         .with_agent_detached_task_caps_override(
@@ -509,7 +520,8 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
-            subagent_nesting_policy: everruns_core::SubagentNestingPolicy::default(),
+            subagent_nesting_policy:
+                everruns_core::delegation_services::SubagentNestingPolicy::default(),
         });
     }
 
@@ -667,7 +679,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     agent_id: Option<AgentId>,
     tool_registry: Option<Arc<ToolRegistry>>,
     mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
-    subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
+    subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
 ) -> ToolContextServices {
     // EVE-839: the adapter still yields a hosted `PlatformStore`, but core no
     // longer names it. Thread it as the neutral delegation contract and, when
@@ -679,7 +691,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
             as Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>
     });
     let extensions = {
-        let mut extensions = everruns_core::traits::ToolContextExtensions::default();
+        let mut extensions = everruns_core::tool_context::ToolContextExtensions::default();
         if let Some(store) = platform_store {
             extensions.insert(Arc::new(everruns_platform::PlatformStoreExt(store)));
         }
@@ -1599,7 +1611,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         execution_capabilities.subagent_nesting_policy,
     );
     tool_registry.validate_context_services(&context_services)?;
-    let executor: Arc<dyn everruns_core::traits::ToolExecutor> = Arc::new(tool_registry);
+    let executor: Arc<dyn everruns_core::tool_execution::ToolExecutor> = Arc::new(tool_registry);
 
     let mut atom = ActAtom::new(executor, adapter.event_emitter())
         .with_context_services(context_services)

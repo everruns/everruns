@@ -59,13 +59,15 @@ use crate::output_guardrail::{
 };
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::{
-    AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, PartialStreamState, PartialStreamStore, ProviderStore, ResolvedImage,
-    ResolvedModel, SessionStore,
-};
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};
+use crate::{
+    durability::DurableToolCallStatus, durability::DurableToolResultStore,
+    durability::PartialStreamState, durability::PartialStreamStore, event_emitter::EventEmitter,
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, image_services::ImageResolver, image_services::ResolvedImage,
+    provider_resolution::ProviderStore, provider_resolution::ResolvedModel,
+};
 
 // ============================================================================
 // Helper Functions
@@ -891,9 +893,9 @@ pub struct ReasonAtom {
     image_resolver: Option<Arc<dyn ImageResolver>>,
     /// Optional file store for capabilities that need filesystem access
     /// (e.g., agent_instructions reads AGENTS.md, skills_discovery scans for skills)
-    file_store: Option<Arc<dyn crate::traits::SessionFileSystem>>,
+    file_store: Option<Arc<dyn crate::session_files::SessionFileSystem>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
-    stream_heartbeater: Option<Arc<dyn crate::traits::StreamHeartbeater>>,
+    stream_heartbeater: Option<Arc<dyn crate::durability::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
     /// Shared attempt/backoff/time budget for automatic provider recovery.
@@ -905,7 +907,7 @@ pub struct ReasonAtom {
     /// Optional live reasoning-effort handle (EVE-595). When set and holding a
     /// value, it overrides the message-derived effort on every LLM step, so a
     /// tool can change effort mid-turn and have subsequent steps observe it.
-    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
+    reasoning_effort_handle: Option<crate::tool_context::ReasoningEffortHandle>,
     /// Optional utility LLM service (EVE-573). Powers model-backed
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
@@ -915,7 +917,7 @@ pub struct ReasonAtom {
     /// limit resets. When absent, the capability degrades to a no-op (no
     /// continuation is scheduled and the error copy makes no auto-resume
     /// promise).
-    schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
+    schedule_store: Option<Arc<dyn crate::session_services::SessionScheduleStore>>,
     /// Optional durable store for replacement context checkpoints.
     compaction_checkpoint_store: Option<Arc<dyn crate::CompactionCheckpointStore>>,
 }
@@ -960,7 +962,7 @@ impl ReasonAtom {
     /// schedule a continuation after a provider usage limit resets.
     pub fn with_schedule_store(
         mut self,
-        store: Arc<dyn crate::traits::SessionScheduleStore>,
+        store: Arc<dyn crate::session_services::SessionScheduleStore>,
     ) -> Self {
         self.schedule_store = Some(store);
         self
@@ -1004,7 +1006,7 @@ impl ReasonAtom {
     /// system prompt content.
     pub fn with_file_store(
         mut self,
-        file_store: Arc<dyn crate::traits::SessionFileSystem>,
+        file_store: Arc<dyn crate::session_files::SessionFileSystem>,
     ) -> Self {
         self.file_store = Some(file_store);
         self
@@ -1030,7 +1032,7 @@ impl ReasonAtom {
     /// Set the stream heartbeater for liveness signalling during LLM streaming.
     pub fn with_stream_heartbeater(
         mut self,
-        heartbeater: Arc<dyn crate::traits::StreamHeartbeater>,
+        heartbeater: Arc<dyn crate::durability::StreamHeartbeater>,
     ) -> Self {
         self.stream_heartbeater = Some(heartbeater);
         self
@@ -1076,7 +1078,7 @@ impl ReasonAtom {
     /// subsequent steps in the same turn to use the new effort.
     pub fn with_reasoning_effort_handle(
         mut self,
-        handle: crate::traits::ReasoningEffortHandle,
+        handle: crate::tool_context::ReasoningEffortHandle,
     ) -> Self {
         self.reasoning_effort_handle = Some(handle);
         self
@@ -2893,7 +2895,7 @@ impl ReasonAtom {
                     },
                     _ = keepalive_ticker.tick() => {
                         if let Some(ref hb) = self.stream_heartbeater {
-                            hb.heartbeat(crate::traits::StreamProgress {
+                            hb.heartbeat(crate::durability::StreamProgress {
                                 accumulated_len: text.len() + thinking.len(),
                                 last_delta_at: last_token_at_unix,
                             })
@@ -3281,7 +3283,7 @@ impl ReasonAtom {
                 if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
                     && let Some(ref hb) = self.stream_heartbeater
                 {
-                    hb.heartbeat(crate::traits::StreamProgress {
+                    hb.heartbeat(crate::durability::StreamProgress {
                         accumulated_len: text.len() + thinking.len(),
                         last_delta_at: last_token_at_unix,
                     })
@@ -4122,7 +4124,7 @@ mod tests {
         use crate::events::EventContext;
         use crate::typed_id::SessionId;
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4147,7 +4149,7 @@ mod tests {
             Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
         ];
 
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4172,7 +4174,7 @@ mod tests {
             Message::user("Actually, never mind"),
         ];
 
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched =
@@ -4187,8 +4189,11 @@ mod tests {
     #[tokio::test]
     async fn test_repair_dangling_tool_calls_settled_result_replayed() {
         use crate::events::EventContext;
-        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
         use crate::typed_id::SessionId;
+        use crate::{
+            durability::DurableToolCallStatus, durability::DurableToolResultStore,
+            durability::ToolCallClaimResult,
+        };
 
         struct MockSettledStore;
         #[async_trait::async_trait]
@@ -4243,7 +4248,7 @@ mod tests {
         ];
 
         let store = MockSettledStore;
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4265,8 +4270,11 @@ mod tests {
     #[tokio::test]
     async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
         use crate::events::EventContext;
-        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
         use crate::typed_id::SessionId;
+        use crate::{
+            durability::DurableToolCallStatus, durability::DurableToolResultStore,
+            durability::ToolCallClaimResult,
+        };
 
         struct MockInterruptedStore;
         #[async_trait::async_trait]
@@ -4314,7 +4322,7 @@ mod tests {
         ];
 
         let store = MockInterruptedStore;
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4342,8 +4350,11 @@ mod tests {
     #[tokio::test]
     async fn test_repair_dangling_tool_calls_running_synthesized() {
         use crate::events::EventContext;
-        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
         use crate::typed_id::SessionId;
+        use crate::{
+            durability::DurableToolCallStatus, durability::DurableToolResultStore,
+            durability::ToolCallClaimResult,
+        };
 
         struct MockRunningStore;
         #[async_trait::async_trait]
@@ -4389,7 +4400,7 @@ mod tests {
         ];
 
         let store = MockRunningStore;
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4418,8 +4429,8 @@ mod tests {
     async fn test_repair_dangling_tool_calls_store_error_unknown() {
         use crate::error::AgentLoopError;
         use crate::events::EventContext;
-        use crate::traits::{DurableToolResultStore, ToolCallClaimResult};
         use crate::typed_id::SessionId;
+        use crate::{durability::DurableToolResultStore, durability::ToolCallClaimResult};
 
         struct MockErrorStore;
         #[async_trait::async_trait]
@@ -4449,7 +4460,8 @@ mod tests {
                 &self,
                 _turn_id: &str,
                 _tool_call_id: &str,
-            ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+            ) -> crate::error::Result<Option<crate::durability::DurableToolCallStatus>>
+            {
                 Err(AgentLoopError::tool("simulated store failure"))
             }
         }
@@ -4465,7 +4477,7 @@ mod tests {
         ];
 
         let store = MockErrorStore;
-        let emitter = crate::traits::NoopEventEmitter;
+        let emitter = crate::event_emitter::NoopEventEmitter;
         let session_id = SessionId::new();
         let ctx = EventContext::empty();
         let patched = repair_dangling_tool_calls(
@@ -4632,7 +4644,8 @@ mod tests {
     // ContinuePartial recovery tests (EVE-532)
     // =========================================================================
 
-    use crate::traits::{NoopPartialStreamStore, PartialStreamState, PartialStreamStore};
+    use crate::durability::NoopPartialStreamStore;
+    use crate::{durability::PartialStreamState, durability::PartialStreamStore};
 
     struct MockPartialStore(Option<PartialStreamState>);
 

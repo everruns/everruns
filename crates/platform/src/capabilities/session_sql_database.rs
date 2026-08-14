@@ -8,9 +8,9 @@
 use crate::session_sqldb::{SessionSqlDbError, SessionSqlDbStoreExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
 use serde_json::{Value, json};
 

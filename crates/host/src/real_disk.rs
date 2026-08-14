@@ -9,6 +9,7 @@
 // See `knowledge/runtime-resources/file-store.md` for the contract, path-namespace rules, and the
 // forward-compatibility plan with the mount-overlay resolver (Option B).
 
+use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_core::error::{AgentLoopError, Result};
@@ -16,9 +17,7 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
-use everruns_core::traits::{
-    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
-};
+use everruns_core::session_files::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{MountFs, WorkspaceRootSet};
 use ignore::WalkBuilder;

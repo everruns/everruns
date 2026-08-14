@@ -23,9 +23,9 @@ use everruns_core::session_task::{
     TaskWakePolicy, task_message_text,
 };
 use everruns_core::subagent_delegation::PlatformCreateSessionRequest;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::{AgentId, HarnessId};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -1374,11 +1374,11 @@ mod tests {
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
     use everruns_core::Result;
+    use everruns_core::connection_services::UserConnectionResolver;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart,
     };
     use everruns_core::tools::{Tool, ToolExecutionResult};
-    use everruns_core::traits::UserConnectionResolver;
     use everruns_core::typed_id::SessionId;
     use std::collections::HashSet;
     use std::sync::Arc;

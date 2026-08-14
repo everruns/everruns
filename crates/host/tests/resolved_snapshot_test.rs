@@ -165,7 +165,7 @@ async fn turn_execution_and_events_stay_free_of_secrets_and_platform_metadata() 
 struct ArchivedAtSeamAgentStore;
 
 #[async_trait::async_trait]
-impl everruns_core::traits::AgentStore for ArchivedAtSeamAgentStore {
+impl everruns_core::execution_loading::AgentStore for ArchivedAtSeamAgentStore {
     async fn get_agent(
         &self,
         agent_id: AgentId,

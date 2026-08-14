@@ -2090,7 +2090,7 @@ impl SessionService {
             }
         }
         let specs = everruns_core::hook_adapter::finalize_hook_specs(contributions, &disabled);
-        let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(
+        let file_store: Arc<dyn everruns_core::session_files::SessionFileSystem> = Arc::new(
             crate::domains::session_files::WorkspaceFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =

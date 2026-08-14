@@ -15,8 +15,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use futures::StreamExt;
 
+use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
-use everruns_core::traits::UserConnectionResolver;
 use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
 use everruns_platform::vector_store::{VectorRecord, VectorStore};
 use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};

@@ -15,7 +15,7 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
     AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
-    ResolvedModel, SessionId,
+    provider_resolution::ResolvedModel, SessionId,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};

@@ -17,9 +17,9 @@ use everruns_core::capabilities::{
 };
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use everruns_core::capability_types::{MountAccess, MountSource, VirtualFileTree};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use include_dir::{Dir, include_dir};
 use serde_json::{Value, json};

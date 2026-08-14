@@ -215,7 +215,7 @@ impl InMemoryDatabase {
 // ============================================================================
 
 #[async_trait::async_trait]
-impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
+impl everruns_core::session_services::SessionStorageStore for InMemoryDatabase {
     async fn set_value(
         &self,
         session_id: SessionId,
@@ -261,12 +261,12 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
     async fn list_keys(
         &self,
         session_id: SessionId,
-    ) -> everruns_core::Result<Vec<everruns_core::KeyInfo>> {
+    ) -> everruns_core::Result<Vec<everruns_core::session_services::KeyInfo>> {
         let storage = self.session_key_values.read();
         let mut keys: Vec<_> = storage
             .iter()
             .filter(|((sid, _), _)| *sid == session_id)
-            .map(|(_, row)| everruns_core::KeyInfo {
+            .map(|(_, row)| everruns_core::session_services::KeyInfo {
                 key: row.key.clone(),
                 created_at: row.created_at,
                 updated_at: row.updated_at,
@@ -326,12 +326,12 @@ impl everruns_core::traits::SessionStorageStore for InMemoryDatabase {
     async fn list_secrets(
         &self,
         session_id: SessionId,
-    ) -> everruns_core::Result<Vec<everruns_core::SecretInfo>> {
+    ) -> everruns_core::Result<Vec<everruns_core::session_services::SecretInfo>> {
         let storage = self.session_secrets.read();
         let mut secrets: Vec<_> = storage
             .iter()
             .filter(|((sid, _), _)| *sid == session_id)
-            .map(|(_, row)| everruns_core::SecretInfo {
+            .map(|(_, row)| everruns_core::session_services::SecretInfo {
                 name: row.name.clone(),
                 created_at: row.created_at,
                 updated_at: row.updated_at,

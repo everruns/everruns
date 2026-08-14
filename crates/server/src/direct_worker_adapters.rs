@@ -11,6 +11,7 @@ use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{
     AgentCapabilityConfig, CapabilityRegistry, collect_message_filters_only,
 };
+use everruns_core::connection_services::ProviderCredentials;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
@@ -18,16 +19,18 @@ use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
 };
-use everruns_core::traits::{
-    BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
-    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel,
-    SessionCreationAuthority, StoredImage, StoredImageInfo,
-};
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Caller, ContentPart, DriverId, DriverRegistry, EgressRequest, EgressRequestKind, EgressService,
     EventData, Message, MessageRole, ToolDefinition, ToolResultContentPart, UtilityLlmService,
     resolve_runtime_capabilities,
+};
+use everruns_core::{
+    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
+    image_services::CreateStoredImage, image_services::ImageArtifactStore,
+    image_services::ResolvedImage, image_services::StoredImage, image_services::StoredImageInfo,
+    provider_resolution::ResolvedModel, tool_execution::BudgetChecker,
+    tool_execution::PaymentAuthority,
 };
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Harness, HarnessStatus, merge_harness};
@@ -281,8 +284,9 @@ pub struct DirectWorkerAdapters {
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
     egress_service: Option<Arc<dyn EgressService>>,
     sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>,
-    storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
-    connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    storage_store: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
+    connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     /// Platform vector store for Knowledge Index retrieval (`search_index`).
     vector_store: Option<Arc<dyn everruns_platform::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
@@ -501,7 +505,7 @@ impl DirectWorkerAdapters {
     /// Set the session storage store for kv_store/secret_store tools
     pub fn with_storage_store(
         mut self,
-        store: Arc<dyn everruns_core::traits::SessionStorageStore>,
+        store: Arc<dyn everruns_core::session_services::SessionStorageStore>,
     ) -> Self {
         self.storage_store = Some(store);
         self
@@ -519,7 +523,7 @@ impl DirectWorkerAdapters {
     /// Set the user connection resolver for lazy token lookup
     pub fn with_connection_resolver(
         mut self,
-        resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
+        resolver: Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
         self
@@ -1663,7 +1667,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
-    fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
+    fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
         self.storage_store
             .clone()
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
@@ -1697,13 +1701,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.egress_service.clone()
     }
 
-    fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+    fn connection_resolver(
+        &self,
+    ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
         self.connection_resolver.clone().expect(
             "DirectWorkerAdapters: connection_resolver not set (call with_connection_resolver)",
         )
     }
 
-    fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
         let mut store = crate::storage::DbLeasedResourceStore::new(self.db.clone());
         if let Some(registry) = self.session_resource_registry() {
             store = store.with_registry(registry);
@@ -1713,7 +1721,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
         Some(Arc::new(crate::storage::DbSessionResourceRegistry::new(
             self.db.clone(),
         )))
@@ -1740,7 +1748,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
         Some(Arc::new(registry))
     }
 
-    fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+    fn schedule_store(
+        &self,
+        org_id: i64,
+    ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
         Arc::new(crate::storage::DbSessionScheduleStore::new(
             self.db.clone(),
             org_id,
@@ -1801,23 +1812,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
         self.org_rate_limiter
             .as_ref()
-            .map(|l| l.clone() as Arc<dyn everruns_core::OutboundToolRateLimiter>)
+            .map(|l| l.clone() as Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>)
     }
 
-    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+    fn durable_tool_result_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgDurableToolResultStore::new(pool.clone()))
-                as Arc<dyn everruns_core::DurableToolResultStore>
+                as Arc<dyn everruns_core::durability::DurableToolResultStore>
         })
     }
 
-    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+    fn subagent_spawn_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgSubagentSpawnStore::new(pool.clone()))
-                as Arc<dyn everruns_core::SubagentSpawnStore>
+                as Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>
         })
     }
 

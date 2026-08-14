@@ -2,8 +2,8 @@ use super::*;
 use crate::capabilities::Capability;
 use crate::error::Result;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-use crate::traits::SessionFileSystem;
 use crate::typed_id::SessionId;
+use everruns_core::session_files::SessionFileSystem;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 

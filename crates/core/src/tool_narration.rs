@@ -18,9 +18,9 @@ use crate::localization::{
     BackendLocale, backend_strings, format_more_actions, localized_tool_display_name,
     resolve_backend_locale,
 };
+use crate::session_files::SessionFileSystem;
 use crate::session_path::WORKSPACE_PREFIX;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::SessionFileSystem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolNarrationPhase {

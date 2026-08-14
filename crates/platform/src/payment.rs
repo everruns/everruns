@@ -7,7 +7,7 @@
 // The capability-internal execution contract stays in `everruns-core`:
 // `PaymentRail`, `PaymentMethod`, `MachinePaymentRequest`, and
 // `MachinePaymentResponse` are referenced by core's `PaymentAuthority` trait
-// (crates/core/src/traits.rs) and its `ToolContext`, so they cannot move
+// (`crates/core/src/tool_execution.rs`) and its `ToolContext`, so they cannot move
 // without a forbidden `core -> platform` edge. These records embed
 // `everruns_core::payment::PaymentRail` (direction: platform -> core), and the
 // execution-contract types are re-exported below for a unified payment surface.

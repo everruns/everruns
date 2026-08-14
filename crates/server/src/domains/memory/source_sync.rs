@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use everruns_core::traits::UserConnectionResolver;
+use everruns_core::connection_services::UserConnectionResolver;
 use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;

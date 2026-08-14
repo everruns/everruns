@@ -31,7 +31,8 @@ Important constraints:
 
 ## Lifecycle
 
-Tool-side integrations use the generic store in [`crates/core/src/traits.rs`](../../crates/core/src/traits.rs):
+Tool-side integrations use the generic store in
+[`crates/core/src/session_services.rs`](../../crates/core/src/session_services.rs):
 
 - `upsert_resource`: create or extend a lease after successful remote creation or use.
 - `release_resource`: fast-path explicit deletion/close operations.

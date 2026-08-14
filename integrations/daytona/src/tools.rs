@@ -25,6 +25,7 @@ use everruns_core::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
     require_owned_external_resource,
 };
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_narration::{
     arg_str, generic_phrase, labeled_phrase, narrate_read_file, narrate_write_file, safe_arg_str,
     truncate, url_display,
@@ -34,7 +35,6 @@ use everruns_core::tool_output_sanitizer::{
     parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -2360,8 +2360,11 @@ mod tests {
     // ========================================================================
 
     use everruns_core::error::Result;
-    use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, UserConnectionResolver};
     use everruns_core::typed_id::SessionId;
+    use everruns_core::{
+        connection_services::UserConnectionResolver, session_services::KeyInfo,
+        session_services::SecretInfo, session_services::SessionStorageStore,
+    };
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

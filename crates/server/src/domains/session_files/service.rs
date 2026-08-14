@@ -15,10 +15,10 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult,
-    MountAccess, MountEntry, MountPoint, MountSource, SessionFile, SessionFileSystem,
-    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionId,
-    session_file::build_grep_search_result,
+    MountAccess, MountEntry, MountPoint, MountSource, SessionFile, SessionId,
+    session_file::build_grep_search_result, session_files::SessionFileSystem,
 };
+use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use regex::{Regex, RegexBuilder};
 use std::sync::Arc;
 use uuid::Uuid;

@@ -345,7 +345,7 @@ pub trait PlatformStore: Send + Sync {
     fn base_url(&self) -> &str;
 }
 
-/// Typed [`ToolContext`](everruns_core::ToolContext) extension carrying the
+/// Typed [`ToolContext`](everruns_core::tool_context::ToolContext) extension carrying the
 /// hosted `PlatformStore` (EVE-839). Replaces the former
 /// `ToolContext::platform_store` field; hosted capabilities resolve it via
 /// `context.extension::<PlatformStoreExt>()`.

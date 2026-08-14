@@ -23,7 +23,7 @@ use everruns_core::SessionId;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{SessionFileSystem, ToolContext};
+use everruns_core::{session_files::SessionFileSystem, tool_context::ToolContext};
 use everruns_platform::connector::{
     Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FormField,
 };

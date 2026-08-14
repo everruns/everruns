@@ -8,13 +8,13 @@ use everruns_core::error::Result as CoreResult;
 use everruns_core::events::{Event, EventContext, EventRequest, InputMessageData};
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message::Message;
-use everruns_core::traits::{
-    AgentStore, HarnessStore, KeyInfo, ProviderStore, SecretInfo, SessionStorageStore, SessionStore,
+use everruns_core::{
+    execution_loading::AgentStore, execution_loading::HarnessStore, session_services::KeyInfo, provider_resolution::ProviderStore, session_services::SecretInfo, session_services::SessionStorageStore, execution_loading::SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CompactionCheckpoint, CompactionCheckpointStore,
-    DriverId, ExecutionSession, ProactiveCompactionAttempt, ResolvedModel,
+    DriverId, ExecutionSession, ProactiveCompactionAttempt, provider_resolution::ResolvedModel,
 };
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventLog, EventLogError, EventPage, EventReadLimit,

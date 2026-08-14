@@ -724,7 +724,11 @@ pub trait TaskExecutor: Send + Sync {
     /// Called by the reaper when re-attaching a task (attempt already bumped).
     /// Implementations must heartbeat using `task.attempt` so stale writes from
     /// the previous executor are rejected by the fence.
-    async fn start(&self, task: &SessionTask, context: &crate::traits::ToolContext) -> Result<()> {
+    async fn start(
+        &self,
+        task: &SessionTask,
+        context: &crate::tool_context::ToolContext,
+    ) -> Result<()> {
         let _ = (task, context);
         Err(crate::error::AgentLoopError::tool(format!(
             "task kind '{}' does not support start via the registry",
@@ -737,7 +741,7 @@ pub trait TaskExecutor: Send + Sync {
         &self,
         task: &SessionTask,
         message: &TaskMessage,
-        context: &crate::traits::ToolContext,
+        context: &crate::tool_context::ToolContext,
     ) -> Result<()> {
         let _ = (task, message, context);
         Err(crate::error::AgentLoopError::tool(format!(
@@ -747,14 +751,18 @@ pub trait TaskExecutor: Send + Sync {
     }
 
     /// Cooperatively wind down. The task may still end succeeded or failed.
-    async fn cancel(&self, task: &SessionTask, context: &crate::traits::ToolContext) -> Result<()>;
+    async fn cancel(
+        &self,
+        task: &SessionTask,
+        context: &crate::tool_context::ToolContext,
+    ) -> Result<()>;
 
     /// Refresh state for polled kinds (e.g. A2A remote tasks). Reports via
     /// the registry; no-op by default.
     async fn reconcile(
         &self,
         task: &SessionTask,
-        context: &crate::traits::ToolContext,
+        context: &crate::tool_context::ToolContext,
     ) -> Result<()> {
         let _ = (task, context);
         Ok(())

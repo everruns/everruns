@@ -9,8 +9,8 @@ use everruns_core::{
 };
 use everruns_core::{
     Message, MessageRole,
+    tool_execution::ToolExecutor,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
-    traits::ToolExecutor,
 };
 use serde_json::json;
 use std::sync::Arc;

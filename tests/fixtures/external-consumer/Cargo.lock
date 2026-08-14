@@ -646,6 +646,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "external-execution-contracts"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "everruns-host",
+]
+
+[[package]]
 name = "external-provider-pack"
 version = "0.0.0"
 dependencies = [

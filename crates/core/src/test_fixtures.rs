@@ -10,7 +10,7 @@ use crate::harness_definition::HarnessDefinition;
 use crate::provider::DriverId;
 use crate::session::ExecutionSession;
 
-use crate::traits::ResolvedModel;
+use crate::provider_resolution::ResolvedModel;
 use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -22,7 +22,10 @@ use crate::error::Result;
 use crate::message::Message;
 use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
-use crate::traits::{AgentStore, HarnessStore, ProviderStore, SessionStore};
+use crate::{
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+};
 use chrono::Utc;
 
 // ============================================================================
@@ -439,8 +442,8 @@ impl ProviderStore for TestProviderStore {
 // TestEventEmitter - Stores events in memory for testing
 // ============================================================================
 
+use crate::event_emitter::EventEmitter;
 use crate::events::{Event, EventRequest};
-use crate::traits::EventEmitter;
 
 /// In-memory event emitter for testing
 ///

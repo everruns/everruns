@@ -22,9 +22,9 @@ use crate::vector_store::EmbeddingCallUsage;
 use everruns_core::events::{
     EventData, EventRequest, LLM_GENERATION, LlmGenerationData, TokenUsage,
 };
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 /// Stable string id for the knowledge index capability.
 pub const KNOWLEDGE_INDEX_CAPABILITY_ID: &str = "knowledge_index";
@@ -582,7 +582,7 @@ mod tests {
         }
 
         #[async_trait]
-        impl everruns_core::traits::EventEmitter for RecordingEmitter {
+        impl everruns_core::event_emitter::EventEmitter for RecordingEmitter {
             async fn emit(&self, request: EventRequest) -> everruns_core::error::Result<Event> {
                 self.requests
                     .lock()

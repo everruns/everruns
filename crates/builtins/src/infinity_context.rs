@@ -10,8 +10,8 @@ use crate::message_filter::{
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
+use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Ordering;

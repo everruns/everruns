@@ -326,7 +326,7 @@ The acceptance bar for this refactor: `rg -i "llm_provider|llm-provider|LlmProvi
 | Area | Work |
 |---|---|
 | DB | Rename `llm_providers` → `providers`, `llm_models` → `models`; `provider_type` → `driver`; `api_key_encrypted` → `credentials_encrypted` (existing keys wrapped as `{"api_key": ...}` documents — re-encryption not required, the envelope is unchanged); add `models.profile_key` (backfilled via the existing normalization matcher); persisted discovered profiles table. FKs (`model_routers`, sessions/agents bindings) follow renames. |
-| Core (`crates/core`) | `llm_models.rs` → `provider.rs`/`model.rs` types (`Provider`, `Model`, `ModelProfile`, `ServiceKind`); `driver_registry.rs`: `LlmDriver` → `ChatDriver`, registry keyed by string driver id, driver descriptor with credential schema + service factories; `traits.rs`: `LlmProviderStore` → `ProviderStore`; `llm_model_profiles.rs` → profile registry with stable keys. |
+| Core (`crates/core`) | `llm_models.rs` → `provider.rs`/`model.rs` types (`Provider`, `Model`, `ModelProfile`, `ServiceKind`); `driver_registry.rs`: `LlmDriver` → `ChatDriver`, registry keyed by string driver id, driver descriptor with credential schema + service factories; `provider_resolution.rs`: `LlmProviderStore` → `ProviderStore`; `llm_model_profiles.rs` → profile registry with stable keys. |
 | Driver crates (`crates/openai`, `anthropic`, `gemini`, `bedrock`) | Register as driver descriptors (credential schema, services, factories). Bedrock drops JSON-in-api_key parsing in favor of its schema. |
 | Server | Storage layer, repositories, domains, `seed.rs`, `llm_resolver.rs` → `provider_resolver.rs` (+ `resolve_service`), `model_sync.rs`, API modules `llm_providers.rs`/`llm_models.rs` → `providers.rs`/`models.rs`, OpenAPI schema, voice credential resolution rerouted through `resolve_service`. |
 | Worker / runtime / CLI / examples | Adapter types and gRPC contracts follow core renames. |
@@ -376,7 +376,7 @@ The refactor has landed; current implementations live at:
 - `crates/provider/src/driver_registry.rs` — wire-only `ChatDriver`; transitional
   `0.17.x` descriptor/catalog adapter and typed credential configuration
 - `crates/provider/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
-- `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
+- `crates/core/src/provider_resolution.rs` — `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs` — model discovery
 - `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs` — REST API

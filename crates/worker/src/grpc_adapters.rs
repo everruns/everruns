@@ -10,6 +10,7 @@
 // with the control-plane service (the API server's gRPC endpoint).
 
 use async_trait::async_trait;
+use everruns_core::connection_services::ProviderCredentials;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
@@ -18,14 +19,18 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepContextBlock, GrepContextLine, GrepMatch, GrepOptions,
     GrepSearchResult, SessionFile,
 };
-use everruns_core::traits::{
-    AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
-    LeasedResourceStore, ProviderCredentialStore, ProviderCredentials, ProviderStore,
-    ResolvedImage, ResolvedModel, SessionFileSystem, SessionStore, StoredImage, StoredImageInfo,
-};
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
     AgentDefinition, ExecutionSession, HarnessDefinition, Message, MessageFilter, MessageRole,
+};
+use everruns_core::{
+    connection_services::ProviderCredentialStore, event_emitter::EventEmitter,
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, image_services::CreateStoredImage,
+    image_services::ImageArtifactStore, image_services::ResolvedImage, image_services::StoredImage,
+    image_services::StoredImageInfo, provider_resolution::ProviderStore,
+    provider_resolution::ResolvedModel, session_files::SessionFileSystem,
+    session_services::LeasedResourceStore,
 };
 // EVE-882: the stored Session record and its lifecycle enums moved to
 // `everruns-platform`; the worker's PlatformStore surface still transports
@@ -2347,7 +2352,10 @@ fn proto_mcp_tool_def_to_tool_definition(
 // ImageResolver implementation
 // ============================================================================
 
-use everruns_core::traits::{ImageResolver, KeyInfo, SecretInfo, SessionStorageStore};
+use everruns_core::{
+    image_services::ImageResolver, session_services::KeyInfo, session_services::SecretInfo,
+    session_services::SessionStorageStore,
+};
 use std::collections::HashMap;
 
 impl GrpcOrgAdapter {
@@ -2582,7 +2590,7 @@ impl SessionStorageStore for GrpcAdapter {
 // ============================================================================
 
 #[async_trait]
-impl everruns_core::traits::UserConnectionResolver for GrpcAdapter {
+impl everruns_core::connection_services::UserConnectionResolver for GrpcAdapter {
     async fn get_connection_token(
         &self,
         session_id: everruns_core::SessionId,
@@ -2752,7 +2760,7 @@ fn proto_session_resource_to_schema(
 }
 
 #[async_trait]
-impl everruns_core::traits::SessionResourceRegistry for GrpcAdapter {
+impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
     async fn register(
         &self,
         entry: everruns_core::RegisterSessionResource,
@@ -2950,7 +2958,7 @@ fn proto_schedule_to_schema(
 }
 
 #[async_trait]
-impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
+impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
     async fn create_schedule(
         &self,
         session_id: everruns_core::SessionId,
@@ -4099,7 +4107,7 @@ impl GrpcOutboundToolRateLimiter {
 }
 
 #[async_trait]
-impl everruns_core::traits::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
+impl everruns_core::tool_execution::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
     async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
         let mut client = self.client.inner.lock().await;
         let request = proto::CheckOutboundToolRateLimitRequest {
@@ -4125,7 +4133,7 @@ impl everruns_core::traits::OutboundToolRateLimiter for GrpcOutboundToolRateLimi
 // ============================================================================
 
 #[async_trait]
-impl everruns_core::traits::BudgetChecker for GrpcBudgetChecker {
+impl everruns_core::tool_execution::BudgetChecker for GrpcBudgetChecker {
     async fn check_budgets(
         &self,
         session_id: &str,
@@ -4161,7 +4169,7 @@ impl everruns_core::traits::BudgetChecker for GrpcBudgetChecker {
 }
 
 #[async_trait]
-impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
+impl everruns_core::tool_execution::PaymentAuthority for GrpcPaymentAuthority {
     async fn execute_machine_payment(
         &self,
         session_id: SessionId,
@@ -4232,7 +4240,7 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
 }
 
 #[async_trait]
-impl everruns_core::traits::SessionCreationAuthority for GrpcSessionCreationAuthority {
+impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessionCreationAuthority {
     async fn authorize_session_creation(
         &self,
         session_id: SessionId,

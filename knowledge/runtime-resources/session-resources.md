@@ -30,7 +30,7 @@ lifecycle management.
 
 ### Core trait — `SessionResourceRegistry`
 
-Lives in `crates/core/src/traits.rs`. Available on `ToolContext` as
+Lives in `crates/core/src/session_services.rs`. Available on `ToolContext` as
 `session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>`.
 
 ```

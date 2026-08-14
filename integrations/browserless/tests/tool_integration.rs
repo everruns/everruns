@@ -6,8 +6,8 @@
 use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{ToolContext, UserConnectionResolver};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{connection_services::UserConnectionResolver, tool_context::ToolContext};
 use serde_json::json;
 use std::sync::Arc;
 use wiremock::matchers::{method, path};

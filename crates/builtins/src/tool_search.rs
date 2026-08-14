@@ -63,9 +63,9 @@ use super::{
 };
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard};

@@ -9,8 +9,8 @@ use everruns_core::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::error::Result;
+use everruns_core::tool_execution::ToolExecutor;
 use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use everruns_core::traits::ToolExecutor;
 use futures::stream;
 use std::collections::HashMap;
 use std::sync::Arc;

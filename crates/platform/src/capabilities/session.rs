@@ -12,8 +12,10 @@ use everruns_core::events::{EventContext, EventRequest, SessionTitleUpdatedData,
 use everruns_core::session::ExecutionSession;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{EventEmitter, SessionStore, ToolContext};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    event_emitter::EventEmitter, execution_loading::SessionStore, tool_context::ToolContext,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -403,7 +405,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionStore for MockSessionStore {
+    impl everruns_core::execution_loading::SessionStore for MockSessionStore {
         async fn get_session(&self, _session_id: SessionId) -> Result<Option<ExecutionSession>> {
             Ok(self.session.lock().expect("poisoned").clone())
         }
@@ -437,7 +439,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::EventEmitter for RecordingEventEmitter {
+    impl everruns_core::event_emitter::EventEmitter for RecordingEventEmitter {
         async fn emit(&self, request: EventRequest) -> Result<Event> {
             self.requests
                 .lock()
@@ -448,7 +450,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::AgentStore for MockAgentStore {
+    impl everruns_core::execution_loading::AgentStore for MockAgentStore {
         async fn get_agent(&self, _agent_id: AgentId) -> Result<Option<AgentDefinition>> {
             Ok(self.agent.clone())
         }

@@ -12,10 +12,12 @@
 use everruns_host::HostComposition;
 use std::sync::Arc;
 
-use everruns_core::ResolvedModel;
 use everruns_core::error::Result;
-use everruns_core::traits::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
-use everruns_host::{InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_core::provider_resolution::ResolvedModel;
+use everruns_host::{
+    InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext,
+};
 
 use crate::backends::LocalBackends;
 use crate::profile::LocalProfile;

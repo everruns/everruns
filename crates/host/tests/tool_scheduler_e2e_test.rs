@@ -17,7 +17,8 @@ use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ResolvedModel, ToolCall,
+    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ToolCall,
+    provider_resolution::ResolvedModel,
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};

@@ -28,9 +28,9 @@ use crate::output_guardrail::{
     PostGenerationOutputContext, PostGenerationOutputGuardrail,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
 use crate::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
 use crate::{LlmMessage, LlmMessageRole};
+use everruns_core::tool_context::ToolContext;
 
 pub const GUARDRAILS_CAPABILITY_ID: &str = "guardrails";
 

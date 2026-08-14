@@ -244,11 +244,9 @@ reflects what has shipped on the OKF-adoption branch.
 The agent-facing `search_knowledge` tool lets an agent *read* imported OKF
 knowledge. Implemented as a cross-crate slice:
 
-* Core trait `KnowledgeStore` + `KnowledgeSearchHit` result type
-  (`crates/core/src/traits.rs`), with a `knowledge_store` field on `ToolContext`
-  threaded through `ActAtom` (`crates/core/src/atoms/act.rs`) and the host
-  adapter (`crates/host/src/host.rs`, `WorkerAdapters` →
-  `crates/worker/src/runtime_host.rs`).
+* Platform trait `KnowledgeStore` + `KnowledgeSearchHit` result type
+  (`crates/platform/src/knowledge_store.rs`), resolved through the typed
+  `ToolContext` extension seam owned by `everruns-core`.
 * Server impl over `StorageBackend`
   (`crates/server/src/knowledge_store.rs`), wired via `DirectWorkerAdapters`. It
   resolves each KB public id within the caller's org (cross-org ids silently

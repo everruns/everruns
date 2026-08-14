@@ -12,9 +12,11 @@ use async_trait::async_trait;
 use everruns_builtins::UsageLimitAutoContinueCapability;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_schedule::SessionSchedule;
-use everruns_core::traits::SessionScheduleStore;
+use everruns_core::session_services::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
-use everruns_core::{AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel};
+use everruns_core::{
+    AgentId, CapabilityRegistry, DriverId, HarnessId, provider_resolution::ResolvedModel,
+};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_test_support::LlmSimRuntimeExt;

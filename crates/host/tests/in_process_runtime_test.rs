@@ -5,13 +5,13 @@ use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, InitialFile, Message,
-    MessageRole, ResolvedModel, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, ToolCall, WorkspacePolicy,
+    MessageRole, ToolCall, WorkspacePolicy, provider_resolution::ResolvedModel,
+    session_files::SessionFileSystem,
 };
 use everruns_host::HostComposition;
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
-    SessionBuilder, TurnStopReason,
+    SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
 use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_test_support::LlmSimRuntimeExt;
@@ -974,7 +974,7 @@ struct StaticTokenResolver {
 }
 
 #[async_trait]
-impl everruns_core::traits::UserConnectionResolver for StaticTokenResolver {
+impl everruns_core::connection_services::UserConnectionResolver for StaticTokenResolver {
     async fn get_connection_token(
         &self,
         _session_id: everruns_core::SessionId,
@@ -1036,7 +1036,7 @@ impl everruns_core::tools::Tool for ConnectionEchoTool {
     async fn execute_with_context(
         &self,
         arguments: serde_json::Value,
-        context: &everruns_core::traits::ToolContext,
+        context: &everruns_core::tool_context::ToolContext,
     ) -> everruns_core::tools::ToolExecutionResult {
         // Fail fast on broken argument plumbing rather than defaulting — a
         // missing/empty `provider` means the tool call did not arrive intact,

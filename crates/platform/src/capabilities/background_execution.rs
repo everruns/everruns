@@ -94,7 +94,7 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
     async fn start(
         &self,
         task: &everruns_core::session_task::SessionTask,
-        context: &everruns_core::traits::ToolContext,
+        context: &everruns_core::tool_context::ToolContext,
     ) -> everruns_core::error::Result<()> {
         crate::background_run::reattach_background_run(task, context).await
     }
@@ -106,7 +106,7 @@ impl everruns_core::session_task::TaskExecutor for BackgroundToolTaskExecutor {
     async fn cancel(
         &self,
         _task: &everruns_core::session_task::SessionTask,
-        _context: &everruns_core::traits::ToolContext,
+        _context: &everruns_core::tool_context::ToolContext,
     ) -> everruns_core::error::Result<()> {
         Ok(())
     }

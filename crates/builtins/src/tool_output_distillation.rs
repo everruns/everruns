@@ -41,7 +41,7 @@ use super::tool_output_persistence::{annotate_truncated_output, persist_output};
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
+use everruns_core::tool_context::ToolContext;
 
 /// Only distill results whose serialized size exceeds this threshold. Smaller
 /// results are left verbatim (cheap, cache-stable, and rarely worth a VFS write).
@@ -558,9 +558,9 @@ mod tests {
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
-    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use chrono::Utc;
+    use everruns_core::session_files::SessionFileSystem;
     use std::collections::HashMap;
     use std::sync::Mutex;
     use uuid::Uuid;

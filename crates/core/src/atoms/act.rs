@@ -53,11 +53,12 @@ use crate::tool_narration::{
     render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
 };
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{
-    AgentStore, DurableToolResultStore, EventEmitter, SessionFileSystem, SessionStore,
-    ToolCallClaimResult, ToolContext, ToolExecutor,
-};
 use crate::typed_id::{AgentId, HarnessId};
+use crate::{
+    durability::DurableToolResultStore, durability::ToolCallClaimResult,
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::SessionStore,
+    session_files::SessionFileSystem, tool_context::ToolContext, tool_execution::ToolExecutor,
+};
 use uuid::Uuid;
 
 /// A Tokio task handle that aborts its task if the parent future is dropped
@@ -208,11 +209,11 @@ where
     tool_executor: Arc<T>,
     event_emitter: Arc<E>,
     /// Runtime-owned service snapshot cloned into every per-call ToolContext.
-    context_services: crate::traits::ToolContextServices,
+    context_services: crate::tool_context::ToolContextServices,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
-    outbound_tool_rate_limiter: Option<Arc<dyn crate::traits::OutboundToolRateLimiter>>,
+    outbound_tool_rate_limiter: Option<Arc<dyn crate::tool_execution::OutboundToolRateLimiter>>,
     /// Per-tool-call idempotency store (EVE-530). When present, each tool call
     /// is claimed before dispatch and settled after completion so that reclaiming
     /// workers can skip already-settled calls and avoid double side-effects for
@@ -248,7 +249,7 @@ where
         Self {
             tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
-            context_services: crate::traits::ToolContextServices::default(),
+            context_services: crate::tool_context::ToolContextServices::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             hooks: Self::default_hooks(),
@@ -268,7 +269,7 @@ where
         Self {
             tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
-            context_services: crate::traits::ToolContextServices {
+            context_services: crate::tool_context::ToolContextServices {
                 file_store: Some(file_store),
                 ..Default::default()
             },
@@ -285,7 +286,10 @@ where
     /// Replace the complete runtime-owned service snapshot used for every
     /// per-call [`ToolContext`]. Production hosts should prefer this over
     /// assembling individual services on the atom.
-    pub fn with_context_services(mut self, services: crate::traits::ToolContextServices) -> Self {
+    pub fn with_context_services(
+        mut self,
+        services: crate::tool_context::ToolContextServices,
+    ) -> Self {
         self.context_services = services;
         self
     }
@@ -323,14 +327,17 @@ where
     /// Set the session storage store on this atom
     pub fn with_storage_store(
         mut self,
-        store: Arc<dyn crate::traits::SessionStorageStore>,
+        store: Arc<dyn crate::session_services::SessionStorageStore>,
     ) -> Self {
         self.context_services.storage_store = Some(store);
         self
     }
 
     /// Set the image artifact store on this atom
-    pub fn with_image_store(mut self, store: Arc<dyn crate::traits::ImageArtifactStore>) -> Self {
+    pub fn with_image_store(
+        mut self,
+        store: Arc<dyn crate::image_services::ImageArtifactStore>,
+    ) -> Self {
         self.context_services.image_store = Some(store);
         self
     }
@@ -338,7 +345,7 @@ where
     /// Set the provider credential store on this atom
     pub fn with_provider_credential_store(
         mut self,
-        store: Arc<dyn crate::traits::ProviderCredentialStore>,
+        store: Arc<dyn crate::connection_services::ProviderCredentialStore>,
     ) -> Self {
         self.context_services.provider_credential_store = Some(store);
         self
@@ -365,7 +372,7 @@ where
     /// Set the user connection resolver on this atom
     pub fn with_connection_resolver(
         mut self,
-        resolver: Arc<dyn crate::traits::UserConnectionResolver>,
+        resolver: Arc<dyn crate::connection_services::UserConnectionResolver>,
     ) -> Self {
         self.context_services.connection_resolver = Some(resolver);
         self
@@ -386,7 +393,7 @@ where
     /// Set session schedule store for scheduling tools.
     pub fn with_schedule_store(
         mut self,
-        store: Arc<dyn crate::traits::SessionScheduleStore>,
+        store: Arc<dyn crate::session_services::SessionScheduleStore>,
     ) -> Self {
         self.context_services.schedule_store = Some(store);
         self
@@ -404,7 +411,7 @@ where
     /// Set leased resource store for lifecycle-managed provider resources.
     pub fn with_leased_resource_store(
         mut self,
-        store: Arc<dyn crate::traits::LeasedResourceStore>,
+        store: Arc<dyn crate::session_services::LeasedResourceStore>,
     ) -> Self {
         self.context_services.leased_resource_store = Some(store);
         self
@@ -413,7 +420,7 @@ where
     /// Set session resource registry.
     pub fn with_session_resource_registry(
         mut self,
-        registry: Arc<dyn crate::traits::SessionResourceRegistry>,
+        registry: Arc<dyn crate::session_services::SessionResourceRegistry>,
     ) -> Self {
         self.context_services.session_resource_registry = Some(registry);
         self
@@ -485,7 +492,10 @@ where
     }
 
     /// Set the budget checker for the check_budget tool.
-    pub fn with_budget_checker(mut self, checker: Arc<dyn crate::traits::BudgetChecker>) -> Self {
+    pub fn with_budget_checker(
+        mut self,
+        checker: Arc<dyn crate::tool_execution::BudgetChecker>,
+    ) -> Self {
         self.context_services.budget_checker = Some(checker);
         self
     }
@@ -493,7 +503,7 @@ where
     /// Set the internal payment authority for paid capability tools.
     pub fn with_payment_authority(
         mut self,
-        authority: Arc<dyn crate::traits::PaymentAuthority>,
+        authority: Arc<dyn crate::tool_execution::PaymentAuthority>,
     ) -> Self {
         self.context_services.payment_authority = Some(authority);
         self
@@ -502,7 +512,7 @@ where
     /// Set the authority used to authorize detached peer-session creation.
     pub fn with_session_creation_authority(
         mut self,
-        authority: Arc<dyn crate::traits::SessionCreationAuthority>,
+        authority: Arc<dyn crate::delegation_services::SessionCreationAuthority>,
     ) -> Self {
         self.context_services.session_creation_authority = Some(authority);
         self
@@ -511,7 +521,7 @@ where
     /// Set the per-org outbound tool-call rate limiter (TM-TOOL-009).
     pub fn with_outbound_tool_rate_limiter(
         mut self,
-        limiter: Arc<dyn crate::traits::OutboundToolRateLimiter>,
+        limiter: Arc<dyn crate::tool_execution::OutboundToolRateLimiter>,
     ) -> Self {
         self.outbound_tool_rate_limiter = Some(limiter);
         self
@@ -529,7 +539,7 @@ where
     /// Set the durable subagent spawn handle store (EVE-535).
     pub fn with_subagent_spawn_store(
         mut self,
-        store: Arc<dyn crate::traits::SubagentSpawnStore>,
+        store: Arc<dyn crate::delegation_services::SubagentSpawnStore>,
     ) -> Self {
         self.context_services.subagent_spawn_store = Some(store);
         self
@@ -538,7 +548,7 @@ where
     /// Set the resolved subagent nesting policy for tool contexts.
     pub fn with_subagent_nesting_policy(
         mut self,
-        policy: crate::traits::SubagentNestingPolicy,
+        policy: crate::delegation_services::SubagentNestingPolicy,
     ) -> Self {
         self.context_services.subagent_nesting_policy = policy;
         self
@@ -549,7 +559,7 @@ where
     /// mid-turn for subsequent LLM steps in the same turn.
     pub fn with_reasoning_effort_handle(
         mut self,
-        handle: crate::traits::ReasoningEffortHandle,
+        handle: crate::tool_context::ReasoningEffortHandle,
     ) -> Self {
         self.context_services.reasoning_effort_handle = Some(handle);
         self
@@ -949,7 +959,7 @@ where
     ) -> Option<Arc<dyn SessionFileSystem>> {
         let store = self.context_services.file_store.as_ref()?.clone();
         let store = if let Some(workspace_id) = atom_context.workspace_id {
-            crate::traits::WorkspaceScopedFileSystem::wrap(store, workspace_id)
+            crate::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id)
         } else {
             store
         };
@@ -1482,10 +1492,9 @@ where
         if let Some(workspace_id) = context.workspace_id {
             tool_context.workspace_id = workspace_id;
             if let Some(store) = tool_context.file_store.take() {
-                tool_context.file_store = Some(crate::traits::WorkspaceScopedFileSystem::wrap(
-                    store,
-                    workspace_id,
-                ));
+                tool_context.file_store = Some(
+                    crate::session_files::WorkspaceScopedFileSystem::wrap(store, workspace_id),
+                );
             }
         }
         // Resolve model paths through the mount resolver (EVE-660): `/workspace`
@@ -1818,8 +1827,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event_emitter::NoopEventEmitter;
     use crate::tools::ToolRegistry;
-    use crate::traits::NoopEventEmitter;
     use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use async_trait::async_trait;
     use serde_json::json;
@@ -2006,7 +2015,7 @@ mod tests {
         async fn execute_with_context(
             &self,
             _arguments: serde_json::Value,
-            context: &crate::traits::ToolContext,
+            context: &crate::tool_context::ToolContext,
         ) -> crate::ToolExecutionResult {
             crate::ToolExecutionResult::success(json!({
                 "utility_llm_service": context.utility_llm_service.is_some(),
@@ -2373,7 +2382,7 @@ mod tests {
         async fn execute_with_context(
             &self,
             _arguments: serde_json::Value,
-            context: &crate::traits::ToolContext,
+            context: &crate::tool_context::ToolContext,
         ) -> crate::ToolExecutionResult {
             let token = context
                 .cancellation
@@ -2800,7 +2809,7 @@ mod tests {
 
         struct DenyAll;
         #[async_trait]
-        impl crate::traits::OutboundToolRateLimiter for DenyAll {
+        impl crate::tool_execution::OutboundToolRateLimiter for DenyAll {
             async fn check_org(&self, _org_id: &OrgId) -> bool {
                 false
             }
@@ -2865,7 +2874,7 @@ mod tests {
 
         struct AllowAll;
         #[async_trait]
-        impl crate::traits::OutboundToolRateLimiter for AllowAll {
+        impl crate::tool_execution::OutboundToolRateLimiter for AllowAll {
             async fn check_org(&self, _org_id: &OrgId) -> bool {
                 true
             }
@@ -2916,7 +2925,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     use crate::tool_types::{SideEffectClass, ToolHints};
-    use crate::traits::{DurableToolResultStore, ToolCallClaimResult};
+    use crate::{durability::DurableToolResultStore, durability::ToolCallClaimResult};
     use std::collections::HashMap;
     use std::sync::Mutex;
 
@@ -3001,17 +3010,17 @@ mod tests {
             &self,
             turn_id: &str,
             tool_call_id: &str,
-        ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+        ) -> crate::error::Result<Option<crate::durability::DurableToolCallStatus>> {
             let key = (turn_id.to_string(), tool_call_id.to_string());
             let rows = self.rows.lock().unwrap();
             Ok(rows.get(&key).map(|row| match row.status.as_str() {
-                "settled" => crate::traits::DurableToolCallStatus::Settled {
+                "settled" => crate::durability::DurableToolCallStatus::Settled {
                     result_json: row.result_json.clone(),
                 },
-                "interrupted" => crate::traits::DurableToolCallStatus::Interrupted {
+                "interrupted" => crate::durability::DurableToolCallStatus::Interrupted {
                     result_json: Some(row.result_json.clone()),
                 },
-                _ => crate::traits::DurableToolCallStatus::Running,
+                _ => crate::durability::DurableToolCallStatus::Running,
             }))
         }
     }

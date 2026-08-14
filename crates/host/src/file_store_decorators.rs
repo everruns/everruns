@@ -20,7 +20,7 @@ use everruns_core::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
     build_grep_search_result,
 };
-use everruns_core::traits::SessionFileSystem;
+use everruns_core::session_files::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
 use std::collections::{HashSet, VecDeque};
 use std::path::Component;

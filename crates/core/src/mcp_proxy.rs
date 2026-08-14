@@ -15,9 +15,9 @@
 
 use crate::error::Result;
 use crate::mcp_server::is_mcp_tool;
+use crate::tool_context::ToolContext;
 use crate::tool_types::{BuiltinTool, ToolCall, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashSet;

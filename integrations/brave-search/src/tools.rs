@@ -1,8 +1,8 @@
 //! Tool implementations for Brave Search operations.
 
 use everruns_core::ToolHints;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -202,8 +202,11 @@ mod tests {
     use serde_json::json;
 
     use everruns_core::error::Result;
-    use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, UserConnectionResolver};
     use everruns_core::typed_id::SessionId;
+    use everruns_core::{
+        connection_services::UserConnectionResolver, session_services::KeyInfo,
+        session_services::SecretInfo, session_services::SessionStorageStore,
+    };
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

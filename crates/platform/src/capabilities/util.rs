@@ -10,8 +10,8 @@ pub use everruns_core::capabilities::util::{
 };
 
 use crate::platform_store::{PlatformStore, PlatformStoreExt};
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::ToolContext;
 use std::sync::Arc;
 
 /// Resolve the hosted platform store from the tool-context extension, or return

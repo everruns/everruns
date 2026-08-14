@@ -15,8 +15,8 @@ use serde_json::{Value, json};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::knowledge_store::KnowledgeStoreExt;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 /// Stable string id for the knowledge base capability.
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
@@ -463,7 +463,7 @@ mod tests {
     // --- search_knowledge tool ---
 
     use crate::knowledge_store::{KnowledgeSearchHit, KnowledgeStore, KnowledgeStoreExt};
-    use everruns_core::traits::ToolContext;
+    use everruns_core::tool_context::ToolContext;
     use everruns_core::typed_id::{DEFAULT_ORG_ID, SessionId};
     use std::sync::Arc;
 

@@ -39,7 +39,8 @@ use everruns_core::session_task::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, ResolvedModel, ToolCall,
+    AgentCapabilityConfig, CapabilityRegistry, DriverId, MessageRole, ToolCall,
+    provider_resolution::ResolvedModel,
 };
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,

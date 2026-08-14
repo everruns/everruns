@@ -31,8 +31,8 @@ use everruns_core::session_task::{
 };
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{SessionStorageStore, ToolContext};
 use everruns_core::{Result, validate_safe_url};
+use everruns_core::{session_services::SessionStorageStore, tool_context::ToolContext};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -1852,8 +1852,8 @@ mod tests {
     };
     use axum::Router;
     use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use everruns_core::session_files::SessionFileSystem;
     use everruns_core::session_task::SessionTaskRegistry;
-    use everruns_core::traits::SessionFileSystem;
     use everruns_core::typed_id::SessionId;
     use futures::stream;
     use std::collections::{BTreeMap, HashMap};
@@ -1865,7 +1865,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionStorageStore for TestStorageStore {
+    impl everruns_core::session_services::SessionStorageStore for TestStorageStore {
         async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
             self.values
                 .lock()
@@ -1882,14 +1882,17 @@ mod tests {
             Ok(self.values.lock().unwrap().remove(key).is_some())
         }
 
-        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<everruns_core::KeyInfo>> {
+        async fn list_keys(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Vec<everruns_core::session_services::KeyInfo>> {
             let now = chrono::Utc::now();
             Ok(self
                 .values
                 .lock()
                 .unwrap()
                 .keys()
-                .map(|key| everruns_core::KeyInfo {
+                .map(|key| everruns_core::session_services::KeyInfo {
                     key: key.clone(),
                     created_at: now,
                     updated_at: now,
@@ -1917,7 +1920,7 @@ mod tests {
         async fn list_secrets(
             &self,
             _session_id: SessionId,
-        ) -> Result<Vec<everruns_core::SecretInfo>> {
+        ) -> Result<Vec<everruns_core::session_services::SecretInfo>> {
             Ok(Vec::new())
         }
     }
@@ -2872,7 +2875,7 @@ mod tests {
 
         let ctx = ToolContext::new(session_id)
             .with_storage_store_arc(
-                storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
+                storage.clone() as Arc<dyn everruns_core::session_services::SessionStorageStore>
             )
             .with_session_task_registry(registry.clone());
 
@@ -2979,7 +2982,7 @@ mod tests {
 
         let ctx = ToolContext::new(session_id)
             .with_storage_store_arc(
-                storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
+                storage.clone() as Arc<dyn everruns_core::session_services::SessionStorageStore>
             )
             .with_session_task_registry(registry.clone());
 
@@ -3055,9 +3058,10 @@ mod tests {
             .await
             .unwrap();
 
-        let ctx = ToolContext::new(session_id).with_storage_store_arc(
-            storage.clone() as Arc<dyn everruns_core::traits::SessionStorageStore>
-        );
+        let ctx =
+            ToolContext::new(session_id)
+                .with_storage_store_arc(storage.clone()
+                    as Arc<dyn everruns_core::session_services::SessionStorageStore>);
 
         let task = fake_task_with_spec(session_id, &run_id, 2);
         let executor = ExternalAgentTaskExecutor;

@@ -22,12 +22,14 @@ use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use crate::session::ExecutionSession;
-use crate::traits::{
-    AgentStore, HarnessStore, ImageResolver, ProviderStore, ResolvedImage, ResolvedModel,
-    SessionFileSystem, SessionStore,
-};
 use crate::typed_id::SessionId;
 use crate::user_facing_error::{UserFacingErrorContext, classify_runtime_error_message};
+use crate::{
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, image_services::ImageResolver, image_services::ResolvedImage,
+    provider_resolution::ProviderStore, provider_resolution::ResolvedModel,
+    session_files::SessionFileSystem,
+};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

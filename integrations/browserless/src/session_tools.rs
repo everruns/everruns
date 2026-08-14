@@ -8,8 +8,8 @@
 
 use everruns_core::ToolHints;
 use everruns_core::UpsertLeasedResource;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

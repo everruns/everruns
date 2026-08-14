@@ -20,10 +20,12 @@ use crate::runtime_agent::RuntimeAgent;
 use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::session::ExecutionSession;
 use crate::tool_types::ToolDefinition;
-use crate::traits::{
-    AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionFileSystem, SessionStore,
-};
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use crate::{
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    provider_resolution::ResolvedModel, session_files::SessionFileSystem,
+};
 use std::sync::Arc;
 
 /// Public snapshot of the assembled turn context used by reason-phase hosts.

@@ -20,7 +20,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use everruns_core::atoms::{PreToolUseDecision, PreToolUseHook};
 use everruns_core::capabilities::Capability;
-use everruns_core::{PostToolExecHook, ToolCall, ToolContext, ToolDefinition, ToolResult};
+use everruns_core::{
+    PostToolExecHook, ToolCall, ToolDefinition, ToolResult, tool_context::ToolContext,
+};
 use serde_json::Value;
 
 pub(crate) const LIFECYCLE_HOOK_CAPABILITY_ID: &str = "__everruns_framework_lifecycle_hooks";

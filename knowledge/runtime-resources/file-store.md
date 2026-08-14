@@ -58,17 +58,18 @@ day the embedder plugs a real-disk filesystem.
 
 ## Contract
 
-### Traits
+### Contracts
 
-The public surface is two core traits:
+The public surface is split across the execution and host concerns:
 
-- `everruns_core::traits::SessionFileSystem` — the read/write contract every
+- `everruns_core::session_files::SessionFileSystem` — the read/write contract every
   filesystem-aware capability calls.
-- `everruns_core::traits::SessionFileSystemFactory` — resolves the platform's
+- `everruns_host::SessionFileSystemFactory` — resolves the deployment's
   chosen filesystem from host-provided dependencies.
 
-See `crates/core/src/traits.rs` for the full method signatures and doc
-comments. The filesystem trait shape is intentionally small: an implementation
+See `crates/core/src/session_files.rs` and
+`crates/host/src/session_file_system_factory.rs` for the full method signatures
+and doc comments. The filesystem trait shape is intentionally small: an implementation
 supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
 `delete_file`, `list_directory`, `stat_file`, `grep_files`,
 `create_directory`, and `seed_initial_file`.
@@ -596,7 +597,7 @@ APIs or the `SessionFileSystem` trait.
 - `crates/core/src/workspace_policy.rs` — portable `WorkspacePolicy`
 - `crates/host/src/real_disk.rs` — `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
-- `crates/core/src/traits.rs` — `SessionFileSystem` trait
+- `crates/core/src/session_files.rs` — `SessionFileSystem` trait
   (`display_path`/`display_root`/`resolve_path`)
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`

@@ -1,6 +1,7 @@
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};
 use everruns_core::{
-    EventEmitter, Message, MessageRetriever, MessageRole, SessionId, ToolCall, ToolResultImage,
+    Message, MessageRetriever, MessageRole, SessionId, ToolCall, ToolResultImage,
+    event_emitter::EventEmitter,
 };
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::json;

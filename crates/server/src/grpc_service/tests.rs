@@ -143,7 +143,7 @@ async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
 struct AllowingConnectionResolver;
 
 #[async_trait::async_trait]
-impl everruns_core::traits::UserConnectionResolver for AllowingConnectionResolver {
+impl everruns_core::connection_services::UserConnectionResolver for AllowingConnectionResolver {
     async fn get_connection_token(
         &self,
         _session_id: everruns_core::SessionId,
@@ -594,7 +594,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             Some(parent_id),
         ),
     );
-    let mut context = everruns_core::traits::ToolContext::new(parent_id);
+    let mut context = everruns_core::tool_context::ToolContext::new(parent_id);
     context.subagent_delegate = Some(std::sync::Arc::new(
         everruns_platform::PlatformStoreSubagentDelegate(adapter.clone()),
     ));

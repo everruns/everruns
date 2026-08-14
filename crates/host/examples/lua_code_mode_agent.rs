@@ -34,7 +34,8 @@ fn main() {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_core::driver_registry::DriverRegistry;
     use everruns_core::{
-        AgentId, CapabilityRegistry, DriverId, HarnessId, ResolvedModel, SessionId,
+        AgentId, CapabilityRegistry, DriverId, HarnessId, SessionId,
+        provider_resolution::ResolvedModel,
     };
     use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
     use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};

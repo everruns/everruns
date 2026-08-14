@@ -19,7 +19,7 @@ use everruns_core::session_schedule::{
     MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
     max_active_schedules_per_org, validate_cron_min_interval,
 };
-use everruns_core::traits::SessionScheduleStore;
+use everruns_core::session_services::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
 use rusqlite::{OptionalExtension, TransactionBehavior};
 use serde_json::Value;

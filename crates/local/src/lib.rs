@@ -5,7 +5,7 @@
 //!
 //! - [`LocalSessionTaskRegistry`] — a [`everruns_core::session_task::SessionTaskRegistry`]
 //!   over SQLite, persisting tasks and their message channel.
-//! - [`LocalScheduleStore`] — a [`everruns_core::traits::SessionScheduleStore`]
+//! - [`LocalScheduleStore`] — a [`everruns_core::session_services::SessionScheduleStore`]
 //!   over SQLite, with an additive JSON metadata bag (see its module docs).
 //! - [`LocalSessionStore`] — a durable session identity and metadata catalog;
 //!   conversation history remains canonical-event-derived.

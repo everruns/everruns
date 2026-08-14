@@ -25,8 +25,10 @@ use crate::network_access::NetworkAccessList;
 use crate::session::ExecutionSession;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
-use crate::traits::{AgentStore, HarnessStore, SessionStore};
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
+use crate::{
+    execution_loading::AgentStore, execution_loading::HarnessStore, execution_loading::SessionStore,
+};
 
 /// Non-secret MCP scope entry retained by the execution snapshot.
 ///

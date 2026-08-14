@@ -4,8 +4,8 @@
 use async_trait::async_trait;
 
 use crate::atoms::AtomContext;
+use crate::event_emitter::EventEmitter;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::traits::EventEmitter;
 use crate::typed_id::SessionId;
 
 /// Per-turn context supplied to finalized tool-call hooks.

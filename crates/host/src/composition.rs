@@ -22,9 +22,10 @@
 //! scheduling stay outside this module so the type can be reused from any
 //! binary crate.
 
+use crate::{DisabledSessionFileSystemFactory, SessionFileSystemFactory};
 use everruns_core::{
     Capability, CapabilityRegistry, DriverRegistry, EgressService, UtilityLlmService,
-    traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory, ToolContextExtensions},
+    tool_context::ToolContextExtensions,
 };
 use std::sync::Arc;
 

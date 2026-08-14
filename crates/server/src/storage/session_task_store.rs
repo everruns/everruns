@@ -10,6 +10,7 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, SessionTaskEventData, TaskMessageEventData,
 };
@@ -18,7 +19,6 @@ use everruns_core::session_task::{
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection,
     generate_task_message_id, new_session_task, task_message_text,
 };
-use everruns_core::traits::EventEmitter;
 use everruns_core::{AgentLoopError, Result, SessionId};
 
 use super::backend::StorageBackend;

@@ -622,9 +622,9 @@ pub fn tool_call_repair_capability() -> Arc<dyn Capability> {
 mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
+    use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{EventData, EventRequest};
     use everruns_core::tool_types::{BuiltinTool, ToolDefinition, ToolPolicy};
-    use everruns_core::traits::EventEmitter;
     use everruns_core::{Event, EventId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use std::sync::Mutex;

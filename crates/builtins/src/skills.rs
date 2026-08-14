@@ -40,8 +40,8 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use serde_json::Value;
 
 /// Skills capability ID (built-in)
@@ -702,8 +702,9 @@ mod tests {
     use crate::session_resource::{
         RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
     };
-    use crate::traits::{SessionFileSystem, SessionResourceRegistry};
     use crate::typed_id::SessionId;
+    use everruns_core::session_files::SessionFileSystem;
+    use everruns_core::session_services::SessionResourceRegistry;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};

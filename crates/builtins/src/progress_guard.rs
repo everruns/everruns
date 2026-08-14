@@ -7,8 +7,8 @@
 use crate::atoms::{PostToolExecHook, PostToolExecHookPriority};
 use crate::capabilities::{Capability, CapabilityStatus};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContext;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet, VecDeque, hash_map::DefaultHasher};

@@ -18,13 +18,14 @@
 
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use base64::Engine as _;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext,
 };
+use everruns_core::session_files::SessionFileSystem;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
 use fetchkit::{BotAuthConfig, FetchError, FetchRequest};

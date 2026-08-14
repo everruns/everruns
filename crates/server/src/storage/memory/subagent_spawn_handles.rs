@@ -2,8 +2,10 @@
 
 use async_trait::async_trait;
 use everruns_core::error::AgentLoopError;
-use everruns_core::traits::{SpawnClaimResult, SubagentSpawnStore};
 use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    delegation_services::SpawnClaimResult, delegation_services::SubagentSpawnStore,
+};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use uuid::Uuid;

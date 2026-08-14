@@ -11,7 +11,7 @@ use everruns_core::{
         MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
         max_active_schedules_per_org, validate_schedule_create_limits,
     },
-    traits::SessionScheduleStore,
+    session_services::SessionScheduleStore,
 };
 
 use super::backend::StorageBackend;

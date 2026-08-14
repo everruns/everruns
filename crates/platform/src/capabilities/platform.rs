@@ -6,7 +6,7 @@ use everruns_core::capabilities::{
 };
 use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{ToolContext, ToolContextService};
+use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";

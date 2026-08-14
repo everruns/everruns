@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::future::Future;
 use std::sync::Arc;
 
-use everruns_core::traits::EventEmitter;
+use everruns_core::event_emitter::EventEmitter;
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{MessageId, TurnId};
 use everruns_core::{AgentLoopError, InputMessage, SessionId};

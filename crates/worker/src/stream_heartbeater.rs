@@ -1,7 +1,7 @@
 // Stream-liveness heartbeater bridging ReasonAtom to the durable task store (EVE-531).
 
 use async_trait::async_trait;
-use everruns_core::traits::{StreamHeartbeater, StreamProgress};
+use everruns_core::{durability::StreamHeartbeater, durability::StreamProgress};
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcDurableStore;

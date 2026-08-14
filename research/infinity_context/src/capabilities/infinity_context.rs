@@ -11,7 +11,7 @@ use super::{Capability, CapabilityStatus, ContextStrategyConfig, MessageFilterPr
 use async_trait::async_trait;
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
+use everruns_core::tool_context::ToolContext;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;

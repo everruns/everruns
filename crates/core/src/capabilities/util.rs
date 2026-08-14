@@ -28,7 +28,7 @@
 
 use crate::subagent_delegation::SubagentSessionDelegate;
 use crate::tools::ToolExecutionResult;
-use crate::traits::{SessionFileSystem, ToolContext};
+use crate::{session_files::SessionFileSystem, tool_context::ToolContext};
 use serde_json::Value;
 use std::str::FromStr;
 

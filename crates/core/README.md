@@ -55,6 +55,13 @@ hosted capabilities come from their owning integration or product crates.
 - Neutral capability collection hooks and type-keyed host-service extensions
 - Read-only storage traits and canonical event/message contracts
 
+Per-turn effect contracts are organized by concern: `execution_loading`,
+`tool_execution`, `tool_context`, `session_files`, `session_services`,
+`durability`, `event_emitter`, `provider_resolution`, `image_services`,
+`connection_services`, and `delegation_services`. The crate intentionally has no catch-all `traits`
+module. Deployment composition contracts, including
+`SessionFileSystemFactory`, live in `everruns-host`.
+
 Environment implementations live in `everruns-integrations-filesystem`,
 `everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,
 `everruns-integrations-lua`, `everruns-mcp`, and `everruns-http`.

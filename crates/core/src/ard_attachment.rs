@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::capability_types::AgentCapabilityConfig;
 use crate::mcp_server::ScopedMcpServer;
 use crate::session::ExecutionSession;
-use crate::traits::SessionStorageStore;
+use crate::session_services::SessionStorageStore;
 use crate::typed_id::SessionId;
 
 /// Session KV key prefix under which `resource_discovery` writes attachments.

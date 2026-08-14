@@ -9,13 +9,13 @@
 
 use everruns_builtins::{DistillOutputHook, PersistOutputHook};
 use everruns_core::atoms::PostToolExecHook;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
 #[cfg(any(feature = "bashkit", feature = "filesystem"))]
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::ToolContext;
-use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
+use everruns_core::{MountFs, SessionId, WorkspaceRootSet, session_files::SessionFileSystem};
 use everruns_host::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 #[cfg(feature = "bashkit")]
 use everruns_integrations_bashkit::BashTool;

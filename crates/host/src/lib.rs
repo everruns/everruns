@@ -48,6 +48,7 @@ mod mcp_cache;
 mod process_command;
 mod real_disk;
 mod runtime;
+mod session_file_system_factory;
 mod turn_strategy;
 #[cfg(feature = "utility-openai")]
 mod utility_llm;
@@ -94,6 +95,9 @@ pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_r
 pub use runtime::{
     AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
     TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
+};
+pub use session_file_system_factory::{
+    DisabledSessionFileSystemFactory, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
 #[cfg(feature = "utility-openai")]

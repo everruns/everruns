@@ -3,6 +3,7 @@
 // and capability resolution path as the durable worker so behavior stays close.
 
 use crate::HostComposition;
+use crate::SessionFileSystemFactoryContext;
 use crate::backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
 };
@@ -37,16 +38,17 @@ use everruns_core::resolve_runtime_capabilities;
 use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
-use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionStorageStore,
-    SessionStore, UserConnectionResolver,
-};
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
-    SessionFileSystem, SessionFileSystemFactoryContext, load_execution_snapshot_for_session,
-    plugin_capability_id,
+    load_execution_snapshot_for_session, plugin_capability_id, session_files::SessionFileSystem,
+};
+use everruns_core::{
+    connection_services::UserConnectionResolver, event_emitter::EventEmitter,
+    execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    provider_resolution::ResolvedModel, session_services::SessionStorageStore,
 };
 use everruns_engine::{
     ActOutcome, plan_after_act, plan_after_process_input, plan_after_reason, reason_schedules_act,
@@ -1779,7 +1781,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionScheduleStore>> {
         self.schedule_store_factory
             .as_ref()
             .map(|factory| factory(org_id))

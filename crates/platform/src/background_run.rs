@@ -23,8 +23,8 @@ use std::sync::{Arc, OnceLock};
 use async_trait::async_trait;
 use everruns_core::background::{BackgroundEventSink, BackgroundOutcome, BackgroundProgress};
 use everruns_core::error::Result;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolRegistry};
-use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::SessionId;
 use serde_json::{Value, json};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -1002,7 +1002,7 @@ fn is_canceled_outcome(
 /// - per-worker or per-session background concurrency caps are exhausted
 pub async fn reattach_background_run(
     task: &everruns_core::session_task::SessionTask,
-    context: &everruns_core::traits::ToolContext,
+    context: &everruns_core::tool_context::ToolContext,
 ) -> everruns_core::error::Result<()> {
     // Fail fast before spawning a tokio task so the reaper can fall back to
     // orphaned-fail rather than leaving the task stuck in Running forever.
@@ -1173,7 +1173,7 @@ pub async fn reattach_background_run(
 }
 
 async fn ensure_directory(
-    file_store: &dyn everruns_core::traits::SessionFileSystem,
+    file_store: &dyn everruns_core::session_files::SessionFileSystem,
     session_id: everruns_core::SessionId,
     path: &str,
 ) -> Result<()> {
@@ -1196,9 +1196,9 @@ mod tests {
     use everruns_core::session_task::SessionTaskRegistry;
     use everruns_core::subagent_delegation::SubagentSessionDelegate;
     use everruns_core::tool_types::ToolHints;
-    use everruns_core::traits::{KeyInfo, SecretInfo};
-    use everruns_core::traits::{SessionFileSystem, SessionScheduleStore};
     use everruns_core::typed_id::HarnessId;
+    use everruns_core::{session_files::SessionFileSystem, session_services::SessionScheduleStore};
+    use everruns_core::{session_services::KeyInfo, session_services::SecretInfo};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc as StdArc, Mutex};
 
@@ -2009,7 +2009,7 @@ mod tests {
         let session_id = SessionId::new();
         // Context with no file_store — only session_task_registry is wired.
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context = everruns_core::traits::ToolContext::new(session_id)
+        let context = everruns_core::tool_context::ToolContext::new(session_id)
             .with_session_task_registry(task_registry);
         let task = make_reattach_task(serde_json::json!({
             "tool": "get_current_time",
@@ -2032,8 +2032,11 @@ mod tests {
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
         // Context has a file_store but no session_task_registry.
-        let context =
-            everruns_core::traits::ToolContext::with_stores(session_id, file_store, storage_store);
+        let context = everruns_core::tool_context::ToolContext::with_stores(
+            session_id,
+            file_store,
+            storage_store,
+        );
         let task = make_reattach_task(serde_json::json!({
             "tool": "get_current_time",
             "arguments": {},
@@ -2055,9 +2058,12 @@ mod tests {
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context =
-            everruns_core::traits::ToolContext::with_stores(session_id, file_store, storage_store)
-                .with_session_task_registry(task_registry);
+        let context = everruns_core::tool_context::ToolContext::with_stores(
+            session_id,
+            file_store,
+            storage_store,
+        )
+        .with_session_task_registry(task_registry);
         // "test_background" is not in ToolRegistry::with_defaults().
         let task = make_reattach_task(serde_json::json!({
             "tool": "test_background",
@@ -2080,9 +2086,12 @@ mod tests {
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
-        let context =
-            everruns_core::traits::ToolContext::with_stores(session_id, file_store, storage_store)
-                .with_session_task_registry(task_registry);
+        let context = everruns_core::tool_context::ToolContext::with_stores(
+            session_id,
+            file_store,
+            storage_store,
+        )
+        .with_session_task_registry(task_registry);
         // Spec has no "tool" field.
         let task = make_reattach_task(serde_json::json!({ "reattachable": true }));
         let err = reattach_background_run(&task, &context)
@@ -2192,7 +2201,7 @@ mod tests {
     struct NoopStorageStore;
 
     #[async_trait]
-    impl everruns_core::traits::SessionStorageStore for NoopStorageStore {
+    impl everruns_core::session_services::SessionStorageStore for NoopStorageStore {
         async fn set_value(
             &self,
             _session_id: SessionId,
@@ -2254,7 +2263,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionFileSystem for TestFileStore {
+    impl everruns_core::session_files::SessionFileSystem for TestFileStore {
         fn is_mount_resolver(&self) -> bool {
             false
         }
@@ -2555,7 +2564,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl everruns_core::traits::SessionScheduleStore for TestScheduleStore {
+    impl everruns_core::session_services::SessionScheduleStore for TestScheduleStore {
         async fn create_schedule(
             &self,
             session_id: SessionId,

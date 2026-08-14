@@ -27,7 +27,7 @@ use crate::session_file::{GrepOptions, GrepSearchResult};
 
 use crate::error::{AgentLoopError, Result};
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
-use crate::traits::SessionFileSystem;
+use crate::session_files::SessionFileSystem;
 use crate::typed_id::SessionId;
 
 /// The conventional mount point and default cwd for the workspace. Models
@@ -367,7 +367,7 @@ pub fn scoped_prompt_file_store(
     file_store: Arc<dyn SessionFileSystem>,
     workspace_id: crate::typed_id::WorkspaceId,
 ) -> Arc<dyn SessionFileSystem> {
-    MountFs::wrap_if_needed(crate::traits::WorkspaceScopedFileSystem::wrap(
+    MountFs::wrap_if_needed(crate::session_files::WorkspaceScopedFileSystem::wrap(
         file_store,
         workspace_id,
     ))

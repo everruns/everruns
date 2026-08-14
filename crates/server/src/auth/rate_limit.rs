@@ -700,7 +700,7 @@ impl OrgRateLimiter {
 /// same format used by `check_outbound_tool_call`. The internal i64 is not
 /// available in `ActAtom`, so `OrgId` is the natural key.
 #[async_trait::async_trait]
-impl everruns_core::OutboundToolRateLimiter for OrgRateLimiter {
+impl everruns_core::tool_execution::OutboundToolRateLimiter for OrgRateLimiter {
     async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
         // Fail-open: rate limit exceeded → false; backend error → true (already
         // handled inside check_keyed via Valkey BackendError path).

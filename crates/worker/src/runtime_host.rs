@@ -4,15 +4,17 @@
 
 use async_trait::async_trait;
 use everruns_core::error::Result;
-use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
-    ProviderCredentialStore, ProviderStore, SessionCreationAuthority, SessionFileSystem,
-    SessionStore,
-};
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
     CapabilityRegistry, DriverRegistry, EgressService, ResolvedExecutionSnapshot,
     SessionExecutionState, UtilityLlmService,
+};
+use everruns_core::{
+    connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
+    event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
+    execution_loading::SessionStore, image_services::ImageArtifactStore,
+    image_services::ImageResolver, provider_resolution::ProviderStore,
+    session_files::SessionFileSystem, tool_execution::PaymentAuthority,
 };
 use everruns_host::{ResolvedTurnInputs, RuntimeHostAdapter};
 use everruns_mcp::{
@@ -282,7 +284,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.egress_service()
     }
 
-    fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {
+    fn storage_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionStorageStore>> {
         Some(self.adapters.storage_store())
     }
 
@@ -292,7 +296,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn connection_resolver(
         &self,
-    ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+    ) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
         Some(self.adapters.connection_resolver())
     }
 
@@ -302,13 +306,15 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.sqldb_store())
     }
 
-    fn leased_resource_store(&self) -> Option<Arc<dyn everruns_core::traits::LeasedResourceStore>> {
+    fn leased_resource_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_services::LeasedResourceStore>> {
         Some(self.adapters.leased_resource_store())
     }
 
     fn session_resource_registry(
         &self,
-    ) -> Option<Arc<dyn everruns_core::traits::SessionResourceRegistry>> {
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
         self.adapters.session_resource_registry()
     }
 
@@ -321,7 +327,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+    ) -> Option<Arc<dyn everruns_core::session_services::SessionScheduleStore>> {
         Some(self.adapters.schedule_store(org_id))
     }
 
@@ -344,7 +350,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         &self,
         org_id: i64,
         agent_id: Option<AgentId>,
-    ) -> Option<Arc<dyn everruns_core::traits::BudgetChecker>> {
+    ) -> Option<Arc<dyn everruns_core::tool_execution::BudgetChecker>> {
         self.adapters.budget_checker(org_id, agent_id)
     }
 
@@ -367,19 +373,23 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     fn outbound_tool_rate_limiter(
         &self,
         org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+    ) -> Option<Arc<dyn everruns_core::tool_execution::OutboundToolRateLimiter>> {
         self.adapters.outbound_tool_rate_limiter(org_id)
     }
 
-    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+    fn durable_tool_result_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::durability::DurableToolResultStore>> {
         self.adapters.durable_tool_result_store()
     }
 
-    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+    fn subagent_spawn_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::delegation_services::SubagentSpawnStore>> {
         self.adapters.subagent_spawn_store()
     }
 
-    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::durability::StreamHeartbeater>> {
         self.adapters.stream_heartbeater()
     }
 

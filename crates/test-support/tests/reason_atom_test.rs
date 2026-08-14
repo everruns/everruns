@@ -13,9 +13,9 @@ use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::harness_definition::HarnessDefinition;
+use everruns_core::provider_resolution::ResolvedModel;
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
-use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{CompactionCheckpointStore, Controls, Message, ToolCall};
 use everruns_host::{
@@ -258,7 +258,7 @@ impl ProactiveTestRig {
     ) -> Self {
         use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
         use everruns_core::AgentCapabilityConfig;
-        use everruns_core::traits::SessionStore;
+        use everruns_core::execution_loading::SessionStore;
 
         let (
             harness_store,
@@ -353,7 +353,7 @@ impl ProactiveTestRig {
     async fn configure_cost_pressure(&self, messages: Vec<Message>) {
         use everruns_builtins::COMPACTION_CAPABILITY_ID;
         use everruns_core::AgentCapabilityConfig;
-        use everruns_core::traits::SessionStore;
+        use everruns_core::execution_loading::SessionStore;
 
         self.message_retriever
             .seed(self.session_id.into(), messages)
@@ -1042,7 +1042,7 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 async fn native_compact_failure_does_not_install_checkpoint() {
     use everruns_builtins::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::traits::SessionStore;
+    use everruns_core::execution_loading::SessionStore;
 
     let (
         harness_store,
@@ -1913,7 +1913,7 @@ async fn test_reason_atom_with_tool_calls() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);
@@ -1972,7 +1972,7 @@ async fn test_reason_atom_with_echo_response() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);
@@ -2028,7 +2028,7 @@ async fn test_reason_atom_with_different_configs() {
         provider_store.clone(),
         CapabilityRegistry::new(),
         driver_registry1,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context1 = create_context(session_id);
@@ -2091,7 +2091,7 @@ async fn test_reason_atom_with_different_configs() {
         provider_store.clone(),
         CapabilityRegistry::new(),
         driver_registry2,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context2 = create_context(session_id2);
@@ -2241,7 +2241,7 @@ async fn test_reason_atom_with_tool_result_continuation() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);
@@ -2296,7 +2296,7 @@ async fn test_reason_atom_with_lorem_response() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);
@@ -2988,7 +2988,7 @@ async fn test_reason_atom_returns_response_id_from_driver() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);
@@ -3044,7 +3044,7 @@ async fn test_reason_atom_response_id_none_when_driver_omits_it() {
         provider_store,
         CapabilityRegistry::new(),
         driver_registry,
-        NoopEventEmitter,
+        InMemoryEventEmitter::new(),
     );
 
     let context = create_context(session_id);

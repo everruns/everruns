@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_schedule::{ScheduleType, SessionSchedule};
-use everruns_core::traits::SessionScheduleStore;
+use everruns_core::session_services::SessionScheduleStore;
 use everruns_core::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
 use everruns_local::{
     LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleStore, LocalSessionRunner,

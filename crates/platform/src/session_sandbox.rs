@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::ToolContext;
 
 /// Capability id for the managed session sandbox capability.
 pub const SESSION_SANDBOX_CAPABILITY_ID: &str = "session_sandbox";
@@ -568,7 +568,7 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use chrono::Utc;
-    use everruns_core::traits::{SecretInfo, SessionStorageStore};
+    use everruns_core::{session_services::SecretInfo, session_services::SessionStorageStore};
     use std::collections::HashMap;
     use std::sync::{Arc, LazyLock, Mutex};
 
@@ -607,7 +607,7 @@ mod tests {
         async fn list_keys(
             &self,
             _session_id: everruns_core::SessionId,
-        ) -> everruns_core::Result<Vec<everruns_core::KeyInfo>> {
+        ) -> everruns_core::Result<Vec<everruns_core::session_services::KeyInfo>> {
             unreachable!()
         }
 

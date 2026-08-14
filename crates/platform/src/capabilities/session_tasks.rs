@@ -19,7 +19,7 @@ use everruns_core::session_task::{
 };
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::traits::{ToolContext, ToolContextService};
+use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::time::Duration;

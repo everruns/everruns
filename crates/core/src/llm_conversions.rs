@@ -18,7 +18,7 @@ use crate::driver_registry::{
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::ToolCall;
-use crate::traits::{ResolvedImage, ResolvedModel};
+use crate::{image_services::ResolvedImage, provider_resolution::ResolvedModel};
 
 /// Convert a [`Message`] into an [`LlmMessage`] (text-only; images become
 /// placeholders). For multimodal messages use
@@ -470,7 +470,7 @@ mod tests {
         let mut resolved = std::collections::HashMap::new();
         resolved.insert(
             image_id,
-            crate::ResolvedImage::new("base64data", "image/png"),
+            crate::image_services::ResolvedImage::new("base64data", "image/png"),
         );
 
         let llm_message = llm_message_from_message_with_images(&message, &resolved);

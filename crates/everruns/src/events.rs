@@ -632,11 +632,11 @@ impl EventSink for FacadeEventBus {
 mod tests {
     use std::sync::Arc;
 
+    use everruns_core::event_emitter::EventEmitter;
     use everruns_core::events::{
         ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ToolStartedData,
         TurnCancelledData, TurnStartedData,
     };
-    use everruns_core::traits::EventEmitter;
     use everruns_core::{MessageId, SessionId, ToolCall, TurnId};
     use everruns_host::{HostEventEmitter, InMemoryEventLog};
     use serde_json::json;

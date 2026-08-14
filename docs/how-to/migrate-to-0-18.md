@@ -81,6 +81,13 @@ If you were reading a stored record to run a turn, you probably want the portabl
 | `EmailSender`, `EmailMessage`, `SystemEmailConfig`, `ResendEmailSender` | `everruns_platform::email::` |
 | `OAuthClient`, `TokenSet`, `PkcePair` | `everruns_mcp::oauth::protocol::` |
 
+Neutral per-turn contracts remain in `everruns-core`, but the catch-all
+`everruns_core::traits` module is gone. Import from the owning concern instead,
+for example `everruns_core::tool_context::ToolContext`,
+`everruns_core::session_files::SessionFileSystem`, or
+`everruns_core::provider_resolution::ProviderStore`. The deployment-owned
+`SessionFileSystemFactory` and its context now come from `everruns-host`.
+
 Two of these also changed how a capability *reaches* the service. `sqldb_store` and `session_mutator` are no longer fields on `ToolContext`; they resolve from the type-keyed extension bag:
 
 ```diff

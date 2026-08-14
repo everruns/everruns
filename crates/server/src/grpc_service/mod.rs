@@ -511,13 +511,14 @@ pub struct WorkerServiceImpl {
     /// Encryption service for domains that decrypt stored config blobs.
     encryption: Option<Arc<EncryptionService>>,
     /// Session storage store for key/value and secret operations
-    session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
+    session_storage_store: Option<Arc<dyn everruns_core::session_services::SessionStorageStore>>,
     /// Session SQL database store for session-scoped databases
     sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
-    connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    connection_resolver:
+        Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     /// Base URL for generating presigned image URLs (e.g., "http://127.0.0.1:9000")
     /// When set, image resolution returns presigned URLs instead of base64 data.
     api_base_url: Option<String>,
@@ -606,35 +607,35 @@ impl WorkerServiceImpl {
             .map(|pool| Arc::new(PostgresWorkflowEventStore::new(pool.clone())));
 
         // Create session storage store (PostgreSQL mode only)
-        let session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>> =
-            db.pool().map(|pool| {
-                let database = crate::storage::Database::new(pool.clone());
-                if let Some(enc) = &encryption {
-                    Arc::new(crate::storage::create_db_session_storage_store(
-                        database,
-                        enc.as_ref().clone(),
-                    )) as Arc<dyn everruns_core::traits::SessionStorageStore>
-                } else {
-                    Arc::new(
-                        crate::storage::create_db_session_storage_store_without_encryption(
-                            database,
-                        ),
-                    ) as Arc<dyn everruns_core::traits::SessionStorageStore>
-                }
-            });
+        let session_storage_store: Option<
+            Arc<dyn everruns_core::session_services::SessionStorageStore>,
+        > = db.pool().map(|pool| {
+            let database = crate::storage::Database::new(pool.clone());
+            if let Some(enc) = &encryption {
+                Arc::new(crate::storage::create_db_session_storage_store(
+                    database,
+                    enc.as_ref().clone(),
+                )) as Arc<dyn everruns_core::session_services::SessionStorageStore>
+            } else {
+                Arc::new(
+                    crate::storage::create_db_session_storage_store_without_encryption(database),
+                ) as Arc<dyn everruns_core::session_services::SessionStorageStore>
+            }
+        });
 
         // Create connection resolver (requires encryption for token decryption)
-        let connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> =
-            encryption.as_ref().map(|enc| {
-                // GitHub App token minting requires env vars (set in production via Doppler)
-                let github_app_minter = Self::github_app_minter_from_env();
-                Arc::new(crate::storage::DbConnectionResolver::new(
-                    db.as_ref().clone(),
-                    enc.as_ref().clone(),
-                    github_app_minter,
-                    host_composition.egress_service(),
-                )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
-            });
+        let connection_resolver: Option<
+            Arc<dyn everruns_core::connection_services::UserConnectionResolver>,
+        > = encryption.as_ref().map(|enc| {
+            // GitHub App token minting requires env vars (set in production via Doppler)
+            let github_app_minter = Self::github_app_minter_from_env();
+            Arc::new(crate::storage::DbConnectionResolver::new(
+                db.as_ref().clone(),
+                enc.as_ref().clone(),
+                github_app_minter,
+                host_composition.egress_service(),
+            )) as Arc<dyn everruns_core::connection_services::UserConnectionResolver>
+        });
 
         // Create session SQL database store (always available, in-memory backend)
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
@@ -768,7 +769,7 @@ impl WorkerServiceImpl {
     #[allow(clippy::result_large_err)]
     fn storage_store(
         &self,
-    ) -> Result<&Arc<dyn everruns_core::traits::SessionStorageStore>, Status> {
+    ) -> Result<&Arc<dyn everruns_core::session_services::SessionStorageStore>, Status> {
         self.session_storage_store
             .as_ref()
             .ok_or_else(|| Status::unavailable("Session storage not available"))
@@ -778,14 +779,16 @@ impl WorkerServiceImpl {
     #[allow(clippy::result_large_err)]
     fn connection_resolver(
         &self,
-    ) -> Result<&Arc<dyn everruns_core::traits::UserConnectionResolver>, Status> {
+    ) -> Result<&Arc<dyn everruns_core::connection_services::UserConnectionResolver>, Status> {
         self.connection_resolver
             .as_ref()
             .ok_or_else(|| Status::unavailable("Connection resolver not available (no encryption)"))
     }
 
     /// Create the session resource registry used by tools over gRPC.
-    fn session_resource_registry(&self) -> Arc<dyn everruns_core::traits::SessionResourceRegistry> {
+    fn session_resource_registry(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::SessionResourceRegistry> {
         Arc::new(crate::storage::DbSessionResourceRegistry::new(
             self.db.clone(),
         ))
@@ -808,7 +811,9 @@ impl WorkerServiceImpl {
     }
 
     /// Create the leased-resource store used by tools over gRPC.
-    fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+    fn leased_resource_store(
+        &self,
+    ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
         let registry = self.session_resource_registry();
         Arc::new(
             crate::storage::DbLeasedResourceStore::new(self.db.clone()).with_registry(registry),
@@ -820,7 +825,7 @@ impl WorkerServiceImpl {
     fn schedule_store(
         &self,
         org_id: i64,
-    ) -> Result<Arc<dyn everruns_core::traits::SessionScheduleStore>, Status> {
+    ) -> Result<Arc<dyn everruns_core::session_services::SessionScheduleStore>, Status> {
         if self.db.pool().is_some() {
             Ok(Arc::new(crate::storage::DbSessionScheduleStore::new(
                 self.db.clone(),
