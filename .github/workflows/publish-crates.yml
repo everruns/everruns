@@ -181,13 +181,6 @@ jobs:
                   "everruns-macros",
                   "everruns-test-support",
               ],
-              "crates/scale/Cargo.toml": [
-                  "everruns",
-                  "everruns-core",
-                  "everruns-durable",
-                  "everruns-host",
-                  "everruns-provider",
-              ],
               "crates/test-support/Cargo.toml": [
                   "everruns-core",
                   "everruns-host",
@@ -297,8 +290,6 @@ jobs:
             everruns-openui
             everruns-a2ui
             everruns-provider
-            # Generic workflow substrate has no product or Framework edge.
-            everruns-durable
             everruns-meta
             # The dependency-light neutral capability contract publishes
             # before core, which re-exports it.
@@ -347,9 +338,6 @@ jobs:
             # is only installable once everruns-macros is on crates.io.
             everruns-macros
             everruns
-            # The portable distributed Engine composes the facade, host, and
-            # generic durable substrate, so it publishes after all three.
-            everruns-scale
           )
 
           publish_status() {

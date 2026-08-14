@@ -1192,7 +1192,7 @@ mod tests {
     struct CancelTestRunner;
 
     #[async_trait::async_trait]
-    impl everruns_scale::RunController for CancelTestRunner {
+    impl everruns_worker::AgentRunner for CancelTestRunner {
         async fn start_run(
             &self,
             _org_id: i64,

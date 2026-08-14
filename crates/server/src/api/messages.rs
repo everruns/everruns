@@ -26,7 +26,7 @@ use chrono::{DateTime, Utc};
 use everruns_provider::typed_id::{MessageId, SessionId, SessionParticipantId};
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 use utoipa::ToSchema;
@@ -192,7 +192,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn RunController>,
+        runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,

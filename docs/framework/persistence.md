@@ -74,8 +74,3 @@ SPI and supplies it through `HostBackends::with_event_log`; see
 
 Do not design new application persistence around a legacy storage
 representation.
-
-For multi-process execution, use the reference-only
-[`ScaleEngine`](/framework/scalable-engines/). It owns PostgreSQL canonical
-events and exact Environment bindings rather than serializing an arbitrary
-in-process Agent.

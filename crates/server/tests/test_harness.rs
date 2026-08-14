@@ -32,12 +32,11 @@ use tower::ServiceExt;
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
-use everruns_scale::RunController;
 use everruns_server::{
     api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
 };
-use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -88,7 +87,7 @@ pub struct TestServer {
     pub pool: PgPool,
     pub virtual_registry:
         Arc<everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
-    pub runner: Arc<dyn RunController>,
+    pub runner: Arc<dyn AgentRunner>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
     pub seed_base_harness_id: String,

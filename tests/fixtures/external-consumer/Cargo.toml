@@ -7,6 +7,5 @@ members = [
     "event-log",
     "execution-contracts",
     "provider-pack",
-    "scale-consumer",
     "workspace-provider",
 ]

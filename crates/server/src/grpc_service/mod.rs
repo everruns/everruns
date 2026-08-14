@@ -425,7 +425,7 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
 struct GrpcSessionTaskWaker {
     db: Arc<StorageBackend>,
     event_service: EventService,
-    runner: Option<Arc<dyn everruns_scale::RunController>>,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
 }
 
 #[async_trait::async_trait]
@@ -519,7 +519,7 @@ pub struct WorkerServiceImpl {
     /// Session SQL database store for session-scoped databases
     sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
     /// Agent runner for triggering turn workflows (platform management send_message)
-    runner: Option<Arc<dyn everruns_scale::RunController>>,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     /// Lazy connection token resolver (decrypts stored tokens / mints GitHub App tokens)
     connection_resolver:
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
@@ -544,7 +544,7 @@ impl WorkerServiceImpl {
         event_service: EventService,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Option<Arc<dyn everruns_scale::RunController>>,
+        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
         host_composition: HostComposition,
     ) -> Self {
         Self::with_virtual_registry(
@@ -562,7 +562,7 @@ impl WorkerServiceImpl {
         event_service: EventService,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Option<Arc<dyn everruns_scale::RunController>>,
+        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
         host_composition: HostComposition,
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,

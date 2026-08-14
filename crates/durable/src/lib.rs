@@ -1,11 +1,6 @@
-//! # everruns-durable
+//! # Durable Execution Engine
 //!
-//! Generic PostgreSQL-backed workflow orchestration for reliable, distributed
-//! task execution. The crate owns no Everruns server DTOs or agent policy;
-//! [`everruns-scale`](https://docs.rs/everruns-scale) composes it behind the
-//! public distributed Engine.
-//!
-//! Part of the [Everruns](https://everruns.com) ecosystem.
+//! A PostgreSQL-backed workflow orchestration engine for reliable, distributed task execution.
 //!
 //! ## Features
 //!
@@ -13,6 +8,7 @@
 //! - **Automatic retries**: Configurable retry policies with exponential backoff and jitter
 //! - **Circuit breakers**: Protect external services from cascading failures
 //! - **Distributed task queue**: Scalable task distribution with backpressure support
+//! - **OpenTelemetry integration**: Full observability with traces and metrics
 //!
 //! ## Architecture
 //!
@@ -37,12 +33,34 @@
 //!
 //! ## Example
 //!
-//! ```rust
-//! use everruns_durable::{InMemoryWorkflowEventStore, WorkflowEventStore};
+//! ```ignore
+//! use everruns_durable::prelude::*;
 //!
-//! let store: std::sync::Arc<dyn WorkflowEventStore> =
-//!     std::sync::Arc::new(InMemoryWorkflowEventStore::new());
-//! assert_eq!(std::sync::Arc::strong_count(&store), 1);
+//! #[derive(Debug, Serialize, Deserialize)]
+//! struct MyWorkflow {
+//!     state: MyState,
+//! }
+//!
+//! impl Workflow for MyWorkflow {
+//!     const TYPE: &'static str = "my_workflow";
+//!     type Input = MyInput;
+//!     type Output = MyOutput;
+//!
+//!     fn new(input: Self::Input) -> Self {
+//!         Self { state: MyState::Init }
+//!     }
+//!
+//!     fn on_start(&mut self) -> Vec<WorkflowAction> {
+//!         vec![WorkflowAction::ScheduleActivity {
+//!             activity_id: "step-1".into(),
+//!             activity_type: "my_activity".into(),
+//!             input: json!({}),
+//!             options: ActivityOptions::default(),
+//!         }]
+//!     }
+//!
+//!     // ... implement other trait methods
+//! }
 //! ```
 
 pub mod activity;
@@ -62,7 +80,6 @@ pub mod workflow;
 /// This module provides metrics collection and HTML report generation
 /// for load testing the durable execution engine.
 #[doc(hidden)]
-#[cfg(feature = "benchmarks")]
 pub mod bench;
 
 /// Prelude for common imports

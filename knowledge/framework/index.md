@@ -5,4 +5,3 @@
 * [Provider Extension Boundary](provider-extension.md) - Why model identity and provider execution are open, separate concerns.
 * [Library Experience](library-experience.md) - Ergonomic and behavioral success bars for application-facing use.
 * [Documentation and Examples](documentation-and-examples.md) - The maintained public learning path and runnable-example contract.
-* [Scalable Engine Boundary](scalable-engine.md) - Portable definitions, durable orchestration ownership, and migration rules.

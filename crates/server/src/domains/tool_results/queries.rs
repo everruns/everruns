@@ -1,5 +1,5 @@
 use crate::domains::common::{CommandError, Ctx};
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
 pub use crate::domains::sessions::queries::parse_session_id;
@@ -18,7 +18,7 @@ pub fn event_service(ctx: &Ctx) -> Result<&Arc<crate::services::EventService>, C
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Event service not configured")))
 }
 
-pub fn runner(ctx: &Ctx) -> Result<Arc<dyn RunController>, CommandError> {
+pub fn runner(ctx: &Ctx) -> Result<Arc<dyn AgentRunner>, CommandError> {
     ctx.runner
         .clone()
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Agent runner not configured")))

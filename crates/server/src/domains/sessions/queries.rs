@@ -3,7 +3,7 @@ use crate::storage::StorageBackend;
 use anyhow::Context;
 use everruns_platform::Session;
 use everruns_provider::typed_id::HarnessId;
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
 pub fn session_service(
@@ -14,7 +14,7 @@ pub fn session_service(
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Session service not configured")))
 }
 
-pub fn runner(ctx: &Ctx) -> Result<Arc<dyn RunController>, CommandError> {
+pub fn runner(ctx: &Ctx) -> Result<Arc<dyn AgentRunner>, CommandError> {
     ctx.runner
         .clone()
         .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Agent runner not configured")))

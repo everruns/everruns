@@ -22,7 +22,7 @@ use everruns_core::events::{EventContext, EventRequest, ToolCompletedData};
 use everruns_core::message::ContentPart;
 use everruns_platform::SessionStatus;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
-use everruns_scale::RunController;
+use everruns_worker::AgentRunner;
 
 use super::common::{ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, impl_auth_state};
 use everruns_core::Caller;
@@ -69,14 +69,14 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub event_service: EventService,
-    pub runner: Arc<dyn RunController>,
+    pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
 }
 
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn RunController>,
+        runner: Arc<dyn AgentRunner>,
         auth: AuthState,
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
@@ -157,7 +157,7 @@ pub async fn submit_tool_results(
         .into_response(StatusCode::CONFLICT));
     }
 
-    // Scale uses the session id as the durable workflow identity.
+    // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)
     let turn_id = TurnId::from_uuid(session_id.uuid());
     // Use a deterministic MessageId for event context only (not passed to InputAtom).
     let event_message_id = MessageId::from_uuid(session_id.uuid());

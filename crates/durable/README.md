@@ -2,11 +2,11 @@
 
 > PostgreSQL-backed durable execution engine for Everruns.
 
-`everruns-durable` is a generic workflow substrate: it runs typed activities and
-workflows reliably on PostgreSQL, survives process restarts, and retries failed
-work with backoff and circuit breaking. It contains no Everruns product API or
-agent policy. [`everruns-scale`](https://docs.rs/everruns-scale) composes it into
-the portable distributed Engine.
+`everruns-durable` is the workflow orchestration engine that makes Everruns
+agents *durable*: it runs activities and workflows reliably on top of PostgreSQL,
+surviving process restarts and retrying failed work with backoff and circuit
+breaking. It is an internal building block of the Everruns workspace — the server
+and worker use it to keep long-running agent sessions progressing.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents.
@@ -33,7 +33,6 @@ let _ = &mut registry;
 ## Documentation
 
 - [Durable execution](https://docs.everruns.com/explanation/durable-execution/)
-- [API reference](https://docs.rs/everruns-durable)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License
