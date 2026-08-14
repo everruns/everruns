@@ -12,7 +12,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::ActInput;
 use everruns_core::atoms::AtomContext;
-use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_durable::{
     ActivityOptions, ClaimedTask, HeartbeatResponse, StoreError, TaskDefinition,
     TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
@@ -24,6 +23,7 @@ use everruns_host::{
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity, plan_next_host_turn,
 };
+use everruns_provider::typed_id::{ExecId, TurnId};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -1541,7 +1541,7 @@ async fn enqueue_act_task<S: TaskStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::error::Result as CoreResult;
+    use everruns_provider::error::Result as CoreResult;
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
@@ -2027,24 +2027,25 @@ mod tests {
             ) -> CoreResult<everruns_core::events::Event> {
                 unimplemented!()
             }
-            async fn get_resolved_model(
+            async fn get_model_spec(
                 &self,
                 _org_id: i64,
                 _model_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
                 unimplemented!()
             }
-            async fn get_default_model(
+            async fn get_default_model_spec(
                 &self,
                 _org_id: i64,
-            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
                 unimplemented!()
             }
             async fn get_provider_config(
                 &self,
                 _org_id: i64,
-                _provider: &everruns_core::ProviderKey,
-            ) -> CoreResult<Option<everruns_core::ProviderConfig>> {
+                _provider: &everruns_provider::runtime_provider::ProviderKey,
+            ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>>
+            {
                 unimplemented!()
             }
             async fn resolve_image(
@@ -2155,14 +2156,14 @@ mod tests {
             }
             async fn mark_leased_resource_released(
                 &self,
-                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _resource_id: everruns_provider::typed_id::LeasedResourceId,
                 _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
             ) -> CoreResult<bool> {
                 unimplemented!()
             }
             async fn mark_leased_resource_cleanup_failed(
                 &self,
-                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _resource_id: everruns_provider::typed_id::LeasedResourceId,
                 _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
                 _retry_after_seconds: u32,
                 _error: &str,
@@ -2173,7 +2174,7 @@ mod tests {
                 &self,
                 _stale_after: chrono::Duration,
                 _limit: i64,
-            ) -> CoreResult<Vec<(everruns_core::SessionId, String)>> {
+            ) -> CoreResult<Vec<(everruns_provider::typed_id::SessionId, String)>> {
                 unimplemented!()
             }
             async fn prune_terminal_session_tasks(
@@ -2187,7 +2188,7 @@ mod tests {
             fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
                 unimplemented!()
             }
-            fn driver_registry(&self) -> everruns_core::DriverRegistry {
+            fn driver_registry(&self) -> everruns_provider::DriverRegistry {
                 unimplemented!()
             }
             fn sqldb_store(
@@ -2222,7 +2223,7 @@ mod tests {
             fn platform_store(
                 &self,
                 _org_id: i64,
-                _session_id: everruns_core::SessionId,
+                _session_id: everruns_provider::typed_id::SessionId,
             ) -> Arc<dyn everruns_platform::PlatformStore> {
                 unimplemented!()
             }

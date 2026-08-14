@@ -16,12 +16,11 @@
 // `spawn_background` invocation using llmsim 0.4.0 scripted mode) is the
 // suggested next layer; this test pins the contract that path depends on.
 
-use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityId, SystemPromptContext, collect_capabilities_with_configs,
-};
+use everruns_capability::{CapabilityId, CapabilityRef as AgentCapabilityConfig};
+use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
 use everruns_core::tools::ToolRegistry;
-use everruns_core::typed_id::SessionId;
 use everruns_platform::capabilities::BACKGROUND_EXECUTION_CAPABILITY_ID;
+use everruns_provider::typed_id::SessionId;
 
 fn ctx() -> SystemPromptContext {
     SystemPromptContext::without_file_store(SessionId::new())
@@ -41,7 +40,7 @@ async fn assemble(
     cap_ids: &[&str],
 ) -> (
     ToolRegistry,
-    Vec<everruns_core::tool_types::ToolDefinition>,
+    Vec<everruns_provider::tool_types::ToolDefinition>,
     Vec<String>,
 ) {
     let registry = everruns_platform::capabilities::hosted_capability_registry();

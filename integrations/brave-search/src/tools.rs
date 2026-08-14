@@ -1,8 +1,8 @@
 //! Tool implementations for Brave Search operations.
 
-use everruns_core::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -64,7 +64,7 @@ pub struct BraveWebSearchTool;
 impl Tool for BraveWebSearchTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -201,12 +201,12 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    use everruns_core::error::Result;
-    use everruns_core::typed_id::SessionId;
     use everruns_core::{
         connection_services::UserConnectionResolver, session_services::KeyInfo,
         session_services::SecretInfo, session_services::SessionStorageStore,
     };
+    use everruns_provider::error::Result;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;

@@ -12,14 +12,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::principal::PrincipalSummary;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
-use everruns_core::tool_types::ToolDefinition;
-use everruns_core::typed_id::{
+use everruns_provider::tool_types::ToolDefinition;
+use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId,
     SessionParticipantId, WorkspaceId,
 };
@@ -473,7 +473,7 @@ pub struct Session {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[cfg_attr(
         feature = "openapi",
-        schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)
+        schema(value_type = Vec<crate::CapabilityRefSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
@@ -775,7 +775,7 @@ mod tests {
     #[test]
     fn lifted_execution_view_round_trips_through_the_stored_record() {
         let execution = ExecutionSession {
-            agent_id: Some(everruns_core::typed_id::AgentId::from_seed(7)),
+            agent_id: Some(everruns_provider::typed_id::AgentId::from_seed(7)),
             title: Some("Lifted".to_string()),
             tags: vec!["a".to_string()],
             status: SessionExecutionState::Idle,

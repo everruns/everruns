@@ -6,7 +6,7 @@ use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::typed_id::{EventId, SessionId};
+use everruns_provider::typed_id::{EventId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 

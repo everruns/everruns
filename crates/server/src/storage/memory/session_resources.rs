@@ -3,7 +3,7 @@
 use super::super::models::{SessionResourceRow, UpsertSessionResourceRow};
 use super::InMemoryDatabase;
 use anyhow::Result;
-use everruns_core::SessionId;
+use everruns_provider::typed_id::SessionId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {

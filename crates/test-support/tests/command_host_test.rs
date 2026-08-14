@@ -3,30 +3,31 @@
 // Moved from `everruns-core` (EVE-875): core no longer ships the simulator,
 // so these tests live with the test-support crate that does.
 
-use everruns_core::provider_resolution::ResolvedModel;
-use everruns_core::user_facing_error::UserFacingErrorContext;
-use everruns_core::{
-    AgentLoopError, CapabilityRegistry, DisabledCommandHost, DriverRegistry, SessionId,
-};
+use everruns_core::{CapabilityRegistry, DisabledCommandHost};
 use everruns_core::{
     CommandHost, ExecutionSession, SessionCompletionError, SessionCompletionRequest,
 };
 use everruns_host::StoreCommandHost;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::AgentLoopError;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::typed_id::SessionId;
+use everruns_provider::user_facing_error::UserFacingErrorContext;
 use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use everruns_core::AgentDefinition;
 
-use everruns_core::driver_registry::LlmStreamEvent;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::message_retriever::InputMessage;
-use everruns_core::provider::DriverId;
 use everruns_core::session::SessionExecutionState;
-use everruns_core::typed_id::{AgentId, HarnessId};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
+use everruns_provider::driver_registry::LlmStreamEvent;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, HarnessId};
 use everruns_test_support::{InMemoryMessageRetriever, LlmSimConfig, LlmSimDriver};
 use futures::StreamExt;
 
@@ -58,7 +59,7 @@ async fn disabled_host_errors_clearly() {
 
 fn test_harness() -> HarnessDefinition {
     HarnessDefinition {
-        capabilities: vec![everruns_core::AgentCapabilityConfig::new("test_math")],
+        capabilities: vec![everruns_capability::CapabilityRef::new("test_math")],
         ..HarnessDefinition::new("h", "You are a test harness.")
     }
 }
@@ -77,7 +78,7 @@ fn test_session(
 ) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
-        workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
+        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: Some(agent_id),
@@ -127,24 +128,12 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
 
     let provider_store = InMemoryProviderStore::new();
     provider_store
-        .set_default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .set_default_model_spec(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .await;
     provider_store
         .add_model(
-            everruns_core::ModelId::from_seed(905),
-            ResolvedModel {
-                model: "override-model".into(),
-                provider_type: DriverId::LlmSim,
-                api_key: Some("override-fake-key".into()),
-                base_url: None,
-                provider_metadata: None,
-            },
+            everruns_provider::typed_id::ModelId::from_seed(905),
+            ModelSpec::on((DriverId::LlmSim).as_str(), "override-model"),
         )
         .await;
 
@@ -176,7 +165,7 @@ async fn store_host_resolves_per_completion_model_override() {
             system_prompts: vec![turn.system_prompt],
             messages: turn.messages,
             controls: Some(everruns_core::Controls {
-                model_id: Some(everruns_core::ModelId::from_seed(905)),
+                model_id: Some(everruns_provider::typed_id::ModelId::from_seed(905)),
                 ..Default::default()
             }),
             metadata: HashMap::new(),

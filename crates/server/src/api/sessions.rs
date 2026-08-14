@@ -10,6 +10,10 @@ use crate::domains::sessions::{
     LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
     SESSION_VIEW, SessionFilterArgs, SessionService, UnpinSession, UpdateSessionCmd,
 };
+use crate::kernel_imports::{
+    Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
+    evaluate_policies_with, everruns_provider::tool_types::ToolDefinition, is_mcp_tool,
+};
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
@@ -18,18 +22,14 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::typed_id::{
-    AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
-};
-use everruns_core::{
-    Caller, ResourceConfigResponse, ScopedMcpServers, SessionContextReport, SessionSeedMode,
-    ToolDefinition, evaluate_policies_with, is_mcp_tool,
-};
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_host::HostComposition;
 use everruns_platform::BuiltInHarnessRole;
 use everruns_platform::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
+};
+use everruns_provider::typed_id::{
+    AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
 };
 use everruns_worker::AgentRunner;
 
@@ -105,7 +105,7 @@ pub struct CreateSessionRequest {
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
     #[schema(
-        value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>,
+        value_type = Vec<everruns_platform::CapabilityRefSchema>,
         example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}])
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
@@ -1380,7 +1380,7 @@ mod tests {
         // Only the client_side entry survives.
         assert!(matches!(
             req.tools[0],
-            everruns_core::ToolDefinition::ClientSide(_)
+            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
         ));
     }
 

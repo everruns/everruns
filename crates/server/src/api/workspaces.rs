@@ -20,8 +20,8 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::typed_id::WorkspaceId;
 use everruns_core::{Caller, Policy};
+use everruns_provider::typed_id::WorkspaceId;
 use std::sync::Arc;
 
 use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};

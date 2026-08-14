@@ -9,8 +9,9 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::capabilities::RiskLevel;
-use crate::capability_types::{CapabilityId, CapabilityStatus};
+use crate::capability_types::CapabilityStatus;
 use crate::tool_types::ToolDefinition;
+use everruns_capability::CapabilityId;
 
 /// Public capability information (without internal details)
 /// This is what gets returned from the API

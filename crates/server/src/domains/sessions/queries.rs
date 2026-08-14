@@ -1,8 +1,8 @@
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::storage::StorageBackend;
 use anyhow::Context;
-use everruns_core::typed_id::HarnessId;
 use everruns_platform::Session;
+use everruns_provider::typed_id::HarnessId;
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
@@ -22,7 +22,7 @@ pub fn runner(ctx: &Ctx) -> Result<Arc<dyn AgentRunner>, CommandError> {
 
 pub fn parse_session_id(
     session_id: &str,
-) -> Result<everruns_core::typed_id::SessionId, CommandError> {
+) -> Result<everruns_provider::typed_id::SessionId, CommandError> {
     session_id
         .parse()
         .map_err(|e| CommandError::bad_request(format!("Invalid session ID: {e}")))
@@ -84,7 +84,7 @@ pub async fn resolve_named_built_in_harness_id(
 
 pub async fn get_session(
     ctx: &Ctx,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
     user_id: Option<uuid::Uuid>,
 ) -> Result<Session, CommandError> {
     session_service(ctx)?

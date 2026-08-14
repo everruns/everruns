@@ -1728,9 +1728,6 @@ impl std::fmt::Debug for DriverConfig {
     }
 }
 
-// The `From<&ResolvedModel>` adapter for ProviderConfig lives in
-// everruns-core (`llm_conversions`), since ResolvedModel is a core domain type.
-
 /// Boxed chat driver for dynamic dispatch
 pub type BoxedChatDriver = Box<dyn ChatDriver>;
 

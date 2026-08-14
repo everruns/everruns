@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
-use everruns_core::PrincipalId;
+use everruns_provider::typed_id::PrincipalId;
 use uuid::Uuid;
 
 impl Database {

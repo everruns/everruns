@@ -10,8 +10,8 @@
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 // Reserve internal KV prefixes from the user-facing kv_store. Reference the
@@ -118,7 +118,7 @@ pub struct KvStoreTool;
 impl Tool for KvStoreTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -329,7 +329,7 @@ pub struct SecretStoreTool;
 impl Tool for SecretStoreTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -566,9 +566,10 @@ impl Tool for SecretStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::session_services::KeyInfo;
     use everruns_core::session_services::SessionStorageStore;
-    use everruns_core::typed_id::SessionId;
-    use everruns_core::{Result, session_services::KeyInfo};
+    use everruns_provider::error::Result;
+    use everruns_provider::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 

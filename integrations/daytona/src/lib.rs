@@ -364,7 +364,8 @@ mod tests {
     #[tokio::test]
     async fn system_prompt_within_budget() {
         let cap = DaytonaCapability;
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1300 → 1600: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
         // single-read/contextual-search policy (+438 bytes), taking this
@@ -494,7 +495,8 @@ mod tests {
     #[tokio::test]
     async fn test_system_prompt_with_api_calling_enabled() {
         let cap = DaytonaCapability;
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let prompt = cap
             .system_prompt_contribution_with_config(&ctx, &json!({"enable_api_calling": true}))
             .await
@@ -506,7 +508,8 @@ mod tests {
     #[tokio::test]
     async fn test_system_prompt_without_api_calling() {
         let cap = DaytonaCapability;
-        let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
+        let ctx =
+            SystemPromptContext::without_file_store(everruns_provider::typed_id::SessionId::new());
         let prompt = cap
             .system_prompt_contribution_with_config(&ctx, &json!({}))
             .await

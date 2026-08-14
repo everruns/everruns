@@ -10,6 +10,10 @@ use crate::auth::middleware::{AuthState, AuthUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
 use crate::domains::plugins::oauth_anchor::humanize_connection_name;
+use crate::kernel_imports::{
+    Caller, EgressService, McpServerAuthMode, everruns_provider::typed_id::SessionId,
+    everruns_provider::url_validation::validate_safe_url, mcp_oauth_provider_id_for_uuid,
+};
 use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -22,10 +26,6 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use everruns_core::{
-    Caller, EgressService, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
-    validate_safe_url,
-};
 use everruns_platform::connector::{
     ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };

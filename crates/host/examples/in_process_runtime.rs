@@ -10,10 +10,12 @@
 //! cargo run -p everruns-host --example in_process_runtime
 //! ```
 
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{CapabilityRegistry, DriverId, provider_resolution::ResolvedModel};
+use everruns_core::CapabilityRegistry;
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
@@ -50,7 +52,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .host_composition(platform)
         .llm_sim(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
-                vec![everruns_core::ToolCall {
+                vec![everruns_provider::tool_types::ToolCall {
                     id: "call_mul_1".into(),
                     name: "multiply".into(),
                     arguments: serde_json::json!({"a": 6, "b": 7}),
@@ -58,13 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vec![],
             ]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
                 .with_capability("test_math")

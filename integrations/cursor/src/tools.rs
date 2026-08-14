@@ -1,9 +1,9 @@
 //! Cursor Cloud Agents tool implementations.
 
 use async_trait::async_trait;
-use everruns_core::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 use tracing::{debug, error};
 
@@ -727,7 +727,7 @@ impl Tool for CursorKeyInfoTool {
 #[cfg(test)]
 mod auth_tests {
     use super::*;
-    use everruns_core::SessionId;
+    use everruns_provider::typed_id::SessionId;
 
     /// Regression: ensure tool auth no longer falls back to the process-wide
     /// `CURSOR_API_KEY` env var. When no session-scoped credential is

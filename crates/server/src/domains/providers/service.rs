@@ -4,15 +4,18 @@
 // subsequent model resolutions pick up the new provider config.
 
 use crate::errors::BadRequestError;
+use crate::kernel_imports::{
+    Caller, Permission, Policy, Rule, everruns_provider::provider::DriverId,
+    everruns_provider::provider::ProviderStatus,
+};
 use crate::services::ProviderResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::provider::{Provider, ProviderTraceConfig};
-use everruns_core::url_validation::validate_safe_url;
-use everruns_core::{Caller, DriverId, Permission, Policy, ProviderStatus, Rule};
+use everruns_provider::provider::{Provider, ProviderTraceConfig};
+use everruns_provider::url_validation::validate_safe_url;
 use reqwest::Url;
 use std::sync::Arc;
 use tracing::error;
@@ -430,8 +433,8 @@ mod tests {
         validate_trace_config,
     };
     use crate::errors::BadRequestError;
-    use everruns_core::url_validation::validate_safe_url;
-    use everruns_core::{DriverId, ProviderTraceConfig};
+    use crate::kernel_imports::{DriverId, ProviderTraceConfig};
+    use everruns_provider::url_validation::validate_safe_url;
 
     // ---- Trace config resolution (provider trace links) ----
 
@@ -652,9 +655,9 @@ mod tests {
     mod managed {
         use crate::api::providers::UpdateProviderRequest;
         use crate::domains::providers::ProviderService;
+        use crate::kernel_imports::{Caller, OrgRole, PolicyError};
         use crate::storage::StorageBackend;
         use crate::storage::models::CreateProviderRow;
-        use everruns_core::{Caller, OrgRole, PolicyError};
         use std::sync::Arc;
         use uuid::Uuid;
 

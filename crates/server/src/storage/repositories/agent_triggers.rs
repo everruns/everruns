@@ -2,8 +2,10 @@
 
 use super::super::models::*;
 use super::Database;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::TriggerId,
+};
 use anyhow::Result;
-use everruns_core::{AgentId, TriggerId};
 use uuid::Uuid;
 
 const COLUMNS: &str = "id, org_id, agent_id, trigger_type, config, enabled, durable_schedule_id, execution_harness_id, execution_owner_principal_id, execution_resolved_owner_user_id, execution_agent_identity_id, execution_app_id, status, created_at, updated_at, archived_at, deleted_at";

@@ -73,19 +73,30 @@ pub(crate) use everruns_core::capabilities::{
 #[allow(unused_imports)]
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
-    AgentLoopError, DEFAULT_ORG_PUBLIC_ID, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponse, LlmResponseStream, McpToolInvoker, PrincipalId, Result, UtilityLlmService,
-    WorkspaceId, retain_complete_llm_tool_exchanges, user_facing_error_codes,
+    DEFAULT_ORG_PUBLIC_ID, McpToolInvoker, UtilityLlmService, retain_complete_llm_tool_exchanges,
 };
 #[allow(unused_imports)]
 // Collocated unit tests use a wider compatibility subset than the library.
 pub(crate) use everruns_core::{
-    atoms, budget, capability_dto, capability_types, command, command_host, driver_registry, error,
-    events, guardrail_checks, llm_conversions, llm_error_hook, mcp_server, message, message_filter,
-    model_profiles, output_guardrail, provider, runtime_agent, session, session_file,
-    session_files, session_resource, session_schedule, skill, tool_context, tool_fingerprint,
-    tool_narration, tool_output_sanitizer, tool_types, tools, typed_id, user_facing_error,
-    utility_llm,
+    atoms, budget, capability_dto, capability_types, command, command_host, events,
+    guardrail_checks, llm_conversions, llm_error_hook, mcp_server, message, message_filter,
+    output_guardrail, runtime_agent, session, session_file, session_files, session_resource,
+    session_schedule, skill, tool_context, tool_fingerprint, tool_narration, tool_output_sanitizer,
+    tools, utility_llm,
+};
+#[allow(unused_imports)]
+pub(crate) use everruns_provider::driver_registry::{
+    LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponse, LlmResponseStream,
+};
+#[allow(unused_imports)]
+pub(crate) use everruns_provider::error::{AgentLoopError, Result};
+#[allow(unused_imports)]
+pub(crate) use everruns_provider::typed_id::{PrincipalId, WorkspaceId};
+#[allow(unused_imports)]
+pub(crate) use everruns_provider::user_facing_error::codes as user_facing_error_codes;
+#[allow(unused_imports)]
+pub(crate) use everruns_provider::{
+    driver_registry, error, model_profiles, provider, tool_types, typed_id, user_facing_error,
 };
 
 #[cfg(test)]

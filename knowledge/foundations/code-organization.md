@@ -150,11 +150,13 @@ records and trait move together under EVE-887 rather than leaving core naming
 platform types. Session task, schedule and resource records likewise stay
 while core execution still consumes them.
 
-`everruns-core` depends on `everruns-provider` and re-exports every moved module
-at its original path (`everruns_core::driver_registry`, `::model_profiles`,
-`::error`, `::typed_id`, …), so application crates and embedders that import
-those paths are unaffected. Crates that pull in the host (e.g.
-`everruns-local` → `everruns-host`) still depend on full `everruns-core`.
+`everruns-core` depends on `everruns-provider` with default features disabled
+and imports only the contracts needed by neutral execution. It does not
+re-export provider-owned modules. Low-level consumers declare
+`everruns-provider` directly; the application-facing `everruns` facade may
+selectively expose the coherent Framework API from either owner. Crates that
+pull in the host (for example `everruns-local` → `everruns-host`) still depend
+on full `everruns-core`.
 
 Two pin conventions follow from the publish set:
 

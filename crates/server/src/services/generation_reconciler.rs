@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use super::openrouter_generation::fetch_openrouter_generation;
 use anyhow::Result;
-use everruns_core::DriverId;
+use everruns_provider::provider::DriverId;
 use tracing::{debug, error, instrument, warn};
 
 use crate::services::provider_resolver::resolve_provider_api_key;

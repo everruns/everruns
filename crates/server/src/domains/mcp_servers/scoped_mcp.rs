@@ -5,14 +5,16 @@
 // servers. Tool discovery is live (no persisted cache) to keep this feature
 // narrowly scoped and avoid mutating config rows during runtime.
 
+use crate::kernel_imports::{
+    Capability, EgressService, McpServerAuthMode, ScopedMcpServers,
+    everruns_provider::tool_types::ToolDefinition, everruns_provider::typed_id::SessionId,
+    everruns_provider::url_validation::validate_safe_url, merge_scoped_mcp_servers,
+    resolve_runtime_capabilities,
+};
 use anyhow::{Result, anyhow};
 use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::connection_services::UserConnectionResolver;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_core::{
-    Capability, EgressService, McpServerAuthMode, ScopedMcpServers, SessionId, ToolDefinition,
-    merge_scoped_mcp_servers, resolve_runtime_capabilities, validate_safe_url,
-};
 use everruns_mcp::McpCapability;
 use everruns_platform::{Agent, Harness, Session};
 use std::collections::{HashMap, HashSet};
@@ -316,8 +318,8 @@ fn scoped_mcp_server_uuid(session_id: Uuid, server_name: &str) -> Uuid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kernel_imports::{HarnessId, ScopedMcpServer, SessionId};
     use chrono::Utc;
-    use everruns_core::{HarnessId, ScopedMcpServer, SessionId};
     use everruns_platform::{Agent, AgentStatus, generate_agent_public_id};
 
     struct MutableConnectionResolver {
@@ -330,7 +332,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             _provider: &str,
-        ) -> everruns_core::error::Result<Option<String>> {
+        ) -> everruns_provider::error::Result<Option<String>> {
             Ok(self.token.read().await.clone())
         }
     }
@@ -431,7 +433,7 @@ mod tests {
             description: None,
             system_prompt: "agent".to_string(),
             default_model_id: None,
-            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
+            harness_id: everruns_provider::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -453,20 +455,23 @@ mod tests {
         }
     }
 
-    fn test_session(harness_id: HarnessId, agent_id: everruns_core::AgentId) -> Session {
+    fn test_session(
+        harness_id: HarnessId,
+        agent_id: everruns_provider::typed_id::AgentId,
+    ) -> Session {
         let session_id = SessionId::new();
         Session {
             source: Default::default(),
             activity: Default::default(),
             id: session_id,
             // Default 1:1 session<->workspace: workspace.id mirrors the session id.
-            workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),
             agent_version_id: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,
             effective_owner: None,
@@ -548,7 +553,7 @@ mod tests {
 
     #[test]
     fn merge_with_capabilities_preserves_capability_oauth_strips_explicit() {
-        use everruns_core::AgentCapabilityConfig;
+        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
         use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
 
         struct OAuthMcpCapability;

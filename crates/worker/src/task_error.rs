@@ -4,7 +4,9 @@
 
 use anyhow::Error;
 #[cfg(test)]
-use everruns_core::{UserFacingError, UserFacingErrorContext, classify_runtime_error_message};
+use everruns_provider::user_facing_error::{
+    UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
+};
 use serde_json::Value;
 use uuid::Uuid;
 

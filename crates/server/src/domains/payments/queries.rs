@@ -1,10 +1,10 @@
 use crate::domains::common::CommandError;
 use crate::storage::models::{PaymentAccountRow, PaymentAttemptRow, PaymentPolicyRow};
 use everruns_core::payment::PaymentRail;
-use everruns_core::typed_id::{PaymentAccountId, PaymentAttemptId, PaymentPolicyId, SessionId};
 use everruns_platform::payment::{
     PaymentAccount, PaymentAttempt, PaymentOwnerType, PaymentPolicy, PaymentStatus,
 };
+use everruns_provider::typed_id::{PaymentAccountId, PaymentAttemptId, PaymentPolicyId, SessionId};
 
 pub fn parse_payment_account_id(input: &str) -> Result<uuid::Uuid, CommandError> {
     if let Ok(id) = PaymentAccountId::parse(input) {

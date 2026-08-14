@@ -27,6 +27,8 @@
 //! is useful. The dependency direction remains `platform -> core`.
 
 pub mod audit;
+#[cfg(feature = "openapi")]
+pub mod capability_schema;
 pub mod organization;
 pub mod payment;
 pub mod principal;
@@ -118,6 +120,8 @@ pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
+#[cfg(feature = "openapi")]
+pub use capability_schema::CapabilityRefSchema;
 pub use harness::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
     HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,

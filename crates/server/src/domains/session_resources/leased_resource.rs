@@ -4,8 +4,8 @@
 // surfaces. The same generic leased-resource model can be reused by any
 // capability or subsystem that creates provider-owned state requiring cleanup.
 
+use crate::kernel_imports::{LeasedResource, everruns_provider::typed_id::SessionId};
 use anyhow::Result;
-use everruns_core::{LeasedResource, SessionId};
 use std::sync::Arc;
 
 use crate::storage::backend::StorageBackend;
@@ -34,7 +34,7 @@ impl LeasedResourceService {
         let rows = self.db.list_session_leased_resources(session_id).await?;
         rows.iter()
             .map(leased_resource_row_to_domain)
-            .collect::<everruns_core::Result<Vec<_>>>()
+            .collect::<everruns_provider::error::Result<Vec<_>>>()
             .map_err(Into::into)
             .map(Some)
     }

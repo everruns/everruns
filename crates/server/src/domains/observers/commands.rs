@@ -1,8 +1,8 @@
 use super::service::{OBSERVER_MANAGE, OBSERVER_VIEW, ObserverService};
 use super::types::{CreateObserverRequest, ListObserversQuery, UpdateObserverRequest};
 use crate::domains::common::*;
-use everruns_core::typed_id::{ObserverId, SessionId};
 use everruns_platform::observer::{Observer, TraceScore};
+use everruns_provider::typed_id::{ObserverId, SessionId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 

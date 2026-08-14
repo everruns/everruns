@@ -14,8 +14,8 @@ tags:
 
 The public `docs/framework/` section is the canonical usage guide. It begins
 offline, teaches `everruns` as the primary crate, covers the coherent
-application lifecycle, and marks the low-level runtime path as compatibility or
-advanced host material. The `everruns` README and rustdoc are concise entrances
+application lifecycle, and marks `everruns-host` as advanced host material.
+The `everruns` README and rustdoc are concise entrances
 to that same path rather than independent architecture narratives.
 
 Exact API shapes belong in source/rustdoc. Public guides link there instead of
@@ -30,9 +30,9 @@ would choose an example.
 
 At least one useful path must run without a network or provider credential.
 Example inventory and compilation are CI-protected so navigation cannot point
-at planned or unmerged programs. Compatibility examples may remain beside the
-runtime crate, but must be labeled as low-level or transitional rather than as
-the normal application entrypoint.
+at planned or unmerged programs. Host examples may remain beside
+`everruns-host`, but must be labeled as low-level rather than as the normal
+application entrypoint.
 
 ## Documentation integrity
 

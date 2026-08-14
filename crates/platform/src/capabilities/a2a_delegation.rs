@@ -29,10 +29,11 @@ use everruns_core::session_task::{
     TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
     TaskLinks, TaskMessage, TaskWakePolicy, task_message_text,
 };
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{Result, validate_safe_url};
 use everruns_core::{session_services::SessionStorageStore, tool_context::ToolContext};
+use everruns_provider::error::Result;
+use everruns_provider::tool_types::ToolHints;
+use everruns_provider::url_validation::validate_safe_url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -656,7 +657,7 @@ fn run_key(run_id: &str) -> String {
 #[cfg(test)]
 async fn list_run_ids(
     storage: &dyn SessionStorageStore,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> Vec<String> {
     storage
         .list_keys(session_id)
@@ -679,7 +680,9 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
         return Ok(());
     };
     let serialized = serde_json::to_string(record).map_err(|e| {
-        everruns_core::error::AgentLoopError::store(format!("failed to serialize agent run: {e}"))
+        everruns_provider::error::AgentLoopError::store(format!(
+            "failed to serialize agent run: {e}"
+        ))
     })?;
     storage
         .set_value(context.session_id, &run_key(&record.run_id), &serialized)
@@ -1347,7 +1350,7 @@ impl SpawnAgentTool {
 impl Tool for SpawnAgentTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1693,10 +1696,10 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
         let context = context
             .clone()
             .with_network_access(reattach_network_access(&record, context));
@@ -1710,13 +1713,14 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         // Missing remote_task_id means we never sent to the remote agent —
         // there is nothing to poll; caller will fail this as orphaned.
         if record.remote_task_id.is_none() {
-            return Err(everruns_core::error::AgentLoopError::tool(format!(
+            return Err(everruns_provider::error::AgentLoopError::tool(format!(
                 "external_agent task {} has no remote_task_id; cannot re-attach",
                 task.id
             )));
         }
 
-        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
+        let agent =
+            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
 
         // Resume the background poll loop. Use the NEW attempt (bumped by the
         // reaper) for heartbeating so the superseded executor's stale writes
@@ -1740,11 +1744,12 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         task: &SessionTask,
         message: &TaskMessage,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
-        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
+        let agent =
+            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
         let text = task_message_text(&message.content);
         let remote_task_id = record.remote_task_id.clone();
         let remote_context_id = record.remote_context_id.clone();
@@ -1759,17 +1764,17 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             remote_context_id,
         )
         .await
-        .map_err(everruns_core::error::AgentLoopError::tool)
+        .map_err(everruns_provider::error::AgentLoopError::tool)
     }
 
     async fn cancel(
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
@@ -1779,10 +1784,11 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             save_run(context, &record).await?;
             return Ok(());
         };
-        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
+        let agent =
+            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
         let remote = client
             .cancel_task(&CancelTaskRequest {
                 id: remote_task_id,
@@ -1791,7 +1797,9 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             })
             .await
             .map_err(|e| {
-                everruns_core::error::AgentLoopError::tool(format!("A2A cancel_task failed: {e}"))
+                everruns_provider::error::AgentLoopError::tool(format!(
+                    "A2A cancel_task failed: {e}"
+                ))
             })?;
         apply_task(&mut record, &remote);
         save_run(context, &record).await?;
@@ -1802,20 +1810,21 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         &self,
         task: &SessionTask,
         context: &ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let mut record = load_run_for_task(context, task)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
         if record.status.is_terminal() {
             return Ok(());
         }
         let Some(remote_task_id) = record.remote_task_id.clone() else {
             return Ok(());
         };
-        let agent = agent_snapshot(&record).map_err(everruns_core::error::AgentLoopError::tool)?;
+        let agent =
+            agent_snapshot(&record).map_err(everruns_provider::error::AgentLoopError::tool)?;
         let client = build_client(&agent, context)
             .await
-            .map_err(everruns_core::error::AgentLoopError::tool)?;
+            .map_err(everruns_provider::error::AgentLoopError::tool)?;
         let remote = client
             .get_task(&GetTaskRequest {
                 id: remote_task_id,
@@ -1824,7 +1833,7 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
             })
             .await
             .map_err(|e| {
-                everruns_core::error::AgentLoopError::tool(format!("A2A get_task failed: {e}"))
+                everruns_provider::error::AgentLoopError::tool(format!("A2A get_task failed: {e}"))
             })?;
         apply_task(&mut record, &remote);
         if record.status.is_terminal() {
@@ -1854,7 +1863,7 @@ mod tests {
     use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use everruns_core::session_files::SessionFileSystem;
     use everruns_core::session_task::SessionTaskRegistry;
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
     use futures::stream;
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Mutex;
@@ -2406,7 +2415,7 @@ mod tests {
 
     #[test]
     fn reattach_network_access_prefers_persisted_run_policy() {
-        use everruns_core::SessionId;
+        use everruns_provider::typed_id::SessionId;
 
         let config = ExternalA2aAgentConfig {
             id: "echo".to_string(),
@@ -2450,8 +2459,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_blocks_disallowed_base_url() {
-        use everruns_core::SessionId;
         use everruns_core::network_access::NetworkAccessList;
+        use everruns_provider::typed_id::SessionId;
 
         let agent = ExternalA2aAgentConfig {
             id: "a".to_string(),
@@ -2504,8 +2513,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_blocks_disallowed_interface_url() {
-        use everruns_core::SessionId;
         use everruns_core::network_access::NetworkAccessList;
+        use everruns_provider::typed_id::SessionId;
 
         let card = AgentCard {
             name: "a".to_string(),
@@ -2540,8 +2549,8 @@ mod tests {
 
     #[test]
     fn enforce_network_access_pre_resolve_skips_when_inline_card_present() {
-        use everruns_core::SessionId;
         use everruns_core::network_access::NetworkAccessList;
+        use everruns_provider::typed_id::SessionId;
 
         // base_url not on the allowlist, but agent_card is supplied inline so
         // resolve_card never performs discovery against base_url. The pre-resolve
@@ -2618,7 +2627,7 @@ mod tests {
         async fn create(
             &self,
             input: everruns_core::session_task::CreateSessionTask,
-        ) -> everruns_core::error::Result<everruns_core::session_task::SessionTask> {
+        ) -> everruns_provider::error::Result<everruns_core::session_task::SessionTask> {
             let task = everruns_core::session_task::new_session_task(input, chrono::Utc::now());
             self.tasks
                 .lock()
@@ -2629,27 +2638,28 @@ mod tests {
 
         async fn get(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             task_id: &str,
-        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             Ok(self.tasks.lock().unwrap().get(task_id).cloned())
         }
 
         async fn list(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _filter: Option<&everruns_core::session_task::SessionTaskFilter>,
-        ) -> everruns_core::error::Result<Vec<everruns_core::session_task::SessionTask>> {
+        ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::SessionTask>>
+        {
             Ok(self.tasks.lock().unwrap().values().cloned().collect())
         }
 
         async fn update(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             task_id: &str,
             update: everruns_core::session_task::SessionTaskUpdate,
-        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             let mut tasks = self.tasks.lock().unwrap();
             let Some(task) = tasks.get_mut(task_id) else {
@@ -2661,31 +2671,32 @@ mod tests {
 
         async fn request_cancel(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _task_id: &str,
-        ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>>
+        ) -> everruns_provider::error::Result<Option<everruns_core::session_task::SessionTask>>
         {
             Ok(None)
         }
 
         async fn record_message(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _task_id: &str,
             _message: everruns_core::session_task::NewTaskMessage,
-        ) -> everruns_core::error::Result<everruns_core::session_task::TaskMessage> {
-            Err(everruns_core::error::AgentLoopError::tool(
+        ) -> everruns_provider::error::Result<everruns_core::session_task::TaskMessage> {
+            Err(everruns_provider::error::AgentLoopError::tool(
                 "not implemented",
             ))
         }
 
         async fn list_messages(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _task_id: &str,
             _limit: Option<u32>,
             _after_id: Option<&str>,
-        ) -> everruns_core::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
+        ) -> everruns_provider::error::Result<Vec<everruns_core::session_task::TaskMessage>>
+        {
             Ok(vec![])
         }
     }
@@ -2783,7 +2794,7 @@ mod tests {
 
     /// Build a SessionTask snapshot for testing (not persisted in any store).
     fn fake_task_with_spec(
-        session_id: everruns_core::typed_id::SessionId,
+        session_id: everruns_provider::typed_id::SessionId,
         run_id: &str,
         attempt: i32,
     ) -> everruns_core::session_task::SessionTask {
@@ -2821,7 +2832,7 @@ mod tests {
     async fn external_agent_executor_start_mirrors_terminal_run() {
         let storage = Arc::new(TestStorageStore::default());
         let registry = Arc::new(InMemRegistry::default());
-        let session_id = everruns_core::typed_id::SessionId::new();
+        let session_id = everruns_provider::typed_id::SessionId::new();
 
         let run_id = "run-terminal".to_string();
         let config = ExternalA2aAgentConfig {
@@ -2901,7 +2912,7 @@ mod tests {
     async fn wait_for_run_exits_superseded_on_fence_miss() {
         let storage = Arc::new(TestStorageStore::default());
         let registry = Arc::new(InMemRegistry::default());
-        let session_id = everruns_core::typed_id::SessionId::new();
+        let session_id = everruns_provider::typed_id::SessionId::new();
 
         let run_id = "run-superseded".to_string();
         // Inline card so build_client performs no network discovery; the
@@ -3026,7 +3037,7 @@ mod tests {
     #[tokio::test]
     async fn external_agent_executor_start_errors_on_missing_remote_task_id() {
         let storage = Arc::new(TestStorageStore::default());
-        let session_id = everruns_core::typed_id::SessionId::new();
+        let session_id = everruns_provider::typed_id::SessionId::new();
 
         let run_id = "run-no-remote".to_string();
         let config = ExternalA2aAgentConfig {

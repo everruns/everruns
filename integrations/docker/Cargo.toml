@@ -19,6 +19,7 @@ documentation = "https://docs.rs/everruns-integrations-docker"
 
 [dependencies]
 everruns-core.workspace = true
+everruns-provider.workspace = true
 inventory.workspace = true
 
 # Serialization

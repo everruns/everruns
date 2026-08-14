@@ -3,14 +3,15 @@
 // The Command trait, CommandError, CommandContext (Ctx), and inventory-based
 // dispatch. See knowledge/foundations/domains.md for the full pattern spec.
 
+use crate::kernel_imports::{
+    Caller, EgressService, PermissionResolver, Policy, PolicyError,
+    everruns_provider::driver_registry::DriverRegistry,
+};
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
-use everruns_core::{
-    Caller, DriverRegistry, EgressService, PermissionResolver, Policy, PolicyError,
-};
 use everruns_durable::WorkflowEventStore;
 use everruns_platform::FeatureFlags;
 use serde::{Serialize, de::DeserializeOwned};

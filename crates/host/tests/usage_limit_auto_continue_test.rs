@@ -10,15 +10,15 @@
 
 use async_trait::async_trait;
 use everruns_builtins::UsageLimitAutoContinueCapability;
-use everruns_core::driver_registry::DriverRegistry;
+use everruns_core::CapabilityRegistry;
 use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, provider_resolution::ResolvedModel,
-};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimTurn};
 use std::sync::{Arc, Mutex};
@@ -42,7 +42,7 @@ impl SessionScheduleStore for RecordingScheduleStore {
         cron_expression: Option<String>,
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
-    ) -> everruns_core::Result<SessionSchedule> {
+    ) -> everruns_provider::error::Result<SessionSchedule> {
         self.created
             .lock()
             .unwrap()
@@ -72,22 +72,25 @@ impl SessionScheduleStore for RecordingScheduleStore {
         &self,
         _session_id: SessionId,
         _schedule_id: ScheduleId,
-    ) -> everruns_core::Result<SessionSchedule> {
+    ) -> everruns_provider::error::Result<SessionSchedule> {
         unimplemented!("not used by this test")
     }
 
     async fn list_schedules(
         &self,
         _session_id: SessionId,
-    ) -> everruns_core::Result<Vec<SessionSchedule>> {
+    ) -> everruns_provider::error::Result<Vec<SessionSchedule>> {
         Ok(vec![])
     }
 
-    async fn count_active_schedules(&self, _session_id: SessionId) -> everruns_core::Result<u32> {
+    async fn count_active_schedules(
+        &self,
+        _session_id: SessionId,
+    ) -> everruns_provider::error::Result<u32> {
         Ok(0)
     }
 
-    async fn count_active_org_schedules(&self) -> everruns_core::Result<u32> {
+    async fn count_active_org_schedules(&self) -> everruns_provider::error::Result<u32> {
         Ok(0)
     }
 }
@@ -98,14 +101,8 @@ fn platform_with_capability() -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn llmsim_model() -> ResolvedModel {
-    ResolvedModel {
-        model: "llmsim-model".into(),
-        provider_type: DriverId::LlmSim,
-        api_key: Some("fake-key".into()),
-        base_url: None,
-        provider_metadata: None,
-    }
+fn llmsim_model() -> ModelSpec {
+    ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model")
 }
 
 /// Collect every message text in the session transcript.

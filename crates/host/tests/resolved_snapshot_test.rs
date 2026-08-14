@@ -4,15 +4,14 @@
 // snapshot serialization, Debug output, or emitted event metadata.
 
 use everruns_core::mcp_server::ScopedMcpServer;
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{
-    DEFAULT_ORG_ID, DriverId, ResolvedExecutionSnapshot, provider_resolution::ResolvedModel,
-};
+use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
 };
-use everruns_test_support::LlmSimRuntimeExt;
+use everruns_provider::runtime_provider::BearerAuth;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_test_support::llmsim_driver::LlmSimConfig;
+use everruns_test_support::{LlmSimRuntimeExt, llm_sim_provider};
 
 const HEADER_SECRET: &str = "SECRET-MCP-HEADER-MARKER";
 const PROVIDER_SECRET: &str = "SECRET-PROVIDER-KEY-MARKER";
@@ -64,15 +63,11 @@ async fn fixture() -> Fixture {
         .title(TITLE_MARKER)
         .build();
 
+    let provider = llm_sim_provider(LlmSimConfig::fixed("deterministic-ok"))
+        .base_url("https://credential-bearing-host.invalid/v1")
+        .auth(BearerAuth::new(PROVIDER_SECRET));
     let runtime = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("deterministic-ok"))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some(PROVIDER_SECRET.into()),
-            base_url: Some("https://credential-bearing-host.invalid".into()),
-            provider_metadata: None,
-        })
+        .provider_with_default_model(provider, "llmsim-model")
         .harness(harness.clone())
         .agent(agent.clone())
         .session(session.clone())
@@ -190,8 +185,8 @@ impl everruns_core::execution_loading::AgentStore for ArchivedAtSeamAgentStore {
     async fn get_agent(
         &self,
         agent_id: AgentId,
-    ) -> everruns_core::Result<Option<everruns_core::AgentDefinition>> {
-        Err(everruns_core::AgentLoopError::config(format!(
+    ) -> everruns_provider::error::Result<Option<everruns_core::AgentDefinition>> {
+        Err(everruns_provider::error::AgentLoopError::config(format!(
             "agent {agent_id} is archived and cannot execute turns"
         )))
     }
@@ -199,7 +194,10 @@ impl everruns_core::execution_loading::AgentStore for ArchivedAtSeamAgentStore {
 
 #[async_trait::async_trait]
 impl everruns_host::RuntimeAgentStore for ArchivedAtSeamAgentStore {
-    async fn add_agent(&self, _agent: everruns_core::AgentDefinition) -> everruns_core::Result<()> {
+    async fn add_agent(
+        &self,
+        _agent: everruns_core::AgentDefinition,
+    ) -> everruns_provider::error::Result<()> {
         Ok(())
     }
 }

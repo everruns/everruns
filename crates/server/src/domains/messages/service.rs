@@ -19,7 +19,7 @@ use everruns_core::Event;
 use everruns_core::events::{
     EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use serde_json::json;
 use std::sync::Arc;
@@ -350,7 +350,8 @@ impl MessageService {
                     everruns_core::EventData::OutputMessageCompleted(data) => &data.message,
                     everruns_core::EventData::ToolCompleted(data) => {
                         // Separate text and image parts from the result content
-                        let mut images: Vec<everruns_core::tools::ToolResultImage> = Vec::new();
+                        let mut images: Vec<everruns_provider::tool_types::ToolResultImage> =
+                            Vec::new();
                         let result: Option<serde_json::Value> =
                             data.result
                                 .as_ref()
@@ -360,10 +361,12 @@ impl MessageService {
                                             && let (Some(b64), Some(mt)) =
                                                 (&img.base64, &img.media_type)
                                         {
-                                            images.push(everruns_core::tools::ToolResultImage {
-                                                base64: b64.clone(),
-                                                media_type: mt.clone(),
-                                            });
+                                            images.push(
+                                                everruns_provider::tool_types::ToolResultImage {
+                                                    base64: b64.clone(),
+                                                    media_type: mt.clone(),
+                                                },
+                                            );
                                         }
                                     }
                                     let text_parts: Vec<&everruns_core::ContentPart> = parts
@@ -456,7 +459,7 @@ mod tests {
     use crate::errors::BadRequestError;
     use crate::storage::{StorageBackend, models::UpdateSession};
     use async_trait::async_trait;
-    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 
     struct NoopRunner;
 
@@ -505,7 +508,7 @@ mod tests {
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(org_id as u128),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(org_id as u128),
             resolved_owner_user_id: None,
             title: None,
             locale: None,

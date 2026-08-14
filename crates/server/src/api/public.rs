@@ -8,12 +8,12 @@
 // users have no relationship to either.
 //
 // This module provides the canonical translation from internal error codes
-// (`everruns_core::user_facing_error_codes`) to a small, stable set of
+// (`everruns_provider::user_facing_error::codes`) to a small, stable set of
 // public-facing codes and generic messages. AG-UI is currently the only
 // public endpoint; future public endpoints MUST route their errors through
 // `PublicError` so the contract stays uniform.
 
-use everruns_core::user_facing_error_codes;
+use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 
 /// Stable public error codes. Clients of public endpoints can rely on these
 /// values; internal codes from `user_facing_error_codes` are NOT part of the

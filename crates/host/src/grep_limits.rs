@@ -1,4 +1,4 @@
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_provider::error::{AgentLoopError, Result};
 use regex::{Regex, RegexBuilder};
 
 pub(crate) const MAX_PATTERN_LEN: usize = 1_000;

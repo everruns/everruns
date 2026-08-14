@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use everruns_core::principal::PrincipalSummary;
-use everruns_core::typed_id::{
+use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
 };
 

@@ -2,12 +2,13 @@
 //
 // Handles cron parsing, next-trigger computation, and schedule lifecycle.
 
-use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
-use everruns_core::{
-    ScheduleId, SessionId,
+use crate::kernel_imports::{
+    everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId,
     session_schedule::{MAX_ACTIVE_SCHEDULES_PER_SESSION, SessionSchedule},
 };
+use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Utc};
 use everruns_durable::UpdateField;
 use std::sync::Arc;
 

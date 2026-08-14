@@ -185,8 +185,10 @@ pub mod activity_types {
 mod tests {
     use super::*;
     use everruns_core::atoms::AtomContext;
-    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
-    use everruns_core::{BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy};
+    use everruns_provider::tool_types::{
+        BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
+    };
+    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use uuid::Uuid;
 
@@ -256,7 +258,7 @@ mod tests {
                 policy: ToolPolicy::Auto,
                 category: None,
                 deferrable: DeferrablePolicy::default(),
-                hints: everruns_core::tool_types::ToolHints::default(),
+                hints: everruns_provider::tool_types::ToolHints::default(),
                 full_parameters: None,
             })],
             locale: None,
@@ -308,7 +310,7 @@ mod tests {
                     name: "get_weather".to_string(),
                     arguments: json!({}),
                 },
-                result: everruns_core::ToolResult {
+                result: everruns_provider::tool_types::ToolResult {
                     tool_call_id: "call_1".to_string(),
                     result: Some(json!({"temp": 72})),
                     images: None,

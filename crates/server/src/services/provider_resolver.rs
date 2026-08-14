@@ -16,9 +16,13 @@
 // explicit standalone/dev entrypoints (CLI, InMemoryProviderStore) but must
 // NOT be called from any org-scoped execution path.
 
+use crate::kernel_imports::{
+    everruns_provider::driver_registry::DriverRegistry,
+    everruns_provider::driver_registry::ServiceKind, everruns_provider::provider::DriverId,
+    everruns_provider::typed_id::ProviderId,
+};
 use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
-use everruns_core::{DriverId, DriverRegistry, ProviderId, ServiceKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -147,6 +151,17 @@ pub struct ResolvedServiceProvider {
     pub provider_id: String,
     /// Decrypted credentials for the provider connection.
     pub credentials: ResolvedProviderCredentials,
+}
+
+/// Exact provider construction state for chat/runtime drivers.
+///
+/// Unlike service clients, local and simulated chat drivers may not require an
+/// API key, so credential absence is represented without hiding the provider.
+#[derive(Debug, Clone)]
+pub(crate) struct ResolvedRuntimeProviderConfig {
+    pub provider_type: String,
+    pub api_key: Option<String>,
+    pub base_url: Option<String>,
 }
 
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
@@ -478,6 +493,30 @@ impl ProviderResolverService {
                 api_key,
                 base_url: provider.base_url,
             },
+        }))
+    }
+
+    /// Resolve one exact persisted provider for chat/runtime construction.
+    ///
+    /// Provider identity is returned even when no API key is configured. The
+    /// driver registry remains responsible for rejecting missing credentials
+    /// when its selected driver requires them.
+    pub(crate) async fn resolve_runtime_provider_config(
+        &self,
+        org_id: i64,
+        provider_id: &str,
+    ) -> Result<Option<ResolvedRuntimeProviderConfig>> {
+        let id: ProviderId = provider_id
+            .parse()
+            .map_err(|_| anyhow::anyhow!("invalid provider id"))?;
+        let Some(provider) = self.db.get_provider(org_id, id.uuid()).await? else {
+            return Ok(None);
+        };
+        let api_key = self.resolve_api_key(&provider)?;
+        Ok(Some(ResolvedRuntimeProviderConfig {
+            provider_type: provider.provider_type,
+            api_key,
+            base_url: provider.base_url,
         }))
     }
 
@@ -1170,7 +1209,7 @@ mod tests {
         db: &StorageBackend,
         encryption: &EncryptionService,
         provider_type: &str,
-    ) -> everruns_core::ProviderId {
+    ) -> everruns_provider::typed_id::ProviderId {
         use crate::storage::models::CreateProviderRow;
         let encrypted = encryption.encrypt_string("sk-test").unwrap();
         db.create_provider(
@@ -1208,6 +1247,44 @@ mod tests {
         assert!(
             cross_org.is_none(),
             "provider must not cross org boundaries"
+        );
+    }
+
+    #[tokio::test]
+    async fn runtime_provider_config_preserves_credentialless_drivers() {
+        use crate::storage::models::CreateProviderRow;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                CreateProviderRow {
+                    name: "llmsim".to_string(),
+                    provider_type: "llmsim".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let resolver = ProviderResolverService::new(db, Some(test_encryption()));
+
+        let resolved = resolver
+            .resolve_runtime_provider_config(DEFAULT_ORG_ID, &provider.id.to_string())
+            .await
+            .unwrap()
+            .expect("credentialless provider remains resolvable");
+        assert_eq!(resolved.provider_type, "llmsim");
+        assert!(resolved.api_key.is_none());
+
+        assert!(
+            resolver
+                .resolve_runtime_provider_config(999, &provider.id.to_string())
+                .await
+                .unwrap()
+                .is_none(),
+            "provider config must remain org-scoped"
         );
     }
 
@@ -1339,7 +1416,7 @@ mod tests {
     async fn set_service_default(
         db: &StorageBackend,
         service: ServiceKind,
-        provider: everruns_core::ProviderId,
+        provider: everruns_provider::typed_id::ProviderId,
     ) {
         let mut defaults = crate::storage::models::ServiceProviderDefaults::new();
         defaults.insert(service, provider);
@@ -1359,7 +1436,7 @@ mod tests {
         // The Postgres path stores this map as JSONB; assert ServiceKind keys
         // serialize snake_case and ProviderId values round-trip as strings.
         let mut map = crate::storage::models::ServiceProviderDefaults::new();
-        let pid = everruns_core::ProviderId::new();
+        let pid = everruns_provider::typed_id::ProviderId::new();
         map.insert(ServiceKind::Realtime, pid);
         let value = serde_json::to_value(&map).unwrap();
         assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
@@ -1415,7 +1492,12 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let encryption = test_encryption();
         seed_active_provider(&db, &encryption, "openai").await;
-        set_service_default(&db, ServiceKind::Realtime, everruns_core::ProviderId::new()).await;
+        set_service_default(
+            &db,
+            ServiceKind::Realtime,
+            everruns_provider::typed_id::ProviderId::new(),
+        )
+        .await;
         let resolver = service_resolver(db, Some(encryption));
 
         let err = resolver

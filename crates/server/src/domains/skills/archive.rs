@@ -6,10 +6,10 @@
 
 use super::queries as q;
 use super::types::CreateSkillRow;
+use crate::kernel_imports::{Skill, everruns_provider::typed_id::SkillId, parse_skill_md};
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateSkillFileRow;
 use anyhow::{Result, anyhow};
-use everruns_core::{Skill, SkillId, parse_skill_md};
 use std::io::Read;
 
 /// Max ZIP archive size (10 MB)

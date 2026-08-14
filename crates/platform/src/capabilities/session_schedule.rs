@@ -8,8 +8,8 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use async_trait::async_trait;
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 pub const SESSION_SCHEDULE_CAPABILITY_ID: &str = "session_schedule";
@@ -79,7 +79,7 @@ pub struct CreateScheduleTool;
 impl Tool for CreateScheduleTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -215,7 +215,7 @@ pub struct CancelScheduleTool;
 impl Tool for CancelScheduleTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -274,7 +274,7 @@ impl Tool for CancelScheduleTool {
             _ => return ToolExecutionResult::tool_error("Missing required parameter: schedule_id"),
         };
 
-        let schedule_id = match schedule_id_str.parse::<everruns_core::typed_id::ScheduleId>() {
+        let schedule_id = match schedule_id_str.parse::<everruns_provider::typed_id::ScheduleId>() {
             Ok(id) => id,
             Err(_) => {
                 return ToolExecutionResult::tool_error(format!(
@@ -309,7 +309,7 @@ pub struct ListSchedulesTool;
 impl Tool for ListSchedulesTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -400,7 +400,7 @@ mod tests {
     use chrono::Utc;
     use everruns_core::session_schedule::SessionSchedule;
     use everruns_core::session_services::SessionScheduleStore;
-    use everruns_core::typed_id::{ScheduleId, SessionId};
+    use everruns_provider::typed_id::{ScheduleId, SessionId};
     use std::sync::{Arc, Mutex};
 
     struct EnvVarGuard {
@@ -447,11 +447,11 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<Utc>>,
             timezone: String,
-        ) -> everruns_core::error::Result<SessionSchedule> {
+        ) -> everruns_provider::error::Result<SessionSchedule> {
             let schedule = SessionSchedule {
                 id: ScheduleId::new(),
                 session_id,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 owner: None,
                 effective_owner: None,
@@ -475,12 +475,14 @@ mod tests {
             &self,
             _session_id: SessionId,
             schedule_id: ScheduleId,
-        ) -> everruns_core::error::Result<SessionSchedule> {
+        ) -> everruns_provider::error::Result<SessionSchedule> {
             let mut schedules = self.schedules.lock().unwrap();
             let schedule = schedules
                 .iter_mut()
                 .find(|s| s.id == schedule_id)
-                .ok_or_else(|| everruns_core::error::AgentLoopError::tool("Schedule not found"))?;
+                .ok_or_else(|| {
+                    everruns_provider::error::AgentLoopError::tool("Schedule not found")
+                })?;
             schedule.enabled = false;
             Ok(schedule.clone())
         }
@@ -488,7 +490,7 @@ mod tests {
         async fn list_schedules(
             &self,
             session_id: SessionId,
-        ) -> everruns_core::error::Result<Vec<SessionSchedule>> {
+        ) -> everruns_provider::error::Result<Vec<SessionSchedule>> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules
                 .iter()
@@ -500,7 +502,7 @@ mod tests {
         async fn count_active_schedules(
             &self,
             session_id: SessionId,
-        ) -> everruns_core::error::Result<u32> {
+        ) -> everruns_provider::error::Result<u32> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules
                 .iter()
@@ -508,7 +510,7 @@ mod tests {
                 .count() as u32)
         }
 
-        async fn count_active_org_schedules(&self) -> everruns_core::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_provider::error::Result<u32> {
             let schedules = self.schedules.lock().unwrap();
             Ok(schedules.iter().filter(|s| s.enabled).count() as u32)
         }

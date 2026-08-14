@@ -2,22 +2,24 @@
 
 use std::sync::Arc;
 
+use everruns_core::ResolvedExecutionSnapshot;
 use everruns_core::capabilities::{CapabilityRegistry, collect_message_filters_only};
-use everruns_core::driver_registry::{ChatDriver, DriverRegistry};
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::message::{Message, MessageRole};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_core::provider_resolution::{ProviderStore, ResolvedModel};
+use everruns_core::provider_resolution::ProviderStore;
 use everruns_core::runtime_context::{
     AssembledTurnContext, ResolvedModelExecution, ResolvedTurnContextInput, TurnContextRequest,
     TurnContextResolver, assemble_resolved_turn_context, resolve_snapshot_capabilities,
 };
 use everruns_core::session_files::SessionFileSystem;
-use everruns_core::{
-    AgentId, HarnessId, ModelId, ResolvedExecutionSnapshot, SessionId, ToolDefinition,
-};
+use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::ToolDefinition;
+use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 
 use crate::execution_snapshot::load_execution_snapshot;
 
@@ -238,28 +240,16 @@ async fn assemble_from_snapshot(
     }
 
     let controls_model_id = latest_model_override(&messages);
-    let (resolved_model, resolved_model_id) =
+    let (model, resolved_model_id) =
         resolve_model(provider_store, controls_model_id, snapshot.default_model_id).await?;
-    let (model, compatibility_config) = resolved_model.canonical_parts();
-    let provider_config = provider_store
-        .get_provider_config(&model.provider)
-        .await?
-        .unwrap_or(compatibility_config);
-    let provider_type = provider_config.provider_type.clone();
-    let driver: Arc<dyn ChatDriver> =
-        Arc::from(driver_registry.create_chat_driver(&provider_config)?);
+    let model = resolve_model_execution(provider_store, driver_registry, model).await?;
 
     assemble_resolved_turn_context(
         ResolvedTurnContextInput {
             snapshot,
             messages,
             message_source_sequence: history.source_sequence,
-            model: ResolvedModelExecution {
-                model: model.model,
-                provider: model.provider,
-                provider_type,
-                driver,
-            },
+            model,
             resolved_model_id,
             mcp_tool_definitions: mcp_tool_definitions.to_vec(),
         },
@@ -296,16 +286,44 @@ async fn resolve_model(
     provider_store: &dyn ProviderStore,
     controls_model_id: Option<ModelId>,
     snapshot_model_id: Option<ModelId>,
-) -> Result<(ResolvedModel, Option<ModelId>)> {
+) -> Result<(ModelSpec, Option<ModelId>)> {
     for model_id in [controls_model_id, snapshot_model_id].into_iter().flatten() {
-        if let Some(model) = provider_store.get_resolved_model(model_id).await? {
+        if let Some(model) = provider_store.get_model_spec(model_id).await? {
             return Ok((model, Some(model_id)));
         }
     }
-    let model = provider_store.get_default_model().await?.ok_or_else(|| {
+    let model = provider_store
+        .get_default_model_spec()
+        .await?
+        .ok_or_else(|| {
         AgentLoopError::llm(
             "No model configured: no model_id in controls or execution snapshot, and no system default model is set",
         )
     })?;
     Ok((model, None))
+}
+
+/// Resolve provider construction independently from credential-free model identity.
+pub(crate) async fn resolve_model_execution(
+    provider_store: &dyn ProviderStore,
+    driver_registry: &DriverRegistry,
+    spec: ModelSpec,
+) -> Result<ResolvedModelExecution> {
+    let config = provider_store
+        .get_provider_config(&spec.provider)
+        .await?
+        .unwrap_or_else(|| {
+            everruns_provider::driver_registry::ProviderConfig::for_provider(
+                spec.provider.clone(),
+                DriverId::external(spec.provider.as_str()),
+            )
+        });
+    let provider_type = config.provider_type.clone();
+    let driver: Arc<dyn ChatDriver> = Arc::from(driver_registry.create_chat_driver(&config)?);
+    Ok(ResolvedModelExecution {
+        model: spec.model,
+        provider: spec.provider,
+        provider_type,
+        driver,
+    })
 }

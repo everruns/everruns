@@ -7,17 +7,18 @@
 
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
 use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
+use crate::kernel_imports::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, MountAccess,
+    MountEntry, MountPoint, MountSource, SessionFile, everruns_provider::error::AgentLoopError,
+    everruns_provider::typed_id::SessionId, session_file::build_grep_search_result,
+    session_files::SessionFileSystem,
+};
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
 };
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult,
-    MountAccess, MountEntry, MountPoint, MountSource, SessionFile, SessionId,
-    session_file::build_grep_search_result, session_files::SessionFileSystem,
-};
 use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use regex::{Regex, RegexBuilder};
 use std::sync::Arc;
@@ -80,7 +81,7 @@ impl SessionFileSystemFactory for StorageSessionFileSystemFactory {
     async fn create_session_file_system(
         &self,
         context: SessionFileSystemFactoryContext,
-    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
+    ) -> everruns_provider::error::Result<Arc<dyn SessionFileSystem>> {
         let db = context.get::<StorageBackend>().ok_or_else(|| {
             AgentLoopError::config("StorageSessionFileSystemFactory requires StorageBackend")
         })?;
@@ -1110,7 +1111,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         file: &everruns_core::InitialFile,
-    ) -> everruns_core::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         let session_id_uuid = session_id.uuid();
         let path = Self::normalize_path(&file.path);
         Self::validate_path(&path).map_err(file_system_error)?;
@@ -1167,7 +1168,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_core::Result<Option<SessionFile>> {
+    ) -> everruns_provider::error::Result<Option<SessionFile>> {
         WorkspaceFileService::read_file(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1179,7 +1180,7 @@ impl SessionFileSystem for WorkspaceFileService {
         path: &str,
         content: &str,
         encoding: &str,
-    ) -> everruns_core::Result<SessionFile> {
+    ) -> everruns_provider::error::Result<SessionFile> {
         let session_id_uuid = session_id.uuid();
         if WorkspaceFileService::read_file(self, session_id_uuid, path)
             .await
@@ -1239,7 +1240,7 @@ impl SessionFileSystem for WorkspaceFileService {
         expected_encoding: &str,
         content: &str,
         encoding: &str,
-    ) -> everruns_core::Result<Option<SessionFile>> {
+    ) -> everruns_provider::error::Result<Option<SessionFile>> {
         self.update_file_if_content_matches(
             session_id.uuid(),
             path,
@@ -1257,7 +1258,7 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         path: &str,
         recursive: bool,
-    ) -> everruns_core::Result<bool> {
+    ) -> everruns_provider::error::Result<bool> {
         self.delete(session_id.uuid(), path, recursive)
             .await
             .map_err(file_system_error)
@@ -1267,7 +1268,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_core::Result<Vec<FileInfo>> {
+    ) -> everruns_provider::error::Result<Vec<FileInfo>> {
         WorkspaceFileService::list_directory(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1277,7 +1278,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_core::Result<Option<FileStat>> {
+    ) -> everruns_provider::error::Result<Option<FileStat>> {
         self.stat(session_id.uuid(), path)
             .await
             .map_err(file_system_error)
@@ -1288,7 +1289,7 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
-    ) -> everruns_core::Result<Vec<GrepMatch>> {
+    ) -> everruns_provider::error::Result<Vec<GrepMatch>> {
         let results = self
             .grep(
                 session_id.uuid(),
@@ -1311,7 +1312,7 @@ impl SessionFileSystem for WorkspaceFileService {
         session_id: SessionId,
         pattern: &str,
         options: &GrepOptions,
-    ) -> everruns_core::Result<GrepSearchResult> {
+    ) -> everruns_provider::error::Result<GrepSearchResult> {
         grep_session_files_with_options(
             &self.db,
             self.virtual_registry.as_deref(),
@@ -1327,7 +1328,7 @@ impl SessionFileSystem for WorkspaceFileService {
         &self,
         session_id: SessionId,
         path: &str,
-    ) -> everruns_core::Result<FileInfo> {
+    ) -> everruns_provider::error::Result<FileInfo> {
         WorkspaceFileService::create_directory(
             self,
             session_id.uuid(),

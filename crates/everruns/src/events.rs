@@ -33,8 +33,8 @@ use everruns_core::events::{
     OutputMessageStartedData, ReasonCompletedData, ToolCompletedData, ToolOutputDeltaData,
     ToolProgressData, ToolStartedData, TurnCancelledData, TurnFailedData,
 };
-use everruns_core::typed_id::{SessionId, TurnId};
 use everruns_host::{EventSink, EventSinkError};
+use everruns_provider::typed_id::{SessionId, TurnId};
 use serde_json::Value;
 use tokio::sync::broadcast;
 
@@ -637,8 +637,9 @@ mod tests {
         ActStartedData, OutputMessageDeltaData, OutputMessageReplacedData, ToolStartedData,
         TurnCancelledData, TurnStartedData,
     };
-    use everruns_core::{MessageId, SessionId, ToolCall, TurnId};
     use everruns_host::{HostEventEmitter, InMemoryEventLog};
+    use everruns_provider::tool_types::ToolCall;
+    use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
     use serde_json::json;
 
     use super::{EventStreamError, FacadeEventBus, SessionEventKind};

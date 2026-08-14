@@ -9,10 +9,10 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use everruns_core::capability_types::AgentCapabilityConfig;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::ToolExecutionResult;
+use everruns_provider::tool_types::ToolHints;
 
 /// Capability id for the managed session sandbox capability.
 pub const SESSION_SANDBOX_CAPABILITY_ID: &str = "session_sandbox";
@@ -581,42 +581,43 @@ mod tests {
     impl SessionStorageStore for MemorySecrets {
         async fn set_value(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _key: &str,
             _value: &str,
-        ) -> everruns_core::Result<()> {
+        ) -> everruns_provider::error::Result<()> {
             unreachable!()
         }
 
         async fn get_value(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _key: &str,
-        ) -> everruns_core::Result<Option<String>> {
+        ) -> everruns_provider::error::Result<Option<String>> {
             unreachable!()
         }
 
         async fn delete_value(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             _key: &str,
-        ) -> everruns_core::Result<bool> {
+        ) -> everruns_provider::error::Result<bool> {
             unreachable!()
         }
 
         async fn list_keys(
             &self,
-            _session_id: everruns_core::SessionId,
-        ) -> everruns_core::Result<Vec<everruns_core::session_services::KeyInfo>> {
+            _session_id: everruns_provider::typed_id::SessionId,
+        ) -> everruns_provider::error::Result<Vec<everruns_core::session_services::KeyInfo>>
+        {
             unreachable!()
         }
 
         async fn set_secret(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             name: &str,
             value: &str,
-        ) -> everruns_core::Result<()> {
+        ) -> everruns_provider::error::Result<()> {
             self.secrets
                 .lock()
                 .unwrap()
@@ -626,24 +627,24 @@ mod tests {
 
         async fn get_secret(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             name: &str,
-        ) -> everruns_core::Result<Option<String>> {
+        ) -> everruns_provider::error::Result<Option<String>> {
             Ok(self.secrets.lock().unwrap().get(name).cloned())
         }
 
         async fn delete_secret(
             &self,
-            _session_id: everruns_core::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
             name: &str,
-        ) -> everruns_core::Result<bool> {
+        ) -> everruns_provider::error::Result<bool> {
             Ok(self.secrets.lock().unwrap().remove(name).is_some())
         }
 
         async fn list_secrets(
             &self,
-            _session_id: everruns_core::SessionId,
-        ) -> everruns_core::Result<Vec<SecretInfo>> {
+            _session_id: everruns_provider::typed_id::SessionId,
+        ) -> everruns_provider::error::Result<Vec<SecretInfo>> {
             Ok(self
                 .secrets
                 .lock()
@@ -694,7 +695,8 @@ mod tests {
     #[tokio::test]
     async fn session_sandbox_state_round_trip() {
         let storage = Arc::new(MemorySecrets::default());
-        let context = ToolContext::with_storage_store(everruns_core::SessionId::new(), storage);
+        let context =
+            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
 
         let state = SessionSandboxState {
             provider: "daytona".to_string(),
@@ -941,7 +943,8 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context = ToolContext::with_storage_store(everruns_core::SessionId::new(), storage);
+        let context =
+            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
         let state = SessionSandboxState {
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
@@ -969,7 +972,8 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Lost);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context = ToolContext::with_storage_store(everruns_core::SessionId::new(), storage);
+        let context =
+            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
         let state = SessionSandboxState {
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,
@@ -997,7 +1001,8 @@ mod tests {
         reset_test_provider_state(external_id, SessionSandboxStatus::Running);
 
         let storage = Arc::new(MemorySecrets::default());
-        let context = ToolContext::with_storage_store(everruns_core::SessionId::new(), storage);
+        let context =
+            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage);
         let state = SessionSandboxState {
             provider: "core-test-session-sandbox".to_string(),
             status: SessionSandboxStatus::Running,

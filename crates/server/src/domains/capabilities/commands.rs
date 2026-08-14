@@ -13,9 +13,10 @@ use super::types::{
 };
 use super::{CAPABILITY_DANGEROUS, CAPABILITY_MANAGE, CAPABILITY_VIEW};
 use crate::domains::common::*;
-use everruns_core::{
-    CapabilityId, DeclarativeCapabilityDefinition, DeclarativeCapabilityId, GuardrailsConfig,
-    Policy, validate_declarative_capability_definition,
+use crate::kernel_imports::{
+    CapabilityId, DeclarativeCapabilityDefinition, GuardrailsConfig, Policy,
+    everruns_provider::typed_id::DeclarativeCapabilityId,
+    validate_declarative_capability_definition,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;

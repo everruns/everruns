@@ -10,7 +10,7 @@ use crate::storage::models::{
     CreateMemoryFileRow, MemoryFileInfoRow, MemoryFileRow, MemoryRow, UpdateMemoryFile,
 };
 use anyhow::{Result, anyhow};
-use everruns_core::typed_id::MemoryId;
+use everruns_provider::typed_id::MemoryId;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -434,7 +434,7 @@ mod tests {
     use super::*;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateMemoryRow;
-    use everruns_core::typed_id::MemoryId;
+    use everruns_provider::typed_id::MemoryId;
     use std::sync::Arc;
 
     fn make_db() -> Arc<StorageBackend> {

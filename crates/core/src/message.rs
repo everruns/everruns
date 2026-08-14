@@ -14,9 +14,7 @@ use crate::typed_id::{ImageId, MessageId, ModelId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-// Execution phase is a provider-wire concept and now lives in everruns-provider;
-// re-exported here so `crate::message::ExecutionPhase` keeps resolving.
-pub use everruns_provider::execution_phase::ExecutionPhase;
+use everruns_provider::execution_phase::ExecutionPhase;
 /// Message role in the conversation
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -817,7 +815,7 @@ impl Message {
     pub fn tool_result_with_images(
         tool_call_id: impl Into<String>,
         result: Option<serde_json::Value>,
-        images: Vec<crate::tools::ToolResultImage>,
+        images: Vec<everruns_provider::tool_types::ToolResultImage>,
     ) -> Self {
         let tool_call_id = tool_call_id.into();
         let mut content = vec![ContentPart::ToolResult(ToolResultContentPart::new(

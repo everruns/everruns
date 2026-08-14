@@ -9,9 +9,9 @@ use crate::session_sqldb::{SessionSqlDbError, SessionSqlDbStoreExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 
 pub const SESSION_SQL_DATABASE_CAPABILITY_ID: &str = "session_sql_database";
@@ -132,7 +132,7 @@ pub struct SqlExecuteTool;
 impl Tool for SqlExecuteTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -236,7 +236,7 @@ pub struct SqlQueryTool;
 impl Tool for SqlQueryTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -343,7 +343,7 @@ pub struct SqlSchemaTool;
 impl Tool for SqlSchemaTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -453,7 +453,7 @@ impl Tool for SqlSchemaTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

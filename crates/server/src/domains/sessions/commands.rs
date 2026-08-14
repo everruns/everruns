@@ -12,9 +12,6 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
     TurnCancelledData, deserialize_event_data,
 };
-use everruns_core::model_profiles::get_model_profile;
-use everruns_core::provider::DriverId;
-use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use everruns_core::{Message, SessionContextReport};
 use everruns_platform::ANONYMOUS_USER_ID;
 use everruns_platform::capabilities::session_title_updated_event;
@@ -22,6 +19,9 @@ use everruns_platform::{
     Session, SessionActivity, SessionParticipant, SessionParticipantKind, SessionParticipantRole,
     SessionSource,
 };
+use everruns_provider::model_profiles::get_model_profile;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -521,7 +521,7 @@ inventory::submit! { CommandDescriptor::of::<LeaveSessionParticipant>() }
 
 async fn ensure_session_exists(
     ctx: &Ctx,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> Result<crate::storage::models::SessionRow, CommandError> {
     ctx.db
         .get_session(ctx.org_id(), session_id)
@@ -961,9 +961,8 @@ mod tests {
     use crate::domains::harnesses::CreateHarness;
     use crate::domains::harnesses::types::CreateHarnessRequest;
     use crate::storage::StorageBackend;
-    use everruns_core::{
-        Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId, OrgRole, SessionId,
-    };
+    use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
+    use everruns_provider::typed_id::{HarnessId, SessionId};
     use std::sync::Arc;
     use uuid::Uuid;
 

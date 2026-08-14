@@ -11,10 +11,11 @@
 //! the persistent browser, preserving login state and cookies across tool calls.
 //! When no session exists, each tool call uses a fresh browser via REST API.
 
-use everruns_core::ToolHints;
 use everruns_core::tool_context::ToolContext;
-use everruns_core::tools::{Tool, ToolExecutionResult, ToolResultImage};
+use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
+use everruns_provider::ToolResultImage;
+use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};

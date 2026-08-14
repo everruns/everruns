@@ -15,7 +15,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use everruns_core::typed_id::{PaymentAccountId, PaymentAttemptId, PaymentPolicyId};
+use everruns_provider::typed_id::{PaymentAccountId, PaymentAttemptId, PaymentPolicyId};
 
 // Re-export the capability-internal execution contract that remains in core, so
 // consumers reach the whole payment surface through `everruns_platform::payment`.

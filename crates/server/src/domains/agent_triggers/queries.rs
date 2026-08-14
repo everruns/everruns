@@ -4,8 +4,8 @@ use crate::domains::common::{CommandError, classify_anyhow};
 use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
 use crate::storage::models::{AgentRow, AgentTriggerRow};
-use everruns_core::typed_id::{AgentId, TriggerId};
 use everruns_platform::{AgentTrigger, AgentTriggerType};
+use everruns_provider::typed_id::{AgentId, TriggerId};
 use std::sync::Arc;
 
 /// Map a storage row into the core [`AgentTrigger`].

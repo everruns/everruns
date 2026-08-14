@@ -7,6 +7,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::agent_identities::AGENT_IDENTITY_MANAGE;
+use crate::kernel_imports::{Caller, everruns_provider::typed_id::AgentIdentityId};
 use crate::storage::models::CreateAgentIdentityConnectionRow;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -16,7 +17,6 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::{AgentIdentityId, Caller};
 use everruns_platform::connector::{ConnectorRegistry, ConnectorType};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

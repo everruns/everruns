@@ -506,6 +506,28 @@ jobs:
       - name: Check core kernel dependencies
         run: bash scripts/lib/check-core-kernel-dependencies.sh
 
+  # Public API/semver guard (EVE-906): rustdoc JSON records the complete
+  # published core surface while source and documentation ratchets reject
+  # compatibility owners, credential-bearing models, and new undocumented API.
+  core-public-api:
+    name: Core Public API Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install pinned rustdoc JSON toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-07-25
+
+      - name: Check core public API
+        env:
+          CORE_API_TOOLCHAIN: nightly-2026-07-25
+        run: bash scripts/lib/check-core-public-api.sh
+
   # Architecture guard (EVE-885): hosted knowledge, delegation, task, hook,
   # and management capability implementations live in crates/platform. Core
   # carries portable implementations and neutral contracts only.

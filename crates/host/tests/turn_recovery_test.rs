@@ -1,9 +1,9 @@
 use everruns_core::CapabilityRegistry;
-use everruns_core::driver_registry::{DriverRegistry, LlmMessage};
 use everruns_core::events::EventData;
-use everruns_core::llm_retry::LlmRetryConfig;
 use everruns_host::HostComposition;
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
+use everruns_provider::driver_registry::{DriverRegistry, LlmMessage};
+use everruns_provider::llm_retry::LlmRetryConfig;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
@@ -270,7 +270,7 @@ async fn retry_policy_beats_no_retry_baseline_and_obeys_backoff_and_time_budget(
 #[tokio::test(start_paused = true)]
 async fn interrupted_turn_history_survives_runtime_reconstruction() {
     let backends = HostBackends::in_memory();
-    let stable_session_id = everruns_core::SessionId::from_seed(9191);
+    let stable_session_id = everruns_provider::typed_id::SessionId::from_seed(9191);
     let first_capture = Arc::new(Mutex::new(Vec::new()));
     let first = InProcessRuntimeBuilder::new()
         .backends(backends.clone())

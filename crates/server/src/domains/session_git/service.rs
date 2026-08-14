@@ -140,7 +140,7 @@ impl SessionGitService {
         if !drain.new_objects.is_empty() {
             self.db.write_git_objects_batch(drain.new_objects).await?;
         }
-        let session_id_typed = everruns_core::SessionId::from_uuid(session_id);
+        let session_id_typed = everruns_provider::typed_id::SessionId::from_uuid(session_id);
         for (name, target) in &drain.ref_updates {
             self.db
                 .write_git_ref(CreateSessionGitRef {
@@ -193,7 +193,7 @@ impl SessionGitService {
         let message = message.to_string();
         let author_name = author_name.to_string();
         let author_email = author_email.to_string();
-        let session_id_typed = everruns_core::SessionId::from_uuid(session_id);
+        let session_id_typed = everruns_provider::typed_id::SessionId::from_uuid(session_id);
 
         let (result, drain) =
             tokio::task::spawn_blocking(move || -> Result<(CommitResult, DrainResult)> {
@@ -466,7 +466,7 @@ impl SessionGitService {
     ) -> Result<()> {
         let oid = Oid::from_str(commit_oid_hex)?;
         let ref_name = normalize_branch(branch_name);
-        let session_id_typed = everruns_core::SessionId::from_uuid(session_id);
+        let session_id_typed = everruns_provider::typed_id::SessionId::from_uuid(session_id);
         self.db
             .write_git_ref(CreateSessionGitRef {
                 session_id: session_id_typed,
@@ -569,7 +569,7 @@ fn hydrate_odb(objects: &[SessionGitObjectRow]) -> Result<(Repository, HashSet<[
 fn read_objects_by_oid(
     odb: &git2::Odb<'_>,
     oids: &[Oid],
-    session_id: everruns_core::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
 ) -> Result<Vec<CreateSessionGitObject>> {
     let mut new_objects: Vec<CreateSessionGitObject> = Vec::with_capacity(oids.len());
     let mut seen: HashSet<Oid> = HashSet::new();

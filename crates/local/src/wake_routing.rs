@@ -23,10 +23,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage};
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::platform_store::LocalSessionRunner;
@@ -186,7 +186,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::error::AgentLoopError;
+    use everruns_provider::error::AgentLoopError;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]

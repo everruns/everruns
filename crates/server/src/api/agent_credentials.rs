@@ -2,6 +2,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::agents::AGENT_MANAGE;
 use crate::domains::agents::credentials::{AgentCredentialBinding, CreateAgentCredentialBinding};
 use crate::domains::common::{Command, Ctx};
+use crate::kernel_imports::{Caller, everruns_provider::typed_id::AgentId};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -9,7 +10,6 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::{AgentId, Caller};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::ToSchema;

@@ -141,16 +141,23 @@ pub use everruns_host::{
 
 // --- Portable message, model, and platform types ------------------------
 #[doc(hidden)]
-pub use everruns_core::AgentCapabilityConfig;
+pub use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    AgentLoopError, BearerAuth, CapabilityRegistry, ChatDriver, ContentPart, Controls,
-    ImageContentPart, InitialFile, InputMessage, LlmCallConfig, LlmCompletionMetadata, LlmMessage,
-    LlmResponseStream, LlmStreamEvent, MessageRole, ModelSpec, Provider, ProviderAuth,
-    ProviderAuthRequest, ProviderEndpoint, ProviderKey, ProviderRegistry, ReasoningConfig,
-    SessionId, StaticHeaderAuth, ToolCall, WorkspacePolicy, WorkspacePolicyBuilder,
-    WorkspacePolicyError,
+    CapabilityRegistry, ContentPart, Controls, ImageContentPart, InitialFile, InputMessage,
+    MessageRole, ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
 };
+pub use everruns_provider::driver_registry::{
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
+};
+pub use everruns_provider::error::AgentLoopError;
+pub use everruns_provider::model_spec::ModelSpec;
+pub use everruns_provider::runtime_provider::{
+    BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
+    ProviderRegistry, StaticHeaderAuth,
+};
+pub use everruns_provider::tool_types::ToolCall;
+pub use everruns_provider::typed_id::SessionId;
 
 // --- Deterministic in-process LLM simulator -----------------------------
 pub use everruns_test_support::LlmSimConfig;

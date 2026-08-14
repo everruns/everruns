@@ -10,10 +10,10 @@ use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
 use async_trait::async_trait;
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID};
 use everruns_durable::InMemoryWorkflowEventStore;
 use everruns_platform::InvocationSessionMode;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
@@ -57,7 +57,7 @@ impl AgentRunner for RecordingRunner {
     }
 }
 
-async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_core::typed_id::HarnessId) {
+async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_provider::typed_id::HarnessId) {
     let harness = db
         .create_harness(
             DEFAULT_ORG_ID,
@@ -122,11 +122,11 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
 #[tokio::test]
 async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     let db = Arc::new(StorageBackend::in_memory());
-    let agent_harness_id = everruns_core::HarnessId::from_seed(10);
-    let app_harness_id = everruns_core::HarnessId::from_seed(20);
-    let owner_principal_id = everruns_core::PrincipalId::from_seed(30);
+    let agent_harness_id = everruns_provider::typed_id::HarnessId::from_seed(10);
+    let app_harness_id = everruns_provider::typed_id::HarnessId::from_seed(20);
+    let owner_principal_id = everruns_provider::typed_id::PrincipalId::from_seed(30);
     let resolved_owner_user_id = Some(uuid::Uuid::from_u128(40));
-    let agent_identity_id = Some(everruns_core::AgentIdentityId::from_uuid(
+    let agent_identity_id = Some(everruns_provider::typed_id::AgentIdentityId::from_uuid(
         uuid::Uuid::from_u128(50),
     ));
     let app_id = Some(uuid::Uuid::from_u128(60));
@@ -169,7 +169,7 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
         is_built_in: false,
     };
     let trigger = crate::storage::models::AgentTriggerRow {
-        id: everruns_core::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
+        id: everruns_provider::typed_id::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
         org_id: DEFAULT_ORG_ID,
         agent_id: agent.id,
         trigger_type: "schedule".to_string(),
@@ -669,7 +669,7 @@ async fn ensure_identity_for_agent_is_idempotent_across_fires() {
 #[tokio::test]
 async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
     use crate::storage::models::CreateAgentIdentityRow;
-    use everruns_core::AgentIdentityId;
+    use everruns_provider::typed_id::AgentIdentityId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;
@@ -722,7 +722,7 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
 #[tokio::test]
 async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
     use crate::storage::models::CreateAgentIdentityRow;
-    use everruns_core::AgentIdentityId;
+    use everruns_provider::typed_id::AgentIdentityId;
 
     let db = Arc::new(StorageBackend::in_memory());
     let mut agent = seed_agent_row(&db).await;

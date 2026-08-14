@@ -13,11 +13,11 @@ use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::Capability;
-use everruns_core::driver_registry::DriverRegistry;
+use everruns_provider::driver_registry::DriverRegistry;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_test_support::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::provider::DriverId;
-use everruns_core::provider_resolution::ResolvedModel;
+use everruns_provider::provider::DriverId;
+use everruns_provider::model_spec::ModelSpec;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -430,13 +430,7 @@ async fn execute_with_agentic_loop(
     let mut backoff_ms = INITIAL_BACKOFF_MS;
 
     loop {
-        let model = ResolvedModel {
-            model: config.model.clone(),
-            provider_type: provider_type.clone(),
-            api_key: Some(api_key.clone()),
-            base_url: None,
-            provider_metadata: None,
-        };
+        let model = ModelSpec::on((provider_type.clone()).as_str(), config.model.clone());
 
         // Build the agentic loop. Seed events are not a builder input; they are
         // converted to conversation messages and seeded into the in-memory
@@ -444,7 +438,11 @@ async fn execute_with_agentic_loop(
         let mut builder = InMemoryAgenticLoop::builder()
             .agent_name("Eval Agent")
             .system_prompt(build_system_prompt(config.approach))
-            .model(model)
+            .model((
+                model,
+                everruns_provider::driver_registry::ProviderConfig::new(provider_type.clone())
+                    .with_api_key(api_key.clone()),
+            ))
             .driver_registry(create_driver_registry())
             .max_iterations(10);
 

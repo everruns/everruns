@@ -701,7 +701,7 @@ impl OrgRateLimiter {
 /// available in `ActAtom`, so `OrgId` is the natural key.
 #[async_trait::async_trait]
 impl everruns_core::tool_execution::OutboundToolRateLimiter for OrgRateLimiter {
-    async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
+    async fn check_org(&self, org_id: &everruns_provider::typed_id::OrgId) -> bool {
         // Fail-open: rate limit exceeded → false; backend error → true (already
         // handled inside check_keyed via Valkey BackendError path).
         self.check_outbound_tool_call(&org_id.to_string())
@@ -1006,7 +1006,7 @@ mod tests {
 
     #[tokio::test]
     async fn org_rate_limiter_tool_calls_allows_initial() {
-        use everruns_core::typed_id::OrgId;
+        use everruns_provider::typed_id::OrgId;
         let limiter = make_test_limiter_rpm(60, 20, 10);
         let org_id = OrgId::new();
         assert!(
@@ -1019,7 +1019,7 @@ mod tests {
 
     #[tokio::test]
     async fn org_rate_limiter_tool_calls_blocks_after_burst() {
-        use everruns_core::typed_id::OrgId;
+        use everruns_provider::typed_id::OrgId;
         let limiter = OrgRateLimiter {
             backend: OrgBackend::InMemory {
                 session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(

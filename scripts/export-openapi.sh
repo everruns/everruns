@@ -20,7 +20,9 @@ echo "Generating OpenAPI spec..."
 # the binary's stdout straight at $OUTPUT_FILE truncates the committed spec the
 # moment the shell opens it, which leaves an empty docs/api/openapi.json behind
 # on Ctrl-C, a timeout, or a build failure.
-TEMP_FILE="$(mktemp "${TMPDIR:-/tmp}/openapi-export.XXXXXX.json")"
+# Keep the X template at the end: GNU mktemp accepts a suffix, BSD mktemp does
+# not replace Xs before one.
+TEMP_FILE="$(mktemp "${TMPDIR:-/tmp}/openapi-export.XXXXXX")"
 trap 'rm -f "$TEMP_FILE"' EXIT
 
 cargo run --bin export-openapi --release 2>/dev/null > "$TEMP_FILE"

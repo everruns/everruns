@@ -1167,7 +1167,7 @@ mod tests {
     #[test]
     fn settings_from_row_defaults_auth_mode_for_legacy_api_key_servers() {
         let row = McpServerRow {
-            id: everruns_core::typed_id::McpServerId::new(),
+            id: everruns_provider::typed_id::McpServerId::new(),
             org_id: 1,
             name: "legacy".into(),
             description: None,
@@ -1218,7 +1218,7 @@ mod tests {
 
     fn sample_row() -> McpServerRow {
         McpServerRow {
-            id: everruns_core::typed_id::McpServerId::new(),
+            id: everruns_provider::typed_id::McpServerId::new(),
             org_id: 1,
             name: "srv".into(),
             description: None,

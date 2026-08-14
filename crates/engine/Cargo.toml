@@ -29,6 +29,7 @@ categories = ["development-tools", "asynchronous"]
 # reason/act atom I/O shapes, the event payloads returned as effects, the
 # user-facing error taxonomy, and the typed IDs. Direction is engine -> core.
 everruns-core = { workspace = true }
+everruns-provider.workspace = true
 
 chrono.workspace = true
 serde.workspace = true

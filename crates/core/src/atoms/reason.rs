@@ -2327,7 +2327,7 @@ impl ReasonAtom {
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
         // retry loop so it is available to the post-loop guarded delta emission.
-        let mut streamed_phase: Option<crate::message::ExecutionPhase> = None;
+        let mut streamed_phase: Option<everruns_provider::ExecutionPhase> = None;
         let (
             text,
             thinking,
@@ -3072,7 +3072,7 @@ impl ReasonAtom {
                         // count as stream output. The completed Message.phase stays
                         // authoritative, and the hint is deliberately not derived
                         // from later tool-call presence (EVE-448 anti-pattern).
-                        streamed_phase = crate::message::ExecutionPhase::refine_streamed_hint(
+                        streamed_phase = everruns_provider::ExecutionPhase::refine_streamed_hint(
                             streamed_phase,
                             phase,
                         );
@@ -3628,9 +3628,9 @@ impl ReasonAtom {
         assistant_message.phase = completion_metadata
             .as_ref()
             .and_then(|meta| meta.phase.as_deref())
-            .and_then(crate::message::ExecutionPhase::from_provider_str)
+            .and_then(everruns_provider::ExecutionPhase::from_provider_str)
             .or_else(|| {
-                Some(crate::message::ExecutionPhase::from_has_tool_calls(
+                Some(everruns_provider::ExecutionPhase::from_has_tool_calls(
                     has_tool_calls,
                 ))
             });

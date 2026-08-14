@@ -9,9 +9,11 @@ use super::{
     ENTRY_KINDS, KNOWLEDGE_BASE_MANAGE, KNOWLEDGE_BASE_VIEW, MAX_ENTRY_BODY_BYTES, MAX_ENTRY_TAGS,
 };
 use crate::domains::common::*;
-use everruns_core::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
-use everruns_core::{DriverId, Policy, ServiceKind};
+use crate::kernel_imports::{
+    Policy, everruns_provider::driver_registry::ServiceKind, everruns_provider::provider::DriverId,
+};
 use everruns_durable::UpdateField;
+use everruns_provider::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -127,8 +129,8 @@ fn validate_body(body: &str) -> Result<String, CommandError> {
 
 async fn validate_embedding_model_id(
     ctx: &Ctx,
-    model_id: everruns_core::ModelId,
-) -> Result<everruns_core::ModelId, CommandError> {
+    model_id: everruns_provider::typed_id::ModelId,
+) -> Result<everruns_provider::typed_id::ModelId, CommandError> {
     let model = ctx
         .db
         .get_model(ctx.org_id(), model_id.uuid())
@@ -225,7 +227,7 @@ pub struct CreateKnowledgeBase {
     #[serde(default)]
     #[schema(value_type = Option<String>)]
     /// Optional embedding model for hybrid retrieval.
-    pub embedding_model_id: Option<everruns_core::ModelId>,
+    pub embedding_model_id: Option<everruns_provider::typed_id::ModelId>,
 }
 
 impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
@@ -799,9 +801,9 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeEntry>() }
 mod tests {
     use super::*;
     use crate::domains::common::Ctx;
+    use crate::kernel_imports::{Caller, DEFAULT_ORG_ID, OrgRole};
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateModelRow, CreateProviderRow};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::Arc;
 
     fn ctx_for_org(org_id: i64) -> Ctx {
@@ -839,7 +841,7 @@ mod tests {
         org_id: i64,
         provider_type: &str,
         model_id: &str,
-    ) -> everruns_core::ModelId {
+    ) -> everruns_provider::typed_id::ModelId {
         let provider = db
             .create_provider(
                 org_id,

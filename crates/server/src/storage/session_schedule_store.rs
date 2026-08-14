@@ -3,16 +3,20 @@
 // Adapts the storage backend to the core SessionScheduleStore trait,
 // allowing scheduling tools to create/cancel/list schedules.
 
-use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use everruns_core::{
-    AgentLoopError, Result, ScheduleId, SessionId, StoreResultExt,
+use crate::kernel_imports::{
+    everruns_provider::error::AgentLoopError,
+    everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt,
+    everruns_provider::typed_id::ScheduleId,
+    everruns_provider::typed_id::SessionId,
     session_schedule::{
         MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
         max_active_schedules_per_org, validate_schedule_create_limits,
     },
     session_services::SessionScheduleStore,
 };
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use super::backend::StorageBackend;
 use super::models::{CreateSessionScheduleRow, SessionScheduleRow, UpdateSessionScheduleRow};

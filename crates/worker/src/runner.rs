@@ -15,8 +15,8 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::InMemoryWorkflowEventStore;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use std::sync::Arc;
 
 use crate::durable_runner::{DurableRunner, DurableTaskNotifier};

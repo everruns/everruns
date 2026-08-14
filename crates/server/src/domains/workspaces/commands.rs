@@ -13,7 +13,7 @@ use super::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::domains::common::*;
 use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
 use everruns_core::Policy;
-use everruns_core::typed_id::WorkspaceId;
+use everruns_provider::typed_id::WorkspaceId;
 use serde::Deserialize;
 use utoipa::ToSchema;
 

@@ -12,7 +12,9 @@
 //! This module decides *how* the batch runs, based on per-tool metadata
 //! (`ToolHints`), while leaving *what each call does* to the caller:
 //!
-//! - Calls that share a non-empty [`ToolHints::concurrency_class`] are
+//! - Calls that share a non-empty
+//!   [`ToolHints::concurrency_class`](everruns_provider::tool_types::ToolHints::concurrency_class)
+//!   are
 //!   serialized in arrival order; calls in different classes (or with no class)
 //!   run concurrently. Read-only tools declare no class and always parallelize.
 //! - A global concurrency cap bounds the number of simultaneously executing

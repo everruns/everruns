@@ -15,13 +15,13 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection, apply_task_update,
     generate_task_message_id, new_session_task,
 };
-use everruns_core::typed_id::SessionId;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::SessionId;
 use rusqlite::OptionalExtension;
 
 use crate::db::SqliteDb;

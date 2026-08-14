@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
-use everruns_core::ModelId;
+use everruns_provider::typed_id::ModelId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {

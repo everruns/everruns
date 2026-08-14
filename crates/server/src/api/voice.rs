@@ -11,6 +11,10 @@ use crate::domains::common::{Command, Ctx};
 use crate::domains::messages::{CreateMessage, MessageService};
 use crate::domains::sessions::{CreateSession, GetOrCreateChatSession, SessionService};
 use crate::event_delivery::EventDelivery;
+use crate::kernel_imports::{
+    Caller, ContentPart, Event, InputContentPart, LeasedResource, UpsertLeasedResource,
+    everruns_provider::driver_registry::ServiceKind, everruns_provider::tool_types::ToolCall,
+};
 use crate::services::{
     EventService, ProviderResolverService,
     provider_resolver::{ResolvedProviderCredentials, ResolvedServiceProvider},
@@ -27,14 +31,10 @@ use everruns_core::events::{
     VOICE_INPUT_TRANSCRIPT_DELTA, VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA,
     VoiceSessionEndedData, VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
 };
-use everruns_core::message::ExecutionPhase;
 use everruns_core::session_services::LeasedResourceStore;
-use everruns_core::typed_id::{AgentId, MessageId, SessionId};
-use everruns_core::{
-    Caller, ContentPart, Event, InputContentPart, LeasedResource, ServiceKind, ToolCall,
-    UpsertLeasedResource,
-};
 use everruns_platform::FeatureFlags;
+use everruns_provider::execution_phase::ExecutionPhase;
+use everruns_provider::typed_id::{AgentId, MessageId, SessionId};
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
@@ -1866,11 +1866,14 @@ mod tests {
         message: everruns_core::Message,
     ) -> Event {
         Event {
-            id: everruns_core::typed_id::EventId::new(),
+            id: everruns_provider::typed_id::EventId::new(),
             event_type: everruns_core::events::OUTPUT_MESSAGE_COMPLETED.to_string(),
             ts: chrono::Utc::now(),
             session_id: SessionId::new(),
-            context: EventContext::turn(everruns_core::typed_id::TurnId::new(), input_message_id),
+            context: EventContext::turn(
+                everruns_provider::typed_id::TurnId::new(),
+                input_message_id,
+            ),
             data: EventData::OutputMessageCompleted(
                 everruns_core::events::OutputMessageCompletedData::new(message),
             ),

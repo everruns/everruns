@@ -2,9 +2,10 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    DisabledUtilityLlmService, LlmResponse, LlmResponseStream, Result, UTILITY_LLM_MODEL,
-    UtilityLlmRequest, UtilityLlmService,
+    DisabledUtilityLlmService, UTILITY_LLM_MODEL, UtilityLlmRequest, UtilityLlmService,
 };
+use everruns_provider::driver_registry::{LlmResponse, LlmResponseStream};
+use everruns_provider::error::Result;
 use everruns_provider::{BearerAuth, OpenResponsesProtocolChatDriver, Provider};
 use std::sync::Arc;
 

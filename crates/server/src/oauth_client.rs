@@ -1,10 +1,12 @@
 //! Shared OAuth token-exchange client for MCP connection flows.
 
+use crate::kernel_imports::{
+    EgressRequest, EgressRequestKind, EgressService,
+    everruns_provider::url_validation::validate_safe_url,
+    everruns_provider::url_validation::validate_url_dns_pinned,
+};
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use everruns_core::{
-    EgressRequest, EgressRequestKind, EgressService, validate_safe_url, validate_url_dns_pinned,
-};
 use serde::Deserialize;
 use std::sync::Arc;
 

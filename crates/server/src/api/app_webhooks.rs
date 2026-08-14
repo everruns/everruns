@@ -77,7 +77,7 @@ pub struct WebhookInvocationResponse {
     pub accepted: bool,
     #[schema(value_type = String)]
     /// Session's prefixed public identifier.
-    pub session_id: everruns_core::typed_id::SessionId,
+    pub session_id: everruns_provider::typed_id::SessionId,
     pub created_session: bool,
 }
 
@@ -135,7 +135,7 @@ pub async fn invoke_webhook(
     }
 
     let channel_id_typed = channel_id
-        .parse::<everruns_core::typed_id::AppChannelId>()
+        .parse::<everruns_provider::typed_id::AppChannelId>()
         .map_err(|e| {
             ErrorResponse::new(format!("Invalid channel ID: {e}"))
                 .into_response(StatusCode::BAD_REQUEST)

@@ -20,6 +20,7 @@ description = "GitHub-backed agent blueprints for Everruns"
 
 [dependencies]
 everruns-core.workspace = true
+everruns-provider.workspace = true
 inventory.workspace = true
 reqwest.workspace = true
 serde.workspace = true

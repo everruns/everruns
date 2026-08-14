@@ -338,7 +338,8 @@ impl ResolvedMount {
     }
 }
 
-/// Wrap an embedder's file store for a model-facing [`SystemPromptContext`]:
+/// Wrap an embedder's file store for a model-facing
+/// [`SystemPromptContext`](crate::capabilities::SystemPromptContext):
 /// pin reads to the session's workspace, then guarantee a `/workspace` mount +
 /// cwd — WITHOUT discarding a display policy the embedder already configured.
 ///

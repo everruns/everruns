@@ -9,7 +9,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_core::typed_id::SessionId;
+//! use everruns_provider::typed_id::SessionId;
 //! use everruns_session_sqldb::InMemorySqlDbBackend;
 //!
 //! let backend = InMemorySqlDbBackend::new();

@@ -9,12 +9,12 @@ use everruns_core::events::{
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
-use everruns_core::{EventId, MessageId, SessionId, TurnId};
 use everruns_host::{
     EventCursor, EventDurability, EventHistory, EventHistoryReadLimit, EventHistoryReadRequest,
     EventLog, EventLogError, EventPage, EventReadLimit, EventReadRequest, EventReader, EventSink,
     EventSinkError, HostEventEmitter, InMemoryEventLog, JsonlEventLog,
 };
+use everruns_provider::typed_id::{EventId, MessageId, SessionId, TurnId};
 use std::sync::Mutex;
 
 fn input(session_id: SessionId, text: &str) -> EventRequest {

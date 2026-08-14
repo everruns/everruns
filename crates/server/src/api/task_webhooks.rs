@@ -14,7 +14,7 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
-use everruns_core::validate_safe_url;
+use everruns_provider::url_validation::validate_safe_url;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

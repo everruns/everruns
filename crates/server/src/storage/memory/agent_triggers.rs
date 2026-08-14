@@ -2,8 +2,10 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::AgentId, everruns_provider::typed_id::TriggerId,
+};
 use anyhow::Result;
-use everruns_core::{AgentId, TriggerId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

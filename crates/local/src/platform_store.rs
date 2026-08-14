@@ -12,17 +12,17 @@
 
 use async_trait::async_trait;
 use everruns_core::capability_dto::CapabilityInfo;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::ExecutionSession;
-use everruns_core::typed_id::PrincipalId;
-use everruns_core::typed_id::{
-    AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
-};
 use everruns_platform::Agent;
 use everruns_platform::Harness;
 use everruns_platform::app::{App, AppChannel, ChannelType};
 use everruns_platform::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
 use everruns_platform::{Session, SessionParticipant};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::PrincipalId;
+use everruns_provider::typed_id::{
+    AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
+};
 use std::sync::Arc;
 
 /// Drives real local sessions for the platform store. An embedder implements

@@ -935,7 +935,10 @@ async fn create_second_org_backend(backend: &StorageBackend) -> i64 {
 }
 
 /// Helper: create a session in the given org via StorageBackend.
-async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everruns_core::SessionId {
+async fn create_session_in_org(
+    backend: &StorageBackend,
+    org_id: i64,
+) -> everruns_provider::typed_id::SessionId {
     let row = backend
         .create_session(CreateSessionRow {
             source: everruns_platform::SessionSource::Api,
@@ -947,7 +950,7 @@ async fn create_session_in_org(backend: &StorageBackend, org_id: i64) -> everrun
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
@@ -1003,7 +1006,7 @@ async fn test_session_ownership_negative_cross_org() {
 async fn test_session_ownership_negative_nonexistent_session() {
     let backend = make_backend();
 
-    let fake_session_id = everruns_core::SessionId::new();
+    let fake_session_id = everruns_provider::typed_id::SessionId::new();
 
     // Non-existent session returns 404
     let result = verify_session_ownership(&backend, ORG1, fake_session_id).await;

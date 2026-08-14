@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use everruns_core::Caller;
-use everruns_core::typed_id::HealthCheckRunId;
+use everruns_provider::typed_id::HealthCheckRunId;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;

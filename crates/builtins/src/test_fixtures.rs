@@ -1,9 +1,9 @@
 use async_trait::async_trait;
-use everruns_core::error::Result;
 use everruns_core::message::Message;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
-use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{MessageId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;

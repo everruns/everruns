@@ -3,7 +3,7 @@
 // Design Decision (EVE-873): capability identity and per-agent configuration
 // are the neutral `everruns-capability` contract — `CapabilityId`,
 // `CapabilityRef`, validation, and registry index bookkeeping live there and
-// are re-exported here at their historical paths. Core owns only the
+// are imported here for the execution-facing vocabulary. Core owns only the
 // runtime-facing vocabulary that needs engine types (capability status,
 // mount points, virtual file trees).
 //
@@ -21,19 +21,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub use everruns_capability::{
-    CapabilityError, CapabilityId, CapabilityRef, PLUGIN_CAPABILITY_PREFIX,
-    RESERVED_CAPABILITY_ID_NAMESPACE, is_plugin_capability, parse_plugin_capability_id,
-    plugin_capability_id, validate_capability_config, validate_capability_id,
-};
+#[cfg(test)]
+use everruns_capability::CapabilityId;
 
 /// Per-agent capability configuration — the persisted attachment row shape.
 ///
-/// This is the neutral [`CapabilityRef`] under its historical product name:
+/// This is the neutral [`CapabilityRef`](everruns_capability::CapabilityRef)
+/// under its historical product name:
 /// one semantic model for "capability id + per-agent JSON config" shared by
 /// the Framework, persisted attachments, and worker resolution. It serializes
 /// as `{"ref": "<id>", "config": {…}}`.
-pub use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
 // OpenAPI schema surrogate for `AgentCapabilityConfig`.
 //
@@ -51,7 +49,7 @@ pub use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 ///
 /// Associates a capability with an agent, including optional per-agent configuration.
 /// The config field allows the same capability to behave differently per-agent.
-pub struct AgentCapabilityConfigSchema {
+pub(crate) struct AgentCapabilityConfigSchema {
     /// Reference to the capability ID
     #[serde(rename = "ref")]
     #[schema(value_type = String)]

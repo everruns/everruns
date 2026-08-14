@@ -7,10 +7,11 @@
 
 #![allow(dead_code)] // Not all test binaries use every constant.
 
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::provider::DriverId;
-use everruns_core::provider_resolution::ResolvedModel;
-use everruns_test_support::in_memory_loop::TurnResult;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::driver_registry::ProviderConfig;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_test_support::in_memory_loop::{InMemoryModelConfig, TurnResult};
 
 // ============================================================================
 // Provider + Model configuration
@@ -51,11 +52,11 @@ impl ProviderModelConfig {
         self
     }
 
-    /// Build a `ResolvedModel` from env, returning `None` if the key is
+    /// Build a `ModelSpec` from env, returning `None` if the key is
     /// missing or empty, or if the provider appears in
     /// `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS` (comma-separated, e.g.
     /// `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini,openai`).
-    pub fn model(&self) -> Option<ResolvedModel> {
+    pub fn model(&self) -> Option<InMemoryModelConfig> {
         if let Ok(skip) = std::env::var("SKIP_LLM_INTEGRATION_TESTS_PROVIDERS") {
             let provider = self.provider_type.to_string().to_lowercase();
             if skip.split(',').any(|s| s.trim().to_lowercase() == provider) {
@@ -63,13 +64,9 @@ impl ProviderModelConfig {
             }
         }
         let api_key = std::env::var(self.env_var).ok().filter(|k| !k.is_empty())?;
-        Some(ResolvedModel {
-            model: self.model_name.to_string(),
-            provider_type: self.provider_type.clone(),
-            api_key: Some(api_key),
-            base_url: None,
-            provider_metadata: None,
-        })
+        let model = ModelSpec::on(self.provider_type.as_str(), self.model_name);
+        let provider = ProviderConfig::new(self.provider_type.clone()).with_api_key(api_key);
+        Some((model, provider).into())
     }
 
     /// Human-readable label for skip messages.
@@ -499,7 +496,7 @@ pub fn all_providers_registry() -> DriverRegistry {
 mod quota_detector_tests {
     use super::{LiveToolCallOutcome, classify_live_tool_call, is_quota_exhausted};
     use everruns_core::turn::TurnStopReason;
-    use everruns_core::typed_id::TurnId;
+    use everruns_provider::typed_id::TurnId;
     use everruns_test_support::in_memory_loop::{LlmGenerationSummary, TurnResult};
 
     fn tool_result(

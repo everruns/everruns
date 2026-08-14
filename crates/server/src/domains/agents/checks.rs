@@ -8,7 +8,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use everruns_core::{AgentCapabilityConfig, ToolDefinition};
+use crate::kernel_imports::{AgentCapabilityConfig, everruns_provider::tool_types::ToolDefinition};
 use regex::Regex;
 use serde::Serialize;
 use utoipa::ToSchema;
@@ -623,7 +623,7 @@ pub fn run_declarative_rules(rules: &[DeclarativeRule], resolved_prompt: &str) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::tool_types::ClientSideTool;
+    use everruns_provider::tool_types::ClientSideTool;
 
     fn client_tool(name: &str) -> ToolDefinition {
         ToolDefinition::ClientSide(ClientSideTool {

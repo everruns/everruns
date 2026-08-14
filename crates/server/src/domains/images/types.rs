@@ -1,7 +1,7 @@
 // Images domain types — list DTOs reuse API structs; MCP get returns stored bytes.
 
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::ImageId;
+use everruns_provider::typed_id::ImageId;
 use serde::Serialize;
 
 pub use crate::api::images::ImageInfo;

@@ -22,7 +22,6 @@
 //! # let _ = capability;
 //! ```
 
-use everruns_core::ToolHints;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
@@ -31,6 +30,7 @@ use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -247,7 +247,7 @@ impl Capability for DockerContainerCapability {
 // ============================================================================
 
 /// Generate container name from session ID
-fn container_name(session_id: &everruns_core::typed_id::SessionId) -> String {
+fn container_name(session_id: &everruns_provider::typed_id::SessionId) -> String {
     format!("{}-{}", CONTAINER_PREFIX, session_id.uuid())
 }
 
@@ -380,7 +380,7 @@ pub struct DockerExecTool;
 impl Tool for DockerExecTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -1127,7 +1127,7 @@ mod tests {
     async fn system_prompt_within_budget() {
         let cap = DockerContainerCapability;
         let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
-            everruns_core::SessionId::new(),
+            everruns_provider::typed_id::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         // Bumped 1150 → 1500: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
@@ -1188,7 +1188,7 @@ mod tests {
     #[test]
     fn test_container_name() {
         let uuid = uuid::Uuid::parse_str("12345678-1234-1234-1234-123456789012").unwrap();
-        let session_id = everruns_core::typed_id::SessionId::from_uuid(uuid);
+        let session_id = everruns_provider::typed_id::SessionId::from_uuid(uuid);
         let name = container_name(&session_id);
         assert_eq!(name, "everruns-12345678-1234-1234-1234-123456789012");
     }
@@ -1260,7 +1260,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_exec_missing_command() {
         let tool = DockerExecTool;
-        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+        let context = ToolContext::new(everruns_provider::typed_id::SessionId::from_uuid(
             uuid::Uuid::nil(),
         ));
         let result = tool.execute_with_context(json!({}), &context).await;
@@ -1275,7 +1275,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_read_file_missing_path() {
         let tool = DockerReadFileTool;
-        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+        let context = ToolContext::new(everruns_provider::typed_id::SessionId::from_uuid(
             uuid::Uuid::nil(),
         ));
         let result = tool.execute_with_context(json!({}), &context).await;
@@ -1290,7 +1290,7 @@ mod tests {
     #[tokio::test]
     async fn test_docker_write_file_missing_params() {
         let tool = DockerWriteFileTool;
-        let context = ToolContext::new(everruns_core::typed_id::SessionId::from_uuid(
+        let context = ToolContext::new(everruns_provider::typed_id::SessionId::from_uuid(
             uuid::Uuid::nil(),
         ));
 

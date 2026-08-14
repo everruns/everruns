@@ -12,9 +12,9 @@ use crate::storage::models::{
     CreateObserverRow, ListTraceScoresParams, ObserverRow, TraceScoreRow, UpdateObserverRow,
 };
 use anyhow::Result;
-use everruns_core::typed_id::{ObserverId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
 use everruns_platform::observer::*;
+use everruns_provider::typed_id::{ObserverId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -345,13 +345,13 @@ pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result
         turn_id: row.turn_id,
         agent_id: row
             .agent_id
-            .map(everruns_core::typed_id::AgentId::from_uuid),
+            .map(everruns_provider::typed_id::AgentId::from_uuid),
         agent_version_id: row
             .agent_version_id
-            .map(everruns_core::typed_id::AgentVersionId::from_uuid),
+            .map(everruns_provider::typed_id::AgentVersionId::from_uuid),
         harness_id: row
             .harness_id
-            .map(everruns_core::typed_id::HarnessId::from_uuid),
+            .map(everruns_provider::typed_id::HarnessId::from_uuid),
         status: TraceScoreStatus::from(row.status.as_str()),
         pass: row.pass,
         value: row.value,
@@ -371,8 +371,8 @@ mod tests {
     use super::*;
     use crate::api::observers::CreateObserverRequest;
     use crate::storage::models::CreateTraceScoreRow;
-    use everruns_core::typed_id::TraceScoreId;
     use everruns_platform::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
+    use everruns_provider::typed_id::TraceScoreId;
 
     fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {
         ObserverScorerConfig {
@@ -474,8 +474,8 @@ mod tests {
     }
 
     use crate::storage::models::{CreateModelRow, CreateProviderRow};
-    use everruns_core::typed_id::ModelId;
     use everruns_platform::observer::LlmJudgeConfig;
+    use everruns_provider::typed_id::ModelId;
 
     /// Create a model in `org_id` and return its id. `enabled` controls whether
     /// it is usable (disabled models are invisible to `get_model`).

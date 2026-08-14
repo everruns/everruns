@@ -101,8 +101,9 @@ Production event routing therefore prefers:
 2. **Crate Separation** (folder → package name):
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
-   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, egress service, internal system services, shared types). Depends on and re-exports `everruns-provider`.
+   - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
+   - `engine/` → `everruns-engine` - Shared turn planning and execution coordination consumed by hosts
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
@@ -129,10 +130,11 @@ everruns/
 ├── crates/
 │   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
-│   ├── core/             # Shared abstractions and types
+│   ├── core/             # Neutral execution contracts and portable projections
 │   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
+│   ├── engine/           # Shared turn planning and execution coordination
 │   ├── everruns/         # Application-facing Framework crate
-│   ├── runtime/          # Low-level execution host and 0.17.x compatibility
+│   ├── host/             # Low-level in-process host and reusable host phases
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
@@ -154,22 +156,35 @@ everruns/
 
 ```mermaid
 graph TD
+    provider[provider]
     core[core]
-    runtime[runtime]
+    engine[engine]
+    host[host]
+    framework[everruns]
     openai[openai]
     anthropic[anthropic]
     protocol[internal-protocol]
+    durable[durable]
     worker[worker]
     server["server (control plane)"]
 
-    core --> runtime
-    core --> openai
-    core --> anthropic
-    core --> protocol
-    core --> worker
-    protocol --> worker
-    protocol --> server
-    core --> server
+    core --> provider
+    engine --> core
+    engine --> provider
+    host --> engine
+    host --> core
+    host --> provider
+    framework --> host
+    framework --> core
+    framework --> provider
+    openai --> provider
+    anthropic --> provider
+    worker --> host
+    worker --> durable
+    worker --> protocol
+    server --> host
+    server --> durable
+    server --> protocol
     worker -.->|gRPC| server
 ```
 
@@ -181,17 +196,20 @@ Everruns runtime composition is centered on `HostComposition` in `crates/host/sr
 
 - Capabilities
 - LLM drivers
-- Connection providers
-- Built-in harness templates
-- System email sender
 - Outbound egress service
+- Utility LLM service
+- Session filesystem factory
+- Type-keyed host extensions
 
 The server and worker builders both accept an explicit `HostComposition`. If none is supplied, they fall back to crate-local presets:
 
 - `everruns_server::oss_host_composition()`
 - `everruns_worker::default_host_composition()`
 
-This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, register different LLM drivers, or install a different system email provider without forking Everruns internals.
+This keeps the existing OSS execution surface as the default while allowing
+embedders to remove integrations, add custom capabilities, register different
+LLM drivers, or replace effect implementations without forking Everruns
+internals.
 
 ### Embedded Runtime
 

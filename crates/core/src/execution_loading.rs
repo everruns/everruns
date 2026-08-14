@@ -25,8 +25,10 @@ pub trait AgentStore: Send + Sync {
     /// Execution-availability probe for dependency-blocker detection.
     ///
     /// Returns `None` when the agent exists and can execute. Hosted stores
-    /// override this to report [`DependencyBlocker::AgentArchived`] /
-    /// [`DependencyBlocker::AgentDeleted`] from the stored lifecycle status;
+    /// override this to report
+    /// [`DependencyBlocker::AgentArchived`](crate::dependency_blocker::DependencyBlocker::AgentArchived) /
+    /// [`DependencyBlocker::AgentDeleted`](crate::dependency_blocker::DependencyBlocker::AgentDeleted)
+    /// from the stored lifecycle status;
     /// the default treats a missing record as deleted.
     async fn get_agent_blocker(
         &self,

@@ -7,7 +7,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::typed_id::{
+use everruns_provider::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
     ScheduleId, SessionId, SessionParticipantId, TriggerId, WorkspaceId,
@@ -679,7 +679,7 @@ impl StorageBackend {
     pub async fn get_agent_version(
         &self,
         org_id: i64,
-        id: everruns_core::AgentVersionId,
+        id: everruns_provider::typed_id::AgentVersionId,
     ) -> Result<Option<AgentVersionRow>> {
         dispatch!(self, get_agent_version, org_id, id)
     }
@@ -4803,11 +4803,11 @@ impl StorageBackend {
 #[cfg(test)]
 mod retention_tests {
     use super::*;
-    use everruns_core::SessionId;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TaskLinks,
         TaskWakePolicy,
     };
+    use everruns_provider::typed_id::SessionId;
     use std::sync::Arc;
 
     // The retention prune deletes a task's recorded internal artifact subtree

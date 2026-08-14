@@ -7,11 +7,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::error::Result as CoreResult;
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{DEFAULT_ORG_ID, ExecutionSession, ResolvedExecutionSnapshot};
 use everruns_host::{RuntimeHostAdapter, SessionBuilder};
 use everruns_platform::Harness;
+use everruns_provider::error::Result as CoreResult;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 // EVE-877: the hosted adapters transport the stored platform record; the
 // loading seam projects it into the portable execution definition.
 use everruns_platform::{Agent, AgentStatus};
@@ -161,24 +161,24 @@ macro_rules! mock_worker_adapters {
             ) -> CoreResult<everruns_core::events::Event> {
                 unimplemented!()
             }
-            async fn get_resolved_model(
+            async fn get_model_spec(
                 &self,
                 _org_id: i64,
                 _model_id: Uuid,
-            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
                 unimplemented!()
             }
-            async fn get_default_model(
+            async fn get_default_model_spec(
                 &self,
                 _org_id: i64,
-            ) -> CoreResult<Option<everruns_core::provider_resolution::ResolvedModel>> {
+            ) -> CoreResult<Option<everruns_provider::model_spec::ModelSpec>> {
                 Ok(None)
             }
             async fn get_provider_config(
                 &self,
                 _org_id: i64,
-                _provider: &everruns_core::ProviderKey,
-            ) -> CoreResult<Option<everruns_core::ProviderConfig>> {
+                _provider: &everruns_provider::runtime_provider::ProviderKey,
+            ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
                 unimplemented!()
             }
             async fn resolve_image(
@@ -294,14 +294,14 @@ macro_rules! mock_worker_adapters {
             }
             async fn mark_leased_resource_released(
                 &self,
-                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _resource_id: everruns_provider::typed_id::LeasedResourceId,
                 _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
             ) -> CoreResult<bool> {
                 unimplemented!()
             }
             async fn mark_leased_resource_cleanup_failed(
                 &self,
-                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _resource_id: everruns_provider::typed_id::LeasedResourceId,
                 _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
                 _retry_after_seconds: u32,
                 _error: &str,
@@ -325,8 +325,8 @@ macro_rules! mock_worker_adapters {
             fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
                 everruns_core::capabilities::CapabilityRegistry::new()
             }
-            fn driver_registry(&self) -> everruns_core::DriverRegistry {
-                everruns_core::DriverRegistry::new()
+            fn driver_registry(&self) -> everruns_provider::DriverRegistry {
+                everruns_provider::DriverRegistry::new()
             }
             fn sqldb_store(
                 &self,

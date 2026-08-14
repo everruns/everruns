@@ -8,7 +8,7 @@ use chrono::Utc;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
-use everruns_core::typed_id::{MessageId, SessionId, TurnId};
+use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 use tokio::task::JoinHandle;

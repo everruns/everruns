@@ -20,10 +20,8 @@ use everruns_host::HostComposition;
 use llm_test_matrix::*;
 
 use async_trait::async_trait;
-use everruns_core::error::Result;
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
@@ -32,6 +30,8 @@ use everruns_host::{
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::SubagentCapability;
 use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
@@ -48,9 +48,9 @@ struct RuntimeRunner {
 
 impl RuntimeRunner {
     fn runtime(&self) -> Result<&InProcessRuntime> {
-        self.runtime
-            .get()
-            .ok_or_else(|| everruns_core::AgentLoopError::config("runtime not initialized yet"))
+        self.runtime.get().ok_or_else(|| {
+            everruns_provider::error::AgentLoopError::config("runtime not initialized yet")
+        })
     }
 }
 
@@ -79,7 +79,7 @@ impl LocalSessionRunner for RuntimeRunner {
         if result.success {
             Ok(())
         } else {
-            Err(everruns_core::AgentLoopError::tool(format!(
+            Err(everruns_provider::error::AgentLoopError::tool(format!(
                 "child turn failed: {}",
                 result.error.unwrap_or_default()
             )))
@@ -133,7 +133,7 @@ impl LocalSessionRunner for RuntimeRunner {
 #[tokio::test(flavor = "multi_thread")]
 async fn background_spawn_agent_subagent_live_end_to_end() {
     let config = ANTHROPIC_HAIKU;
-    let Some(model) = config.model() else {
+    let Some(model_config) = config.model() else {
         eprintln!("Skipping: {} not set", config.label());
         return;
     };
@@ -159,7 +159,12 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         .title("live parent")
         .build();
 
-    let backends = HostBackends::in_memory();
+    let (model, provider_config) = model_config.into_parts();
+    let provider_store = Arc::new(everruns_host::InMemoryProviderStore::new());
+    if let Some(provider_config) = provider_config {
+        provider_store.set_provider_config(provider_config).await;
+    }
+    let backends = HostBackends::in_memory().with_provider_store(provider_store);
     let sessions = backends.session_store.clone();
     let registry: Arc<dyn SessionTaskRegistry> = Arc::new(
         LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().expect("sqlite"))

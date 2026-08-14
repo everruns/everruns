@@ -4,9 +4,9 @@ use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
-use everruns_core::tool_types::{DeferrablePolicy, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ToolContext, tool_context::ToolContextService};
+use everruns_provider::tool_types::{DeferrablePolicy, ToolHints};
 use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
@@ -104,7 +104,7 @@ impl PlatformCommandTool {
 impl Tool for PlatformCommandTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -310,7 +310,7 @@ fn script_input_schema(commands_description: &str) -> Value {
 mod tests {
     use super::*;
     use crate::platform_store::tests::MockPlatformStore;
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
     use std::sync::Arc;
 
     #[test]
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn tools_own_phase_aware_human_narration() {
         use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use everruns_core::tool_types::ToolCall;
+        use everruns_provider::tool_types::ToolCall;
 
         let cases = [
             (

@@ -9,15 +9,19 @@
 //
 // Messages are reconstructed from typed events when loaded.
 
-use async_trait::async_trait;
-use chrono::Utc;
-use everruns_core::{
-    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageHistory, MessageId,
-    MessageQuery, MessageRetriever, MessageRole, Result, SessionId, StoreResultExt,
+use crate::kernel_imports::{
+    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageHistory,
+    MessageQuery, MessageRetriever, MessageRole,
     events::{
         EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
+    everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt,
+    everruns_provider::typed_id::MessageId,
+    everruns_provider::typed_id::SessionId,
 };
+use async_trait::async_trait;
+use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -255,7 +259,7 @@ fn event_to_message(
 /// Convert ToolCompletedData to a ToolResult message
 fn tool_completed_to_message(data: ToolCompletedData) -> Message {
     // Separate text and image parts from the result content
-    let mut images: Vec<everruns_core::tools::ToolResultImage> = Vec::new();
+    let mut images: Vec<everruns_provider::tool_types::ToolResultImage> = Vec::new();
     let metadata = tool_result_metadata(&data);
     let result: Option<serde_json::Value> = data.result.map(|parts| {
         // Collect image parts
@@ -263,7 +267,7 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
             if let ContentPart::Image(img) = part
                 && let (Some(b64), Some(mt)) = (&img.base64, &img.media_type)
             {
-                images.push(everruns_core::tools::ToolResultImage {
+                images.push(everruns_provider::tool_types::ToolResultImage {
                     base64: b64.clone(),
                     media_type: mt.clone(),
                 });
@@ -331,9 +335,11 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 
 #[cfg(test)]
 mod tests {
+    use crate::kernel_imports::{
+        ContentPart, Event, ExcludedNoticeTransform, MessageRetriever, ToolCall,
+    };
     use everruns_core::events::EventContext;
-    use everruns_core::typed_id::SessionId;
-    use everruns_core::{ContentPart, Event, ExcludedNoticeTransform, MessageRetriever, ToolCall};
+    use everruns_provider::typed_id::SessionId;
     use serde_json::json;
 
     use super::*;

@@ -1,6 +1,6 @@
 use crate::domains::common::CommandError;
 use crate::domains::models::ModelService;
-use everruns_core::typed_id::{ModelId, ProviderId};
+use everruns_provider::typed_id::{ModelId, ProviderId};
 use std::sync::Arc;
 
 pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<ModelService> {

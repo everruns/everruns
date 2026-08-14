@@ -20,8 +20,8 @@ use everruns_core::channel::{
 use everruns_core::progress_reporting::{
     ProgressReportPayload, REPORT_PROGRESS_TOOL_NAME, format_progress_report_for_slack,
 };
-use everruns_core::typed_id::{EventId, SessionId};
 use everruns_platform::SlackReplyMode;
+use everruns_provider::typed_id::{EventId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast};
@@ -1346,8 +1346,8 @@ mod tests {
         use super::*;
         use crate::storage::StorageBackend;
         use crate::storage::models::{CreateAppRow, CreateSessionRow, UpdateSession};
-        use everruns_core::PrincipalId;
-        use everruns_core::typed_id::{AgentId, HarnessId};
+        use everruns_provider::typed_id::PrincipalId;
+        use everruns_provider::typed_id::{AgentId, HarnessId};
         use tokio::sync::broadcast;
 
         const ORG_APP_OWNER: i64 = 10;
@@ -1388,7 +1388,7 @@ mod tests {
             org_id: i64,
             app_id: Option<uuid::Uuid>,
             app_public_id: &str,
-        ) -> everruns_core::typed_id::SessionId {
+        ) -> everruns_provider::typed_id::SessionId {
             use crate::storage::models::CreateEventRow;
 
             let session = db

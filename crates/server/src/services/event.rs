@@ -26,9 +26,9 @@ use crate::storage::{
 };
 use anyhow::{Result, bail};
 use everruns_core::events::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
-use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
 use everruns_core::{Event, EventListener, EventRequest};
 use everruns_platform::{FeatureFlags, SessionParticipantKind};
+use everruns_provider::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -303,7 +303,7 @@ impl EventService {
         &self,
         session_id: SessionId,
         matches_participant: F,
-    ) -> Option<everruns_core::SessionParticipantId>
+    ) -> Option<everruns_provider::typed_id::SessionParticipantId>
     where
         F: Fn(&crate::storage::models::SessionParticipantRow) -> bool,
     {
@@ -550,10 +550,13 @@ impl EventService {
 /// emit through the same persistence + delivery path as the worker.
 #[async_trait::async_trait]
 impl everruns_core::event_emitter::EventEmitter for EventService {
-    async fn emit(&self, request: EventRequest) -> everruns_core::Result<everruns_core::Event> {
+    async fn emit(
+        &self,
+        request: EventRequest,
+    ) -> everruns_provider::error::Result<everruns_core::Event> {
         EventService::emit(self, request)
             .await
-            .map_err(|e| everruns_core::AgentLoopError::event(e.to_string()))
+            .map_err(|e| everruns_provider::error::AgentLoopError::event(e.to_string()))
     }
 }
 
@@ -564,9 +567,9 @@ mod tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionParticipantRow, CreateSessionRow};
     use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
-    use everruns_core::typed_id::AgentId;
-    use everruns_core::{DEFAULT_ORG_ID, HarnessId, Message, PrincipalId};
+    use everruns_core::{DEFAULT_ORG_ID, Message};
     use everruns_platform::SessionParticipantRole;
+    use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId};
     use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {

@@ -217,12 +217,12 @@ impl Default for ConnectorRegistryBuilder {
 // ============================================================================
 
 // Form schema types are shared with provider drivers; see
-// `everruns_core::credential_schema` and knowledge/foundations/providers.md
+// `everruns_provider::credential_schema` and knowledge/foundations/providers.md
 // "Credentials". The schema itself stays in `everruns-provider`.
-pub use everruns_core::credential_schema::{FieldType, FormField};
+pub use everruns_provider::credential_schema::{FieldType, FormField};
 
 /// Credential form schema for connectors.
-pub type ConnectorFormSchema = everruns_core::credential_schema::CredentialFormSchema;
+pub type ConnectorFormSchema = everruns_provider::credential_schema::CredentialFormSchema;
 
 /// Result of credential validation.
 #[derive(Debug, Clone)]

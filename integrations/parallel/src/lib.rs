@@ -318,8 +318,8 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_capability::CapabilityRef as AgentCapabilityConfig;
     use everruns_core::capabilities::{Capability, collect_capability_mcp_servers};
-    use everruns_core::capability_types::AgentCapabilityConfig;
     use serde_json::json;
 
     #[test]

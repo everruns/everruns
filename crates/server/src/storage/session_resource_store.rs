@@ -3,12 +3,15 @@
 // Decision: Implements the generic SessionResourceRegistry trait from core.
 // Any capability can register resources here for agent and infra visibility.
 
+use crate::kernel_imports::{
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::typed_id::SessionId,
+};
 use async_trait::async_trait;
 use everruns_core::session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };
 use everruns_core::session_services::SessionResourceRegistry;
-use everruns_core::{AgentLoopError, Result, SessionId};
 
 use super::backend::StorageBackend;
 use super::models::UpsertSessionResourceRow;

@@ -15,15 +15,15 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::AgentDefinition;
-use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::error::AgentLoopError;
 use everruns_core::events::TokenUsage;
 use everruns_core::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::session_file::InitialFile;
-use everruns_core::tool_types::ToolDefinition;
-use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
+use everruns_provider::error::AgentLoopError;
+use everruns_provider::tool_types::ToolDefinition;
+use everruns_provider::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -260,7 +260,7 @@ pub struct Agent {
     #[serde(default)]
     #[cfg_attr(
         feature = "openapi",
-        schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)
+        schema(value_type = Vec<crate::CapabilityRefSchema>)
     )]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this agent.
@@ -347,7 +347,7 @@ impl Agent {
     ///
     /// Archived and deleted records fail here — before host execution — with
     /// the same error the snapshot projection historically produced.
-    pub fn execution_definition(&self) -> everruns_core::Result<AgentDefinition> {
+    pub fn execution_definition(&self) -> everruns_provider::error::Result<AgentDefinition> {
         match self.status {
             AgentStatus::Active => Ok(self.definition()),
             AgentStatus::Archived | AgentStatus::Deleted => Err(AgentLoopError::config(format!(

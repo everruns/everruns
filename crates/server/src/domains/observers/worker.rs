@@ -10,9 +10,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
-use everruns_core::typed_id::SessionId;
 use everruns_platform::eval::Score;
 use everruns_platform::observer::{ObserverScorerConfig, ScorerMethod};
+use everruns_provider::typed_id::SessionId;
 use tracing::{debug, error, warn};
 
 use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
@@ -265,11 +265,11 @@ mod tests {
     use crate::storage::models::{
         CreateEventRow, CreateObserverRow, CreateSessionRow, CreateTraceScoreRow,
     };
-    use everruns_core::typed_id::{
-        AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
-    };
     use everruns_platform::observer::{
         LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
+    };
+    use everruns_provider::typed_id::{
+        AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
     };
     use uuid::Uuid;
 

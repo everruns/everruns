@@ -5,7 +5,7 @@
 //! attachment type allowlist, an attachment cap, and a local-URL escape hatch
 //! for tests.
 
-use everruns_core::validate_safe_url;
+use everruns_provider::url_validation::validate_safe_url;
 use serde::{Deserialize, Serialize};
 
 use crate::client::{Federation, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER};

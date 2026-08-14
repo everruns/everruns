@@ -3,11 +3,11 @@ use std::sync::Arc;
 use everruns_core::MessageRetriever;
 use everruns_core::atoms::ReasonAtom;
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::provider_resolution::ProviderStore;
 use everruns_host::StoreTurnContextResolver;
+use everruns_provider::driver_registry::DriverRegistry;
 
 /// Compose a reason atom from in-memory stores for tests and examples.
 ///

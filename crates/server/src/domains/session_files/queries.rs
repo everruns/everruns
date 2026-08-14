@@ -1,6 +1,6 @@
 use crate::domains::common::{CommandError, Ctx};
 use crate::domains::session_files::WorkspaceFileService;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 use uuid::Uuid;
 

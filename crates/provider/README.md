@@ -11,9 +11,9 @@ boundary, provider assembly, protocol drivers, stream/retry helpers, model
 profiles, typed IDs, credential schemas, and the LLM error taxonomy.
 
 It is a focused implementation crate in the [Everruns](https://everruns.com)
-ecosystem. Application authors normally use the re-exported provider surface
-through `everruns`; provider implementers depend here to avoid pulling in the
-agent-loop runtime.
+ecosystem. Framework application authors normally use the curated surface
+through `everruns`; provider implementers and low-level hosts depend here
+directly to avoid pulling in the agent-loop kernel.
 
 The default `http` feature provides the shared protocol implementations and
 selects the ring Rustls provider before constructing their clients. Contract-

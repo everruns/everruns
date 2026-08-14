@@ -9,8 +9,10 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-use everruns_core::{
-    Caller, LlmMessage, LlmMessageRole, ToolDefinition, UtilityLlmRequest, UtilityLlmService,
+use crate::kernel_imports::{
+    Caller, UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
+    everruns_provider::driver_registry::LlmMessageRole,
+    everruns_provider::tool_types::ToolDefinition,
 };
 use serde::Deserialize;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -522,10 +524,10 @@ pub async fn run_custom_nl_rules(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use everruns_core::{
+    use crate::kernel_imports::{
         AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream, Result as CoreResult,
     };
+    use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Mutex;
 

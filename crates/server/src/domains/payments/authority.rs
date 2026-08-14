@@ -15,12 +15,12 @@ use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use ethers_core::types::transaction::eip712::TypedData;
 use ethers_core::utils::to_checksum;
 use ethers_signers::{LocalWallet, Signer};
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };
 use everruns_core::tool_execution::PaymentAuthority;
-use everruns_core::typed_id::{AgentId, PaymentAttemptId, SessionId};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{AgentId, PaymentAttemptId, SessionId};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -503,7 +503,7 @@ fn request_host(url: &str) -> Result<String> {
 fn subject_candidates(
     session_id: SessionId,
     agent_id: Option<AgentId>,
-    agent_identity_id: Option<everruns_core::AgentIdentityId>,
+    agent_identity_id: Option<everruns_provider::typed_id::AgentIdentityId>,
     user_id: Option<uuid::Uuid>,
 ) -> Vec<(&'static str, String)> {
     let mut candidates = vec![

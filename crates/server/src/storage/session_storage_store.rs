@@ -3,11 +3,12 @@
 // This module implements the core SessionStorageStore trait for persisting
 // session key/value pairs and encrypted secrets to the database.
 
-use async_trait::async_trait;
-use everruns_core::{
-    AgentLoopError, Result, SessionId, StoreResultExt, session_services::KeyInfo,
-    session_services::SecretInfo, session_services::SessionStorageStore,
+use crate::kernel_imports::{
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt, everruns_provider::typed_id::SessionId,
+    session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
 };
+use async_trait::async_trait;
 
 use super::encryption::EncryptionService;
 use super::models::{UpsertSessionKeyValue, UpsertSessionSecret};

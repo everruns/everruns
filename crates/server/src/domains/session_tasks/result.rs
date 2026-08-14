@@ -12,8 +12,8 @@
 // each surface (A2A `tasks/get` artifact, MCP Tasks `tasks/get` result). See
 // `knowledge/integrations/a2a-channel.md` / `knowledge/integrations/mcp.md`.
 
-use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, TASK_KIND_SUBAGENT, task_result_path};
+use everruns_provider::typed_id::SessionId;
 use serde_json::Value;
 
 use crate::storage::StorageBackend;

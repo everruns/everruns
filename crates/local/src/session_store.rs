@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_core::AgentCapabilityConfig;
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::execution_loading::SessionStore;
 use everruns_core::session::ExecutionSession;
-use everruns_core::typed_id::{HarnessId, SessionId};
 use everruns_host::{RuntimeSessionStore, SessionBuilder};
 use everruns_platform::SessionMutator;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{HarnessId, SessionId};
 use rusqlite::{OptionalExtension, params};
 
 use crate::SqliteDb;

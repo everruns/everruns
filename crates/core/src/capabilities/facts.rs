@@ -36,7 +36,8 @@ pub enum Volatility {
 
 /// A single piece of key/value context contributed by a capability.
 ///
-/// A capability declares its facts once via [`Capability::facts`]; the runtime
+/// A capability declares its facts once via
+/// [`Capability::facts`](crate::capabilities::Capability::facts); the runtime
 /// routes each one by its [`Volatility`]. The `key` is a stable identifier
 /// (e.g. `current_time`); the `value` is the rendered current value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,7 +67,9 @@ impl Fact {
     }
 }
 
-/// Context passed to [`Capability::facts`]. Deliberately minimal — facts are
+/// Context passed to
+/// [`Capability::facts`](crate::capabilities::Capability::facts). Deliberately
+/// minimal — facts are
 /// cheap, pure-ish descriptions of current context, not IO. Callers that need
 /// wall-clock time read it themselves (as the `current_time` capability does)
 /// so the trait stays free of ambient-time plumbing.

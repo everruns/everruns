@@ -4,10 +4,9 @@ use async_trait::async_trait;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_files::SessionFileSystem;
-use everruns_core::{
-    AgentLoopError, AssembledTurnContext, Result, TurnContextRequest, TurnContextResolver,
-};
+use everruns_core::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
 use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
+use everruns_provider::error::{AgentLoopError, Result};
 use std::sync::Arc;
 
 /// Minimal external observer proving event emission is independently implementable.
@@ -16,7 +15,7 @@ pub struct ExternalEventEmitter;
 #[async_trait]
 impl EventEmitter for ExternalEventEmitter {
     async fn emit(&self, request: EventRequest) -> Result<Event> {
-        Ok(request.into_event(everruns_core::typed_id::EventId::new(), 1))
+        Ok(request.into_event(everruns_provider::typed_id::EventId::new(), 1))
     }
 }
 

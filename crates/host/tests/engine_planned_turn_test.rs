@@ -11,11 +11,7 @@
 //! carried state survives a serialize/reconstruct between every step, so a host
 //! that persists it between activities plans the identical turn.
 
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession,
-    provider_resolution::ResolvedModel,
-};
+use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_engine::{
     ActOutcome, TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,
 };
@@ -24,6 +20,9 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     TurnStopReason,
 };
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
@@ -35,14 +34,14 @@ fn math_platform() -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("math", "You are a math assistant.")
         .id(harness_id)
         .capability("test_math")
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId, max_iterations: usize) -> AgentDefinition {
+fn agent(agent_id: everruns_provider::typed_id::AgentId, max_iterations: usize) -> AgentDefinition {
     AgentBuilder::new("math-agent", "Use tools when needed.")
         .id(agent_id)
         .display_name("Math Agent")
@@ -51,9 +50,9 @@ fn agent(agent_id: everruns_core::AgentId, max_iterations: usize) -> AgentDefini
 }
 
 fn session(
-    session_id: everruns_core::SessionId,
-    harness_id: everruns_core::HarnessId,
-    agent_id: everruns_core::AgentId,
+    session_id: everruns_provider::typed_id::SessionId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    agent_id: everruns_provider::typed_id::AgentId,
 ) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
@@ -76,10 +75,10 @@ async fn runtime_running(
     seed: u128,
     max_iterations: usize,
     script: Vec<SimTurn>,
-) -> (InProcessRuntime, everruns_core::SessionId) {
-    let harness_id = everruns_core::HarnessId::from_seed(seed);
-    let agent_id = everruns_core::AgentId::from_seed(seed);
-    let session_id = everruns_core::SessionId::from_seed(seed);
+) -> (InProcessRuntime, everruns_provider::typed_id::SessionId) {
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(math_platform())
@@ -87,13 +86,7 @@ async fn runtime_running(
         .agent(agent(agent_id, max_iterations))
         .session(session(session_id, harness_id, agent_id))
         .llm_sim(LlmSimConfig::scripted(script))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .build()
         .await
         .expect("runtime builds");
@@ -349,10 +342,10 @@ fn planner_state_survives_a_restart_between_every_step() {
         serde_json::from_value(encoded).expect("state deserializes")
     }
 
-    let session_id = everruns_core::SessionId::from_seed(907);
-    let harness_id = everruns_core::HarnessId::from_seed(907);
-    let input_message_id = everruns_core::MessageId::from_seed(907);
-    let turn_id = everruns_core::TurnId::from_seed(907);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(907);
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(907);
+    let input_message_id = everruns_provider::typed_id::MessageId::from_seed(907);
+    let turn_id = everruns_provider::typed_id::TurnId::from_seed(907);
     let now = chrono::Utc::now();
 
     let initial = TurnState {
@@ -390,7 +383,7 @@ fn planner_state_survives_a_restart_between_every_step() {
         max_iterations: 8,
         text: "calling a tool".to_string(),
         response_id: Some("resp_1".to_string()),
-        tool_calls: vec![everruns_core::ToolCall {
+        tool_calls: vec![everruns_provider::tool_types::ToolCall {
             id: "call_1".to_string(),
             name: "add".to_string(),
             arguments: json!({ "a": 1, "b": 1 }),

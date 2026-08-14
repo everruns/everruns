@@ -7,15 +7,15 @@
 use crate::session_mutator::{SessionMutator, SessionMutatorExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
 use everruns_core::session::ExecutionSession;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::typed_id::SessionId;
 use everruns_core::{
     event_emitter::EventEmitter, execution_loading::SessionStore, tool_context::ToolContext,
 };
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::tool_types::ToolHints;
+use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -199,7 +199,7 @@ pub struct WriteSessionTitleTool;
 impl Tool for WriteSessionTitleTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -297,7 +297,7 @@ pub struct GetSessionInfoTool;
 impl Tool for GetSessionInfoTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -391,12 +391,12 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use everruns_core::AgentDefinition;
+    use everruns_core::Tool;
     use everruns_core::events::{Event, EventRequest};
     use everruns_core::session::{ExecutionSession, SessionExecutionState};
-    use everruns_core::typed_id::{
+    use everruns_provider::typed_id::{
         AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId,
     };
-    use everruns_core::{AgentCapabilityConfig, Tool};
     use std::sync::{Arc, Mutex};
 
     #[derive(Clone)]
@@ -469,7 +469,7 @@ mod tests {
     #[test]
     fn session_tools_narrate_all_phases() {
         use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
-        use everruns_core::tool_types::ToolCall;
+        use everruns_provider::tool_types::ToolCall;
 
         let ctx = ToolNarrationContext::default();
         let title_call = ToolCall {
@@ -621,7 +621,7 @@ mod tests {
         let agent = AgentDefinition {
             display_name: Some("Research Agent".to_string()),
             description: Some("desc".to_string()),
-            capabilities: vec![AgentCapabilityConfig::new("session")],
+            capabilities: vec![everruns_capability::CapabilityRef::new("session")],
             ..AgentDefinition::new(agent_id, "research-agent", "prompt")
         };
 

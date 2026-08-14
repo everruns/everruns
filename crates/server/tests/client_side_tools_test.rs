@@ -47,7 +47,7 @@ fn test_agent_with_client_side_tools_serialization() {
     assert_eq!(agent.tools[0].name(), "browser_click");
     assert!(matches!(
         &agent.tools[0],
-        everruns_core::ToolDefinition::ClientSide(_)
+        everruns_provider::tool_types::ToolDefinition::ClientSide(_)
     ));
 }
 
@@ -88,11 +88,11 @@ fn test_agent_with_mixed_tools_serialization() {
 
     assert!(matches!(
         &agent.tools[0],
-        everruns_core::ToolDefinition::Builtin(_)
+        everruns_provider::tool_types::ToolDefinition::Builtin(_)
     ));
     assert!(matches!(
         &agent.tools[1],
-        everruns_core::ToolDefinition::ClientSide(_)
+        everruns_provider::tool_types::ToolDefinition::ClientSide(_)
     ));
 
     // Roundtrip
@@ -229,8 +229,8 @@ fn test_submit_tool_results_response_serialization() {
 
 #[test]
 fn test_tool_call_requested_data_serialization() {
-    use everruns_core::ToolCall;
     use everruns_core::events::ToolCallRequestedData;
+    use everruns_provider::tool_types::ToolCall;
 
     let data = ToolCallRequestedData {
         tool_calls: vec![
@@ -262,8 +262,8 @@ fn test_tool_call_requested_data_serialization() {
 
 #[test]
 fn test_tool_call_requested_data_roundtrip() {
-    use everruns_core::ToolCall;
     use everruns_core::events::ToolCallRequestedData;
+    use everruns_provider::tool_types::ToolCall;
 
     let original = ToolCallRequestedData {
         tool_calls: vec![ToolCall {
@@ -326,13 +326,19 @@ fn test_client_side_tool_in_session_tools_json() {
         }
     ]);
 
-    let tools: Vec<everruns_core::ToolDefinition> =
+    let tools: Vec<everruns_provider::tool_types::ToolDefinition> =
         serde_json::from_value(tools_json.clone()).unwrap();
     assert_eq!(tools.len(), 2);
 
     for tool in &tools {
-        assert!(matches!(tool, everruns_core::ToolDefinition::ClientSide(_)));
-        assert_eq!(tool.policy(), &everruns_core::ToolPolicy::ClientSide);
+        assert!(matches!(
+            tool,
+            everruns_provider::tool_types::ToolDefinition::ClientSide(_)
+        ));
+        assert_eq!(
+            tool.policy(),
+            &everruns_provider::tool_types::ToolPolicy::ClientSide
+        );
     }
 
     // Roundtrip
@@ -346,7 +352,7 @@ fn test_client_side_tool_in_session_tools_json() {
 
 #[test]
 fn test_tool_call_and_result_correlation() {
-    use everruns_core::{ToolCall, ToolResult};
+    use everruns_provider::tool_types::{ToolCall, ToolResult};
 
     let tool_call = ToolCall {
         id: "call_corr123".to_string(),

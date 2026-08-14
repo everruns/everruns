@@ -317,7 +317,7 @@ pub struct ServerContext {
     pub event_delivery: crate::event_delivery::EventDelivery,
     pub encryption: Option<Arc<EncryptionService>>,
     pub runner: Arc<dyn AgentRunner>,
-    pub driver_registry: Arc<everruns_core::DriverRegistry>,
+    pub driver_registry: Arc<everruns_provider::driver_registry::DriverRegistry>,
     pub host_composition: Arc<HostComposition>,
     /// System-wide email sender from the platform profile.
     pub email_sender: Arc<dyn everruns_platform::email::EmailSender>,

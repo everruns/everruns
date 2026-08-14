@@ -5,12 +5,12 @@
 // chat driver that replays queued responses.
 
 use async_trait::async_trait;
-use everruns_core::driver_registry::{
+use everruns_core::tool_execution::ToolExecutor;
+use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
-use everruns_core::error::Result;
-use everruns_core::tool_execution::ToolExecutor;
-use everruns_core::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use everruns_provider::error::Result;
+use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use futures::stream;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -242,7 +242,7 @@ impl MockProvider {
 impl ChatDriver for MockProvider {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_core::ProviderEndpoint,
+        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         _config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -293,15 +293,15 @@ mod tests {
             arguments: serde_json::json!({"city": "NYC"}),
         };
 
-        let tool_def = ToolDefinition::Builtin(everruns_core::tool_types::BuiltinTool {
+        let tool_def = ToolDefinition::Builtin(everruns_provider::tool_types::BuiltinTool {
             name: "get_weather".to_string(),
             display_name: None,
             description: "Get weather".to_string(),
             parameters: serde_json::json!({}),
-            policy: everruns_core::tool_types::ToolPolicy::Auto,
+            policy: everruns_provider::tool_types::ToolPolicy::Auto,
             category: None,
-            deferrable: everruns_core::tool_types::DeferrablePolicy::default(),
-            hints: everruns_core::tool_types::ToolHints::default(),
+            deferrable: everruns_provider::tool_types::DeferrablePolicy::default(),
+            hints: everruns_provider::tool_types::ToolHints::default(),
             full_parameters: None,
         });
 

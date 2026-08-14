@@ -9,14 +9,12 @@ use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::tool_narration::{
     ToolNarrationContext, ToolNarrationPhase, narrate_list_directory,
 };
-use everruns_core::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    AgentCapabilityConfig, EventData, ExecutionSession, HarnessDefinition, MountFs,
-    SessionExecutionState, ToolCall, WorkspaceRootSet,
+    EventData, ExecutionSession, HarnessDefinition, MountFs, SessionExecutionState,
+    WorkspaceRootSet,
 };
 use everruns_core::{
     event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
@@ -30,6 +28,9 @@ use everruns_host::{
 };
 use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_platform::SessionMutator;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::tool_types::ToolCall;
+use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -65,7 +66,7 @@ impl SessionStore for TestSessionStore {
     async fn get_session(
         &self,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<Option<ExecutionSession>> {
+    ) -> everruns_provider::error::Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
     }
 }
@@ -76,7 +77,7 @@ impl SessionMutator for TestSessionStore {
         &self,
         session_id: SessionId,
         title: String,
-    ) -> everruns_core::error::Result<ExecutionSession> {
+    ) -> everruns_provider::error::Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.title = Some(title);
@@ -102,7 +103,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
         _org_id: i64,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         self.session_store.set_status(session_id, status).await;
         Ok(())
     }
@@ -111,7 +112,7 @@ impl RuntimeHostAdapter for NarrationTestHost {
         &self,
         _org_id: i64,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<ResolvedTurnInputs> {
+    ) -> everruns_provider::error::Result<ResolvedTurnInputs> {
         let session = self
             .session_store
             .get_session(session_id)
@@ -173,7 +174,9 @@ impl RuntimeHostAdapter for NarrationTestHost {
 
 fn harness() -> HarnessDefinition {
     HarnessDefinition {
-        capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+        capabilities: vec![everruns_capability::CapabilityRef::new(
+            "session_file_system",
+        )],
         ..HarnessDefinition::new("files", "")
     }
 }
@@ -181,7 +184,7 @@ fn harness() -> HarnessDefinition {
 fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
     ExecutionSession {
         id: session_id,
-        workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+        workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: None,
@@ -211,10 +214,12 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> ExecutionSession {
 async fn build_tool_definitions(
     host: &NarrationTestHost,
     session_id: SessionId,
-) -> Vec<everruns_core::ToolDefinition> {
+) -> Vec<everruns_provider::tool_types::ToolDefinition> {
     let ctx = SystemPromptContext::without_file_store(session_id);
     let collected = collect_capabilities_with_configs(
-        &[AgentCapabilityConfig::new("session_file_system")],
+        &[everruns_capability::CapabilityRef::new(
+            "session_file_system",
+        )],
         &host.capability_registry,
         &ctx,
     )

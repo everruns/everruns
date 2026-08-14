@@ -10,7 +10,7 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::harnesses::{HarnessExampleDef, harness_examples};
 use axum::{Json, Router, extract::State, routing::get};
-use everruns_core::{AgentCapabilityConfig, DeploymentGrade};
+use everruns_core::DeploymentGrade;
 use everruns_host::HostComposition;
 use serde::Serialize;
 use std::sync::Arc;
@@ -35,8 +35,8 @@ pub struct HarnessExample {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_name: Option<String>,
     /// Capabilities the example will assign with their per-harness config.
-    #[schema(value_type = Vec<everruns_core::capability_types::AgentCapabilityConfigSchema>)]
-    pub capabilities: Vec<AgentCapabilityConfig>,
+    #[schema(value_type = Vec<everruns_platform::CapabilityRefSchema>)]
+    pub capabilities: Vec<everruns_capability::CapabilityRef>,
     /// Whether this example is only available when experimental features are on.
     pub dev_only: bool,
 }
@@ -53,7 +53,7 @@ fn example_to_dto(ex: &HarnessExampleDef) -> HarnessExample {
             .capabilities
             .iter()
             .map(|cap| {
-                AgentCapabilityConfig::with_config(
+                everruns_capability::CapabilityRef::with_config(
                     cap.typed_id().clone(),
                     cap.config_value().clone(),
                 )

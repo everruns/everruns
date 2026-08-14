@@ -6,12 +6,12 @@
 // Decision: org_id is baked into the struct at construction time,
 // matching the Grpc/Adapter store pattern.
 
-use async_trait::async_trait;
-use everruns_core::{
-    AgentLoopError, ModelId, Result, StoreResultExt,
-    provider::DriverId,
-    {provider_resolution::ProviderStore, provider_resolution::ResolvedModel},
+use crate::kernel_imports::{
+    everruns_provider::error::AgentLoopError, everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt, everruns_provider::model_spec::ModelSpec,
+    everruns_provider::typed_id::ModelId, provider_resolution::ProviderStore,
 };
+use async_trait::async_trait;
 
 use super::{encryption::EncryptionService, repositories::Database};
 
@@ -44,7 +44,7 @@ impl DbProviderStore {
 
 #[async_trait]
 impl ProviderStore for DbProviderStore {
-    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
+    async fn get_model_spec(&self, model_id: ModelId) -> Result<Option<ModelSpec>> {
         // Look up the model
         let model_row = self
             .db
@@ -69,22 +69,13 @@ impl ProviderStore for DbProviderStore {
             None => return Ok(None),
         };
 
-        // Parse provider type
-        let provider_type = parse_provider_type(&provider_row.provider_type)?;
-
-        Ok(Some(ResolvedModel {
-            model: model_row.model_id,
-            provider_type,
-            api_key: None,
-            base_url: None,
-            provider_metadata: Some(everruns_core::ProviderMetadata {
-                extra: Some(serde_json::json!({ "provider_id": provider_row.id.to_string() })),
-                ..Default::default()
-            }),
-        }))
+        Ok(Some(ModelSpec::on(
+            provider_row.id.to_string(),
+            model_row.model_id,
+        )))
     }
 
-    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
+    async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>> {
         // Look up the default model via organization settings
         let model_row = self.db.get_default_model(self.org_id).await.store_err()?;
 
@@ -105,28 +96,23 @@ impl ProviderStore for DbProviderStore {
             None => return Ok(None),
         };
 
-        // Parse provider type
-        let provider_type = parse_provider_type(&provider_row.provider_type)?;
-
-        Ok(Some(ResolvedModel {
-            model: model_row.model_id,
-            provider_type,
-            api_key: None,
-            base_url: None,
-            provider_metadata: Some(everruns_core::ProviderMetadata {
-                extra: Some(serde_json::json!({ "provider_id": provider_row.id.to_string() })),
-                ..Default::default()
-            }),
-        }))
+        Ok(Some(ModelSpec::on(
+            provider_row.id.to_string(),
+            model_row.model_id,
+        )))
     }
 
     async fn get_provider_config(
         &self,
-        provider: &everruns_core::ProviderKey,
-    ) -> Result<Option<everruns_core::ProviderConfig>> {
-        let id: everruns_core::ProviderId = provider.as_str().parse().map_err(|_| {
-            AgentLoopError::Configuration(format!("invalid persisted provider id '{}'", provider))
-        })?;
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> Result<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        let id: everruns_provider::typed_id::ProviderId =
+            provider.as_str().parse().map_err(|_| {
+                AgentLoopError::Configuration(format!(
+                    "invalid persisted provider id '{}'",
+                    provider
+                ))
+            })?;
         let Some(row) = self
             .db
             .get_provider(self.org_id, id.uuid())
@@ -139,12 +125,12 @@ impl ProviderStore for DbProviderStore {
             .db
             .get_provider_with_api_key(&row, &self.encryption)
             .store_err()?;
-        Ok(Some(everruns_core::ProviderConfig {
+        Ok(Some(everruns_provider::driver_registry::ProviderConfig {
             provider: provider.clone(),
             provider_type: parse_provider_type(&with_key.provider_type)?,
             api_key: with_key.api_key,
             base_url: with_key.base_url,
-            metadata: everruns_core::ProviderMetadata::default(),
+            metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
         }))
     }
 }
@@ -154,7 +140,7 @@ impl ProviderStore for DbProviderStore {
 /// resolve to a usable provider type instead of erroring. An empty/whitespace
 /// value is a corrupt row and surfaces as a configuration error rather than a
 /// silent `External("")`.
-fn parse_provider_type(provider_type_str: &str) -> Result<DriverId> {
+fn parse_provider_type(provider_type_str: &str) -> Result<everruns_provider::provider::DriverId> {
     if provider_type_str.trim().is_empty() {
         return Err(AgentLoopError::Configuration(
             "empty provider_type in database".to_string(),

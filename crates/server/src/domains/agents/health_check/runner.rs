@@ -8,9 +8,12 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::kernel_imports::{
+    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
+    everruns_provider::driver_registry::LlmMessageRole,
+};
 use everruns_core::events::{TURN_COMPLETED, TURN_FAILED};
-use everruns_core::typed_id::{AgentId, SessionId};
-use everruns_core::{LlmMessage, LlmMessageRole, UtilityLlmRequest, UtilityLlmService};
+use everruns_provider::typed_id::{AgentId, SessionId};
 use serde::Deserialize;
 use tokio::sync::Semaphore;
 use uuid::Uuid;

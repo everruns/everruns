@@ -2,9 +2,11 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::kernel_imports::{
+    everruns_provider::typed_id::MessageId, everruns_provider::typed_id::NotificationId,
+};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::{MessageId, NotificationId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

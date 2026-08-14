@@ -7,13 +7,11 @@
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
-use everruns_core::provider::{Provider, ProviderTraceConfig};
-use everruns_core::{
-    CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId, Event, EventContext,
+use crate::kernel_imports::{
+    CapabilityInfo, ContextReportContribution, ContextReportSection, Event, EventContext,
     EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, McpServer,
-    McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus,
-    SessionContextReport, SessionFile, Skill, SkillContent, SkillFileEntry, SkillSourceType,
-    SkillStatus, SkillValidationResult, ToolCall,
+    McpServerStatus, McpServerTransportType, SessionContextReport, SessionFile, Skill,
+    SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillValidationResult,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -21,9 +19,15 @@ use everruns_core::{
         SessionStartedData, TokenUsage, ToolCallSummary, ToolCompletedData, ToolStartedData,
         TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
+    everruns_provider::model::Model,
+    everruns_provider::model::ModelWithProvider,
+    everruns_provider::provider::DriverId,
+    everruns_provider::provider::ProviderStatus,
+    everruns_provider::tool_types::ToolCall,
 };
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Session, SessionStatus};
+use everruns_provider::provider::{Provider, ProviderTraceConfig};
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
 use utoipa::openapi::{RefOr, Schema};
@@ -444,7 +448,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         schemas(
             Agent, AgentStatus, everruns_platform::AgentVersion, everruns_platform::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
-            everruns_core::typed_id::EventId,
+            everruns_provider::typed_id::EventId,
             // Event data types
             InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
             ModelMetadata, TokenUsage,
@@ -515,9 +519,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::providers::UpdateProviderRequest,
             api::providers::ProvidersConfigResponse,
             api::providers::DriverCredentialInfo,
-            everruns_core::CredentialFormSchema,
-            everruns_core::credential_schema::FormField,
-            everruns_core::credential_schema::FieldType,
+            everruns_provider::credential_schema::CredentialFormSchema,
+            everruns_provider::credential_schema::FormField,
+            everruns_provider::credential_schema::FieldType,
             api::models::CreateModelRequest,
             api::models::UpdateModelRequest,
             CapabilityInfo,
@@ -559,9 +563,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             domains::session_git::GitDiffStats, domains::session_git::GitRefInfo,
             // Tool types
             ToolCall,
-            everruns_core::ToolDefinition, everruns_core::BuiltinTool, everruns_core::ClientSideTool,
-            everruns_core::ToolPolicy, everruns_core::ToolHints,
-            everruns_core::ToolCallRequestedData,
+            everruns_provider::tool_types::ToolDefinition, everruns_provider::tool_types::BuiltinTool, everruns_provider::tool_types::ClientSideTool,
+            everruns_provider::tool_types::ToolPolicy, everruns_provider::tool_types::ToolHints,
+            everruns_core::events::ToolCallRequestedData,
             api::tool_results::SubmitToolResultsRequest,
             api::tool_results::ClientToolResult,
             api::tool_results::SubmitToolResultsResponse,

@@ -1,7 +1,7 @@
 use super::super::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use super::Database;
 use anyhow::Result;
-use everruns_core::AgentId;
+use everruns_provider::typed_id::AgentId;
 use uuid::Uuid;
 
 impl Database {

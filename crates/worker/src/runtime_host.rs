@@ -3,11 +3,9 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
-use everruns_core::error::Result;
-use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, EgressService, ResolvedExecutionSnapshot,
-    SessionExecutionState, UtilityLlmService,
+    CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
+    UtilityLlmService,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, delegation_services::SessionCreationAuthority,
@@ -21,6 +19,9 @@ use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
 use everruns_platform::SessionMutator;
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::{AgentId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -126,7 +127,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 /// let adapters = GrpcWorkerAdapters::connect("127.0.0.1:9001").await?;
 /// let host = WorkerRuntimeHost::new(adapters);
 /// let result = execute_reason_activity(&host, org_id, reason_input).await?;
-/// # Ok::<(), everruns_core::AgentLoopError>(())
+/// # Ok::<(), everruns_provider::error::AgentLoopError>(())
 /// ```
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
@@ -192,7 +193,9 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             .get_harness(org_id, context.session.harness_id.uuid())
             .await?
             .ok_or_else(|| {
-                everruns_core::AgentLoopError::harness_not_found(context.session.harness_id)
+                everruns_provider::error::AgentLoopError::harness_not_found(
+                    context.session.harness_id,
+                )
             })?
             .execution_definition()?;
         let agent_definition = context

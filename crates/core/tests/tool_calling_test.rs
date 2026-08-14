@@ -5,16 +5,86 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResultImage,
-};
-use everruns_core::{
     Message, MessageRole,
     tool_execution::ToolExecutor,
-    tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
+    tools::{Tool, ToolExecutionResult, ToolRegistry},
+};
+use everruns_provider::ToolResultImage;
+use everruns_provider::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
 };
 use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+
+struct EchoTool;
+
+#[async_trait]
+impl Tool for EchoTool {
+    fn name(&self) -> &str {
+        "echo"
+    }
+
+    fn description(&self) -> &str {
+        "Echo the provided message"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+        let message = arguments
+            .get("message")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        ToolExecutionResult::success(json!({"echoed": message, "length": message.len()}))
+    }
+}
+
+struct FailingTool {
+    message: String,
+    internal: bool,
+}
+
+impl FailingTool {
+    fn with_tool_error(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            internal: false,
+        }
+    }
+
+    fn with_internal_error(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            internal: true,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for FailingTool {
+    fn name(&self) -> &str {
+        "failing_tool"
+    }
+
+    fn description(&self) -> &str {
+        "Always fails"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+        if self.internal {
+            ToolExecutionResult::internal_error_msg(&self.message)
+        } else {
+            ToolExecutionResult::tool_error(&self.message)
+        }
+    }
+}
 
 // =============================================================================
 // Tests for ToolRegistry as ToolExecutor
@@ -419,27 +489,27 @@ async fn test_tool_result_with_images_llm_conversion() {
     // Should be Tool role with tool_call_id
     assert_eq!(
         llm_msg.role,
-        everruns_core::driver_registry::LlmMessageRole::Tool
+        everruns_provider::driver_registry::LlmMessageRole::Tool
     );
     assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
 
     // Content should have text (JSON result) + 2 images
     match &llm_msg.content {
-        everruns_core::driver_registry::LlmMessageContent::Parts(parts) => {
+        everruns_provider::driver_registry::LlmMessageContent::Parts(parts) => {
             assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
             assert!(matches!(
                 &parts[0],
-                everruns_core::driver_registry::LlmContentPart::Text { .. }
+                everruns_provider::driver_registry::LlmContentPart::Text { .. }
             ));
             match &parts[1] {
-                everruns_core::driver_registry::LlmContentPart::Image { url } => {
+                everruns_provider::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/png;base64,"));
                     assert!(url.contains("AAAA"));
                 }
                 _ => panic!("Expected Image part"),
             }
             match &parts[2] {
-                everruns_core::driver_registry::LlmContentPart::Image { url } => {
+                everruns_provider::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/jpeg;base64,"));
                     assert!(url.contains("BBBB"));
                 }
@@ -466,7 +536,7 @@ fn test_tool_result_image_serialization() {
 
 #[test]
 fn test_tool_result_with_images_serialization() {
-    let result = everruns_core::ToolResult {
+    let result = everruns_provider::tool_types::ToolResult {
         tool_call_id: "call_1".to_string(),
         result: Some(json!({"ok": true})),
         images: Some(vec![ToolResultImage {
@@ -479,7 +549,8 @@ fn test_tool_result_with_images_serialization() {
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_core::ToolResult = serde_json::from_str(&json_str).unwrap();
+    let parsed: everruns_provider::tool_types::ToolResult =
+        serde_json::from_str(&json_str).unwrap();
 
     assert_eq!(parsed.images.as_ref().unwrap().len(), 1);
     assert_eq!(parsed.images.unwrap()[0].media_type, "image/png");
@@ -489,7 +560,7 @@ fn test_tool_result_with_images_serialization() {
 fn test_tool_result_without_images_backward_compat() {
     // Ensure old JSON without `images` field still deserializes
     let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_core::ToolResult = serde_json::from_str(json_str).unwrap();
+    let parsed: everruns_provider::tool_types::ToolResult = serde_json::from_str(json_str).unwrap();
 
     assert!(parsed.images.is_none());
     assert_eq!(parsed.tool_call_id, "call_1");
@@ -520,7 +591,7 @@ fn test_connection_required_into_tool_result() {
 
 #[test]
 fn test_connection_required_serialization_roundtrip() {
-    let result = everruns_core::ToolResult {
+    let result = everruns_provider::tool_types::ToolResult {
         tool_call_id: "call_conn".to_string(),
         result: Some(json!({"connection_required": "daytona"})),
         images: None,
@@ -530,7 +601,8 @@ fn test_connection_required_serialization_roundtrip() {
     };
 
     let json_str = serde_json::to_string(&result).unwrap();
-    let parsed: everruns_core::ToolResult = serde_json::from_str(&json_str).unwrap();
+    let parsed: everruns_provider::tool_types::ToolResult =
+        serde_json::from_str(&json_str).unwrap();
 
     assert_eq!(parsed.connection_required, Some("daytona".to_string()));
     assert_eq!(parsed.result.unwrap()["connection_required"], "daytona");
@@ -540,7 +612,7 @@ fn test_connection_required_serialization_roundtrip() {
 fn test_tool_result_without_connection_required_backward_compat() {
     // Old JSON without connection_required field still deserializes
     let json_str = r#"{"tool_call_id":"call_1","result":{"ok":true},"error":null}"#;
-    let parsed: everruns_core::ToolResult = serde_json::from_str(json_str).unwrap();
+    let parsed: everruns_provider::tool_types::ToolResult = serde_json::from_str(json_str).unwrap();
 
     assert!(parsed.connection_required.is_none());
 }

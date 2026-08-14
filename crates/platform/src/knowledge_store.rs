@@ -7,8 +7,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::error::Result;
-use everruns_core::typed_id::OrgId;
+use everruns_provider::error::Result;
+use everruns_provider::typed_id::OrgId;
 
 use crate::vector_store::{KnowledgeIndexCitation, KnowledgeIndexSearch};
 

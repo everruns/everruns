@@ -7,6 +7,11 @@ use crate::domains::providers::{
     CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
     ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
 };
+use crate::kernel_imports::{
+    Caller, Policy, evaluate_policies_with, everruns_provider::driver_registry::DriverOAuthFlow,
+    everruns_provider::driver_registry::DriverRegistry, everruns_provider::provider::DriverId,
+    everruns_provider::provider::ProviderStatus,
+};
 use crate::services::{ModelSyncService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -18,13 +23,9 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use everruns_core::provider::{Provider, ProviderTraceConfig};
-use everruns_core::typed_id::ProviderId;
-use everruns_core::url_validation::validate_safe_url;
-use everruns_core::{
-    Caller, DriverId, DriverOAuthFlow, DriverRegistry, Policy, ProviderStatus,
-    evaluate_policies_with,
-};
+use everruns_provider::provider::{Provider, ProviderTraceConfig};
+use everruns_provider::typed_id::ProviderId;
+use everruns_provider::url_validation::validate_safe_url;
 use hmac::{Hmac, KeyInit, Mac};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
@@ -235,7 +236,7 @@ fn resolve_credential_document(
         }
     }
 
-    Ok(everruns_core::assemble_credential_document(fields))
+    Ok(everruns_provider::credential_schema::assemble_credential_document(fields))
 }
 
 /// List all LLM providers
@@ -407,7 +408,7 @@ pub struct DriverCredentialInfo {
     /// Driver id (e.g. `openai`, `bedrock`, `mai`).
     pub driver: String,
     /// The fields and instructions to render for this driver's credential.
-    pub credential_schema: everruns_core::CredentialFormSchema,
+    pub credential_schema: everruns_provider::credential_schema::CredentialFormSchema,
     /// Whether the driver declares an interactive "Connect with …" OAuth flow.
     pub supports_oauth: bool,
 }
@@ -661,7 +662,13 @@ async fn resolve_oauth_provider(
     state: &AppState,
     caller: &Caller,
     id: &str,
-) -> Result<(Provider, everruns_core::DriverOAuthConfig), (StatusCode, String)> {
+) -> Result<
+    (
+        Provider,
+        everruns_provider::driver_registry::DriverOAuthConfig,
+    ),
+    (StatusCode, String),
+> {
     let provider_id = id
         .parse::<ProviderId>()
         .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid provider ID: {e}")))?;

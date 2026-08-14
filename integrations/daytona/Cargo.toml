@@ -18,6 +18,7 @@ description = "Daytona cloud sandbox integration for Everruns"
 
 [dependencies]
 everruns-core.workspace = true
+everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true

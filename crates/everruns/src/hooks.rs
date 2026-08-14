@@ -20,9 +20,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use everruns_core::atoms::{PreToolUseDecision, PreToolUseHook};
 use everruns_core::capabilities::Capability;
-use everruns_core::{
-    PostToolExecHook, ToolCall, ToolDefinition, ToolResult, tool_context::ToolContext,
-};
+use everruns_core::{PostToolExecHook, tool_context::ToolContext};
+use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use serde_json::Value;
 
 pub(crate) const LIFECYCLE_HOOK_CAPABILITY_ID: &str = "__everruns_framework_lifecycle_hooks";
@@ -590,7 +589,7 @@ mod tests {
             .run_completion(CompletionContext {
                 agent_name: "agent".into(),
                 session_id: crate::SessionId::new(),
-                turn: crate::Turn::cancelled(everruns_core::typed_id::TurnId::new()),
+                turn: crate::Turn::cancelled(everruns_provider::typed_id::TurnId::new()),
             })
             .await;
 

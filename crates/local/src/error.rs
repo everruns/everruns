@@ -1,7 +1,7 @@
 // Error type for the local crate. Converts cleanly into the core
-// `AgentLoopError` so trait implementations can return `everruns_core::Result`.
+// `AgentLoopError` so trait implementations can return `everruns_provider::error::Result`.
 
-use everruns_core::error::AgentLoopError;
+use everruns_provider::error::AgentLoopError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LocalError {

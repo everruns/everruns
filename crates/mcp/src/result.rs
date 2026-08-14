@@ -3,7 +3,8 @@
 //! Lifted verbatim from `worker/src/mcp_executor.rs` so behavior is unchanged
 //! and the worker stops carrying its own copy (knowledge/integrations/runtime-mcp.md D1/D5).
 
-use everruns_core::{McpContent, McpToolCallResult, ToolResultImage};
+use everruns_core::{McpContent, McpToolCallResult};
+use everruns_provider::ToolResultImage;
 use serde_json::{Value, json};
 
 /// Convert an MCP `tools/call` result into a `(json_result, images)` pair.

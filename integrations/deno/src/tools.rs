@@ -4,12 +4,12 @@
 //! write, list, delete.
 
 use async_trait::async_trait;
-use everruns_core::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 use serde_json::{Value, json};
 use tracing::debug;
 
@@ -215,7 +215,7 @@ pub struct DenoExecTool;
 impl Tool for DenoExecTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,

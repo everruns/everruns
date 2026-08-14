@@ -4,7 +4,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use everruns_core::{LlmMessage, LlmMessageRole, UtilityLlmRequest, UtilityLlmService};
+use crate::kernel_imports::{
+    UtilityLlmRequest, UtilityLlmService, everruns_provider::driver_registry::LlmMessage,
+    everruns_provider::driver_registry::LlmMessageRole,
+};
 use serde::Deserialize;
 
 use super::types::HealthCheckCase;

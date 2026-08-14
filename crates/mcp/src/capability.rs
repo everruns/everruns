@@ -12,13 +12,14 @@
 // - Tool execution is delegated to the MCP server via HTTP
 // - Tools are cached and refreshed periodically
 
+use everruns_capability::CapabilityId;
 use everruns_core::capabilities::Capability;
-use everruns_core::capability_types::{CapabilityId, CapabilityStatus};
+use everruns_core::capability_types::CapabilityStatus;
 use everruns_core::mcp_server::{McpToolDefinition, mcp_tool_name};
-use everruns_core::tool_types::{
+use everruns_core::tools::Tool;
+use everruns_provider::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy,
 };
-use everruns_core::tools::Tool;
 use uuid::Uuid;
 
 /// MCP Virtual Capability ID prefix
@@ -157,8 +158,8 @@ impl Capability for McpCapability {
 
     fn narrate(
         &self,
-        _tool_def: Option<&everruns_core::tool_types::ToolDefinition>,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_def: Option<&everruns_provider::tool_types::ToolDefinition>,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,

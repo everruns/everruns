@@ -13,15 +13,14 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::{
-    AgentDefinition, CapabilityRegistry, DriverId, ExecutionSession, ToolCall,
-    provider_resolution::ResolvedModel,
-};
+use everruns_core::{AgentDefinition, CapabilityRegistry, ExecutionSession};
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::tool_types::{ToolCall, ToolHints};
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::llmsim_driver::LlmSimConfig;
 use serde_json::{Value, json};
@@ -152,14 +151,14 @@ fn platform_with_recording(log: Arc<Mutex<SchedLog>>) -> HostComposition {
     HostComposition::new(capabilities, DriverRegistry::new())
 }
 
-fn harness(harness_id: everruns_core::HarnessId) -> everruns_host::SeededHarness {
+fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
     HarnessBuilder::new("sched", "You are a scheduler test assistant.")
         .id(harness_id)
         .capability(TEST_CAPABILITY_ID)
         .build()
 }
 
-fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
+fn agent(agent_id: everruns_provider::typed_id::AgentId) -> AgentDefinition {
     AgentBuilder::new("sched-agent", "Use the tools provided.")
         .id(agent_id)
         .display_name("Scheduler Agent")
@@ -168,9 +167,9 @@ fn agent(agent_id: everruns_core::AgentId) -> AgentDefinition {
 }
 
 fn session(
-    session_id: everruns_core::SessionId,
-    harness_id: everruns_core::HarnessId,
-    agent_id: everruns_core::AgentId,
+    session_id: everruns_provider::typed_id::SessionId,
+    harness_id: everruns_provider::typed_id::HarnessId,
+    agent_id: everruns_provider::typed_id::AgentId,
 ) -> ExecutionSession {
     SessionBuilder::new(harness_id)
         .id(session_id)
@@ -194,9 +193,9 @@ async fn runtime_emitting_batch(
     batch: Vec<ToolCall>,
 ) -> (everruns_host::InProcessRuntime, Arc<Mutex<SchedLog>>) {
     let log = Arc::new(Mutex::new(SchedLog::default()));
-    let harness_id = everruns_core::HarnessId::from_seed(seed);
-    let agent_id = everruns_core::AgentId::from_seed(seed);
-    let session_id = everruns_core::SessionId::from_seed(seed);
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(seed);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(seed);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(seed);
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_recording(log.clone()))
@@ -204,13 +203,7 @@ async fn runtime_emitting_batch(
             LlmSimConfig::fixed("Running the requested tools.")
                 .with_tool_call_sequence(vec![batch, vec![]]),
         )
-        .default_model(ResolvedModel {
-            model: "llmsim-model".into(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".into()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
         .session(session(session_id, harness_id, agent_id))
@@ -226,7 +219,7 @@ async fn same_class_tool_calls_serialize_through_runtime() {
     // Two tools sharing concurrency_class "workspace", emitted in one batch.
     let batch = vec![call("c1", "ws_write_a"), call("c2", "ws_write_b")];
     let (runtime, log) = runtime_emitting_batch(61, batch).await;
-    let session_id = everruns_core::SessionId::from_seed(61);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(61);
 
     let result = runtime
         .run_text_turn(session_id, "Write to the workspace twice.")
@@ -256,7 +249,7 @@ async fn classless_tool_calls_run_in_parallel_through_runtime() {
         call("c3", "free_read_c"),
     ];
     let (runtime, log) = runtime_emitting_batch(62, batch).await;
-    let session_id = everruns_core::SessionId::from_seed(62);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(62);
 
     let result = runtime
         .run_text_turn(session_id, "Read three things at once.")
@@ -282,7 +275,7 @@ async fn mixed_batch_serializes_class_and_parallelizes_rest_through_runtime() {
         call("c5", "free_read_c"),
     ];
     let (runtime, log) = runtime_emitting_batch(63, batch).await;
-    let session_id = everruns_core::SessionId::from_seed(63);
+    let session_id = everruns_provider::typed_id::SessionId::from_seed(63);
 
     let result = runtime
         .run_text_turn(session_id, "Do a mix of writes and reads.")

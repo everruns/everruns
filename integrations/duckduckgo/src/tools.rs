@@ -1,8 +1,8 @@
 //! Tool implementations for DuckDuckGo operations.
 
-use everruns_core::ToolHints;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_provider::tool_types::ToolHints;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -19,7 +19,7 @@ pub struct DuckDuckGoSearchTool;
 impl Tool for DuckDuckGoSearchTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,

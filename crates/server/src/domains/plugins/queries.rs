@@ -1,7 +1,10 @@
 // Plugin query helpers — row-to-DTO conversion + update_available check.
 
 use super::types::*;
-use everruns_core::{PluginInstallId, PluginMarketplaceId, plugin_capability_id};
+use crate::kernel_imports::{
+    everruns_provider::typed_id::PluginInstallId, everruns_provider::typed_id::PluginMarketplaceId,
+    plugin_capability_id,
+};
 
 pub fn row_to_marketplace(row: &PluginMarketplaceRow) -> PluginMarketplace {
     PluginMarketplace {

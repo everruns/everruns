@@ -32,6 +32,7 @@ prost-types.workspace = true
 
 # Internal dependencies
 everruns-core = { path = "../core" }
+everruns-provider.workspace = true
 # Stored Agent records moved to everruns-platform (EVE-877); the worker wire
 # still carries them between the two platform-side processes (server, worker).
 everruns-platform = { path = "../platform" }
@@ -46,6 +47,9 @@ chrono.workspace = true
 
 # Observability: make conversion data-loss visible instead of silent (EVE-652)
 tracing.workspace = true
+
+[dev-dependencies]
+everruns-capability.workspace = true
 
 [build-dependencies]
 tonic-prost-build.workspace = true

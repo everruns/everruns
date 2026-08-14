@@ -20,8 +20,8 @@
 // metadata (`error_disclosure`, `source_error_code`) for tracking.
 
 use crate::capabilities::{Capability, CapabilityLocalization};
-use crate::capability_types::AgentCapabilityConfig;
 use crate::user_facing_error::ErrorDisclosure;
+use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
 pub const ERROR_DISCLOSURE_CAPABILITY_ID: &str = "error_disclosure";
 

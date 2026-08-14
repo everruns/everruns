@@ -885,8 +885,8 @@ mod tests {
         EventContext, InputMessageData, LlmGenerationMetadata, LlmGenerationOutput, TokenUsage,
     };
     use everruns_core::message::Message;
-    use everruns_core::tool_types::ToolCall;
-    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use everruns_provider::tool_types::ToolCall;
+    use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use uuid::Uuid;
 

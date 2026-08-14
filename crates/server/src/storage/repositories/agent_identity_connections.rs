@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
-use everruns_core::AgentIdentityId;
+use everruns_provider::typed_id::AgentIdentityId;
 
 impl Database {
     // ============================================

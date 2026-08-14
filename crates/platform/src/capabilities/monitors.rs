@@ -35,10 +35,10 @@ impl TaskExecutor for MonitorTaskExecutor {
         &self,
         task: &everruns_core::session_task::SessionTask,
         context: &everruns_core::tool_context::ToolContext,
-    ) -> everruns_core::error::Result<()> {
+    ) -> everruns_provider::error::Result<()> {
         // Attempt to cancel the linked schedule.
         if let Some(schedule_id_str) = task.spec.get("schedule_id").and_then(|v| v.as_str()) {
-            match everruns_core::typed_id::ScheduleId::parse(schedule_id_str) {
+            match everruns_provider::typed_id::ScheduleId::parse(schedule_id_str) {
                 Ok(schedule_id) => {
                     if let Some(ref store) = context.schedule_store
                         && let Err(e) = store.cancel_schedule(task.session_id, schedule_id).await
@@ -101,8 +101,8 @@ mod tests {
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, TaskLinks, TaskWakePolicy,
     };
-    use everruns_core::typed_id::{ScheduleId, SessionId};
     use everruns_core::{session_services::SessionScheduleStore, tool_context::ToolContext};
+    use everruns_provider::typed_id::{ScheduleId, SessionId};
     use std::sync::{Arc, Mutex};
 
     // -------------------------------------------------------------------------
@@ -123,7 +123,7 @@ mod tests {
             cron_expression: Option<String>,
             scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
             timezone: String,
-        ) -> everruns_core::error::Result<SessionSchedule> {
+        ) -> everruns_provider::error::Result<SessionSchedule> {
             let _ = (
                 session_id,
                 description,
@@ -138,13 +138,13 @@ mod tests {
             &self,
             session_id: SessionId,
             schedule_id: ScheduleId,
-        ) -> everruns_core::error::Result<SessionSchedule> {
+        ) -> everruns_provider::error::Result<SessionSchedule> {
             self.canceled.lock().unwrap().push(schedule_id);
             // Return a minimal schedule so the call succeeds.
             Ok(SessionSchedule {
                 id: schedule_id,
                 session_id,
-                owner_principal_id: everruns_core::typed_id::PrincipalId::new(),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::new(),
                 resolved_owner_user_id: None,
                 owner: None,
                 effective_owner: None,
@@ -165,18 +165,18 @@ mod tests {
         async fn count_active_schedules(
             &self,
             _session_id: SessionId,
-        ) -> everruns_core::error::Result<u32> {
+        ) -> everruns_provider::error::Result<u32> {
             Ok(0)
         }
 
-        async fn count_active_org_schedules(&self) -> everruns_core::error::Result<u32> {
+        async fn count_active_org_schedules(&self) -> everruns_provider::error::Result<u32> {
             Ok(0)
         }
 
         async fn list_schedules(
             &self,
             _session_id: SessionId,
-        ) -> everruns_core::error::Result<Vec<SessionSchedule>> {
+        ) -> everruns_provider::error::Result<Vec<SessionSchedule>> {
             Ok(vec![])
         }
     }

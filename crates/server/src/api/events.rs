@@ -20,8 +20,8 @@ use axum::{
 // built-in Query (backed by serde_urlencoded) because serde_urlencoded does not
 // support deserializing repeated query keys (?exclude=a&exclude=b) into Vec<String>.
 use axum_extra::extract::Query;
-use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Caller, Event, EventListener, VALID_EVENT_TYPES};
+use everruns_provider::typed_id::{EventId, SessionId};
 use serde::Deserialize;
 
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};

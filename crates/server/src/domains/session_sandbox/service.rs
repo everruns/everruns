@@ -12,17 +12,17 @@ use crate::org_init;
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use anyhow::Context;
 use async_trait::async_trait;
-use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, Event, EventData, EventListener,
-    connection_services::UserConnectionResolver, merge_capabilities,
-    session_services::LeasedResourceStore, session_services::SessionResourceRegistry,
-    session_services::SessionStorageStore, tool_context::ToolContext,
+    Event, EventData, EventListener, connection_services::UserConnectionResolver,
+    merge_capabilities, session_services::LeasedResourceStore,
+    session_services::SessionResourceRegistry, session_services::SessionStorageStore,
+    tool_context::ToolContext,
 };
 use everruns_platform::session_sandbox::{
     SessionSandboxConfig, ensure_session_sandbox_running, pause_session_sandbox,
     session_sandbox_config_from_capabilities,
 };
+use everruns_provider::typed_id::{AgentId, SessionId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -62,7 +62,7 @@ impl SessionSandboxService {
     pub async fn auto_start_for_capabilities(
         &self,
         session_id: SessionId,
-        effective_capabilities: &[AgentCapabilityConfig],
+        effective_capabilities: &[everruns_capability::CapabilityRef],
     ) {
         let config = match session_sandbox_config_from_capabilities(effective_capabilities) {
             Ok(Some(config)) if config.auto_start => config,
@@ -185,7 +185,7 @@ impl SessionSandboxService {
         } else {
             Vec::new()
         };
-        let session_capabilities: Vec<AgentCapabilityConfig> =
+        let session_capabilities: Vec<everruns_capability::CapabilityRef> =
             serde_json::from_value(session_row.capabilities)
                 .context("failed to parse session capabilities")?;
 
@@ -197,14 +197,19 @@ impl SessionSandboxService {
     async fn agent_capabilities(
         &self,
         agent_id: AgentId,
-    ) -> anyhow::Result<Vec<AgentCapabilityConfig>> {
+    ) -> anyhow::Result<Vec<everruns_capability::CapabilityRef>> {
         self.db
             .get_agent_capabilities(agent_id.uuid())
             .await
             .context("failed to load agent capabilities")
             .map(|rows| {
                 rows.into_iter()
-                    .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                    .map(|row| {
+                        everruns_capability::CapabilityRef::with_config(
+                            row.capability_id,
+                            row.config,
+                        )
+                    })
                     .collect()
             })
     }
@@ -532,7 +537,7 @@ mod tests {
             &self,
             _session_id: SessionId,
             provider: &str,
-        ) -> everruns_core::Result<Option<String>> {
+        ) -> everruns_provider::error::Result<Option<String>> {
             if provider == "daytona" {
                 Ok(Some("resolver-token".to_string()))
             } else {
@@ -548,7 +553,7 @@ mod tests {
         }
     }
 
-    async fn create_test_harness(db: &StorageBackend) -> everruns_core::HarnessId {
+    async fn create_test_harness(db: &StorageBackend) -> everruns_provider::typed_id::HarnessId {
         db.create_harness(
             DEFAULT_ORG_ID,
             CreateHarnessRow {
@@ -601,7 +606,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,
@@ -664,7 +669,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,
@@ -729,7 +734,7 @@ mod tests {
                 agent_version_id: None,
                 agent_config_hash: None,
                 agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
                 title: Some("test".to_string()),
                 locale: None,

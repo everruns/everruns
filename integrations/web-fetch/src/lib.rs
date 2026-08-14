@@ -27,6 +27,9 @@ use everruns_core::capabilities::{
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::ToolContext;
 use everruns_core::*;
+#[cfg(test)]
+use everruns_provider::error;
+use everruns_provider::{tool_types, typed_id};
 use fetchkit::file_saver::{FileSaveError, FileSaver, SaveResult};
 use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;

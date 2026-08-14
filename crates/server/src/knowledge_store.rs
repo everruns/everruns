@@ -9,10 +9,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::organization::org_internal_id_from_public;
-use everruns_core::typed_id::{KnowledgeBaseId, OrgId};
 use everruns_platform::{KnowledgeSearchHit, KnowledgeStore};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::typed_id::{KnowledgeBaseId, OrgId};
 
 use crate::storage::StorageBackend;
 

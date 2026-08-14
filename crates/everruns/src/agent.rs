@@ -17,11 +17,14 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use everruns_core::{AgentCapabilityConfig, InitialFile, ModelSpec, Provider, SessionId};
+use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, EventLogError, EventSink, HarnessBuilder, HostBackends,
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
 };
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::runtime_provider::Provider;
+use everruns_provider::typed_id::SessionId;
 use everruns_test_support::{LlmSimConfig, LlmSimDriver};
 use tokio::sync::OnceCell;
 
@@ -95,7 +98,9 @@ impl Model {
     /// assert what history reached the provider on the second turn.
     pub(crate) fn simulated_capturing(
         response: impl Into<String>,
-        capture: std::sync::Arc<std::sync::Mutex<Vec<Vec<everruns_core::LlmMessage>>>>,
+        capture: std::sync::Arc<
+            std::sync::Mutex<Vec<Vec<everruns_provider::driver_registry::LlmMessage>>>,
+        >,
     ) -> Self {
         let mut sim = LlmSimConfig::fixed(response);
         sim.message_capture = Some(capture);
@@ -133,7 +138,7 @@ impl Model {
     /// end-to-end tool-execution loop for a function tool.
     pub(crate) fn simulated_scripted(
         response: impl Into<String>,
-        tool_call_sequence: Vec<Vec<everruns_core::ToolCall>>,
+        tool_call_sequence: Vec<Vec<everruns_provider::tool_types::ToolCall>>,
     ) -> Self {
         let sim = LlmSimConfig::fixed(response).with_tool_call_sequence(tool_call_sequence);
         Self::bundled(
@@ -250,7 +255,7 @@ pub struct Agent {
     instructions: String,
     model: ModelSpec,
     provider: Provider,
-    capabilities: Vec<AgentCapabilityConfig>,
+    capabilities: Vec<everruns_capability::CapabilityRef>,
     capability_implementations: Vec<CapabilityImplementation>,
     initial_files: Vec<InitialFile>,
     max_iterations: Option<usize>,
@@ -347,7 +352,7 @@ impl fmt::Debug for Agent {
         let capability_ids = self
             .capabilities
             .iter()
-            .map(AgentCapabilityConfig::capability_id)
+            .map(everruns_capability::CapabilityRef::capability_id)
             .collect::<Vec<_>>();
         f.debug_struct("Agent")
             .field("name", &self.name)
@@ -373,13 +378,15 @@ impl fmt::Debug for Agent {
 #[allow(dead_code)] // Only constructed by the optional local persistence edge.
 pub(crate) enum BackendInitError {
     Event(EventLogError),
-    Host(everruns_core::AgentLoopError),
+    Host(everruns_provider::error::AgentLoopError),
 }
 
 impl BackendInitError {
-    fn into_agent_loop(self) -> everruns_core::AgentLoopError {
+    fn into_agent_loop(self) -> everruns_provider::error::AgentLoopError {
         match self {
-            Self::Event(error) => everruns_core::AgentLoopError::store(error.to_string()),
+            Self::Event(error) => {
+                everruns_provider::error::AgentLoopError::store(error.to_string())
+            }
             Self::Host(error) => error,
         }
     }
@@ -487,7 +494,7 @@ impl Agent {
                 let backends = if let Some(config) = &self.local {
                     let profile = config.profile();
                     profile.ensure_dirs().map_err(|error| {
-                        BackendInitError::Host(everruns_core::AgentLoopError::config(
+                        BackendInitError::Host(everruns_provider::error::AgentLoopError::config(
                             error.to_string(),
                         ))
                     })?;
@@ -537,7 +544,7 @@ impl Agent {
         // Catalog identity is intentionally independent from event presence.
         // A zero-message session becomes resumable without inventing a history
         // event or treating orphan events as a session record.
-        let session = SessionBuilder::new(everruns_core::HarnessId::new())
+        let session = SessionBuilder::new(everruns_provider::typed_id::HarnessId::new())
             .id(session_id)
             .build();
         backends
@@ -560,7 +567,7 @@ impl Agent {
         session_id: SessionId,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
-    ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
+    ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
         self.build_runtime_with_backends(session_id, Some(event_sink), Some(hook_state))
             .await
     }
@@ -574,14 +581,14 @@ impl Agent {
         session_id: SessionId,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
-    ) -> Result<InProcessRuntime, everruns_core::AgentLoopError> {
+    ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
         let hook_capability = hook_state.and_then(|state| state.capability());
         let mut capabilities = self.capabilities.clone();
         if hook_capability.is_some() {
             capabilities.retain(|capability| {
                 capability.capability_id() != crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID
             });
-            capabilities.push(AgentCapabilityConfig::new(
+            capabilities.push(everruns_capability::CapabilityRef::new(
                 crate::hooks::LIFECYCLE_HOOK_CAPABILITY_ID,
             ));
         }
@@ -670,7 +677,7 @@ impl Agent {
             };
             let platform = everruns_host::HostComposition::builder()
                 .capability_registry(registry)
-                .driver_registry(everruns_core::DriverRegistry::new())
+                .driver_registry(everruns_provider::DriverRegistry::new())
                 .egress_service(everruns_host::runtime_egress_service())
                 .session_file_system_factory(Arc::new(
                     everruns_host::RealDiskSessionFileSystemFactory::new(root),
@@ -1175,7 +1182,7 @@ impl AgentBuilder {
                 .map_err(|error| BuildError::DuplicateCapability {
                     id: error.id().to_string(),
                 })?;
-            capabilities.push(AgentCapabilityConfig::with_config(
+            capabilities.push(everruns_capability::CapabilityRef::with_config(
                 canonical_id,
                 parts.reference.config_value().clone(),
             ));
@@ -1194,7 +1201,7 @@ impl AgentBuilder {
             {
                 return Err(BuildError::DuplicateCapability { id });
             }
-            capabilities.push(AgentCapabilityConfig::new(id.as_str()));
+            capabilities.push(everruns_capability::CapabilityRef::new(id.as_str()));
             capability_implementations.push(CapabilityImplementation::Function(function_tool));
         }
 
@@ -1259,7 +1266,8 @@ fn validate_registered_capability_config(
         })?;
     }
 
-    if everruns_core::is_declarative_capability(id) || everruns_core::is_plugin_capability(id) {
+    if everruns_core::is_declarative_capability(id) || everruns_capability::is_plugin_capability(id)
+    {
         let definition = serde_json::from_value::<everruns_core::DeclarativeCapabilityDefinition>(
             config.clone(),
         )
@@ -1313,7 +1321,7 @@ fn validate_tool_search_config(config: &serde_json::Value) -> Result<(), String>
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use everruns_core::ToolCall;
+    use everruns_provider::tool_types::ToolCall;
     use serde_json::{Value, json};
 
     use super::*;

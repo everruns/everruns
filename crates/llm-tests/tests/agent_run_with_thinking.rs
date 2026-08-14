@@ -14,7 +14,7 @@
 
 mod llm_test_matrix;
 
-use everruns_core::provider::DriverId;
+use everruns_provider::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 

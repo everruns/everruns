@@ -3,8 +3,9 @@
 use async_trait::async_trait;
 use everruns_core::{
     EgressError, EgressRequest, EgressResponse, EgressResult, EgressService, EgressSigning,
-    EgressStreamResponse, SystemAllowlist, validate_url_dns_pinned,
+    EgressStreamResponse, SystemAllowlist,
 };
+use everruns_provider::url_validation::validate_url_dns_pinned;
 use futures::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;

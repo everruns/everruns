@@ -93,7 +93,7 @@ mod tests {
     use everruns_core::NoopEventListener;
     use everruns_core::events::{EventContext, EventData, InputMessageData};
     use everruns_core::message::Message;
-    use everruns_core::typed_id::SessionId;
+    use everruns_provider::typed_id::SessionId;
     use std::sync::atomic::{AtomicU32, Ordering};
     use uuid::Uuid;
 

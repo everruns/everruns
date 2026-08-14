@@ -361,8 +361,8 @@ pub fn build_record(
 mod tests {
     use super::*;
     use everruns_core::message::{Message, MessageRole, TextContentPart};
-    use everruns_core::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
     use everruns_platform::eval::EvalCaseResult;
+    use everruns_provider::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
 
     fn result_with(status: CaseResultStatus, scores: Value) -> EvalCaseResult {
         EvalCaseResult {

@@ -2,9 +2,11 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::kernel_imports::{
+    AgentIdentity, AgentIdentityStatus, everruns_provider::typed_id::AgentIdentityId,
+};
 use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
-use everruns_core::{AgentIdentity, AgentIdentityId, AgentIdentityStatus};
 
 use super::types::AgentIdentityRow;
 

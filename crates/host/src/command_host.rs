@@ -11,10 +11,6 @@ use everruns_core::command_host::{
     CommandHost, CommandTurnContext, SessionCompletion, SessionCompletionError,
     SessionCompletionRequest, SessionCompletionStream,
 };
-use everruns_core::driver_registry::{
-    ChatDriver, DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, ToolSearchConfig,
-};
-use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::execution_loading::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::image_services::{ImageResolver, ResolvedImage};
 use everruns_core::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
@@ -22,10 +18,15 @@ use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::provider_resolution::ProviderStore;
 use everruns_core::runtime_context::{AssembledTurnContext, ResolvedModelExecution};
 use everruns_core::session_files::SessionFileSystem;
-use everruns_core::user_facing_error::UserFacingErrorContext;
-use everruns_core::{ProviderEndpoint, SessionId};
+use everruns_provider::driver_registry::{
+    ChatDriver, DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, ToolSearchConfig,
+};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::runtime_provider::ProviderEndpoint;
+use everruns_provider::typed_id::SessionId;
+use everruns_provider::user_facing_error::UserFacingErrorContext;
 
-use crate::runtime_context::inspect_turn_context_for_session;
+use crate::runtime_context::{inspect_turn_context_for_session, resolve_model_execution};
 
 /// Store-backed [`CommandHost`] shared by embedded and durable hosts.
 ///
@@ -138,9 +139,9 @@ impl StoreCommandHost {
             return Ok(assembled.model.clone());
         }
         let model_id = requested.expect("checked above");
-        let resolved = self
+        let spec = self
             .provider_store
-            .get_resolved_model(model_id)
+            .get_model_spec(model_id)
             .await
             .map_err(SessionCompletionError::InvalidRequest)?
             .ok_or_else(|| {
@@ -148,34 +149,15 @@ impl StoreCommandHost {
                     "Model not found: {model_id}"
                 )))
             })?;
-        let (spec, compatibility_config) = resolved.canonical_parts();
         let error_context = UserFacingErrorContext::default()
-            .with_provider(compatibility_config.provider_type.to_string())
+            .with_provider(spec.provider.to_string())
             .with_model_id(spec.model.clone());
-        let config = self
-            .provider_store
-            .get_provider_config(&spec.provider)
+        resolve_model_execution(self.provider_store.as_ref(), &self.driver_registry, spec)
             .await
             .map_err(|error| SessionCompletionError::Completion {
                 error: error.to_string(),
-                context: error_context.clone(),
-            })?
-            .unwrap_or(compatibility_config);
-        let provider_type = config.provider_type.clone();
-        let driver: Arc<dyn ChatDriver> = Arc::from(
-            self.driver_registry
-                .create_chat_driver(&config)
-                .map_err(|error| SessionCompletionError::Completion {
-                    error: error.to_string(),
-                    context: error_context,
-                })?,
-        );
-        Ok(ResolvedModelExecution {
-            model: spec.model,
-            provider: spec.provider,
-            provider_type,
-            driver,
-        })
+                context: error_context,
+            })
     }
 
     async fn prepare_completion(

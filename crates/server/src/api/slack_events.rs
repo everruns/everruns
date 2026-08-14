@@ -31,9 +31,9 @@ use everruns_core::channel::{
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
-use everruns_core::validate_safe_url;
 use everruns_platform::{App, AppStatus, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_platform::{SessionParticipantKind, SessionParticipantRole};
+use everruns_provider::url_validation::validate_safe_url;
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
@@ -889,7 +889,7 @@ async fn process_slack_message(
 async fn ensure_slack_user_participant(
     state: &SlackState,
     org_id: i64,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
     actor: &everruns_core::ExternalActor,
 ) -> anyhow::Result<SessionParticipantRow> {
     let principal = PrincipalService::new(state.db.clone())
@@ -1201,7 +1201,7 @@ async fn inject_thread_context(
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
-    session_id: everruns_core::typed_id::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
     exclude_ts: Option<&str>,
 ) -> anyhow::Result<()> {
     let replies = fetch_thread_replies(bot_token, channel, thread_ts).await;
@@ -1236,7 +1236,7 @@ async fn inject_thread_context(
         };
 
         let message = everruns_core::Message {
-            id: everruns_core::typed_id::MessageId::new(),
+            id: everruns_provider::typed_id::MessageId::new(),
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
@@ -1319,13 +1319,13 @@ fn should_skip_thread_reply(reply: &SlackReplyMessage, exclude_ts: Option<&str>)
 async fn wait_and_post_response(
     db: &StorageBackend,
     session_id: uuid::Uuid,
-    input_message_id: everruns_core::typed_id::MessageId,
+    input_message_id: everruns_provider::typed_id::MessageId,
     bot_token: &str,
     channel: &str,
     thread_ts: &str,
     reply_mode: SlackReplyMode,
 ) -> anyhow::Result<()> {
-    use everruns_core::typed_id::{EventId, SessionId};
+    use everruns_provider::typed_id::{EventId, SessionId};
 
     let session_id_typed = SessionId::from_uuid(session_id);
     let input_msg_str = input_message_id.to_string();
@@ -2068,8 +2068,8 @@ mod tests {
 
     // Test helpers
     fn test_app() -> App {
-        use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId};
         use everruns_platform::{AppChannel, ChannelType};
+        use everruns_provider::typed_id::{AgentId, AppChannelId, AppId, HarnessId};
 
         let now = chrono::Utc::now();
         App {
@@ -2083,7 +2083,7 @@ mod tests {
             agent_version_policy: everruns_platform::AgentVersionPolicy::Default,
             agent_version_id: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             owner: None,
             effective_owner: None,
@@ -2369,7 +2369,8 @@ mod tests {
 
         let db = StorageBackend::in_memory();
         let session_id = setup_test_session(&db).await;
-        let other_session_id = everruns_core::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
+        let other_session_id =
+            everruns_provider::typed_id::SessionId::from_uuid(uuid::Uuid::now_v7());
 
         // Insert event in session_id
         let event = CreateEventRow {
@@ -2452,7 +2453,7 @@ mod tests {
     }
 
     /// Helper: create an in-memory session for dedup tests
-    async fn setup_test_session(db: &StorageBackend) -> everruns_core::typed_id::SessionId {
+    async fn setup_test_session(db: &StorageBackend) -> everruns_provider::typed_id::SessionId {
         use crate::storage::models::CreateSessionRow;
 
         let row = CreateSessionRow {
@@ -2460,16 +2461,16 @@ mod tests {
             workspace_id: None,
             org_id: 1,
             app_id: None,
-            harness_id: Some(everruns_core::typed_id::HarnessId::from_uuid(
+            harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
                 uuid::Uuid::nil(),
             )),
-            agent_id: Some(everruns_core::typed_id::AgentId::from_uuid(
+            agent_id: Some(everruns_provider::typed_id::AgentId::from_uuid(
                 uuid::Uuid::nil(),
             )),
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
             title: Some("test".to_string()),
             locale: None,
@@ -3159,10 +3160,10 @@ mod tests {
         async fn start_run(
             &self,
             _org_id: i64,
-            _session_id: everruns_core::typed_id::SessionId,
-            _harness_id: everruns_core::typed_id::HarnessId,
-            _agent_id: Option<everruns_core::typed_id::AgentId>,
-            _input_message_id: everruns_core::typed_id::MessageId,
+            _session_id: everruns_provider::typed_id::SessionId,
+            _harness_id: everruns_provider::typed_id::HarnessId,
+            _agent_id: Option<everruns_provider::typed_id::AgentId>,
+            _input_message_id: everruns_provider::typed_id::MessageId,
             _request_id: Option<String>,
         ) -> anyhow::Result<()> {
             Ok(())
@@ -3170,19 +3171,19 @@ mod tests {
 
         async fn resume_after_tool_results(
             &self,
-            _session_id: everruns_core::typed_id::SessionId,
+            _session_id: everruns_provider::typed_id::SessionId,
         ) -> anyhow::Result<()> {
             Ok(())
         }
 
         async fn cancel_run(
             &self,
-            _run_id: everruns_core::typed_id::SessionId,
+            _run_id: everruns_provider::typed_id::SessionId,
         ) -> anyhow::Result<()> {
             Ok(())
         }
 
-        async fn is_running(&self, _run_id: everruns_core::typed_id::SessionId) -> bool {
+        async fn is_running(&self, _run_id: everruns_provider::typed_id::SessionId) -> bool {
             false
         }
 

@@ -11,7 +11,7 @@ use super::types::{CreateKnowledgeEntryRow, KnowledgeEntryRow, UpdateKnowledgeEn
 use super::{MAX_ENTRY_BODY_BYTES, MAX_ENTRY_TAGS};
 use crate::storage::StorageBackend;
 use anyhow::{Context, Result};
-use everruns_core::typed_id::KnowledgeEntryId;
+use everruns_provider::typed_id::KnowledgeEntryId;
 use std::collections::HashMap;
 use std::io::Read;
 
@@ -777,7 +777,7 @@ tags: [Sales, revenue]\n\
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,
                 crate::storage::models::CreateKnowledgeBaseRow {
-                    public_id: everruns_core::typed_id::KnowledgeBaseId::new().to_string(),
+                    public_id: everruns_provider::typed_id::KnowledgeBaseId::new().to_string(),
                     name: "OKF".into(),
                     description: None,
                     owner_principal_id: None,
@@ -856,7 +856,7 @@ tags: [Sales, revenue]\n\
             .create_knowledge_base(
                 everruns_core::DEFAULT_ORG_ID,
                 crate::storage::models::CreateKnowledgeBaseRow {
-                    public_id: everruns_core::typed_id::KnowledgeBaseId::new().to_string(),
+                    public_id: everruns_provider::typed_id::KnowledgeBaseId::new().to_string(),
                     name: "OKF".into(),
                     description: None,
                     owner_principal_id: None,

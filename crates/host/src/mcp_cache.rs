@@ -26,7 +26,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use everruns_core::ToolDefinition;
+use everruns_provider::tool_types::ToolDefinition;
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
@@ -287,7 +287,7 @@ impl McpDiscoveryCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+    use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn def(name: &str) -> ToolDefinition {

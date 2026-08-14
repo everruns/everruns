@@ -4,7 +4,8 @@ use everruns_builtins::{
     BudgetingCapability, MessageMetadataCapability, SelfBudgetCapability,
     StatelessTodoListCapability,
 };
-use everruns_core::{Capability, SessionId, SystemPromptContext};
+use everruns_core::{Capability, SystemPromptContext};
+use everruns_provider::typed_id::SessionId;
 
 async fn assert_contribution_under(cap: &dyn Capability, max_bytes: usize) {
     let ctx = SystemPromptContext::without_file_store(SessionId::new());

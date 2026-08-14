@@ -92,10 +92,10 @@ async fn create_offload_backend() -> (StorageBackend, PgPool) {
 async fn create_test_principal(
     backend: &StorageBackend,
     org_id: i64,
-) -> everruns_core::PrincipalId {
+) -> everruns_provider::typed_id::PrincipalId {
     backend
         .create_principal(CreatePrincipalRow {
-            id: everruns_core::PrincipalId::new(),
+            id: everruns_provider::typed_id::PrincipalId::new(),
             org_id,
             kind: "system".to_string(),
             subject_id: Some(Uuid::now_v7()),
@@ -108,7 +108,7 @@ async fn create_test_principal(
         .id
 }
 
-async fn create_test_session(backend: &StorageBackend) -> everruns_core::SessionId {
+async fn create_test_session(backend: &StorageBackend) -> everruns_provider::typed_id::SessionId {
     everruns_server::org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
         .await
         .expect("initialize built-in harnesses");
@@ -119,7 +119,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
-                public_id: everruns_core::AgentId::new().to_string(),
+                public_id: everruns_provider::typed_id::AgentId::new().to_string(),
                 // Full UUID, not a truncated prefix: the leading chars of a v7
                 // UUID are shared timestamp bits, so a truncated prefix collides
                 // for agents created in the same window (unique (org_id, name)).

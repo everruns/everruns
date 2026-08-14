@@ -4,16 +4,19 @@
 // subsequent model resolutions pick up the new model config.
 
 use crate::errors::ResourceNotFoundError;
+use crate::kernel_imports::{
+    Caller, Permission, Policy, Rule, everruns_provider::model::Model,
+    everruns_provider::model::ModelProfile, everruns_provider::model::ModelSource,
+    everruns_provider::model::ModelWithProvider,
+    everruns_provider::model_profiles::get_model_profile, everruns_provider::provider::DriverId,
+    everruns_provider::typed_id::ProviderId,
+};
 use crate::services::ProviderResolverService;
 use crate::storage::{
     StorageBackend,
     models::{CreateModelRow, ModelRow, ModelWithProviderRow, UpdateModel},
 };
 use anyhow::Result;
-use everruns_core::{
-    Caller, DriverId, Model, ModelProfile, ModelSource, ModelWithProvider, Permission, Policy,
-    ProviderId, Rule, get_model_profile,
-};
 use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
@@ -386,7 +389,8 @@ impl ModelService {
 
         // Vendor/brand tag from the model registry (drives UI branding),
         // independent of the configured provider type.
-        let model_vendor = everruns_core::get_model_vendor(&provider_type, &row.model_id);
+        let model_vendor =
+            everruns_provider::model_profiles::get_model_vendor(&provider_type, &row.model_id);
 
         ModelWithProvider {
             id: row.id,
@@ -480,7 +484,10 @@ mod tests {
         .org_id
     }
 
-    async fn create_provider(db: &StorageBackend, org_id: i64) -> everruns_core::ProviderId {
+    async fn create_provider(
+        db: &StorageBackend,
+        org_id: i64,
+    ) -> everruns_provider::typed_id::ProviderId {
         db.create_provider(
             org_id,
             CreateProviderRow {
@@ -611,7 +618,7 @@ mod tests {
         let hardcoded = ModelProfile {
             name: "Hardcoded Name".into(),
             family: "hardcoded-family".into(),
-            cost: Some(everruns_core::ModelCost {
+            cost: Some(everruns_provider::model::ModelCost {
                 input: 5.0,
                 output: 25.0,
                 cache_read: None,
@@ -623,7 +630,7 @@ mod tests {
             name: "Discovered Name".into(),
             family: "discovered-family".into(),
             knowledge: Some("2025-01-01".into()),
-            cost: Some(everruns_core::ModelCost {
+            cost: Some(everruns_provider::model::ModelCost {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
@@ -641,7 +648,7 @@ mod tests {
 
     #[test]
     fn merge_discovered_fills_gaps() {
-        use everruns_core::model::ModelLimits;
+        use everruns_provider::model::ModelLimits;
 
         let hardcoded = ModelProfile {
             limits: None,
@@ -655,7 +662,7 @@ mod tests {
                 max_media: None,
             }),
             knowledge: Some("2025-02-01".into()),
-            cost: Some(everruns_core::ModelCost {
+            cost: Some(everruns_provider::model::ModelCost {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
@@ -678,7 +685,7 @@ mod tests {
 
     #[test]
     fn merge_hardcoded_limits_take_precedence() {
-        use everruns_core::model::ModelLimits;
+        use everruns_provider::model::ModelLimits;
 
         let hardcoded = ModelProfile {
             limits: Some(ModelLimits {
@@ -714,9 +721,9 @@ mod tests {
         });
 
         let row = ModelWithProviderRow {
-            id: everruns_core::ModelId::new(),
+            id: everruns_provider::typed_id::ModelId::new(),
             org_id: 1,
-            provider_id: everruns_core::ProviderId::new(),
+            provider_id: everruns_provider::typed_id::ProviderId::new(),
             model_id: "test-model".into(),
             display_name: "Test".into(),
             capabilities: serde_json::json!([]),
@@ -744,9 +751,9 @@ mod tests {
         use chrono::Utc;
 
         let row = ModelWithProviderRow {
-            id: everruns_core::ModelId::new(),
+            id: everruns_provider::typed_id::ModelId::new(),
             org_id: 1,
-            provider_id: everruns_core::ProviderId::new(),
+            provider_id: everruns_provider::typed_id::ProviderId::new(),
             model_id: "test-model".into(),
             display_name: "Test".into(),
             capabilities: serde_json::json!([]),

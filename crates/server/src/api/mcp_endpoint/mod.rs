@@ -1216,7 +1216,7 @@ async fn handle_tasks_get(
             // (same org `tool_session_get_status` already validated), preserving
             // tenant isolation. Parse failures / absent results are silently
             // skipped — the status payload is still returned.
-            if let Ok(session_id) = task_id.parse::<everruns_core::typed_id::SessionId>()
+            if let Ok(session_id) = task_id.parse::<everruns_provider::typed_id::SessionId>()
                 && let Ok(Some(structured)) =
                     crate::domains::session_tasks::read_structured_task_result(
                         &state.db, org.org_id, session_id,
@@ -1685,11 +1685,11 @@ async fn tool_session_get_status(
         .get("since_event_id")
         .and_then(|v| v.as_str())
         .map(|s| {
-            s.parse::<everruns_core::typed_id::EventId>()
+            s.parse::<everruns_provider::typed_id::EventId>()
                 .map(|id| id.to_string())
                 .or_else(|_| {
                     s.parse::<uuid::Uuid>()
-                        .map(|u| everruns_core::typed_id::EventId::from_uuid(u).to_string())
+                        .map(|u| everruns_provider::typed_id::EventId::from_uuid(u).to_string())
                 })
                 .map_err(|_| format!("Invalid since_event_id: {s}"))
         })
@@ -1771,7 +1771,7 @@ async fn tool_agent_get_card(
     // intentionally hit the storage layer directly here instead of going
     // through a list-and-count: callers asking for a card don't need the
     // list payload, and `count_sessions_for_agent` is a single COUNT query.
-    let agent_id = everruns_core::AgentId::from_uuid(agent.internal_id);
+    let agent_id = everruns_provider::typed_id::AgentId::from_uuid(agent.internal_id);
     let session_count = state
         .db
         .count_sessions_for_agent(org.org_id, agent_id)

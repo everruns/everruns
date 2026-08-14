@@ -9,12 +9,13 @@
 // matching the Grpc/Adapter store pattern. Callers must provide
 // the correct org_id when creating the store.
 
+use crate::kernel_imports::{
+    AgentCapabilityConfig, AgentDefinition, DependencyBlocker, everruns_provider::error::Result,
+    everruns_provider::error::StoreResultExt, everruns_provider::error::from_json,
+    everruns_provider::typed_id::AgentId, execution_loading::AgentStore,
+};
 use crate::max_iterations;
 use async_trait::async_trait;
-use everruns_core::{
-    AgentCapabilityConfig, AgentDefinition, AgentId, DependencyBlocker, Result, StoreResultExt,
-    execution_loading::AgentStore, from_json,
-};
 use everruns_platform::{Agent, AgentStatus};
 
 use super::repositories::Database;

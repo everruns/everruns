@@ -6,14 +6,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
 use async_trait::async_trait;
-use everruns_core::error::{AgentLoopError, Result as CoreResult};
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventData, EventRequest, OutputMessageCompletedData};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::message_retriever::{MessageHistory, MessageRetriever};
-use everruns_core::tools::ToolResultImage;
-use everruns_core::typed_id::{EventId, MessageId, SessionId};
+use everruns_provider::error::{AgentLoopError, Result as CoreResult};
+use everruns_provider::tool_types::ToolResultImage;
+use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{Mutex, RwLock};
@@ -1409,7 +1409,7 @@ mod tests {
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
     };
-    use everruns_core::typed_id::{HarnessId, TurnId};
+    use everruns_provider::typed_id::{HarnessId, TurnId};
 
     struct LifecycleHeavyReader;
 

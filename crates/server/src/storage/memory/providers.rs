@@ -4,7 +4,9 @@ use anyhow::Result;
 
 use super::super::models::*;
 use super::InMemoryDatabase;
-use everruns_core::{ModelId, ProviderId};
+use crate::kernel_imports::{
+    everruns_provider::typed_id::ModelId, everruns_provider::typed_id::ProviderId,
+};
 use uuid::Uuid;
 
 impl InMemoryDatabase {

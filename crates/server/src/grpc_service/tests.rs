@@ -41,10 +41,10 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
     async fn start_run(
         &self,
         org_id: i64,
-        session_id: everruns_core::SessionId,
-        _harness_id: everruns_core::HarnessId,
-        _agent_id: Option<everruns_core::typed_id::AgentId>,
-        _input_message_id: everruns_core::MessageId,
+        session_id: everruns_provider::typed_id::SessionId,
+        _harness_id: everruns_provider::typed_id::HarnessId,
+        _agent_id: Option<everruns_provider::typed_id::AgentId>,
+        _input_message_id: everruns_provider::typed_id::MessageId,
         _request_id: Option<String>,
     ) -> anyhow::Result<()> {
         self.event_service
@@ -64,7 +64,7 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                 session_id,
                 everruns_core::events::EventContext::empty(),
                 everruns_core::events::TurnCompletedData {
-                    turn_id: everruns_core::typed_id::TurnId::new(),
+                    turn_id: everruns_provider::typed_id::TurnId::new(),
                     iterations: 1,
                     duration_ms: None,
                     usage: None,
@@ -93,16 +93,19 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
 
     async fn resume_after_tool_results(
         &self,
-        _session_id: everruns_core::SessionId,
+        _session_id: everruns_provider::typed_id::SessionId,
     ) -> anyhow::Result<()> {
         Ok(())
     }
 
-    async fn cancel_run(&self, _run_id: everruns_core::SessionId) -> anyhow::Result<()> {
+    async fn cancel_run(
+        &self,
+        _run_id: everruns_provider::typed_id::SessionId,
+    ) -> anyhow::Result<()> {
         Ok(())
     }
 
-    async fn is_running(&self, _run_id: everruns_core::SessionId) -> bool {
+    async fn is_running(&self, _run_id: everruns_provider::typed_id::SessionId) -> bool {
         false
     }
 
@@ -146,17 +149,17 @@ struct AllowingConnectionResolver;
 impl everruns_core::connection_services::UserConnectionResolver for AllowingConnectionResolver {
     async fn get_connection_token(
         &self,
-        _session_id: everruns_core::SessionId,
+        _session_id: everruns_provider::typed_id::SessionId,
         _provider: &str,
-    ) -> everruns_core::error::Result<Option<String>> {
+    ) -> everruns_provider::error::Result<Option<String>> {
         Ok(Some("test-token".to_string()))
     }
 
     async fn get_connection_user(
         &self,
-        _session_id: everruns_core::SessionId,
+        _session_id: everruns_provider::typed_id::SessionId,
         _provider: &str,
-    ) -> everruns_core::error::Result<Option<uuid::Uuid>> {
+    ) -> everruns_provider::error::Result<Option<uuid::Uuid>> {
         Ok(None)
     }
 
@@ -164,14 +167,14 @@ impl everruns_core::connection_services::UserConnectionResolver for AllowingConn
         &self,
         _user_id: uuid::Uuid,
         _provider: &str,
-    ) -> everruns_core::error::Result<Option<String>> {
+    ) -> everruns_provider::error::Result<Option<String>> {
         Ok(Some("test-token".to_string()))
     }
 }
 
 #[test]
 fn test_image_info_row_to_proto_uses_raw_uuid_transport_value() {
-    let image_id = everruns_core::ImageId::new();
+    let image_id = everruns_provider::typed_id::ImageId::new();
     let proto = WorkerServiceImpl::image_info_row_to_proto(crate::storage::models::ImageInfoRow {
         id: image_id,
         org_id: everruns_core::DEFAULT_ORG_ID,
@@ -372,9 +375,9 @@ async fn create_grpc_test_session(service: &WorkerServiceImpl) -> proto::Session
         .expect("session response")
 }
 
-fn proto_session_id(session: &proto::Session) -> everruns_core::SessionId {
+fn proto_session_id(session: &proto::Session) -> everruns_provider::typed_id::SessionId {
     let id = session.id.as_ref().expect("session id");
-    everruns_core::SessionId::from_uuid(id.value.parse().expect("uuid session id"))
+    everruns_provider::typed_id::SessionId::from_uuid(id.value.parse().expect("uuid session id"))
 }
 
 struct DenyGrpcSessionManageResolver;
@@ -435,7 +438,7 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             agent_identity_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user.id),
             title: Some("authority root".to_string()),
             locale: None,
@@ -580,7 +583,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .expect("parent harness id")
         .value
         .parse()
-        .map(everruns_core::HarnessId::from_uuid)
+        .map(everruns_provider::typed_id::HarnessId::from_uuid)
         .expect("harness uuid");
 
     let (addr, shutdown_tx, server) = start_grpc_test_server(service).await;
@@ -629,7 +632,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     };
     assert_eq!(spawn_value["status"], "completed");
     assert_eq!(spawn_value["result"], "Child completed through gRPC");
-    let subagent_id: everruns_core::SessionId = spawn_value["subagent_id"]
+    let subagent_id: everruns_provider::typed_id::SessionId = spawn_value["subagent_id"]
         .as_str()
         .expect("subagent_id")
         .parse()
@@ -657,7 +660,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let ToolExecutionResult::Success(detached_value) = detached_result else {
         panic!("authorized detached spawn should succeed over grpc, got {detached_result:?}");
     };
-    let detached_id: everruns_core::SessionId = detached_value["subagent_id"]
+    let detached_id: everruns_provider::typed_id::SessionId = detached_value["subagent_id"]
         .as_str()
         .expect("detached id")
         .parse()
@@ -710,7 +713,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     };
     assert_eq!(handoff_value["status"], "completed");
     assert_eq!(handoff_value["result"], "Child completed through gRPC");
-    let handoff_id: everruns_core::SessionId = handoff_value["handoff_id"]
+    let handoff_id: everruns_provider::typed_id::SessionId = handoff_value["handoff_id"]
         .as_str()
         .expect("handoff_id")
         .parse()
@@ -822,7 +825,7 @@ async fn platform_command_surface_uses_session_owner_and_org() {
             agent_identity_id: None,
             agent_version_id: None,
             agent_config_hash: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(2),
+            owner_principal_id: everruns_provider::typed_id::PrincipalId::from_seed(2),
             resolved_owner_user_id: Some(user.id),
             title: Some("platform surface".to_string()),
             locale: None,
@@ -1260,7 +1263,7 @@ fn test_db_info_to_proto_roundtrip() {
 /// Helper: create a session task via the storage backend directly.
 async fn create_test_session_task(
     db: &crate::storage::StorageBackend,
-    session_id: everruns_core::SessionId,
+    session_id: everruns_provider::typed_id::SessionId,
     kind: &str,
     state: everruns_core::session_task::SessionTaskState,
     wake_policy: everruns_core::session_task::TaskWakePolicy,
@@ -1291,7 +1294,7 @@ async fn test_list_orphaned_session_tasks_returns_stale_task() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_core::SessionId::new();
+    let session_id = everruns_provider::typed_id::SessionId::new();
 
     let task_id = create_test_session_task(
         &db,
@@ -1340,7 +1343,7 @@ async fn test_list_orphaned_session_tasks_excludes_fresh_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_core::SessionId::new();
+    let session_id = everruns_provider::typed_id::SessionId::new();
 
     let task_id = create_test_session_task(
         &db,
@@ -1388,7 +1391,7 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
     let svc = test_worker_service().await;
     let db = svc.db.clone();
 
-    let session_id = everruns_core::SessionId::new();
+    let session_id = everruns_provider::typed_id::SessionId::new();
 
     // Create a task with no heartbeat (foreground/subagent tasks).
     let task_id = create_test_session_task(

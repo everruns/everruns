@@ -270,7 +270,7 @@ impl SandboxExecTool {
 impl Tool for SandboxExecTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -306,7 +306,7 @@ impl Tool for SandboxExecTool {
         })
     }
 
-    fn hints(&self) -> everruns_core::ToolHints {
+    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
         session_sandbox_tool_hints()
     }
 
@@ -404,7 +404,7 @@ impl SandboxReadFileTool {
 impl Tool for SandboxReadFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -447,7 +447,7 @@ impl Tool for SandboxReadFileTool {
         })
     }
 
-    fn hints(&self) -> everruns_core::ToolHints {
+    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
         session_sandbox_tool_hints().with_readonly(true)
     }
 
@@ -511,7 +511,7 @@ impl SandboxWriteFileTool {
 impl Tool for SandboxWriteFileTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -543,7 +543,7 @@ impl Tool for SandboxWriteFileTool {
         })
     }
 
-    fn hints(&self) -> everruns_core::ToolHints {
+    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
         session_sandbox_tool_hints()
     }
 
@@ -617,7 +617,7 @@ impl SandboxStatusTool {
 impl Tool for SandboxStatusTool {
     fn narrate(
         &self,
-        _tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -643,7 +643,7 @@ impl Tool for SandboxStatusTool {
         })
     }
 
-    fn hints(&self) -> everruns_core::ToolHints {
+    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
         session_sandbox_tool_hints()
             .with_readonly(true)
             .with_idempotent(true)
@@ -712,7 +712,7 @@ impl SandboxManageTool {
 impl Tool for SandboxManageTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        tool_call: &everruns_provider::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
@@ -747,7 +747,7 @@ impl Tool for SandboxManageTool {
         })
     }
 
-    fn hints(&self) -> everruns_core::ToolHints {
+    fn hints(&self) -> everruns_provider::tool_types::ToolHints {
         session_sandbox_tool_hints().with_destructive(true)
     }
 
@@ -922,7 +922,7 @@ mod tests {
     #[tokio::test]
     async fn sandbox_exec_rejects_zero_timeout() {
         let tool = SandboxExecTool::new(json!({ "provider": "missing-provider" }));
-        let context = ToolContext::new(everruns_core::typed_id::SessionId::new());
+        let context = ToolContext::new(everruns_provider::typed_id::SessionId::new());
 
         let result = tool
             .execute_with_context(

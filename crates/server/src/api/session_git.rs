@@ -19,7 +19,7 @@ use axum::{
     http::StatusCode,
     routing::{delete, get, post},
 };
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

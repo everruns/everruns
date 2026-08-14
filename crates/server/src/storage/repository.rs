@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::typed_id::SessionId;
+use everruns_provider::typed_id::SessionId;
 
 use super::StorageBackend;
 use super::memory::InMemoryDatabase;

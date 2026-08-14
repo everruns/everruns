@@ -464,7 +464,7 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         // Get agent with capabilities via domain query
-        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
         let agent =
             crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                 .await
@@ -485,7 +485,7 @@ impl WorkerService for WorkerServiceImpl {
         let harness = crate::domains::harnesses::queries::resolve_effective(
             &self.db,
             req.org_id,
-            everruns_core::HarnessId::from_uuid(harness_id),
+            everruns_provider::typed_id::HarnessId::from_uuid(harness_id),
         )
         .await
         .map_err(|e| Status::internal(format!("Failed to get harness: {}", e)))?;
@@ -661,7 +661,9 @@ impl WorkerService for WorkerServiceImpl {
             .or(req.after_sequence);
         let total_count = self
             .db
-            .count_message_events(everruns_core::SessionId::from_uuid(session_id))
+            .count_message_events(everruns_provider::typed_id::SessionId::from_uuid(
+                session_id,
+            ))
             .await
             .map_err(|e| Status::internal(format!("Failed to count messages: {}", e)))?
             .min(i32::MAX as i64) as i32;
@@ -1250,7 +1252,7 @@ impl WorkerService for WorkerServiceImpl {
         };
         let grep_result = everruns_core::session_files::SessionFileSystem::grep_files_with_options(
             &self.session_file_service,
-            everruns_core::SessionId::from_uuid(session_id),
+            everruns_provider::typed_id::SessionId::from_uuid(session_id),
             &req.pattern,
             &options,
         )
@@ -2884,7 +2886,7 @@ impl WorkerService for WorkerServiceImpl {
         let resources = rows
             .iter()
             .map(crate::storage::leased_resource_row_to_domain)
-            .collect::<everruns_core::Result<Vec<_>>>()
+            .collect::<everruns_provider::error::Result<Vec<_>>>()
             .map_err(|e| {
                 tracing::error!("Failed to map leased resources: {}", e);
                 Status::internal("Failed to map leased resources")
@@ -2910,7 +2912,7 @@ impl WorkerService for WorkerServiceImpl {
         let updated = self
             .db
             .mark_leased_resource_released(
-                everruns_core::LeasedResourceId::from_uuid(resource_id),
+                everruns_provider::typed_id::LeasedResourceId::from_uuid(resource_id),
                 expected_cleanup_started_at,
             )
             .await
@@ -2940,7 +2942,7 @@ impl WorkerService for WorkerServiceImpl {
         let updated = self
             .db
             .mark_leased_resource_cleanup_failed(
-                everruns_core::LeasedResourceId::from_uuid(resource_id),
+                everruns_provider::typed_id::LeasedResourceId::from_uuid(resource_id),
                 expected_cleanup_started_at,
                 req.retry_after_seconds as i32,
                 &req.error,
@@ -3379,7 +3381,7 @@ impl WorkerService for WorkerServiceImpl {
         let schedule = store
             .cancel_schedule(
                 session_id.into(),
-                everruns_core::typed_id::ScheduleId::from_uuid(schedule_id),
+                everruns_provider::typed_id::ScheduleId::from_uuid(schedule_id),
             )
             .await
             .map_err(|e| {
@@ -3835,10 +3837,10 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformCreateHarnessRequest>,
     ) -> Result<Response<PlatformCreateHarnessResponse>, Status> {
         let req = request.into_inner();
-        let capabilities: Vec<everruns_core::AgentCapabilityConfig> = req
+        let capabilities: Vec<everruns_capability::CapabilityRef> = req
             .capabilities
             .iter()
-            .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
+            .map(|id| everruns_capability::CapabilityRef::new(id.as_str()))
             .collect();
 
         let create_req = crate::domains::harnesses::types::CreateHarnessRequest {
@@ -3852,7 +3854,7 @@ impl WorkerService for WorkerServiceImpl {
                 .as_ref()
                 .map(|parent_id| parse_uuid(Some(parent_id)))
                 .transpose()?
-                .map(everruns_core::HarnessId::from_uuid),
+                .map(everruns_provider::typed_id::HarnessId::from_uuid),
             default_model_id: None,
             tags: vec![],
             capabilities,
@@ -3893,7 +3895,7 @@ impl WorkerService for WorkerServiceImpl {
                     .as_ref()
                     .map(|parent_id| parse_uuid(Some(parent_id)))
                     .transpose()?
-                    .map(everruns_core::HarnessId::from_uuid)
+                    .map(everruns_provider::typed_id::HarnessId::from_uuid)
                     .map(Some)
             },
             default_model_id: None,
@@ -3907,7 +3909,8 @@ impl WorkerService for WorkerServiceImpl {
         };
 
         use crate::domains::common::Command;
-        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let harness_public_id =
+            everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
         let ctx = self.domain_ctx(req.org_id);
         let harness = crate::domains::harnesses::UpdateHarnessCmd {
             id: harness_public_id,
@@ -3930,7 +3933,8 @@ impl WorkerService for WorkerServiceImpl {
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
         use crate::domains::common::Command;
-        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let harness_public_id =
+            everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
         let ctx = self.domain_ctx(req.org_id);
         crate::domains::harnesses::DeleteHarness {
             id: harness_public_id,
@@ -3950,7 +3954,8 @@ impl WorkerService for WorkerServiceImpl {
         let harness_id = parse_uuid(req.harness_id.as_ref())?;
 
         use crate::domains::common::Command;
-        let harness_public_id = everruns_core::HarnessId::from_uuid(harness_id).to_string();
+        let harness_public_id =
+            everruns_provider::typed_id::HarnessId::from_uuid(harness_id).to_string();
         let ctx = self.domain_ctx(req.org_id);
         let harness = crate::domains::harnesses::CopyHarness {
             id: harness_public_id,
@@ -4019,10 +4024,10 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<PlatformCreateAgentRequest>,
     ) -> Result<Response<PlatformCreateAgentResponse>, Status> {
         let req = request.into_inner();
-        let capabilities: Vec<everruns_core::AgentCapabilityConfig> = req
+        let capabilities: Vec<everruns_capability::CapabilityRef> = req
             .capabilities
             .iter()
-            .map(|id| everruns_core::AgentCapabilityConfig::new(id.as_str()))
+            .map(|id| everruns_capability::CapabilityRef::new(id.as_str()))
             .collect();
 
         let create_req = crate::domains::agents::types::CreateAgentRequest {
@@ -4063,7 +4068,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
-        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
 
         let update_req = crate::domains::agents::types::UpdateAgentRequest {
             name: req.name,
@@ -4107,7 +4112,7 @@ impl WorkerService for WorkerServiceImpl {
         let agent_id = parse_uuid(req.agent_id.as_ref())?;
 
         use crate::domains::common::Command;
-        let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
+        let public_id = everruns_provider::typed_id::AgentId::from_uuid(agent_id).to_string();
         let ctx = self.domain_ctx(req.org_id);
         crate::domains::agents::DeleteAgent { id: public_id }
             .run(&ctx)
@@ -4138,7 +4143,7 @@ impl WorkerService for WorkerServiceImpl {
                 &internal_caller,
                 None,
                 &crate::storage::SessionListFilters {
-                    agent_id: agent_id.map(everruns_core::AgentId::from_uuid),
+                    agent_id: agent_id.map(everruns_provider::typed_id::AgentId::from_uuid),
                     ..Default::default()
                 },
                 pagination,
@@ -4167,7 +4172,7 @@ impl WorkerService for WorkerServiceImpl {
 
         // Look up agent public_id if agent_uuid is provided
         let agent_public_id = if let Some(aid) = agent_uuid {
-            let public_id = everruns_core::typed_id::AgentId::from_uuid(aid).to_string();
+            let public_id = everruns_provider::typed_id::AgentId::from_uuid(aid).to_string();
             let agent =
                 crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
                     .await
@@ -4187,7 +4192,9 @@ impl WorkerService for WorkerServiceImpl {
         let create_req = crate::api::sessions::CreateSessionRequest {
             source: None,
             workspace_id: None,
-            harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
+            harness_id: Some(everruns_provider::typed_id::HarnessId::from_uuid(
+                harness_id,
+            )),
             harness_name: None,
             agent_id: agent_public_id,
             agent_name: None,
@@ -4283,7 +4290,7 @@ impl WorkerService for WorkerServiceImpl {
         let now = chrono::Utc::now();
 
         let core_message = everruns_core::Message {
-            id: everruns_core::MessageId::from_uuid(message_id),
+            id: everruns_provider::typed_id::MessageId::from_uuid(message_id),
             role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(&req.content)],
             phase: None,
@@ -4295,8 +4302,8 @@ impl WorkerService for WorkerServiceImpl {
             created_at: now,
         };
 
-        let session_id_typed = everruns_core::SessionId::from_uuid(session_id);
-        let message_id_typed = everruns_core::MessageId::from_uuid(message_id);
+        let session_id_typed = everruns_provider::typed_id::SessionId::from_uuid(session_id);
+        let message_id_typed = everruns_provider::typed_id::MessageId::from_uuid(message_id);
 
         // Emit input message event
         self.event_service
@@ -4691,7 +4698,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<ExecuteMachinePaymentResponse>, Status> {
         use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
         use everruns_core::tool_execution::PaymentAuthority;
-        use everruns_core::typed_id::{AgentId, SessionId};
+        use everruns_provider::typed_id::{AgentId, SessionId};
 
         let req = request.into_inner();
         let session_id = SessionId::parse(&req.session_id)
@@ -4768,9 +4775,10 @@ impl WorkerService for WorkerServiceImpl {
         // THREAT[TM-AUTHZ-014]: Resolve the current session owner server-side;
         // the worker cannot supply a user identity for this decision.
         let req = request.into_inner();
-        let session_id = everruns_core::SessionId::parse(&req.session_id)
+        let session_id = everruns_provider::typed_id::SessionId::parse(&req.session_id)
             .or_else(|_| {
-                uuid::Uuid::parse_str(&req.session_id).map(everruns_core::SessionId::from_uuid)
+                uuid::Uuid::parse_str(&req.session_id)
+                    .map(everruns_provider::typed_id::SessionId::from_uuid)
             })
             .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
         let session = self
@@ -4801,8 +4809,8 @@ impl WorkerService for WorkerServiceImpl {
 
 // Helper functions for status conversion
 
-fn payment_error_to_status(error: everruns_core::error::AgentLoopError) -> Status {
-    use everruns_core::error::AgentLoopError;
+fn payment_error_to_status(error: everruns_provider::error::AgentLoopError) -> Status {
+    use everruns_provider::error::AgentLoopError;
 
     match error {
         AgentLoopError::Configuration(message) | AgentLoopError::ToolExecution(message) => {

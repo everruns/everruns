@@ -5,8 +5,8 @@
 
 use everruns_core::events::{EventContext, InputMessageData, ToolCompletedData};
 use everruns_core::message::Message;
-use everruns_core::typed_id::SessionId;
 use everruns_core::{ContentPart, Event};
+use everruns_provider::typed_id::SessionId;
 use uuid::Uuid;
 
 #[test]
@@ -213,7 +213,7 @@ fn test_event_api_contract_structure() {
 /// Verify EventContext structure matches API contract
 #[test]
 fn test_event_context_api_contract() {
-    use everruns_core::typed_id::{MessageId, TurnId};
+    use everruns_provider::typed_id::{MessageId, TurnId};
 
     let turn_id = TurnId::new();
     let message_id = MessageId::new();

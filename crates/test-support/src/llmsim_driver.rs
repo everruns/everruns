@@ -16,12 +16,12 @@ use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use everruns_core::driver_registry::{
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverDescriptor, DriverId, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::tool_types::ToolCall;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message, Role, Usage};
@@ -285,7 +285,7 @@ impl SimError {
     }
 
     fn agent_error(&self) -> AgentLoopError {
-        use everruns_core::error::LlmErrorKind;
+        use everruns_provider::error::LlmErrorKind;
 
         match self {
             SimError::RateLimit => {
@@ -662,7 +662,7 @@ impl LlmSimDriver {
 impl ChatDriver for LlmSimDriver {
     async fn chat_completion_stream(
         &self,
-        _endpoint: &everruns_core::ProviderEndpoint,
+        _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
@@ -1035,10 +1035,10 @@ mod tests {
             &self,
             messages: Vec<LlmMessage>,
             config: &LlmCallConfig,
-        ) -> Result<everruns_core::driver_registry::LlmResponse> {
+        ) -> Result<everruns_provider::driver_registry::LlmResponse> {
             ChatDriver::chat_completion(
                 self,
-                &everruns_core::ProviderEndpoint::default(),
+                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
                 messages,
                 config,
             )
@@ -1052,7 +1052,7 @@ mod tests {
         ) -> Result<LlmResponseStream> {
             ChatDriver::chat_completion_stream(
                 self,
-                &everruns_core::ProviderEndpoint::default(),
+                &everruns_provider::runtime_provider::ProviderEndpoint::default(),
                 messages,
                 config,
             )
@@ -1554,7 +1554,7 @@ mod tests {
         assert!(registry.has_driver(&DriverId::LlmSim));
 
         // Creating a driver should work (with any API key since it's simulated)
-        let config = everruns_core::driver_registry::ProviderConfig::new(DriverId::LlmSim)
+        let config = everruns_provider::driver_registry::ProviderConfig::new(DriverId::LlmSim)
             .with_api_key("fake-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());

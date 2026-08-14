@@ -15,8 +15,6 @@ use std::sync::Mutex;
 use async_trait::async_trait;
 use everruns_builtins::InfinityContextCapability;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
-use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::error::Result;
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TaskMessage, TaskWakePolicy, apply_task_update,
@@ -24,12 +22,13 @@ use everruns_core::session_task::{
 };
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_core::typed_id::SessionId;
-use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole,
-    provider_resolution::ResolvedModel,
-};
+use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::error::Result;
+use everruns_provider::model_spec::ModelSpec;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
 const CHILD_TASK_ID: &str = "task_wakedemo_child";
@@ -319,13 +318,10 @@ async fn build_runtime(
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform(policy))
         .llm_sim(LlmSimConfig::scripted(script))
-        .default_model(ResolvedModel {
-            model: "llmsim-model".to_string(),
-            provider_type: DriverId::LlmSim,
-            api_key: Some("fake-key".to_string()),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(ModelSpec::on(
+            (DriverId::LlmSim).as_str(),
+            "llmsim-model".to_string(),
+        ))
         .harness(harness)
         .agent(agent)
         .session(session)

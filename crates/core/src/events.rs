@@ -511,11 +511,12 @@ impl Event {
 // Input/Output Event Data Types
 // ============================================================================
 
-use crate::message::{ContentPart, ExecutionPhase, Message};
+use crate::message::{ContentPart, Message};
 use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
 use crate::tool_types::ToolCall;
+use everruns_provider::execution_phase::ExecutionPhase;
 
 /// Metadata about the model used for generation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3673,21 +3674,24 @@ mod tests {
             message_id: MessageId::new(),
             delta: "one moment".to_string(),
             accumulated: "one moment".to_string(),
-            phase: Some(crate::message::ExecutionPhase::Commentary),
+            phase: Some(everruns_provider::ExecutionPhase::Commentary),
         };
         let json = serde_json::to_value(&delta_commentary).unwrap();
         assert_eq!(json["phase"], "commentary");
 
         // Round-trips back to the same phase.
         let back: OutputMessageDeltaData = serde_json::from_value(json).unwrap();
-        assert_eq!(back.phase, Some(crate::message::ExecutionPhase::Commentary));
+        assert_eq!(
+            back.phase,
+            Some(everruns_provider::ExecutionPhase::Commentary)
+        );
 
         let delta_final = OutputMessageDeltaData {
             turn_id,
             message_id: MessageId::new(),
             delta: "done".to_string(),
             accumulated: "done".to_string(),
-            phase: Some(crate::message::ExecutionPhase::FinalAnswer),
+            phase: Some(everruns_provider::ExecutionPhase::FinalAnswer),
         };
         assert_eq!(
             serde_json::to_value(&delta_final).unwrap()["phase"],

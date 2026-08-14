@@ -12,12 +12,12 @@
 use everruns_host::HostComposition;
 use std::sync::Arc;
 
-use everruns_core::error::Result;
-use everruns_core::provider_resolution::ResolvedModel;
 use everruns_host::{
     InProcessRuntime, InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory,
     SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
+use everruns_provider::error::Result;
+use everruns_provider::model_spec::ModelSpec;
 
 use crate::backends::LocalBackends;
 use crate::profile::LocalProfile;
@@ -31,9 +31,7 @@ use crate::profile::LocalProfile;
 /// should start here, so build-time capability validation sees the same set the
 /// local runtime executes.
 pub fn local_capability_registry() -> everruns_core::CapabilityRegistry {
-    let mut registry = everruns_platform::capabilities::hosted_capability_registry();
-    everruns_builtins::register_portable_capabilities(&mut registry)
-        .expect("core and portable built-in catalogs must not collide");
+    let registry = everruns_platform::capabilities::hosted_capability_registry();
     everruns_host::compose_runtime_capability_registry(registry)
 }
 
@@ -78,7 +76,7 @@ impl LocalRuntimeBuilder {
     /// longer ships with the production crates (EVE-875).
     pub fn provider_with_default_model(
         mut self,
-        provider: everruns_core::Provider,
+        provider: everruns_provider::runtime_provider::Provider,
         model_id: impl Into<String>,
     ) -> Self {
         self.inner = self.inner.provider_with_default_model(provider, model_id);
@@ -86,7 +84,7 @@ impl LocalRuntimeBuilder {
     }
 
     /// Set the runtime default model.
-    pub fn default_model(mut self, model: ResolvedModel) -> Self {
+    pub fn default_model(mut self, model: ModelSpec) -> Self {
         self.inner = self.inner.default_model(model);
         self
     }
@@ -131,7 +129,7 @@ impl LocalRuntimeBuilder {
     pub async fn build(self) -> Result<(InProcessRuntime, LocalBackends)> {
         self.profile
             .ensure_dirs()
-            .map_err(|e| everruns_core::AgentLoopError::config(e.to_string()))?;
+            .map_err(|e| everruns_provider::error::AgentLoopError::config(e.to_string()))?;
 
         let local = LocalBackends::new(
             self.profile.clone(),
@@ -152,7 +150,7 @@ impl LocalRuntimeBuilder {
                 });
                 HostComposition::builder()
                     .capability_registry(local_capability_registry())
-                    .driver_registry(everruns_core::DriverRegistry::new())
+                    .driver_registry(everruns_provider::DriverRegistry::new())
                     .egress_service(everruns_host::runtime_egress_service())
                     .session_file_system_factory(factory)
                     .build()

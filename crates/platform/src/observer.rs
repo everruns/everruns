@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::eval::Scorer;
-use everruns_core::typed_id::{
+use everruns_provider::typed_id::{
     AgentId, AgentVersionId, HarnessId, ObserverId, SessionId, TraceScoreId,
 };
 
@@ -163,7 +163,7 @@ pub struct LlmJudgeConfig {
     /// Judge calls go through the org's own providers and are billed to it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
-    pub model_id: Option<everruns_core::typed_id::ModelId>,
+    pub model_id: Option<everruns_provider::typed_id::ModelId>,
     /// Score value at/above which `pass` is true.
     #[serde(default = "default_pass_threshold")]
     pub pass_threshold: f64,

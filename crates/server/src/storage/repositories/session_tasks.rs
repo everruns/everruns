@@ -10,8 +10,8 @@ use super::super::models::{
 };
 use super::Database;
 use anyhow::Result;
-use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, SessionTaskUpdate, apply_task_update};
+use everruns_provider::typed_id::SessionId;
 
 const PUSH_CONFIG_COLUMNS: &str =
     "id, public_id, session_id, task_id, url, secret, event_filter, created_at, updated_at";

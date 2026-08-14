@@ -20,7 +20,7 @@ use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::{ToolDefinition, ToolHints};
-use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
+use crate::tools::{Tool, ToolExecutionResult};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
@@ -29,6 +29,11 @@ use everruns_core::capabilities::{
 use everruns_core::session_files::SessionFileSystem;
 use everruns_core::tool_context::{ToolContext, ToolContextService};
 use everruns_core::*;
+#[cfg(test)]
+use everruns_provider::error::AgentLoopError;
+#[cfg(test)]
+use everruns_provider::typed_id;
+use everruns_provider::{ToolResultImage, error, tool_types};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
@@ -4022,8 +4027,8 @@ mod tests {
 
     #[tokio::test]
     async fn assembled_prompt_uses_host_root_without_workspace_guidance() {
-        use crate::AgentCapabilityConfig;
         use crate::capabilities::{CapabilityRegistry, collect_capabilities_with_configs};
+        use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         let ctx = SystemPromptContext {

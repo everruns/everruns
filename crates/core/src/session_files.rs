@@ -52,7 +52,8 @@ pub trait SessionFileSystem: Send + Sync {
         crate::session_path::to_session_path(input)
     }
 
-    /// Whether this store is already a mount-based resolver ([`MountFs`]).
+    /// Whether this store is already a mount-based resolver
+    /// ([`MountFs`](crate::mount_fs::MountFs)).
     ///
     /// Used to avoid re-wrapping nested mount tables when building tool context.
     fn is_mount_resolver(&self) -> bool;

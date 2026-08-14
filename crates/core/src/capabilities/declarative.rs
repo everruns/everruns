@@ -1,8 +1,9 @@
 use super::{
     CapabilityStatus, MountAccess, MountPoint, RiskLevel, SKILLS_DISCOVERY_PATH, SkillContribution,
 };
-use crate::capability_types::{CapabilityId, MountSource, plugin_capability_id};
+use crate::capability_types::MountSource;
 use crate::{CapabilityInfo, ScopedMcpServers, validate_skill_name};
+use everruns_capability::{CapabilityId, plugin_capability_id};
 use serde::{Deserialize, Serialize};
 
 pub const DECLARATIVE_CAPABILITY_PREFIX: &str = "declarative:";

@@ -5,13 +5,10 @@
 // deterministic fixtures.
 
 use crate::agent_definition::AgentDefinition;
-use crate::credential_provider::CredentialProvider;
 use crate::harness_definition::HarnessDefinition;
-use crate::provider::DriverId;
 use crate::session::ExecutionSession;
 
-use crate::provider_resolution::ResolvedModel;
-use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId};
+use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -23,8 +20,7 @@ use crate::message::Message;
 use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::{
-    execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, provider_resolution::ProviderStore,
+    execution_loading::AgentStore, execution_loading::HarnessStore, execution_loading::SessionStore,
 };
 use chrono::Utc;
 
@@ -325,116 +321,6 @@ impl TestSessionStore {
 impl SessionStore for TestSessionStore {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<ExecutionSession>> {
         Ok(self.sessions.read().await.get(&session_id).cloned())
-    }
-}
-
-// ============================================================================
-// TestProviderStore - Stores LLM provider configurations in memory
-// ============================================================================
-
-/// In-memory LLM provider store
-///
-/// Stores model configurations in a HashMap keyed by model UUID.
-/// Useful for testing and examples where you want to configure providers without a database.
-///
-/// # Example
-///
-/// ```ignore
-/// use everruns_core::test_fixtures::TestProviderStore;
-/// use everruns_core::EnvCredentialProvider;
-///
-/// let store = TestProviderStore::from_credential_provider(&EnvCredentialProvider).await;
-/// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY via the injected provider
-/// ```
-#[derive(Debug, Default, Clone)]
-pub(crate) struct TestProviderStore {
-    models: Arc<RwLock<HashMap<ModelId, ResolvedModel>>>,
-    default_model: Arc<RwLock<Option<ResolvedModel>>>,
-}
-
-impl TestProviderStore {
-    /// Create a new empty in-memory provider store
-    pub(crate) fn new() -> Self {
-        Self {
-            models: Arc::new(RwLock::new(HashMap::new())),
-            default_model: Arc::new(RwLock::new(None)),
-        }
-    }
-
-    /// Create a provider store from an injected [`CredentialProvider`].
-    ///
-    /// Checks OpenAI first, then Anthropic, and configures a default model for
-    /// whichever the provider resolves credentials for. The store never reads
-    /// the process environment itself; standalone/dev callers pass
-    /// [`EnvCredentialProvider`](crate::credential_provider::EnvCredentialProvider)
-    /// to opt into env-based credentials.
-    pub(crate) async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
-        let store = Self::new();
-
-        // Check for OpenAI first, then Anthropic.
-        if let Some(creds) = provider
-            .resolve(&DriverId::OpenAI)
-            .filter(|c| c.api_key.is_some())
-        {
-            store
-                .set_default_model(ResolvedModel {
-                    model: "gpt-5.4".to_string(),
-                    provider_type: DriverId::OpenAI,
-                    api_key: creds.api_key,
-                    base_url: creds.base_url,
-                    provider_metadata: None,
-                })
-                .await;
-        } else if let Some(creds) = provider
-            .resolve(&DriverId::Anthropic)
-            .filter(|c| c.api_key.is_some())
-        {
-            store
-                .set_default_model(ResolvedModel {
-                    model: "claude-sonnet-4-20250514".to_string(),
-                    provider_type: DriverId::Anthropic,
-                    api_key: creds.api_key,
-                    base_url: creds.base_url,
-                    provider_metadata: None,
-                })
-                .await;
-        }
-
-        store
-    }
-
-    /// Create a provider store with a specific default model
-    pub(crate) async fn with_default(model: ResolvedModel) -> Self {
-        let store = Self::new();
-        store.set_default_model(model).await;
-        store
-    }
-
-    /// Add a model to the store
-    pub(crate) async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
-        self.models.write().await.insert(model_id, model);
-    }
-
-    /// Set the default model
-    pub(crate) async fn set_default_model(&self, model: ResolvedModel) {
-        *self.default_model.write().await = Some(model);
-    }
-
-    /// Clear all models
-    pub(crate) async fn clear(&self) {
-        self.models.write().await.clear();
-        *self.default_model.write().await = None;
-    }
-}
-
-#[async_trait]
-impl ProviderStore for TestProviderStore {
-    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
-        Ok(self.models.read().await.get(&model_id).cloned())
-    }
-
-    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
-        Ok(self.default_model.read().await.clone())
     }
 }
 

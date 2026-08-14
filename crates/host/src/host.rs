@@ -19,11 +19,10 @@ use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::session::SessionExecutionState;
 use everruns_core::tools::Tool;
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
-    ErrorDisclosure, ResolvedExecutionSnapshot, TokenUsage, ToolDefinition, ToolRegistry,
-    UserFacingError, UtilityLlmService, org_public_id_from_internal, resolve_runtime_capabilities,
+    CapabilityRegistry, CapabilityStatus, DependencyBlocker, EgressService,
+    ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
+    org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
@@ -43,6 +42,10 @@ use everruns_platform::capabilities::{
 use everruns_platform::{
     KnowledgeIndexSearch, KnowledgeIndexSearchExt, KnowledgeStore, KnowledgeStoreExt, PlatformStore,
 };
+use everruns_provider::driver_registry::DriverRegistry;
+use everruns_provider::tool_types::ToolDefinition;
+use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_provider::user_facing_error::{ErrorDisclosure, UserFacingError};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -150,7 +153,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         org_id: i64,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> everruns_core::error::Result<()>;
+    ) -> everruns_provider::error::Result<()>;
 
     /// Load and resolve the turn's execution inputs.
     ///
@@ -163,7 +166,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> everruns_core::error::Result<ResolvedTurnInputs>;
+    ) -> everruns_provider::error::Result<ResolvedTurnInputs>;
 
     fn capability_registry(&self) -> CapabilityRegistry;
 
@@ -349,7 +352,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Bounded automatic-recovery policy for provider failures.
     /// Default: `None` (use the provider policy defaults).
-    fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {
+    fn provider_retry_config(&self) -> Option<everruns_provider::llm_retry::LlmRetryConfig> {
         None
     }
 
@@ -374,7 +377,7 @@ struct RuntimeExecutionCapabilities {
 }
 
 fn subagent_nesting_policy_from_configs(
-    resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
+    resolved_capability_configs: &[everruns_capability::CapabilityRef],
 ) -> everruns_core::delegation_services::SubagentNestingPolicy {
     let subagents_config = resolved_capability_configs.iter().find(|config| {
         config.capability_id() == everruns_platform::capabilities::SUBAGENTS_CAPABILITY_ID
@@ -430,7 +433,7 @@ fn subagent_nesting_policy_from_configs(
 /// `finalize_hook_specs` semantics: `{capability_id}:` namespace stamping,
 /// stable default ids, and `disabled_contributions` muting (TM-HOOK-004).
 fn finalize_specs_from_configs(
-    resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
+    resolved_capability_configs: &[everruns_capability::CapabilityRef],
     capability_registry: &CapabilityRegistry,
 ) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
     let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
@@ -465,7 +468,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     session_id: SessionId,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-) -> everruns_core::error::Result<(
+) -> everruns_provider::error::Result<(
     Vec<everruns_core::user_hook_types::UserHookSpec>,
     Arc<dyn everruns_core::hook_executor::BashHookDispatcher>,
 )> {
@@ -474,12 +477,12 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
         .harness_store(org_id)
         .get_harness(harness_id)
         .await?
-        .ok_or_else(|| everruns_core::error::AgentLoopError::harness_not_found(harness_id))?;
+        .ok_or_else(|| everruns_provider::error::AgentLoopError::harness_not_found(harness_id))?;
     let session = adapter
         .session_store(org_id)
         .get_session(session_id)
         .await?
-        .ok_or_else(|| everruns_core::error::AgentLoopError::session_not_found(session_id))?;
+        .ok_or_else(|| everruns_provider::error::AgentLoopError::session_not_found(session_id))?;
     let agent = match agent_id {
         Some(agent_id) => adapter.agent_store(org_id).get_agent(agent_id).await?,
         None => None,
@@ -500,14 +503,14 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     agent_id: Option<AgentId>,
     locale: Option<String>,
     blueprint_id: Option<&str>,
-) -> everruns_core::error::Result<RuntimeExecutionCapabilities> {
+) -> everruns_provider::error::Result<RuntimeExecutionCapabilities> {
     let capability_registry = adapter.capability_registry();
     if let Some(blueprint_id) = blueprint_id {
         let mut registry = ToolRegistry::with_defaults();
         #[cfg(feature = "builtins")]
         everruns_builtins::register_default_tools(&mut registry);
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
-            everruns_core::error::AgentLoopError::config(format!(
+            everruns_provider::error::AgentLoopError::config(format!(
                 "Blueprint \"{blueprint_id}\" not found in registry"
             ))
         })?;
@@ -528,24 +531,22 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         .harness_store(org_id)
         .get_harness(harness_id)
         .await?
-        .ok_or_else(|| everruns_core::error::AgentLoopError::harness_not_found(harness_id))?;
+        .ok_or_else(|| everruns_provider::error::AgentLoopError::harness_not_found(harness_id))?;
 
     let session = adapter
         .session_store(org_id)
         .get_session(session_id)
         .await?
-        .ok_or_else(|| everruns_core::error::AgentLoopError::session_not_found(session_id))?;
+        .ok_or_else(|| everruns_provider::error::AgentLoopError::session_not_found(session_id))?;
 
     let agent_store = adapter.agent_store(org_id);
-    let agent = match agent_id {
-        Some(agent_id) => Some(
-            agent_store
-                .get_agent(agent_id)
-                .await?
-                .ok_or_else(|| everruns_core::error::AgentLoopError::agent_not_found(agent_id))?,
-        ),
-        None => None,
-    };
+    let agent =
+        match agent_id {
+            Some(agent_id) => Some(agent_store.get_agent(agent_id).await?.ok_or_else(|| {
+                everruns_provider::error::AgentLoopError::agent_not_found(agent_id)
+            })?),
+            None => None,
+        };
 
     let resolved =
         resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
@@ -983,7 +984,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         user_message: Option<&str>,
     ) {
         let user_error =
-            UserFacingError::new(everruns_core::user_facing_error_codes::BLOCKED_BY_HOOK);
+            UserFacingError::new(everruns_provider::user_facing_error::codes::BLOCKED_BY_HOOK);
         let shown = user_message.unwrap_or(reason);
         let mut error_message = Message::assistant(shown);
         let mut metadata = std::collections::HashMap::new();
@@ -1119,7 +1120,7 @@ pub async fn detect_dependency_blocker<A: RuntimeHostAdapter>(
     org_id: i64,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
-) -> everruns_core::error::Result<Option<DependencyBlocker>> {
+) -> everruns_provider::error::Result<Option<DependencyBlocker>> {
     let harness_store = adapter.harness_store(org_id);
     let agent_store = adapter.agent_store(org_id);
     if let Some(blocker) = harness_store.get_harness_blocker(harness_id).await? {
@@ -1137,7 +1138,7 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: InputAtomInput,
-) -> everruns_core::error::Result<InputAtomResult> {
+) -> everruns_provider::error::Result<InputAtomResult> {
     // The live effort override is turn-scoped. Clear any value left by the
     // previous turn before ReasonAtom can prefer it over this turn's message
     // controls.
@@ -1168,7 +1169,7 @@ async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: &ReasonInput,
-) -> everruns_core::error::Result<Option<UserPromptHookResult>> {
+) -> everruns_provider::error::Result<Option<UserPromptHookResult>> {
     let (specs, dispatcher) = match collect_lifecycle_hook_specs(
         adapter,
         org_id,
@@ -1226,7 +1227,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: ReasonInput,
-) -> everruns_core::error::Result<ReasonResult> {
+) -> everruns_provider::error::Result<ReasonResult> {
     let prompt_message_ids = (input.iteration <= 1)
         .then_some(input.context.input_message_id)
         .into_iter()
@@ -1243,7 +1244,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     org_id: i64,
     input: ReasonInput,
     prompt_message_ids: Vec<MessageId>,
-) -> everruns_core::error::Result<ReasonResult> {
+) -> everruns_provider::error::Result<ReasonResult> {
     if let Some(blocker) =
         detect_dependency_blocker(adapter, org_id, input.harness_id, input.agent_id).await?
     {
@@ -1337,7 +1338,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .get_session(input.context.session_id)
         .await?
         .ok_or_else(|| {
-            everruns_core::error::AgentLoopError::session_not_found(input.context.session_id)
+            everruns_provider::error::AgentLoopError::session_not_found(input.context.session_id)
         })?;
     let validation_capabilities = load_execution_capabilities(
         adapter,
@@ -1486,7 +1487,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                 .iter_mut()
                 .find(|message| message.id == message_id)
                 .ok_or_else(|| {
-                    everruns_core::error::AgentLoopError::config(
+                    everruns_provider::error::AgentLoopError::config(
                         "user_prompt_submit mutation: input message not found in assembled context",
                     )
                 })?;
@@ -1507,9 +1508,9 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
 pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     input: ActInput,
-) -> everruns_core::error::Result<ActResult> {
+) -> everruns_provider::error::Result<ActResult> {
     let org_id = input.org_id.ok_or_else(|| {
-        everruns_core::error::AgentLoopError::config(
+        everruns_provider::error::AgentLoopError::config(
             "ActInput.org_id must be set for runtime host execution",
         )
     })?;

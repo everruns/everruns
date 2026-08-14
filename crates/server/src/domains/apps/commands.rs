@@ -23,7 +23,6 @@ use crate::storage::models::AuditLogQuery;
 use crate::storage::password::hash_password;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use everruns_core::Policy;
-use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
     ScheduleExecutionStatus, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -36,6 +35,9 @@ use everruns_platform::{
     AppStatus, ChannelType, FcpChannelConfig, PublicChatChannelConfig, SlackChannelConfig,
 };
 use everruns_platform::{AgentAction, AuditEvent};
+use everruns_provider::typed_id::{
+    AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId,
+};
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -102,7 +104,7 @@ fn reject_new_schedule_channel(channel_type: &ChannelType) -> Result<(), Command
 
 async fn validate_agent_identity(
     ctx: &Ctx,
-    identity_id: everruns_core::typed_id::AgentIdentityId,
+    identity_id: everruns_provider::typed_id::AgentIdentityId,
 ) -> Result<Uuid, CommandError> {
     let identity = ctx
         .db
@@ -727,12 +729,12 @@ fn validate_endpoint_auth_config(
                         "OIDC auth requires a non-empty issuer",
                     ));
                 }
-                everruns_core::validate_safe_url(issuer)
+                everruns_provider::url_validation::validate_safe_url(issuer)
                     .map_err(|e| CommandError::bad_request(format!("Invalid OIDC issuer: {e}")))?;
                 if let Some(jwks_url) = jwks_url {
-                    everruns_core::validate_safe_url(jwks_url).map_err(|e| {
-                        CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}"))
-                    })?;
+                    everruns_provider::url_validation::validate_safe_url(jwks_url).map_err(
+                        |e| CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}")),
+                    )?;
                 }
                 Ok(())
             }
@@ -744,9 +746,9 @@ fn validate_endpoint_auth_config(
             Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
                 introspection_url, ..
             }) => {
-                everruns_core::validate_safe_url(introspection_url).map_err(|e| {
-                    CommandError::bad_request(format!("Invalid OAuth2 introspection URL: {e}"))
-                })?;
+                everruns_provider::url_validation::validate_safe_url(introspection_url).map_err(
+                    |e| CommandError::bad_request(format!("Invalid OAuth2 introspection URL: {e}")),
+                )?;
                 Ok(())
             }
             _ => Err(CommandError::bad_request(
@@ -2747,7 +2749,7 @@ impl Command for UpdateAppCmd {
                         ctx.org_id(),
                         existing.owner_principal_id,
                         existing.resolved_owner_user_id,
-                        Some(everruns_core::typed_id::AgentIdentityId::from_uuid(
+                        Some(everruns_provider::typed_id::AgentIdentityId::from_uuid(
                             identity_uuid,
                         )),
                     )
@@ -4090,7 +4092,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteChannel>() }
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::typed_id::{AppChannelId, HarnessId, PrincipalId};
+    use everruns_provider::typed_id::{AppChannelId, HarnessId, PrincipalId};
 
     // Serialize env-mutating tests to prevent concurrent remove_var / read_var races.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

@@ -32,6 +32,7 @@ rustls.workspace = true
 rustls-native-certs = "0.8"
 
 everruns-core.workspace = true
+everruns-provider.workspace = true
 # Connector catalog (EVE-879): connectors register into the hosted connector
 # plugin system, which lives in the platform crate.
 everruns-platform.workspace = true

@@ -5,6 +5,7 @@
 //
 // See knowledge/security/budgeting.md for full specification.
 
+use crate::kernel_imports::everruns_provider::user_facing_error::UserFacingError;
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_core::EventListener;
@@ -13,10 +14,10 @@ use everruns_core::budget::{
     LedgerEntry,
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
-use everruns_core::model_profiles::estimate_cost_usd;
-use everruns_core::provider::DriverId;
-use everruns_core::typed_id::{AgentId, BudgetId, SessionId};
-use everruns_core::{UserFacingError, user_facing_error_codes};
+use everruns_provider::model_profiles::estimate_cost_usd;
+use everruns_provider::provider::DriverId;
+use everruns_provider::typed_id::{AgentId, BudgetId, SessionId};
+use everruns_provider::user_facing_error::codes as user_facing_error_codes;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tracing::{debug, error, info, instrument, warn};

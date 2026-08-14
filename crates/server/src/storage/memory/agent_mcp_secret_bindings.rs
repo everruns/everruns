@@ -1,7 +1,7 @@
 use super::InMemoryDatabase;
 use crate::storage::models::{AgentMcpSecretBindingRow, UpsertAgentMcpSecretBindingRow};
 use anyhow::Result;
-use everruns_core::AgentId;
+use everruns_provider::typed_id::AgentId;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
