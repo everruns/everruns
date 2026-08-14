@@ -9,7 +9,7 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, ToolCompletedData, deserialize_event_data,
 };
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
-use everruns_worker::AgentRunner;
+use everruns_scale::RunController;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
@@ -23,7 +23,7 @@ const SWEEP_INTERVAL_SECS: u64 = 30;
 /// `waiting_for_tool_results` sessions.
 pub fn spawn_tool_result_timeout_sweep(
     db: Arc<StorageBackend>,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn RunController>,
     event_delivery: crate::event_delivery::EventDelivery,
 ) -> JoinHandle<()> {
     let timeout_secs = std::env::var("TOOL_RESULT_TIMEOUT_SECS")
@@ -54,7 +54,7 @@ pub fn spawn_tool_result_timeout_sweep(
 
 async fn sweep_timed_out_sessions(
     db: &Arc<StorageBackend>,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn RunController>,
     event_service: &EventService,
     timeout_secs: u64,
 ) -> anyhow::Result<()> {
@@ -89,7 +89,7 @@ async fn sweep_timed_out_sessions(
 async fn timeout_session(
     db: &Arc<StorageBackend>,
     event_service: &EventService,
-    runner: &Arc<dyn AgentRunner>,
+    runner: &Arc<dyn RunController>,
     session_id: SessionId,
     org_id: i64,
 ) -> anyhow::Result<()> {

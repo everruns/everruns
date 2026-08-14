@@ -26,6 +26,8 @@
 #                             importing platform.
 #   external-workspace-provider implements the open workspace lifecycle SPI
 #                             using only the published host crate.
+#   external-scale-consumer builds portable agent definitions and proves the
+#                             Scale Engine rejects raw process-local Agents.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under
@@ -80,3 +82,8 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-provider
 
 echo "External workspace provider implements the open host SPI under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-scale-consumer
+
+echo "External Scale consumer builds portable definitions and rejects local Agents under -D warnings."

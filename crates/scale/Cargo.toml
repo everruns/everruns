@@ -1,0 +1,38 @@
+[package]
+name = "everruns-scale"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-scale"
+description = "Portable PostgreSQL-backed Engine implementation for Everruns"
+readme = "README.md"
+keywords = ["agent", "workflow", "postgresql", "distributed"]
+categories = ["asynchronous", "database"]
+
+[features]
+postgres-tests = []
+
+[dependencies]
+everruns = { path = "../everruns", version = "0.17.26", default-features = false }
+everruns-core.workspace = true
+everruns-durable.workspace = true
+everruns-host.workspace = true
+everruns-provider.workspace = true
+async-trait.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+everruns = { path = "../everruns", version = "0.17.26", default-features = false, features = ["filesystem"] }
+everruns-test-support = { workspace = true, default-features = false, features = ["sim"] }

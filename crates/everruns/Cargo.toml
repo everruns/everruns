@@ -103,6 +103,7 @@ everruns-local = { workspace = true, optional = true }
 # everruns-core/everruns-host, which track the workspace version exactly).
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
+thiserror.workspace = true
 uuid.workspace = true
 base64.workspace = true
 serde_json.workspace = true

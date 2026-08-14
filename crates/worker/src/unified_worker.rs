@@ -32,7 +32,6 @@ use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::durable_runner::DurableTurnInput;
 use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::summarize_task_failure;
@@ -41,6 +40,7 @@ use crate::{
     activities::ScheduledAgentTriggerInput, activities::ScheduledAppChannelInput,
     activities::activity_types,
 };
+use everruns_scale::DurableTurnInput;
 
 // Re-export atom types
 pub use everruns_engine::{InputAtomInput, ReasonInput, ReasonResult};
