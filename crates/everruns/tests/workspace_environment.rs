@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use everruns::core::session_files::SessionFileSystem;
 use everruns::{
-    Agent, Environment, LlmSimConfig, LocalConfig, LocalGitWorkspaceProvider, Model,
-    SessionEnvironmentError, ToolCall, Workspace, WorkspaceHeadId, WorkspacePolicy,
+    Agent, Engine, Environment, InMemoryEngine, LlmSimConfig, LocalConfig,
+    LocalGitWorkspaceProvider, Model, SessionEnvironmentError, ToolCall, Workspace,
+    WorkspaceHeadId, WorkspacePolicy,
 };
 use serde_json::json;
 
@@ -54,17 +55,20 @@ fn agent(config: LocalConfig) -> Agent {
 
 #[tokio::test]
 async fn ordinary_sessions_select_a_permanent_head_before_execution() {
+    let engine = InMemoryEngine::new();
     let agent = Agent::builder()
         .instructions("Be concise.")
         .model(Model::simulated("ok"))
         .build()
         .unwrap();
-    let session = agent.session();
+    let session = engine.create(agent.clone());
     session.start().await.unwrap();
     let head_id = session.workspace_head().unwrap().id();
     let session_id = session.session_id();
 
-    let resumed = agent.resume(session_id).await.unwrap();
+    drop(session);
+    drop(agent);
+    let resumed = engine.resume(session_id).await.unwrap();
     assert_eq!(resumed.workspace_head().unwrap().id(), head_id);
 }
 

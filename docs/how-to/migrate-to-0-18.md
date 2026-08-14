@@ -5,6 +5,26 @@ description: Move Rust code off `everruns-core` paths that changed in 0.18, with
 
 0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged — only the import paths.
 
+## Retain an Engine for sessions
+
+The Framework now exposes its application execution SPI explicitly. Existing
+`agent.session()` and `agent.resume(id)` calls remain available, but new code
+should retain the engine that owns resume authority:
+
+```diff
+- let session = agent.session();
++ use everruns::{Engine, InMemoryEngine};
++ let engine = InMemoryEngine::new();
++ let session = engine.create(agent);
+  let id = session.session_id();
+- let resumed = agent.resume(id).await?;
++ let resumed = engine.resume(id).await?;
+```
+
+`InMemoryEngine` resume is deliberately process-local and engine-scoped. It
+retains the immutable Agent snapshot and exact Environment/WorkspaceHead; it
+does not serialize a Scale-compatible Agent definition.
+
 This affects you if your Rust code imports from `everruns_core` directly. If you use the `everruns` facade, most of this is invisible: the facade re-exports what applications need, and where a moved type is part of that surface it is re-exported from its new home under the same name.
 
 ## The quickest path

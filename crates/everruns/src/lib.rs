@@ -22,14 +22,15 @@
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::{Agent, Model};
+//! use everruns::{Agent, Engine, InMemoryEngine, Model};
 //!
 //! let agent = Agent::builder()
 //!     .instructions("You are a helpful assistant.")
 //!     .model(Model::simulated("4"))
 //!     .build()
 //!     .expect("valid agent");
-//! let result = agent.session().send_and_wait("What is 2 + 2?").await?;
+//! let engine = InMemoryEngine::new();
+//! let result = engine.create(agent).send_and_wait("What is 2 + 2?").await?;
 //! assert!(result.success);
 //! assert_eq!(result.response, "4");
 //! # Ok(())
@@ -47,6 +48,7 @@ pub mod capability;
 mod capability_config;
 mod context;
 mod default_workspace;
+mod engine;
 mod events;
 mod history;
 mod hooks;
@@ -59,6 +61,7 @@ pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
+pub use engine::{Engine, InMemoryEngine, SessionExecution};
 pub use events::{
     CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
     SessionEvent, SessionEventKind,
@@ -203,16 +206,17 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CapabilityRef, CapabilitySpec, CompletionContext, Environment, EventStream,
+        CapabilityRef, CapabilitySpec, CompletionContext, Engine, Environment, EventStream,
         EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError,
-        HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile,
-        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
-        PluginError, ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session,
-        SessionContext, SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId,
-        SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn,
-        TurnHandle, TurnStartContext, Workspace, WorkspaceDiff, WorkspaceError, WorkspaceHead,
-        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
-        WorkspacePolicyError, WorkspaceProvider, WorkspaceProviderId,
+        HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InMemoryEngine,
+        InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig,
+        McpServer, Model, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
+        SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
+        SessionEventKind, SessionExecution, SessionId, SessionMessage, Tool, ToolEndContext,
+        ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
+        WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId,
+        WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+        WorkspaceProvider, WorkspaceProviderId,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{CompactionConfig, CompactionStrategy, ToolSearch};
