@@ -292,7 +292,7 @@ pub struct DirectWorkerAdapters {
         Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>>,
     /// Platform vector store for Knowledge Index retrieval (`search_index`).
     vector_store: Option<Arc<dyn everruns_platform::vector_store::VectorStore>>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_scale::RunController>>,
     encryption: Option<Arc<EncryptionService>>,
     in_memory_compaction_checkpoint_store: Arc<everruns_host::InMemoryCompactionCheckpointStore>,
     proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
@@ -477,7 +477,7 @@ impl DirectWorkerAdapters {
     }
 
     /// Set the agent runner for platform management tools (send_message, etc.)
-    pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
+    pub fn with_runner(mut self, runner: Arc<dyn everruns_scale::RunController>) -> Self {
         self.runner = Some(runner);
         self
     }
@@ -2318,7 +2318,7 @@ fn event_to_message(event: Event) -> Option<Message> {
 struct DirectSessionTaskWaker {
     db: Arc<crate::storage::StorageBackend>,
     event_service: Arc<crate::services::EventService>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_scale::RunController>>,
 }
 
 #[async_trait::async_trait]
@@ -2654,11 +2654,11 @@ mod task_webhook_request_tests {
 // DirectPlatformStore - PlatformStore implementation for in-process worker
 // =============================================================================
 
-/// Direct PlatformStore backed by StorageBackend + EventService + AgentRunner.
+/// Direct PlatformStore backed by StorageBackend + EventService + Scale run control.
 // THREAT[TM-AGENT-017]: All ops org-scoped via org_id field
 struct DirectPlatformStoreDeps {
     event_service: Arc<EventService>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_scale::RunController>>,
     capability_registry: CapabilityRegistry,
     connector_registry: everruns_platform::connector::ConnectorRegistry,
     encryption: Option<Arc<EncryptionService>>,
@@ -2671,7 +2671,7 @@ pub struct DirectPlatformStore {
     org_id: i64,
     session_id: SessionId,
     db: Arc<StorageBackend>,
-    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    runner: Option<Arc<dyn everruns_scale::RunController>>,
     capability_service: Arc<crate::services::CapabilityService>,
     session_service: Arc<SessionService>,
     message_service: Option<Arc<MessageService>>,

@@ -61,7 +61,7 @@ pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
-pub use engine::{Engine, InMemoryEngine, SessionExecution};
+pub use engine::{Engine, EngineCreateError, InMemoryEngine, SessionExecution};
 pub use events::{
     CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
     SessionEvent, SessionEventKind,

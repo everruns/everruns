@@ -184,6 +184,7 @@ export default defineConfig({
                     { label: "Canonical Events", slug: "framework/canonical-events" },
                     { label: "Lifecycle Hooks", slug: "framework/lifecycle-hooks" },
                     { label: "Persistence", slug: "framework/persistence" },
+                    { label: "Scalable Engines", slug: "framework/scalable-engines" },
                   ],
                 },
                 {

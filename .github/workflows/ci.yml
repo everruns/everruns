@@ -213,6 +213,7 @@ jobs:
             postgres_integration:
               - 'crates/server/**'
               - 'crates/durable/**'
+              - 'crates/scale/**'
               - 'crates/core/**'
               - 'crates/config/**'
               - 'crates/session-sqldb/**'
@@ -490,6 +491,21 @@ jobs:
 
       - name: Check provider isolation
         run: bash scripts/lib/check-provider-isolation.sh
+
+  # Option-1 Engine guard: Scale is the portable distributed implementation,
+  # durable stays product-neutral, and server/worker consume Scale without a
+  # second AgentRunner strategy.
+  scale-engine-boundary:
+    name: Scale Engine Boundary Guard
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check Scale Engine boundary
+        run: bash scripts/lib/check-scale-engine-boundary.sh
 
   # Architecture guard (EVE-903): core defaults are empty and its shipped
   # dependency tree excludes concrete TLS, HTTP, process, database,
@@ -1004,6 +1020,9 @@ jobs:
 
       - name: Run durable integration tests
         run: cargo test -p everruns-durable --test postgres_integration_test --test postgres_repository_test --features postgres-tests -- --test-threads=1
+
+      - name: Run Scale blank-database restart conformance
+        run: cargo test -p everruns-scale --features postgres-tests --test postgres_restart -- --test-threads=1
 
       # `agent_reliability_test` was audited for EVE-349 but still fails on a
       # clean PostgreSQL-backed run; keep it out of required CI until its

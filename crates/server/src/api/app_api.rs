@@ -59,7 +59,7 @@ impl AppApiState {
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        runner: Arc<dyn everruns_worker::AgentRunner>,
+        runner: Arc<dyn everruns_scale::RunController>,
         notifications_enabled: bool,
         event_delivery: EventDelivery,
         rate_limiter: ChannelRateLimiter,

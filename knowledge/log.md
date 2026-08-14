@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-14
+
+* **Scalable Engine boundary**: Added public `everruns-scale` as the
+  reference-only PostgreSQL Engine, moved neutral durable turn control out of
+  worker, adopted it in server/worker, made `everruns-durable` publishable and
+  product-neutral, and established canonical-event, Environment-binding,
+  migration, portability, and external-consumer guards.
+
 ## 2026-08-13
 
 * **EVE-897 closed at two families: the `ToolContext` service bag mostly cannot

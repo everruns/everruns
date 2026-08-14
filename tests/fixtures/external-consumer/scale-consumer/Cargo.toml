@@ -1,0 +1,9 @@
+[package]
+name = "external-scale-consumer"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+everruns = { path = "../../../../crates/everruns", default-features = false }
+everruns-scale = { path = "../../../../crates/scale" }

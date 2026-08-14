@@ -407,7 +407,7 @@ pub struct Ctx {
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    pub runner: Option<Arc<dyn everruns_scale::RunController>>,
     pub fallback_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
@@ -654,7 +654,7 @@ impl Ctx {
         self
     }
 
-    pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
+    pub fn with_runner(mut self, runner: Arc<dyn everruns_scale::RunController>) -> Self {
         self.runner = Some(runner);
         self
     }

@@ -56,7 +56,7 @@ use everruns_durable::WorkflowEventStore;
 use everruns_host::HostComposition;
 use everruns_platform::session_sqldb::SessionSqlDbStore;
 use everruns_platform::validate_org_public_id;
-use everruns_worker::AgentRunner;
+use everruns_scale::RunController;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -308,7 +308,7 @@ pub struct AppState {
     pub connector_registry: everruns_platform::connector::ConnectorRegistry,
     pub budget_service: Arc<BudgetService>,
     pub reporting_service: Arc<ReportingService>,
-    pub runner: Arc<dyn AgentRunner>,
+    pub runner: Arc<dyn RunController>,
     pub auth: AuthState,
     pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -341,7 +341,7 @@ impl AppState {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn RunController>,
         auth: AuthState,
         host_composition: &HostComposition,
         built_in_harnesses: &[everruns_platform::BuiltInHarnessDefinition],

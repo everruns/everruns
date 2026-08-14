@@ -8,6 +8,43 @@ use async_trait::async_trait;
 
 use crate::{Agent, ResumeError, Session, SessionId};
 
+/// Why an engine rejected an agent before it created any session state.
+///
+/// Distributed engines use this typed boundary to fail closed when a facade
+/// [`Agent`] contains process-local code. The component and registration path
+/// fields are intentionally stable so applications can present actionable
+/// migration errors without parsing display text.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
+pub enum EngineCreateError {
+    /// This engine accepts a different, explicitly portable submission type.
+    #[error("{engine} rejected non-portable {component}; submit through {registration_path}")]
+    PortableAgentRequired {
+        /// Engine implementation that rejected the value.
+        engine: &'static str,
+        /// Component that cannot cross the persistence boundary.
+        component: &'static str,
+        /// Accepted registration/submission path.
+        registration_path: &'static str,
+    },
+    /// One component was not represented by a stable registry reference.
+    #[error("non-portable {component} at registration path {registration_path}: {reason}")]
+    NonPortableComponent {
+        /// Human-readable component kind and identity.
+        component: String,
+        /// Builder or registry path that must be made portable.
+        registration_path: String,
+        /// Concise rejection reason.
+        reason: String,
+    },
+    /// The engine could not create its session state.
+    #[error("engine session persistence is unavailable: {message}")]
+    Unavailable {
+        /// Backend-safe failure summary.
+        message: String,
+    },
+}
+
 /// Object-safe binding between a public [`Session`] and its owning engine.
 ///
 /// The binding deliberately exposes only Framework identity. Backend, store,
@@ -27,7 +64,20 @@ pub trait SessionExecution: Send + Sync + fmt::Debug {
 /// Application-facing service-provider interface for session execution.
 #[async_trait]
 pub trait Engine: Send + Sync {
+    /// Validate and create a new engine-owned session.
+    ///
+    /// The default keeps existing process-local engines source compatible.
+    /// Scale implementations override this method to reject local code before
+    /// any session or workflow is submitted.
+    fn try_create(&self, agent: Agent) -> Result<Session, EngineCreateError> {
+        Ok(self.create(agent))
+    }
+
     /// Create a new engine-owned session from an immutable Agent snapshot.
+    ///
+    /// Prefer [`Engine::try_create`] when the selected engine may impose a
+    /// portability boundary. This convenience method remains infallible for
+    /// embedded engines.
     fn create(&self, agent: Agent) -> Session;
 
     /// Reopen a session already owned by this engine.
@@ -73,6 +123,21 @@ impl InMemoryEngine {
     /// Construct an empty process-local engine.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Reattach a known session identity to an immutable agent snapshot.
+    ///
+    /// This is a host-integration seam for engines that persist their own
+    /// catalog and reconstruct the process-local runtime after restart. It
+    /// does not restore events or environment bindings by itself; those remain
+    /// the responsibility of the Agent's configured backends.
+    #[doc(hidden)]
+    pub fn restore(&self, session_id: SessionId, agent: Agent) -> Session {
+        agent.remember_session(session_id);
+        self.attach(session_id, agent);
+        let session = Session::new(self.binding(session_id), None);
+        self.remember_state(session_id, &session);
+        session
     }
 
     pub(crate) fn agent(&self, session_id: SessionId) -> Option<Agent> {

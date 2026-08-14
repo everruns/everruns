@@ -322,10 +322,14 @@ struct AgentState {
 }
 
 impl AgentState {
-    fn new(workspace_providers: HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>) -> Self {
+    fn new(
+        workspace_providers: HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>,
+        backends: Option<HostBackends>,
+        binding_store: Option<Arc<dyn EnvironmentBindingStore>>,
+    ) -> Self {
         Self {
-            backends: OnceCell::new(),
-            binding_store: OnceCell::new(),
+            backends: OnceCell::new_with(backends),
+            binding_store: OnceCell::new_with(binding_store),
             workspace_providers: Mutex::new(workspace_providers),
             issued_sessions: Mutex::new(HashSet::new()),
             compatibility_engine: std::sync::OnceLock::new(),
@@ -926,6 +930,8 @@ pub struct AgentBuilder {
     #[cfg(feature = "local")]
     local: Option<crate::LocalConfig>,
     lifecycle_hooks: crate::hooks::LifecycleHooks,
+    execution_backends: Option<HostBackends>,
+    environment_binding_store: Option<Arc<dyn EnvironmentBindingStore>>,
 }
 
 impl AgentBuilder {
@@ -1184,6 +1190,22 @@ impl AgentBuilder {
         self
     }
 
+    /// Supply the coherent host storage used by an Engine implementation.
+    ///
+    /// This is an Engine integration seam, not a portable Agent value. Normal
+    /// applications should select an [`Engine`](crate::Engine) instead of
+    /// calling it directly.
+    #[doc(hidden)]
+    pub fn execution_backends(
+        mut self,
+        backends: HostBackends,
+        environment_binding_store: Arc<dyn EnvironmentBindingStore>,
+    ) -> Self {
+        self.execution_backends = Some(backends);
+        self.environment_binding_store = Some(environment_binding_store);
+        self
+    }
+
     /// Add a scoped MCP server to this agent.
     pub fn mcp_server(mut self, server: crate::McpServer) -> Self {
         self.mcp_servers.push(server);
@@ -1255,7 +1277,7 @@ impl AgentBuilder {
                 return Err(BuildError::DuplicateWorkspaceProvider { id: id.to_string() });
             }
         }
-        let default_workspace_root = self.workspace_root.clone().or_else(|| {
+        let default_workspace_root = self.workspace_root.clone().or({
             #[cfg(feature = "local")]
             {
                 self.local
@@ -1468,7 +1490,11 @@ impl AgentBuilder {
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
-            state: Arc::new(AgentState::new(workspace_providers)),
+            state: Arc::new(AgentState::new(
+                workspace_providers,
+                self.execution_backends,
+                self.environment_binding_store,
+            )),
         })
     }
 }
@@ -1508,6 +1534,8 @@ fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::Re
 }
 
 fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
+    #[cfg(not(feature = "builtins"))]
+    let _ = hosted_base;
     let registry = everruns_core::CapabilityRegistry::new();
     #[cfg(feature = "builtins")]
     let registry = {

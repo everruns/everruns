@@ -116,6 +116,8 @@ for earlier, later in (
     ("everruns-platform", "everruns-host"),
     ("everruns-host", "everruns"),
     ("everruns-macros", "everruns"),
+    ("everruns-durable", "everruns-scale"),
+    ("everruns", "everruns-scale"),
 ):
     if earlier not in order:
         fail(f"publish-crates.yml does not publish {earlier}")
@@ -135,6 +137,8 @@ for manifest_rel, dependency in (
     ("crates/host/Cargo.toml", "everruns-platform"),
     ("crates/everruns/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
+    ("crates/scale/Cargo.toml", "everruns"),
+    ("crates/scale/Cargo.toml", "everruns-durable"),
 ):
     entry = re.search(
         rf'"{re.escape(manifest_rel)}":\s*\[(.*?)\]', workflow_text, re.DOTALL

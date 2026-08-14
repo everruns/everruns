@@ -20,7 +20,7 @@ use everruns_core::events::{
     EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
 };
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use everruns_worker::AgentRunner;
+use everruns_scale::RunController;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -30,7 +30,7 @@ pub struct MessageService {
     event_service: EventService,
     notification_service: NotificationService,
     notifications_enabled: bool,
-    runner: Arc<dyn AgentRunner>,
+    runner: Arc<dyn RunController>,
     caps: OrgCaps,
 }
 
@@ -48,7 +48,7 @@ pub struct CreateMessageContext {
 impl MessageService {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn AgentRunner>,
+        runner: Arc<dyn RunController>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
     ) -> Self {
@@ -266,7 +266,7 @@ impl MessageService {
     /// Access the registered durable runner. Used by sibling callers that
     /// need to cancel an in-flight workflow without going through the
     /// session command surface.
-    pub fn runner(&self) -> &Arc<dyn AgentRunner> {
+    pub fn runner(&self) -> &Arc<dyn RunController> {
         &self.runner
     }
 
@@ -464,7 +464,7 @@ mod tests {
     struct NoopRunner;
 
     #[async_trait]
-    impl AgentRunner for NoopRunner {
+    impl RunController for NoopRunner {
         async fn start_run(
             &self,
             _org_id: i64,
@@ -535,7 +535,7 @@ mod tests {
     #[tokio::test]
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::in_memory());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn RunController> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -584,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
         let db = Arc::new(StorageBackend::in_memory());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn RunController> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
@@ -648,7 +648,7 @@ mod tests {
     #[tokio::test]
     async fn active_turn_cap_reserves_started_session_before_persisting() {
         let db = Arc::new(StorageBackend::in_memory());
-        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let runner: Arc<dyn RunController> = Arc::new(NoopRunner);
         let delivery = crate::event_delivery::EventDelivery::in_memory();
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {

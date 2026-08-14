@@ -50,6 +50,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
 - [Canonical events](/framework/canonical-events/) — render or record the lossless event protocol.
 - [Persistence](/framework/persistence/) — Agent-lifetime memory and crash-durable local state.
+- [Scalable engines](/framework/scalable-engines/) — run reference-only agents on PostgreSQL-backed workers.
 
 ## Extend and operate
 

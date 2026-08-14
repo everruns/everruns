@@ -14,7 +14,7 @@ echo "🔒 Running pre-push checks..."
 echo ""
 
 # 1. Rust formatting
-echo "1/22 Rust formatting"
+echo "1/23 Rust formatting"
 if cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
@@ -22,7 +22,7 @@ else
 fi
 
 # 2. Clippy
-echo "2/22 Rust linting"
+echo "2/23 Rust linting"
 if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
@@ -30,7 +30,7 @@ else
 fi
 
 # 3. Cargo.lock freshness
-echo "3/22 Cargo.lock freshness"
+echo "3/23 Cargo.lock freshness"
 if cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
@@ -38,7 +38,7 @@ else
 fi
 
 # 4. UI formatting (skip if node_modules missing)
-echo "4/22 UI formatting"
+echo "4/23 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
@@ -50,7 +50,7 @@ else
 fi
 
 # 5. UI linting (skip if node_modules missing)
-echo "5/22 UI linting"
+echo "5/23 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
@@ -62,7 +62,7 @@ else
 fi
 
 # 6. Migration ordering check
-echo "6/22 Migration ordering"
+echo "6/23 Migration ordering"
 if MIGRATION_ORDERING_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
 )"; then
@@ -73,7 +73,7 @@ else
 fi
 
 # 7. Migration immutability check
-echo "7/22 Migration immutability"
+echo "7/23 Migration immutability"
 if MIGRATION_IMMUTABILITY_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-migration-immutability.sh" 2>&1
 )"; then
@@ -84,7 +84,7 @@ else
 fi
 
 # 8. Server integration test enumeration
-echo "8/22 Server test enumeration"
+echo "8/23 Server test enumeration"
 if SERVER_TEST_ENUM_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-server-test-enumeration.sh" 2>&1
 )"; then
@@ -95,7 +95,7 @@ else
 fi
 
 # 9. Public everruns example inventory and compile check
-echo "9/22 Public everruns examples"
+echo "9/23 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
@@ -106,7 +106,7 @@ else
 fi
 
 # 10. Knowledge bundle conformance
-echo "10/22 Knowledge bundle conformance"
+echo "10/23 Knowledge bundle conformance"
 if KNOWLEDGE_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
@@ -117,7 +117,7 @@ else
 fi
 
 # 11. Published crate documentation contract
-echo "11/22 Published crate documentation"
+echo "11/23 Published crate documentation"
 if PUBLISHED_DOCS_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/test-published-crate-docs.sh" 2>&1
 )"; then
@@ -128,7 +128,7 @@ else
 fi
 
 # 12. Capability contract architecture guard (EVE-873)
-echo "12/22 Capability contract guard"
+echo "12/23 Capability contract guard"
 if CAPABILITY_CONTRACT_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-capability-contract.sh" 2>&1
 )"; then
@@ -139,7 +139,7 @@ else
 fi
 
 # 13. Test-support isolation guard (EVE-875)
-echo "13/22 Test-support isolation guard"
+echo "13/23 Test-support isolation guard"
 if TEST_SUPPORT_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-test-support-isolation.sh" 2>&1
 )"; then
@@ -150,7 +150,7 @@ else
 fi
 
 # 14. Observability isolation guard (EVE-876)
-echo "14/22 Observability isolation guard"
+echo "14/23 Observability isolation guard"
 if OBSERVABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-observability-isolation.sh" 2>&1
 )"; then
@@ -163,7 +163,7 @@ fi
 # 15. Agent-record isolation guard (EVE-877, EVE-881, EVE-882, EVE-878,
 #     EVE-879: Agent, Harness, Session, eval/observer/feature-management
 #     records, and connector/OAuth/email infrastructure)
-echo "15/22 Agent-record isolation guard"
+echo "15/23 Agent-record isolation guard"
 if AGENT_RECORD_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-agent-record-isolation.sh" 2>&1
 )"; then
@@ -174,7 +174,7 @@ else
 fi
 
 # 16. Provider isolation guard (EVE-874)
-echo "16/22 Provider isolation guard"
+echo "16/23 Provider isolation guard"
 if PROVIDER_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-provider-isolation.sh" 2>&1
 )"; then
@@ -185,7 +185,7 @@ else
 fi
 
 # 17. Core kernel dependency guard (EVE-903)
-echo "17/22 Core kernel dependency guard"
+echo "17/23 Core kernel dependency guard"
 if CORE_KERNEL_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-core-kernel-dependencies.sh" 2>&1
 )"; then
@@ -196,7 +196,7 @@ else
 fi
 
 # 18. Core public API/semver and documentation guard (EVE-906)
-echo "18/22 Core public API guard"
+echo "18/23 Core public API guard"
 if CORE_PUBLIC_API_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-core-public-api.sh" 2>&1
 )"; then
@@ -207,7 +207,7 @@ else
 fi
 
 # 19. Effectful environment capability isolation guard (EVE-883)
-echo "19/22 Environment capability isolation guard"
+echo "19/23 Environment capability isolation guard"
 if ENVIRONMENT_CAPABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-environment-capability-isolation.sh" 2>&1
 )"; then
@@ -218,7 +218,7 @@ else
 fi
 
 # 20. Hosted-capability isolation guard (EVE-885)
-echo "20/22 Hosted-capability isolation guard"
+echo "20/23 Hosted-capability isolation guard"
 if HOSTED_CAPABILITY_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-hosted-capability-isolation.sh" 2>&1
 )"; then
@@ -229,7 +229,7 @@ else
 fi
 
 # 21. Portable policy built-ins isolation guard (EVE-884)
-echo "21/22 Portable built-ins isolation guard"
+echo "21/23 Portable built-ins isolation guard"
 if PORTABLE_BUILTINS_ISOLATION_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-portable-builtins-isolation.sh" 2>&1
 )"; then
@@ -239,8 +239,19 @@ else
   fail "portable built-ins isolation guard failed"
 fi
 
-# 22. Commit author attribution check
-echo "22/22 Commit author attribution"
+# 22. Scale Engine architecture boundary
+echo "22/23 Scale Engine boundary guard"
+if SCALE_ENGINE_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-scale-engine-boundary.sh" 2>&1
+)"; then
+  pass "$SCALE_ENGINE_OUTPUT"
+else
+  printf '%s\n' "$SCALE_ENGINE_OUTPUT" | sed 's/^/   /'
+  fail "Scale Engine boundary guard failed"
+fi
+
+# 23. Commit author attribution check
+echo "23/23 Commit author attribution"
 if ! resolve_commit_git_identity; then
   fail "commit identity invalid — fix git config or set GIT_USER_NAME/GIT_USER_EMAIL to a real user"
 elif OFFENDING_COMMIT="$(find_agent_like_outgoing_commit)"; then
