@@ -11,7 +11,7 @@
 //! clones, and can resume typed session identities while that lifecycle remains
 //! available.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -19,8 +19,10 @@ use std::sync::{Arc, Mutex};
 
 use everruns_core::InitialFile;
 use everruns_host::{
-    AgentBuilder as RuntimeAgentBuilder, EventLogError, EventSink, HarnessBuilder, HostBackends,
-    InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
+    AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
+    EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
+    InMemoryEnvironmentBindingStore, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
+    WorkspaceProvider, WorkspaceProviderId,
 };
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
@@ -204,6 +206,8 @@ pub enum BuildError {
     MultipleProviders { registered: Vec<String> },
     /// MCP server configuration was invalid or duplicated.
     InvalidMcpServer { reason: String },
+    /// Two workspace providers registered the same stable SPI id.
+    DuplicateWorkspaceProvider { id: String },
 }
 
 impl fmt::Display for BuildError {
@@ -237,6 +241,9 @@ impl fmt::Display for BuildError {
             BuildError::InvalidMcpServer { reason } => {
                 write!(f, "invalid MCP server configuration: {reason}")
             }
+            BuildError::DuplicateWorkspaceProvider { id } => {
+                write!(f, "duplicate workspace provider id {id:?}")
+            }
         }
     }
 }
@@ -261,6 +268,7 @@ pub struct Agent {
     max_iterations: Option<usize>,
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
+    default_workspace: crate::default_workspace::DefaultWorkspace,
     workspace_policy: everruns_core::WorkspacePolicy,
     mcp_servers: everruns_core::ScopedMcpServers,
     plugin_warnings: Vec<String>,
@@ -307,13 +315,17 @@ impl fmt::Debug for CapabilityImplementation {
 
 struct AgentState {
     backends: OnceCell<HostBackends>,
+    binding_store: OnceCell<Arc<dyn EnvironmentBindingStore>>,
+    workspace_providers: Mutex<HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>>,
     issued_sessions: Mutex<HashSet<SessionId>>,
 }
 
 impl AgentState {
-    fn new() -> Self {
+    fn new(workspace_providers: HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>) -> Self {
         Self {
             backends: OnceCell::new(),
+            binding_store: OnceCell::new(),
+            workspace_providers: Mutex::new(workspace_providers),
             issued_sessions: Mutex::new(HashSet::new()),
         }
     }
@@ -331,6 +343,29 @@ impl AgentState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .contains(&session_id)
     }
+
+    fn remember_provider(&self, provider: Arc<dyn WorkspaceProvider>) -> bool {
+        let mut providers = self
+            .workspace_providers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let id = provider.id();
+        match providers.get(&id) {
+            Some(existing) => Arc::ptr_eq(existing, &provider),
+            None => {
+                providers.insert(id, provider);
+                true
+            }
+        }
+    }
+
+    fn provider(&self, id: &WorkspaceProviderId) -> Option<Arc<dyn WorkspaceProvider>> {
+        self.workspace_providers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(id)
+            .cloned()
+    }
 }
 
 impl fmt::Debug for AgentState {
@@ -342,6 +377,10 @@ impl fmt::Debug for AgentState {
             .len();
         f.debug_struct("AgentState")
             .field("backends_initialized", &self.backends.initialized())
+            .field(
+                "binding_store_initialized",
+                &self.binding_store.initialized(),
+            )
             .field("issued_sessions", &issued_sessions)
             .finish()
     }
@@ -432,14 +471,16 @@ impl Agent {
     ///
     /// The session is lazy: the in-process runtime is assembled on the first
     /// [`Session::send`](crate::Session::send) or
-    /// [`Session::inspect`](crate::Session::inspect). Each session gets a fresh
-    /// id and isolated history. The Agent and its clones share the private
+    /// [`Session::inspect`](crate::Session::inspect). Before assembling that
+    /// runtime it selects and persists the Agent's default workspace head.
+    /// Each session gets a fresh id and isolated history. The Agent and its
+    /// clones share the private
     /// session catalog and event log so a dropped session can be resumed while
     /// the Agent's configured persistence lifecycle remains available.
     pub fn session(&self) -> crate::Session {
         let session_id = SessionId::new();
         self.state.remember(session_id);
-        crate::Session::new(self.clone(), session_id)
+        crate::Session::new(self.clone(), session_id, None)
     }
 
     /// Resume a session through this Agent's configured session catalog.
@@ -447,13 +488,16 @@ impl Agent {
     /// The default catalog is Agent-lifetime memory and is shared by Agent
     /// clones. With [`LocalConfig`](crate::LocalConfig), the catalog and
     /// canonical event log survive a new Agent and process. The resumed session
-    /// uses this Agent's current model, instructions, tools, hooks, and
-    /// workspace configuration.
+    /// uses this Agent's current model, instructions, tools, and hooks. A
+    /// session that was explicitly bound to an Environment reopens its exact
+    /// recorded workspace head through the registered provider; the Agent's
+    /// default workspace is never substituted for that head.
     ///
     /// # Errors
     ///
     /// Returns [`ResumeError`](crate::ResumeError) when the id is unknown, the
-    /// configured catalog is unavailable, or persisted local state is corrupt.
+    /// configured catalog is unavailable, persisted local state is corrupt, or
+    /// an exact recorded workspace head cannot be reopened.
     pub async fn resume(
         &self,
         session_id: SessionId,
@@ -474,7 +518,96 @@ impl Agent {
             }
             self.state.remember(session_id);
         }
-        Ok(crate::Session::new(self.clone(), session_id))
+        let environment = self.reopen_session_environment(session_id).await?;
+        Ok(crate::Session::new(self.clone(), session_id, environment))
+    }
+
+    pub(crate) async fn bind_session_environment(
+        &self,
+        session_id: SessionId,
+        environment: &Environment,
+    ) -> Result<(), crate::SessionEnvironmentError> {
+        let head = environment.workspace_head();
+        if !self.state.remember_provider(head.provider()) {
+            return Err(crate::SessionEnvironmentError::ProviderConflict);
+        }
+        self.environment_binding_store()
+            .await
+            .map_err(|_| crate::SessionEnvironmentError::Unavailable)?
+            .bind(session_id, head.binding())
+            .await
+            .map_err(crate::SessionEnvironmentError::from)?;
+        Ok(())
+    }
+
+    pub(crate) async fn bind_default_session_environment(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Environment, crate::SessionEnvironmentError> {
+        let environment = self
+            .default_workspace
+            .environment(session_id)
+            .await
+            .map_err(crate::SessionEnvironmentError::Workspace)?;
+        self.bind_session_environment(session_id, &environment)
+            .await?;
+        Ok(environment)
+    }
+
+    async fn reopen_session_environment(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Option<Environment>, crate::ResumeError> {
+        let Some(binding) = self
+            .environment_binding_store()
+            .await
+            .map_err(|_| crate::ResumeError::Unavailable)?
+            .load(session_id)
+            .await
+            .map_err(|error| match error {
+                EnvironmentBindingError::Corrupt => crate::ResumeError::WorkspaceBindingCorrupt,
+                EnvironmentBindingError::Conflict | EnvironmentBindingError::Unavailable => {
+                    crate::ResumeError::Unavailable
+                }
+                _ => crate::ResumeError::Unavailable,
+            })?
+        else {
+            return Ok(None);
+        };
+        let provider = self.state.provider(&binding.provider_id).ok_or_else(|| {
+            crate::ResumeError::WorkspaceProviderUnavailable {
+                provider_id: binding.provider_id.to_string(),
+            }
+        })?;
+        let descriptor = provider
+            .open_workspace_from_binding(&binding)
+            .await
+            .map_err(map_workspace_resume_error)?;
+        let workspace = everruns_host::Workspace::from_descriptor(provider, descriptor);
+        let head = workspace
+            .reopen(&binding)
+            .await
+            .map_err(map_workspace_resume_error)?;
+        Ok(Some(
+            Environment::builder()
+                .workspace(head)
+                .build()
+                .map_err(map_workspace_resume_error)?,
+        ))
+    }
+
+    async fn environment_binding_store(
+        &self,
+    ) -> Result<&Arc<dyn EnvironmentBindingStore>, BackendInitError> {
+        let _ = self.shared_backends().await?;
+        Ok(self
+            .state
+            .binding_store
+            .get_or_init(|| async {
+                Arc::new(InMemoryEnvironmentBindingStore::default())
+                    as Arc<dyn EnvironmentBindingStore>
+            })
+            .await)
     }
 
     pub(crate) fn name(&self) -> &str {
@@ -512,10 +645,23 @@ impl Agent {
                         everruns_local::LocalSessionStore::new(local.db.clone())
                             .map_err(BackendInitError::Host)?,
                     );
+                    let _ = self
+                        .state
+                        .binding_store
+                        .set(session_store.clone() as Arc<dyn EnvironmentBindingStore>);
                     local.runtime_backends.with_session_store(session_store)
                 } else {
+                    let _ = self
+                        .state
+                        .binding_store
+                        .set(Arc::new(InMemoryEnvironmentBindingStore::default()));
                     backends
                 };
+                #[cfg(not(feature = "local"))]
+                let _ = self
+                    .state
+                    .binding_store
+                    .set(Arc::new(InMemoryEnvironmentBindingStore::default()));
                 Ok(backends)
             })
             .await
@@ -565,11 +711,17 @@ impl Agent {
     pub(crate) async fn build_runtime_with_event_sink(
         &self,
         session_id: SessionId,
+        environment: Option<Environment>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
     ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
-        self.build_runtime_with_backends(session_id, Some(event_sink), Some(hook_state))
-            .await
+        self.build_runtime_with_backends(
+            session_id,
+            environment,
+            Some(event_sink),
+            Some(hook_state),
+        )
+        .await
     }
 
     pub(crate) fn plugin_warnings(&self) -> Vec<String> {
@@ -579,6 +731,7 @@ impl Agent {
     async fn build_runtime_with_backends(
         &self,
         session_id: SessionId,
+        environment: Option<Environment>,
         event_sink: Option<Arc<dyn EventSink>>,
         hook_state: Option<Arc<crate::hooks::HookRunState>>,
     ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
@@ -621,6 +774,9 @@ impl Agent {
             .agent(agent_id)
             .capabilities(capabilities)
             .mcp_servers(self.mcp_servers.clone());
+        if let Some(environment) = &environment {
+            session = session.workspace(environment.workspace_head().workspace_id());
+        }
         if let Some(parallel) = self.parallel_tool_calls {
             session = session.parallel_tool_calls(parallel);
         }
@@ -656,7 +812,31 @@ impl Agent {
                 None
             }
         });
-        if let Some(root) = workspace_root {
+        if let Some(environment) = environment {
+            let registry = {
+                #[cfg(feature = "local")]
+                if self.local.is_some() {
+                    everruns_local::local_capability_registry()
+                } else {
+                    framework_capability_registry(false)
+                }
+                #[cfg(not(feature = "local"))]
+                {
+                    framework_capability_registry(false)
+                }
+            };
+            let platform = everruns_host::HostComposition::builder()
+                .capability_registry(registry)
+                .driver_registry(everruns_provider::driver_registry::DriverRegistry::new())
+                .egress_service(everruns_host::runtime_egress_service())
+                .session_file_system_factory(Arc::new(
+                    everruns_host::FixedSessionFileSystemFactory::new(
+                        environment.workspace_head().file_system(),
+                    ),
+                ))
+                .build();
+            builder = builder.host_composition(platform);
+        } else if let Some(root) = workspace_root {
             // THREAT[TM-BASH-001] / THREAT[TM-FS-013]: reuse the canonical
             // real-disk factory so every operation retains containment and
             // symlink rejection; the facade does not implement a second path
@@ -714,7 +894,7 @@ impl Agent {
 /// sessions—and parallel tool calls—may invoke them concurrently. Returned
 /// errors follow each lifecycle method's contract; handler panics are not
 /// caught.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
 pub struct AgentBuilder {
     name: Option<String>,
     instructions: Option<String>,
@@ -727,6 +907,7 @@ pub struct AgentBuilder {
     parallel_tool_calls: Option<bool>,
     workspace_root: Option<PathBuf>,
     workspace_policy: everruns_core::WorkspacePolicy,
+    workspace_providers: Vec<Arc<dyn WorkspaceProvider>>,
     mcp_servers: Vec<crate::McpServer>,
     plugin_warnings: Vec<String>,
     #[cfg(feature = "local")]
@@ -944,11 +1125,17 @@ impl AgentBuilder {
         self
     }
 
-    /// Use a real host directory as this agent's `/workspace`.
+    /// Use one real host directory as this agent's shared default `/workspace`.
     ///
     /// The runtime rejects traversal and symlink escapes at every filesystem
-    /// operation. The directory must exist before the session is first used and
-    /// must be selected by trusted application configuration, not model input.
+    /// operation. A missing directory is created before the session first uses
+    /// it and it must be selected by trusted application configuration, not
+    /// model input.
+    /// This is shorthand for one shared, reopenable default WorkspaceHead over
+    /// that directory. Every session created from this Agent explicitly binds
+    /// to that same shared head before execution. Use an explicit
+    /// [`Environment`] and provider-created head when sessions need isolation,
+    /// forking, or provider-specific lifecycle operations.
     pub fn workspace(mut self, root: impl Into<PathBuf>) -> Self {
         self.workspace_root = Some(root.into());
         if !self
@@ -971,6 +1158,16 @@ impl AgentBuilder {
     /// or build narrower scopes for an explicit write opt-in.
     pub fn workspace_policy(mut self, policy: crate::WorkspacePolicy) -> Self {
         self.workspace_policy = policy;
+        self
+    }
+
+    /// Register a provider for durable typed resume of provider-owned heads.
+    ///
+    /// Starting a session from a live Environment also remembers its provider
+    /// for this Agent lifetime. Register it here when a newly constructed Agent
+    /// must resume persisted sessions after process restart.
+    pub fn workspace_provider(mut self, provider: Arc<dyn WorkspaceProvider>) -> Self {
+        self.workspace_providers.push(provider);
         self
     }
 
@@ -1035,6 +1232,41 @@ impl AgentBuilder {
     ///   capability implementation, including aliases and reference/implementation
     ///   collisions.
     pub fn build(self) -> Result<Agent, BuildError> {
+        let mut workspace_providers = HashMap::new();
+        for provider in &self.workspace_providers {
+            let id = provider.id();
+            if workspace_providers
+                .insert(id.clone(), provider.clone())
+                .is_some()
+            {
+                return Err(BuildError::DuplicateWorkspaceProvider { id: id.to_string() });
+            }
+        }
+        let default_workspace_root = self.workspace_root.clone().or_else(|| {
+            #[cfg(feature = "local")]
+            {
+                self.local
+                    .as_ref()
+                    .map(|configuration| configuration.workspace_root.clone())
+            }
+            #[cfg(not(feature = "local"))]
+            {
+                None
+            }
+        });
+        let default_workspace = default_workspace_root
+            .map(crate::default_workspace::DefaultWorkspace::directory)
+            .unwrap_or_else(crate::default_workspace::DefaultWorkspace::in_memory);
+        let default_provider = default_workspace.provider();
+        let default_provider_id = default_provider.id();
+        if workspace_providers
+            .insert(default_provider_id.clone(), default_provider)
+            .is_some()
+        {
+            return Err(BuildError::DuplicateWorkspaceProvider {
+                id: default_provider_id.to_string(),
+            });
+        }
         let instructions = self.instructions.unwrap_or_default();
         if instructions.trim().is_empty() {
             return Err(BuildError::BlankInstructions);
@@ -1216,14 +1448,49 @@ impl AgentBuilder {
             max_iterations: self.max_iterations,
             parallel_tool_calls: self.parallel_tool_calls,
             workspace_root: self.workspace_root,
+            default_workspace,
             workspace_policy: self.workspace_policy,
             mcp_servers,
             plugin_warnings: self.plugin_warnings,
             #[cfg(feature = "local")]
             local: self.local,
             lifecycle_hooks: self.lifecycle_hooks,
-            state: Arc::new(AgentState::new()),
+            state: Arc::new(AgentState::new(workspace_providers)),
         })
+    }
+}
+
+impl fmt::Debug for AgentBuilder {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AgentBuilder")
+            .field("name", &self.name)
+            .field("instructions", &self.instructions)
+            .field("workspace_root", &self.workspace_root)
+            .field(
+                "workspace_providers",
+                &self
+                    .workspace_providers
+                    .iter()
+                    .map(|provider| provider.id())
+                    .collect::<Vec<_>>(),
+            )
+            .finish_non_exhaustive()
+    }
+}
+
+fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::ResumeError {
+    match error {
+        everruns_host::WorkspaceError::BindingMismatch => crate::ResumeError::WorkspaceMismatch,
+        everruns_host::WorkspaceError::NotFound
+        | everruns_host::WorkspaceError::Archived
+        | everruns_host::WorkspaceError::ProviderUnavailable(_)
+        | everruns_host::WorkspaceError::Provider(_)
+        | everruns_host::WorkspaceError::Conflict
+        | everruns_host::WorkspaceError::InvalidRequest(_) => {
+            crate::ResumeError::WorkspaceUnavailable
+        }
+        _ => crate::ResumeError::WorkspaceUnavailable,
     }
 }
 
@@ -1586,7 +1853,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None, None)
+            .build_runtime_with_backends(session_id, None, None, None)
             .await
             .expect("runtime builds");
         let visible = runtime
@@ -1627,7 +1894,7 @@ mod tests {
             .expect("valid agent");
 
         let runtime = agent
-            .build_runtime_with_backends(SessionId::new(), None, None)
+            .build_runtime_with_backends(SessionId::new(), None, None, None)
             .await
             .expect("openai runtime builds offline");
         let _ = runtime;
@@ -1643,7 +1910,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None, None)
+            .build_runtime_with_backends(session_id, None, None, None)
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn

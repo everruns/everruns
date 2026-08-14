@@ -39,7 +39,7 @@ use std::sync::Arc;
 /// # Example
 ///
 /// ```rust,ignore
-/// use everruns_core::DriverRegistry;
+/// use everruns_provider::driver_registry::DriverRegistry;
 /// use everruns_host::HostComposition;
 ///
 /// let mut drivers = DriverRegistry::new();

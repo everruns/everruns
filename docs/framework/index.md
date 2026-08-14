@@ -40,6 +40,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Quickstart](/framework/quickstart/) — install the crate and run an offline agent.
 - [Agents](/framework/agents/) — instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/) — configure portable read and write scopes with secure defaults.
+- [Workspaces and Environments](/framework/workspaces-and-environments/) — bind sessions to isolated or explicitly shared provider-owned heads.
 - [Models and providers](/framework/models-and-providers/) — simulation, OpenAI, and the open provider boundary.
 - [Tools and macros](/framework/tools-and-macros/) — typed function tools through `everruns::tool`.
 - [Sessions](/framework/sessions/) — independent, multi-turn conversations.

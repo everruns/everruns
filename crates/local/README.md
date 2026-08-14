@@ -23,7 +23,12 @@ harness engine for building unstoppable agents.
 - **`LocalSessionTaskRegistry`** — a `SessionTaskRegistry` over SQLite,
   persisting session tasks and their message channel.
 - **`LocalSessionStore`** — a durable session identity and metadata catalog;
-  conversation messages remain an event-derived projection.
+  conversation messages remain an event-derived projection. It also persists
+  bounded opaque workspace-head bindings for exact typed resume.
+- **`LocalGitWorkspaceProvider`** — a public `WorkspaceProvider` using one Git
+  worktree per head. Head creation, sharing, fork, reopen, archive, and destroy
+  are explicit; dropping handles never removes a worktree or branch, and
+  explicit destroy retains the branch.
 - **`LocalScheduleStore`** — a `SessionScheduleStore` over SQLite, with an
   additive JSON `metadata` bag (name/color/kind/…) kept local rather than
   widening the shared core primitive.
@@ -109,6 +114,7 @@ embedded turns.
 
 - [API reference (docs.rs)](https://docs.rs/everruns-local)
 - [Framework persistence](https://docs.everruns.com/framework/persistence/)
+- [Framework workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
 - [Framework custom backends](https://docs.everruns.com/framework/custom-backends/)
 - [Everruns documentation](https://docs.everruns.com)
 

@@ -132,3 +132,9 @@ byte totals are not returned. Recursive deletes inspect descendants through the
 provider before deletion, so opting into recursion does not override a deny or
 protected descendant. Providers with mutable external state must still treat
 that preflight-to-delete window as a race boundary.
+
+`WorkspaceRootSet` additional roots are named mounts inside one selected head;
+they are not independent heads and carry no fork/reopen lifecycle. Likewise,
+`WorkspacePolicy` is path authorization, not a compute sandbox. See
+[Workspaces and Environments](/framework/workspaces-and-environments/) for the
+identity and lifecycle model.

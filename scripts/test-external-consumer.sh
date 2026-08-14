@@ -24,6 +24,8 @@
 #                             contracts from core, and verifies the concrete
 #                             filesystem/command hosts are host-owned, without
 #                             importing platform.
+#   external-workspace-provider implements the open workspace lifecycle SPI
+#                             using only the published host crate.
 #
 # The fixtures are deliberately outside the workspace so they resolve the
 # published crates the way a downstream application does, and they build under
@@ -73,3 +75,8 @@ CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-execution-contracts
 
 echo "External execution contracts compile against focused core and host seams under -D warnings."
+
+CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
+  cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-workspace-provider
+
+echo "External workspace provider implements the open host SPI under -D warnings."

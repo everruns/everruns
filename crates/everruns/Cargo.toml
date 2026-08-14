@@ -33,6 +33,10 @@ required-features = ["macros", "openai"]
 name = "tls_startup"
 required-features = ["openai"]
 
+[[test]]
+name = "workspace_environment"
+required-features = ["local"]
+
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
@@ -99,6 +103,7 @@ everruns-local = { workspace = true, optional = true }
 # everruns-core/everruns-host, which track the workspace version exactly).
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
+uuid.workspace = true
 base64.workspace = true
 serde_json.workspace = true
 # Session event streaming (broadcast channel) and cancellation (select). Only
@@ -144,6 +149,10 @@ required-features = ["openai"]
 
 [[example]]
 name = "session_history"
+required-features = ["local"]
+
+[[example]]
+name = "workspace_heads"
 required-features = ["local"]
 
 [[example]]

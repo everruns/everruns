@@ -1,7 +1,8 @@
 //! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
-//! tools, run isolated multi-turn sessions, read bounded history, resume typed
+//! tools, run isolated multi-turn sessions, bind provider-owned workspace heads
+//! through Environments, read bounded history, resume typed
 //! session identities, observe events, cancel work, and inspect the next model context
 //! without constructing an execution host. Default features stay offline; the
 //! deterministic simulator needs no credentials or network.
@@ -45,6 +46,7 @@ mod agent;
 pub mod capability;
 mod capability_config;
 mod context;
+mod default_workspace;
 mod events;
 mod history;
 mod hooks;
@@ -73,11 +75,16 @@ pub use hooks::{
 };
 pub use mcp::McpServer;
 pub use plugin::PluginError;
-pub use session::{CancelError, RunError, SendDisposition, SentMessage, Session, Turn, TurnHandle};
+pub use session::{
+    CancelError, EnvironmentSessionBuilder, RunError, SendDisposition, SentMessage, Session,
+    SessionEnvironmentError, Turn, TurnHandle,
+};
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
 mod local;
+#[cfg(feature = "local")]
+pub use everruns_local::LocalGitWorkspaceProvider;
 #[cfg(feature = "local")]
 pub use local::LocalConfig;
 
@@ -135,8 +142,12 @@ pub use providers::openai::{OpenAI, OpenAIError};
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
 // the low-level builders depend on `everruns-host` directly.
 pub use everruns_host::{
-    HarnessBuilder, HostComposition, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
-    SingleSessionBuilder, TurnResult,
+    Environment, EnvironmentBuilder, HarnessBuilder, HostComposition, InProcessRuntime,
+    InProcessRuntimeBuilder, SessionBuilder, SingleSessionBuilder, TurnResult, Workspace,
+    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
+    WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor,
+    WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
+    WorkspaceProvider, WorkspaceProviderId,
 };
 
 // --- Portable message, model, and platform types ------------------------
@@ -157,7 +168,7 @@ pub use everruns_provider::runtime_provider::{
     ProviderRegistry, StaticHeaderAuth,
 };
 pub use everruns_provider::tool_types::ToolCall;
-pub use everruns_provider::typed_id::SessionId;
+pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 pub use everruns_test_support::LlmSimConfig;
@@ -181,6 +192,8 @@ pub use everruns_core as core;
 pub mod prelude {
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
+    #[cfg(feature = "local")]
+    pub use crate::LocalGitWorkspaceProvider;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     #[cfg(feature = "macros")]
@@ -190,14 +203,16 @@ pub mod prelude {
     };
     pub use crate::{
         Agent, AgentBuilder, AgentStartContext, BuildError, CancelError, CancellationToken,
-        CapabilityRef, CapabilitySpec, CompletionContext, EventStream, EventStreamError,
-        FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage,
-        HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile, IntoCapability,
-        IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model, PluginError,
-        ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session, SessionContext,
-        SessionEvent, SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo,
-        ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, WorkspacePolicy,
-        WorkspacePolicyBuilder, WorkspacePolicyError,
+        CapabilityRef, CapabilitySpec, CompletionContext, Environment, EventStream,
+        EventStreamError, FunctionTool, HistoryCursor, HistoryCursorParseError, HistoryError,
+        HistoryPage, HistoryPages, HistoryQuery, HookFailure, HookPoint, InitialFile,
+        IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig, McpServer, Model,
+        PluginError, ResumeError, RunError, RunOptions, SendDisposition, SentMessage, Session,
+        SessionContext, SessionEnvironmentError, SessionEvent, SessionEventKind, SessionId,
+        SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse, ToolStartContext, Turn,
+        TurnHandle, TurnStartContext, Workspace, WorkspaceDiff, WorkspaceError, WorkspaceHead,
+        WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder,
+        WorkspacePolicyError, WorkspaceProvider, WorkspaceProviderId,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{CompactionConfig, CompactionStrategy, ToolSearch};

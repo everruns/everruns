@@ -85,3 +85,33 @@ impl SessionFileSystemFactory for DisabledSessionFileSystemFactory {
         Err(AgentLoopError::config("session filesystem is disabled"))
     }
 }
+
+/// Factory that returns one already-selected session filesystem.
+///
+/// Workspace providers use this adapter so the runtime consumes the same
+/// [`SessionFileSystem`] selected by the head instead of inventing a parallel
+/// filesystem abstraction.
+#[derive(Clone)]
+pub struct FixedSessionFileSystemFactory {
+    file_system: Arc<dyn SessionFileSystem>,
+}
+
+impl FixedSessionFileSystemFactory {
+    pub fn new(file_system: Arc<dyn SessionFileSystem>) -> Self {
+        Self { file_system }
+    }
+}
+
+#[async_trait]
+impl SessionFileSystemFactory for FixedSessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "FixedSessionFileSystemFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        _context: SessionFileSystemFactoryContext,
+    ) -> Result<Arc<dyn SessionFileSystem>> {
+        Ok(self.file_system.clone())
+    }
+}

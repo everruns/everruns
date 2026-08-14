@@ -429,6 +429,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]
@@ -676,6 +677,14 @@ dependencies = [
  "everruns-provider",
  "futures",
  "tokio",
+]
+
+[[package]]
+name = "external-workspace-provider"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "everruns-host",
 ]
 
 [[package]]
