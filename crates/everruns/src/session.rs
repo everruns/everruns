@@ -8,7 +8,7 @@
 
 use std::collections::VecDeque;
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use everruns_core::InputMessage;
 use everruns_core::event_emitter::EventEmitter;
@@ -65,6 +65,8 @@ struct SessionInner {
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    environment: OnceLock<everruns_host::Environment>,
+    environment_gate: tokio::sync::Mutex<()>,
     commands: OnceCell<mpsc::Sender<Command>>,
 }
 
@@ -74,17 +76,27 @@ struct SessionInner {
 const SESSION_COMMAND_CAPACITY: usize = 64;
 
 impl Session {
-    pub(crate) fn new(agent: Agent, session_id: SessionId) -> Self {
+    pub(crate) fn new(
+        agent: Agent,
+        session_id: SessionId,
+        environment: Option<everruns_host::Environment>,
+    ) -> Self {
         let hook_state = HookRunState::new(agent.lifecycle_hooks());
-        Self {
+        let session = Self {
             inner: Arc::new(SessionInner {
                 agent,
                 session_id,
                 event_bus: Arc::new(FacadeEventBus::new()),
                 hook_state,
+                environment: OnceLock::new(),
+                environment_gate: tokio::sync::Mutex::new(()),
                 commands: OnceCell::new(),
             }),
+        };
+        if let Some(environment) = environment {
+            let _ = session.inner.environment.set(environment);
         }
+        session
     }
 
     /// An opaque identifier correlating this session's turns.
@@ -101,6 +113,56 @@ impl Session {
     /// remains available when a string is needed for display or serialization.
     pub fn session_id(&self) -> SessionId {
         self.inner.session_id
+    }
+
+    /// Permanently bind this new session to an explicit Environment.
+    ///
+    /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
+    /// before any runtime can execute. The same head is observable through
+    /// [`workspace_head`](Self::workspace_head) for the session lifetime.
+    pub fn environment(self, environment: everruns_host::Environment) -> EnvironmentSessionBuilder {
+        EnvironmentSessionBuilder {
+            session: self,
+            environment,
+        }
+    }
+
+    /// Select and persist this Agent's default head without starting a turn.
+    ///
+    /// Calling this is optional: [`send`](Self::send) and [`inspect`](Self::inspect)
+    /// perform the same one-time selection automatically. After it succeeds,
+    /// [`workspace_head`](Self::workspace_head) always returns that exact head.
+    pub async fn start(&self) -> Result<(), SessionEnvironmentError> {
+        let _environment_guard = self.inner.environment_gate.lock().await;
+        if self.inner.environment.get().is_some() {
+            return Ok(());
+        }
+        let environment = self
+            .inner
+            .agent
+            .bind_default_session_environment(self.inner.session_id)
+            .await?;
+        self.inner
+            .environment
+            .set(environment)
+            .map_err(|_| SessionEnvironmentError::AlreadyBound)
+    }
+
+    /// The permanently selected workspace head after explicit or automatic
+    /// Environment start.
+    pub fn workspace_head(&self) -> Option<&everruns_host::WorkspaceHead> {
+        self.inner
+            .environment
+            .get()
+            .map(everruns_host::Environment::workspace_head)
+    }
+
+    /// Resolve a typed resource attached to this session's Environment.
+    pub fn environment_extension<T: std::any::Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.inner
+            .environment
+            .get()
+            .and_then(|environment| environment.extension::<T>())
     }
 
     /// Build an owned, bounded history query for this session.
@@ -227,7 +289,7 @@ impl Session {
     pub async fn inspect(&self) -> Result<crate::SessionContext, RunError> {
         let (response, result) = oneshot::channel();
         self.command_sender()
-            .await
+            .await?
             .send(Command::Inspect { response })
             .await
             .map_err(|_| RunError::SessionClosed)?;
@@ -241,7 +303,7 @@ impl Session {
     ) -> Result<SentMessage, RunError> {
         let (response, result) = oneshot::channel();
         self.command_sender()
-            .await
+            .await?
             .send(Command::Send {
                 input: Box::new(AcceptedTurnInput::new(input)),
                 cancel,
@@ -253,8 +315,11 @@ impl Session {
         Ok(SentMessage::new(self.clone(), ack))
     }
 
-    async fn command_sender(&self) -> mpsc::Sender<Command> {
-        self.inner
+    async fn command_sender(&self) -> Result<mpsc::Sender<Command>, RunError> {
+        self.start().await.map_err(RunError::Environment)?;
+        let _environment_guard = self.inner.environment_gate.lock().await;
+        Ok(self
+            .inner
             .commands
             .get_or_init(|| async {
                 let (sender, receiver) = mpsc::channel(SESSION_COMMAND_CAPACITY);
@@ -262,13 +327,14 @@ impl Session {
                 sender
             })
             .await
-            .clone()
+            .clone())
     }
 
     async fn cancel_turn(&self, turn_id: TurnId) -> Result<(), CancelError> {
         let (response, result) = oneshot::channel();
         self.command_sender()
             .await
+            .map_err(|_| CancelError::SessionClosed)?
             .send(Command::Cancel { turn_id, response })
             .await
             .map_err(|_| CancelError::SessionClosed)?;
@@ -312,6 +378,7 @@ struct SessionActor {
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
+    environment: Option<everruns_host::Environment>,
     runtime: Option<InProcessRuntime>,
     agent_started: bool,
     deferred: VecDeque<Command>,
@@ -324,6 +391,7 @@ impl SessionActor {
             session_id: inner.session_id,
             event_bus: inner.event_bus.clone(),
             hook_state: inner.hook_state.clone(),
+            environment: inner.environment.get().cloned(),
             runtime: None,
             agent_started: false,
             deferred: VecDeque::new(),
@@ -556,6 +624,7 @@ impl SessionActor {
                 self.agent
                     .build_runtime_with_event_sink(
                         self.session_id,
+                        self.environment.clone(),
                         self.event_bus.clone(),
                         self.hook_state.clone(),
                     )
@@ -575,6 +644,78 @@ impl SessionActor {
         Ok(Turn::cancelled(turn_id))
     }
 }
+
+/// A not-yet-running Session with its Environment selected.
+pub struct EnvironmentSessionBuilder {
+    session: Session,
+    environment: everruns_host::Environment,
+}
+
+impl EnvironmentSessionBuilder {
+    /// Persist and freeze the head binding before execution starts.
+    pub async fn start(self) -> Result<Session, SessionEnvironmentError> {
+        let _guard = self.session.inner.environment_gate.lock().await;
+        if self.session.inner.commands.initialized() {
+            return Err(SessionEnvironmentError::AlreadyStarted);
+        }
+        self.session
+            .inner
+            .agent
+            .bind_session_environment(self.session.inner.session_id, &self.environment)
+            .await?;
+        if let Some(recorded) = self.session.inner.environment.get() {
+            if recorded.workspace_head().binding() != self.environment.workspace_head().binding() {
+                return Err(SessionEnvironmentError::AlreadyBound);
+            }
+        } else {
+            self.session
+                .inner
+                .environment
+                .set(self.environment)
+                .map_err(|_| SessionEnvironmentError::AlreadyBound)?;
+        }
+        drop(_guard);
+        Ok(self.session)
+    }
+}
+
+/// Why an Environment could not be fixed to a Session.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum SessionEnvironmentError {
+    AlreadyStarted,
+    AlreadyBound,
+    ProviderConflict,
+    Unavailable,
+    Workspace(everruns_host::WorkspaceError),
+}
+
+impl From<everruns_host::EnvironmentBindingError> for SessionEnvironmentError {
+    fn from(error: everruns_host::EnvironmentBindingError) -> Self {
+        match error {
+            everruns_host::EnvironmentBindingError::Conflict => Self::AlreadyBound,
+            everruns_host::EnvironmentBindingError::Unavailable
+            | everruns_host::EnvironmentBindingError::Corrupt => Self::Unavailable,
+            _ => Self::Unavailable,
+        }
+    }
+}
+
+impl std::fmt::Display for SessionEnvironmentError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AlreadyStarted => formatter.write_str("session execution already started"),
+            Self::AlreadyBound => formatter.write_str("session is already bound to another head"),
+            Self::ProviderConflict => {
+                formatter.write_str("another workspace provider uses the same provider id")
+            }
+            Self::Unavailable => formatter.write_str("environment binding store is unavailable"),
+            Self::Workspace(error) => write!(formatter, "workspace selection failed: {error}"),
+        }
+    }
+}
+
+impl std::error::Error for SessionEnvironmentError {}
 
 enum HookRun<T> {
     Completed(T),
@@ -774,6 +915,8 @@ pub enum RunError {
     Runtime(Arc<AgentLoopError>),
     /// A pre-effect lifecycle handler failed before the operation could run.
     Hook(HookFailure),
+    /// The session could not select or persist its permanent Environment.
+    Environment(SessionEnvironmentError),
     /// The live session actor is no longer available.
     SessionClosed,
     /// The active turn already has the maximum number of pending steering messages.
@@ -785,6 +928,7 @@ impl std::fmt::Display for RunError {
         match self {
             RunError::Runtime(err) => write!(f, "session run failed: {err}"),
             RunError::Hook(err) => write!(f, "session hook failed: {err}"),
+            RunError::Environment(err) => write!(f, "session environment failed: {err}"),
             RunError::SessionClosed => f.write_str("session is closed"),
             RunError::SteeringQueueFull => f.write_str("active turn steering queue is full"),
         }
@@ -796,6 +940,7 @@ impl std::error::Error for RunError {
         match self {
             RunError::Runtime(err) => Some(err.as_ref()),
             RunError::Hook(err) => Some(err),
+            RunError::Environment(err) => Some(err),
             RunError::SessionClosed => None,
             RunError::SteeringQueueFull => None,
         }

@@ -55,6 +55,7 @@ mod session_file_system_factory;
 mod turn_strategy;
 #[cfg(feature = "utility-openai")]
 mod utility_llm;
+mod workspace;
 
 pub use backends::{
     HostBackends, PlatformStoreFactory, RuntimeAgentStore, RuntimeHarnessStore,
@@ -75,6 +76,7 @@ pub use events::{
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
+pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 #[allow(deprecated)]
 pub use file_store_decorators::{
@@ -107,10 +109,18 @@ pub use runtime_context::{
     inspect_turn_context,
 };
 pub use session_file_system_factory::{
-    DisabledSessionFileSystemFactory, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    DisabledSessionFileSystemFactory, FixedSessionFileSystemFactory, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext,
 };
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
 #[cfg(feature = "utility-openai")]
 pub use utility_llm::{
     OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_OPENAI_API_KEY_ENV,
+};
+pub use workspace::{
+    Environment, EnvironmentBindingError, EnvironmentBindingStore, EnvironmentBuilder,
+    InMemoryEnvironmentBindingStore, Workspace, WorkspaceBinding, WorkspaceCheckpoint,
+    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
+    WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
+    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
 };

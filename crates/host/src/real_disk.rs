@@ -21,12 +21,28 @@ use everruns_core::{MountFs, WorkspaceRootSet};
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::SessionId;
 use ignore::WalkBuilder;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use std::time::SystemTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+fn shared_write_guard(root: &Path) -> Arc<tokio::sync::Mutex<()>> {
+    static GUARDS: OnceLock<Mutex<HashMap<PathBuf, Weak<tokio::sync::Mutex<()>>>>> =
+        OnceLock::new();
+    let mut guards = GUARDS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(guard) = guards.get(root).and_then(Weak::upgrade) {
+        return guard;
+    }
+    guards.retain(|_, guard| guard.strong_count() > 0);
+    let guard = Arc::new(tokio::sync::Mutex::new(()));
+    guards.insert(root.to_path_buf(), Arc::downgrade(&guard));
+    guard
+}
 
 /// A `SessionFileSystem` rooted at a real host directory.
 ///
@@ -198,6 +214,67 @@ impl RealDiskFileStore {
     fn relative_capability_path(&self, absolute: &Path) -> Result<String> {
         Ok(self.paths.relativize(absolute)?.to_session_path())
     }
+
+    async fn write_file_unlocked(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile> {
+        let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
+        let canonical_path = self.relative_capability_path(&absolute)?;
+        if self.is_readonly(&canonical_path).await {
+            return Err(AgentLoopError::tool(format!(
+                "file is read-only: {canonical_path}"
+            )));
+        }
+        if let Some(parent) = absolute.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| {
+                AgentLoopError::tool(format!("failed to create parent {}: {e}", parent.display()))
+            })?;
+        }
+
+        if let Ok(meta) = tokio::fs::metadata(&absolute).await
+            && meta.is_dir()
+        {
+            return Err(AgentLoopError::tool(format!(
+                "write target is a directory: {}",
+                absolute.display()
+            )));
+        }
+
+        let bytes = SessionFile::decode_content(content, encoding)
+            .map_err(|e| AgentLoopError::tool(format!("base64 decode failed for {path}: {e}")))?;
+        tokio::fs::write(&absolute, &bytes).await.map_err(|e| {
+            AgentLoopError::tool(format!("write failed for {}: {e}", absolute.display()))
+        })?;
+
+        let metadata = tokio::fs::metadata(&absolute).await.map_err(|e| {
+            AgentLoopError::tool(format!(
+                "post-write stat failed for {}: {e}",
+                absolute.display()
+            ))
+        })?;
+        let (created_at, updated_at) = file_times(&metadata);
+        let name = FileInfo::name_from_path(&canonical_path);
+        let id = path_id(&canonical_path);
+
+        Ok(SessionFile {
+            id,
+            session_id: session_id.uuid(),
+            path: canonical_path,
+            name,
+            content: Some(content.to_string()),
+            encoding: encoding.to_string(),
+            is_directory: false,
+            is_readonly: false,
+            size_bytes: saturating_i64(bytes.len() as u64),
+            created_at,
+            updated_at,
+        })
+    }
 }
 
 #[async_trait]
@@ -231,6 +308,8 @@ impl SessionFileSystem for RealDiskFileStore {
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        let write_guard = shared_write_guard(&self.paths.root());
+        let _guard = write_guard.lock().await;
         // Clear any prior readonly mark so seeding always wins over a
         // previous starter-file declaration with the same path.
         let absolute = self.resolve(&file.path)?;
@@ -238,7 +317,7 @@ impl SessionFileSystem for RealDiskFileStore {
         let canonical = self.relative_capability_path(&absolute)?;
         self.mark_readonly(canonical.clone(), false).await;
 
-        self.write_file(session_id, &file.path, &file.content, &file.encoding)
+        self.write_file_unlocked(session_id, &file.path, &file.content, &file.encoding)
             .await?;
         if file.is_readonly {
             self.mark_readonly(canonical, true).await;
@@ -311,58 +390,38 @@ impl SessionFileSystem for RealDiskFileStore {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
-        let absolute = self.resolve(path)?;
-        self.reject_symlink_path(&absolute).await?;
-        let canonical_path = self.relative_capability_path(&absolute)?;
-        if self.is_readonly(&canonical_path).await {
-            return Err(AgentLoopError::tool(format!(
-                "file is read-only: {canonical_path}"
-            )));
-        }
-        if let Some(parent) = absolute.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| {
-                AgentLoopError::tool(format!("failed to create parent {}: {e}", parent.display()))
-            })?;
-        }
+        let write_guard = shared_write_guard(&self.paths.root());
+        let _guard = write_guard.lock().await;
+        self.write_file_unlocked(session_id, path, content, encoding)
+            .await
+    }
 
-        if let Ok(meta) = tokio::fs::metadata(&absolute).await
-            && meta.is_dir()
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        // Shared real-disk heads do not provide transaction isolation, but
+        // Framework callers in this host process get an atomic read/compare/
+        // write boundary and a visible `None` conflict instead of lost writes.
+        let write_guard = shared_write_guard(&self.paths.root());
+        let _guard = write_guard.lock().await;
+        let Some(existing) = self.read_file(session_id, path).await? else {
+            return Ok(None);
+        };
+        if existing.is_directory
+            || existing.content.as_deref().unwrap_or_default() != expected_content
+            || existing.encoding != expected_encoding
         {
-            return Err(AgentLoopError::tool(format!(
-                "write target is a directory: {}",
-                absolute.display()
-            )));
+            return Ok(None);
         }
-
-        let bytes = SessionFile::decode_content(content, encoding)
-            .map_err(|e| AgentLoopError::tool(format!("base64 decode failed for {path}: {e}")))?;
-        tokio::fs::write(&absolute, &bytes).await.map_err(|e| {
-            AgentLoopError::tool(format!("write failed for {}: {e}", absolute.display()))
-        })?;
-
-        let metadata = tokio::fs::metadata(&absolute).await.map_err(|e| {
-            AgentLoopError::tool(format!(
-                "post-write stat failed for {}: {e}",
-                absolute.display()
-            ))
-        })?;
-        let (created_at, updated_at) = file_times(&metadata);
-        let name = FileInfo::name_from_path(&canonical_path);
-        let id = path_id(&canonical_path);
-
-        Ok(SessionFile {
-            id,
-            session_id: session_id.uuid(),
-            path: canonical_path,
-            name,
-            content: Some(content.to_string()),
-            encoding: encoding.to_string(),
-            is_directory: false,
-            is_readonly: false,
-            size_bytes: saturating_i64(bytes.len() as u64),
-            created_at,
-            updated_at,
-        })
+        self.write_file_unlocked(session_id, path, content, encoding)
+            .await
+            .map(Some)
     }
 
     async fn delete_file(
@@ -371,6 +430,8 @@ impl SessionFileSystem for RealDiskFileStore {
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
+        let write_guard = shared_write_guard(&self.paths.root());
+        let _guard = write_guard.lock().await;
         let absolute = self.resolve(path)?;
         self.reject_symlink_path(&absolute).await?;
         if absolute == self.root() {
@@ -1520,6 +1581,42 @@ mod tests {
         assert!(updated.is_some(), "matching CAS should update");
         let read = store.read_file(session, "/foo.txt").await.unwrap().unwrap();
         assert_eq!(read.content.as_deref(), Some("v2"));
+    }
+
+    #[tokio::test]
+    async fn cas_is_serialized_across_stores_for_the_same_shared_root() {
+        let directory = TempDir::new().unwrap();
+        let first = RealDiskFileStore::new(directory.path()).unwrap();
+        let second = RealDiskFileStore::new(directory.path()).unwrap();
+        let session = sid();
+        first
+            .write_file(session, "/shared.txt", "v1", "text")
+            .await
+            .unwrap();
+        let barrier = Arc::new(tokio::sync::Barrier::new(3));
+        let write = |store: RealDiskFileStore, content: &'static str| {
+            let barrier = barrier.clone();
+            async move {
+                barrier.wait().await;
+                store
+                    .write_file_if_content_matches(
+                        session,
+                        "/shared.txt",
+                        "v1",
+                        "text",
+                        content,
+                        "text",
+                    )
+                    .await
+                    .unwrap()
+                    .is_some()
+            }
+        };
+        let first_write = tokio::spawn(write(first, "first"));
+        let second_write = tokio::spawn(write(second, "second"));
+        barrier.wait().await;
+        let (first_won, second_won) = tokio::join!(first_write, second_write);
+        assert_ne!(first_won.unwrap(), second_won.unwrap());
     }
 
     #[tokio::test]

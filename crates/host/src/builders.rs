@@ -15,7 +15,7 @@ pub use everruns_provider::driver_registry::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
 };
 use everruns_provider::tool_types::ToolDefinition;
-use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId, WorkspaceId};
 
 /// A portable harness definition seeded under an embedder-chosen id.
 ///
@@ -361,6 +361,7 @@ impl AgentBuilder {
 #[derive(Debug, Clone)]
 pub struct SessionBuilder {
     id: SessionId,
+    workspace_id: Option<WorkspaceId>,
     organization_id: String,
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
@@ -385,6 +386,7 @@ impl SessionBuilder {
     pub fn new(harness_id: HarnessId) -> Self {
         Self {
             id: SessionId::new(),
+            workspace_id: None,
             organization_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: None,
@@ -414,6 +416,12 @@ impl SessionBuilder {
     /// Return the id currently assigned to this builder.
     pub fn session_id(&self) -> SessionId {
         self.id
+    }
+
+    /// Bind execution filesystem scoping to an explicit logical workspace.
+    pub fn workspace(mut self, workspace_id: WorkspaceId) -> Self {
+        self.workspace_id = Some(workspace_id);
+        self
     }
 
     pub fn organization_id(mut self, organization_id: impl Into<String>) -> Self {
@@ -540,7 +548,9 @@ impl SessionBuilder {
     pub fn build(self) -> ExecutionSession {
         ExecutionSession {
             id: self.id,
-            workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid((self.id).uuid()),
+            workspace_id: self
+                .workspace_id
+                .unwrap_or_else(|| WorkspaceId::from_uuid((self.id).uuid())),
             organization_id: self.organization_id,
             harness_id: self.harness_id,
             agent_id: self.agent_id,

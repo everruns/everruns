@@ -9,6 +9,9 @@
 //!   over SQLite, with an additive JSON metadata bag (see its module docs).
 //! - [`LocalSessionStore`] — a durable session identity and metadata catalog;
 //!   conversation history remains canonical-event-derived.
+//! - [`LocalGitWorkspaceProvider`] — public isolated Git-worktree heads with
+//!   explicit fork, reopen, archive, and destroy lifecycle. Drop never cleans
+//!   up provider-owned worktrees or branches.
 //! - [`LocalScheduleRunner`] — an explicitly managed in-process executor that
 //!   claims due schedules and delivers them through [`LocalSessionRunner`].
 //! - [`LocalPlatformStore`] — a [`everruns_platform::PlatformStore`]
@@ -42,6 +45,7 @@
 mod backends;
 mod db;
 mod error;
+mod git_workspace;
 mod platform_store;
 mod profile;
 mod runtime_builder;
@@ -54,6 +58,7 @@ mod wake_routing;
 pub use backends::LocalBackends;
 pub use db::SqliteDb;
 pub use error::{LocalError, LocalResult};
+pub use git_workspace::LocalGitWorkspaceProvider;
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
 pub use runtime_builder::{LocalRuntimeBuilder, local_capability_registry};

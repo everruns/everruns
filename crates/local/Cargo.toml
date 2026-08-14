@@ -32,7 +32,7 @@ everruns-host.workspace = true
 everruns-platform = { workspace = true, features = ["a2a", "portable-builtins"] }
 
 # Async
-tokio = { workspace = true, features = ["rt", "time", "sync"] }
+tokio = { workspace = true, features = ["process", "rt", "time", "sync"] }
 async-trait.workspace = true
 futures.workspace = true
 
@@ -41,6 +41,7 @@ parking_lot.workspace = true
 
 # Serialization
 serde_json.workspace = true
+serde.workspace = true
 
 # Types
 chrono.workspace = true

@@ -187,6 +187,37 @@ while let Some(event) = events.try_recv()? {
 `Session::inspect` exposes the application-facing context assembled for the
 next model call without exposing backend records.
 
+## Workspace Heads and Environments
+
+Simple applications keep `agent.session()` and may use
+`AgentBuilder::workspace(path)` as shorthand for one shared local directory.
+Applications that need isolated mutable project views use the open
+`WorkspaceProvider` SPI, create a `WorkspaceHead`, and permanently bind it
+before execution:
+
+```rust
+use std::sync::Arc;
+use everruns::{Environment, LocalGitWorkspaceProvider, Workspace};
+
+# async fn bind(agent: &everruns::Agent, repository: &std::path::Path, state: &std::path::Path)
+# -> Result<(), Box<dyn std::error::Error>> {
+let provider = Arc::new(LocalGitWorkspaceProvider::new(state)?);
+let workspace = Workspace::open(provider, repository.to_string_lossy()).await?;
+let head = workspace.head("feature").from_revision("main").create().await?;
+let environment = Environment::builder().workspace(head).build()?;
+let session = agent.session().environment(environment).start().await?;
+assert!(session.workspace_head().is_some());
+# Ok(())
+# }
+```
+
+This local Git provider is available with the `local` feature. Heads are
+isolated by default; sharing is an explicit head-creation choice. Typed resume
+reopens the recorded provider/workspace/head binding or fails structurally—it
+never substitutes another directory. Archive and destroy are explicit, and
+Drop never removes worktrees or branches. See [Workspaces and
+Environments](https://docs.everruns.com/framework/workspaces-and-environments/).
+
 ## Lifecycle Hooks
 
 Register async handlers on `Agent::builder()` when application work must be
@@ -227,6 +258,7 @@ catalog alongside its real workspace and task/schedule state.
 - Session-owned immediate and scheduled work with leased, at-least-once delivery
 - Awaited, typed lifecycle hooks with explicit failure isolation
 - Editable/read-only files, one trusted workspace, scoped MCP, and plugins
+- Open workspace providers, isolated or explicitly shared heads, and session environments
 - Optional OpenAI and local profiles without enlarging the offline default
 
 ## Runnable Examples
@@ -242,6 +274,7 @@ The [example catalog](./examples/README.md) includes:
 - `subagents` — public-facade delegation
 - `observe_and_cancel` — events and cancellation
 - `session_history` — offline durable resume and bounded history pages
+- `workspace_heads` — local Git heads, Environments, and durable exact binding
 - `lifecycle_hooks` — agent, turn, tool, and completion handlers
 
 Examples are compiled in CI and import only `everruns`.
@@ -261,6 +294,7 @@ Examples are compiled in CI and import only `everruns`.
 - [Everruns Framework](https://docs.everruns.com/framework/)
 - [Framework quickstart](https://docs.everruns.com/framework/quickstart/)
 - [Workspace security](https://docs.everruns.com/framework/workspace-security/)
+- [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)
 - [Models and providers](https://docs.everruns.com/framework/models-and-providers/)
 - [Tools and macros](https://docs.everruns.com/framework/tools-and-macros/)
 - [Sessions](https://docs.everruns.com/framework/sessions/)

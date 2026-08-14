@@ -66,6 +66,13 @@ reuse it and send accumulated history through the same context-assembly path.
 Two sessions opened from the same agent have different opaque IDs and isolated
 histories even though the Agent owns their shared event backend.
 
+Conversation isolation does not imply filesystem isolation. The concise
+`agent.session()` path permanently selects the Agent's default head before its
+first inspection or turn; call `session.start().await` to make that selection
+observable earlier. To fix a session to an isolated project view, bind an
+[`Environment`](/framework/workspaces-and-environments/) before execution. A
+session can never switch heads after it starts.
+
 `Session::inspect` returns the context assembled for the next model call. Use it
 for application assertions and debugging rather than reaching into runtime
 records or backend stores.
@@ -73,6 +80,8 @@ records or backend stores.
 Keep `Session::session_id()` when the application may need to reopen a
 conversation. [Session History and Resume](/framework/session-history/) covers
 typed resume, bounded transcript pages, and cursor snapshots. See
+[Workspaces and Environments](/framework/workspaces-and-environments/) for
+exact-head resume, isolation, sharing, and lifecycle. See
 [Persistence](/framework/persistence/) to choose Agent-lifetime memory or a
 crash-durable local profile, and [Events and
 cancellation](/framework/events-and-cancellation/) to observe a turn in flight.

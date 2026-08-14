@@ -16,6 +16,43 @@ holds the files an agent reads and writes during execution, exposed at the
 `/workspace` mount point. Capabilities (`session_file_system`, `bashkit_shell`) read
 and write through the `WorkspaceFileSystem` seam.
 
+The application-facing Framework also models **WorkspaceHead** and
+**Environment** at the host boundary. That model adds provider-owned mutable
+lineage views without changing the neutral filesystem contract described here:
+each head still supplies the canonical session filesystem and stable
+`/workspace` namespace.
+
+## Framework heads and environments
+
+The Framework separates behavioral configuration from execution resources.
+An Agent describes behavior; a Session owns conversation continuity; an
+Environment permanently selects exactly one WorkspaceHead before execution.
+Workspace is logical lineage, while a head is one stable, opaque, reopenable
+mutable view. Physical paths, Git branches, and provider-specific revisions do
+not enter the universal contract.
+
+Head providers are an open async host SPI. Environment leaves compute and
+network expansion type-keyed and open rather than defining a backend enum. A
+head resolves to the existing session filesystem, then the existing workspace
+policy composes over it. Additional roots remain mounts inside that filesystem;
+they are neither heads nor forkable lineage.
+
+Isolated heads accept one session binding. Sharing requires an explicit shared
+head and does not claim writer isolation: compare-and-set failures and provider
+status are the conflict surfaces. A session binding is persisted as bounded,
+credential-free opaque provider data. Resume must reopen the recorded
+provider/workspace/head identity or fail structurally; substitution is
+forbidden.
+
+The concise session path still uses this model: it lazily selects an isolated
+process-local head before execution. A configured default directory is an
+explicit shared-head shorthand and persists its canonical binding for resume.
+
+Fork, checkpoint, status, archive, and destroy are explicit provider lifecycle
+operations. Dropping Framework handles never invokes destructive cleanup. The
+public local implementation uses Git worktrees, removes a worktree only for an
+explicit destroy, and retains its Git branch.
+
 Workspaces are addressable entities (`wsp_<32-hex>`). Sessions attach to a
 Workspace; multiple sessions may attach to the same Workspace (for shared
 working state) or each session may own its own Workspace (the default,
