@@ -433,8 +433,8 @@ async fn execute_with_agentic_loop(
         let model = ModelSpec::on((provider_type.clone()).as_str(), config.model.clone());
 
         // Build the agentic loop. Seed events are not a builder input; they are
-        // converted to conversation messages and seeded into the in-memory
-        // message retriever after build (see seed_messages_from_events below).
+        // replayed into the session's event log after build (see seed_events
+        // below), which is what the conversation history projects from.
         let mut builder = InMemoryAgenticLoop::builder()
             .agent_name("Eval Agent")
             .system_prompt(build_system_prompt(config.approach))
@@ -463,11 +463,11 @@ async fn execute_with_agentic_loop(
 
         // Pre-populate the session's conversation history from the scenario's
         // seed events. `run_turn` then appends the task on top of this history.
-        let seed_messages = messages_from_events(&record.input.events);
+        // History is event-sourced, so the scenario's envelopes are replayed
+        // into the session log rather than written as messages.
         agentic_loop
-            .message_retriever()
-            .seed(agentic_loop.session_id(), seed_messages)
-            .await;
+            .seed_events(record.input.events.iter().map(|event| event.data.clone()))
+            .await?;
 
         // Run the turn with the task as user input
         let result = agentic_loop.run_turn(record.task.as_str()).await?;
@@ -503,34 +503,6 @@ async fn execute_with_agentic_loop(
         let metrics = extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
         return Ok((result.response, metrics));
     }
-}
-
-/// Convert a scenario's seed events into the conversation messages that make up
-/// the session's prior history. Only the event variants the dataset emits
-/// (`make_input_event`, `make_output_event`, `make_tool_event`) carry messages;
-/// any other event types are ignored.
-fn messages_from_events(events: &[everruns_core::events::Event]) -> Vec<everruns_core::Message> {
-    events
-        .iter()
-        .filter_map(|event| match &event.data {
-            EventData::InputMessage(data) => Some(data.message.clone()),
-            EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
-            EventData::ToolCompleted(data) => Some(everruns_core::Message::tool_result(
-                data.tool_call_id.clone(),
-                data.result.as_ref().map(|parts| {
-                    serde_json::Value::String(
-                        parts
-                            .iter()
-                            .filter_map(|part| part.as_text())
-                            .collect::<Vec<_>>()
-                            .join("\n"),
-                    )
-                }),
-                data.error.clone(),
-            )),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Extract evaluation metrics from events emitted during execution.

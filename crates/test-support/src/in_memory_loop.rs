@@ -840,6 +840,26 @@ impl InMemoryAgenticLoop {
         &self.message_retriever
     }
 
+    /// Replay pre-recorded conversation envelopes into this session's log.
+    ///
+    /// Conversation state is event-sourced and [`EventHistory`] is a read
+    /// model, so fixtures that need a prior conversation cannot write messages
+    /// directly. They emit the envelopes through the same emitter the loop
+    /// uses, which makes the projected history identical to live traffic.
+    /// Only [`EventData`] variants that project to messages contribute.
+    pub async fn seed_events(&self, events: impl IntoIterator<Item = EventData>) -> Result<()> {
+        for data in events {
+            self.event_emitter
+                .emit(EventRequest::new(
+                    self.session_id,
+                    EventContext::empty(),
+                    data,
+                ))
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Access the tool registry directly
     pub fn tool_registry(&self) -> &ToolRegistry {
         &self.tool_registry
