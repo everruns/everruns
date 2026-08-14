@@ -724,7 +724,11 @@ impl PostgresReportingProjector {
                 0,
                 NOW()
             FROM llm_generations lg
-            JOIN sessions s ON s.id = lg.session_id AND s.org_id = lg.org_id
+            -- LEFT JOIN, not JOIN: org-attributed background inference has no
+            -- session (EVE-898), and an inner join would silently drop those
+            -- rows out of the fact table instead of projecting them with null
+            -- session dimensions.
+            LEFT JOIN sessions s ON s.id = lg.session_id AND s.org_id = lg.org_id
             LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = lg.org_id
             LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = lg.org_id
             WHERE lg.id = $1 AND lg.org_id = $2

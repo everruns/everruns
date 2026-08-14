@@ -582,7 +582,7 @@ impl InMemoryDatabase {
     pub async fn create_llm_generation(
         &self,
         _org_id: i64,
-        _session_id: Uuid,
+        _session_id: Option<Uuid>,
         _turn_id: Option<Uuid>,
         _event_id: Option<Uuid>,
         _model: String,

@@ -480,10 +480,17 @@ impl Database {
     // ============================================
 
     #[allow(clippy::too_many_arguments)]
+    /// Record one inference call.
+    ///
+    /// `session_id` is `None` for org-attributed background inference that no
+    /// conversation triggered (e.g. knowledge-index sync embeddings, EVE-898).
+    /// Such a row still carries `org_id`, so org usage reporting sees it; the
+    /// session-keyed denormalized totals and budget debit have no subject and
+    /// are the caller's business to skip.
     pub async fn create_llm_generation(
         &self,
         org_id: i64,
-        session_id: Uuid,
+        session_id: Option<Uuid>,
         turn_id: Option<Uuid>,
         event_id: Option<Uuid>,
         model: String,

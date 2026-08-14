@@ -1003,3 +1003,78 @@ async fn fact_session_projection_uses_denormalized_counts_for_large_histories() 
         repeat_elapsed.as_millis()
     );
 }
+
+/// EVE-898: knowledge-index sync embeds every chunk of every indexed document as
+/// host-triggered background work with no session, so its spend is ledgered with
+/// `llm_generations.session_id = NULL`. The projection must carry those rows into
+/// `fact_llm_generation` with null session dimensions — an inner join on sessions
+/// dropped them silently, which is worse than not ledgering at all.
+#[tokio::test]
+async fn session_less_generation_projects_with_null_session_dimensions() {
+    let server = TestServer::new().await;
+    let org = server
+        .db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: format!("Session-less generation org {}", Uuid::now_v7()),
+            created_by: None,
+        })
+        .await
+        .expect("create session-less generation org");
+
+    // Mirrors the sync ledger write: org-attributed, no session, no turn, no
+    // event, aggregate input tokens, provider-reported cost.
+    server
+        .db
+        .create_llm_generation(
+            org.org_id,
+            None,
+            None,
+            None,
+            "text-embedding-3-small".to_string(),
+            Some("openai".to_string()),
+            4_096,
+            0,
+            0,
+            0,
+            Some(0.000_41),
+            None,
+            None,
+            None,
+            None,
+            Utc::now(),
+        )
+        .await
+        .expect("ledger session-less embedding usage");
+
+    PostgresReportingProjector::new(server.pool.clone())
+        .run_once(org.org_id, 16)
+        .await
+        .expect("project session-less generation");
+
+    let (session_id, user_id, agent_id, model, input_tokens, total_tokens): (
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<Uuid>,
+        Option<String>,
+        i64,
+        i64,
+    ) = sqlx::query_as(
+        r#"
+        SELECT session_id, user_id, agent_id, model, input_tokens, total_tokens
+          FROM fact_llm_generation
+         WHERE org_id = $1
+        "#,
+    )
+    .bind(org.org_id)
+    .fetch_one(&server.pool)
+    .await
+    .expect("session-less generation reaches fact_llm_generation");
+
+    assert_eq!(session_id, None, "no session to attribute the spend to");
+    assert_eq!(user_id, None, "session-derived dimensions stay null");
+    assert_eq!(agent_id, None, "session-derived dimensions stay null");
+    assert_eq!(model.as_deref(), Some("text-embedding-3-small"));
+    assert_eq!(input_tokens, 4_096);
+    assert_eq!(total_tokens, 4_096);
+}

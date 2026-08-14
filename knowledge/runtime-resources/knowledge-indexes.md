@@ -313,9 +313,23 @@ budget debits on the same path chat generations use.
 Usage is reported even when retrieval matches nothing: the embedding call was
 billed regardless of whether any chunk scored.
 
-Sync-time embedding spend is **not** ledgered yet. Sync is background work with
-no session, and `llm_generations` requires one; the run's totals are logged only.
-See EVE-898.
+Sync-time embedding spend is ledgered too, but on a different path. Sync is
+host-triggered background work with no session, so it writes `llm_generations`
+directly instead of emitting an event: `EventRequest` requires a session, and the
+usage listener derives the org from one. `llm_generations.session_id` is nullable
+for exactly this case, and the reporting projection left-joins sessions so a
+session-less row still reaches `fact_llm_generation` with null session
+dimensions.
+
+A run writes one aggregate row rather than one per embedding call — a run embeds
+every chunk of every document, and per-call rows carry no dimension the aggregate
+lacks.
+
+Sync spend is org-attributed but **not** debited against a budget. The
+denormalized session/agent totals and the budget debit are session-keyed and have
+no subject here, and a user's cap should not be consumed by indexing they did not
+trigger. An org-level indexing cap would read this ledger; the ledger row is its
+prerequisite, not its decision.
 
 ## Capability: `knowledge_index`
 

@@ -281,8 +281,8 @@ impl KnowledgeIndexSyncService {
         let mut documents = Vec::with_capacity(docs.len());
         let mut records = Vec::new();
         let mut vector_dim: Option<i32> = None;
-        // EVE-894: embedding usage for this sync run. Previously discarded
-        // outright; accumulated here so the spend is at least observable.
+        // Embedding usage for this sync run, aggregated across every batch of
+        // every document and ledgered once at the end (EVE-894, EVE-898).
         let mut embed_tokens: u64 = 0;
         let mut embed_cost_usd: Option<f64> = None;
 
@@ -329,10 +329,6 @@ impl KnowledgeIndexSyncService {
             while let Some(result) = embed_stream.next().await {
                 let (i, batch_embeddings, usage_tokens, actual_cost_usd) = result?;
                 batch_results[i] = Some(batch_embeddings);
-                // EVE-894: sync-time embedding usage is accumulated per run and
-                // reported below. It is not yet written to `llm_generations`:
-                // that table requires a session and index sync is host-triggered
-                // background work with none. See the follow-up issue.
                 embed_tokens = embed_tokens.saturating_add(u64::from(usage_tokens.unwrap_or(0)));
                 if let Some(cost) = actual_cost_usd {
                     embed_cost_usd = Some(embed_cost_usd.unwrap_or(0.0) + cost);
@@ -382,20 +378,98 @@ impl KnowledgeIndexSyncService {
             });
         }
 
-        tracing::info!(
-            index_id = %index.public_id,
-            model = %model_id,
-            provider = %embedder.provider_type,
+        self.ledger_sync_embedding_usage(
+            index,
+            &model_id,
+            &embedder.provider_type,
             embed_tokens,
             embed_cost_usd,
-            "knowledge index sync embedding usage"
-        );
+        )
+        .await;
 
         Ok(PreparedSync {
             documents,
             records,
             vector_dim,
         })
+    }
+
+    /// Record a sync run's embedding spend against the org (EVE-898).
+    ///
+    /// Sync is host-triggered background work with no session, so this writes
+    /// `llm_generations` directly rather than emitting an `llm.generation`
+    /// event — `EventRequest` requires a session, and the usage listener
+    /// derives `org_id` from one. The row is org-attributed with a null
+    /// session, which reaches org usage reporting and cost totals.
+    ///
+    /// Deliberately *not* debited against a budget: the session-scoped
+    /// denormalized totals and budget debit have no subject here, and a user's
+    /// cap should not be consumed by indexing they did not trigger. Whether a
+    /// separate org-level indexing cap should exist is a product question this
+    /// ledger row is the prerequisite for, not a decision it makes.
+    ///
+    /// One aggregate row per run, not per batch: a run embeds every chunk of
+    /// every document, and per-call rows would swamp the ledger with thousands
+    /// of entries carrying no dimension the aggregate lacks.
+    ///
+    /// Best-effort. Losing the ledger row must not fail a sync that already
+    /// produced valid embeddings — the spend is logged either way.
+    async fn ledger_sync_embedding_usage(
+        &self,
+        index: &KnowledgeIndexRow,
+        model_id: &str,
+        provider_type: &str,
+        embed_tokens: u64,
+        embed_cost_usd: Option<f64>,
+    ) {
+        tracing::info!(
+            index_id = %index.public_id,
+            model = %model_id,
+            provider = %provider_type,
+            embed_tokens,
+            embed_cost_usd,
+            "knowledge index sync embedding usage"
+        );
+
+        // Nothing billable happened (empty index, or a provider that reports
+        // neither tokens nor cost). A zero row would only add noise.
+        if embed_tokens == 0 && embed_cost_usd.is_none() {
+            return;
+        }
+
+        if let Err(e) = self
+            .db
+            .create_llm_generation(
+                index.org_id,
+                None,
+                None,
+                None,
+                model_id.to_string(),
+                Some(provider_type.to_string()),
+                // Embeddings consume input tokens and produce vectors, not
+                // output tokens.
+                i64::try_from(embed_tokens).unwrap_or(i64::MAX),
+                0,
+                0,
+                0,
+                embed_cost_usd,
+                None,
+                None,
+                None,
+                // No single provider response id: this aggregates many calls.
+                // Reconciliation skips rows without one.
+                None,
+                chrono::Utc::now(),
+            )
+            .await
+        {
+            tracing::warn!(
+                index_id = %index.public_id,
+                org_id = index.org_id,
+                error = %e,
+                "failed to ledger knowledge index sync embedding usage"
+            );
+        }
     }
 }
 
