@@ -32,19 +32,5 @@ impl<E: EventEmitter + ?Sized> EventEmitter for Arc<E> {
     }
 }
 
-/// Core-local event emitter test double.
-#[derive(Debug, Clone, Default)]
-#[cfg(test)]
-pub(crate) struct NoopEventEmitter;
-
-#[cfg(test)]
-#[async_trait]
-impl EventEmitter for NoopEventEmitter {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
-        // Return a dummy event with sequence 0
-        Ok(request.into_event(crate::typed_id::EventId::new(), 0))
-    }
-}
-
 // Note: EventListener trait has been moved to event_listeners.rs module.
 // Use `everruns_core::EventListener` or `everruns_core::event_listeners::EventListener`.

@@ -46,6 +46,7 @@ host = ["dep:everruns-host", "sim"]
 
 [dependencies]
 everruns-core = { path = "../core", version = "0.17.26", default-features = false }
+everruns-engine.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
 everruns-host = { workspace = true, optional = true }

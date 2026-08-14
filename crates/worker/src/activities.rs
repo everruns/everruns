@@ -27,7 +27,7 @@ use crate::grpc_worker_adapters::GrpcWorkerAdapters;
 use crate::runtime_host::WorkerRuntimeHost;
 
 // Re-export atom types for activity callers
-pub use everruns_core::atoms::{
+pub use everruns_engine::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
 
@@ -184,7 +184,7 @@ pub mod activity_types {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::atoms::AtomContext;
+    use everruns_core::ExecutionContext;
     use everruns_provider::tool_types::{
         BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolPolicy,
     };
@@ -193,8 +193,20 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn durable_activity_io_is_the_engine_contract() {
+        assert_eq!(
+            std::any::type_name::<ActInput>(),
+            std::any::type_name::<everruns_engine::ActInput>(),
+        );
+        assert_eq!(
+            std::any::type_name::<ReasonResult>(),
+            std::any::type_name::<everruns_engine::ReasonResult>(),
+        );
+    }
+
+    #[test]
     fn test_input_atom_input_serialization() {
-        let context = AtomContext::new(
+        let context = ExecutionContext::new(
             SessionId::from_uuid(Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()),
             TurnId::from_uuid(Uuid::parse_str("660e8400-e29b-41d4-a716-446655440000").unwrap()),
             MessageId::from_uuid(Uuid::parse_str("770e8400-e29b-41d4-a716-446655440000").unwrap()),
@@ -212,7 +224,7 @@ mod tests {
 
     #[test]
     fn test_reason_input_serialization() {
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         let input = ReasonInput {
             context: context.clone(),
@@ -238,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_act_input_serialization() {
-        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let context = ExecutionContext::new(SessionId::new(), TurnId::new(), MessageId::new());
 
         let input = ActInput {
             org_id: Some(1),

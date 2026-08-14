@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use async_trait::async_trait;
-use everruns_core::atoms::{AtomContext, ReasonAtom, ReasonInput};
+use everruns_core::ExecutionContext;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
@@ -14,6 +14,7 @@ use everruns_core::{
     ResolvedExecutionSnapshot, ResolvedModelExecution, ResolvedTurnContextInput,
     TurnContextRequest, TurnContextResolver, assemble_resolved_turn_context,
 };
+use everruns_engine::{ReasonAtom, ReasonInput};
 use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmResponseStream, LlmStreamEvent,
 };
@@ -123,7 +124,7 @@ async fn kernel_executes_from_resolved_values_without_stores() {
     let result = atom
         .execute_with_assembled_context(
             ReasonInput {
-                context: AtomContext::new(session_id, TurnId::new(), user.id)
+                context: ExecutionContext::new(session_id, TurnId::new(), user.id)
                     .with_workspace_id(workspace_id),
                 harness_id,
                 agent_id: None,

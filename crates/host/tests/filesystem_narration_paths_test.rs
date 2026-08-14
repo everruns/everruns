@@ -4,8 +4,8 @@
 #![cfg(feature = "filesystem")]
 
 use async_trait::async_trait;
+use everruns_core::ExecutionContext;
 use everruns_core::MessageRetriever;
-use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::capabilities::{
     CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -21,6 +21,7 @@ use everruns_core::{
     execution_loading::SessionStore, provider_resolution::ProviderStore,
     session_files::SessionFileSystem,
 };
+use everruns_engine::ActInput;
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
     RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity,
@@ -248,7 +249,7 @@ async fn run_list_directory_act(
         host,
         ActInput {
             org_id: Some(1),
-            context: AtomContext::new(
+            context: ExecutionContext::new(
                 session_id,
                 TurnId::from_uuid(Uuid::now_v7()),
                 MessageId::from_uuid(Uuid::now_v7()),

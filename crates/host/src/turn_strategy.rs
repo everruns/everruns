@@ -13,9 +13,8 @@
 use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 use chrono::Utc;
 use everruns_core::Controls;
-use everruns_core::atoms::ReasonResult;
 use everruns_engine::{
-    ActOutcome, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
+    ActOutcome, ActSchedulingFacts, ActivityOutcome, HostFacts, ReasonResult, TurnLifecycleEffect,
     plan_next_turn, reason_schedules_act,
 };
 use everruns_provider::error::{AgentLoopError, Result};

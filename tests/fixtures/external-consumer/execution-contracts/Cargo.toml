@@ -7,5 +7,6 @@ publish = false
 [dependencies]
 async-trait = "0.1"
 everruns-core = { path = "../../../../crates/core" }
+everruns-engine = { path = "../../../../crates/engine" }
 everruns-provider = { path = "../../../../crates/provider", default-features = false }
 everruns-host = { path = "../../../../crates/host", default-features = false }

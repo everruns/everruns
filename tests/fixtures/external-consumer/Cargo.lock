@@ -493,11 +493,19 @@ dependencies = [
 name = "everruns-engine"
 version = "0.17.26"
 dependencies = [
+ "async-trait",
  "chrono",
+ "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "futures",
  "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tokio-util",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -606,6 +614,7 @@ dependencies = [
  "chrono",
  "everruns-capability",
  "everruns-core",
+ "everruns-engine",
  "everruns-host",
  "everruns-platform",
  "everruns-provider",
@@ -665,6 +674,7 @@ version = "0.0.0"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-engine",
  "everruns-host",
  "everruns-provider",
 ]

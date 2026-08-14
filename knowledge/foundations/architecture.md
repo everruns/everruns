@@ -421,7 +421,7 @@ The `TaskWorker` provides a unified worker implementation that works with both i
 
 **Benefits of Unified Architecture**:
 - Single codebase for activity implementations (input, reason, act)
-- `everruns-host` owns the shared turn-strategy planner, so in-process and gRPC-backed workers use the same reason/act continuation and tool-results pause/resume policy without coupling runtime to the durable engine
+- `everruns-engine` owns the shared turn planner and phase algorithms, so in-process and gRPC-backed workers use the same reason/act continuation, event ordering, and tool-results pause/resume policy
 - Shared task scheduling logic
 - Easy to test with mock adapters
 - Consistent behavior across deployment modes
@@ -438,17 +438,25 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
    - `AgentStore` - Load agent configurations
    - `SessionStore` - Load session configurations
 
-2. **Atoms** (Stateless Atomic Operations):
-   - `InputAtom` - Retrieve user message from store
-   - `ReasonAtom` - Call LLM with context preparation, store response
-   - `ActAtom` - Schedule and execute the tool batch (concurrent by default, serialized within a concurrency class), store results
-   - Each atom implements `Atom` trait with `execute(input) -> Result<output>`
+2. **Injected execution contracts**:
+   - `MessageRetriever`, `TurnContextResolver`, `EventEmitter`, and `ToolExecutor`
+   - durability, filesystem, connection, image, and utility-service ports grouped by concern
+   - `PreToolUseHook` and `PostToolExecHook` capability contracts
 
-3. **AtomContext** (Execution Tracking):
+3. **ExecutionContext** (Execution Tracking):
    - `session_id` - The conversation session
    - `turn_id` - Unique identifier for the current turn
    - `input_message_id` - User message that triggered this turn
-   - `exec_id` - Unique identifier for this atom execution
+   - `exec_id` - Unique identifier for this phase execution
+
+### Shared Execution Kernel (`everruns-engine`)
+
+`everruns-engine` owns the concrete `InputAtom`, `ReasonAtom`, and `ActAtom`
+algorithms, their serialized phase inputs/results, post-act helpers, tool
+scheduler, infrastructure hooks, and the pure `TurnState` planner. The concrete
+types use inherent `execute` methods; there is no generic public `Atom` trait.
+Hosts inject core/provider contracts and keep deployment composition outside the
+engine.
 
 4. **Concrete In-Memory Implementations**:
    - `everruns-host` owns application stores and canonical event history

@@ -3,8 +3,8 @@
 
 use async_trait::async_trait;
 
-use crate::atoms::AtomContext;
 use crate::event_emitter::EventEmitter;
+use crate::execution_context::ExecutionContext;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::typed_id::SessionId;
 
@@ -12,7 +12,7 @@ use crate::typed_id::SessionId;
 pub struct FinalizedToolCallsContext<'a> {
     pub event_emitter: &'a dyn EventEmitter,
     pub session_id: SessionId,
-    pub atom_context: &'a AtomContext,
+    pub execution_context: &'a ExecutionContext,
     pub tool_definitions: &'a [ToolDefinition],
     pub iteration: u32,
 }

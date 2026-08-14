@@ -8,8 +8,9 @@
 
 `everruns-core` defines the provider-neutral contracts that every other Everruns
 crate builds on: agents, harnesses, sessions, messages, events, capabilities
-and tools, and pure snapshot/context
-transformations for the `input → reason → act` agent loop. It carries no store
+and tools, plus pure snapshot/context transformations and narrow effect
+contracts for the `input → reason → act` execution kernel. The concrete phase
+algorithms live in `everruns-engine`. Core carries no store
 or provider-loading orchestration, filesystem, shell,
 web-fetch, Lua, MCP-client, concrete HTTP, server, or database runtime of its
 own — hosts and focused integration crates wire these abstractions together.
@@ -52,7 +53,7 @@ hosted capabilities come from their owning integration or product crates.
 
 - Agent, harness, session, message, and event domain models
 - Capability registry/execution contracts and tool traits for extensions
-- Provider-neutral execution inputs and effect contracts
+- Provider-neutral execution context and effect contracts
 - Secret-free execution snapshots and pure resolved-context transformations
 - Neutral capability collection hooks and type-keyed host-service extensions
 - Read-only storage traits and canonical event/message contracts
@@ -66,9 +67,10 @@ module. Deployment composition contracts, including
 
 Store-backed snapshot loading, lifecycle/dependency probing, message filtering,
 provider configuration and driver construction, context inspection, and
-`StoreCommandHost` live in `everruns-host`. Core reason execution accepts an
+`StoreCommandHost` live in `everruns-host`. Engine reason execution accepts an
 already assembled credential-safe context or the narrow `TurnContextResolver`
-effect; it never receives provider configuration or stored records.
+effect; core itself never executes a phase or receives provider configuration
+or stored records.
 
 Environment implementations live in `everruns-integrations-filesystem`,
 `everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,

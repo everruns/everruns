@@ -713,12 +713,12 @@ pub trait Capability: Send + Sync {
     /// These hooks run before each individual tool is executed — for *every*
     /// tool the agent calls (built-in, MCP, or client-side), not just this
     /// capability's own tools. A hook can mutate the tool call or block it
-    /// outright (returning [`crate::atoms::PreToolUseDecision::Block`]), which
+    /// outright (returning [`crate::tool_hooks::PreToolUseDecision::Block`]), which
     /// makes this the seam for cross-cutting policy such as approval gating.
     /// The first hook to block wins.
     ///
     /// By default, returns an empty vector (no hooks).
-    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn crate::atoms::PreToolUseHook>> {
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn crate::tool_hooks::PreToolUseHook>> {
         vec![]
     }
 
@@ -729,7 +729,7 @@ pub trait Capability: Send + Sync {
     fn pre_tool_use_hooks_with_config(
         &self,
         _config: &serde_json::Value,
-    ) -> Vec<Arc<dyn crate::atoms::PreToolUseHook>> {
+    ) -> Vec<Arc<dyn crate::tool_hooks::PreToolUseHook>> {
         self.pre_tool_use_hooks()
     }
 
@@ -740,7 +740,7 @@ pub trait Capability: Send + Sync {
     /// Capability-contributed hooks run before infrastructure (final) hooks.
     ///
     /// By default, returns an empty vector (no hooks).
-    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn crate::atoms::PostToolExecHook>> {
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn crate::tool_hooks::PostToolExecHook>> {
         vec![]
     }
 
@@ -751,7 +751,7 @@ pub trait Capability: Send + Sync {
     fn post_tool_exec_hooks_with_config(
         &self,
         _config: &serde_json::Value,
-    ) -> Vec<Arc<dyn crate::atoms::PostToolExecHook>> {
+    ) -> Vec<Arc<dyn crate::tool_hooks::PostToolExecHook>> {
         self.post_tool_exec_hooks()
     }
 

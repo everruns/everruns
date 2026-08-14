@@ -18,9 +18,9 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_core::atoms::{PreToolUseDecision, PreToolUseHook};
 use everruns_core::capabilities::Capability;
-use everruns_core::{PostToolExecHook, tool_context::ToolContext};
+use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_hooks::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
 use everruns_provider::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use serde_json::Value;
 

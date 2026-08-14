@@ -6,7 +6,6 @@
 #![cfg(feature = "filesystem")]
 
 use everruns_builtins::{DistillOutputHook, PersistOutputHook, ToolSearchCapability};
-use everruns_core::atoms::PostToolExecHook;
 use everruns_core::capabilities::{SystemPromptContext, collect_capabilities};
 use everruns_core::path_identity::{
     PathIdentityExpectations, assert_model_visible_value, assert_no_forbidden_prefixes,
@@ -14,6 +13,7 @@ use everruns_core::path_identity::{
 };
 use everruns_core::session_path::WORKSPACE_PREFIX;
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_hooks::PostToolExecHook;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{Capability, MountFs, WorkspaceRootSet, session_files::SessionFileSystem};
 use everruns_host::{

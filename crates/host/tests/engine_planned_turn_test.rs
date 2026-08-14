@@ -377,7 +377,7 @@ fn planner_state_survives_a_restart_between_every_step() {
     assert_eq!(state.iteration, 1);
 
     // reason (with tool calls) -> act
-    let with_tools = everruns_core::ReasonResult {
+    let with_tools = everruns_engine::ReasonResult {
         success: true,
         has_tool_calls: true,
         max_iterations: 8,
@@ -425,7 +425,7 @@ fn planner_state_survives_a_restart_between_every_step() {
     assert_eq!(state.previous_response_id.as_deref(), Some("resp_1"));
 
     // reason (no tool calls) -> complete
-    let final_reason = everruns_core::ReasonResult {
+    let final_reason = everruns_engine::ReasonResult {
         success: true,
         max_iterations: 8,
         text: "done".to_string(),

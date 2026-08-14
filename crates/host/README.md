@@ -15,8 +15,10 @@ applications in the [Everruns](https://everruns.com) ecosystem should use
 [`everruns`](https://crates.io/crates/everruns) and the
 [Framework guide](https://docs.everruns.com/framework/).
 
-The pure, sans-I/O turn planner remains in
-[`everruns-engine`](https://crates.io/crates/everruns-engine).
+The portable phase algorithms and pure, sans-I/O turn planner live in
+[`everruns-engine`](https://crates.io/crates/everruns-engine). Host resolves
+deployment services and composes those engine executors; it does not carry a
+second Input/Reason/Act implementation.
 
 ## Quick Example
 
@@ -57,10 +59,11 @@ client used by the server and worker. The provider-neutral `UtilityLlmService`
 contract remains in core; embedders that supply their own implementation do
 not need this feature or its HTTP/TLS dependency tree.
 
-`everruns-engine` remains the sans-I/O planner. Canonical events are the sole
-history write path: host execution appends events, while `EventHistory` rebuilds
-messages from bounded, sequence-ordered replay. No writable message store is
-part of the maintained host API.
+`everruns-engine` keeps turn planning sans I/O and owns portable phase execution
+over injected contracts. Canonical events are the sole history write path: host
+execution appends events, while `EventHistory` rebuilds messages from bounded,
+sequence-ordered replay. No writable message store is part of the maintained
+host API.
 
 The execution boundary is value-first: host orchestration resolves stores and
 credential-bearing provider configuration, then passes core a secret-free

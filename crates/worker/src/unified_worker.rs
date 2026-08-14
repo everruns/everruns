@@ -10,14 +10,14 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use everruns_core::ActInput;
-use everruns_core::atoms::AtomContext;
+use everruns_core::ExecutionContext;
 use everruns_durable::{
     ActivityOptions, ClaimedTask, HeartbeatResponse, StoreError, TaskDefinition,
     TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
     record_activity_started,
 };
+use everruns_engine::ActInput;
 use everruns_host::{
     RuntimeActPlan, RuntimeTurnPlan, execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
@@ -43,7 +43,7 @@ use crate::{
 };
 
 // Re-export atom types
-pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
+pub use everruns_engine::{InputAtomInput, ReasonInput, ReasonResult};
 
 // =============================================================================
 // Configuration
@@ -1258,9 +1258,9 @@ async fn execute_input_activity<A: WorkerAdapters>(
         "Executing input activity"
     );
 
-    // Create AtomContext
-    let context = AtomContext {
-        // Input/Reason atoms do not key file I/O by AtomContext; the act
+    // Create ExecutionContext
+    let context = ExecutionContext {
+        // Input/Reason atoms do not key file I/O by ExecutionContext; the act
         // path receives its workspace-set context from the orchestration.
         workspace_id: None,
         session_id: input.session_id,
@@ -1269,7 +1269,7 @@ async fn execute_input_activity<A: WorkerAdapters>(
         exec_id: ExecId::new(),
     };
 
-    let atom_input = everruns_core::InputAtomInput {
+    let atom_input = InputAtomInput {
         context: context.clone(),
     };
     let result = runtime_execute_input_activity(
@@ -1301,10 +1301,10 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         "Executing reason activity"
     );
 
-    // Create AtomContext - use turn_id from input if available
+    // Create ExecutionContext - use turn_id from input if available
     let turn_id = input.turn_id.unwrap_or_default();
-    let context = AtomContext {
-        // Input/Reason atoms do not key file I/O by AtomContext; the act
+    let context = ExecutionContext {
+        // Input/Reason atoms do not key file I/O by ExecutionContext; the act
         // path receives its workspace-set context from the orchestration.
         workspace_id: None,
         session_id: input.session_id,
@@ -1313,7 +1313,7 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         exec_id: ExecId::new(),
     };
 
-    let reason_input = everruns_core::ReasonInput {
+    let reason_input = ReasonInput {
         context: context.clone(),
         harness_id: input.harness_id,
         agent_id: input.agent_id,
@@ -1382,7 +1382,7 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     // A reason that produced a final answer (no tool calls) is winding the turn
     // down; a reason that emitted tool calls is not.
     let reason_final_answer = if completed_activity == "reason" {
-        let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
+        let reason_result: ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
         reason_result.success && !reason_result.has_tool_calls
     } else {

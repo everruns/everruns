@@ -36058,7 +36058,7 @@
               "string",
               "null"
             ],
-            "description": "Scheduling conflict key. Tool calls within the same act batch that share\na non-empty `concurrency_class` are executed sequentially in arrival\norder; calls in different classes (or with no class) run concurrently.\n\nSet this on tools that mutate shared session state so that, e.g., two\nfile writes or two SQL mutations in one batch do not race. Read-only\ntools should leave this `None` so they always parallelize. See\n`crate::atoms::tool_scheduler` for how the act scheduler consumes it."
+            "description": "Scheduling conflict key. Tool calls within the same act batch that share\na non-empty `concurrency_class` are executed sequentially in arrival\norder; calls in different classes (or with no class) run concurrently.\n\nSet this on tools that mutate shared session state so that, e.g., two\nfile writes or two SQL mutations in one batch do not race. Read-only\ntools should leave this `None` so they always parallelize. See\n`everruns-engine`'s tool scheduler for how the act phase consumes it."
           },
           "cpu_bound": {
             "type": [

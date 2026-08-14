@@ -20,8 +20,9 @@ execution engine, gRPC worker boundary, or control-plane server. It also owns
 the reusable host-phase execution contract that durable/server-backed workers
 use for `input -> reason -> act`.
 
-The crate uses the same core atoms and capability resolution path as the worker
-so embedded execution stays behaviorally aligned with the main runtime.
+The crate composes the same `everruns-engine` phase algorithms and capability
+resolution path as the worker, so embedded execution stays behaviorally aligned
+with durable execution.
 
 ## Goals
 
@@ -38,18 +39,20 @@ so embedded execution stays behaviorally aligned with the main runtime.
 
 ## Position in the Stack
 
-`everruns-host` sits above `everruns-core` and below Framework adaptation or
-any host application.
+`everruns-host` sits above `everruns-core` and `everruns-engine`, and below
+Framework adaptation or any host application.
 
-- `everruns-core` owns atoms, neutral per-turn contracts, capabilities, event
+- `everruns-core` owns neutral per-turn contracts, capabilities, event
   types, and shared domain/runtime types. Contracts are grouped by execution
   concern (`tool_context`, `execution_loading`, `provider_resolution`,
   `session_files`, `durability`, and sibling modules), never in a catch-all
   service bag.
+- `everruns-engine` owns Input/Reason/Act algorithms, their phase I/O values,
+  concrete portable execution hooks, the tool scheduler, and pure turn planning.
 - `everruns-host` owns embedder-facing orchestration, in-memory stores, turn
   execution, store-backed snapshot/context loading, lifecycle and dependency
   probing, provider/driver resolution, command completion, runtime seeding
-  helpers, reusable host-phase execution, and shared turn-strategy planning.
+  helpers, reusable host-phase composition, and lifecycle-effect application.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
   execution hosts. They use runtime-owned host execution and turn-strategy
   planning, while still owning the durable engine implementation, worker
@@ -172,7 +175,8 @@ and workflow resumption.
 
 ## Execution Semantics
 
-`everruns-host` must execute the shared `TurnStateMachine` from `everruns-core`.
+`everruns-host` must drive `everruns-engine::TurnState` and compose the
+engine-owned phase executors.
 
 Required behavior:
 
@@ -187,10 +191,10 @@ Required behavior:
 6. Persist assistant messages and tool-result messages from emitted events so
    subsequent turns see the same history shape as the durable/server-backed
    runtime.
-7. Durable/server-backed workers must execute their per-phase host logic
-   through `everruns-host` instead of maintaining a separate copy of atom
-   wiring in the worker crate.
-8. Durable/server-backed workers must use runtime-owned turn-strategy planning
+7. Durable/server-backed workers must execute their per-phase host composition
+   through `everruns-host` instead of maintaining a separate execution loop in
+   the worker crate.
+8. Durable/server-backed workers must use engine-owned turn planning
    for `process_input -> reason -> act`, steering continuation,
    dependency-blocked completion, and `waiting_for_tool_results` pause/resume.
 9. Provider recovery must reuse the assembled reason input in place. It must
@@ -216,8 +220,8 @@ secret-free snapshot, filtered messages, safe model/provider identity, and an
 opaque ready driver. It never contains persisted Agent, Harness, or Session
 records, provider configuration, API keys, or base URLs.
 
-`ReasonAtom` accepts a preassembled context on normal host paths. Its narrow
-`TurnContextResolver` fallback lets direct atom callers delegate preparation to
+`everruns_engine::ReasonAtom` accepts a preassembled context on normal host
+paths. Its narrow `TurnContextResolver` fallback lets direct engine callers delegate preparation to
 a host without importing stores into the kernel. Framework in-process and
 durable worker paths must use this same split so hooks, retries, cancellation,
 events, compaction, and continuation behavior remain aligned.

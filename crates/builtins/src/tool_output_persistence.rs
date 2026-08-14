@@ -26,7 +26,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::atoms::PostToolExecHook;
+use crate::tool_hooks::PostToolExecHook;
 use crate::tool_output_sanitizer::{
     output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
 };

@@ -12,9 +12,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::atoms::{
-    PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
-};
 use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::guardrail_checks::{
     CompiledGuardrails, DEFAULT_OUTPUT_REPLACEMENT, DEFAULT_TOOL_OUTPUT_REPLACEMENT,
@@ -26,6 +23,9 @@ use crate::mcp_server::mcp_tool_name;
 use crate::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
     PostGenerationOutputContext, PostGenerationOutputGuardrail,
+};
+use crate::tool_hooks::{
+    PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};

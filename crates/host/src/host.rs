@@ -4,10 +4,6 @@
 // depending on the application facade or the runtime compatibility crate.
 
 use async_trait::async_trait;
-use everruns_core::atoms::{
-    ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
-    ReasonInput, ReasonResult,
-};
 use everruns_core::capabilities::{
     Capability, SystemPromptContext, collect_capabilities_with_configs,
 };
@@ -34,6 +30,10 @@ use everruns_core::{
     session_services::SessionResourceRegistry, session_services::SessionScheduleStore,
     session_services::SessionStorageStore, tool_context::ToolContextServices,
     tool_execution::BudgetChecker, tool_execution::PaymentAuthority,
+};
+use everruns_engine::{
+    ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
+    ReasonInput, ReasonResult,
 };
 use everruns_platform::SessionMutator;
 use everruns_platform::capabilities::{
@@ -370,8 +370,8 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
 struct RuntimeExecutionCapabilities {
     tool_registry: ToolRegistry,
-    post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
-    pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
+    post_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>>,
+    pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
 }
@@ -589,7 +589,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // `collect_capabilities_with_configs` (which skips non-available
     // capabilities). This keeps a `ComingSoon`/unavailable capability from
     // affecting execution via any of its hook seams.
-    let mut post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>> = resolved
+    let mut post_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PostToolExecHook>> = resolved
         .resolved_capability_configs
         .iter()
         .flat_map(|config| {
@@ -626,7 +626,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     }
     // Capability-contributed pre-tool hooks run first (e.g. approval gating),
     // then user-hook (`PreToolUse`) specs. The first hook to block wins.
-    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = resolved
+    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::tool_hooks::PreToolUseHook>> = resolved
         .resolved_capability_configs
         .iter()
         .flat_map(|config| {

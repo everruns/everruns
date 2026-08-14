@@ -1,7 +1,7 @@
 //! End-to-end integration tests for the ActAtom tool scheduler, driven through
 //! the real in-process runtime (`InProcessRuntime`) with a scripted LLM.
 //!
-//! These complement the unit tests in `everruns_core::atoms::tool_scheduler`
+//! These complement the scheduler unit tests in `everruns-engine`.
 //! and the `ActAtom`-level tests by proving the *full path*: a capability's
 //! tools carry `concurrency_class` hints, those hints flow through the reason
 //! step into `ReasonResult.tool_definitions`, and the act scheduler then

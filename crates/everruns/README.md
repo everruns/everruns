@@ -17,8 +17,8 @@ host, provider, and platform crates support the implementation and advanced
 execution hosts.
 
 The public `Engine` SPI owns sessions. `InMemoryEngine` is the explicit
-process-local implementation; `everruns-engine` remains the shared internal
-turn-planning kernel.
+process-local implementation; `everruns-engine` is the shared execution kernel
+for Input/Reason/Act and turn planning.
 
 ## Installation
 

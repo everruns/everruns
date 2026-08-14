@@ -8,8 +8,8 @@
 // host root (the worktree-switch scenario) moves every surface together.
 
 use everruns_builtins::{DistillOutputHook, PersistOutputHook};
-use everruns_core::atoms::PostToolExecHook;
 use everruns_core::tool_context::ToolContext;
+use everruns_core::tool_hooks::PostToolExecHook;
 #[cfg(any(feature = "bashkit", feature = "filesystem"))]
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{MountFs, WorkspaceRootSet, session_files::SessionFileSystem};
