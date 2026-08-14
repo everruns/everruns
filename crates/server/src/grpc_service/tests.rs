@@ -143,6 +143,44 @@ async fn test_worker_service_with_completing_runner() -> WorkerServiceImpl {
     )
 }
 
+#[tokio::test]
+async fn exact_provider_config_preserves_credentialless_driver_type() {
+    use crate::storage::models::CreateProviderRow;
+
+    let service = test_worker_service().await;
+    let provider = service
+        .db
+        .create_provider(
+            everruns_core::DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: "Credentialless LlmSim".to_string(),
+                provider_type: "llmsim".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create credentialless provider");
+
+    let response = service
+        .get_default_provider_credentials(tonic::Request::new(
+            GetDefaultProviderCredentialsRequest {
+                org_id: everruns_core::DEFAULT_ORG_ID,
+                provider_type: String::new(),
+                provider_id: provider.id.to_string(),
+            },
+        ))
+        .await
+        .expect("resolve exact provider config")
+        .into_inner();
+
+    assert!(response.found);
+    assert_eq!(response.provider_type, "llmsim");
+    assert!(response.api_key.is_empty());
+    assert!(response.base_url.is_empty());
+}
+
 struct AllowingConnectionResolver;
 
 #[async_trait::async_trait]

@@ -2372,12 +2372,24 @@ impl WorkerService for WorkerServiceImpl {
             self.provider_resolver_service
                 .resolve_provider_credentials(req.org_id, &req.provider_type)
                 .await
-                .map(|value| value.map(|credentials| (req.provider_type.clone(), credentials)))
+                .map(|value| {
+                    value.map(|credentials| {
+                        (
+                            req.provider_type.clone(),
+                            Some(credentials.api_key),
+                            credentials.base_url,
+                        )
+                    })
+                })
         } else {
             self.provider_resolver_service
-                .resolve_runtime_provider(req.org_id, &req.provider_id)
+                .resolve_runtime_provider_config(req.org_id, &req.provider_id)
                 .await
-                .map(|value| value.map(|provider| (provider.provider_type, provider.credentials)))
+                .map(|value| {
+                    value.map(|provider| {
+                        (provider.provider_type, provider.api_key, provider.base_url)
+                    })
+                })
         }
         .map_err(|e| {
             tracing::error!(
@@ -2389,10 +2401,10 @@ impl WorkerService for WorkerServiceImpl {
         })?;
 
         Ok(Response::new(match resolved {
-            Some((provider_type, credentials)) => GetDefaultProviderCredentialsResponse {
+            Some((provider_type, api_key, base_url)) => GetDefaultProviderCredentialsResponse {
                 found: true,
-                api_key: credentials.api_key,
-                base_url: credentials.base_url.unwrap_or_default(),
+                api_key: api_key.unwrap_or_default(),
+                base_url: base_url.unwrap_or_default(),
                 provider_type,
             },
             None => GetDefaultProviderCredentialsResponse {
