@@ -14,8 +14,8 @@ use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
 use chrono::Utc;
 use everruns_core::Controls;
 use everruns_engine::{
-    ActOutcome, ActSchedulingFacts, ActivityOutcome, HostFacts, ReasonResult, TurnLifecycleEffect,
-    plan_next_turn, reason_schedules_act,
+    ActOutcome, ActSchedulingFacts, ActivityOutcome, Execution, HostFacts, ReasonResult,
+    TurnExecution, TurnLifecycleEffect, reason_schedules_act,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{SessionId, TurnId};
@@ -43,37 +43,36 @@ pub use everruns_engine::{
 /// - `ScheduleAct` => enqueue or invoke an act phase with the returned payload
 /// - `WaitForToolResults` => persist the resume state until external tool input arrives
 /// - `Complete` => mark the host-owned workflow/session turn complete
-pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
+pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
     adapter: &A,
+    execution: &mut E,
     completed_activity: &str,
-    state: &RuntimeTurnState,
     output: &serde_json::Value,
     pending_user_message_count: usize,
 ) -> Result<RuntimeTurnPlan> {
+    let state = execution.state().clone();
     match completed_activity {
         "process_input" => {
             let turn_id: Option<TurnId> = output
                 .get("turn_id")
                 .and_then(|value| value.as_str())
                 .and_then(|value| value.parse().ok());
-            let (plan, effects) = plan_next_turn(
-                state,
+            let transition = execution.advance(
                 ActivityOutcome::ProcessInput { turn_id },
                 pending_user_message_count,
                 Utc::now(),
                 HostFacts::default(),
             );
-            perform_effects(adapter, state.org_id, state.session_id, effects).await;
-            Ok(plan)
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            Ok(transition.plan)
         }
         "reason" => {
             let reason_result: ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|error| AgentLoopError::Internal(error.into()))?;
 
-            let act_scheduling = resolve_act_scheduling(adapter, state, &reason_result).await?;
+            let act_scheduling = resolve_act_scheduling(adapter, &state, &reason_result).await?;
 
-            let (plan, effects) = plan_next_turn(
-                state,
+            let transition = execution.advance(
                 ActivityOutcome::Reason(Box::new(reason_result)),
                 pending_user_message_count,
                 Utc::now(),
@@ -82,8 +81,8 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state.org_id, state.session_id, effects).await;
-            Ok(plan)
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            Ok(transition.plan)
         }
         "act" => {
             let outcome = ActOutcome {
@@ -101,8 +100,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 resolve_setup_connection_hint(adapter, state.org_id, state.session_id, outcome)
                     .await;
 
-            let (plan, effects) = plan_next_turn(
-                state,
+            let transition = execution.advance(
                 ActivityOutcome::Act(outcome),
                 pending_user_message_count,
                 Utc::now(),
@@ -111,13 +109,35 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state.org_id, state.session_id, effects).await;
-            Ok(plan)
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            Ok(transition.plan)
         }
         other => Err(AgentLoopError::config(format!(
             "Unknown activity type completed: {other}"
         ))),
     }
+}
+
+/// Compatibility wrapper for hosts that persist only [`RuntimeTurnState`].
+///
+/// New drivers should retain their concrete [`Execution`] implementation and
+/// call [`advance_host_execution`] so state advancement cannot be duplicated.
+pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
+    adapter: &A,
+    completed_activity: &str,
+    state: &RuntimeTurnState,
+    output: &serde_json::Value,
+    pending_user_message_count: usize,
+) -> Result<RuntimeTurnPlan> {
+    let mut execution = TurnExecution::new(state.clone());
+    advance_host_execution(
+        adapter,
+        &mut execution,
+        completed_activity,
+        output,
+        pending_user_message_count,
+    )
+    .await
 }
 
 /// Resolve the act-scheduling session facts, fetching the session only when the

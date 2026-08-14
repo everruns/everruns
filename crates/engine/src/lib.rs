@@ -1,17 +1,21 @@
-//! Shared turn planning and Input/Reason/Act execution for Everruns hosts.
+//! Shared turn planning and Input/Reason/Act execution for hosts in the
+//! [Everruns](https://everruns.com) ecosystem.
 //!
-//! Given a serializable [`TurnState`], parsed [`ActivityOutcome`], and
-//! host-resolved [`HostFacts`], its pure functions return the next [`TurnPlan`]
-//! and [`TurnLifecycleEffect`]s. Framework applications use `everruns`; this
-//! focused crate lets runtime, worker, durable, and custom hosts in the
-//! [Everruns](https://everruns.com) ecosystem share one turn model.
+//! [`TurnExecution`] owns the serializable state machine shared by every
+//! execution driver. Given a parsed [`ActivityOutcome`] and host-resolved
+//! [`HostFacts`], it returns the next [`TurnPlan`] and ordered
+//! [`TurnLifecycleEffect`]s. Framework applications use `everruns`; this
+//! focused crate lets in-process, durable, and custom hosts share one turn
+//! model.
 //!
 //! Planning is sans I/O: hosts pass resolved facts and perform returned
 //! lifecycle effects. The execution phases are portable async algorithms over
 //! injected core/provider contracts such as [`everruns_core::MessageRetriever`],
 //! [`everruns_core::EventEmitter`], and [`everruns_core::ToolExecutor`]. The
 //! crate does not select stores, transports, processes, or deployment services.
-//! In-process and durable hosts therefore share both phase behavior and turn
+//! [`Execution`] is the driver boundary. `everruns-host` implements it with
+//! process-local state; `everruns-durable` implements it with checkpointed
+//! state between scheduled activities. Both share phase behavior and turn
 //! transitions without introducing an engine-to-host dependency.
 //!
 //! # Example
@@ -24,6 +28,7 @@
 //! ```
 
 mod execution;
+mod machine;
 #[cfg(test)]
 mod test_fixtures;
 mod turn;
@@ -60,6 +65,7 @@ pub use execution::{
     InputAtom, InputAtomInput, InputAtomResult, OutputHardLimitHook, PostActAction, PostActHook,
     ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
+pub use machine::{Execution, ExecutionTransition, TurnExecution};
 pub use turn::{
     ActOutcome, ActPlan, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
     TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,

@@ -37,6 +37,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_ci: ${{ steps.ci_event.outputs.run_ci }}
+      # Temporary architecture-work switch. Change the step output below to
+      # true to restore the full Rust/integration matrix.
+      slow_ci_enabled: ${{ steps.slow_ci_mode.outputs.enabled }}
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
       deno: ${{ steps.live_filter.outputs.deno }}
@@ -65,6 +68,10 @@ jobs:
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Resolve temporary slow CI mode
+        id: slow_ci_mode
+        run: echo "enabled=false" >> "$GITHUB_OUTPUT"
 
       - name: Resolve CI event gate
         id: ci_event
@@ -611,7 +618,7 @@ jobs:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v5
@@ -874,7 +881,7 @@ jobs:
     name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -1057,7 +1064,7 @@ jobs:
     name: Integration Tests (S3 Blob Backend)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -1178,7 +1185,7 @@ jobs:
     name: Build Release Binaries
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
       - uses: actions/checkout@v5

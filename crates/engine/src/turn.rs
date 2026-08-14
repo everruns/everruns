@@ -1,7 +1,6 @@
 // The sans-IO turn planner (EVE-840, Sans-IO Turn State epic).
 //
-// This is the authoritative turn-planning brain, extracted verbatim from
-// `everruns-host`'s `plan_next_host_turn`. Every function here is pure and
+// This is the authoritative turn-planning brain. Every function here is pure and
 // deterministic: it reads only its arguments and returns a `TurnPlan` (plus, for
 // terminal outcomes, a list of `TurnLifecycleEffect`s the host must perform). It
 // never touches a store, socket, process, event bus, or `Utc::now()` — the host
@@ -195,7 +194,7 @@ fn add_usage(current: &mut Option<TokenUsage>, next: &TokenUsage) {
 }
 
 impl TurnState {
-    fn with_reason_summary(&self, reason_result: &ReasonResult) -> Self {
+    pub(crate) fn with_reason_summary(&self, reason_result: &ReasonResult) -> Self {
         let mut next = self.clone();
         next.llm_call_count = next.llm_call_count.saturating_add(1);
         next.tool_call_count = next

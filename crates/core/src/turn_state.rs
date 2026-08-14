@@ -1,22 +1,14 @@
 //! The turn state machine as a serializable value with pure transitions.
 //!
-//! Stage 1 of `knowledge/foundations/sans-io-turn-state.md`. The loop is currently implemented
-//! twice: [`TurnStateMachine`](crate::turn::TurnStateMachine) is a mutable
-//! in-memory machine for the in-process host, and `RuntimeTurnState` +
-//! `plan_next_host_turn` (in `everruns-host`) is a serializable state plus a
-//! parallel planner for the durable host. Same phases, same transitions, two
-//! shapes, no way to derive one from the other — so every semantics change is
-//! made twice and nothing notices when it is made once.
+//! Neutral state values used by the engine-owned execution machine. Production
+//! in-process and durable drivers both advance this representation through
+//! `everruns-engine`; core contains the portable data contract only.
 //!
 //! [`TurnState`] is the representation both can share: a value that serializes,
 //! with transitions that consume it and return the next one. It holds exactly
 //! what the mutable machine holds and behaves identically — the conformance
 //! test in this module drives the same sequences through both and asserts the
 //! same actions and outcomes.
-//!
-//! Nothing is rewired yet. This module is a representation and its proof; the
-//! stages that fold in the durable bookkeeping, introduce effects, and move
-//! recording out of the atoms are described in the spec.
 //!
 //! No I/O belongs here, ever. That is the property the later stages depend on:
 //! a transition that loads or emits is a transition a durable host cannot

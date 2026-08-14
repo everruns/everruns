@@ -19,6 +19,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+everruns-engine.workspace = true
+
 # Async runtime
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -55,6 +57,9 @@ indicatif = "0.18"
 
 # Fault injection (optional, zero-cost when disabled)
 fail = { workspace = true, optional = true }
+
+[dev-dependencies]
+everruns-provider.workspace = true
 
 [features]
 failpoints = ["fail/failpoints"]
