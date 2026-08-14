@@ -7,11 +7,11 @@ use everruns_core::provider_resolution::ResolvedModel;
 use everruns_core::user_facing_error::UserFacingErrorContext;
 use everruns_core::{
     AgentLoopError, CapabilityRegistry, DisabledCommandHost, DriverRegistry, SessionId,
-    StoreCommandHost,
 };
 use everruns_core::{
     CommandHost, ExecutionSession, SessionCompletionError, SessionCompletionRequest,
 };
+use everruns_host::StoreCommandHost;
 use everruns_test_support::TestMathCapability;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -135,6 +135,18 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
             provider_metadata: None,
         })
         .await;
+    provider_store
+        .add_model(
+            everruns_core::ModelId::from_seed(905),
+            ResolvedModel {
+                model: "override-model".into(),
+                provider_type: DriverId::LlmSim,
+                api_key: Some("override-fake-key".into()),
+                base_url: None,
+                provider_metadata: None,
+            },
+        )
+        .await;
 
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(TestMathCapability);
@@ -153,6 +165,27 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
         capability_registry,
         driver_registry,
     )
+}
+
+#[tokio::test]
+async fn store_host_resolves_per_completion_model_override() {
+    let host = llmsim_host("override answer").await;
+    let turn = host.turn_context().await.unwrap();
+    let stream = host
+        .completion_stream(SessionCompletionRequest {
+            system_prompts: vec![turn.system_prompt],
+            messages: turn.messages,
+            controls: Some(everruns_core::Controls {
+                model_id: Some(everruns_core::ModelId::from_seed(905)),
+                ..Default::default()
+            }),
+            metadata: HashMap::new(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(stream.context.provider.as_deref(), Some("llmsim"));
+    assert_eq!(stream.context.model_id.as_deref(), Some("override-model"));
 }
 
 #[tokio::test]

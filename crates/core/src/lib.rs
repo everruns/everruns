@@ -245,7 +245,7 @@ pub mod turn_state;
 // Re-exports for convenience
 pub use command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
-    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream, StoreCommandHost,
+    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream,
 };
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
@@ -262,10 +262,7 @@ pub use error::{
 };
 pub use event_emitter::EventEmitter;
 pub use execution_loading::{HarnessStore, SessionStore};
-pub use execution_snapshot::{
-    ResolvedExecutionSnapshot, SnapshotMcpServer, load_execution_snapshot,
-    load_execution_snapshot_for_session,
-};
+pub use execution_snapshot::{ResolvedExecutionSnapshot, SnapshotMcpServer};
 pub use image_services::{ImageResolver, ResolvedImage};
 pub use llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
@@ -285,8 +282,9 @@ pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_s
 pub use provider_resolution::{ProviderStore, ResolvedModel};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
-    AssembledTurnContext, ResolvedRuntimeCapabilities, assemble_turn_context, inspect_turn_context,
-    resolve_runtime_capabilities,
+    AssembledTurnContext, ResolvedModelExecution, ResolvedRuntimeCapabilities,
+    ResolvedTurnContextInput, TurnContextRequest, TurnContextResolver,
+    assemble_resolved_turn_context, resolve_runtime_capabilities, resolve_snapshot_capabilities,
 };
 pub use session_files::{SessionFileSystem, WorkspaceScopedFileSystem};
 pub use session_services::{
@@ -607,7 +605,7 @@ pub use permissions::{
 };
 
 // Dependency blocker re-exports
-pub use dependency_blocker::{DependencyBlocker, detect_dependency_blocker};
+pub use dependency_blocker::DependencyBlocker;
 
 // URL validation re-exports
 pub use url_validation::{

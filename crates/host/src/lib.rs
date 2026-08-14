@@ -34,8 +34,10 @@
 mod backends;
 mod builders;
 mod capabilities;
+mod command_host;
 mod composition;
 pub mod events;
+pub mod execution_snapshot;
 mod file_store_decorators;
 mod grep_limits;
 mod host;
@@ -48,6 +50,7 @@ mod mcp_cache;
 mod process_command;
 mod real_disk;
 mod runtime;
+mod runtime_context;
 mod session_file_system_factory;
 mod turn_strategy;
 #[cfg(feature = "utility-openai")]
@@ -60,6 +63,7 @@ pub use backends::{
 pub use builders::{
     AgentBuilder, HarnessBuilder, SeededHarness, SessionBuilder, SingleSessionBuilder,
 };
+pub use command_host::StoreCommandHost;
 pub use composition::{HostComposition, HostCompositionBuilder};
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
@@ -71,6 +75,7 @@ pub use events::{
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
+pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 #[allow(deprecated)]
 pub use file_store_decorators::{
     ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, PolicyFileStore,
@@ -95,6 +100,10 @@ pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_r
 pub use runtime::{
     AcceptedTurnInput, CapabilityDelta, InProcessRuntime, InProcessRuntimeBuilder, TurnResult,
     TurnSteering, TurnSteeringPushError, in_process_internal_org_id,
+};
+pub use runtime_context::{
+    StoreTurnContextResolver, assemble_turn_context, assemble_turn_context_from_snapshot,
+    inspect_turn_context,
 };
 pub use session_file_system_factory::{
     DisabledSessionFileSystemFactory, SessionFileSystemFactory, SessionFileSystemFactoryContext,

@@ -54,6 +54,39 @@ The single biggest change for embedders. `PlatformDefinition` no longer exists.
 
 The type is otherwise identical — same fields, same builder methods. It moved to the layer that executes a turn, because selecting a deployment's capabilities and drivers is composition rather than kernel configuration.
 
+### Turn context and command completion
+
+Store-backed turn preparation now belongs to `everruns-host`. Core keeps the
+secret-free execution snapshot, pure context transformations, and narrow
+effects used by custom hosts.
+
+| 0.17 | 0.18 |
+|---|---|
+| `everruns_core::assemble_turn_context` | `everruns_host::assemble_turn_context` |
+| `everruns_core::inspect_turn_context` | `everruns_host::inspect_turn_context` |
+| `everruns_core::load_execution_snapshot` | `everruns_host::load_execution_snapshot` |
+| `everruns_core::load_execution_snapshot_for_session` | `everruns_host::load_execution_snapshot_for_session` |
+| `everruns_core::StoreCommandHost` | `everruns_host::StoreCommandHost` |
+
+`ReasonAtom::new` no longer accepts harness, agent, session, and provider stores
+or a driver registry. Construct an `everruns_host::StoreTurnContextResolver`
+from those host services, then pass that resolver plus the narrow message,
+capability, and event effects to the atom. Hosts that already loaded a
+`ResolvedExecutionSnapshot` should call
+`everruns_host::assemble_turn_context_from_snapshot` and execute the atom with
+the resulting `AssembledTurnContext`; this avoids a second store load.
+
+For a fully custom host, implement the neutral
+`everruns_core::TurnContextResolver`, or provide already-resolved
+`ResolvedTurnContextInput` to `everruns_core::assemble_resolved_turn_context`.
+That input contains a secret-free model/provider identity and an opaque ready
+driver; provider keys and endpoints are never serializable kernel values.
+
+`CommandTurnContext` now exposes `session_id` directly instead of an
+`ExecutionSession`. Commands retain the same filtered messages, effective
+prompt, locale, model, streaming, and error-classification behavior without
+receiving a session record.
+
 ## Persisted records
 
 These are database and API records. Execution consumes a portable projection of each; the stored row is control-plane state.

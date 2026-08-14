@@ -62,6 +62,9 @@ pub mod capabilities;
 #[cfg(feature = "host")]
 mod runtime_ext;
 
+#[cfg(feature = "host")]
+mod store_reason_atom;
+
 pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
 #[cfg(all(feature = "sim", feature = "host"))]
 pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
@@ -86,3 +89,5 @@ pub use capabilities::{
 
 #[cfg(feature = "host")]
 pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
+#[cfg(feature = "host")]
+pub use store_reason_atom::reason_atom_with_stores;

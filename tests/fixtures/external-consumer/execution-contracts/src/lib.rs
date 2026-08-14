@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use everruns_core::event_emitter::EventEmitter;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::session_files::SessionFileSystem;
-use everruns_core::{AgentLoopError, Result};
+use everruns_core::{
+    AgentLoopError, AssembledTurnContext, Result, TurnContextRequest, TurnContextResolver,
+};
 use everruns_host::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use std::sync::Arc;
 
@@ -37,17 +39,39 @@ impl SessionFileSystemFactory for ExternalSessionFileSystemFactory {
     }
 }
 
+/// External narrow resolver proving core reason execution does not require
+/// direct access to harness, agent, session, or provider stores.
+pub struct ExternalTurnContextResolver;
+
+#[async_trait]
+impl TurnContextResolver for ExternalTurnContextResolver {
+    async fn resolve_turn_context(
+        &self,
+        _request: TurnContextRequest,
+    ) -> Result<AssembledTurnContext> {
+        Err(AgentLoopError::config(
+            "external fixture does not configure turn-context stores",
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn assert_event_contract<T: EventEmitter>() {}
     fn assert_factory_contract<T: SessionFileSystemFactory>() {}
+    fn assert_turn_context_contract<T: TurnContextResolver>() {}
 
     #[test]
     fn narrow_contracts_are_public_without_a_platform_dependency() {
         assert_event_contract::<ExternalEventEmitter>();
         assert_factory_contract::<ExternalSessionFileSystemFactory>();
+        assert_turn_context_contract::<ExternalTurnContextResolver>();
         assert_eq!(ExternalSessionFileSystemFactory.name(), "external");
+        assert!(
+            std::any::type_name::<everruns_host::StoreCommandHost>()
+                .contains("everruns_host::command_host::StoreCommandHost")
+        );
     }
 }

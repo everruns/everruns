@@ -33,8 +33,7 @@ use crate::annotation_hook::{
 use crate::capabilities::CapabilityRegistry;
 use crate::compact::{CompactRequest, messages_to_compact_input};
 use crate::driver_registry::{
-    DriverRegistry, LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmStreamEvent,
+    LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole, LlmStreamEvent,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
@@ -57,16 +56,14 @@ use crate::output_guardrail::{
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
     post_generation_guardrail_text,
 };
-use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
+use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};
 use crate::{
     durability::DurableToolCallStatus, durability::DurableToolResultStore,
     durability::PartialStreamState, durability::PartialStreamStore, event_emitter::EventEmitter,
-    execution_loading::AgentStore, execution_loading::HarnessStore,
-    execution_loading::SessionStore, image_services::ImageResolver, image_services::ResolvedImage,
-    provider_resolution::ProviderStore, provider_resolution::ResolvedModel,
+    image_services::ImageResolver, image_services::ResolvedImage,
 };
 
 // ============================================================================
@@ -881,19 +878,12 @@ fn capability_usage_snapshot_records(
 /// 10. Emits reason.completed event
 /// 11. Returns the result with tool calls (if any)
 pub struct ReasonAtom {
-    harness_store: Arc<dyn HarnessStore>,
-    agent_store: Arc<dyn AgentStore>,
-    session_store: Arc<dyn SessionStore>,
+    context_resolver: Arc<dyn TurnContextResolver>,
     message_retriever: Arc<dyn MessageRetriever>,
-    provider_store: Arc<dyn ProviderStore>,
     capability_registry: CapabilityRegistry,
-    driver_registry: DriverRegistry,
     event_emitter: Arc<dyn EventEmitter>,
     /// Optional image resolver for resolving image_file content parts
     image_resolver: Option<Arc<dyn ImageResolver>>,
-    /// Optional file store for capabilities that need filesystem access
-    /// (e.g., agent_instructions reads AGENTS.md, skills_discovery scans for skills)
-    file_store: Option<Arc<dyn crate::session_files::SessionFileSystem>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
     stream_heartbeater: Option<Arc<dyn crate::durability::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
@@ -924,28 +914,18 @@ pub struct ReasonAtom {
 
 impl ReasonAtom {
     /// Create a new ReasonAtom
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        harness_store: impl HarnessStore + 'static,
-        agent_store: impl AgentStore + 'static,
-        session_store: impl SessionStore + 'static,
+        context_resolver: impl TurnContextResolver + 'static,
         message_retriever: impl MessageRetriever + 'static,
-        provider_store: impl ProviderStore + 'static,
         capability_registry: CapabilityRegistry,
-        driver_registry: DriverRegistry,
         event_emitter: impl EventEmitter + 'static,
     ) -> Self {
         Self {
-            harness_store: Arc::new(harness_store),
-            agent_store: Arc::new(agent_store),
-            session_store: Arc::new(session_store),
+            context_resolver: Arc::new(context_resolver),
             message_retriever: Arc::new(message_retriever),
-            provider_store: Arc::new(provider_store),
             capability_registry,
-            driver_registry,
             event_emitter: Arc::new(event_emitter),
             image_resolver: None,
-            file_store: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,
             provider_retry_config: LlmRetryConfig::default(),
@@ -996,20 +976,6 @@ impl ReasonAtom {
                 Some((hook, cfg.config_value().clone()))
             })
             .collect()
-    }
-
-    /// Set the file store for capabilities that need filesystem access.
-    ///
-    /// Provides filesystem access to capabilities via `SystemPromptContext`.
-    /// Capabilities like `agent_instructions` (reads AGENTS.md) and
-    /// `skills_discovery` (scans for skills) use this to generate dynamic
-    /// system prompt content.
-    pub fn with_file_store(
-        mut self,
-        file_store: Arc<dyn crate::session_files::SessionFileSystem>,
-    ) -> Self {
-        self.file_store = Some(file_store);
-        self
     }
 
     /// Set the image resolver for resolving image_file content parts
@@ -1249,20 +1215,14 @@ impl ReasonAtom {
         let assembled = match assembled {
             Some(assembled) => Ok(assembled),
             None => {
-                assemble_turn_context(
-                    self.harness_store.as_ref(),
-                    self.agent_store.as_ref(),
-                    self.session_store.as_ref(),
-                    self.message_retriever.as_ref(),
-                    self.provider_store.as_ref(),
-                    &self.capability_registry,
-                    context.session_id,
-                    harness_id,
-                    agent_id,
-                    &mcp_tool_definitions,
-                    self.file_store.clone(),
-                )
-                .await
+                self.context_resolver
+                    .resolve_turn_context(TurnContextRequest {
+                        session_id: context.session_id,
+                        harness_id,
+                        agent_id,
+                        mcp_tool_definitions: mcp_tool_definitions.clone(),
+                    })
+                    .await
             }
         };
 
@@ -1279,8 +1239,8 @@ impl ReasonAtom {
                 let error_hooks =
                     self.collect_llm_error_hooks(&assembled.resolved_capability_configs);
                 let error_context = UserFacingErrorContext::default()
-                    .with_provider(assembled.model_with_provider.provider_type.to_string())
-                    .with_model_id(assembled.model_with_provider.model.clone());
+                    .with_provider(assembled.model.provider_type.to_string())
+                    .with_model_id(assembled.model.model.clone());
                 let call_result = self
                     .execute_llm_call(
                         context.session_id,
@@ -1506,10 +1466,10 @@ impl ReasonAtom {
         iteration: u32,
         assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
+        let prior_usage = assembled.cumulative_usage();
         let mut messages = assembled.messages;
         let mut message_source_sequence = assembled.message_source_sequence;
-        let prior_usage = assembled.session.usage.clone();
-        let model_with_provider = assembled.model_with_provider;
+        let model_with_provider = assembled.model;
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
         let compaction_policy = assembled.compaction_policy;
@@ -1624,7 +1584,7 @@ impl ReasonAtom {
             .collect();
 
         // 7. Create LLM driver using factory
-        let chat_driver = self.create_chat_driver(&model_with_provider).await?;
+        let chat_driver = Arc::clone(&model_with_provider.driver);
         let stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
@@ -3823,21 +3783,6 @@ impl ReasonAtom {
             // Finalize path has no tool calls, so the preference is irrelevant.
             parallel_tool_calls: None,
         })
-    }
-
-    /// Resolve model using priority chain: controls > session > agent > harness > system default
-    /// Create LLM driver using the driver registry
-    async fn create_chat_driver(
-        &self,
-        model: &ResolvedModel,
-    ) -> Result<crate::driver_registry::BoxedChatDriver> {
-        let (_, compatibility_config) = model.canonical_parts();
-        let config = self
-            .provider_store
-            .get_provider_config(&compatibility_config.provider)
-            .await?
-            .unwrap_or(compatibility_config);
-        self.driver_registry.create_chat_driver(&config)
     }
 
     /// Resolve image_file references to actual image data

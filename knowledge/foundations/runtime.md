@@ -48,8 +48,9 @@ any host application.
   `session_files`, `durability`, and sibling modules), never in a catch-all
   service bag.
 - `everruns-host` owns embedder-facing orchestration, in-memory stores, turn
-  execution, runtime seeding helpers, reusable host-phase execution, and shared
-  turn-strategy planning.
+  execution, store-backed snapshot/context loading, lifecycle and dependency
+  probing, provider/driver resolution, command completion, runtime seeding
+  helpers, reusable host-phase execution, and shared turn-strategy planning.
 - `everruns-server` and `everruns-worker` remain control-plane and durable
   execution hosts. They use runtime-owned host execution and turn-strategy
   planning, while still owning the durable engine implementation, worker
@@ -201,26 +202,26 @@ Required behavior:
 
 ## Shared Context Assembly
 
-Context assembly is a shared core concern, not a server-only concern.
+Context assembly is split by effect (EVE-905). `everruns-host` owns every
+store-backed step: multi-store loading, lifecycle/topology validation, message
+queries and filters, model/provider lookup, credential-bearing driver creation,
+and context inspection. Its public entrypoints are
+`assemble_turn_context`, `assemble_turn_context_from_snapshot`,
+`inspect_turn_context`, and `StoreTurnContextResolver`.
 
-`everruns-core` owns the canonical context assembly helper for reason-phase
-hosts:
+`everruns-core` owns only the deterministic projection and transformation
+steps: `ResolvedExecutionSnapshot::project`, capability/overlay resolution,
+locale projection, `RuntimeAgent` construction, and
+`assemble_resolved_turn_context`. `ResolvedTurnContextInput` contains the
+secret-free snapshot, filtered messages, safe model/provider identity, and an
+opaque ready driver. It never contains persisted Agent, Harness, or Session
+records, provider configuration, API keys, or base URLs.
 
-- merged harness/agent/session overlay
-- capability dependency resolution
-- capability message filtering
-- model resolution
-- locale resolution
-- `RuntimeAgent` construction
-
-Public API:
-
-- `everruns_core::assemble_turn_context(...)`
-- `everruns_core::inspect_turn_context(...)`
-- `everruns_core::AssembledTurnContext`
-
-`ReasonAtom` and `everruns-host` must use this shared path so embedded hosts
-and worker-backed hosts stay aligned.
+`ReasonAtom` accepts a preassembled context on normal host paths. Its narrow
+`TurnContextResolver` fallback lets direct atom callers delegate preparation to
+a host without importing stores into the kernel. Framework in-process and
+durable worker paths must use this same split so hooks, retries, cancellation,
+events, compaction, and continuation behavior remain aligned.
 
 ## In-Memory Stores
 

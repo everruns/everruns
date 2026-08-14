@@ -35,14 +35,14 @@ use everruns_core::message::Message;
 use everruns_core::plugins::{PluginFileSet, compile_plugin};
 #[cfg(feature = "mcp")]
 use everruns_core::resolve_runtime_capabilities;
-use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
+use everruns_core::runtime_context::AssembledTurnContext;
 use everruns_core::session::{ExecutionSession, SessionExecutionState};
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, InputMessage, MessageRetriever, ResolvedExecutionSnapshot,
-    load_execution_snapshot_for_session, plugin_capability_id, session_files::SessionFileSystem,
+    plugin_capability_id, session_files::SessionFileSystem,
 };
 use everruns_core::{
     connection_services::UserConnectionResolver, event_emitter::EventEmitter,
@@ -1028,7 +1028,7 @@ impl InProcessRuntime {
             });
         }
 
-        let mut candidate = context.effective_overlay.capabilities;
+        let mut candidate = context.snapshot.capabilities;
         candidate.push(capability.clone());
         resolve_capability_configs(&candidate, registry)
             .map_err(|error| AgentLoopError::config(error.to_string()))?;
@@ -1075,8 +1075,12 @@ impl InProcessRuntime {
             });
         }
 
-        let session_capability_id = context
-            .session
+        let session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::session_not_found(session_id))?;
+        let session_capability_id = session
             .capabilities
             .iter()
             .find(|config| {
@@ -1522,7 +1526,7 @@ impl InProcessRuntime {
         // Context-aware commands (e.g. /btw) get the same store-backed host
         // facilities the server provides; the already-assembled context seeds
         // the host so dispatch and execution assemble it once.
-        let host = everruns_core::command_host::StoreCommandHost::new(
+        let host = crate::StoreCommandHost::new(
             session_id,
             self.harness_store.clone(),
             self.agent_store.clone(),
@@ -1605,7 +1609,7 @@ impl InProcessRuntime {
         session_id: SessionId,
     ) -> Result<ResolvedExecutionSnapshot> {
         let session = self.attached_session(session_id).await?;
-        load_execution_snapshot_for_session(
+        crate::load_execution_snapshot_for_session(
             self.harness_store.as_ref(),
             self.agent_store.as_ref(),
             &session,
@@ -1620,13 +1624,14 @@ impl InProcessRuntime {
         agent_id: Option<AgentId>,
         mcp_tool_definitions: &[everruns_core::ToolDefinition],
     ) -> Result<AssembledTurnContext> {
-        inspect_turn_context(
+        crate::inspect_turn_context(
             self.harness_store.as_ref(),
             self.agent_store.as_ref(),
             self.session_store.as_ref(),
             self.event_history.as_ref(),
             self.provider_store.as_ref(),
             self.host_composition.capability_registry(),
+            self.host_composition.driver_registry(),
             session_id,
             harness_id,
             agent_id,

@@ -32,7 +32,7 @@ use everruns_core::{event_emitter::EventEmitter, provider_resolution::ResolvedMo
 use everruns_host::{
     EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
-    InMemorySessionStore, NoopEventSink,
+    InMemorySessionStore, NoopEventSink, StoreTurnContextResolver,
 };
 
 // ============================================================================
@@ -432,14 +432,19 @@ impl InMemoryAgenticLoopBuilder {
         }
 
         let input_atom = InputAtom::new(message_retriever.clone());
-        let mut reason_atom = ReasonAtom::new(
-            harness_store.clone(),
-            agent_store.clone(),
-            session_store.clone(),
-            message_retriever.clone(),
-            provider_store.clone(),
-            capability_registry,
+        let context_resolver = StoreTurnContextResolver::new(
+            Arc::new(harness_store.clone()),
+            Arc::new(agent_store.clone()),
+            Arc::new(session_store.clone()),
+            Arc::new(message_retriever.clone()),
+            Arc::new(provider_store.clone()),
+            capability_registry.clone(),
             driver_registry,
+        );
+        let mut reason_atom = ReasonAtom::new(
+            context_resolver,
+            message_retriever.clone(),
+            capability_registry,
             event_emitter.clone(),
         );
         let mut act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone())

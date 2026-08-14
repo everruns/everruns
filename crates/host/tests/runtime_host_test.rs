@@ -16,8 +16,8 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     AgentCapabilityConfig, AgentDefinition, CapabilityRegistry, DriverId, EventData,
     ExecutionSession, HarnessDefinition, InputMessage, SessionExecutionState, TokenUsage, Tool,
-    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
-    provider_resolution::ResolvedModel, user_facing_error_codes,
+    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, provider_resolution::ResolvedModel,
+    user_facing_error_codes,
 };
 use everruns_core::{
     event_emitter::EventEmitter, execution_loading::AgentStore, execution_loading::HarnessStore,
@@ -28,10 +28,13 @@ use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
     ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, RuntimeTurnPlan,
     RuntimeTurnState, TurnStopReason, execute_act_activity, execute_input_activity,
-    plan_next_host_turn,
+    inspect_turn_context, plan_next_host_turn,
 };
 use everruns_platform::SessionMutator;
-use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability};
+use everruns_test_support::{
+    InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability,
+    llmsim_driver::register_driver,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -789,9 +792,11 @@ fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState 
 fn mock_host() -> MockHostAdapter {
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(TestMathCapability);
+    let mut driver_registry = DriverRegistry::new();
+    register_driver(&mut driver_registry);
     MockHostAdapter {
         capability_registry,
-        driver_registry: DriverRegistry::new(),
+        driver_registry,
         harness_store: Arc::new(InMemoryHarnessStore::new()),
         agent_store: Arc::new(InMemoryAgentStore::new()),
         session_store: Arc::new(TestSessionStore::default()),
@@ -829,6 +834,7 @@ async fn reason_tool_definitions(
         adapter.message_store.as_ref(),
         adapter.provider_store.as_ref(),
         &adapter.capability_registry,
+        &adapter.driver_registry,
         session_id,
         harness_id,
         agent_id,

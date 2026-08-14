@@ -23,8 +23,7 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     ErrorDisclosure, ResolvedExecutionSnapshot, TokenUsage, ToolDefinition, ToolRegistry,
-    UserFacingError, UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
-    resolve_runtime_capabilities,
+    UserFacingError, UtilityLlmService, org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use everruns_core::{
     connection_services::ProviderCredentialStore, connection_services::UserConnectionResolver,
@@ -1123,13 +1122,15 @@ pub async fn detect_dependency_blocker<A: RuntimeHostAdapter>(
 ) -> everruns_core::error::Result<Option<DependencyBlocker>> {
     let harness_store = adapter.harness_store(org_id);
     let agent_store = adapter.agent_store(org_id);
-    everruns_core::detect_dependency_blocker(
-        harness_store.as_ref(),
-        agent_store.as_ref(),
-        harness_id,
-        agent_id,
-    )
-    .await
+    if let Some(blocker) = harness_store.get_harness_blocker(harness_id).await? {
+        return Ok(Some(blocker));
+    }
+    if let Some(agent_id) = agent_id
+        && let Some(blocker) = agent_store.get_agent_blocker(agent_id).await?
+    {
+        return Ok(Some(blocker));
+    }
+    Ok(None)
 }
 
 pub async fn execute_input_activity<A: RuntimeHostAdapter>(
@@ -1414,7 +1415,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         }
         registry
     };
-    let mut atom = ReasonAtom::new(
+    let context_resolver = crate::runtime_context::StoreTurnContextResolver::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),
         adapter.session_store(org_id),
@@ -1422,9 +1423,14 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         adapter.provider_store(org_id),
         reason_capability_registry.clone(),
         adapter.driver_registry(),
-        adapter.event_emitter(),
     )
     .with_file_store(adapter.file_store());
+    let mut atom = ReasonAtom::new(
+        context_resolver,
+        adapter.message_store(),
+        reason_capability_registry.clone(),
+        adapter.event_emitter(),
+    );
     if let Some(image_resolver) = adapter.image_resolver(org_id) {
         atom = atom.with_image_resolver(image_resolver);
     }
@@ -1458,27 +1464,22 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         atom = atom.with_schedule_store(schedule_store);
     }
 
+    let mut assembled = crate::runtime_context::assemble_turn_context_from_snapshot(
+        turn_inputs.snapshot,
+        adapter.message_store().as_ref(),
+        adapter.provider_store(org_id).as_ref(),
+        &reason_capability_registry,
+        &adapter.driver_registry(),
+        &turn_inputs.mcp_tool_definitions,
+        Some(adapter.file_store()),
+    )
+    .await?;
     let input = ReasonInput {
         mcp_tool_definitions: turn_inputs.mcp_tool_definitions,
         ..input
     };
 
     if !user_prompt_message_overrides.is_empty() {
-        let mut assembled = assemble_turn_context(
-            adapter.harness_store(org_id).as_ref(),
-            adapter.agent_store(org_id).as_ref(),
-            adapter.session_store(org_id).as_ref(),
-            adapter.message_store().as_ref(),
-            adapter.provider_store(org_id).as_ref(),
-            &reason_capability_registry,
-            input.context.session_id,
-            input.harness_id,
-            input.agent_id,
-            &input.mcp_tool_definitions,
-            Some(adapter.file_store()),
-        )
-        .await?;
-
         for (message_id, message_override) in user_prompt_message_overrides {
             let message = assembled
                 .messages
@@ -1499,11 +1500,8 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                 .content
                 .insert(0, ContentPart::text(message_override));
         }
-
-        return atom.execute_with_assembled_context(input, assembled).await;
     }
-
-    atom.execute(input).await
+    atom.execute_with_assembled_context(input, assembled).await
 }
 
 pub async fn execute_act_activity<A: RuntimeHostAdapter>(

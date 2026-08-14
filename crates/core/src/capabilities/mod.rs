@@ -1886,7 +1886,7 @@ pub fn collect_message_filters_only(
 /// Collect only model-view providers from capabilities.
 ///
 /// `model` should be the LLM model name when it is known at call time (e.g. the
-/// ReasonAtom already holds `model_with_provider`). Pass `None` only when the
+/// ReasonAtom already holds a resolved model execution). Pass `None` only when the
 /// model is genuinely unavailable so capabilities fall back to the model-agnostic
 /// variant.
 pub fn collect_model_view_providers(

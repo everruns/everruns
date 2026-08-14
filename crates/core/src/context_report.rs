@@ -127,20 +127,20 @@ pub async fn build_session_context_report(
     let sections = builder.sections();
     let estimated_input_tokens = sections.iter().map(|section| section.tokens).sum();
     let context_window_tokens = get_model_profile(
-        &assembled.model_with_provider.provider_type,
+        &assembled.model.provider_type,
         &assembled.runtime_agent.model,
     )
     .and_then(|profile| profile.limits)
     .and_then(|limits| u32::try_from(limits.context).ok());
 
     SessionContextReport {
-        session_id: assembled.session.id.to_string(),
+        session_id: assembled.snapshot.session_id.to_string(),
         model: assembled.runtime_agent.model.clone(),
         context_window_tokens,
         estimated_input_tokens,
         sections,
         contributions: builder.contributions,
-        cumulative_usage: assembled.session.usage.clone(),
+        cumulative_usage: assembled.snapshot.cumulative_usage.clone(),
     }
 }
 
