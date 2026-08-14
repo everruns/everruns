@@ -51,6 +51,15 @@ The Framework owns value-first configuration for:
 - event-derived session history and resume, without promoting writable message
   stores or their file format into the application API.
 
+The application execution boundary is `everruns::Engine`. `Agent` is immutable
+behavior; an Engine owns Agent snapshots, session catalog/runtime state, and
+resume authority. `InMemoryEngine` is the first explicit implementation and
+retains snapshots only for the process lifetime. `Session` is engine-bound and
+does not own an Agent or expose the concrete in-process runtime. The object-safe
+`SessionExecution` binding carries Framework identity without backend, store,
+host, or platform DTOs. `everruns-engine` remains the shared turn-planning
+kernel; this application SPI does not replace or absorb it.
+
 These APIs adapt into the same in-process host, provider registry, model
 selection, plugin compiler, MCP client, and engine execution that an advanced
 host composes directly. The implementation and downstream acceptance fixtures
@@ -170,6 +179,10 @@ and multi-host lifecycle management remain host concerns.
   synchronized canonical envelope. Any projection index is rebuildable.
 - Promoting an application concern must not expose credentials, tenant records,
   backend stores, or host lifecycle entities.
+- Resume authority is engine-scoped. An in-memory engine must reject an id from
+  another engine, retain the exact Agent snapshot chosen at creation, and reopen
+  the exact persisted WorkspaceHead and typed Environment extensions. Scale
+  portability and Agent serialization are intentionally outside this slice.
 - Capability values converge through one builder entrypoint. New built-ins do
   not add builder methods, and third-party values must not require a core or
   host dependency. Dynamic references validate their open ID and JSON object

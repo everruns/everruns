@@ -8,7 +8,7 @@
 //! an `IntoCapability` value activates an open third-party reference — with
 //! no core/host imports and no central enum edit anywhere.
 
-use everruns::{Agent, LlmSimConfig, Model, ToolCall};
+use everruns::{Agent, Engine, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use external_capability_pack::{VendorSearch, math_pack};
 
 #[tokio::main]
@@ -18,7 +18,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("4"))
         .capability("session_file_system")
         .build()?;
-    let session = agent.session();
+    let engine = InMemoryEngine::new();
+    let session = engine.create(agent);
     let context = session.inspect().await?;
     assert!(
         context.tools.iter().any(|tool| tool.name == "read_file"),
@@ -46,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             index: "fixtures".into(),
         })
         .build()?;
-    let session = agent.session();
+    let session = engine.create(agent);
 
     let context = session.inspect().await?;
     assert!(

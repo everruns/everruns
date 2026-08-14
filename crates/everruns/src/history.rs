@@ -12,7 +12,7 @@ use everruns_host::{
     MAX_EVENT_HISTORY_PAGE_SIZE,
 };
 
-use crate::{Agent, ContentPart, MessageRole, SessionId};
+use crate::{ContentPart, MessageRole, SessionExecution, SessionId};
 
 const MAX_CURSOR_TOKEN_LEN: usize = 4096;
 const CURSOR_PREFIX: &str = "eh1.";
@@ -25,16 +25,19 @@ const DEFAULT_HISTORY_PAGE_SIZE: usize = 100;
 /// first by canonical event sequence.
 #[derive(Clone)]
 pub struct HistoryQuery {
-    agent: Agent,
+    execution: std::sync::Arc<dyn SessionExecution>,
     session_id: SessionId,
     limit: usize,
     cursor: Option<EventCursor>,
 }
 
 impl HistoryQuery {
-    pub(crate) fn new(agent: Agent, session_id: SessionId) -> Self {
+    pub(crate) fn new(
+        execution: std::sync::Arc<dyn SessionExecution>,
+        session_id: SessionId,
+    ) -> Self {
         Self {
-            agent,
+            execution,
             session_id,
             limit: DEFAULT_HISTORY_PAGE_SIZE,
             cursor: None,
@@ -76,9 +79,10 @@ impl HistoryQuery {
     /// concurrent appends, so they neither skip nor duplicate messages. Start a
     /// new query to observe events committed after that snapshot.
     pub async fn page(&self) -> Result<HistoryPage, HistoryError> {
-        self.agent.ensure_session_cataloged(self.session_id).await?;
-        let backends = self
-            .agent
+        let agent = self.execution.agent_snapshot();
+        agent.ensure_session_cataloged(self.session_id).await?;
+        let agent = self.execution.agent_snapshot();
+        let backends = agent
             .shared_backends()
             .await
             .map_err(|error| error.history_error())?;

@@ -16,6 +16,10 @@ ecosystem. Normal Rust applications should start here; focused core, engine,
 host, provider, and platform crates support the implementation and advanced
 execution hosts.
 
+The public `Engine` SPI owns sessions. `InMemoryEngine` is the explicit
+process-local implementation; `everruns-engine` remains the shared internal
+turn-planning kernel.
+
 ## Installation
 
 ```bash
@@ -40,7 +44,7 @@ for feature boundaries and advanced-host composition.
 ## Offline Quickstart
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, Engine, InMemoryEngine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,14 +53,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Hello from Everruns."))
         .build()?;
 
-    let turn = agent.session().send_and_wait("Say hello.").await?;
+    let engine = InMemoryEngine::new();
+    let session = engine.create(agent);
+    let session_id = session.session_id();
+    let turn = session.send_and_wait("Say hello.").await?;
     assert_eq!(turn.response, "Hello from Everruns.");
+    drop(session);
+    let _resumed = engine.resume(session_id).await?;
     Ok(())
 }
 ```
 
 `Model::simulated` uses the normal provider/execution path and returns a fixed
 response locally. It needs no credential or network connection.
+
+`InMemoryEngine` owns Agent snapshots, the process-local session catalog, and
+runtime state. `engine.create(agent)` and `engine.resume(session_id)` return the
+same first-class `Session` abstraction. `Agent::session` and `Agent::resume`
+remain compatibility conveniences for applications that do not yet retain an
+engine explicitly.
 
 ## Open Provider Setup
 

@@ -3,11 +3,11 @@ title: Sessions
 description: Keep conversation history across turns while isolating independent Framework sessions.
 ---
 
-An `Agent` is reusable configuration. A `Session` is one live conversation with
-that agent.
+An `Agent` is immutable reusable behavior. An `Engine` owns session identity,
+history, and runtime state. A `Session` is an engine-bound live conversation.
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, Engine, InMemoryEngine, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,8 @@ let agent = Agent::builder()
     .model(Model::simulated("Acknowledged."))
     .build()?;
 
-let session = agent.session();
+let engine = InMemoryEngine::new();
+let session = engine.create(agent);
 let first = session.send_and_wait("My project is Atlas.").await?;
 let second = session.send_and_wait("Continue with that project.").await?;
 
@@ -63,8 +64,14 @@ same live session, not a separate mode.
 
 The first asynchronous operation materializes the in-process host. Later turns
 reuse it and send accumulated history through the same context-assembly path.
-Two sessions opened from the same agent have different opaque IDs and isolated
-histories even though the Agent owns their shared event backend.
+Two sessions opened on one engine have different opaque IDs and isolated
+histories. The engine retains each immutable Agent snapshot, so a session keeps
+working after the original Agent handle is dropped. Resume is engine-scoped:
+another `InMemoryEngine` rejects the id rather than guessing its configuration.
+
+`Agent::session()` and `Agent::resume(id)` remain compatibility conveniences.
+New applications should retain an engine explicitly and use
+`engine.create(agent)` / `engine.resume(id)`.
 
 Conversation isolation does not imply filesystem isolation. The concise
 `agent.session()` path permanently selects the Agent's default head before its

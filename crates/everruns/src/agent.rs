@@ -318,6 +318,7 @@ struct AgentState {
     binding_store: OnceCell<Arc<dyn EnvironmentBindingStore>>,
     workspace_providers: Mutex<HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>>,
     issued_sessions: Mutex<HashSet<SessionId>>,
+    compatibility_engine: std::sync::OnceLock<crate::InMemoryEngine>,
 }
 
 impl AgentState {
@@ -327,6 +328,7 @@ impl AgentState {
             binding_store: OnceCell::new(),
             workspace_providers: Mutex::new(workspace_providers),
             issued_sessions: Mutex::new(HashSet::new()),
+            compatibility_engine: std::sync::OnceLock::new(),
         }
     }
 
@@ -478,9 +480,8 @@ impl Agent {
     /// session catalog and event log so a dropped session can be resumed while
     /// the Agent's configured persistence lifecycle remains available.
     pub fn session(&self) -> crate::Session {
-        let session_id = SessionId::new();
-        self.state.remember(session_id);
-        crate::Session::new(self.clone(), session_id, None)
+        use crate::Engine as _;
+        self.compatibility_engine().create(self.clone())
     }
 
     /// Resume a session through this Agent's configured session catalog.
@@ -502,7 +503,9 @@ impl Agent {
         &self,
         session_id: SessionId,
     ) -> Result<crate::Session, crate::ResumeError> {
-        if !self.state.issued(session_id) {
+        use crate::Engine as _;
+        let engine = self.compatibility_engine();
+        if engine.agent(session_id).is_none() {
             let backends = self
                 .shared_backends()
                 .await
@@ -517,9 +520,19 @@ impl Agent {
                 return Err(crate::ResumeError::SessionNotFound { session_id });
             }
             self.state.remember(session_id);
+            engine.attach(session_id, self.clone());
         }
-        let environment = self.reopen_session_environment(session_id).await?;
-        Ok(crate::Session::new(self.clone(), session_id, environment))
+        engine.resume(session_id).await
+    }
+
+    fn compatibility_engine(&self) -> &crate::InMemoryEngine {
+        self.state
+            .compatibility_engine
+            .get_or_init(crate::InMemoryEngine::new)
+    }
+
+    pub(crate) fn remember_session(&self, session_id: SessionId) {
+        self.state.remember(session_id);
     }
 
     pub(crate) async fn bind_session_environment(
@@ -554,7 +567,7 @@ impl Agent {
         Ok(environment)
     }
 
-    async fn reopen_session_environment(
+    pub(crate) async fn reopen_session_environment(
         &self,
         session_id: SessionId,
     ) -> Result<Option<Environment>, crate::ResumeError> {

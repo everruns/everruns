@@ -20,11 +20,11 @@ use everruns_provider::error::AgentLoopError;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
-use crate::Agent;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
+use crate::{Agent, SessionExecution};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -60,8 +60,8 @@ pub struct Session {
     inner: Arc<SessionInner>,
 }
 
-struct SessionInner {
-    agent: Agent,
+pub(crate) struct SessionInner {
+    execution: Arc<dyn SessionExecution>,
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
     hook_state: Arc<HookRunState>,
@@ -76,15 +76,24 @@ struct SessionInner {
 const SESSION_COMMAND_CAPACITY: usize = 64;
 
 impl Session {
+    pub(crate) fn from_inner(inner: Arc<SessionInner>) -> Self {
+        Self { inner }
+    }
+
+    pub(crate) fn inner(&self) -> Arc<SessionInner> {
+        self.inner.clone()
+    }
+
     pub(crate) fn new(
-        agent: Agent,
-        session_id: SessionId,
+        execution: Arc<dyn SessionExecution>,
         environment: Option<everruns_host::Environment>,
     ) -> Self {
+        let session_id = execution.session_id();
+        let agent = execution.agent_snapshot();
         let hook_state = HookRunState::new(agent.lifecycle_hooks());
         let session = Self {
             inner: Arc::new(SessionInner {
-                agent,
+                execution,
                 session_id,
                 event_bus: Arc::new(FacadeEventBus::new()),
                 hook_state,
@@ -115,6 +124,14 @@ impl Session {
         self.inner.session_id
     }
 
+    /// The object-safe engine binding that owns this session identity.
+    ///
+    /// Advanced applications can retain this binding without depending on a
+    /// concrete engine, store, platform, or host runtime type.
+    pub fn execution(&self) -> Arc<dyn SessionExecution> {
+        self.inner.execution.clone()
+    }
+
     /// Permanently bind this new session to an explicit Environment.
     ///
     /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
@@ -139,7 +156,8 @@ impl Session {
         }
         let environment = self
             .inner
-            .agent
+            .execution
+            .agent_snapshot()
             .bind_default_session_environment(self.inner.session_id)
             .await?;
         self.inner
@@ -174,7 +192,7 @@ impl Session {
     /// messages, or [`HistoryQuery::pages`](crate::HistoryQuery::pages) for a
     /// lazy bounded walk of the snapshot.
     pub fn history(&self) -> crate::HistoryQuery {
-        crate::HistoryQuery::new(self.inner.agent.clone(), self.inner.session_id)
+        crate::HistoryQuery::new(self.inner.execution.clone(), self.inner.session_id)
     }
 
     /// Scope a background-work queue to this session.
@@ -387,7 +405,7 @@ struct SessionActor {
 impl SessionActor {
     fn new(inner: &SessionInner) -> Self {
         Self {
-            agent: inner.agent.clone(),
+            agent: inner.execution.agent_snapshot(),
             session_id: inner.session_id,
             event_bus: inner.event_bus.clone(),
             hook_state: inner.hook_state.clone(),
@@ -660,7 +678,8 @@ impl EnvironmentSessionBuilder {
         }
         self.session
             .inner
-            .agent
+            .execution
+            .agent_snapshot()
             .bind_session_environment(self.session.inner.session_id, &self.environment)
             .await?;
         if let Some(recorded) = self.session.inner.environment.get() {
