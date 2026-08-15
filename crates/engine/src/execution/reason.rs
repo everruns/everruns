@@ -301,9 +301,9 @@ fn should_retry_stream_error(
     error: &crate::driver_registry::LlmStreamError,
     retry_attempts: u32,
     max_retries: u32,
-    has_output: bool,
+    has_final_output: bool,
 ) -> bool {
-    retry_attempts < max_retries && !has_output && is_transient_stream_error(error)
+    retry_attempts < max_retries && !has_final_output && is_transient_stream_error(error)
 }
 
 fn merge_retry_metadata(
@@ -2762,7 +2762,7 @@ impl ReasonAtom {
             let mut thinking_signature: Option<String> = None;
             let mut tool_calls = Vec::new();
             let mut completion_metadata: Option<LlmCompletionMetadata> = None;
-            let mut stream_has_output = false;
+            let mut stream_has_final_output = false;
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
             let mut last_delta_emit = Instant::now();
@@ -2818,7 +2818,7 @@ impl ReasonAtom {
                             &stall_error,
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
-                            stream_has_output,
+                            stream_has_final_output,
                         ) {
                             let proposed_wait = retry_config
                                 .calculate_backoff(stream_retry_metadata.attempts);
@@ -2876,7 +2876,7 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
-                        stream_has_output = true;
+                        stream_has_final_output = true;
                         // Track time-to-first-token on first non-empty delta
                         if time_to_first_token_ms.is_none() {
                             let ttft = llm_start.elapsed().as_millis() as u64;
@@ -2948,7 +2948,6 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
-                        stream_has_output = true;
                         if let Some(t) = append_guarded_thinking_delta(
                             &mut armed_guardrails,
                             &mut thinking,
@@ -3000,7 +2999,6 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingSignature(signature) => {
-                        stream_has_output = true;
                         // Capture the cryptographic signature for thinking content (required to send it back)
                         tracing::debug!(
                             session_id = %session_id,
@@ -3017,7 +3015,6 @@ impl ReasonAtom {
                         summary,
                         token_count,
                     } => {
-                        stream_has_output = true;
                         // Preserve the opaque artifact as the assistant message's
                         // thinking_signature so the next request can replay
                         // reasoning context, and emit a durable reason.item event
@@ -3058,7 +3055,7 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
-                        stream_has_output |= !calls.is_empty();
+                        stream_has_final_output |= !calls.is_empty();
                         tool_calls = calls;
                     }
                     LlmStreamEvent::MessagePhase(phase) => {
@@ -3173,7 +3170,7 @@ impl ReasonAtom {
                             &err,
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
-                            stream_has_output,
+                            stream_has_final_output,
                         ) {
                             let proposed_wait =
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
@@ -3858,7 +3855,9 @@ impl ReasonAtom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
+    use crate::driver_registry::{
+        LlmCallConfig, LlmStreamError, PromptCacheConfig, PromptCacheStrategy,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -3991,6 +3990,17 @@ mod tests {
                 && record.capability_id == "cap:demo"
                 && record.tool_name.as_deref() == Some("demo_tool")
         }));
+    }
+
+    #[test]
+    fn reasoning_only_output_keeps_transient_stall_retryable() {
+        let stall = LlmStreamError::new("provider stream stall: no tokens for 120s");
+
+        // Thinking deltas do not set stream_has_final_output, because retrying
+        // them cannot duplicate an answer or a tool side effect.
+        assert!(should_retry_stream_error(&stall, 0, 2, false));
+        assert!(!should_retry_stream_error(&stall, 2, 2, false));
+        assert!(!should_retry_stream_error(&stall, 0, 2, true));
     }
 
     #[test]
