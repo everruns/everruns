@@ -25,10 +25,11 @@ jobs:
         id: check
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           # Use env var to safely handle multiline commit messages
           FIRST_LINE=$(echo "$COMMIT_MSG" | head -n1)
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]] || \
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]] || \
              [[ "$FIRST_LINE" == chore\(release\):\ prepare\ v* ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "This is a release commit, proceeding with release"
@@ -56,36 +57,46 @@ jobs:
         id: version
         env:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
+          set -euo pipefail
           # Use input version if manual trigger, otherwise extract from commit message
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            VERSION="$INPUT_VERSION"
           else
             # Extract version from commit message like "chore(release): prepare v0.4.0"
-            VERSION=$(echo "$COMMIT_MSG" | head -n1 | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+')
+            VERSION=$(echo "$COMMIT_MSG" | head -n1 | grep -oP 'prepare v\K[0-9]+\.[0-9]+\.[0-9]+' || true)
           fi
           if [ -z "$VERSION" ]; then
             echo "::error::Could not extract version from commit message or input"
             exit 1
           fi
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          # Reject non-semver shapes so tainted inputs cannot inject shell via later steps
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must be semver X.Y.Z: $VERSION"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "Extracted version: $VERSION"
 
       - name: Check if tag already exists
         id: check_tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
-            echo "::error::Tag v${{ steps.version.outputs.version }} already exists"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION already exists"
             exit 1
           fi
           echo "Tag does not exist, proceeding..."
 
       - name: Extract release notes from CHANGELOG.md
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
           # Extract the section for this version from CHANGELOG.md
           # Matches from "## [X.Y.Z]" until the next "## [" or end of significant content
           NOTES=$(awk -v ver="$VERSION" '
@@ -111,21 +122,23 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ github.sha }}
         run: |
-          gh release create "v${{ steps.version.outputs.version }}" \
-            --title "v${{ steps.version.outputs.version }}" \
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
             --notes-file release_notes.md \
-            --target "${{ github.sha }}"
+            --target "$TARGET_SHA"
 
-          echo "Created release v${{ steps.version.outputs.version }}"
+          echo "Created release v$VERSION"
 
       # GITHUB_TOKEN tag pushes don't trigger other workflows (GitHub anti-recursion).
       # Explicitly dispatch Docker Publish to build version-tagged images.
       - name: Trigger Docker Publish for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
           echo "Triggering Docker Publish for tag $TAG..."
           gh workflow run docker-publish.yml --ref "$TAG" -f "tag=$TAG"
           echo "Docker Publish triggered for $TAG"
@@ -133,8 +146,8 @@ jobs:
       - name: Trigger CLI binary builds for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
           echo "Triggering CLI binary builds for tag $TAG..."
           gh workflow run cli-binaries.yml --ref "$TAG" -f "tag=$TAG"
           echo "CLI binary builds triggered for $TAG"
@@ -142,21 +155,23 @@ jobs:
       - name: Trigger crates.io publish for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          TARGET_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
           echo "Triggering crates.io publish for tag $TAG..."
-          gh api "repos/${{ github.repository }}/dispatches" \
+          gh api "repos/$REPOSITORY/dispatches" \
             --method POST \
             --field event_type=publish-crates \
             --field "client_payload[tag]=$TAG" \
-            --field "client_payload[sha]=${{ github.sha }}"
+            --field "client_payload[sha]=$TARGET_SHA"
           echo "crates.io publish triggered for $TAG"
 
       - name: Trigger server & worker binary builds for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
           echo "Triggering server & worker binary builds for tag $TAG..."
           gh workflow run server-worker-binaries.yml --ref "$TAG" -f "tag=$TAG"
           echo "Server & worker binary builds triggered for $TAG"
