@@ -1412,7 +1412,7 @@ impl ResourceUrlable for everruns_platform::App {
     }
 }
 
-impl ResourceUrlable for everruns_core::budget::Budget {
+impl ResourceUrlable for everruns_platform::Budget {
     fn api_path() -> &'static str {
         "v1/budgets"
     }

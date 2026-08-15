@@ -59,9 +59,11 @@ mod turn_strategy;
 mod utility_llm;
 mod workspace;
 
+#[cfg(feature = "platform")]
+pub use backends::PlatformStoreFactory;
 pub use backends::{
-    HostBackends, PlatformStoreFactory, RuntimeAgentStore, RuntimeHarnessStore,
-    RuntimeProviderStore, RuntimeSessionStore, ScheduleStoreFactory,
+    HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
+    RuntimeSessionStore, ScheduleStoreFactory,
 };
 pub use builders::{
     AgentBuilder, HarnessBuilder, SeededHarness, SessionBuilder, SingleSessionBuilder,
@@ -73,7 +75,8 @@ pub use events::{
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,
     EventPage, EventReadLimit, EventReadRequest, EventReader, EventSink, EventSinkError,
     HostEventEmitter, InMemoryEventLog, JsonlEventLog, MAX_EVENT_HISTORY_PAGE_SIZE,
-    MAX_EVENT_HISTORY_REPLAY, MAX_EVENT_PAGE_SIZE, NoopEventSink,
+    MAX_EVENT_HISTORY_REPLAY, MAX_EVENT_PAGE_SIZE, MAX_JSONL_RECOVERY_BYTES,
+    MAX_JSONL_RECOVERY_EVENTS, NoopEventSink,
 };
 pub use everruns_core::AssembledTurnContext;
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};

@@ -58,7 +58,7 @@ everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
 everruns-http.workspace = true
 everruns-ard.workspace = true
-everruns-host = { workspace = true, features = ["bashkit", "mcp", "utility-openai"] }
+everruns-host = { workspace = true, features = ["bashkit", "mcp", "platform", "utility-openai"] }
 # Note: Workers don't need direct DB access - all DB operations go through gRPC
 # The durable module is used for control-plane direct DB mode (avoids circular gRPC dependency)
 everruns-durable = { path = "../durable" }

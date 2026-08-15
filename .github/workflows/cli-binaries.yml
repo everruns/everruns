@@ -32,17 +32,33 @@ jobs:
             archive: everruns-x86_64-unknown-linux-gnu.tar.gz
 
     steps:
-      - uses: actions/checkout@v5
+      - name: Validate trusted release tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release tag must be a semantic version: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [ "$GIT_REF" != "refs/tags/$RELEASE_TAG" ] || [ "$REF_NAME" != "$RELEASE_TAG" ]; then
+            echo "release tag input must match the workflow tag ref" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ inputs.tag }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
         with:
           targets: ${{ matrix.target }}
 
       - name: Cache Rust
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           shared-key: "cli"
 
@@ -59,8 +75,9 @@ jobs:
       - name: Upload to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          gh release upload "${{ inputs.tag }}" \
+          gh release upload "$RELEASE_TAG" \
             "${{ matrix.archive }}" \
             "${{ matrix.archive }}.sha256" \
             --clobber
@@ -72,21 +89,40 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Validate trusted release tag
+        env:
+          GIT_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release tag must be a semantic version: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if [ "$GIT_REF" != "refs/tags/$RELEASE_TAG" ] || [ "$REF_NAME" != "$RELEASE_TAG" ]; then
+            echo "release tag input must match the workflow tag ref" >&2
+            exit 1
+          fi
+
       - name: Download SHA256 checksums from release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
           for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu; do
-            gh release download "$TAG" \
+            gh release download "$RELEASE_TAG" \
               --repo "${{ github.repository }}" \
               --pattern "everruns-${target}.tar.gz.sha256"
           done
 
       - name: Generate Homebrew formula
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SERVER_URL: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          TAG="${{ inputs.tag }}"
-          VERSION="${TAG#v}"
+          VERSION="${RELEASE_TAG#v}"
 
           # Validate checksum files exist and are non-empty
           for f in everruns-aarch64-apple-darwin.tar.gz.sha256 \
@@ -109,7 +145,7 @@ jobs:
             fi
           done
 
-          BASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/download/${TAG}"
+          BASE_URL="$SERVER_URL/$REPOSITORY/releases/download/$RELEASE_TAG"
 
           cat > everruns.rb <<FORMULA
           # typed: false
@@ -117,7 +153,7 @@ jobs:
 
           class Everruns < Formula
             desc "Open-source AI agent platform"
-            homepage "${{ github.server_url }}/${{ github.repository }}"
+            homepage "${SERVER_URL}/${REPOSITORY}"
             license "Apache-2.0"
 
             on_macos do
@@ -157,14 +193,14 @@ jobs:
           cat everruns.rb
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@014df23b1329b615816a38eb5f473bb9000700b1 # v3
 
       - name: Push formula to homebrew-tap
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
-          TAG="${{ inputs.tag }}"
-          VERSION="${TAG#v}"
+          VERSION="${RELEASE_TAG#v}"
 
           # Fetch the Homebrew tap PAT from Doppler (has push access to homebrew-tap)
           GH_PAT=$(doppler secrets get HOMEBREW_TAP_GITHUB_TOKEN --plain)

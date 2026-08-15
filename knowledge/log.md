@@ -8,6 +8,58 @@
   sandbox abstraction under harnesses. Implemented Platform proposals were
   removed rather than preserved as historical design documents.
 
+* **Framework execution is concrete and backend-owning.** `everruns::Engine`
+  owns Agent snapshots, its session catalog, and the backend bundle used by
+  every bound Session. `InMemoryEngine` is only a compatibility alias and the
+  private Session execution binding is not an application SPI. Live Engines
+  configured for the same local profile share one backend cell, preventing
+  independent JSONL indexes or SQLite handles from diverging inside a process.
+
+* **The host no longer implies the control plane.** The neutral
+  `everruns-session-services` crate now owns `SessionMutator` plus the portable
+  session and session-storage capabilities. Platform re-exports that seam for
+  product consumers, while host and the default Framework graph use it
+  directly. Platform composition is an opt-in host feature, and the Resend
+  client is an opt-in platform feature; dependency guards reject platform,
+  Reqwest, Rustls, or Hyper in minimal host/Framework graphs.
+
+* **Execution persistence has one state-overlay authority.** Both immediate
+  and durable hosts apply the effects returned by `everruns-engine`; failures
+  to record required lifecycle status/events now fail the transition. The
+  worker persists `DurableExecution::checkpoint()` at reason, act, wait, and
+  completion boundaries instead of reconstructing resume fields on its wire
+  path. Local JSONL recovery is bounded before indexing (128 MiB and 1,000,000
+  events by default).
+
+* **Remaining control-plane records and policy left the kernel where no turn
+  consumes them.** Stored `Budget` and `LedgerEntry` records live in platform;
+  core retains only budget execution vocabulary. Schedule limit values remain
+  neutral defaults in core, while environment-variable policy is resolved by
+  the local and server adapters.
+
+## 2026-08-14
+
+* **The 0.18 kernel/API freeze established a boundary, not a size target.**
+  EVE-906 removed compatibility ownership and credential-bearing resolved
+  values, pinned the reviewed public surface, and kept neutral contracts that
+  portable turn execution still consumes. The freeze guard must be updated
+  deliberately when a missed product-only record moves to its real owner; it
+  is not a reason to preserve an acknowledged layering mistake.
+
+* **Engine-owned sessions, multi-head workspaces, and shared execution landed
+  as one model.** Framework Engines own session identity and Environment head
+  binding. `everruns-engine` owns the shared Input/Reason/Act algorithms and
+  pure turn planner. Immediate and durable hosts select persistence and
+  scheduling, but do not carry independent copies of turn semantics.
+
+* **The portable distributed-engine experiment was added and reverted.** The
+  short-lived `everruns-scale` crate combined a public registered-agent API
+  with another execution composition. It was reverted because Everruns needs
+  one shared abstract execution/turn kernel in `everruns-engine`, with
+  in-process and durable hosts adapting that kernel—not a third Scale product
+  layer or a second embedded Engine path. The subsequent unification work is
+  the retained implementation of that intent.
+
 ## 2026-08-13
 
 * **EVE-897 closed at two families: the `ToolContext` service bag mostly cannot

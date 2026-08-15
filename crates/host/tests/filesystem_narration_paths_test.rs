@@ -28,10 +28,10 @@ use everruns_host::{
     multi_root_file_system,
 };
 use everruns_integrations_filesystem::FileSystemCapability;
-use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
+use everruns_session_services::SessionMutator;
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;

@@ -52,18 +52,18 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # QEMU needed for multi-arch builds (ARM64 cross-compilation)
       - name: Set up QEMU
         if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -71,37 +71,50 @@ jobs:
 
       - name: Determine SHA
         id: sha
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-            echo "sha_short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha_short=${PR_HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           else
-            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha_short=${COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine release tag
         id: release_tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
+          if [[ "$GIT_REF" == refs/tags/* ]] && [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release ref must be a semantic version tag: $REF_NAME" >&2
+            exit 1
+          fi
           # workflow_dispatch is only trusted when dispatched against the
           # matching version tag ref (as release.yml does with --ref "$TAG").
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
-              echo "workflow_dispatch must run on a v* tag ref; got ${{ github.ref }}" >&2
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ "$GIT_REF" != refs/tags/v* ]]; then
+              echo "workflow_dispatch must run on a v* tag ref; got $GIT_REF" >&2
               exit 1
             fi
-            if [ "${{ github.ref_name }}" != "${{ inputs.tag }}" ]; then
-              echo "workflow_dispatch tag input must match ref_name (${{ github.ref_name }})" >&2
+            if [ "$REF_NAME" != "$INPUT_TAG" ]; then
+              echo "workflow_dispatch tag input must match ref_name ($REF_NAME)" >&2
               exit 1
             fi
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GIT_REF" == refs/tags/v* ]]; then
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       # Build ARM64 on version tags and release dispatches.
@@ -118,7 +131,7 @@ jobs:
       # --- Server image ---
       - name: Extract metadata (server)
         id: meta-server
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-server
           tags: |
@@ -129,7 +142,7 @@ jobs:
             type=raw,value=${{ steps.sha.outputs.sha }}
 
       - name: Build and push server
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: .
           file: docker/Dockerfile.unified
@@ -144,7 +157,7 @@ jobs:
       # --- Worker image ---
       - name: Extract metadata (worker)
         id: meta-worker
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-worker
           tags: |
@@ -155,7 +168,7 @@ jobs:
             type=raw,value=${{ steps.sha.outputs.sha }}
 
       - name: Build and push worker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: .
           file: docker/Dockerfile.unified
@@ -171,7 +184,7 @@ jobs:
       - name: Extract metadata (admin)
         if: github.event_name != 'pull_request'
         id: meta-admin
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-admin
           tags: |
@@ -183,7 +196,7 @@ jobs:
 
       - name: Build and push admin
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: .
           file: docker/Dockerfile.unified
@@ -205,17 +218,17 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up QEMU
         if: github.event_name != 'pull_request'
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -223,35 +236,48 @@ jobs:
 
       - name: Determine SHA
         id: sha
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          COMMIT_SHA: ${{ github.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-            echo "sha_short=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "sha=$PR_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha_short=${PR_HEAD_SHA:0:7}" >> "$GITHUB_OUTPUT"
           else
-            echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "sha_short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+            echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
+            echo "sha_short=${COMMIT_SHA:0:7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine release tag
         id: release_tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GIT_REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
-              echo "workflow_dispatch must run on a v* tag ref; got ${{ github.ref }}" >&2
+          if [[ "$GIT_REF" == refs/tags/* ]] && [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "release ref must be a semantic version tag: $REF_NAME" >&2
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            if [[ "$GIT_REF" != refs/tags/v* ]]; then
+              echo "workflow_dispatch must run on a v* tag ref; got $GIT_REF" >&2
               exit 1
             fi
-            if [ "${{ github.ref_name }}" != "${{ inputs.tag }}" ]; then
-              echo "workflow_dispatch tag input must match ref_name (${{ github.ref_name }})" >&2
+            if [ "$REF_NAME" != "$INPUT_TAG" ]; then
+              echo "workflow_dispatch tag input must match ref_name ($REF_NAME)" >&2
               exit 1
             fi
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
+          elif [[ "$GIT_REF" == refs/tags/v* ]]; then
+            echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "is_release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=" >> $GITHUB_OUTPUT
-            echo "is_release=false" >> $GITHUB_OUTPUT
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine platforms
@@ -265,7 +291,7 @@ jobs:
 
       - name: Extract metadata (ui)
         id: meta-ui
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.IMAGE_BASE }}/everruns-ui
           tags: |
@@ -276,7 +302,7 @@ jobs:
             type=raw,value=${{ steps.sha.outputs.sha }}
 
       - name: Build and push UI
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         with:
           context: apps/ui
           file: apps/ui/Dockerfile

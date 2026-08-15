@@ -15,7 +15,8 @@ use everruns_provider::error::{AgentLoopError, Result as CoreResult};
 use everruns_provider::tool_types::ToolResultImage;
 use everruns_provider::typed_id::{EventId, MessageId, SessionId};
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
+use sha2::{Digest, Sha256};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, RwLock};
 
 /// Default number of canonical envelopes returned by a host event read.
@@ -26,6 +27,10 @@ pub const MAX_EVENT_PAGE_SIZE: usize = 1024;
 pub const MAX_EVENT_HISTORY_REPLAY: usize = 100_000;
 /// Maximum projected messages returned by one bounded history page.
 pub const MAX_EVENT_HISTORY_PAGE_SIZE: usize = 256;
+/// Maximum bytes loaded while rebuilding a local JSONL event index.
+pub const MAX_JSONL_RECOVERY_BYTES: usize = 128 * 1024 * 1024;
+/// Maximum canonical envelopes indexed from one local JSONL file.
+pub const MAX_JSONL_RECOVERY_EVENTS: usize = 1_000_000;
 
 /// Persistence guarantee provided by an [`EventLog`] implementation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -58,6 +63,9 @@ pub enum EventLogError {
     /// Persisted canonical envelopes conflict or are malformed.
     #[error("event log corruption: {detail}")]
     Corruption { detail: String },
+    /// A local log exceeds the bounded in-memory recovery contract.
+    #[error("event log recovery limit exceeded: {detail}")]
+    RecoveryLimitExceeded { detail: String },
     /// The storage backend failed.
     #[error("event log backend failure: {detail}")]
     Backend { detail: String },
@@ -672,7 +680,7 @@ fn ephemeral_event(request: EventRequest) -> Event {
 #[derive(Default)]
 struct EventIndex {
     by_session: HashMap<SessionId, Vec<Event>>,
-    by_id: HashMap<EventId, Vec<u8>>,
+    by_id: HashMap<EventId, [u8; 32]>,
     by_sequence: HashMap<(SessionId, i32), EventId>,
 }
 
@@ -701,8 +709,9 @@ impl EventIndex {
         let canonical = serde_json::to_vec(&event).map_err(|error| EventLogError::Corruption {
             detail: error.to_string(),
         })?;
+        let canonical_hash: [u8; 32] = Sha256::digest(&canonical).into();
         if let Some(existing) = self.by_id.get(&event.id) {
-            if existing == &canonical {
+            if existing == &canonical_hash {
                 return Ok(false);
             }
             return Err(EventLogError::Corruption {
@@ -731,7 +740,7 @@ impl EventIndex {
                 ),
             });
         }
-        self.by_id.insert(event.id, canonical);
+        self.by_id.insert(event.id, canonical_hash);
         self.by_sequence
             .insert((event.session_id, sequence), event.id);
         self.by_session
@@ -868,14 +877,39 @@ pub struct JsonlEventLog {
 impl JsonlEventLog {
     /// Open or create a canonical event JSONL file and rebuild its index.
     pub async fn open(path: impl AsRef<Path>) -> Result<Self, EventLogError> {
+        Self::open_with_limits(path, MAX_JSONL_RECOVERY_BYTES, MAX_JSONL_RECOVERY_EVENTS).await
+    }
+
+    async fn open_with_limits(
+        path: impl AsRef<Path>,
+        max_bytes: usize,
+        max_events: usize,
+    ) -> Result<Self, EventLogError> {
         let path = path.as_ref().to_path_buf();
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
             tokio::fs::create_dir_all(parent).await?;
         }
-        let bytes = match tokio::fs::read(&path).await {
-            Ok(bytes) => bytes,
+        // THREAT[TM-DOS-035]: local state is not assumed trustworthy after a
+        // crash or operator edit. Read through `take` so a concurrently growing
+        // file cannot force an unbounded allocation during index recovery.
+        let bytes = match tokio::fs::File::open(&path).await {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(max_bytes as u64 + 1)
+                    .read_to_end(&mut bytes)
+                    .await?;
+                if bytes.len() > max_bytes {
+                    return Err(EventLogError::RecoveryLimitExceeded {
+                        detail: format!(
+                            "{} exceeds the {max_bytes}-byte local recovery limit",
+                            path.display()
+                        ),
+                    });
+                }
+                bytes
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(error) => return Err(error.into()),
         };
@@ -889,6 +923,14 @@ impl JsonlEventLog {
             .filter(|line| !line.is_empty())
             .enumerate()
         {
+            if line_index >= max_events {
+                return Err(EventLogError::RecoveryLimitExceeded {
+                    detail: format!(
+                        "{} exceeds the {max_events}-event local recovery limit",
+                        path.display()
+                    ),
+                });
+            }
             let event: Event =
                 serde_json::from_slice(line).map_err(|error| EventLogError::Corruption {
                     detail: format!("line {}: {error}", line_index + 1),
@@ -1410,6 +1452,52 @@ mod tests {
         EventContext, InputMessageData, OutputMessageDeltaData, SessionStartedData,
     };
     use everruns_provider::typed_id::{HarnessId, TurnId};
+
+    #[tokio::test]
+    async fn jsonl_recovery_rejects_oversize_files_before_indexing() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("events.jsonl");
+        tokio::fs::write(&path, b"123456789")
+            .await
+            .expect("write fixture");
+
+        let error = JsonlEventLog::open_with_limits(&path, 8, 100)
+            .await
+            .err()
+            .expect("oversize log is rejected");
+        assert!(matches!(error, EventLogError::RecoveryLimitExceeded { .. }));
+    }
+
+    #[tokio::test]
+    async fn jsonl_recovery_rejects_excessive_event_counts() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let path = root.path().join("events.jsonl");
+        let session_id = SessionId::new();
+        let first = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(Message::user("one")),
+        )
+        .into_event(EventId::new(), 1);
+        let second = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(Message::user("two")),
+        )
+        .into_event(EventId::new(), 2);
+        let bytes = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&first).unwrap(),
+            serde_json::to_string(&second).unwrap()
+        );
+        tokio::fs::write(&path, bytes).await.expect("write fixture");
+
+        let error = JsonlEventLog::open_with_limits(&path, 1_000_000, 1)
+            .await
+            .err()
+            .expect("event-heavy log is rejected");
+        assert!(matches!(error, EventLogError::RecoveryLimitExceeded { .. }));
+    }
 
     struct LifecycleHeavyReader;
 

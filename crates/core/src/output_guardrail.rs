@@ -59,7 +59,7 @@ pub trait OutputGuardrailRun: Send {
 pub struct OutputGuardrailContext<'a> {
     /// The fully assembled system prompt for this turn.
     pub system_prompt: &'a str,
-    /// Per-capability config JSON (`AgentCapabilityConfig.config`).
+    /// Per-capability config JSON (`CapabilityRef.config`).
     pub config: &'a serde_json::Value,
 }
 

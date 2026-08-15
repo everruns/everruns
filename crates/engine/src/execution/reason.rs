@@ -78,7 +78,7 @@ async fn apply_finalized_tool_calls_hooks(
     event_emitter: &dyn EventEmitter,
     session_id: SessionId,
     context: &ExecutionContext,
-    resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    resolved_capability_configs: &[crate::CapabilityRef],
     tool_definitions: &[ToolDefinition],
     tool_calls: &mut [ToolCall],
     iteration: u32,
@@ -298,6 +298,35 @@ fn stream_event_advances_stall_deadline(event: &LlmStreamEvent) -> bool {
     }
 }
 
+/// Retry safety is deliberately narrower than stream progress. Thinking and
+/// signed reasoning can be replayed; answer text and tool calls cannot, because
+/// replay could duplicate user-visible output or side effects. Keep that
+/// classification in one place so new stream variants cannot acquire an
+/// independent flag update in the main reason loop.
+#[derive(Default)]
+struct StreamRetrySafety {
+    has_final_output: bool,
+}
+
+impl StreamRetrySafety {
+    fn observe(&mut self, event: &LlmStreamEvent) {
+        self.has_final_output |= match event {
+            LlmStreamEvent::TextDelta(delta) => !delta.is_empty(),
+            LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
+            LlmStreamEvent::ThinkingDelta(_)
+            | LlmStreamEvent::ThinkingSignature(_)
+            | LlmStreamEvent::ReasonItem { .. }
+            | LlmStreamEvent::MessagePhase(_)
+            | LlmStreamEvent::Done(_)
+            | LlmStreamEvent::Error(_) => false,
+        };
+    }
+
+    fn has_final_output(&self) -> bool {
+        self.has_final_output
+    }
+}
+
 fn should_retry_stream_error(
     error: &crate::driver_registry::LlmStreamError,
     retry_attempts: u32,
@@ -402,7 +431,7 @@ fn error_disclosure_override(messages: &[Message]) -> Option<String> {
 /// the neutral `Capability` contract and does not know the implementation ID.
 fn resolve_error_disclosure(
     registry: &CapabilityRegistry,
-    configs: &[crate::AgentCapabilityConfig],
+    configs: &[crate::CapabilityRef],
     requested: Option<&str>,
 ) -> ErrorDisclosure {
     let ceiling = configs
@@ -423,7 +452,7 @@ fn resolve_error_disclosure(
 
 fn filter_response_text(
     registry: &CapabilityRegistry,
-    configs: &[crate::AgentCapabilityConfig],
+    configs: &[crate::CapabilityRef],
     mut text: String,
 ) -> String {
     for config in configs {
@@ -808,7 +837,7 @@ fn capability_name_snapshot(registry: &CapabilityRegistry, capability_id: &str) 
 
 fn capability_usage_snapshot_records(
     registry: &CapabilityRegistry,
-    resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    resolved_capability_configs: &[crate::CapabilityRef],
     tool_definitions: &[ToolDefinition],
 ) -> Vec<CapabilityUsageRecord> {
     let mut records = Vec::new();
@@ -963,7 +992,7 @@ impl ReasonAtom {
     /// hook — the common case — are skipped at zero allocation cost.
     fn collect_llm_error_hooks(
         &self,
-        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+        resolved_capability_configs: &[crate::CapabilityRef],
     ) -> Vec<(
         Arc<dyn crate::llm_error_hook::LlmErrorHook>,
         serde_json::Value,
@@ -1087,7 +1116,7 @@ impl ReasonAtom {
         &self,
         session_id: SessionId,
         context: &ExecutionContext,
-        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+        resolved_capability_configs: &[crate::CapabilityRef],
         tool_definitions: &[ToolDefinition],
     ) {
         let records = capability_usage_snapshot_records(
@@ -1122,7 +1151,7 @@ impl ReasonAtom {
         &self,
         session_id: SessionId,
         context: &ExecutionContext,
-        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+        resolved_capability_configs: &[crate::CapabilityRef],
         tool_definitions: &[ToolDefinition],
         tool_calls: &mut [ToolCall],
         iteration: u32,
@@ -2763,7 +2792,7 @@ impl ReasonAtom {
             let mut thinking_signature: Option<String> = None;
             let mut tool_calls = Vec::new();
             let mut completion_metadata: Option<LlmCompletionMetadata> = None;
-            let mut stream_has_final_output = false;
+            let mut stream_retry_safety = StreamRetrySafety::default();
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
             let mut last_delta_emit = Instant::now();
@@ -2819,7 +2848,7 @@ impl ReasonAtom {
                             &stall_error,
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
-                            stream_has_final_output,
+                            stream_retry_safety.has_final_output(),
                         ) {
                             let proposed_wait = retry_config
                                 .calculate_backoff(stream_retry_metadata.attempts);
@@ -2865,6 +2894,7 @@ impl ReasonAtom {
                     },
                 };
                 let event = event?;
+                stream_retry_safety.observe(&event);
                 let advances_stall_deadline = stream_event_advances_stall_deadline(&event);
                 if advances_stall_deadline {
                     stall_sleep
@@ -2877,7 +2907,6 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
-                        stream_has_final_output = true;
                         // Track time-to-first-token on first non-empty delta
                         if time_to_first_token_ms.is_none() {
                             let ttft = llm_start.elapsed().as_millis() as u64;
@@ -3056,7 +3085,6 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
-                        stream_has_final_output |= !calls.is_empty();
                         tool_calls = calls;
                     }
                     LlmStreamEvent::MessagePhase(phase) => {
@@ -3171,7 +3199,7 @@ impl ReasonAtom {
                             &err,
                             stream_retry_metadata.attempts,
                             retry_config.max_retries,
-                            stream_has_final_output,
+                            stream_retry_safety.has_final_output(),
                         ) {
                             let proposed_wait =
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
@@ -3697,7 +3725,7 @@ impl ReasonAtom {
         partial: PartialStreamState,
         iteration: u32,
         runtime_agent: &crate::RuntimeAgent,
-        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+        resolved_capability_configs: &[crate::CapabilityRef],
     ) -> Result<ReasonResult> {
         let event_context = EventContext::from_execution_context(context);
         let turn_id = context.turn_id;
@@ -3977,7 +4005,7 @@ mod tests {
 
         let records = capability_usage_snapshot_records(
             &registry,
-            &[crate::AgentCapabilityConfig::new("current_time")],
+            &[crate::CapabilityRef::new("current_time")],
             &[tool],
         );
 
@@ -4002,6 +4030,25 @@ mod tests {
         assert!(should_retry_stream_error(&stall, 0, 2, false));
         assert!(!should_retry_stream_error(&stall, 2, 2, false));
         assert!(!should_retry_stream_error(&stall, 0, 2, true));
+    }
+
+    #[test]
+    fn stream_retry_safety_centralizes_the_final_output_boundary() {
+        let mut safety = StreamRetrySafety::default();
+        safety.observe(&LlmStreamEvent::ThinkingDelta("diagnostic".into()));
+        safety.observe(&LlmStreamEvent::ThinkingSignature("signature".into()));
+        assert!(!safety.has_final_output());
+
+        safety.observe(&LlmStreamEvent::TextDelta("answer".into()));
+        assert!(safety.has_final_output());
+
+        let mut tool_safety = StreamRetrySafety::default();
+        tool_safety.observe(&LlmStreamEvent::ToolCalls(vec![ToolCall {
+            id: "call-1".into(),
+            name: "write".into(),
+            arguments: serde_json::json!({}),
+        }]));
+        assert!(tool_safety.has_final_output());
     }
 
     #[test]

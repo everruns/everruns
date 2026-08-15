@@ -130,25 +130,22 @@ presets compose the hosted registry explicitly; the Framework preset does not
 advertise service-backed product capabilities. The capability-isolation guard
 keeps these implementations and their service contracts out of core.
 
-The session-service capabilities followed (EVE-886): `session`,
-`session_storage`, `session_sql_database` and `session_sandbox` each need a host
-service — a session store, key/value plus secret storage, a SQL database, or a
-sandbox provider — so they sit with the other service-backed families in
-`everruns-platform`. Composition, not the kernel, decides what a deployment
-advertises: product registration installs all four (sandbox behind its feature
-flag), and the host preset re-adds the two the default in-process runtime can
-serve, so the Framework still exposes session info and session storage.
+Session metadata and key/secret storage are shared host contracts, not product
+entities. `everruns-session-services` owns `SessionMutator` plus the portable
+`session` and `session_storage` capabilities below both host and platform. The
+default Framework host can therefore provide them without compiling the
+control plane. `session_sql_database` and `session_sandbox` stay in
+`everruns-platform` because their implementations are hosted resources.
 
 The records those capabilities read follow them (EVE-880). The org-scoped
 `Workspace` row and the managed per-session sandbox — state record, provider
 SPI, inventory plugin and lifecycle helpers — live in `everruns-platform`; a
 turn resolves workspace *paths* through core's roots and policy types, and
-reaches a sandbox only through the capability. `session_sqldb` is the
-deliberate exception: its value types are the signature vocabulary of
-`SessionSqlDbStore`, which `ToolContext` still holds as an optional field, so
-records and trait move together under EVE-887 rather than leaving core naming
-platform types. Session task, schedule and resource records likewise stay
-while core execution still consumes them.
+reaches a sandbox only through the capability. Session SQL values and the
+`SessionSqlDbStore` typed extension move together in platform. Session task,
+schedule and resource records stay while core execution still consumes them;
+their deployment-specific quota policy is resolved by local/server adapters,
+not from environment variables in the kernel.
 
 `everruns-core` depends on `everruns-provider` with default features disabled
 and imports only the contracts needed by neutral execution. It does not

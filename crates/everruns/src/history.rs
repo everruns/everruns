@@ -12,7 +12,8 @@ use everruns_host::{
     MAX_EVENT_HISTORY_PAGE_SIZE,
 };
 
-use crate::{ContentPart, MessageRole, SessionExecution, SessionId};
+use crate::engine::SessionExecution;
+use crate::{ContentPart, MessageRole, SessionId};
 
 const MAX_CURSOR_TOKEN_LEN: usize = 4096;
 const CURSOR_PREFIX: &str = "eh1.";
@@ -80,9 +81,9 @@ impl HistoryQuery {
     /// new query to observe events committed after that snapshot.
     pub async fn page(&self) -> Result<HistoryPage, HistoryError> {
         self.execution.ensure_cataloged().await?;
-        let agent = self.execution.agent_snapshot();
-        let backends = agent
-            .shared_backends()
+        let backends = self
+            .execution
+            .backends()
             .await
             .map_err(|error| error.history_error())?;
         let limit = EventHistoryReadLimit::new(self.limit).map_err(map_event_error)?;
@@ -90,7 +91,7 @@ impl HistoryQuery {
         if let Some(cursor) = &self.cursor {
             request = request.with_cursor(cursor.clone());
         }
-        let page = EventHistory::new(backends.event_log.clone())
+        let page = EventHistory::new(backends.host.event_log.clone())
             .read_page(request)
             .await
             .map_err(map_event_error)?;

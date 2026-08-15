@@ -73,6 +73,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check release workflow security
+        run: bash scripts/test-release-workflow-security.sh
+
       - name: Resolve temporary slow CI mode
         id: slow_ci_mode
         run: echo "enabled=false" >> "$GITHUB_OUTPUT"

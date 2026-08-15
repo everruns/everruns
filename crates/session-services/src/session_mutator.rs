@@ -1,4 +1,4 @@
-//! Mutating stored session metadata.
+//! Backend-neutral mutation contract for session metadata.
 //!
 //! `SessionMutator` is the hosted control-plane service behind the `session`
 //! capability's title and live-capability-reconfigure tools. It moved out of

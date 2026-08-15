@@ -52,8 +52,8 @@ runtime crate.
 
 - Use `Model::simulated` or `Model::simulated_with_config` for deterministic,
   credential-free tests.
-- Pair `ModelSpec` and `Provider`, or use a provider convenience, for real
-  models.
+- Pair a plain Framework `Model` with `Provider`, or use a provider
+  convenience, for real models.
 - Add ordinary tools with `#[everruns::tool]` or `FunctionTool`; use the
   curated `everruns::capability` API for reusable capability packages.
 - Observe `Session::events`, cancel through `RunOptions`, and inspect the next
@@ -63,7 +63,7 @@ runtime crate.
 - Configure scoped MCP through `McpServer` and plugins through
   `AgentBuilder::plugin`. Local-process MCP stays opt-in.
 - Enable `everruns/local` for a real workspace plus local task/schedule state.
-  It does not imply durable conversation history.
+  The same profile also provides crash-durable canonical event history.
 
 ## Advanced host boundary
 
@@ -72,12 +72,13 @@ must replace stores, filesystem factories, platform definitions, phase
 adapters, durable scheduling lifecycle, or worker topology:
 
 ```bash
-cargo add everruns everruns-host
+cargo add everruns everruns-host everruns-provider
 ```
 
 ```rust
-use everruns::{ModelSpec, Provider};
+use everruns::Provider;
 use everruns_host::{HostBackends, InProcessRuntimeBuilder};
+use everruns_provider::model_spec::ModelSpec;
 # let _ = (HostBackends::in_memory, InProcessRuntimeBuilder::new);
 ```
 

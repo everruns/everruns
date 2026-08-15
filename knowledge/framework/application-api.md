@@ -51,15 +51,15 @@ The Framework owns value-first configuration for:
 - event-derived session history and resume, without promoting writable message
   stores or their file format into the application API.
 
-The application execution boundary is `everruns::Engine`. `Agent` is immutable
-behavior; an Engine owns Agent snapshots, session catalog/runtime state, and
-resume authority. `InMemoryEngine` is the first explicit implementation and
-retains snapshots only for the process lifetime. `Session` is engine-bound and
-does not own an Agent or expose the concrete in-process runtime. The object-safe
-`SessionExecution` binding carries Framework identity without backend, store,
-host, or platform DTOs. The separate `everruns-engine` crate owns shared
-Input/Reason/Act execution and turn planning; the application `Engine` SPI owns
-sessions and does not replace or absorb that lower-level kernel.
+The application execution boundary is the concrete `everruns::Engine`.
+`InMemoryEngine` remains a source-compatible alias, not a second
+implementation. `Agent` is immutable behavior; an Engine owns Agent snapshots,
+the session catalog, and the backend bundle needed to execute and resume those
+sessions. `Session` is engine-bound and does not expose its private execution
+binding, concrete in-process runtime, stores, or platform DTOs. The separate
+`everruns-engine` crate owns shared Input/Reason/Act execution and turn
+planning; it is the lower-level host kernel, not an application-pluggable
+Engine implementation.
 
 There is no Agent-owned compatibility engine and no `Agent::session` or
 `Agent::resume` path in 0.18. Embedded applications retain an Engine and call
@@ -67,7 +67,7 @@ There is no Agent-owned compatibility engine and no `Agent::session` or
 may contain process-local provider drivers, function handlers, and hook
 closures, local persistence never serializes it. After a process restart, an
 application reconstructs that trusted behavior and explicitly attaches it to a
-new `InMemoryEngine` before resuming the persisted session. Attachment verifies
+new `Engine` before resuming the persisted session. Attachment verifies
 the ID against the Agent-configured local session catalog; canonical events do
 not confer session identity.
 
@@ -81,6 +81,11 @@ are linked from the [source index](#source-index).
 An ordinary application targets `everruns` alone for agent configuration and
 execution. The facade-only acceptance fixture enforces that boundary and is
 intentionally stricter than the requirement for a complete execution host.
+The default facade and `everruns-host --no-default-features` graphs do not
+contain `everruns-platform`, Reqwest, Rustls, or Hyper. The small shared
+`everruns-session-services` crate owns the session mutation/storage capability
+seam below host and platform; hosted product services remain opt-in through
+platform-enabled product composition.
 
 An advanced system integrator may combine `everruns` with `everruns-host` and
 focused engine, MCP, provider, and integration crates. `everruns-engine` is the

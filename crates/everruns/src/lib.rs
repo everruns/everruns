@@ -61,7 +61,7 @@ pub mod work;
 pub use agent::{Agent, AgentBuilder, BuildError, Model};
 pub use capability_config::{CapabilityRef, CapabilitySpec, IntoCapability};
 pub use context::{ContextMessage, SessionContext, ToolInfo};
-pub use engine::{Engine, InMemoryEngine, SessionExecution};
+pub use engine::{Engine, InMemoryEngine};
 pub use events::{
     CancellationToken, EVENT_STREAM_CAPACITY, EventStream, EventStreamError, RunOptions,
     SessionEvent, SessionEventKind,
@@ -145,41 +145,33 @@ pub use providers::openai::{OpenAI, OpenAIError};
 // low-level host `AgentBuilder` at the facade root. Advanced hosts that need
 // the low-level builders depend on `everruns-host` directly.
 pub use everruns_host::{
-    Environment, EnvironmentBuilder, HarnessBuilder, HostComposition, InProcessRuntime,
-    InProcessRuntimeBuilder, SessionBuilder, SingleSessionBuilder, TurnResult, Workspace,
-    WorkspaceBinding, WorkspaceCheckpoint, WorkspaceDescriptor, WorkspaceDiff, WorkspaceError,
-    WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadBuilder, WorkspaceHeadDescriptor,
-    WorkspaceHeadId, WorkspaceHeadRequest, WorkspaceHeadResource, WorkspaceHeadStatus,
-    WorkspaceProvider, WorkspaceProviderId,
+    Environment, EnvironmentBuilder, Workspace, WorkspaceBinding, WorkspaceCheckpoint,
+    WorkspaceDescriptor, WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess,
+    WorkspaceHeadBuilder, WorkspaceHeadDescriptor, WorkspaceHeadId, WorkspaceHeadRequest,
+    WorkspaceHeadResource, WorkspaceHeadStatus, WorkspaceProvider, WorkspaceProviderId,
 };
 
 // --- Portable message, model, and platform types ------------------------
-#[doc(hidden)]
-pub use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_core::{
-    CapabilityRegistry, ContentPart, Controls, ImageContentPart, InitialFile, InputMessage,
-    MessageRole, ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
+    ContentPart, Controls, ImageContentPart, InitialFile, InputMessage, MessageRole,
+    ReasoningConfig, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
 };
 pub use everruns_provider::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
+// Required by the public `ChatDriver` SPI: downstream drivers must be able to
+// name its error type without adding an implementation-crate dependency.
 pub use everruns_provider::error::AgentLoopError;
-pub use everruns_provider::model_spec::ModelSpec;
 pub use everruns_provider::runtime_provider::{
     BearerAuth, Provider, ProviderAuth, ProviderAuthRequest, ProviderEndpoint, ProviderKey,
-    ProviderRegistry, StaticHeaderAuth,
+    StaticHeaderAuth,
 };
 pub use everruns_provider::tool_types::ToolCall;
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
 pub use everruns_test_support::LlmSimConfig;
-
-/// Escape hatch onto the underlying `everruns-core` crate for APIs not yet
-/// promoted onto the facade. Prefer the re-exports above; reach here only for
-/// types the facade does not yet surface directly.
-pub use everruns_core as core;
 
 /// The common path: everything needed to describe an agent and run turns.
 ///
@@ -212,11 +204,11 @@ pub mod prelude {
         InitialFile, IntoCapability, IntoHookResult, IntoTool, IntoToolResult, LlmSimConfig,
         McpServer, Model, PluginError, ResumeError, RunError, RunOptions, SendDisposition,
         SentMessage, Session, SessionContext, SessionEnvironmentError, SessionEvent,
-        SessionEventKind, SessionExecution, SessionId, SessionMessage, Tool, ToolEndContext,
-        ToolInfo, ToolResponse, ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace,
-        WorkspaceDiff, WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId,
-        WorkspaceId, WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError,
-        WorkspaceProvider, WorkspaceProviderId,
+        SessionEventKind, SessionId, SessionMessage, Tool, ToolEndContext, ToolInfo, ToolResponse,
+        ToolStartContext, Turn, TurnHandle, TurnStartContext, Workspace, WorkspaceDiff,
+        WorkspaceError, WorkspaceHead, WorkspaceHeadAccess, WorkspaceHeadId, WorkspaceId,
+        WorkspacePolicy, WorkspacePolicyBuilder, WorkspacePolicyError, WorkspaceProvider,
+        WorkspaceProviderId,
     };
     #[cfg(feature = "builtins")]
     pub use crate::{CompactionConfig, CompactionStrategy, ToolSearch};

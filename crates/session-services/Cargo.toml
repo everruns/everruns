@@ -1,0 +1,26 @@
+[package]
+name = "everruns-session-services"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-session-services"
+readme = "README.md"
+description = "Backend-neutral session service contracts and capabilities for Everruns"
+keywords = ["agent", "agentic", "session", "everruns"]
+categories = ["development-tools", "asynchronous"]
+
+[dependencies]
+async-trait.workspace = true
+everruns-capability.workspace = true
+everruns-core.workspace = true
+everruns-provider.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+tokio = { workspace = true, features = ["macros", "rt"] }

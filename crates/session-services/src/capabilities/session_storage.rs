@@ -1,4 +1,4 @@
-//! Session Storage Capability
+//! Session storage capability.
 //!
 //! This capability provides tools for session-scoped key/value and secret storage.
 //! Data persists for the session duration.

@@ -5,7 +5,7 @@
 use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+use everruns_capability::CapabilityRef;
 use everruns_core::agent_definition::AgentDefinition;
 use everruns_core::harness_definition::HarnessDefinition;
 use everruns_core::session::ExecutionSession;
@@ -20,13 +20,13 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_files::SessionFileSystem,
     session_services::KeyInfo, session_services::SecretInfo, session_services::SessionStorageStore,
 };
-use everruns_platform::SessionMutator;
 use everruns_provider::credential_provider::CredentialProvider;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::runtime_provider::ProviderKey;
 use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+use everruns_session_services::SessionMutator;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -330,7 +330,7 @@ impl SessionMutator for InMemorySessionStore {
     async fn upsert_session_capability(
         &self,
         session_id: SessionId,
-        capability: AgentCapabilityConfig,
+        capability: CapabilityRef,
     ) -> Result<ExecutionSession> {
         let mut sessions = self.sessions.write().await;
         let session = sessions

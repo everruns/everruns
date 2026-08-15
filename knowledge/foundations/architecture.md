@@ -103,7 +103,9 @@ Production event routing therefore prefers:
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
-   - `engine/` → `everruns-engine` - Abstract execution contract, state machine, atoms, and turn planning
+   - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
+   - `session-services/` → `everruns-session-services` - Backend-neutral session mutation and storage capability seam shared by host and platform
+   - `platform/` → `everruns-platform` - Hosted product records, services, and capability implementations
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
@@ -133,6 +135,8 @@ everruns/
 │   ├── core/             # Neutral execution contracts and portable projections
 │   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
 │   ├── engine/           # Shared turn planning and execution coordination
+│   ├── session-services/ # Neutral session host contracts/capabilities
+│   ├── platform/         # Hosted product records and services
 │   ├── everruns/         # Application-facing Framework crate
 │   ├── host/             # Low-level in-process host and reusable host phases
 │   ├── macros/           # everruns-macros implementation crate
@@ -159,6 +163,8 @@ graph TD
     provider[provider]
     core[core]
     engine[engine]
+    session_services[session-services]
+    platform[platform]
     host[host]
     framework[everruns]
     openai[openai]
@@ -171,9 +177,14 @@ graph TD
     core --> provider
     engine --> core
     engine --> provider
+    session_services --> core
+    session_services --> provider
     host --> engine
     host --> core
     host --> provider
+    host --> session_services
+    host -.->|platform feature| platform
+    platform --> session_services
     framework --> host
     framework --> core
     framework --> provider
@@ -399,8 +410,9 @@ The `TaskWorker` provides a unified worker implementation that works with both i
    - `emit_event()`, `get_model_with_provider()`
    - `read_file()`, `write_file()`, `edit_file()` (session filesystem)
    - `load_turn_context()` - Batched context loading
-   - `storage_store()`, `platform_store()`, `connection_resolver()`, `schedule_store()` — **required**, non-optional
-   - `sqldb_store()` — optional with default `None` until gRPC support added (EVE-44)
+   - storage, connection, scheduling, image, and filesystem operations are
+     explicit adapter methods; SQL database support remains an optional host
+     service until its gRPC transport is available
 
 2. **Implementations**:
    - `DirectWorkerAdapters` - Direct storage access (in-process workers), including budget-check parity for runtime tools

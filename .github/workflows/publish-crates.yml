@@ -64,7 +64,7 @@ jobs:
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
           fetch-depth: 0
@@ -107,7 +107,7 @@ jobs:
           git -c advice.detachedHead=false checkout --detach "$TRUSTED_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
       - name: Verify workspace version matches tag
         run: |
@@ -147,6 +147,7 @@ jobs:
               "crates/platform/Cargo.toml": [
                   "everruns-builtins",
                   "everruns-core",
+                  "everruns-session-services",
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
                   "everruns-integrations-web-fetch",
@@ -168,6 +169,7 @@ jobs:
                   "everruns-http",
                   "everruns-mcp",
                   "everruns-platform",
+                  "everruns-session-services",
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
                   "everruns-integrations-web-fetch",
@@ -191,6 +193,11 @@ jobs:
                   "everruns-core",
                   "everruns-host",
                   "everruns-platform",
+              ],
+              "crates/session-services/Cargo.toml": [
+                  "everruns-capability",
+                  "everruns-core",
+                  "everruns-provider",
               ],
               "crates/openai/Cargo.toml": [
                   "everruns-provider",
@@ -299,6 +306,9 @@ jobs:
             # Backend-neutral policy implementations publish after their core
             # contracts and before the host/platform composers that select them.
             everruns-builtins
+            # The small session contract publishes before both platform and
+            # host, keeping the default Framework graph platform-free.
+            everruns-session-services
             # Environment-backed capability implementations publish after
             # their neutral core contracts and before their host composers.
             everruns-http

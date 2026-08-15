@@ -1,14 +1,10 @@
-# The application-facing `everruns` library: a thin, publishable facade over the
-# canonical in-process host.
-#
-# Decision (EVE-830): the first public `everruns` crate is a compatibility facade
-# over `everruns-core` and `everruns-host`. It moves no engine code and only
-# re-exports the minimum needed to construct and run the in-process runtime.
+# The application-facing `everruns` library and concrete Engine/session owner.
+# It curates value-first APIs over neutral core/provider contracts and the
+# canonical in-process host without exposing host construction or platform
+# records.
 # Default features stay offline — the contained session filesystem is included,
 # while provider, shell, web, Lua, MCP, SQLx, server, and worker integrations
-# remain opt-in. The `everruns::runtime` module
-# remains only as a deprecated 0.17 alias for canonical host re-exports;
-# advanced hosts should depend on `everruns-host` directly.
+# remain opt-in. Advanced hosts depend on `everruns-host` directly.
 
 [package]
 name = "everruns"
@@ -40,9 +36,9 @@ required-features = ["local"]
 [features]
 # Default features stay offline: the facade includes the contained session
 # filesystem but activates no provider, shell, web, Lua, MCP, SQLx, server, or
-# worker integrations. The `macros` surface is the
-# default surfaces beyond the bare re-exports — macros and typed capabilities —
-# pull in no network or I/O edge, only async adaptation and schema generation.
+# worker integrations. The default surfaces beyond the bare re-exports—macros
+# and typed capabilities—pull in no network or I/O edge, only async adaptation
+# and schema generation.
 default = ["macros", "capabilities", "builtins", "filesystem"]
 # Re-export `#[everruns::tool]` (EVE-829) and the hidden `__macro_support`
 # runtime helpers it expands into. Pulls in `everruns-macros`, `schemars` (JSON

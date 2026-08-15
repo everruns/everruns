@@ -10,7 +10,7 @@ everruns-core = { path = "../../../../crates/core" }
 everruns-capability = { path = "../../../../crates/capability" }
 everruns-provider = { path = "../../../../crates/provider", default-features = false }
 everruns-host = { path = "../../../../crates/host" }
-everruns-platform = { path = "../../../../crates/platform" }
+everruns-session-services = { path = "../../../../crates/session-services" }
 
 [dev-dependencies]
 everruns-test-support = { path = "../../../../crates/test-support" }

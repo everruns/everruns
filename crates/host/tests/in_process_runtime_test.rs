@@ -11,6 +11,7 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
     SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
+#[cfg(feature = "platform")]
 use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
@@ -154,6 +155,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
 }
 
 #[tokio::test]
+#[cfg(feature = "platform")]
 async fn runtime_rejects_tools_missing_required_context_services_before_reason() {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SessionTasksCapability);

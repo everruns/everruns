@@ -11,6 +11,7 @@ members = [
     "crates/core",
     "crates/engine",
     "crates/host",
+    "crates/session-services",
     "crates/http",
     "crates/test-support",
     "crates/platform",
@@ -182,6 +183,7 @@ everruns-builtins = { path = "crates/builtins", version = "0.17.26" }
 everruns-core = { path = "crates/core", version = "0.17.26" }
 everruns-engine = { path = "crates/engine", version = "0.17.26" }
 everruns-host = { path = "crates/host", version = "0.17.26" }
+everruns-session-services = { path = "crates/session-services", version = "0.17.26" }
 everruns-http = { path = "crates/http", version = "0.17.26" }
 everruns-test-support = { path = "crates/test-support", version = "0.17.26", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.17.26" }

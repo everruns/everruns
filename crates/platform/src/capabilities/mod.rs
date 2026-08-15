@@ -19,11 +19,9 @@ pub mod monitors;
 pub mod platform;
 pub mod platform_management;
 pub mod research;
-pub mod session;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sql_database;
-pub mod session_storage;
 pub mod session_tasks;
 pub mod subagents;
 pub mod user_hooks;
@@ -56,6 +54,15 @@ pub use delegation_result::{
     ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
     report_task_progress_tool_for_child_session,
 };
+pub use everruns_session_services::capabilities::session::{
+    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
+    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
+    update_session_title_with_event,
+};
+pub use everruns_session_services::capabilities::session_storage::{
+    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
+    is_internal_session_kv_key, is_internal_session_secret_name,
+};
 pub use knowledge_base::{
     KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
     validate_knowledge_base_config,
@@ -77,11 +84,6 @@ pub use platform_management::{
     ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
 pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
-pub use session::{
-    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
-    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
-    update_session_title_with_event,
-};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
     SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
@@ -93,10 +95,6 @@ pub use session_schedule::{
 pub use session_sql_database::{
     SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
     SqlSchemaTool,
-};
-pub use session_storage::{
-    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
-    is_internal_session_kv_key, is_internal_session_secret_name,
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use subagents::{

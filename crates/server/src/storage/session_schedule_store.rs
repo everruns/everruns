@@ -10,8 +10,9 @@ use crate::kernel_imports::{
     everruns_provider::typed_id::ScheduleId,
     everruns_provider::typed_id::SessionId,
     session_schedule::{
+        DEFAULT_MAX_SCHEDULES_PER_ORG, DEFAULT_MIN_INTERVAL_SECONDS,
         MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
-        max_active_schedules_per_org, validate_schedule_create_limits,
+        validate_cron_min_interval_with, validate_schedule_create_limits,
     },
     session_services::SessionScheduleStore,
 };
@@ -23,6 +24,20 @@ use super::models::{CreateSessionScheduleRow, SessionScheduleRow, UpdateSessionS
 use crate::domains::session_schedules::compute_next_trigger;
 
 use std::sync::Arc;
+
+fn schedule_limits() -> (i64, i64) {
+    let min_interval = std::env::var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_MIN_INTERVAL_SECONDS);
+    let max_per_org = std::env::var("RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_MAX_SCHEDULES_PER_ORG);
+    (min_interval, max_per_org)
+}
 
 /// Convert a storage row to the domain type.
 pub fn row_to_domain(row: &SessionScheduleRow) -> SessionSchedule {
@@ -111,7 +126,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
         timezone: String,
     ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
         if let Some(cron) = cron_expression.as_deref() {
-            everruns_core::session_schedule::validate_cron_min_interval(cron)
+            validate_cron_min_interval_with(cron, schedule_limits().0)
                 .map_err(ScheduleLimitError::Rejected)?;
         }
 
@@ -126,7 +141,7 @@ impl SessionScheduleStore for DbSessionScheduleStore {
             .map_err(ScheduleLimitError::Store)?
             .ok_or_else(|| ScheduleLimitError::Store(AgentLoopError::tool("Session not found")))?;
 
-        let max_per_org = max_active_schedules_per_org();
+        let max_per_org = schedule_limits().1;
         let row = self
             .db
             .create_session_schedule_with_limits(

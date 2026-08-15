@@ -34,7 +34,9 @@ This spec defines the contract for embedding. See `crates/host/src/composition.r
 - Session filesystem factory
 - Vector store
 
-The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.
+The type lives in `everruns-host`, the layer that consumes it, so constructing
+an execution host does not make the kernel own deployment composition and does
+not require depending on `everruns-server`.
 
 Hosted control-plane services live on `ServerAppBuilder`, not on
 `HostComposition`: `built_in_harnesses` (EVE-881), `connector_registry`,
@@ -55,8 +57,8 @@ crate and the Everruns Framework. This document owns the lower-level
 `HostComposition` composition contract, not the normal application path.
 
 Advanced hosts may use `everruns-host`, the only low-level host boundary. It
-consumes the same `HostComposition` type and shared core turn execution,
-keeping low-level in-process hosts aligned with worker behavior.
+owns `HostComposition` and uses the shared `everruns-engine` planner, keeping
+low-level in-process hosts aligned with worker behavior.
 
 See [knowledge/framework/](../framework/) for application-facing ownership and
 [the runtime specification](runtime.md) for the low-level host contract.
@@ -113,7 +115,8 @@ The worker preset includes built-in capabilities and built-in LLM drivers. Conne
 
 `ServerAppBuilder` accepts an optional `HostComposition`. When absent, it uses the OSS preset.
 
-The server must derive the following from the platform definition:
+The server must derive the following from its host composition and explicit
+server-owned product services:
 
 - Capability service registry
 - Session service capability registry
@@ -129,7 +132,7 @@ The server must derive the following from the platform definition:
 
 `WorkerAppBuilder` accepts an optional `HostComposition`. When absent, it uses the worker preset.
 
-The worker must derive the following from the platform definition:
+The worker must derive the following from its host composition:
 
 - Capability registry used during `reason` and `act`
 - LLM driver registry used during `reason`
@@ -137,7 +140,7 @@ The worker must derive the following from the platform definition:
 
 ## Seeding Contract
 
-Seeding must honor the supplied platform definition.
+Seeding must honor the supplied host composition and server-owned templates.
 
 ### Required behavior
 

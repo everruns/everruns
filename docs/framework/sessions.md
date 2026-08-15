@@ -67,8 +67,11 @@ The first asynchronous operation materializes the in-process host. Later turns
 reuse it and send accumulated history through the same context-assembly path.
 Two sessions opened on one engine have different opaque IDs and isolated
 histories. The engine retains each immutable Agent snapshot, so a session keeps
-working after the original Agent handle is dropped. Resume is engine-scoped:
-another `InMemoryEngine` rejects the id rather than guessing its configuration.
+working after the original Agent handle is dropped. Volatile resume is
+engine-scoped: another `Engine` rejects the id rather than guessing its
+configuration. A local profile can be attached to another Engine with the
+trusted Agent snapshot; live Engines for the same profile share its backend
+bundle.
 
 Conversation isolation does not imply filesystem isolation. The concise
 `engine.create(agent)` path permanently selects the Agent's default head before its

@@ -519,8 +519,8 @@ dependencies = [
  "everruns-core",
  "everruns-engine",
  "everruns-integrations-filesystem",
- "everruns-platform",
  "everruns-provider",
+ "everruns-session-services",
  "futures",
  "ignore",
  "regex",
@@ -567,9 +567,9 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-provider",
+ "everruns-session-services",
  "inventory",
  "jsonschema",
- "reqwest",
  "serde",
  "serde_json",
  "thiserror",
@@ -603,6 +603,18 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "everruns-session-services"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "everruns-capability",
+ "everruns-core",
+ "everruns-provider",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -662,8 +674,8 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-host",
- "everruns-platform",
  "everruns-provider",
+ "everruns-session-services",
  "everruns-test-support",
  "tokio",
 ]

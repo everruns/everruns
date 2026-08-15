@@ -23,7 +23,7 @@ use everruns_host::{
     InProcessRuntimeBuilder, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore,
 };
-use everruns_platform::SessionMutator;
+use everruns_session_services::SessionMutator;
 use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt};
 use external_event_log::ExternalEventLog;
 
@@ -232,7 +232,6 @@ fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
         connection_resolver: defaults.connection_resolver,
         session_task_registry: defaults.session_task_registry,
         schedule_store_factory: defaults.schedule_store_factory,
-        platform_store_factory: defaults.platform_store_factory,
     }
 }
 

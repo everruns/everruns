@@ -36,11 +36,12 @@ log "Step 1: Creating agent with client-side tool"
 AGENT_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/v1/agents" \
   -H "Content-Type: application/json" \
   -d '{
-    "name": "CRM Assistant",
+    "name": "crm-assistant",
+    "display_name": "CRM Assistant",
     "system_prompt": "You help users look up customer information. When the user asks about a customer, use the lookup_crm tool with their customer ID.",
-    "client_tools": [
+    "tools": [
       {
-        "type": "client",
+        "type": "client_side",
         "name": "lookup_crm",
         "description": "Look up a customer record in the CRM system by customer ID. Returns name, email, plan, and signup date.",
         "parameters": {
@@ -111,29 +112,19 @@ fi
 
 info "Message sent. Waiting for tool.call_requested event..."
 
-# ── Step 4: Poll SSE for tool.call_requested event ──────────────────────────
+# ── Step 4: Poll durable events for tool.call_requested ─────────────────────
 
-log "Step 4: Polling SSE for tool.call_requested"
+log "Step 4: Polling events for tool.call_requested"
 
-# Read SSE stream with a timeout. We look for the tool.call_requested event
-# which signals the LLM wants to call our client-side tool.
 TOOL_CALL_DATA=""
 TIMEOUT=60  # seconds
-
-# Use curl to stream SSE events, parsing line by line
-TOOL_CALL_DATA=$(timeout "$TIMEOUT" curl -s -N \
-  "${BASE_URL}/v1/sessions/${SESSION_ID}/sse" 2>/dev/null | \
-  while IFS= read -r line; do
-    # SSE format: "event: <type>\ndata: <json>\n\n"
-    if echo "$line" | grep -q "^data:"; then
-      DATA=$(echo "$line" | sed 's/^data: *//')
-      EVENT_TYPE=$(echo "$DATA" | jq -r '.type // empty' 2>/dev/null)
-      if [ "$EVENT_TYPE" = "tool.call_requested" ]; then
-        echo "$DATA"
-        break
-      fi
-    fi
-  done) || true
+for _ in $(seq 1 "$TIMEOUT"); do
+  TOOL_CALL_DATA=$(curl -fsS \
+    "${BASE_URL}/v1/sessions/${SESSION_ID}/events?types=tool.call_requested&limit=1" | \
+    jq -c '.data[-1] // empty') || true
+  [ -n "$TOOL_CALL_DATA" ] && break
+  sleep 1
+done
 
 if [ -z "$TOOL_CALL_DATA" ]; then
   fail "Timed out waiting for tool.call_requested event (${TIMEOUT}s)"
@@ -186,24 +177,19 @@ fi
 
 info "Tool results accepted"
 
-# ── Step 6: Poll SSE for the final agent response ───────────────────────────
+# ── Step 6: Poll durable events for the final agent response ────────────────
 
-log "Step 6: Polling SSE for final response"
+log "Step 6: Polling events for final response"
 
 FINAL_RESPONSE=""
 
-FINAL_RESPONSE=$(timeout "$TIMEOUT" curl -s -N \
-  "${BASE_URL}/v1/sessions/${SESSION_ID}/sse" 2>/dev/null | \
-  while IFS= read -r line; do
-    if echo "$line" | grep -q "^data:"; then
-      DATA=$(echo "$line" | sed 's/^data: *//')
-      EVENT_TYPE=$(echo "$DATA" | jq -r '.type // empty' 2>/dev/null)
-      if [ "$EVENT_TYPE" = "output.message.completed" ]; then
-        echo "$DATA"
-        break
-      fi
-    fi
-  done) || true
+for _ in $(seq 1 "$TIMEOUT"); do
+  FINAL_RESPONSE=$(curl -fsS \
+    "${BASE_URL}/v1/sessions/${SESSION_ID}/events?types=output.message.completed&limit=1" | \
+    jq -c '.data[-1] // empty') || true
+  [ -n "$FINAL_RESPONSE" ] && break
+  sleep 1
+done
 
 if [ -z "$FINAL_RESPONSE" ]; then
   fail "Timed out waiting for output.message.completed event (${TIMEOUT}s)"

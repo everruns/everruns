@@ -42,7 +42,6 @@ everruns_core::background::BackgroundExecutableTool	trait
 everruns_core::background::BackgroundOutcome	struct
 everruns_core::background::BackgroundProgress	struct
 everruns_core::budget	module
-everruns_core::budget::Budget	struct
 everruns_core::budget::BudgetAction	enum
 everruns_core::budget::BudgetAction::Continue	variant
 everruns_core::budget::BudgetAction::Pause	variant
@@ -67,7 +66,6 @@ everruns_core::budget::BudgetSubjectType::Session	variant
 everruns_core::budget::BudgetSubjectType::User	variant
 everruns_core::budget::BudgetSummary	struct
 everruns_core::budget::BudgetToolResponse	struct
-everruns_core::budget::LedgerEntry	struct
 everruns_core::capabilities	module
 everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID	constant
 everruns_core::capabilities::AGENT_RUN_KEY_PREFIX	constant
@@ -1133,9 +1131,8 @@ everruns_core::session_schedule::ScheduleType::OneShot	variant
 everruns_core::session_schedule::ScheduleType::Recurring	variant
 everruns_core::session_schedule::SessionSchedule	struct
 everruns_core::session_schedule::cron_min_interval_seconds	function
-everruns_core::session_schedule::max_active_schedules_per_org	function
-everruns_core::session_schedule::min_interval_seconds	function
 everruns_core::session_schedule::validate_cron_min_interval	function
+everruns_core::session_schedule::validate_cron_min_interval_with	function
 everruns_core::session_schedule::validate_schedule_create_limits	function
 everruns_core::session_services	module
 everruns_core::session_services::KeyInfo	struct

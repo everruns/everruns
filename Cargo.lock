@@ -2880,6 +2880,7 @@ dependencies = [
  "everruns-mcp",
  "everruns-platform",
  "everruns-provider",
+ "everruns-session-services",
  "everruns-test-support",
  "futures",
  "ignore",
@@ -3456,6 +3457,7 @@ dependencies = [
  "everruns-integrations-openrouter-workspace",
  "everruns-integrations-web-fetch",
  "everruns-provider",
+ "everruns-session-services",
  "futures",
  "include_dir",
  "inventory",
@@ -3626,6 +3628,20 @@ dependencies = [
  "uuid 1.24.1",
  "wiremock",
  "zip",
+]
+
+[[package]]
+name = "everruns-session-services"
+version = "0.17.26"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-capability",
+ "everruns-core",
+ "everruns-provider",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

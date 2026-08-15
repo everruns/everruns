@@ -56,7 +56,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                 Utc::now(),
                 HostFacts::default(),
             );
-            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await?;
             Ok(transition.plan)
         }
         "reason" => {
@@ -74,7 +74,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await?;
             Ok(transition.plan)
         }
         "act" => {
@@ -102,7 +102,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
                     ..HostFacts::default()
                 },
             );
-            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await;
+            perform_effects(adapter, state.org_id, state.session_id, transition.effects).await?;
             Ok(transition.plan)
         }
         other => Err(AgentLoopError::config(format!(
@@ -162,9 +162,9 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
     org_id: i64,
     session_id: SessionId,
     effects: Vec<TurnLifecycleEffect>,
-) {
+) -> Result<()> {
     if effects.is_empty() {
-        return;
+        return Ok(());
     }
     let lifecycle = RuntimeSessionLifecycle::new(adapter.clone(), org_id, session_id);
     for effect in effects {
@@ -173,7 +173,9 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
                 input_message_id,
                 data,
             } => {
-                lifecycle.emit_turn_completed(input_message_id, data).await;
+                lifecycle
+                    .emit_turn_completed(input_message_id, data)
+                    .await?;
             }
             TurnLifecycleEffect::SessionIdled {
                 turn_id,
@@ -183,7 +185,7 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
             } => {
                 lifecycle
                     .emit_session_idled(turn_id, input_message_id, iterations, usage)
-                    .await;
+                    .await?;
             }
             TurnLifecycleEffect::TurnFailedWithDisclosure {
                 turn_id,
@@ -200,7 +202,7 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
                         user_error.as_ref(),
                         disclosure,
                     )
-                    .await;
+                    .await?;
             }
             TurnLifecycleEffect::FireTurnEndHooks {
                 harness_id,
@@ -213,10 +215,11 @@ pub(crate) async fn perform_effects<A: RuntimeHostAdapter>(
                     .await;
             }
             TurnLifecycleEffect::WaitingForToolResults => {
-                lifecycle.waiting_for_tool_results().await;
+                lifecycle.waiting_for_tool_results().await?;
             }
         }
     }
+    Ok(())
 }
 
 async fn setup_connection_hint_enabled<A: RuntimeHostAdapter>(

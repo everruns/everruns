@@ -51,10 +51,10 @@ use everruns_engine::{
     ActOutcome, ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
 };
 use everruns_engine::{InputAtomInput, ReasonInput};
-use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
+use everruns_session_services::SessionMutator;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -490,6 +490,7 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Inject a per-(org, session) platform store factory (see [`HostBackends`]).
+    #[cfg(feature = "platform")]
     pub fn with_platform_store_factory(
         mut self,
         factory: crate::backends::PlatformStoreFactory,
@@ -775,6 +776,7 @@ impl InProcessRuntimeBuilder {
             session_task_registry,
             session_wake_queue,
             schedule_store_factory: backends.schedule_store_factory,
+            #[cfg(feature = "platform")]
             platform_store_factory: backends.platform_store_factory,
             #[cfg(feature = "mcp")]
             mcp_auth_provider: self
@@ -834,6 +836,7 @@ pub struct InProcessRuntime {
     /// a task registry was configured.
     session_wake_queue: Option<Arc<everruns_core::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
+    #[cfg(feature = "platform")]
     platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
@@ -1164,7 +1167,7 @@ impl InProcessRuntime {
             Utc::now(),
             HostFacts::default(),
         );
-        crate::turn_strategy::perform_effects(self, org_id, session_id, transition.effects).await;
+        crate::turn_strategy::perform_effects(self, org_id, session_id, transition.effects).await?;
         let mut plan = transition.plan;
 
         // Host-side bookkeeping for the returned `TurnResult`. These are
@@ -1262,7 +1265,7 @@ impl InProcessRuntime {
                         session_id,
                         transition.effects,
                     )
-                    .await;
+                    .await?;
                     plan = transition.plan;
                 }
                 TurnPlan::ScheduleAct(act_plan) => {
@@ -1292,7 +1295,7 @@ impl InProcessRuntime {
                         session_id,
                         transition.effects,
                     )
-                    .await;
+                    .await?;
                     plan = transition.plan;
                 }
                 TurnPlan::Complete { stop_reason, error } => {
@@ -1772,6 +1775,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
             .map(|factory| factory(org_id))
     }
 
+    #[cfg(feature = "platform")]
     fn platform_store(
         &self,
         org_id: i64,

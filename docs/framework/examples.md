@@ -16,6 +16,8 @@ contains the maintained public examples. Each imports the `everruns` facade.
 | [`github_monitor.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/github_monitor.rs) | Typed tools and an offline simulation mode | `cargo run -p everruns --features openai --example github_monitor -- --simulate` |
 | [`session_work.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/session_work.rs) | Offline session work, leased delivery, and completion wakes | `cargo run -p everruns --example session_work` |
 | [`session_history.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/session_history.rs) | Offline durable resume and bounded history pages | `cargo run -p everruns --features local --example session_history` |
+| [`engine_sessions.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/engine_sessions.rs) | Concrete Engine ownership, isolated sessions, and engine-scoped resume | `cargo run -p everruns --example engine_sessions` |
+| [`workspace_heads.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/workspace_heads.rs) | Isolated Git workspace heads, Environment binding, and durable reopening | `cargo run -p everruns --features local --example workspace_heads -- /path/to/repo /path/to/state` |
 | [`canonical_events.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/canonical_events.rs) | Offline lossless recording and typed rendering of live events | `cargo run -p everruns --example canonical_events` |
 | [`subagents.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/subagents.rs) | Public facade composition for delegated work | `cargo run -p everruns --features openai --example subagents` |
 | [`observe_and_cancel.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/observe_and_cancel.rs) | Live events and cancellation | `cargo run -p everruns --features openai --example observe_and_cancel` |
@@ -23,8 +25,9 @@ contains the maintained public examples. Each imports the `everruns` facade.
 | [`lifecycle_hooks.rs`](https://github.com/everruns/everruns/blob/main/crates/everruns/examples/lifecycle_hooks.rs) | Awaited agent, turn, tool, and completion handlers | `cargo run -p everruns --features openai --example lifecycle_hooks` |
 
 Live-provider modes use `gpt-5.6-terra` and require `OPENAI_API_KEY`.
-`capability_configuration`, `canonical_events`, `live_session`, `session_work`,
-`workspace_policy`, and `session_history` are fully offline;
+`capability_configuration`, `canonical_events`, `engine_sessions`,
+`live_session`, `session_work`, `workspace_heads`, `workspace_policy`, and
+`session_history` are fully offline;
 the GitHub monitor also offers a simulated GitHub flow:
 
 ```bash

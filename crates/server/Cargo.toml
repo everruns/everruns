@@ -92,7 +92,7 @@ everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines
 everruns-provider = { path = "../provider", features = ["sqlx"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
 everruns-builtins = { workspace = true, features = ["ui-capabilities"] }
-everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a"] }
+everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "email-resend"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
 # init these rely on stays in core's `telemetry` feature (on by default).
 everruns-observability = { workspace = true }
@@ -115,7 +115,7 @@ everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-session-sqldb = { path = "../session-sqldb" }
-everruns-host = { path = "../host", features = ["utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
+everruns-host = { path = "../host", features = ["platform", "utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }

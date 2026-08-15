@@ -36,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Loaded plugin: {}", plugin_cap.capability_id());
 
     // Build the runtime with a single session. The agent explicitly enables the
-    // plugin by including the hydrated AgentCapabilityConfig.
+    // plugin by including the hydrated CapabilityRef.
     let runtime = builder
         .single_session(|s| {
             s.harness("example-harness", "You are an example harness.")
