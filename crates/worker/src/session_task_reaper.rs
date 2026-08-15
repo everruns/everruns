@@ -31,7 +31,7 @@ use everruns_core::tool_context::ToolContext;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::worker_adapters::{AdapterSessionFileStore, WorkerAdapters};
+use crate::worker_adapters::{SessionAdapter, WorkerAdapters};
 
 /// How long a heartbeat may be stale before a task is considered orphaned.
 const DEFAULT_STALE_AFTER_SECONDS: i64 = 5 * 60; // 5 minutes
@@ -175,7 +175,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         |session_id| {
             ToolContext::with_stores(
                 session_id,
-                std::sync::Arc::new(AdapterSessionFileStore::new(adapters.clone())),
+                std::sync::Arc::new(SessionAdapter::new(adapters.clone())),
                 adapters.storage_store(),
             )
             .with_session_task_registry(registry.clone())

@@ -4,7 +4,8 @@ use std::path::Path;
 use std::process::Command;
 
 use everruns::{
-    Agent, LlmSimConfig, Model, SessionId, ToolCall, WorkspaceHeadAccess, WorkspacePolicy,
+    Agent, InMemoryEngine, LlmSimConfig, Model, SessionId, ToolCall, WorkspaceHeadAccess,
+    WorkspacePolicy,
 };
 use everruns_coding_cli::{CodingWorkspace, agent_builder};
 use serde_json::json;
@@ -106,6 +107,7 @@ async fn isolated_heads_from_one_base_write_without_colliding() {
     let workspace = CodingWorkspace::open(repository.path(), state.path())
         .await
         .expect("workspace opens");
+    let engine = InMemoryEngine::new();
     let base = git(repository.path(), &["rev-parse", "HEAD"]);
     let left = workspace
         .create_head("left", Some(&base), false)
@@ -121,11 +123,19 @@ async fn isolated_heads_from_one_base_write_without_colliding() {
     assert_eq!(right.access(), WorkspaceHeadAccess::Isolated);
 
     let left_session = workspace
-        .start_session(&writing_agent(&workspace, "left", false), left.clone())
+        .start_session(
+            &engine,
+            &writing_agent(&workspace, "left", false),
+            left.clone(),
+        )
         .await
         .expect("left session");
     let right_session = workspace
-        .start_session(&writing_agent(&workspace, "right", false), right.clone())
+        .start_session(
+            &engine,
+            &writing_agent(&workspace, "right", false),
+            right.clone(),
+        )
         .await
         .expect("right session");
     let (left_turn, right_turn) = tokio::join!(
@@ -167,12 +177,17 @@ async fn framework_policy_denies_writes_on_the_selected_head() {
     let workspace = CodingWorkspace::open(repository.path(), state.path())
         .await
         .expect("workspace opens");
+    let engine = InMemoryEngine::new();
     let head = workspace
         .create_head("read-only", None, false)
         .await
         .expect("head");
     let session = workspace
-        .start_session(&writing_agent(&workspace, "blocked", true), head.clone())
+        .start_session(
+            &engine,
+            &writing_agent(&workspace, "blocked", true),
+            head.clone(),
+        )
         .await
         .expect("session");
 
@@ -197,13 +212,14 @@ async fn typed_resume_reopens_the_recorded_head_and_drop_does_not_delete_it() {
     let workspace = CodingWorkspace::open(repository.path(), state.path())
         .await
         .expect("workspace opens");
+    let engine = InMemoryEngine::new();
     let head = workspace
         .create_head("resume", None, false)
         .await
         .expect("head");
     let agent = writing_agent(&workspace, "persisted", false);
     let session = workspace
-        .start_session(&agent, head.clone())
+        .start_session(&engine, &agent, head.clone())
         .await
         .expect("session");
     session.run("write the result").await.expect("materialize");
@@ -222,8 +238,13 @@ async fn typed_resume_reopens_the_recorded_head_and_drop_does_not_delete_it() {
     );
 
     let reopened = CodingWorkspace::from_state(state.path()).expect("Framework state reopens");
+    let reopened_engine = InMemoryEngine::new();
     let resumed = reopened
-        .resume_session(&writing_agent(&reopened, "unused", false), session_id)
+        .resume_session(
+            &reopened_engine,
+            &writing_agent(&reopened, "unused", false),
+            session_id,
+        )
         .await
         .expect("typed resume");
     assert_eq!(
@@ -252,9 +273,10 @@ async fn typed_resume_reopens_the_recorded_head_and_drop_does_not_delete_it() {
 
     let missing_workspace =
         CodingWorkspace::from_state(state.path()).expect("Framework state reopens");
+    let missing_engine = InMemoryEngine::new();
     let missing_agent = writing_agent(&missing_workspace, "unused", false);
     let missing = missing_workspace
-        .resume_session(&missing_agent, session_id)
+        .resume_session(&missing_engine, &missing_agent, session_id)
         .await
         .err()
         .expect("destroyed recorded head must not be substituted");
@@ -271,18 +293,19 @@ async fn shared_head_requires_explicit_creation_and_existing_session_id() {
     let workspace = CodingWorkspace::open(repository.path(), state.path())
         .await
         .expect("workspace opens");
+    let engine = InMemoryEngine::new();
     let shared = workspace
         .create_head("team", None, true)
         .await
         .expect("shared head");
     let agent = writing_agent(&workspace, "shared", false);
     let first = workspace
-        .start_session(&agent, shared.clone())
+        .start_session(&engine, &agent, shared.clone())
         .await
         .expect("first session");
     first.run("write the result").await.expect("materialize");
     let second = workspace
-        .start_shared_session(&agent, first.session_id())
+        .start_shared_session(&engine, &agent, first.session_id())
         .await
         .expect("second shared session");
     assert_ne!(first.session_id(), second.session_id());
@@ -296,7 +319,7 @@ async fn shared_head_requires_explicit_creation_and_existing_session_id() {
         .await
         .expect("isolated head");
     let isolated_session = workspace
-        .start_session(&agent, isolated)
+        .start_session(&engine, &agent, isolated)
         .await
         .expect("isolated session");
     isolated_session
@@ -304,7 +327,7 @@ async fn shared_head_requires_explicit_creation_and_existing_session_id() {
         .await
         .expect("materialize isolated session");
     let error = workspace
-        .start_shared_session(&agent, isolated_session.session_id())
+        .start_shared_session(&engine, &agent, isolated_session.session_id())
         .await
         .err()
         .expect("isolated head must not be shared implicitly");

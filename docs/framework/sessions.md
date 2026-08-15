@@ -7,7 +7,7 @@ An `Agent` is immutable reusable behavior. An `Engine` owns session identity,
 history, and runtime state. A `Session` is an engine-bound live conversation.
 
 ```rust
-use everruns::{Agent, Engine, InMemoryEngine, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,11 +34,12 @@ reports which case occurred, so applications do not need to race on session
 state themselves:
 
 ```rust
-# use everruns::{Agent, Model, SendDisposition};
+# use everruns::{Agent, InMemoryEngine, Model, SendDisposition};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder().instructions("Remember input.").model(Model::simulated("Done.")).build()?;
-let session = agent.session();
+# let engine = InMemoryEngine::new();
+let session = engine.create(agent);
 let initial = session.send("Plan my trip.").await?;
 let latest = session.send("Prefer trains.").await?;
 
@@ -69,12 +70,8 @@ histories. The engine retains each immutable Agent snapshot, so a session keeps
 working after the original Agent handle is dropped. Resume is engine-scoped:
 another `InMemoryEngine` rejects the id rather than guessing its configuration.
 
-`Agent::session()` and `Agent::resume(id)` remain compatibility conveniences.
-New applications should retain an engine explicitly and use
-`engine.create(agent)` / `engine.resume(id)`.
-
 Conversation isolation does not imply filesystem isolation. The concise
-`agent.session()` path permanently selects the Agent's default head before its
+`engine.create(agent)` path permanently selects the Agent's default head before its
 first inspection or turn; call `session.start().await` to make that selection
 observable earlier. To fix a session to an isolated project view, bind an
 [`Environment`](/framework/workspaces-and-environments/) before execution. A
@@ -89,6 +86,6 @@ conversation. [Session History and Resume](/framework/session-history/) covers
 typed resume, bounded transcript pages, and cursor snapshots. See
 [Workspaces and Environments](/framework/workspaces-and-environments/) for
 exact-head resume, isolation, sharing, and lifecycle. See
-[Persistence](/framework/persistence/) to choose Agent-lifetime memory or a
+[Persistence](/framework/persistence/) to choose engine-lifetime memory or a
 crash-durable local profile, and [Events and
 cancellation](/framework/events-and-cancellation/) to observe a turn in flight.

@@ -50,8 +50,7 @@ pub use platform::{default_host_composition, default_host_composition_for_grade}
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcMessageRetriever, GrpcProviderStore,
-    GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
+    GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, TurnContext, load_turn_context,
 };
 
 // Re-export task worker types
@@ -60,8 +59,7 @@ pub use runtime_host::WorkerRuntimeHost;
 pub use stream_heartbeater::GrpcTaskHeartbeater;
 pub use unified_worker::{ShutdownHandle, TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
-    AdapterAgentStore, AdapterEventEmitter, AdapterMessageRetriever, AdapterProviderStore,
-    AdapterSessionFileStore, AdapterSessionStore, TurnContext as WorkerTurnContext, WorkerAdapters,
+    OrgAdapter, SessionAdapter, TurnContext as WorkerTurnContext, WorkerAdapters,
 };
 
 // Re-export OpenAI driver from the openai crate

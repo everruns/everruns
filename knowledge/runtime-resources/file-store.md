@@ -541,11 +541,10 @@ files bypass mutation policy while being installed; every later model-driven
 read or mutation is checked. Directory listings and grep output are filtered so
 denied path names, content, counts, and byte totals are not returned.
 
-The older `WriteBlocklistFileStore` remains as a low-level compatibility
-decorator. Its `DEFAULT_WRITE_BLOCKLIST` export is deprecated and retained only
-for 0.17 source compatibility; new policy behavior does not depend on that
-global list. New applications use `WorkspacePolicy` instead of importing a
-concrete store or a blocklist constant.
+`WriteBlocklistFileStore` remains as a low-level defense-in-depth decorator for
+the real-disk backend. Its default list is private; public policy behavior is
+owned by `WorkspacePolicy` rather than a global constant. New applications use
+`WorkspacePolicy` instead of importing a concrete store.
 
 The independent approval decorator remains available:
 

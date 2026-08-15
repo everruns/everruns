@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use everruns::{Agent, FunctionTool, OpenAI, ToolResponse};
+use everruns::{Agent, FunctionTool, InMemoryEngine, OpenAI, ToolResponse};
 use serde_json::json;
 use tokio::task::JoinHandle;
 
@@ -80,8 +80,8 @@ fn spawn_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
                             .model(MODEL_ID)
                             .build()
                             .map_err(|error| error.to_string())?;
-                        let result = child
-                            .session()
+                        let result = InMemoryEngine::new()
+                            .create(child)
                             .run(instruction)
                             .await
                             .map_err(|error| error.to_string())?;
@@ -212,7 +212,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Delegate each of these five independent reviews, then wait for every task ID:\n- {}",
         task_descriptions.join("\n- ")
     );
-    let result = parent.session().send_and_wait(prompt).await?;
+    let result = InMemoryEngine::new()
+        .create(parent.clone())
+        .send_and_wait(prompt)
+        .await?;
     for (task_id, response) in child_tasks
         .completed
         .lock()

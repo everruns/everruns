@@ -25,11 +25,7 @@ use everruns_provider::typed_id::{AgentId, SessionId};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::worker_adapters::{
-    AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
-    AdapterMessageRetriever, AdapterProviderStore, AdapterSessionFileStore, AdapterSessionMutator,
-    AdapterSessionStore, WorkerAdapters,
-};
+use crate::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
 /// plane over gRPC (`get_mcp_server_by_prefix`). The control plane returns a
@@ -175,8 +171,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
         session_id: SessionId,
     ) -> Result<ResolvedTurnInputs> {
-        // The batched control-plane call still ships stored records
-        // (compatibility adapter, see `WorkerAdapters::load_turn_context`).
+        // The batched control-plane transport still ships stored records (see
+        // `WorkerAdapters::load_turn_context`).
         // They are projected into the canonical resolved execution snapshot
         // here, at the platform boundary, so host execution never sees them
         // (EVE-872). The control plane returns the harness pre-merged, so the
@@ -224,27 +220,27 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn harness_store(&self, org_id: i64) -> Arc<dyn HarnessStore> {
-        Arc::new(AdapterHarnessStore::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
     }
 
     fn agent_store(&self, org_id: i64) -> Arc<dyn AgentStore> {
-        Arc::new(AdapterAgentStore::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
     }
 
     fn session_store(&self, org_id: i64) -> Arc<dyn SessionStore> {
-        Arc::new(AdapterSessionStore::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
     }
 
     fn session_mutator(&self, org_id: i64) -> Arc<dyn SessionMutator> {
-        Arc::new(AdapterSessionMutator::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
     }
 
     fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore> {
-        Arc::new(AdapterProviderStore::new(self.adapters.clone(), org_id))
+        Arc::new(OrgAdapter::new(self.adapters.clone(), org_id))
     }
 
     fn message_store(&self) -> Arc<dyn everruns_core::MessageRetriever> {
-        Arc::new(AdapterMessageRetriever::new(self.adapters.clone()))
+        Arc::new(SessionAdapter::new(self.adapters.clone()))
     }
 
     fn compaction_checkpoint_store(
@@ -255,20 +251,17 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
         Arc::new(
-            AdapterEventEmitter::new(self.adapters.clone())
+            SessionAdapter::new(self.adapters.clone())
                 .with_event_metadata(self.event_metadata.clone()),
         )
     }
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem> {
-        Arc::new(AdapterSessionFileStore::new(self.adapters.clone()))
+        Arc::new(SessionAdapter::new(self.adapters.clone()))
     }
 
     fn image_resolver(&self, org_id: i64) -> Option<Arc<dyn ImageResolver>> {
-        Some(Arc::new(AdapterImageResolver::new(
-            self.adapters.clone(),
-            org_id,
-        )))
+        Some(Arc::new(OrgAdapter::new(self.adapters.clone(), org_id)))
     }
 
     fn image_artifact_store(&self, org_id: i64) -> Option<Arc<dyn ImageArtifactStore>> {

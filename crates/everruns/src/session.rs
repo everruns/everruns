@@ -1,10 +1,9 @@
 //! Multi-turn sessions (EVE-831).
 //!
-//! [`Agent::session`](crate::Agent::session) opens a [`Session`]; each
+//! An application-owned [`Engine`](crate::Engine) opens each [`Session`].
 //! [`Session::send`] accepts messages and appends canonical events. Two sessions
-//! from the same agent are independent and never share history. Dropped sessions
-//! can be reopened through [`Agent::resume`](crate::Agent::resume) while the
-//! Agent's configured persistence lifecycle remains available.
+//! created from the same Agent are independent and never share history. The
+//! owning engine reopens dropped sessions while its catalog remains available.
 
 use std::collections::VecDeque;
 use std::future::Future;
@@ -28,7 +27,7 @@ use crate::{Agent, SessionExecution};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
-/// Open one with [`Agent::session`](crate::Agent::session). The first
+/// Open one with [`Engine::create`](crate::Engine::create). The first
 /// [`send`](Self::send) or [`inspect`](Self::inspect) materializes an isolated
 /// in-process runtime; later operations reuse it, so history accumulates across
 /// turns. Keep its typed [`SessionId`](crate::SessionId) to resume it after this
@@ -46,7 +45,7 @@ use crate::{Agent, SessionExecution};
 ///     .model(Model::simulated("Hello!"))
 ///     .build()?;
 ///
-/// let session = agent.session();
+/// let session = InMemoryEngine::new().create(agent.clone());
 /// let first = session.send_and_wait("hi").await?;
 /// let second = session.send_and_wait("continue").await?;
 ///
@@ -986,7 +985,7 @@ mod tests {
     use everruns_provider::typed_id::TurnId;
 
     use super::Turn;
-    use crate::{Agent, Model};
+    use crate::{Agent, InMemoryEngine, Model};
 
     #[tokio::test]
     async fn history_accumulates_across_turns() {
@@ -997,7 +996,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         session.run("hello").await.expect("first turn");
         session.run("continue").await.expect("second turn");
 
@@ -1016,7 +1015,7 @@ mod tests {
             .model(Model::simulated("ok"))
             .build()
             .expect("valid agent");
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let session_id = session.session_id();
 
         session.run("hello").await.expect("turn runs");
@@ -1073,11 +1072,11 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let first = agent.session();
+        let first = InMemoryEngine::new().create(agent.clone());
         first.run("a1").await.expect("a1");
         first.run("a2").await.expect("a2");
 
-        let second = agent.session();
+        let second = InMemoryEngine::new().create(agent.clone());
         second.run("b1").await.expect("b1");
 
         assert_ne!(first.id(), second.id(), "sessions have distinct ids");
@@ -1102,7 +1101,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         // A rich, multi-part InputMessage goes through unchanged.
         let message = InputMessage {
             role: MessageRole::User,
@@ -1182,7 +1181,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let stream = session.events();
         let turn = session.run("please ping").await.expect("turn runs");
         assert!(turn.success, "turn should succeed: {:?}", turn.error);
@@ -1239,7 +1238,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let token = CancellationToken::new();
 
         let canceller = token.clone();
@@ -1265,7 +1264,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let turn = session
             .run_with("hi", RunOptions::new())
             .await
@@ -1343,7 +1342,11 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent.session().run("please ping").await.expect("turn runs");
+        let turn = InMemoryEngine::new()
+            .create(agent.clone())
+            .run("please ping")
+            .await
+            .expect("turn runs");
 
         assert!(turn.hook_failures.is_empty());
         assert_eq!(
@@ -1404,7 +1407,11 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent.session().run("ping").await.expect("turn settles");
+        let turn = InMemoryEngine::new()
+            .create(agent.clone())
+            .run("ping")
+            .await
+            .expect("turn settles");
 
         assert!(turn.success, "model can recover from a blocked tool call");
         assert!(!tool_ran.load(Ordering::SeqCst));
@@ -1461,7 +1468,11 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent.session().run("ping").await.expect("turn runs");
+        let turn = InMemoryEngine::new()
+            .create(agent.clone())
+            .run("ping")
+            .await
+            .expect("turn runs");
 
         assert!(turn.success);
         assert!(later_ran.load(Ordering::SeqCst));
@@ -1508,8 +1519,8 @@ mod tests {
         });
         let turn = tokio::time::timeout(
             Duration::from_secs(2),
-            agent
-                .session()
+            InMemoryEngine::new()
+                .create(agent)
                 .run_with("hello", RunOptions::new().cancel_token(token)),
         )
         .await
@@ -1576,8 +1587,8 @@ mod tests {
         });
         let turn = tokio::time::timeout(
             Duration::from_secs(2),
-            agent
-                .session()
+            InMemoryEngine::new()
+                .create(agent)
                 .run_with("ping", RunOptions::new().cancel_token(token)),
         )
         .await
@@ -1619,8 +1630,8 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent
-            .session()
+        let turn = InMemoryEngine::new()
+            .create(agent)
             .run_with("hello", RunOptions::new().cancel_token(token))
             .await
             .expect("committed turn completes its hooks");

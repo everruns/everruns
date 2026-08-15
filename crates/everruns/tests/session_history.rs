@@ -34,7 +34,7 @@ fn history_errors_keep_session_identity_typed() {
 
 #[tokio::test]
 async fn new_session_has_one_empty_terminal_page_and_fused_end() {
-    let session = test_agent().session();
+    let session = InMemoryEngine::new().create(test_agent());
     let mut pages = session.history().pages();
 
     let page = pages.next_page().await.unwrap().expect("first page");
@@ -48,7 +48,7 @@ async fn new_session_has_one_empty_terminal_page_and_fused_end() {
 #[tokio::test]
 async fn history_is_stably_ordered_and_pages_at_exact_boundaries() {
     let agent = test_agent();
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     session.run("first input").await.unwrap();
 
     let exact = session.history().limit(2).unwrap().page().await.unwrap();
@@ -75,7 +75,7 @@ async fn history_is_stably_ordered_and_pages_at_exact_boundaries() {
 #[tokio::test]
 async fn cursor_snapshot_excludes_concurrent_appends() {
     let agent = test_agent();
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     session.run("one").await.unwrap();
     session.run("two").await.unwrap();
 
@@ -113,7 +113,7 @@ async fn cursor_snapshot_excludes_concurrent_appends() {
 #[tokio::test]
 async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
     let agent = test_agent();
-    let first = agent.session();
+    let first = InMemoryEngine::new().create(agent.clone());
     first.run("one").await.unwrap();
     let cursor = first
         .history()
@@ -125,7 +125,7 @@ async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
         .next_cursor
         .unwrap();
 
-    let second = agent.session();
+    let second = InMemoryEngine::new().create(agent.clone());
     assert!(matches!(
         second.history().after(cursor),
         Err(HistoryError::CrossSessionCursor)
@@ -157,32 +157,32 @@ async fn query_rejects_invalid_cross_session_and_out_of_range_inputs() {
 }
 
 #[tokio::test]
-async fn default_agent_and_its_clones_resume_but_a_new_agent_does_not() {
+async fn engine_resumes_its_sessions_but_a_new_engine_does_not() {
+    let engine = InMemoryEngine::new();
     let agent = test_agent();
-    let clone = agent.clone();
-    let session = agent.session();
+    let session = engine.create(agent);
     let session_id = session.session_id();
     session.run("remember me").await.unwrap();
     drop(session);
 
-    let resumed = clone.resume(session_id).await.unwrap();
+    let resumed = engine.resume(session_id).await.unwrap();
     let page = resumed.history().page().await.unwrap();
     assert_eq!(page.len(), 2);
     assert_eq!(page.messages[0].text(), "remember me");
 
-    let fresh_agent = test_agent();
     assert!(matches!(
-        fresh_agent.resume(session_id).await,
+        InMemoryEngine::new().resume(session_id).await,
         Err(ResumeError::SessionNotFound { session_id: missing }) if missing == session_id
     ));
 }
 
 #[tokio::test]
-async fn same_agent_can_resume_an_unmaterialized_empty_session() {
+async fn engine_can_resume_an_unmaterialized_empty_session() {
+    let engine = InMemoryEngine::new();
     let agent = test_agent();
-    let session_id = agent.session().session_id();
+    let session_id = engine.create(agent).session_id();
 
-    let resumed = agent.resume(session_id).await.unwrap();
+    let resumed = engine.resume(session_id).await.unwrap();
     assert!(resumed.history().page().await.unwrap().is_empty());
 }
 
@@ -197,32 +197,76 @@ fn local_agent(data_dir: &std::path::Path) -> Agent {
 }
 
 #[cfg(feature = "local")]
+async fn resume_local(agent: Agent, session_id: SessionId) -> Result<Session, ResumeError> {
+    let engine = InMemoryEngine::new();
+    engine.attach(session_id, agent).await?;
+    engine.resume(session_id).await
+}
+
+#[cfg(feature = "local")]
 #[tokio::test]
 async fn local_profile_resumes_empty_and_multi_turn_sessions_across_agents() {
     let root = tempfile::tempdir().unwrap();
     let session_id = {
+        let engine = InMemoryEngine::new();
         let agent = local_agent(root.path());
-        let session = agent.session();
+        let session = engine.create(agent);
         let session_id = session.session_id();
         assert!(session.history().page().await.unwrap().is_empty());
         session_id
     };
 
     {
-        let agent = local_agent(root.path());
-        let resumed = agent.resume(session_id).await.unwrap();
+        let resumed = resume_local(local_agent(root.path()), session_id)
+            .await
+            .unwrap();
         assert!(resumed.history().page().await.unwrap().is_empty());
         resumed.run("persisted input").await.unwrap();
     }
 
-    let agent = local_agent(root.path());
-    let resumed = agent.resume(session_id).await.unwrap();
+    let resumed = resume_local(local_agent(root.path()), session_id)
+        .await
+        .unwrap();
     let history = resumed.history().page().await.unwrap();
     assert_eq!(history.len(), 2);
     assert_eq!(history.messages[0].text(), "persisted input");
     assert_eq!(history.messages[1].text(), "durable reply");
     resumed.run("third turn").await.unwrap();
     assert_eq!(resumed.history().page().await.unwrap().len(), 4);
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn repeated_attach_keeps_the_engine_original_agent_snapshot() {
+    let root = tempfile::tempdir().unwrap();
+    let session_id = {
+        let engine = InMemoryEngine::new();
+        let session = engine.create(local_agent(root.path()));
+        session.start().await.unwrap();
+        session.session_id()
+    };
+
+    let build_agent = |response| {
+        Agent::builder()
+            .instructions("Keep durable history.")
+            .model(Model::simulated(response))
+            .local(LocalConfig::new(root.path()))
+            .build()
+            .unwrap()
+    };
+    let engine = InMemoryEngine::new();
+    engine
+        .attach(session_id, build_agent("first snapshot"))
+        .await
+        .unwrap();
+    engine
+        .attach(session_id, build_agent("replacement snapshot"))
+        .await
+        .unwrap();
+
+    let resumed = engine.resume(session_id).await.unwrap();
+    let turn = resumed.run("Which snapshot runs?").await.unwrap();
+    assert_eq!(turn.response, "first snapshot");
 }
 
 #[cfg(feature = "local")]
@@ -241,7 +285,12 @@ async fn local_session_catalog_does_not_serialize_agent_credentials() {
             .local(LocalConfig::new(root.path()))
             .build()
             .unwrap();
-        agent.session().history().page().await.unwrap();
+        InMemoryEngine::new()
+            .create(agent)
+            .history()
+            .page()
+            .await
+            .unwrap();
     }
 
     for entry in std::fs::read_dir(root.path()).unwrap() {
@@ -267,14 +316,15 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
     let missing_root = tempfile::tempdir().unwrap();
     let missing_id = SessionId::new();
     assert!(matches!(
-        local_agent(missing_root.path()).resume(missing_id).await,
+        resume_local(local_agent(missing_root.path()), missing_id).await,
         Err(ResumeError::SessionNotFound { session_id }) if session_id == missing_id
     ));
 
     let torn_root = tempfile::tempdir().unwrap();
     let torn_id = {
+        let engine = InMemoryEngine::new();
         let agent = local_agent(torn_root.path());
-        let session = agent.session();
+        let session = engine.create(agent);
         session.run("committed").await.unwrap();
         session.session_id()
     };
@@ -285,13 +335,16 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
         .unwrap()
         .write_all(b"{\"torn\":")
         .unwrap();
-    let recovered = local_agent(torn_root.path()).resume(torn_id).await.unwrap();
+    let recovered = resume_local(local_agent(torn_root.path()), torn_id)
+        .await
+        .unwrap();
     assert_eq!(recovered.history().page().await.unwrap().len(), 2);
 
     let corrupt_root = tempfile::tempdir().unwrap();
     let corrupt_id = {
+        let engine = InMemoryEngine::new();
         let agent = local_agent(corrupt_root.path());
-        let session = agent.session();
+        let session = engine.create(agent);
         session.run("committed").await.unwrap();
         session.session_id()
     };
@@ -302,7 +355,7 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
         .write_all(b"not-json\n")
         .unwrap();
     assert!(matches!(
-        local_agent(corrupt_root.path()).resume(corrupt_id).await,
+        resume_local(local_agent(corrupt_root.path()), corrupt_id).await,
         Err(ResumeError::Corrupt)
     ));
 
@@ -316,7 +369,7 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
         .build()
         .unwrap();
     assert!(matches!(
-        unavailable.resume(SessionId::new()).await,
+        resume_local(unavailable, SessionId::new()).await,
         Err(ResumeError::Unavailable)
     ));
 }

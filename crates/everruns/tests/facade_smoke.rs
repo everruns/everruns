@@ -2,7 +2,7 @@
 //! must be able to build one session and run one turn without importing
 //! `everruns-core` or `everruns-host`.
 
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 #[tokio::test]
 async fn facade_runs_one_simulated_turn() {
@@ -12,8 +12,8 @@ async fn facade_runs_one_simulated_turn() {
         .build()
         .expect("agent builds");
 
-    let result = agent
-        .session()
+    let result = InMemoryEngine::new()
+        .create(agent)
         .run("What is 2 + 2?")
         .await
         .expect("turn runs");

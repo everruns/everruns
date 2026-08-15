@@ -11,8 +11,8 @@ use std::sync::Arc;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, ValueEnum};
 use everruns::{
-    Agent, AgentBuilder, Environment, LocalConfig, LocalGitWorkspaceProvider, Session, SessionId,
-    Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
+    Agent, AgentBuilder, Environment, InMemoryEngine, LocalConfig, LocalGitWorkspaceProvider,
+    Session, SessionId, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
 };
 
 /// System prompt for the coding agent.
@@ -324,13 +324,18 @@ impl CodingWorkspace {
     }
 
     /// Permanently bind a new session to the selected head before execution.
-    pub async fn start_session(&self, agent: &Agent, head: WorkspaceHead) -> Result<Session> {
+    pub async fn start_session(
+        &self,
+        engine: &InMemoryEngine,
+        agent: &Agent,
+        head: WorkspaceHead,
+    ) -> Result<Session> {
         let environment = Environment::builder()
             .workspace(head)
             .build()
             .context("build the workspace environment")?;
-        agent
-            .session()
+        engine
+            .create(agent.clone())
             .environment(environment)
             .start()
             .await
@@ -338,8 +343,17 @@ impl CodingWorkspace {
     }
 
     /// Resume a typed session on its exact persisted head.
-    pub async fn resume_session(&self, agent: &Agent, session_id: SessionId) -> Result<Session> {
-        agent
+    pub async fn resume_session(
+        &self,
+        engine: &InMemoryEngine,
+        agent: &Agent,
+        session_id: SessionId,
+    ) -> Result<Session> {
+        engine
+            .attach(session_id, agent.clone())
+            .await
+            .with_context(|| format!("attach session {session_id} to the local engine"))?;
+        engine
             .resume(session_id)
             .await
             .with_context(|| format!("resume session {session_id} on its recorded head"))
@@ -348,10 +362,11 @@ impl CodingWorkspace {
     /// Start a distinct session on an existing head that was created as shared.
     pub async fn start_shared_session(
         &self,
+        engine: &InMemoryEngine,
         agent: &Agent,
         recorded_session: SessionId,
     ) -> Result<Session> {
-        let recorded = self.resume_session(agent, recorded_session).await?;
+        let recorded = self.resume_session(engine, agent, recorded_session).await?;
         let head = recorded
             .workspace_head()
             .cloned()
@@ -361,7 +376,7 @@ impl CodingWorkspace {
                 "session {recorded_session} records an isolated head; use --resume for that session or create a head with --shared"
             );
         }
-        self.start_session(agent, head).await
+        self.start_session(engine, agent, head).await
     }
 }
 

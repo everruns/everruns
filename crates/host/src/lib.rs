@@ -82,8 +82,7 @@ pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
 #[allow(deprecated)]
 pub use file_store_decorators::{
-    ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, PolicyFileStore,
-    WriteBlocklistFileStore,
+    ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,
 };
 
 pub use capabilities::{

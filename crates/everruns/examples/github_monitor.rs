@@ -17,7 +17,7 @@
 use std::process::Stdio;
 use std::time::Duration;
 
-use everruns::{Agent, FunctionTool, OpenAI, ToolResponse};
+use everruns::{Agent, FunctionTool, InMemoryEngine, OpenAI, ToolResponse};
 use serde_json::json;
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     println!("monitoring {}", mode.target());
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let started = session
         .send_and_wait("Monitor this pull request until its checks finish.")
         .await?;

@@ -7,7 +7,7 @@ description: Test Framework applications deterministically without network acces
 resolution and execution path while returning a fixed response locally.
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 # #[tokio::test]
 # async fn agent_follows_the_application_flow() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ let agent = Agent::builder()
     .model(Model::simulated("approved"))
     .build()?;
 
-let session = agent.session();
+let session = InMemoryEngine::new().create(agent);
 let turn = session.send_and_wait("Review this.").await?;
 assert!(turn.success);
 assert_eq!(turn.response, "approved");

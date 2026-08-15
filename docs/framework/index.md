@@ -8,14 +8,15 @@ crate. Use it to describe agents, attach models and tools, run multi-turn sessio
 observe events, and embed agent execution directly in a Rust process.
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
     .model(Model::simulated("Hello from Everruns."))
     .build()?;
 
-let turn = agent.session().send_and_wait("Say hello.").await?;
+let engine = InMemoryEngine::new();
+let turn = engine.create(agent).send_and_wait("Say hello.").await?;
 assert_eq!(turn.response, "Hello from Everruns.");
 # Ok::<(), Box<dyn std::error::Error>>(())
 ```
@@ -49,7 +50,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 - [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
 - [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
 - [Canonical events](/framework/canonical-events/) — render or record the lossless event protocol.
-- [Persistence](/framework/persistence/) — Agent-lifetime memory and crash-durable local state.
+- [Persistence](/framework/persistence/) — Engine-lifetime memory and crash-durable local state.
 
 ## Extend and operate
 

@@ -61,6 +61,16 @@ host, or platform DTOs. The separate `everruns-engine` crate owns shared
 Input/Reason/Act execution and turn planning; the application `Engine` SPI owns
 sessions and does not replace or absorb that lower-level kernel.
 
+There is no Agent-owned compatibility engine and no `Agent::session` or
+`Agent::resume` path in 0.18. Embedded applications retain an Engine and call
+`engine.create(agent)` or `engine.resume(session_id)`. Because Agent behavior
+may contain process-local provider drivers, function handlers, and hook
+closures, local persistence never serializes it. After a process restart, an
+application reconstructs that trusted behavior and explicitly attaches it to a
+new `InMemoryEngine` before resuming the persisted session. Attachment verifies
+the ID against the Agent-configured local session catalog; canonical events do
+not confer session identity.
+
 These APIs adapt into the same in-process host, provider registry, model
 selection, plugin compiler, MCP client, and engine execution that an advanced
 host composes directly. The implementation and downstream acceptance fixtures

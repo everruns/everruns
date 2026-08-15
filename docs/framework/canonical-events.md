@@ -16,7 +16,8 @@ let agent = Agent::builder()
     .instructions("Answer concisely.")
     .model(Model::simulated("Hello!"))
     .build()?;
-let mut session = agent.session();
+let engine = InMemoryEngine::new();
+let mut session = engine.create(agent);
 let mut events = session.events();
 
 let observer = tokio::spawn(async move {

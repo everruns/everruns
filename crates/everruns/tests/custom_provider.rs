@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use everruns::{
-    Agent, AgentLoopError, ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream,
-    LlmStreamEvent, Provider, ProviderEndpoint,
+    Agent, AgentLoopError, ChatDriver, InMemoryEngine, LlmCallConfig, LlmMessage,
+    LlmResponseStream, LlmStreamEvent, Provider, ProviderEndpoint,
 };
 
 #[derive(Clone)]
@@ -35,7 +35,11 @@ async fn downstream_provider_needs_only_the_everruns_api() {
         .build()
         .unwrap();
 
-    let turn = agent.session().run("hello").await.unwrap();
+    let turn = InMemoryEngine::new()
+        .create(agent.clone())
+        .run("hello")
+        .await
+        .unwrap();
     assert_eq!(turn.response, "downstream works");
 }
 

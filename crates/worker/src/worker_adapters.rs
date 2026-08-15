@@ -526,8 +526,6 @@ pub struct TurnContext {
 // Two generic structs replace the former 9 per-trait Adapter* wrappers:
 //   - SessionAdapter<A>  (session-scoped, no org_id)
 //   - OrgAdapter<A>      (org-scoped, carries org_id)
-//
-// Type aliases preserve the old names at all call sites.
 // =============================================================================
 
 /// Session-scoped adapter: bridges WorkerAdapters → core traits that don't need org_id.
@@ -569,17 +567,6 @@ impl<A: WorkerAdapters> OrgAdapter<A> {
         Self { adapters, org_id }
     }
 }
-
-// Type aliases for backward compatibility at call sites
-pub type AdapterAgentStore<A> = OrgAdapter<A>;
-pub type AdapterHarnessStore<A> = OrgAdapter<A>;
-pub type AdapterSessionStore<A> = OrgAdapter<A>;
-pub type AdapterSessionMutator<A> = OrgAdapter<A>;
-pub type AdapterProviderStore<A> = OrgAdapter<A>;
-pub type AdapterImageResolver<A> = OrgAdapter<A>;
-pub type AdapterMessageRetriever<A> = SessionAdapter<A>;
-pub type AdapterEventEmitter<A> = SessionAdapter<A>;
-pub type AdapterSessionFileStore<A> = SessionAdapter<A>;
 
 // --- Org-scoped trait impls ---
 

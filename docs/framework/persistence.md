@@ -4,19 +4,19 @@ description: Choose volatile or crash-durable Framework session and local applic
 ---
 
 Framework history is a read-only projection of canonical events. Normal
-execution has one write path—the Agent's event log—so a resumed session and a
+execution has one write path—the engine's event log—so a resumed session and a
 running session cannot disagree about the conversation.
 
-## Default: Agent-lifetime memory
+## Default: engine-lifetime memory
 
-By default, each built `Agent` owns a volatile in-memory event log. It is fully
-offline and requires no database, server, network connection, credential, or
-filesystem access.
+By default, `InMemoryEngine` owns a volatile session catalog and event log. It
+retains the immutable Agent snapshot associated with each session and requires
+no database, server, network connection, credential, or filesystem access.
 
 Dropping a `Session` does not immediately discard its committed history. Reopen
-it by passing its typed `SessionId` to the Agent that issued it, or to a clone of
-that Agent. A separately built Agent has a separate in-memory store, and process
-exit loses volatile history.
+it by passing its typed `SessionId` to the engine that created it. A separate
+engine cannot infer the session's Agent configuration, and process exit loses
+volatile history.
 
 This default fits tests, command-line tools, short-lived workers, and
 applications that deliberately own a higher-level record elsewhere.
@@ -28,7 +28,7 @@ event log under the configured application data directory. It also supplies a
 trusted real-disk workspace plus SQLite-backed task and schedule state:
 
 ```rust
-use everruns::{Agent, LocalConfig, Model};
+use everruns::{Agent, InMemoryEngine, LocalConfig, Model};
 
 let local = LocalConfig::new(".everruns-data").workspace("./workspace");
 let agent = Agent::builder()
@@ -36,19 +36,22 @@ let agent = Agent::builder()
     .model(Model::simulated("Ready."))
     .local(local)
     .build()?;
+let engine = InMemoryEngine::new();
+let session = engine.create(agent);
 # Ok::<(), everruns::BuildError>(())
 ```
 
 Enable it with `cargo add everruns --features local`. Select both directories
-from trusted application configuration. Another Agent—or a later process—can
-open the same data directory and resume a committed session by ID.
+from trusted application configuration. After a restart, rebuild the Agent
+from trusted application configuration, attach it to a new engine, and resume
+the committed session by ID.
 
 The local profile is designed for one embedded process at a time. Coordinate
-process ownership before handing the directory to another Agent process.
+process ownership before handing the directory to another application process.
 
 The event-log file format and host backends are not Framework APIs. Do not edit
 the log or build application writes around its representation. Use
-`Session::history` for bounded reads and `Agent::resume` to continue a session;
+`Session::history` for bounded reads and `Engine::resume` to continue a session;
 see [Session History and Resume](/framework/session-history/) for the complete
 lifecycle.
 
@@ -65,7 +68,7 @@ Durable conversation truth belongs to canonical events; history and context
 are projections of that record. Advanced hosts use `EventLog` and
 `EventHistory` from `everruns-host`, including `JsonlEventLog` when a local
 append-only event log is appropriate. Framework applications continue sessions
-with `Agent::resume` and traverse bounded event-derived pages from
+with `Engine::resume` and traverse bounded event-derived pages from
 `Session::history`.
 
 A host that needs its own storage implements the public `EventLog`/`EventReader`

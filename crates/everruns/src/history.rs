@@ -79,8 +79,7 @@ impl HistoryQuery {
     /// concurrent appends, so they neither skip nor duplicate messages. Start a
     /// new query to observe events committed after that snapshot.
     pub async fn page(&self) -> Result<HistoryPage, HistoryError> {
-        let agent = self.execution.agent_snapshot();
-        agent.ensure_session_cataloged(self.session_id).await?;
+        self.execution.ensure_cataloged().await?;
         let agent = self.execution.agent_snapshot();
         let backends = agent
             .shared_backends()

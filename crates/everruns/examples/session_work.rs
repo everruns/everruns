@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use everruns::work::{TaskOutcome, TaskRequest, WakePolicy, WakeReason, WorkQueue};
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 use serde_json::json;
 
 #[tokio::main]
@@ -12,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instructions("You summarize completed background work.")
         .model(Model::simulated("Background work handled."))
         .build()?;
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let queue = WorkQueue::in_memory();
     let session_work = session.work(&queue);

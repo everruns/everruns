@@ -17,7 +17,7 @@ do not select a network provider.
 ## Run one turn
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,7 +26,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Everruns is ready."))
         .build()?;
 
-    let session = agent.session();
+    let engine = InMemoryEngine::new();
+    let session = engine.create(agent);
     let turn = session.send_and_wait("Are you ready?").await?;
     println!("{}", turn.response);
     Ok(())

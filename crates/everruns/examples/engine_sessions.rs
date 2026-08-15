@@ -1,4 +1,4 @@
-use everruns::{Agent, Engine, InMemoryEngine, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

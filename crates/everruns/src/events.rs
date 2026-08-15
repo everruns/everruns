@@ -643,7 +643,7 @@ mod tests {
     use serde_json::json;
 
     use super::{EventStreamError, FacadeEventBus, SessionEventKind};
-    use crate::{Agent, Model};
+    use crate::{Agent, InMemoryEngine, Model};
 
     fn host(bus: Arc<FacadeEventBus>) -> HostEventEmitter {
         HostEventEmitter::new(Arc::new(InMemoryEventLog::new()), bus)
@@ -939,7 +939,7 @@ mod tests {
             .model(Model::simulated_error("provider unavailable"))
             .build()
             .expect("valid agent");
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let mut stream = session.events();
         let result = session
             .run("hello")
@@ -1010,7 +1010,7 @@ mod tests {
             .tool(tool)
             .build()
             .expect("valid agent");
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let mut stream = session.events();
         let result = session.run("look it up").await.expect("tool turn runs");
         assert!(result.success);

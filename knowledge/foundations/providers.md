@@ -350,7 +350,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 | Question | Decision | Rationale |
 |---|---|---|
-| Runtime registry? | `ProviderRegistry` | Execution selects configured service instances; the `DriverRegistry` name remains only on the `0.17.x` compatibility/catalog adapter. |
+| Runtime registry? | `ProviderRegistry` | Execution selects configured service instances; `DriverRegistry` remains the descriptor-backed catalog adapter and delegates runtime-provider execution to the same registry. |
 | Registry key: enum or string? | Open normalized string | Provider and driver ids accept downstream values without a central enum edit; built-in associated constants are conveniences only. |
 | Where do services live? | Declared by the driver in code | DB storage would drift from what the code can actually do. |
 | Separate join entity between model and provider? | No | A model *is* "a specific model via a specific provider" — the join. `(provider_id, model_id)` is unique; "model X via provider Y" needs no third noun. |
@@ -358,7 +358,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 | Model identity layer? | Promote Model Profile | It already existed as a runtime-computed shadow; promotion (stable public key, stored assignment) beats inventing a new entity. |
 | Merge providers and connections? | No | Different scope, trust model, and resolution path; share only the credential descriptor plumbing. |
 | Utility LLM through providers? | No | Deliberate system-owned exception (`knowledge/operations/utility-llm.md` non-goals). |
-| `0.17.x` runtime compatibility? | Adapter only | Existing `ResolvedModel`/descriptor inputs remain public, but convert before execution into the same `ModelSpec` and runtime-provider registry path. No independent legacy semantics remain. |
+| Descriptor-backed hosted catalog? | Adapter only | Stored `ResolvedModel` and descriptor inputs convert before execution into the same `ModelSpec` and runtime-provider registry path. No independent execution semantics exist. |
 
 ## Source Index
 

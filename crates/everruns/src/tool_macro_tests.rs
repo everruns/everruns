@@ -9,7 +9,7 @@ use everruns_core::tools::Tool as CoreTool;
 use everruns_provider::tool_types::ToolCall;
 use serde_json::{Value, json};
 
-use crate::{Agent, Model};
+use crate::{Agent, InMemoryEngine, Model};
 
 /// Look up weather for a city. Doc comment becomes the tool description.
 #[everruns::tool]
@@ -101,7 +101,7 @@ async fn generated_tool_executes_through_agent_builder() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let turn = session.run("weather in London?").await.expect("turn runs");
 
     assert!(turn.success, "turn should succeed: {:?}", turn.error);
@@ -130,7 +130,7 @@ async fn result_err_becomes_model_visible_tool_error() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let turn = session.run("go").await.expect("turn runs");
     assert!(turn.success, "turn recovers from a tool error");
     assert_eq!(turn.tool_calls, 1);
@@ -155,7 +155,7 @@ async fn unit_return_tool_executes() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let turn = session.run("record it").await.expect("turn runs");
     assert!(turn.success, "unit-return tool succeeds: {:?}", turn.error);
     assert_eq!(turn.tool_calls, 1);

@@ -23,8 +23,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use everruns::{
-    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InputMessage, Provider,
-    ReasoningConfig, Session, SessionEvent, SessionEventKind,
+    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InMemoryEngine,
+    InputMessage, Provider, ReasoningConfig, Session, SessionEvent, SessionEventKind,
 };
 
 use mira::subject::summarize_events;
@@ -317,7 +317,7 @@ fn build_session(
 
     let agent = builder.build().map_err(|error| error.to_string())?;
     Ok(EvalSession {
-        session: agent.session(),
+        session: InMemoryEngine::new().create(agent),
         workspace,
     })
 }

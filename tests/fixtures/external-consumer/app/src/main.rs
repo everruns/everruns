@@ -8,7 +8,7 @@
 //! an `IntoCapability` value activates an open third-party reference — with
 //! no core/host imports and no central enum edit anywhere.
 
-use everruns::{Agent, Engine, InMemoryEngine, LlmSimConfig, Model, ToolCall};
+use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use external_capability_pack::{VendorSearch, math_pack};
 
 #[tokio::main]

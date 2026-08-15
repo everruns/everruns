@@ -23,14 +23,14 @@ cargo add everruns
 ```
 
 ```rust
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
     .model(Model::simulated("Hello from Everruns."))
     .build()?;
-let turn = agent.session().run("Say hello.").await?;
+let turn = InMemoryEngine::new().create(agent).run("Say hello.").await?;
 assert_eq!(turn.response, "Hello from Everruns.");
 # Ok(())
 # }

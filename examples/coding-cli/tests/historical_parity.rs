@@ -1,7 +1,7 @@
 //! Regression contract for the pre-facade coding CLI feature set.
 
 use clap::{CommandFactory, Parser};
-use everruns::Model;
+use everruns::{InMemoryEngine, Model};
 use everruns_coding_cli::{Cli, ProviderChoice, agent_builder};
 
 #[test]
@@ -41,7 +41,8 @@ fn interactive_surface_keeps_multiline_tui_and_history_preserving_model_switch()
     for contract in [
         "TextArea::default()",
         "KeyModifiers::ALT | KeyModifiers::SHIFT",
-        ".resume(session.session_id())",
+        ".attach(active.session.session_id()",
+        ".resume(active.session.session_id())",
         "command.starts_with(\"/model \")",
     ] {
         assert!(
@@ -57,7 +58,11 @@ async fn coding_capability_catalog_is_available_through_the_facade() {
         .model(Model::simulated("ready"))
         .build()
         .expect("coding agent builds");
-    let context = agent.session().inspect().await.expect("inspect tools");
+    let context = InMemoryEngine::new()
+        .create(agent)
+        .inspect()
+        .await
+        .expect("inspect tools");
     let tools = context
         .tools
         .iter()

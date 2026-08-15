@@ -5,7 +5,7 @@
 //! OPENAI_API_KEY=sk-... cargo run -p everruns --features openai --example advanced_capability
 //! ```
 
-use everruns::{Agent, OpenAI, SessionEventKind, capability};
+use everruns::{Agent, InMemoryEngine, OpenAI, SessionEventKind, capability};
 
 #[derive(capability::Deserialize, capability::JsonSchema)]
 #[serde(crate = "everruns::capability::serde")]
@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .capability(catalog)
         .build()?;
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let mut events = session.events();
     let pending = session.send("What is product EVR-42?").await?;
     while let Some(event) = events.recv().await? {
