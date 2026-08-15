@@ -19,8 +19,7 @@ Enable the `local` feature to use the public Git-worktree provider:
 ```rust
 use std::sync::Arc;
 use everruns::{
-    Agent, Environment, InMemoryEngine, LocalGitWorkspaceProvider, Model, Workspace,
-    WorkspacePolicy,
+    Agent, InMemoryEngine, LocalGitWorkspaceProvider, Model, Workspace, WorkspacePolicy,
 };
 
 # async fn example(repository: &std::path::Path, state: &std::path::Path)
@@ -32,15 +31,13 @@ let head = workspace
     .from_revision("main")
     .create()
     .await?;
-let environment = Environment::builder().workspace(head).build()?;
-
 let agent = Agent::builder()
     .instructions("Work in the selected project head.")
     .model(Model::simulated("ready"))
     .workspace_policy(WorkspacePolicy::read_write())
     .build()?;
 let engine = InMemoryEngine::new();
-let session = engine.create(agent).environment(environment).start().await?;
+let session = engine.create(agent).workspace(head).start().await?;
 
 assert!(session.workspace_head().is_some());
 # Ok(())

@@ -6,12 +6,11 @@
 use std::path::Path;
 
 use everruns::{InMemoryEngine, Model};
-use everruns_coding_cli::agent_builder;
+use everruns_coding_cli::coding_agent;
 
 #[tokio::test]
 async fn offline_smoke_runs_a_turn() {
-    let agent = agent_builder()
-        .model(Model::simulated("Done."))
+    let agent = coding_agent(Model::simulated("Done."))
         .build()
         .expect("agent builds via the facade");
     let session = InMemoryEngine::new().create(agent.clone());
@@ -31,8 +30,7 @@ async fn offline_smoke_runs_a_turn() {
 async fn session_history_persists_across_two_prompts() {
     // One session, two prompts — the second reuses the first's runtime and
     // accumulated history. Both must run cleanly through the public API.
-    let agent = agent_builder()
-        .model(Model::simulated("ack"))
+    let agent = coding_agent(Model::simulated("ack"))
         .build()
         .expect("agent builds");
     let session = InMemoryEngine::new().create(agent.clone());
@@ -85,6 +83,17 @@ fn sources_do_not_reference_core_or_host() {
     // Driver packages are valid public extensions. The example must not reach
     // into execution/storage implementation crates.
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
+    let everruns_dependencies = manifest
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or("").trim())
+        .filter(|line| line.starts_with("everruns"))
+        .collect::<Vec<_>>();
+    assert!(
+        everruns_dependencies
+            .iter()
+            .all(|line| line.starts_with("everruns =")),
+        "the example must use only the public `everruns` dependency; got {everruns_dependencies:?}"
+    );
     for line in manifest.lines() {
         let code = line.split('#').next().unwrap_or("");
         for needle in [

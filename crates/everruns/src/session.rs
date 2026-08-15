@@ -136,6 +136,14 @@ impl Session {
         }
     }
 
+    /// Permanently bind this new session to a workspace head.
+    ///
+    /// This is the common workspace-only form of [`environment`](Self::environment):
+    /// `engine.create(agent).workspace(head).start().await?`.
+    pub fn workspace(self, head: everruns_host::WorkspaceHead) -> EnvironmentSessionBuilder {
+        self.environment(everruns_host::Environment::new(head))
+    }
+
     /// Select and persist this Agent's default head without starting a turn.
     ///
     /// Calling this is optional: [`send`](Self::send) and [`inspect`](Self::inspect)

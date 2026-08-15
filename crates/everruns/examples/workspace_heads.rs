@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use everruns::{
-    Agent, Environment, InMemoryEngine, LocalConfig, LocalGitWorkspaceProvider, Model, Workspace,
+    Agent, InMemoryEngine, LocalConfig, LocalGitWorkspaceProvider, Model, Workspace,
     WorkspacePolicy,
 };
 
@@ -24,8 +24,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?);
     let workspace = Workspace::open(provider.clone(), repository.to_string_lossy()).await?;
     let head = workspace.head("example").create().await?;
-    let environment = Environment::builder().workspace(head.clone()).build()?;
-
     let agent = Agent::builder()
         .instructions("Work only in the selected workspace head.")
         .model(Model::simulated("ready"))
@@ -35,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
     let session = InMemoryEngine::new()
         .create(agent.clone())
-        .environment(environment)
+        .workspace(head.clone())
         .start()
         .await?;
 

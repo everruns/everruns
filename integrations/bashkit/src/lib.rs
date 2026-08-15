@@ -140,6 +140,32 @@ static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
 
 pub const BASHKIT_SHELL_CAPABILITY_ID: &str = "bashkit_shell";
 
+/// Agent-facing Bashkit shell configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BashkitShell {
+    enable_http: bool,
+}
+
+impl BashkitShell {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Allow shell HTTP commands through the host egress boundary.
+    pub fn enable_http(mut self, enabled: bool) -> Self {
+        self.enable_http = enabled;
+        self
+    }
+}
+
+impl everruns_capability::IntoCapability for BashkitShell {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(BASHKIT_SHELL_CAPABILITY_ID)
+            .config(serde_json::json!({ "enable_http": self.enable_http }))
+            .into()
+    }
+}
+
 /// Bashkit Shell capability - execute bash commands in a sandboxed environment
 pub struct BashkitShellCapability;
 

@@ -479,6 +479,14 @@ pub struct Environment {
 }
 
 impl Environment {
+    /// Create an Environment containing one workspace head and no extensions.
+    pub fn new(head: WorkspaceHead) -> Self {
+        Self {
+            head,
+            extensions: Arc::new(HashMap::new()),
+        }
+    }
+
     pub fn builder() -> EnvironmentBuilder {
         EnvironmentBuilder::default()
     }

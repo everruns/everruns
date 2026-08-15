@@ -17,6 +17,7 @@ categories = ["web-programming", "development-tools"]
 default = []
 
 [dependencies]
+everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-provider.workspace = true
 async-trait.workspace = true

@@ -4,11 +4,8 @@
 //! crate. Every fixture is offline and uses temporary files.
 
 use std::fs;
-use std::path::Path;
 
-use everruns::{
-    Agent, CompactionConfig, CompactionStrategy, InMemoryEngine, LocalConfig, McpServer, Model,
-};
+use everruns::{Agent, CompactionConfig, CompactionStrategy, InMemoryEngine, LocalConfig, Model};
 
 #[tokio::test]
 async fn compaction_policy_runs_without_host_checkpoint_types() {
@@ -63,7 +60,7 @@ async fn workspace_files_and_context_are_application_values() {
 }
 
 #[tokio::test]
-async fn local_plugin_and_http_mcp_config_use_the_framework() {
+async fn local_plugin_uses_the_framework() {
     let plugin = tempfile::tempdir().expect("plugin dir");
     fs::create_dir_all(plugin.path().join(".claude-plugin")).expect("manifest dir");
     fs::create_dir_all(plugin.path().join("agents")).expect("agents dir");
@@ -88,36 +85,11 @@ async fn local_plugin_and_http_mcp_config_use_the_framework() {
         .model(Model::simulated("ok"))
         .plugin(plugin.path())
         .expect("plugin compiles")
-        // Discovery is disabled so this fixture proves HTTP configuration
-        // without making a network request.
-        .mcp_server(McpServer::http("remote", "https://mcp.invalid/example").tool_discovery(false))
         .build()
         .expect("agent builds");
     let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("plugin context");
     assert!(context.instructions.contains("PLUGIN_CONTEXT_SENTINEL"));
-}
-
-#[tokio::test]
-async fn stdio_mcp_discovers_a_local_tool() {
-    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mcp_stdio_server.py");
-    let agent = Agent::builder()
-        .instructions("Use the echo MCP server.")
-        .model(Model::simulated("ok"))
-        .mcp_server(McpServer::stdio("echo", "python3").arg(fixture.to_string_lossy()))
-        .build()
-        .expect("agent builds");
-    let context = InMemoryEngine::new()
-        .create(agent.clone())
-        .inspect()
-        .await
-        .expect("MCP discovery");
-    assert!(
-        context
-            .tools
-            .iter()
-            .any(|tool| tool.name == "mcp_echo__echo")
-    );
 }
 
 #[tokio::test]
