@@ -334,6 +334,7 @@ mod tests {
     fn an_elapsed_budget_stops_a_cheap_but_slow_loop() {
         // Turns and tokens both untouched; only wall-clock is exhausted.
         let mut budget = ContinuationBudget::new(100, u64::MAX, Duration::ZERO);
+        std::thread::sleep(Duration::from_millis(1));
         assert!(!budget.observe_turn(1));
     }
 }

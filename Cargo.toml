@@ -252,9 +252,12 @@ tar = "0.4"
 
 [profile.dev]
 opt-level = 0
-# line-tables-only: file:line in backtraces, drops full DWARF type/variable info
-# Saves ~5-6 GB across all binaries. Override locally: CARGO_PROFILE_DEV_DEBUG=2
-debug = "line-tables-only"
+# Local iteration does not consume debugger metadata. Keeping it out also lets
+# dev and test reuse compatible dependency artifacts instead of storing both.
+debug = 0
+
+[profile.test]
+debug = 0
 
 [profile.release]
 opt-level = 3
@@ -276,6 +279,6 @@ lto = false
 codegen-units = 256
 # Keep cheap line-number debug info and don't strip: these binaries are executed
 # by CI jobs (workflow/e2e/openapi) under RUST_BACKTRACE=1, so panic backtraces
-# must stay actionable. line-tables-only matches the dev profile — small and fast.
+# must stay actionable. line-tables-only keeps that signal at modest cost.
 debug = "line-tables-only"
 strip = false

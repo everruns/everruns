@@ -53,6 +53,11 @@ fi
 echo "Discovered public everruns examples:"
 sed 's/^/  - /' "$FILES"
 
+if [ "${EVERRUNS_EXAMPLES_SKIP_COMPILE:-0}" = "1" ]; then
+  echo "Example compilation covered by the caller."
+  exit 0
+fi
+
 # One Cargo command discovers and compiles the complete target set. No example
 # is executed here, so this check needs no provider credential or network call.
 cargo check --locked -p everruns --all-features --examples

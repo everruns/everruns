@@ -25,6 +25,10 @@ env:
   # incremental artifacts are never reused — they just bloat the rust-cache
   # save/restore. Dependency caching (Swatinem/rust-cache) is unaffected.
   CARGO_INCREMENTAL: 0
+  # Local dev/test profiles omit debug metadata for faster worktree iteration.
+  # CI keeps source locations in failure backtraces without paying for full DWARF.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+  CARGO_PROFILE_TEST_DEBUG: line-tables-only
   # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope: PR code
   # would inherit it and could exfiltrate the whole Doppler vault via
   # build.rs, proc-macros, or tests. Inject it per step under a push-only

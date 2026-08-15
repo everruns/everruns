@@ -1,21 +1,55 @@
 #!/usr/bin/env bash
-# Pre-push checks: fast local validation to catch CI failures early (~30s).
+# Pre-push checks: changed-surface local validation to catch CI failures early.
 # Runs formatting, linting, lockfile, migration, test/example enumeration, knowledge,
 # architecture isolation guards, and attribution checks.
 # Usage: just pre-push (or: bash scripts/lib/pre-push.sh)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/pre-push-context.sh"
 
 FAILED=0
 fail() { echo "   ❌ $1"; FAILED=1; }
 pass() { echo "   ✅ $1"; }
+skip() { echo "   ⏭️  skipped ($1)"; }
+
+PRE_PUSH_FULL="${EVERRUNS_PRE_PUSH_FULL:-0}"
+if [ "$PRE_PUSH_FULL" = "1" ]; then
+  PRE_PUSH_CHANGED_FILES=""
+  PRE_PUSH_SCOPE="full (requested)"
+elif PRE_PUSH_CHANGED_FILES="$(pre_push_collect_changed_files)"; then
+  PRE_PUSH_SCOPE="changed files"
+else
+  PRE_PUSH_FULL=1
+  PRE_PUSH_CHANGED_FILES=""
+  PRE_PUSH_SCOPE="full (no Git comparison base)"
+fi
+export PRE_PUSH_CHANGED_FILES
+
+RUST_CHANGED=0
+CARGO_GRAPH_CHANGED=0
+UI_CHANGED=0
+CORE_API_CHANGED=0
+if [ "$PRE_PUSH_FULL" = "1" ] || pre_push_rust_changed; then RUST_CHANGED=1; fi
+if [ "$PRE_PUSH_FULL" = "1" ] || pre_push_cargo_graph_changed; then CARGO_GRAPH_CHANGED=1; fi
+if [ "$PRE_PUSH_FULL" = "1" ] || pre_push_ui_changed; then UI_CHANGED=1; fi
+if [ "$PRE_PUSH_FULL" = "1" ] || pre_push_core_api_changed; then CORE_API_CHANGED=1; fi
+
+if [ "$RUST_CHANGED" = "1" ] || [ "$CORE_API_CHANGED" = "1" ]; then
+  configure_pre_push_build_cache
+fi
 
 echo "🔒 Running pre-push checks..."
+echo "   Scope: $PRE_PUSH_SCOPE"
+if [ -n "${CARGO_TARGET_DIR:-}" ]; then
+  echo "   Rust cache: $CARGO_TARGET_DIR"
+fi
 echo ""
 
 # 1. Rust formatting
 echo "1/22 Rust formatting"
-if cargo fmt --check 2>/dev/null; then
+if [ "$RUST_CHANGED" != "1" ]; then
+  skip "no Rust changes"
+elif cargo fmt --check 2>/dev/null; then
   pass "cargo fmt"
 else
   fail "cargo fmt — run: cargo fmt"
@@ -23,7 +57,9 @@ fi
 
 # 2. Clippy
 echo "2/22 Rust linting"
-if cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
+if [ "$RUST_CHANGED" != "1" ]; then
+  skip "no Rust changes"
+elif cargo clippy --all-targets --all-features -- -D warnings 2>/dev/null; then
   pass "clippy"
 else
   fail "clippy — run: cargo clippy --fix --allow-dirty"
@@ -31,7 +67,9 @@ fi
 
 # 3. Cargo.lock freshness
 echo "3/22 Cargo.lock freshness"
-if cargo fetch --locked 2>/dev/null; then
+if [ "$CARGO_GRAPH_CHANGED" != "1" ]; then
+  skip "Cargo dependency graph unchanged"
+elif cargo fetch --locked 2>/dev/null; then
   pass "Cargo.lock up to date"
 else
   fail "Cargo.lock outdated — run: cargo fetch"
@@ -39,7 +77,9 @@ fi
 
 # 4. UI formatting (skip if node_modules missing)
 echo "4/22 UI formatting"
-if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+if [ "$UI_CHANGED" != "1" ]; then
+  skip "no UI changes"
+elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
   else
@@ -51,7 +91,9 @@ fi
 
 # 5. UI linting (skip if node_modules missing)
 echo "5/22 UI linting"
-if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
+if [ "$UI_CHANGED" != "1" ]; then
+  skip "no UI changes"
+elif [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
   if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
   else
@@ -97,9 +139,13 @@ fi
 # 9. Public everruns example inventory and compile check
 echo "9/22 Public everruns examples"
 if EVERRUNS_EXAMPLES_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
+  EVERRUNS_EXAMPLES_SKIP_COMPILE=1 bash "$PROJECT_ROOT/scripts/lib/check-everruns-examples.sh" 2>&1
 )"; then
-  pass "public everruns examples use the facade and compile"
+  if [ "$RUST_CHANGED" = "1" ]; then
+    pass "public everruns example inventory uses the facade; compilation covered by clippy"
+  else
+    pass "public everruns example inventory uses the facade"
+  fi
 else
   printf '%s\n' "$EVERRUNS_EXAMPLES_OUTPUT" | sed 's/^/   /'
   fail "public everruns example check failed"
@@ -197,7 +243,9 @@ fi
 
 # 18. Core public API/semver and documentation guard (EVE-906)
 echo "18/22 Core public API guard"
-if CORE_PUBLIC_API_OUTPUT="$(
+if [ "$CORE_API_CHANGED" != "1" ]; then
+  skip "core API surface unchanged"
+elif CORE_PUBLIC_API_OUTPUT="$(
   bash "$PROJECT_ROOT/scripts/lib/check-core-public-api.sh" 2>&1
 )"; then
   pass "$CORE_PUBLIC_API_OUTPUT"

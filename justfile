@@ -147,9 +147,13 @@ check:
     cargo clippy --all-targets -- -D warnings
     cargo test
 
-# Run fast pre-push checks (fmt, lint, lockfile — ~30s)
+# Run changed-surface checks with a dedicated Rust cache shared across worktrees.
 pre-push:
     ./scripts/lib/pre-push.sh
+
+# Run every pre-push check regardless of the changed files.
+pre-push-full:
+    EVERRUNS_PRE_PUSH_FULL=1 ./scripts/lib/pre-push.sh
 
 # Run all pre-PR checks (fmt, clippy, tests, UI, OpenAPI, docs)
 pre-pr:
