@@ -220,13 +220,14 @@ process should use `everruns-host`.
 
 - `InProcessRuntimeBuilder`
 - in-memory session/filesystem/storage/message backends
-- turn execution via the shared core `TurnStateMachine`
+- turn execution via `everruns-engine::TurnExecution` and
+  `everruns-host::InProcessExecution`
 - direct seeding of harnesses, agents, sessions, and files
-- runtime-owned host phase execution (`execute_input_activity`, `execute_reason_activity`, `execute_act_activity`)
+- engine-owned Input/Reason/Act algorithms composed by the host
 
 `everruns-worker` provides the first-party adapter bridge from worker backends
-into that host contract via `WorkerRuntimeHost`, so both the in-process worker
-and external durable worker reuse the same runtime-owned atom wiring.
+into that host contract via `WorkerRuntimeHost`, so both the immediate and
+durable paths reuse the same engine phase wiring.
 
 See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runtime contract.
 

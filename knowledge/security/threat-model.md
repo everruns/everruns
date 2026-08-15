@@ -874,7 +874,10 @@ Each capability declares a `RiskLevel` (Low, Medium, High) via the `Capability` 
 ```rust
 // Turn state machine enforces max iterations
 if self.current_iteration >= self.max_iterations {
-    TurnAction::Complete(TurnOutcome::MaxIterationsReached { ... })
+    TurnPlan::Terminal {
+        stop_reason: TurnStopReason::MaxIterationsReached,
+        ...
+    }
 }
 ```
 Default: 100 iterations. Each Reason→Act cycle counts as one iteration. Configurable per agent.

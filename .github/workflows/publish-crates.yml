@@ -150,6 +150,7 @@ jobs:
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
                   "everruns-integrations-web-fetch",
+                  "everruns-integrations-duckduckgo",
                   "everruns-integrations-lua",
                   "everruns-integrations-openrouter-workspace",
               ],
@@ -304,6 +305,7 @@ jobs:
             everruns-integrations-filesystem
             everruns-integrations-bashkit
             everruns-integrations-web-fetch
+            everruns-integrations-duckduckgo
             everruns-integrations-lua
             everruns-integrations-openrouter-workspace
             # The sans-I/O planner and backend entities publish before the host
@@ -318,7 +320,6 @@ jobs:
             everruns-openrouter
             everruns-bedrock
             everruns-gemini
-            everruns-integrations-duckduckgo
             everruns-integrations-github
             everruns-integrations-daytona
             everruns-integrations-e2b

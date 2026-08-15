@@ -2193,7 +2193,7 @@ pub struct TurnFailedData {
 ///
 /// A sealed turn was deliberately stopped to prevent waste. It is observably
 /// distinct from `turn.completed` (success) and `turn.failed` (error). The
-/// `reason` is the stable wire form of `everruns_core::turn::SealReason`
+/// `reason` is the durable engine's stable seal-reason wire value.
 /// (`"no_progress"` or `"budget"`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

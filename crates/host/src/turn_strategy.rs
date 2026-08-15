@@ -15,17 +15,10 @@ use chrono::Utc;
 use everruns_core::Controls;
 use everruns_engine::{
     ActOutcome, ActSchedulingFacts, ActivityOutcome, Execution, HostFacts, ReasonResult,
-    TurnExecution, TurnLifecycleEffect, reason_schedules_act,
+    TurnLifecycleEffect, TurnPlan, TurnState, reason_schedules_act,
 };
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{SessionId, TurnId};
-
-// The turn-planning types live in `everruns-engine` without a `Runtime`
-// prefix. These aliases are the host's stable public names for them, used by
-// the in-process runtime and the durable worker.
-pub use everruns_engine::{
-    ActPlan as RuntimeActPlan, TurnPlan as RuntimeTurnPlan, TurnState as RuntimeTurnState,
-};
 
 /// Determine the next host step after an activity finishes.
 ///
@@ -49,7 +42,7 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
     completed_activity: &str,
     output: &serde_json::Value,
     pending_user_message_count: usize,
-) -> Result<RuntimeTurnPlan> {
+) -> Result<TurnPlan> {
     let state = execution.state().clone();
     match completed_activity {
         "process_input" => {
@@ -118,38 +111,15 @@ pub async fn advance_host_execution<A: RuntimeHostAdapter, E: Execution>(
     }
 }
 
-/// Compatibility wrapper for hosts that persist only [`RuntimeTurnState`].
-///
-/// New drivers should retain their concrete [`Execution`] implementation and
-/// call [`advance_host_execution`] so state advancement cannot be duplicated.
-pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
-    adapter: &A,
-    completed_activity: &str,
-    state: &RuntimeTurnState,
-    output: &serde_json::Value,
-    pending_user_message_count: usize,
-) -> Result<RuntimeTurnPlan> {
-    let mut execution = TurnExecution::new(state.clone());
-    advance_host_execution(
-        adapter,
-        &mut execution,
-        completed_activity,
-        output,
-        pending_user_message_count,
-    )
-    .await
-}
-
 /// Resolve the act-scheduling session facts, fetching the session only when the
 /// reason outcome actually schedules an act — the exact condition the
 /// pre-extraction planner fetched under.
 ///
-/// Shared by the JSON-shaped [`plan_next_host_turn`] wrapper and the in-process
-/// runtime loop (EVE-842) so both hosts do the same I/O under the same
-/// condition.
+/// Shared by immediate and durable hosts so both resolve the same I/O facts
+/// under the same condition.
 pub(crate) async fn resolve_act_scheduling<A: RuntimeHostAdapter>(
     adapter: &A,
-    state: &RuntimeTurnState,
+    state: &TurnState,
     reason_result: &ReasonResult,
 ) -> Result<Option<ActSchedulingFacts>> {
     if !reason_schedules_act(state, reason_result) {

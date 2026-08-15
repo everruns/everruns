@@ -82,16 +82,16 @@ fn sources_do_not_reference_core_or_host() {
         }
     }
 
-    // Check dependency declarations, not prose — strip `#` comments per line so a
-    // crate named in an explanatory comment is not a false positive.
+    // Driver packages are valid public extensions. The example must not reach
+    // into execution/storage implementation crates.
     let manifest = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
     for line in manifest.lines() {
         let code = line.split('#').next().unwrap_or("");
         for needle in [
             "everruns-core",
             "everruns-host",
-            "everruns-anthropic",
             "everruns-local",
+            concat!("everruns-", "runtime"),
         ] {
             assert!(
                 !code.contains(needle),

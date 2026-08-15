@@ -196,6 +196,7 @@ everruns-macros = { path = "crates/macros", version = "0.17.26" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.17.26" }
 everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.17.26" }
 everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.17.26" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.17.26" }
 everruns-integrations-lua = { path = "integrations/lua", version = "0.17.26" }
 everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.17.26" }
 

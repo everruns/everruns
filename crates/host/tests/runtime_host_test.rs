@@ -20,11 +20,12 @@ use everruns_core::{
     session_files::SessionFileSystem,
 };
 use everruns_engine::{ActInput, InputAtomInput, ReasonResult};
+use everruns_engine::{TurnPlan, TurnState};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
-    ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle, RuntimeTurnPlan,
-    RuntimeTurnState, TurnStopReason, execute_act_activity, execute_input_activity,
-    inspect_turn_context, plan_next_host_turn,
+    InProcessExecution, ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle,
+    TurnStopReason, advance_host_execution, execute_act_activity, execute_input_activity,
+    inspect_turn_context,
 };
 use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
@@ -776,8 +777,8 @@ fn agent(
     }
 }
 
-fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState {
-    RuntimeTurnState {
+fn turn_state(session_id: SessionId, harness_id: HarnessId) -> TurnState {
+    TurnState {
         org_id: 1,
         session_id,
         harness_id,
@@ -795,6 +796,24 @@ fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState 
         final_message_id: None,
         final_answer_preview: None,
     }
+}
+
+async fn advance_from_state(
+    adapter: &MockHostAdapter,
+    completed_activity: &str,
+    state: &TurnState,
+    output: &serde_json::Value,
+    pending_user_message_count: usize,
+) -> everruns_provider::error::Result<TurnPlan> {
+    let mut execution = InProcessExecution::new(state.clone());
+    advance_host_execution(
+        adapter,
+        &mut execution,
+        completed_activity,
+        output,
+        pending_user_message_count,
+    )
+    .await
 }
 
 fn mock_host() -> MockHostAdapter {
@@ -1669,7 +1688,7 @@ async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_schedules_reason_after_process_input() {
+async fn execution_schedules_reason_after_process_input() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -1686,12 +1705,12 @@ async fn plan_next_host_turn_schedules_reason_after_process_input() {
     let turn_id = TurnId::from_uuid(Uuid::now_v7());
     let output = serde_json::json!({ "turn_id": turn_id.to_string() });
 
-    let plan = plan_next_host_turn(&adapter, "process_input", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "process_input", &input, &output, 0)
         .await
         .unwrap();
 
     match plan {
-        RuntimeTurnPlan::ScheduleReason(next) => {
+        TurnPlan::ScheduleReason(next) => {
             assert_eq!(next.session_id, session_id);
             assert_eq!(next.harness_id, harness_id);
             assert_eq!(next.turn_id, Some(turn_id));
@@ -1703,7 +1722,7 @@ async fn plan_next_host_turn_schedules_reason_after_process_input() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
+async fn execution_schedules_act_after_reason_tool_calls() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -1742,12 +1761,12 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
     match plan {
-        RuntimeTurnPlan::ScheduleAct(plan) => {
+        TurnPlan::ScheduleAct(plan) => {
             assert_eq!(plan.input.context.session_id, session_id);
             assert_eq!(plan.input.context.turn_id, input.turn_id.unwrap());
             assert_eq!(plan.input.harness_id, harness_id);
@@ -1762,7 +1781,7 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_surfaces_max_turn_requests_before_another_act() {
+async fn execution_surfaces_max_turn_requests_before_another_act() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -1801,13 +1820,13 @@ async fn plan_next_host_turn_surfaces_max_turn_requests_before_another_act() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
     assert!(matches!(
         plan,
-        RuntimeTurnPlan::Complete {
+        TurnPlan::Complete {
             stop_reason: TurnStopReason::MaxTurnRequests,
             error: None,
         }
@@ -1817,7 +1836,7 @@ async fn plan_next_host_turn_surfaces_max_turn_requests_before_another_act() {
 /// EVE-598: the request-level `parallel_tool_calls` preference set on the
 /// reason result threads through to the scheduled `ActInput` for every value.
 #[tokio::test]
-async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
+async fn execution_threads_parallel_tool_calls_into_act() {
     for preference in [Some(true), Some(false), None] {
         let adapter = mock_host();
         let harness_id = HarnessId::from_uuid(Uuid::now_v7());
@@ -1857,12 +1876,12 @@ async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
         })
         .unwrap();
 
-        let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
             .await
             .unwrap();
 
         match plan {
-            RuntimeTurnPlan::ScheduleAct(plan) => {
+            TurnPlan::ScheduleAct(plan) => {
                 assert_eq!(
                     plan.input.parallel_tool_calls, preference,
                     "parallel_tool_calls must thread through unchanged"
@@ -1874,7 +1893,7 @@ async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
+async fn execution_schedules_act_with_session_blueprint_id() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -1916,12 +1935,12 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
     match plan {
-        RuntimeTurnPlan::ScheduleAct(plan) => {
+        TurnPlan::ScheduleAct(plan) => {
             assert_eq!(
                 plan.input.blueprint_id.as_deref(),
                 Some("blueprint.private")
@@ -1932,7 +1951,7 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending() {
+async fn execution_continues_reason_when_steering_messages_are_pending() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -1967,12 +1986,12 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 2)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 2)
         .await
         .unwrap();
 
     match plan {
-        RuntimeTurnPlan::ScheduleReason(next) => {
+        TurnPlan::ScheduleReason(next) => {
             assert_eq!(next.iteration, 2);
             assert_eq!(next.previous_response_id.as_deref(), Some("resp_steer"));
             assert_eq!(next.turn_id, input.turn_id);
@@ -1982,7 +2001,7 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
+async fn execution_emits_turn_completed_summary_fields() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -2024,12 +2043,12 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
     assert!(matches!(
         plan,
-        RuntimeTurnPlan::Complete {
+        TurnPlan::Complete {
             stop_reason: everruns_host::TurnStopReason::MaxTokens,
             error: None,
         }
@@ -2060,7 +2079,7 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_preserves_reason_failure_message() {
+async fn execution_preserves_reason_failure_message() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -2096,11 +2115,11 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
-    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+    assert!(matches!(plan, TurnPlan::Complete { .. }));
 
     let events = adapter.event_emitter.events().await;
     let turn_failed = events
@@ -2126,7 +2145,7 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigured() {
+async fn execution_classifies_missing_api_key_as_provider_misconfigured() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -2164,11 +2183,11 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
-    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+    assert!(matches!(plan, TurnPlan::Complete { .. }));
 
     let events = adapter.event_emitter.events().await;
     let turn_failed = events
@@ -2186,7 +2205,7 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
+async fn execution_prefers_disclosed_user_facing_error_from_reason() {
     // Generic disclosure mode: the reason atom already collapsed a quota
     // failure into processing_error. The turn.failed event must reuse that
     // disclosed error instead of re-classifying the raw strings, otherwise
@@ -2228,11 +2247,11 @@ async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
     })
     .unwrap();
 
-    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
 
-    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+    assert!(matches!(plan, TurnPlan::Complete { .. }));
 
     let events = adapter.event_emitter.events().await;
     let turn_failed = events
@@ -2252,7 +2271,7 @@ async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
 }
 
 #[tokio::test]
-async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_it() {
+async fn execution_waits_for_tool_results_when_session_hint_requests_it() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
@@ -2274,12 +2293,12 @@ async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_i
         "blocked": false
     });
 
-    let plan = plan_next_host_turn(&adapter, "act", &input, &output, 0)
+    let plan = advance_from_state(&adapter, "act", &input, &output, 0)
         .await
         .unwrap();
 
     match plan {
-        RuntimeTurnPlan::WaitForToolResults { resume } => {
+        TurnPlan::WaitForToolResults { resume } => {
             assert_eq!(resume.iteration, 2);
             assert_eq!(resume.turn_id, input.turn_id);
             let session = adapter

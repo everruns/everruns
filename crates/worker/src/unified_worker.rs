@@ -17,10 +17,9 @@ use everruns_durable::{
     WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
     record_activity_started,
 };
-use everruns_engine::ActInput;
+use everruns_engine::{ActInput, ActPlan, TurnPlan};
 use everruns_host::{
-    RuntimeActPlan, RuntimeTurnPlan, advance_host_execution,
-    execute_act_activity as runtime_execute_act_activity,
+    advance_host_execution, execute_act_activity as runtime_execute_act_activity,
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
@@ -1416,13 +1415,13 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     )
     .await?
     {
-        RuntimeTurnPlan::ScheduleReason(next) => {
+        TurnPlan::ScheduleReason(next) => {
             enqueue_reason_task(store, workflow_id, &next).await?;
         }
-        RuntimeTurnPlan::ScheduleAct(plan) => {
+        TurnPlan::ScheduleAct(plan) => {
             enqueue_act_task(store, workflow_id, &plan).await?;
         }
-        RuntimeTurnPlan::Complete { stop_reason, error } => {
+        TurnPlan::Complete { stop_reason, error } => {
             let turn_output = turn_output_with_stop_reason(output.clone(), stop_reason);
             store
                 .complete_workflow(
@@ -1434,7 +1433,7 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
         }
-        RuntimeTurnPlan::WaitForToolResults { resume } => {
+        TurnPlan::WaitForToolResults { resume } => {
             store
                 .complete_workflow(
                     workflow_id,
@@ -1520,7 +1519,7 @@ async fn enqueue_reason_task<S: TaskStore>(
 async fn enqueue_act_task<S: TaskStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
-    plan: &RuntimeActPlan,
+    plan: &ActPlan,
 ) -> Result<()> {
     let mut act_input_json = serde_json::to_value(&plan.input)?;
     if let Some(response_id) = &plan.previous_response_id {
