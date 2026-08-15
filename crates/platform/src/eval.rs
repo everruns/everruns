@@ -180,7 +180,7 @@ impl From<&str> for EvalRunStatus {
 /// `Internal` runs are executed by everruns (sessions spawned per case).
 /// `External` runs are ingested already-complete from an external eval system
 /// (e.g. Mira) via the import API; everruns hosts and visualizes them but never
-/// executes them. See proposals/mira-results-publishing.md.
+/// executes them. See knowledge/evaluation/evals.md.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]

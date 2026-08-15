@@ -1,10 +1,19 @@
-# Proposal: Secret-leak guardrail (model-backed, with a deterministic layer)
+---
+type: Specification
+title: "Secret-leak guardrails"
+description: "Defense-in-depth design for model-backed secret detection and deterministic known-value redaction."
+tags:
+  - everruns
+  - security
+  - guardrails
+  - secrets
+---
 
-Status: draft design note (pre-spec). Answers "can we build a guardrail that
-blocks an agent from echoing a secret it holds in context, and how?" On
-acceptance this becomes: a documented `llm_judge` secret-leak preset, an
-optional dedicated secret-leak classifier check, and — as a cheap complementary
-layer — a deterministic known-value redactor.
+# Secret-leak guardrails
+
+Status: active design. The model-backed `llm_judge` preset ships. A dedicated
+secret-leak classifier, output-stage semantic checks, and deterministic
+known-value redaction remain proposed.
 
 ## The scenario
 
@@ -55,7 +64,7 @@ Grounded in `crates/builtins/src/guardrails.rs` and
   `{"verdict":"allow"}` / `{"verdict":"block","reason":"…"}` response
   (`run_judge_check`).
 - On `tool_use` it runs in the **pre-tool hook**; a `block` verdict refuses the
-  call and, per `knowledge/execution/guardrails.md` §Runtime integration, "feeds the reason
+  call and, per [`guardrails.md`](../execution/guardrails.md) §Runtime integration, "feeds the reason
   back to the model (which can self-correct)." That is exactly the screenshot:
   block the secret-echoing compare → model retries as a hash compare.
 - It is **value-agnostic**: the policy prompt describes the *class* of thing to
@@ -117,7 +126,7 @@ exact, in-process backstop that fails *closed*:
   valid on all three stages, matching via Aho-Corasick (linear, no backtracking,
   same DoS posture as the existing blocklist/regex matchers).
 - Value source: `session_storage`'s `secret_store` — the encrypted, session-scoped
-  namespaced-secret store (`ns` table, AES-256-GCM per `knowledge/security/encryption.md`),
+  namespaced-secret store (`ns` table, AES-256-GCM per [`encryption.md`](encryption.md)),
   which already holds MCP OAuth tokens (`mcp_oauth_ns_name`), sandbox state, and
   user API keys. Optionally auto-enroll high-entropy values seen at `tool_output`.
 - New **`redact`** action (mask the matched span) alongside `block`/`log`, so the

@@ -101,7 +101,7 @@ impl Command for ListEvals {
 inventory::submit! { CommandDescriptor::of::<ListEvals>() }
 
 /// Import a full external run group (everruns as host/viewer for external eval
-/// systems). See proposals/mira-results-publishing.md.
+/// systems). See knowledge/evaluation/evals.md.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ImportEvalRun {
     #[serde(flatten)]

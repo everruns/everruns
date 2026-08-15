@@ -1,6 +1,17 @@
-# Proposal: Sandbox = filesystem + compute
+---
+type: Specification
+title: "Sandbox abstraction"
+description: "Provider-neutral sandbox model combining filesystem, compute, lifecycle, and checkpoint semantics."
+tags:
+  - everruns
+  - harnesses
+  - sandbox
+  - runtime-resources
+---
 
-Status: proposed. Replaces the experimental `session_sandbox` direction and
+# Sandbox abstraction: filesystem plus compute
+
+Status: active proposed architecture. Replaces the experimental `session_sandbox` direction and
 consolidates the provider-specific sandbox capabilities.
 
 ## Decision
@@ -675,7 +686,7 @@ and profile validation, not different tools given to the model.
 
 ### Clarify experimental status
 
-The Lua-vs-Bash work in `knowledge/execution/lua-execution.md` is an experiment,
+The [Lua execution work](../execution/lua-execution.md) is an experiment,
 not an adopted product plan. Its current "supersede `bashkit_shell`" and
 "Migration" wording overstates that status and should be reframed as a
 hypothesis plus evaluation results. Lua may become an optional interpreter or

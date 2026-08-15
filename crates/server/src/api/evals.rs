@@ -237,7 +237,7 @@ pub struct BulkUpdateEvalRunScoresRequest {
 
 // ============================================
 // Import (external eval results) — everruns as host/viewer.
-// See proposals/mira-results-publishing.md.
+// See knowledge/evaluation/evals.md.
 // ============================================
 
 /// A whole external run group: one external run, one entry per eval. Maps to
