@@ -33,7 +33,8 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   them, and stage files by name rather than `git add -A`.
 - Rebases silently keep colliding migration numbers. After a rebase that touches
   `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
-- Run `just pre-push` before pushing.
+- Run `just pre-push` before pushing. It scopes expensive checks to changed surfaces and shares a
+  dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
   or API shapes. `docs/` holds public product documentation only — durable decisions and
   investigations belong in `knowledge/` or `proposals/`. Run `just check-okf` after knowledge

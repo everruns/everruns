@@ -61,7 +61,8 @@ if ! grep -q -E '^#!\[deny\(rustdoc::broken_intra_doc_links\)\]' crates/core/src
   fail "everruns-core must deny broken rustdoc links"
 fi
 
-API_JSON="$PROJECT_ROOT/target/doc/everruns_core.json"
+TARGET_DIRECTORY="$(cargo metadata --no-deps --format-version 1 | jq -r '.target_directory')"
+API_JSON="$TARGET_DIRECTORY/doc/everruns_core.json"
 API_CURRENT="$(mktemp "${TMPDIR:-/tmp}/everruns-core-api.XXXXXX")"
 DOC_LOG="$(mktemp "${TMPDIR:-/tmp}/everruns-core-docs.XXXXXX")"
 trap 'rm -f "$API_CURRENT" "$DOC_LOG"' EXIT
