@@ -1,32 +1,21 @@
 #!/usr/bin/env bash
-# Check if cloud agent is configured for UI screenshots
+# Check if the environment is configured for UI screenshots
 
 MISSING=()
 
 echo "🔍 Checking UI Screenshots configuration..."
 echo ""
 
-# Check GITHUB_TOKEN
+# Check GitHub authentication
 if [ -z "${GITHUB_TOKEN:-}" ]; then
-  MISSING+=("GITHUB_TOKEN")
-  echo "❌ GITHUB_TOKEN - not set"
-else
-  echo "✅ GITHUB_TOKEN - set"
-fi
-
-# Check CLOUDINARY_URL
-if [ -z "${CLOUDINARY_URL:-}" ]; then
-  MISSING+=("CLOUDINARY_URL")
-  echo "❌ CLOUDINARY_URL - not set"
-else
-  # Validate format
-  if [[ "$CLOUDINARY_URL" =~ ^cloudinary://[^:]+:[^@]+@.+$ ]]; then
-    CLOUD_NAME="${CLOUDINARY_URL##*@}"
-    echo "✅ CLOUDINARY_URL - set (cloud: $CLOUD_NAME)"
+  if command -v gh &> /dev/null && gh auth token &> /dev/null; then
+    echo "✅ GitHub authentication - gh auth token"
   else
-    MISSING+=("CLOUDINARY_URL (invalid format)")
-    echo "❌ CLOUDINARY_URL - invalid format (expected: cloudinary://API_KEY:API_SECRET@CLOUD_NAME)"
+    MISSING+=("GITHUB_TOKEN or authenticated gh CLI")
+    echo "❌ GitHub authentication - unavailable"
   fi
+else
+  echo "✅ GitHub authentication - GITHUB_TOKEN"
 fi
 
 # Check agent-browser
@@ -42,7 +31,7 @@ fi
 echo ""
 
 if [ ${#MISSING[@]} -eq 0 ]; then
-  echo "✅ Cloud agent is configured for UI screenshots"
+  echo "✅ Environment is configured for UI screenshots"
   exit 0
 else
   echo "❌ Missing configuration:"
@@ -50,6 +39,6 @@ else
     echo "   - $item"
   done
   echo ""
-  echo "Add missing secrets to cloud agent environment."
+  echo "Configure the missing dependency or credential."
   exit 1
 fi
