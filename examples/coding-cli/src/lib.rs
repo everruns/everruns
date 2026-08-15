@@ -130,7 +130,7 @@ pub struct Cli {
     #[arg(short = 'p', long, value_name = "PROMPT", conflicts_with = "prompt")]
     print: Option<String>,
 
-    /// MCP configuration file (default: <repository>/.mcp.json when present).
+    /// Trusted MCP configuration file. Repository files are never loaded automatically.
     #[arg(long, value_name = "FILE")]
     mcp_config: Option<PathBuf>,
 
@@ -231,12 +231,33 @@ impl Cli {
     }
 
     pub fn mcp_config(&self) -> Option<PathBuf> {
-        self.mcp_config.clone().or_else(|| {
-            self.repository()
-                .ok()
-                .map(|root| root.join(".mcp.json"))
-                .filter(|path| path.is_file())
-        })
+        self.mcp_config.clone()
+    }
+}
+
+#[cfg(test)]
+mod cli_tests {
+    use super::*;
+
+    #[test]
+    fn repository_mcp_config_requires_explicit_opt_in() {
+        let repository = tempfile::tempdir().unwrap();
+        let repository_config = repository.path().join(".mcp.json");
+        std::fs::write(&repository_config, r#"{"mcpServers":{}}"#).unwrap();
+
+        let implicit =
+            Cli::try_parse_from(["ercode", "-C", repository.path().to_str().unwrap()]).unwrap();
+        assert_eq!(implicit.mcp_config(), None);
+
+        let explicit = Cli::try_parse_from([
+            "ercode",
+            "-C",
+            repository.path().to_str().unwrap(),
+            "--mcp-config",
+            repository_config.to_str().unwrap(),
+        ])
+        .unwrap();
+        assert_eq!(explicit.mcp_config(), Some(repository_config));
     }
 }
 
