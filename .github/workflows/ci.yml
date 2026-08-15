@@ -71,7 +71,7 @@ jobs:
       skip_docker: ${{ steps.ci_opt_outs.outputs.skip_docker }}
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check release workflow security
         run: bash scripts/test-release-workflow-security.sh
@@ -131,7 +131,7 @@ jobs:
           set_output skip_docker "ci:skip-docker"
           set_output skip_integration_workflows "ci:skip-integration-workflows"
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: core_filter
         with:
           filters: |
@@ -268,7 +268,7 @@ jobs:
       # Exclusion filters need `predicate-quantifier: every`; with the default
       # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
       # non-markdown file and incorrectly enables the live paid matrix.
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: live_filter
         with:
           predicate-quantifier: every
@@ -300,7 +300,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -316,7 +316,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -334,7 +334,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust MSRV toolchain
         uses: dtolnay/rust-toolchain@1.94.0
@@ -367,7 +367,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.knowledge == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install okf-lint
         run: cargo install okf-lint --version 0.1.1 --locked
@@ -387,7 +387,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check capability contract ownership
         run: bash scripts/lib/check-capability-contract.sh
@@ -403,7 +403,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -421,7 +421,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -440,7 +440,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -458,7 +458,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -478,7 +478,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -497,7 +497,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -515,7 +515,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -533,7 +533,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install pinned rustdoc JSON toolchain
         uses: dtolnay/rust-toolchain@master
@@ -555,7 +555,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -570,7 +570,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -588,7 +588,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check every server test file is run by CI or allowlisted
         run: bash scripts/lib/check-server-test-enumeration.sh
@@ -600,7 +600,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -628,7 +628,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # This job builds the most of any single CI job: provider crates, the full
       # runtime, the CLI, and all integration crates share one target/ dir. Their
@@ -718,7 +718,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -740,7 +740,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.shell == 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install shell test dependencies
         run: |
@@ -784,10 +784,10 @@ jobs:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -811,10 +811,10 @@ jobs:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -838,10 +838,10 @@ jobs:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -866,10 +866,10 @@ jobs:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -915,7 +915,7 @@ jobs:
       # and inject DOPPLER_TOKEN via step env below.
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -927,7 +927,7 @@ jobs:
           shared-key: "test"
 
       - name: Cache cargo binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/cargo-binstall
@@ -1030,7 +1030,7 @@ jobs:
       # code (build.rs, proc-macros, test bodies) would see it via env.
       - name: Install Doppler CLI
         if: github.event_name == 'push'
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Run Slack integration tests (real API via Doppler)
         if: github.event_name == 'push'
@@ -1106,7 +1106,7 @@ jobs:
       STORAGE_S3_FORCE_PATH_STYLE: "true"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1117,7 +1117,7 @@ jobs:
           shared-key: "test"
 
       - name: Cache cargo binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/cargo-binstall
@@ -1195,7 +1195,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1212,28 +1212,28 @@ jobs:
         run: cargo build --profile release-ci -p everruns-server -p everruns-worker -p everruns-cli
 
       - name: Upload server binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: everruns-server
           path: target/release-ci/everruns-server
           retention-days: 1
 
       - name: Upload worker binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: everruns-worker
           path: target/release-ci/everruns-worker
           retention-days: 1
 
       - name: Upload CLI binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: everruns-cli
           path: target/release-ci/everruns
           retention-days: 1
 
       - name: Upload export-openapi binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: export-openapi
           path: target/release-ci/export-openapi
@@ -1285,7 +1285,7 @@ jobs:
       AUTH_MODE: none
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.96.0
@@ -1297,7 +1297,7 @@ jobs:
           shared-key: "test"
 
       - name: Cache cargo binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/bin/cargo-binstall
@@ -1317,13 +1317,13 @@ jobs:
         run: sqlx migrate run --source crates/server/migrations
 
       - name: Download server binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-server
           path: ./bin
 
       - name: Download worker binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-worker
           path: ./bin
@@ -1403,7 +1403,7 @@ jobs:
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Ensure jq is available
         run: |
@@ -1417,13 +1417,13 @@ jobs:
           sudo apt-get install -y jq
 
       - name: Download server binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-server
           path: ./bin
 
       - name: Download CLI binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-cli
           path: ./bin
@@ -1464,7 +1464,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Resolve SDK version matrix
         id: matrix
@@ -1493,17 +1493,17 @@ jobs:
       EVERRUNS_BASE_URL: http://localhost:9000
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
         if: matrix.language == 'typescript'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
 
       - name: Setup Python
         if: matrix.language == 'python'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -1512,7 +1512,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Download server binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-server
           path: ./bin
@@ -1560,10 +1560,10 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Download export-openapi binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: export-openapi
           path: ./bin
@@ -1599,15 +1599,15 @@ jobs:
         working-directory: apps/ui
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -1617,7 +1617,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/ui/.next/cache
           key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
@@ -1654,15 +1654,15 @@ jobs:
         working-directory: apps/ui
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
@@ -1672,7 +1672,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}
@@ -1687,7 +1687,7 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: apps/ui/e2e/playwright-report
@@ -1704,22 +1704,22 @@ jobs:
         working-directory: apps/docs
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 10.33.0
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: apps/docs/pnpm-lock.yaml
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -1799,19 +1799,19 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_docker != 'true'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Download server binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-server
           path: ./bin
 
       - name: Download worker binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: everruns-worker
           path: ./bin
@@ -1819,7 +1819,7 @@ jobs:
       # No host chmod needed: Dockerfile.prebuilt uses COPY --chmod, and the
       # image is only built here (never run in CI).
       - name: Build server Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.prebuilt
@@ -1828,7 +1828,7 @@ jobs:
           tags: everruns-server:ci
 
       - name: Build worker Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile.prebuilt
