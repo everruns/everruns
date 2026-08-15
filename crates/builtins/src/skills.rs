@@ -47,6 +47,16 @@ use serde_json::Value;
 /// Skills capability ID (built-in)
 pub const SKILLS_CAPABILITY_ID: &str = "skills";
 
+/// Activate workspace skill discovery with its default configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Skills;
+
+impl everruns_capability::IntoCapability for Skills {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(SKILLS_CAPABILITY_ID).into()
+    }
+}
+
 /// Path in session VFS where skills are discovered (reuse shared constant)
 use super::attach_skill::SKILLS_DISCOVERY_PATH as SKILLS_PATH;
 

@@ -67,7 +67,18 @@ pub use events::{
     SessionEvent, SessionEventKind,
 };
 #[cfg(feature = "builtins")]
-pub use everruns_builtins::{CompactionConfig, CompactionStrategy, ToolSearch};
+pub use everruns_builtins::{
+    AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
+    ToolSearch,
+};
+#[cfg(feature = "bashkit")]
+pub use everruns_integrations_bashkit::BashkitShell;
+#[cfg(feature = "duckduckgo")]
+pub use everruns_integrations_duckduckgo::DuckDuckGo;
+#[cfg(feature = "filesystem")]
+pub use everruns_integrations_filesystem::FileSystem;
+#[cfg(feature = "web-fetch")]
+pub use everruns_integrations_web_fetch::WebFetch;
 pub use history::{
     HistoryCursor, HistoryCursorParseError, HistoryError, HistoryPage, HistoryPages, HistoryQuery,
     ResumeError, SessionMessage,
@@ -185,10 +196,18 @@ pub use everruns_test_support::LlmSimConfig;
 /// assert!(agent.is_ok());
 /// ```
 pub mod prelude {
+    #[cfg(feature = "bashkit")]
+    pub use crate::BashkitShell;
+    #[cfg(feature = "duckduckgo")]
+    pub use crate::DuckDuckGo;
+    #[cfg(feature = "filesystem")]
+    pub use crate::FileSystem;
     #[cfg(feature = "local")]
     pub use crate::LocalConfig;
     #[cfg(feature = "local")]
     pub use crate::LocalGitWorkspaceProvider;
+    #[cfg(feature = "web-fetch")]
+    pub use crate::WebFetch;
     #[cfg(feature = "capabilities")]
     pub use crate::capability;
     #[cfg(feature = "macros")]
@@ -211,7 +230,10 @@ pub mod prelude {
         WorkspaceProviderId,
     };
     #[cfg(feature = "builtins")]
-    pub use crate::{CompactionConfig, CompactionStrategy, ToolSearch};
+    pub use crate::{
+        AgentInstructionsConfig, CompactionConfig, CompactionStrategy, Skills, StatelessTodoList,
+        ToolSearch,
+    };
     #[cfg(feature = "openai")]
     pub use crate::{OpenAI, OpenAIError};
     pub use everruns_core::turn::TurnStopReason;

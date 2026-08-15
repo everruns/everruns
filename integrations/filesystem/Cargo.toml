@@ -17,6 +17,7 @@ categories = ["filesystem", "development-tools"]
 default = []
 
 [dependencies]
+everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-provider.workspace = true
 anyhow.workspace = true
@@ -28,7 +29,6 @@ hex.workspace = true
 similar = "3"
 
 [dev-dependencies]
-everruns-capability.workspace = true
 chrono.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

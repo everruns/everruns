@@ -1,18 +1,19 @@
 //! A minimal coding agent built only on the public `everruns` library.
 //!
-//! The example opens provider-owned Git workspace heads, binds them through a
-//! Framework [`Environment`], and uses the built-in `session_file_system`
-//! capability. It deliberately contains no process-global workspace state and
-//! no application-defined filesystem tools.
+//! The example opens provider-owned Git workspace heads, binds them directly
+//! when creating a Framework session, and equips one Agent with owner-defined
+//! typed capabilities. It deliberately contains no process-global workspace
+//! state and no application-defined filesystem tools.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 use everruns::{
-    Agent, AgentBuilder, Environment, InMemoryEngine, LocalConfig, LocalGitWorkspaceProvider,
-    Session, SessionId, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
+    Agent, AgentBuilder, AgentInstructionsConfig, BashkitShell, DuckDuckGo, FileSystem,
+    LocalConfig, LocalGitWorkspaceProvider, Model, Session, SessionId, Skills, StatelessTodoList,
+    WebFetch, Workspace, WorkspaceHead, WorkspaceHeadAccess, WorkspacePolicy,
 };
 
 /// System prompt for the coding agent.
@@ -21,28 +22,6 @@ You are a terminal coding assistant operating in the selected Git workspace head
 Use the Framework `read_file`, `write_file`, `edit_file`, `list_directory`, and \
 related session filesystem tools with paths under `/workspace`. Prefer small, \
 verifiable changes and explain what you did.";
-
-/// Public provider-driver selection for the example.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-pub enum ProviderChoice {
-    Openai,
-    Anthropic,
-    Openrouter,
-    Ollama,
-    Llmsim,
-}
-
-impl ProviderChoice {
-    pub fn default_model(self) -> &'static str {
-        match self {
-            Self::Openai => "gpt-5.5",
-            Self::Anthropic => "claude-sonnet-4-5",
-            Self::Openrouter => "openai/gpt-5.2",
-            Self::Ollama => "llama3.2",
-            Self::Llmsim => "llmsim-coding-cli",
-        }
-    }
-}
 
 /// Command-line interface shared by the binary and its help-contract tests.
 #[derive(Clone, Parser, Debug)]
@@ -106,11 +85,7 @@ pub struct Cli {
     #[arg(long)]
     read_only: bool,
 
-    /// Provider driver. Auto-detected from configured environment variables.
-    #[arg(long, value_enum)]
-    provider: Option<ProviderChoice>,
-
-    /// Provider-visible model id (defaults per selected provider).
+    /// OpenAI model id.
     #[arg(short = 'm', long)]
     model: Option<String>,
 
@@ -129,10 +104,6 @@ pub struct Cli {
     /// Run one prompt non-interactively and print only the final answer.
     #[arg(short = 'p', long, value_name = "PROMPT", conflicts_with = "prompt")]
     print: Option<String>,
-
-    /// MCP configuration file (default: <repository>/.mcp.json when present).
-    #[arg(long, value_name = "FILE")]
-    mcp_config: Option<PathBuf>,
 
     /// One-shot prompt. Omit to start an interactive REPL on the selected head.
     #[arg(value_name = "PROMPT", trailing_var_arg = true)]
@@ -179,37 +150,15 @@ impl Cli {
         }
     }
 
-    pub fn provider(&self) -> ProviderChoice {
-        if self.offline {
-            return ProviderChoice::Llmsim;
-        }
-        if let Some(provider) = self.provider {
-            return provider;
-        }
-        if std::env::var_os("OPENAI_API_KEY").is_some() {
-            ProviderChoice::Openai
-        } else if std::env::var_os("ANTHROPIC_API_KEY").is_some() {
-            ProviderChoice::Anthropic
-        } else if std::env::var_os("OPENROUTER_API_KEY").is_some() {
-            ProviderChoice::Openrouter
-        } else if std::env::var_os("OLLAMA_BASE_URL").is_some()
-            || std::env::var_os("OLLAMA_API_KEY").is_some()
-        {
-            ProviderChoice::Ollama
-        } else {
-            ProviderChoice::Llmsim
-        }
-    }
-
     pub fn model(&self) -> String {
         self.model
             .clone()
             .or_else(|| std::env::var("EVERRUNS_CLI_MODEL").ok())
-            .unwrap_or_else(|| self.provider().default_model().to_string())
+            .unwrap_or_else(|| "gpt-5.6-terra".to_string())
     }
 
     pub fn offline(&self) -> bool {
-        self.offline
+        self.offline || std::env::var_os("OPENAI_API_KEY").is_none()
     }
 
     pub fn reasoning_effort(&self) -> Option<&str> {
@@ -228,15 +177,6 @@ impl Cli {
 
     pub fn ask(&self) -> bool {
         self.ask && self.print.is_none()
-    }
-
-    pub fn mcp_config(&self) -> Option<PathBuf> {
-        self.mcp_config.clone().or_else(|| {
-            self.repository()
-                .ok()
-                .map(|root| root.join(".mcp.json"))
-                .filter(|path| path.is_file())
-        })
     }
 }
 
@@ -322,77 +262,34 @@ impl CodingWorkspace {
         }
         builder.create().await.context("create Git workspace head")
     }
-
-    /// Permanently bind a new session to the selected head before execution.
-    pub async fn start_session(
-        &self,
-        engine: &InMemoryEngine,
-        agent: &Agent,
-        head: WorkspaceHead,
-    ) -> Result<Session> {
-        let environment = Environment::builder()
-            .workspace(head)
-            .build()
-            .context("build the workspace environment")?;
-        engine
-            .create(agent.clone())
-            .environment(environment)
-            .start()
-            .await
-            .context("bind the session to its workspace head")
-    }
-
-    /// Resume a typed session on its exact persisted head.
-    pub async fn resume_session(
-        &self,
-        engine: &InMemoryEngine,
-        agent: &Agent,
-        session_id: SessionId,
-    ) -> Result<Session> {
-        engine
-            .attach(session_id, agent.clone())
-            .await
-            .with_context(|| format!("attach session {session_id} to the local engine"))?;
-        engine
-            .resume(session_id)
-            .await
-            .with_context(|| format!("resume session {session_id} on its recorded head"))
-    }
-
-    /// Start a distinct session on an existing head that was created as shared.
-    pub async fn start_shared_session(
-        &self,
-        engine: &InMemoryEngine,
-        agent: &Agent,
-        recorded_session: SessionId,
-    ) -> Result<Session> {
-        let recorded = self.resume_session(engine, agent, recorded_session).await?;
-        let head = recorded
-            .workspace_head()
-            .cloned()
-            .ok_or_else(|| anyhow!("session {recorded_session} has no recorded workspace head"))?;
-        if head.access() != WorkspaceHeadAccess::Shared {
-            bail!(
-                "session {recorded_session} records an isolated head; use --resume for that session or create a head with --shared"
-            );
-        }
-        self.start_session(engine, agent, head).await
-    }
 }
 
-/// Start a coding [`Agent`] builder using Framework filesystem tools.
-pub fn agent_builder() -> AgentBuilder {
+/// Return the head recorded by a session when it was explicitly created as shared.
+pub fn shared_head(recorded: &Session) -> Result<WorkspaceHead> {
+    let session_id = recorded.session_id();
+    let head = recorded
+        .workspace_head()
+        .cloned()
+        .ok_or_else(|| anyhow!("session {session_id} has no recorded workspace head"))?;
+    if head.access() != WorkspaceHeadAccess::Shared {
+        bail!(
+            "session {session_id} records an isolated head; use --resume for that session or create a head with --shared"
+        );
+    }
+    Ok(head)
+}
+
+/// Start a coding [`Agent`] builder with a model and typed capabilities.
+pub fn coding_agent(model: Model) -> AgentBuilder {
     Agent::builder()
+        .name("ercode")
         .instructions(SYSTEM_PROMPT)
-        .capability("session_file_system")
-        .capability("bashkit_shell")
-        .capability("agent_instructions")
-        .capability("skills")
-        .capability("infinity_context")
-        .capability("stateless_todo_list")
-        .capability("loop_detection")
-        .capability("prompt_caching")
-        .capability("tool_output_persistence")
-        .capability("web_fetch")
-        .capability("duckduckgo")
+        .model(model)
+        .capability(FileSystem)
+        .capability(BashkitShell::new())
+        .capability(AgentInstructionsConfig::default())
+        .capability(Skills)
+        .capability(StatelessTodoList)
+        .capability(WebFetch::new())
+        .capability(DuckDuckGo)
 }

@@ -1,19 +1,18 @@
-# ercode — a complete coding agent on the public `everruns` API
+# ercode — a small coding agent on the public `everruns` API
 
 `ercode` is a small terminal coding agent built only on the public
-[`everruns`](../../crates/everruns) crate. It demonstrates provider-owned Git
-workspace heads, typed session resume, `Environment` binding, `WorkspacePolicy`,
-and Framework coding capabilities without importing `everruns-core`,
-`everruns-host`, or `everruns-local` directly.
+[`everruns`](../../crates/everruns) crate. Agent creation is the center of the
+example: it selects a model, adds typed coding capabilities, and binds a safe
+workspace policy. The surrounding CLI demonstrates provider-owned Git workspace
+heads, typed session resume, and direct session/workspace binding without importing
+`everruns-core`, `everruns-host`, or `everruns-local` directly.
 
-The example retains the historical coding-agent experience while exercising
-the Framework facade: a multiline ratatui composer, model/tool status,
-optional destructive-tool approval, open provider and model selection, MCP
-servers, durable conversation resume, and model switching without losing
-history. Its profile enables `session_file_system`, `bashkit_shell`, live
-`agent_instructions`, `skills`, `infinity_context`, `stateless_todo_list`,
-`loop_detection`, `prompt_caching`, `tool_output_persistence`, `web_fetch`, and
-`duckduckgo`.
+The deliberately small profile uses typed values for `session_file_system`,
+`bashkit_shell`, live `agent_instructions`, `skills`, `stateless_todo_list`,
+`web_fetch`, and `duckduckgo`. The CLI keeps a multiline composer, optional
+destructive-tool approval, and durable conversation resume. It
+supports OpenAI and a deterministic offline simulator; multi-provider routing
+belongs in an application, not this example.
 
 The important safety model is simple:
 
@@ -38,26 +37,20 @@ cargo run -p everruns-coding-cli -- --offline --head review --base main \
   "inspect the repository"
 ```
 
-Provider auto-detection checks OpenAI, Anthropic, OpenRouter, then Ollama. You
-can also select one explicitly and pass its provider-visible model id:
+With `OPENAI_API_KEY` set, the CLI uses OpenAI and accepts a model id:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cargo run -p everruns-coding-cli -- --provider openai --model gpt-5.5 \
+cargo run -p everruns-coding-cli -- --model gpt-5.6-terra \
   --head docs --base main "improve the README"
 ```
 
-The supported service configurations are `openai`, `anthropic`, `openrouter`,
-`ollama`, and deterministic `llmsim`; each uses its public driver crate.
+Without that variable, the CLI falls back to the deterministic simulator.
 `--reasoning-effort <LEVEL>` attaches a portable per-turn control.
 
-Interactive mode supports `/help`, `/tools`, `/cwd`, `/mcp`, `/clear`,
-`/model`, `/model <provider>/<model>`, and `/quit`. Model switching builds a new
-immutable Agent snapshot and resumes the same typed Session through its durable
-event history and exact workspace-head binding. Bare model ids retain the
-current provider. Pass `--ask` to confirm filesystem writes and shell tools.
-One-shot `--print` never prompts. Workspace `.mcp.json` files are discovered
-automatically, or `--mcp-config <FILE>` selects one explicitly.
+Interactive mode supports `/help`, `/tools`, `/cwd`, `/clear`,
+`/model`, and `/quit`. Pass `--ask` to confirm filesystem writes and shell
+tools. One-shot `--print` never prompts.
 
 `-C/--cwd <REPOSITORY>` selects a trusted local Git repository when creating a
 new head. Resume and shared-head modes reopen the workspace recorded in durable
@@ -134,8 +127,8 @@ cargo run -p everruns-coding-cli -- --help
 
 The package tests create temporary Git repositories and prove isolated writes,
 selected-head paths, policy enforcement, typed reopen/resume, missing-head
-errors, explicit sharing, no implicit deletion, historical flags, open provider
-selection, MCP parsing, and the complete coding capability catalog. Source and
+errors, explicit sharing, no implicit deletion, and owner-defined typed
+capability values. Source and
 manifest guards reject internal Everruns dependencies, process-global workspace
 state, direct `tokio::fs`, and duplicate filesystem tools. Changes under this
 example are in the Rust CI path filter, so workspace Clippy/tests compile the

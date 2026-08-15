@@ -46,6 +46,16 @@ use serde_json::Value;
 
 pub const STATELESS_TODO_LIST_CAPABILITY_ID: &str = "stateless_todo_list";
 
+/// Activate the conversation-backed todo list with its default configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StatelessTodoList;
+
+impl everruns_capability::IntoCapability for StatelessTodoList {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(STATELESS_TODO_LIST_CAPABILITY_ID).into()
+    }
+}
+
 /// Stateless Todo List capability - enables agents to create and manage task lists
 /// for tracking work progress. State is maintained in conversation history.
 pub struct StatelessTodoListCapability;

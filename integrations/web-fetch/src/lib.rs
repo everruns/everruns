@@ -40,6 +40,34 @@ mod egress_transport;
 
 pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
 
+/// Agent-facing web-fetch configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WebFetch {
+    enable_file_download: bool,
+}
+
+impl WebFetch {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Allow fetched content to be saved into the session workspace.
+    pub fn enable_file_download(mut self, enabled: bool) -> Self {
+        self.enable_file_download = enabled;
+        self
+    }
+}
+
+impl everruns_capability::IntoCapability for WebFetch {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(WEB_FETCH_CAPABILITY_ID)
+            .config(serde_json::json!({
+                "enable_file_download": self.enable_file_download,
+            }))
+            .into()
+    }
+}
+
 /// Ed25519 public key JWK derived from a signing key seed.
 ///
 /// Used to register the public key in the HTTP message signatures directory

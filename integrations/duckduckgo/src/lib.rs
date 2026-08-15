@@ -45,6 +45,17 @@ inventory::submit! {
 // ============================================================================
 
 const DUCKDUCKGO_API_BASE: &str = "https://api.duckduckgo.com";
+pub const DUCKDUCKGO_CAPABILITY_ID: &str = "duckduckgo";
+
+/// Activate DuckDuckGo instant answers with its default configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DuckDuckGo;
+
+impl everruns_capability::IntoCapability for DuckDuckGo {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(DUCKDUCKGO_CAPABILITY_ID).into()
+    }
+}
 
 // ============================================================================
 // DuckDuckGoCapability
@@ -54,7 +65,7 @@ pub struct DuckDuckGoCapability;
 
 impl Capability for DuckDuckGoCapability {
     fn id(&self) -> &str {
-        "duckduckgo"
+        DUCKDUCKGO_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

@@ -31,9 +31,10 @@ use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_too
 
 /// A model selected for an [`Agent`].
 ///
-/// Live models are named with a plain provider-visible id and configured with a
-/// separate [`AgentBuilder::provider`] call. [`Model::simulated`] bundles its
-/// private offline provider so deterministic agents need no extra setup.
+/// Live models can carry their provider with [`Model::new`] or use a plain
+/// provider-visible id with a separate [`AgentBuilder::provider`] call.
+/// [`Model::simulated`] bundles its private offline provider so deterministic
+/// agents need no extra setup.
 #[derive(Clone)]
 pub struct Model {
     id: String,
@@ -41,6 +42,15 @@ pub struct Model {
 }
 
 impl Model {
+    /// Select a live model and the provider used to reach it.
+    ///
+    /// Bundling these values is convenient when model selection is application
+    /// configuration. Advanced builders can still configure a plain model id
+    /// and provider separately.
+    pub fn new(id: impl Into<String>, provider: impl Into<Provider>) -> Self {
+        Self::bundled(id, provider.into())
+    }
+
     /// A deterministic in-process model that always replies with `response`.
     ///
     /// Backed by the `llmsim` driver, so an agent using it runs entirely
@@ -773,9 +783,10 @@ impl AgentBuilder {
 
     /// Select the model the agent talks to. Required.
     ///
-    /// Live models use their provider-visible string id. Configure how to reach
-    /// that model separately with [`provider`](Self::provider). A
-    /// [`Model::simulated`] value needs no provider.
+    /// Live models use their provider-visible string id. [`Model::new`] can
+    /// bundle the provider, or it can be configured separately with
+    /// [`provider`](Self::provider). A [`Model::simulated`] value needs no
+    /// provider.
     pub fn model(mut self, model: impl Into<Model>) -> Self {
         self.model = Some(model.into());
         self
@@ -1635,6 +1646,19 @@ mod tests {
                 LlmSimDriver::new(LlmSimConfig::fixed("Sure.")),
             ))
             .model("assistant-v1")
+            .build()
+            .expect("valid agent");
+
+        assert_eq!(agent.model, ModelSpec::on("acme", "assistant-v1"));
+        assert_eq!(agent.provider.id().as_str(), "acme");
+    }
+
+    #[test]
+    fn build_accepts_a_model_with_its_provider() {
+        let provider = Provider::new("acme", LlmSimDriver::new(LlmSimConfig::fixed("Sure.")));
+        let agent = Agent::builder()
+            .instructions("You are concise.")
+            .model(Model::new("assistant-v1", provider))
             .build()
             .expect("valid agent");
 

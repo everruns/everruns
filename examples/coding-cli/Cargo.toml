@@ -20,22 +20,15 @@ name = "ercode"
 path = "src/main.rs"
 
 [dependencies]
-# Application behavior comes from the public facade. Provider crates supply
-# open wire drivers without importing core, host, worker, or server internals.
-everruns = { path = "../../crates/everruns", features = ["local", "bashkit", "web-fetch", "duckduckgo", "mcp-stdio"] }
-everruns-anthropic = { path = "../../crates/anthropic" }
-everruns-openai.workspace = true
-everruns-openrouter = { path = "../../crates/openrouter" }
+# Application behavior, including the OpenAI provider, comes from the public
+# facade. The example intentionally has one Framework dependency.
+everruns = { path = "../../crates/everruns", features = ["local", "openai", "bashkit", "web-fetch", "duckduckgo"] }
 anyhow = "1.0"
-async-trait.workspace = true
-chrono.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 crossterm = "0.29"
 dirs.workspace = true
 ratatui = "0.30"
 ratatui-textarea = "0.9.1"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
 similar = "3"
 textwrap = "0.16"
 tokio = { version = "1.50", features = ["full"] }
@@ -43,6 +36,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-# Add local-process MCP support only for the existing application-parity fixture.
-everruns = { path = "../../crates/everruns", features = ["local", "mcp-stdio"] }
+serde_json = "1.0"
 tempfile = "3"

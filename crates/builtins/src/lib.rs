@@ -159,12 +159,13 @@ pub use prompt_canary_guardrail::{
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
-pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
+pub use skills::{SKILLS_CAPABILITY_ID, Skills, SkillsCapability};
 pub use skills_scoped::{
     ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
 };
 pub use stateless_todo_list::{
-    STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
+    STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoList, StatelessTodoListCapability,
+    WriteTodosTool,
 };
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use tool_approval::{

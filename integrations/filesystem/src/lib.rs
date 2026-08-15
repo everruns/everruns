@@ -837,6 +837,16 @@ fn apply_text_edits(
 
 pub const SESSION_FILE_SYSTEM_CAPABILITY_ID: &str = "session_file_system";
 
+/// Activate the session filesystem with its default configuration.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FileSystem;
+
+impl everruns_capability::IntoCapability for FileSystem {
+    fn into_capability(self) -> everruns_capability::CapabilitySpec {
+        everruns_capability::CapabilityRef::new(SESSION_FILE_SYSTEM_CAPABILITY_ID).into()
+    }
+}
+
 /// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
 
