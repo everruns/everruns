@@ -55,6 +55,7 @@ use crate::output_guardrail::{
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
     post_generation_guardrail_text,
 };
+use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::runtime_context::{AssembledTurnContext, TurnContextRequest, TurnContextResolver};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -880,7 +881,7 @@ pub struct ReasonAtom {
     context_resolver: Arc<dyn TurnContextResolver>,
     message_retriever: Arc<dyn MessageRetriever>,
     capability_registry: CapabilityRegistry,
-    event_emitter: Arc<dyn EventEmitter>,
+    event_emitter: PhaseEffectEmitter<dyn PhaseEffectSink>,
     /// Optional image resolver for resolving image_file content parts
     image_resolver: Option<Arc<dyn ImageResolver>>,
     /// Optional heartbeater for stream-liveness signalling (EVE-531).
@@ -917,13 +918,13 @@ impl ReasonAtom {
         context_resolver: impl TurnContextResolver + 'static,
         message_retriever: impl MessageRetriever + 'static,
         capability_registry: CapabilityRegistry,
-        event_emitter: impl EventEmitter + 'static,
+        event_emitter: impl PhaseEffectSink + 'static,
     ) -> Self {
         Self {
             context_resolver: Arc::new(context_resolver),
             message_retriever: Arc::new(message_retriever),
             capability_registry,
-            event_emitter: Arc::new(event_emitter),
+            event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             image_resolver: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,

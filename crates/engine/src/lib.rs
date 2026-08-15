@@ -29,6 +29,7 @@
 
 mod execution;
 mod machine;
+mod phase_effects;
 #[cfg(test)]
 mod test_fixtures;
 mod turn;
@@ -66,6 +67,7 @@ pub use execution::{
     ReasonAtom, ReasonInput, ReasonResult, ToolCallResult,
 };
 pub use machine::{Execution, ExecutionTransition, TurnExecution};
+pub use phase_effects::{PhaseEffect, PhaseEffectSink};
 pub use turn::{
     ActOutcome, ActPlan, ActSchedulingFacts, ActivityOutcome, HostFacts, TurnLifecycleEffect,
     TurnPlan, TurnState, plan_after_act, plan_after_process_input, plan_after_reason,

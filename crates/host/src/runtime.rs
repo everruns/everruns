@@ -15,7 +15,6 @@ use crate::host::{
     execute_reason_activity_with_prompt_messages,
 };
 use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
-use crate::turn_strategy::{RuntimeTurnPlan, RuntimeTurnState};
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_capability::plugin_capability_id;
@@ -48,7 +47,9 @@ use everruns_core::{
     execution_loading::SessionStore, provider_resolution::ProviderStore,
     session_services::SessionStorageStore,
 };
-use everruns_engine::{ActOutcome, ActivityOutcome, Execution, HostFacts, reason_schedules_act};
+use everruns_engine::{
+    ActOutcome, ActivityOutcome, Execution, HostFacts, TurnPlan, TurnState, reason_schedules_act,
+};
 use everruns_engine::{InputAtomInput, ReasonInput};
 use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
@@ -272,7 +273,7 @@ pub struct CapabilityDelta {
 /// the running summaries it accumulated while executing the planned steps. A
 /// carried error is the failure signal (it is exactly what the pre-engine state
 /// machine kept in `pending_error`), and a failed turn reports no response and
-/// no tool calls, matching the previous `TurnOutcome::Failed` mapping.
+/// no tool calls, matching the engine's terminal-failure mapping.
 fn finish_turn(
     turn_id: everruns_provider::typed_id::TurnId,
     stop_reason: TurnStopReason,
@@ -1118,7 +1119,7 @@ impl InProcessRuntime {
         // host operation each plan names and performs the lifecycle effects the
         // engine returns as data. There is no second copy of the planning brain
         // in the runtime.
-        let state = RuntimeTurnState {
+        let state = TurnState {
             org_id,
             session_id,
             harness_id: snapshot.harness_id,
@@ -1175,7 +1176,7 @@ impl InProcessRuntime {
 
         loop {
             match plan {
-                RuntimeTurnPlan::ScheduleReason(_) => {
+                TurnPlan::ScheduleReason(_) => {
                     let state = execution.state().clone();
                     let mut prompt_message_ids = std::mem::take(&mut pending_prompt_message_ids);
                     prompt_message_ids.extend(
@@ -1264,7 +1265,7 @@ impl InProcessRuntime {
                     .await;
                     plan = transition.plan;
                 }
-                RuntimeTurnPlan::ScheduleAct(act_plan) => {
+                TurnPlan::ScheduleAct(act_plan) => {
                     tool_calls_count += act_plan.input.tool_calls.len();
                     let act_result = execute_act_activity(self, act_plan.input).await?;
                     let outcome = ActOutcome {
@@ -1294,7 +1295,7 @@ impl InProcessRuntime {
                     .await;
                     plan = transition.plan;
                 }
-                RuntimeTurnPlan::Complete { stop_reason, error } => {
+                TurnPlan::Complete { stop_reason, error } => {
                     steering.close();
                     return Ok(finish_turn(
                         turn_id,
@@ -1308,7 +1309,7 @@ impl InProcessRuntime {
                 // The in-process runtime has no external tool-result delivery
                 // path, so a pause resolves the turn here. The session has
                 // already been marked `waiting_for_tool_results` by the effect.
-                RuntimeTurnPlan::WaitForToolResults { .. } => {
+                TurnPlan::WaitForToolResults { .. } => {
                     steering.close();
                     self.inject_steering_inputs(session_id, steering.drain())
                         .await?;

@@ -20,16 +20,29 @@ name = "ercode"
 path = "src/main.rs"
 
 [dependencies]
-# The only Everruns dependency: the public facade, with local Git heads and the
-# real-provider edge enabled through public features.
-everruns = { path = "../../crates/everruns", features = ["local", "openai"] }
+# Application behavior comes from the public facade. Provider crates supply
+# open wire drivers without importing core, host, worker, or server internals.
+everruns = { path = "../../crates/everruns", features = ["local", "bashkit", "web-fetch", "duckduckgo", "mcp-stdio"] }
+everruns-anthropic = { path = "../../crates/anthropic" }
+everruns-openai.workspace = true
+everruns-openrouter = { path = "../../crates/openrouter" }
 anyhow = "1.0"
+async-trait.workspace = true
+chrono.workspace = true
 clap = { version = "4.5", features = ["derive"] }
+crossterm = "0.29"
 dirs.workspace = true
-tokio = { version = "1.50", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
+ratatui = "0.30"
+ratatui-textarea = "0.9.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+similar = "3"
+textwrap = "0.16"
+tokio = { version = "1.50", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 # Add local-process MCP support only for the existing application-parity fixture.
 everruns = { path = "../../crates/everruns", features = ["local", "mcp-stdio"] }
-serde_json = "1.0"
 tempfile = "3"

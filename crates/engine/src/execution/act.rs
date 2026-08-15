@@ -44,6 +44,7 @@ use crate::events::{
     ToolStartedData,
 };
 use crate::message::ContentPart;
+use crate::phase_effects::{PhaseEffectEmitter, PhaseEffectSink};
 use crate::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
@@ -201,12 +202,12 @@ fn is_false(value: &bool) -> bool {
 pub struct ActAtom<T, E>
 where
     T: ToolExecutor,
-    E: EventEmitter,
+    E: PhaseEffectSink,
 {
     // Held as `Arc` so individual `cpu_bound` tool calls can be offloaded to
     // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
     tool_executor: Arc<T>,
-    event_emitter: Arc<E>,
+    event_emitter: PhaseEffectEmitter<E>,
     /// Runtime-owned service snapshot cloned into every per-call ToolContext.
     context_services: crate::tool_context::ToolContextServices,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
@@ -241,13 +242,13 @@ where
 impl<T, E> ActAtom<T, E>
 where
     T: ToolExecutor,
-    E: EventEmitter,
+    E: PhaseEffectSink,
 {
     /// Create a new ActAtom with default hooks (ConnectionSetup + ClientSideTool).
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
-            event_emitter: Arc::new(event_emitter),
+            event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::tool_context::ToolContextServices::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
@@ -267,7 +268,7 @@ where
     ) -> Self {
         Self {
             tool_executor: Arc::new(tool_executor),
-            event_emitter: Arc::new(event_emitter),
+            event_emitter: PhaseEffectEmitter::new(Arc::new(event_emitter)),
             context_services: crate::tool_context::ToolContextServices {
                 file_store: Some(file_store),
                 ..Default::default()
@@ -1512,7 +1513,8 @@ where
             .or_else(|| self.context_services.network_access.clone());
         // Provide event emitter + context so tools can emit tool.progress events
         if tool_context.event_emitter.is_none() {
-            tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
+            tool_context.event_emitter =
+                Some(Arc::new(self.event_emitter.clone()) as Arc<dyn EventEmitter>);
         }
         tool_context.event_context = Some(event_context.clone());
         tool_context.tool_call_id = Some(tool_call.id.clone());

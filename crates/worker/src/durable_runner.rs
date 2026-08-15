@@ -10,7 +10,7 @@ use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,
     WorkflowSignal, WorkflowStatus,
 };
-pub use everruns_host::RuntimeTurnState as DurableTurnInput;
+pub use everruns_engine::TurnState as DurableTurnInput;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use std::sync::Arc;
 use tokio::sync::Mutex;

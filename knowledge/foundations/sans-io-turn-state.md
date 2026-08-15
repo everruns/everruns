@@ -16,9 +16,8 @@ phases and transitions in different shapes, so semantics could drift.
 
 Both real hosts now advance the engine-owned `TurnExecution`: the durable path
 through `DurableExecution`, and the in-process runtime through
-`InProcessExecution`. The mutable
-machine survives only behind the `in_memory_loop` in `everruns-test-support`
-(moved out of core by EVE-875), which no shipped host drives.
+`InProcessExecution`. The former core/test-support state machines and the
+stateless host compatibility planner have been removed.
 
 This spec converges them on one **sans-IO** representation: a
 serializable `TurnState` whose transitions are pure functions, with all I/O —
@@ -49,7 +48,7 @@ knowing all three.
 
 **The consequences compound at the edges.** Crash recovery, cancellation
 mid-phase, sealing, and replay each need to answer "what had already happened?"
-Today each answers it separately, which is why `RuntimeTurnState` accumulated
+Historically each answered it separately, which is why the host turn state accumulated
 fields (`llm_call_count`, `time_to_first_token_ms`, `final_answer_preview`) that
 exist to reconstruct what the in-process path never lost.
 
@@ -90,10 +89,9 @@ cannot be verified against current behavior does not ship.
 
 ### Stage 1 — the value (landed)
 
-`crates/core/src/turn_state.rs`: a serializable `TurnState` with consuming
-transitions and a pure `next_action`. It mirrors `TurnStateMachine`'s semantics
-exactly, and a conformance test drives identical sequences through both and
-asserts the same actions and outcomes.
+The migration began with a temporary serializable value in core and a
+conformance test against the former mutable machine. That scaffolding was
+removed once `everruns-engine::TurnExecution` became the only representation.
 
 Nothing is rewired. The deliverable is a representation both hosts *could*
 share, plus the evidence that it behaves identically.
@@ -128,8 +126,8 @@ implementations and compares the resulting engine state.
 
 `TurnState` owns iteration, call counts, cumulative usage,
 `previous_response_id`, first-token timing, and the final-answer preview in
-one value that carries everything a resume needs. `RuntimeTurnState` is only a
-host compatibility alias for this engine type.
+one value that carries everything a resume needs. Hosts use the engine type
+directly; no prefixed alias remains.
 
 This is where the two representations actually converge, and it is the stage
 that pays for stage 1.
@@ -140,11 +138,15 @@ that pays for stage 1.
 apply it through one host applier. Engine phases still emit phase-local events
 through the injected `EventEmitter`.
 
-### Stage 4 — move phase recording into transition effects
+### Stage 4 — host-applied phase recording (landed)
 
-One effect at a time: a phase stops emitting, the transition returns the effect
-instead, the applier performs it. Each move is a small PR with an unchanged
-event stream as its success bar (event-sequence tests over a fixed scenario).
+Phase-local canonical events are expressed through `PhaseEffectSink` and
+applied by the injected host emitter. They are applied immediately because
+streaming deltas and tool progress are observable while a phase is still
+running; buffering them in the post-phase transition would break streaming.
+Post-phase lifecycle changes remain ordered `TurnLifecycleEffect` values on the
+transition. Cross-driver tests compare plans, checkpoints, and lifecycle-event
+order while restoring the durable driver after every phase.
 
 ### Stage 5 — the durable host becomes a persisting in-process host (landed)
 
@@ -157,9 +159,8 @@ path retains `InProcessExecution` and applies the same transition directly.
 - **Behavior-preserving.** For a fixed scenario, the emitted event sequence
   before and after each stage is identical. This is the primary bar; a stage
   that cannot demonstrate it does not ship.
-- **No new representation.** The stage that adds a field to `TurnState` removes
-  it from `RuntimeTurnState` in the same change. Two copies of a field is the
-  failure mode this whole effort exists to remove.
+- **No new representation.** `everruns-engine::TurnState` is the only turn
+  state. Two copies of a field is the failure mode this work prevents.
 - **Durable equivalence.** A test that discards `TurnState` at every step and
   rebuilds it from the serialized value must produce the same outcome as one
   that keeps it in memory (agentyk's
@@ -186,20 +187,19 @@ converge later.
 
 ## References
 
-- `crates/core/src/turn.rs` — `TurnStateMachine`, `TurnPhase`, `TurnAction`, `TurnOutcome`
-- `crates/core/src/turn_state.rs` — the stage-1 value
+- `crates/core/src/turn.rs` — the shared provider-neutral stop reason only
 - `crates/engine/src/machine.rs` — the shared `Execution` contract and serializable
   `TurnExecution` state machine
 - `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
 - `crates/engine/src/execution/` — the shared Input/Reason/Act algorithms and
   engine-owned phase I/O values
+- `crates/engine/src/phase_effects.rs` — live host-applied phase effects
 - `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs` —
   neutral contracts used by the engine and capability authors
-- `crates/host/src/turn_strategy.rs` — `advance_host_execution`, the runtime host's thin
-  I/O wrapper over an explicit engine driver (plus the legacy `plan_next_host_turn`
-  compatibility wrapper and pre-EVE-840 type aliases),
-  and the host-fact resolvers / effect applier both runtime hosts share
+- `crates/host/src/turn_strategy.rs` — `advance_host_execution`, the runtime
+  host's thin I/O wrapper over an explicit engine driver, plus host-fact
+  resolvers and the lifecycle-effect applier both drivers share
 - `crates/host/src/runtime.rs` — `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)
 - `knowledge/operations/durable-execution-engine.md` — the durable host this converges with

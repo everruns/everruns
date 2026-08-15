@@ -1985,7 +1985,7 @@ impl Command for CancelSession {
 
         // EVE-708: settle the session status. Cancelling marks the durable workflow
         // `Cancelled`, which makes the worker fail the task and return early — so the
-        // runtime turn loop never reaches `TurnAction::Complete` and never transitions
+        // runtime turn loop never reaches a terminal `TurnPlan` and never transitions
         // the session back to `idle`. Session status is a stored column that is not
         // derived from events, so we must set it here or the session stays `active`
         // indefinitely, blocking clean follow-up turns.

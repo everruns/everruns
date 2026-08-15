@@ -193,7 +193,8 @@ defense tied to *progress* and a deliberate **Sealed** terminal.
   See `crates/durable/src/persistence/store.rs` (`SealedTaskInfo`, `ReclaimResult`)
   and `reclaim_stale_tasks` in the Postgres/in-memory stores.
 
-The turn-level outcome is `everruns_core::turn::TurnOutcome::Sealed { reason, .. }`,
+The turn-level outcome is `everruns_engine::TurnPlan::Terminal` with
+`everruns_core::TurnStopReason::Sealed`,
 distinct from `Success` and `Failed`. `SealReason` is `no_progress` (this guard)
 or `budget`.
 

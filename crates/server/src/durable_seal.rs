@@ -43,12 +43,12 @@ struct SealedSessionContext {
 
 /// Best-effort extraction of session context from a task input.
 ///
-/// `process_input`/`reason` tasks serialize `RuntimeTurnState` with the IDs at
+/// `process_input`/`reason` tasks serialize engine `TurnState` with the IDs at
 /// the top level; `act` tasks nest them under `context`. Try both shapes.
 fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
     let org_id = input.get("org_id").and_then(|v| v.as_i64())?;
 
-    // Top-level shape (RuntimeTurnState / DurableTurnInput).
+    // Top-level shape (TurnState / DurableTurnInput).
     let top = (
         input.get("session_id"),
         input.get("turn_id"),

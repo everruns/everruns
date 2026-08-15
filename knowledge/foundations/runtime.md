@@ -166,13 +166,13 @@ Host planning APIs:
 
 - `Execution` / `TurnExecution`
 - `ExecutionTransition`
-- `RuntimeTurnState`
-- `RuntimeActPlan`
-- `RuntimeTurnPlan`
+- `TurnState`
+- `ActPlan`
+- `TurnPlan`
 - `advance_host_execution(...)`
 
-`plan_next_host_turn(...)` remains only as a compatibility wrapper for callers
-that have not yet adopted an explicit execution driver.
+There is no stateless compatibility planner. Every host retains an explicit
+execution driver, so state advancement has one owner.
 
 Terminal host plans carry the same structured stop reason. Durable hosts must
 preserve it in the turn value returned to their downstream caller.

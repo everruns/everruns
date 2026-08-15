@@ -44,14 +44,14 @@ runtime, so they transfer to the rest of Everruns.
   `run_turn(session_id, input)` or the `run_text_turn(session_id, text)`
   convenience.
 
-- **Atoms** — the shared core execution units the runtime and worker both run:
+- **Engine phases** — the shared execution units the immediate and durable drivers both run:
   `InputAtom` (records the input message, emits `input.message`), `ReasonAtom`
   (assembles context, calls the LLM), `ActAtom` (executes tool calls). Atom
-  construction lives host-side so improvements flow to both embedded and durable
-  hosts.
+  algorithms live in `everruns-engine`; host composition injects their effect
+  contracts so improvements flow to both embedded and durable hosts.
 
-- **TurnStateMachine** — the shared `everruns-core` state machine the host
-  executes; keeps embedded turns behaviorally aligned with worker turns.
+- **TurnExecution** — the serializable `everruns-engine` state machine advanced
+  by every execution driver.
 
 - **Assembled turn context** — the merged context the reason phase uses: harness
   chain + agent + session overlay, resolved capabilities (with dependency
@@ -105,10 +105,9 @@ phase orchestration instead of duplicating atom wiring:
 - **execute_input_activity / execute_reason_activity / execute_act_activity** —
   phase-local orchestration entrypoints.
 - **advance_host_execution(...)** with an engine **Execution** driver —
-  durable-agnostic turn-strategy advancement. **plan_next_host_turn(...)** is
-  retained as a compatibility wrapper. The runtime decides the next semantic
-  step; the host owns queueing, retries, scheduling, persistence, and
-  resumption.
+  durable-agnostic turn-strategy advancement. The engine decides the next
+  semantic step; the host owns queueing, retries, scheduling, persistence, and
+  resumption. There is no stateless compatibility planner.
 
 `InProcessRuntime` itself implements `RuntimeHostAdapter` and drives its own turn
 loop by calling these canonical host activity functions directly.

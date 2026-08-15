@@ -237,10 +237,9 @@ use everruns_provider::user_facing_error;
 #[cfg(test)]
 mod test_fixtures;
 
-// Turn orchestration (state machine, context, outcomes)
+// Stable completion semantics; execution state and planning live in everruns-engine.
 pub mod turn;
 pub mod turn_completion;
-pub mod turn_state;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) are now in
 // separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.

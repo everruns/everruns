@@ -36521,7 +36521,7 @@
       },
       "TurnSealedData": {
         "type": "object",
-        "description": "Data for turn.sealed event (EVE-534).\n\nA sealed turn was deliberately stopped to prevent waste. It is observably\ndistinct from `turn.completed` (success) and `turn.failed` (error). The\n`reason` is the stable wire form of `everruns_core::turn::SealReason`\n(`\"no_progress\"` or `\"budget\"`).",
+        "description": "Data for turn.sealed event (EVE-534).\n\nA sealed turn was deliberately stopped to prevent waste. It is observably\ndistinct from `turn.completed` (success) and `turn.failed` (error). The\n`reason` is the durable engine's stable seal-reason wire value.\n(`\"no_progress\"` or `\"budget\"`).",
         "required": [
           "turn_id",
           "reason"

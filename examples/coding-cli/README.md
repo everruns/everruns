@@ -1,10 +1,19 @@
-# ercode — Framework workspace heads from the public `everruns` API
+# ercode — a complete coding agent on the public `everruns` API
 
 `ercode` is a small terminal coding agent built only on the public
 [`everruns`](../../crates/everruns) crate. It demonstrates provider-owned Git
 workspace heads, typed session resume, `Environment` binding, `WorkspacePolicy`,
-and Framework `session_file_system` tools without importing `everruns-core`,
+and Framework coding capabilities without importing `everruns-core`,
 `everruns-host`, or `everruns-local` directly.
+
+The example retains the historical coding-agent experience while exercising
+the Framework facade: a multiline ratatui composer, model/tool status,
+optional destructive-tool approval, open provider and model selection, MCP
+servers, durable conversation resume, and model switching without losing
+history. Its profile enables `session_file_system`, `bashkit_shell`, live
+`agent_instructions`, `skills`, `infinity_context`, `stateless_todo_list`,
+`loop_detection`, `prompt_caching`, `tool_output_persistence`, `web_fetch`, and
+`duckduckgo`.
 
 The important safety model is simple:
 
@@ -20,7 +29,7 @@ The CLI prints its typed session id, workspace/head ids, access mode, base, and
 state directory before the first prompt. Keep the session id when you want to
 resume or explicitly share that recorded head.
 
-## Run offline or with OpenAI
+## Run offline or with a live provider
 
 Offline mode is deterministic and needs no credential or network:
 
@@ -29,20 +38,34 @@ cargo run -p everruns-coding-cli -- --offline --head review --base main \
   "inspect the repository"
 ```
 
-For a real model, set `OPENAI_API_KEY` and optionally choose a model:
+Provider auto-detection checks OpenAI, Anthropic, OpenRouter, then Ollama. You
+can also select one explicitly and pass its provider-visible model id:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-cargo run -p everruns-coding-cli -- --model gpt-5-mini \
+cargo run -p everruns-coding-cli -- --provider openai --model gpt-5.5 \
   --head docs --base main "improve the README"
 ```
+
+The supported service configurations are `openai`, `anthropic`, `openrouter`,
+`ollama`, and deterministic `llmsim`; each uses its public driver crate.
+`--reasoning-effort <LEVEL>` attaches a portable per-turn control.
+
+Interactive mode supports `/help`, `/tools`, `/cwd`, `/mcp`, `/clear`,
+`/model`, `/model <provider>/<model>`, and `/quit`. Model switching builds a new
+immutable Agent snapshot and resumes the same typed Session through its durable
+event history and exact workspace-head binding. Bare model ids retain the
+current provider. Pass `--ask` to confirm filesystem writes and shell tools.
+One-shot `--print` never prompts. Workspace `.mcp.json` files are discovered
+automatically, or `--mcp-config <FILE>` selects one explicitly.
 
 `-C/--cwd <REPOSITORY>` selects a trusted local Git repository when creating a
 new head. Resume and shared-head modes reopen the workspace recorded in durable
 Framework state and therefore do not accept `--cwd`. Framework state defaults
 to the operating system's user state directory; `--state-dir <DIR>` selects an
-explicit persistent location. With no prompt, `ercode` starts a REPL (`Ctrl-D`
-exits). Every REPL turn uses the same session and head.
+explicit persistent location. With no prompt, `ercode` starts its inline TUI
+(`Esc` exits). Enter sends and Alt/Shift-Enter inserts a newline. Every turn
+uses the same session and head.
 
 ## Two isolated heads from the same base
 
@@ -111,8 +134,9 @@ cargo run -p everruns-coding-cli -- --help
 
 The package tests create temporary Git repositories and prove isolated writes,
 selected-head paths, policy enforcement, typed reopen/resume, missing-head
-errors, explicit sharing, and no implicit deletion. Source and manifest guards
-reject internal Everruns dependencies, process-global workspace state, direct
-`tokio::fs`, and duplicate filesystem tools. Changes under this example are in
-the Rust CI path filter, so workspace Clippy/tests compile the binary and all
-example tests on pull requests.
+errors, explicit sharing, no implicit deletion, historical flags, open provider
+selection, MCP parsing, and the complete coding capability catalog. Source and
+manifest guards reject internal Everruns dependencies, process-global workspace
+state, direct `tokio::fs`, and duplicate filesystem tools. Changes under this
+example are in the Rust CI path filter, so workspace Clippy/tests compile the
+binary and all example tests on pull requests.

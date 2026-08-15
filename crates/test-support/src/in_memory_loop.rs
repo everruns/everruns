@@ -23,14 +23,15 @@ use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::ExecutionSession;
 use everruns_core::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
+use everruns_core::turn::TurnStopReason;
 use everruns_engine::{
-    ActAtom, ActInput, InputAtom, InputAtomInput, ReasonAtom, ReasonInput, ReasonResult,
+    ActAtom, ActOutcome, ActivityOutcome, Execution, HostFacts, InputAtom, InputAtomInput,
+    ReasonAtom, ReasonInput, TurnPlan, TurnState,
 };
 use everruns_host::{
     EventHistory, EventReadLimit, EventReadRequest, EventReader, HostEventEmitter,
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
-    InMemorySessionStore, NoopEventSink, StoreTurnContextResolver,
+    InMemorySessionStore, InProcessExecution, NoopEventSink, StoreTurnContextResolver,
 };
 use everruns_provider::driver_registry::ProviderConfig;
 use everruns_provider::driver_registry::{DriverId, DriverRegistry};
@@ -85,72 +86,6 @@ impl TurnResult {
     /// Check if the response contains a specific substring
     pub fn contains(&self, text: &str) -> bool {
         self.response.contains(text)
-    }
-
-    /// Create a TurnResult from a TurnOutcome and turn_id.
-    fn from_outcome(outcome: TurnOutcome, turn_id: TurnId) -> Self {
-        let stop_reason = outcome.stop_reason();
-        match outcome {
-            TurnOutcome::Success {
-                response,
-                iterations,
-                tool_calls_count,
-                ..
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: true,
-                error: None,
-                stop_reason,
-                turn_id,
-                llm_generations: vec![],
-            },
-            TurnOutcome::Failed {
-                error, iterations, ..
-            } => Self {
-                response: String::new(),
-                iterations,
-                tool_calls_count: 0,
-                success: false,
-                error: Some(error),
-                stop_reason,
-                turn_id,
-                llm_generations: vec![],
-            },
-            TurnOutcome::MaxIterationsReached {
-                response,
-                iterations,
-                tool_calls_count,
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: true, // Max iterations is not a failure
-                error: None,
-                stop_reason,
-                turn_id,
-                llm_generations: vec![],
-            },
-            // A sealed turn was deliberately stopped (EVE-534). Surface it as a
-            // non-success with the seal reason so in-memory callers can observe
-            // it distinctly from a normal completion.
-            TurnOutcome::Sealed {
-                reason,
-                response,
-                iterations,
-                tool_calls_count,
-            } => Self {
-                response,
-                iterations,
-                tool_calls_count,
-                success: false,
-                error: Some(format!("turn sealed: {reason}")),
-                stop_reason,
-                turn_id,
-                llm_generations: vec![],
-            },
-        }
     }
 }
 
@@ -399,6 +334,7 @@ impl InMemoryAgenticLoopBuilder {
         let agent = AgentDefinition {
             display_name: Some(self.agent_name),
             capabilities: agent_capability_configs,
+            max_iterations: Some(self.max_iterations),
             parallel_tool_calls: self.parallel_tool_calls,
             tools: explicit_tool_definitions,
             ..AgentDefinition::new(agent_id, "in-memory", self.system_prompt)
@@ -507,7 +443,6 @@ impl InMemoryAgenticLoopBuilder {
             input_atom: Arc::new(input_atom),
             reason_atom: Arc::new(reason_atom),
             act_atom: Arc::new(act_atom),
-            max_iterations: self.max_iterations,
             reasoning_effort_handle: self.reasoning_effort_handle,
         })
     }
@@ -564,7 +499,6 @@ pub struct InMemoryAgenticLoop {
     input_atom: Arc<InputAtom<EventHistory>>,
     reason_atom: Arc<ReasonAtom>,
     act_atom: Arc<ActAtom<ToolRegistry, HostEventEmitter>>,
-    max_iterations: usize,
     reasoning_effort_handle: Option<everruns_core::tool_context::ReasoningEffortHandle>,
 }
 
@@ -589,12 +523,12 @@ impl InMemoryAgenticLoop {
     /// Accepts either a string or an `InputMessage` for full control over
     /// message options like reasoning effort.
     ///
-    /// This executes the full agentic loop using the TurnStateMachine:
+    /// This executes the full agentic loop using the shared engine execution:
     /// 1. Add user message
     /// 2. Record input (InputAtom)
     /// 3. Reason loop (ReasonAtom → ActAtom → repeat until done)
     ///
-    /// The TurnStateMachine ensures consistent orchestration logic,
+    /// The engine execution ensures consistent orchestration logic,
     /// proper error handling (checking success flag), and turn ID management.
     ///
     /// # Examples
@@ -650,101 +584,100 @@ impl InMemoryAgenticLoop {
         }
         self.event_emitter.emit(request).await?;
 
-        // Create turn context and state machine
-        let turn_context = TurnContext::new(self.session_id, message.id, self.agent_id, 0);
-        let mut state_machine = TurnStateMachine::new(turn_context, self.max_iterations);
+        let turn_id = TurnId::new();
+        let mut execution = InProcessExecution::new(TurnState {
+            org_id: 0,
+            session_id: self.session_id,
+            harness_id: self.harness_id,
+            agent_id: Some(self.agent_id),
+            input_message_id: message.id,
+            turn_id: None,
+            previous_response_id: None,
+            iteration: 1,
+            request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
+        });
+        let base_context = |exec: bool| {
+            let context = ExecutionContext::new(self.session_id, turn_id, message.id);
+            if exec { context.next_exec() } else { context }
+        };
 
-        // Track last reason result for ActAtom
-        let mut last_reason_result: Option<ReasonResult> = None;
-        // Track response_id from last reason call for chaining
-        let mut previous_response_id: Option<String> = None;
+        self.input_atom
+            .execute(InputAtomInput {
+                context: base_context(false),
+            })
+            .await?;
+        let mut plan = execution
+            .advance(
+                ActivityOutcome::ProcessInput {
+                    turn_id: Some(turn_id),
+                },
+                0,
+                Utc::now(),
+                HostFacts::default(),
+            )
+            .plan;
+        let mut response = String::new();
 
-        // Execute the turn using the state machine
         loop {
-            match state_machine.next_action() {
-                TurnAction::ExecuteInput => {
-                    let base_context = ExecutionContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
-                    self.input_atom
-                        .execute(InputAtomInput {
-                            context: base_context,
-                        })
-                        .await?;
-                    state_machine.on_input_completed();
-                }
-
-                TurnAction::ExecuteReason => {
-                    let base_context = ExecutionContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
+            match plan {
+                TurnPlan::ScheduleReason(state) => {
                     let reason_result = self
                         .reason_atom
                         .execute(ReasonInput {
-                            context: base_context.next_exec(),
+                            context: base_context(true),
                             harness_id: self.harness_id,
                             agent_id: Some(self.agent_id),
                             org_id: 0,
                             mcp_tool_definitions: vec![],
-                            previous_response_id: previous_response_id.take(),
-                            iteration: state_machine.current_iteration() as u32 + 1,
+                            previous_response_id: state.previous_response_id,
+                            iteration: state.iteration,
                         })
                         .await?;
-
-                    let tool_call_count = reason_result.tool_calls.len();
-                    previous_response_id = reason_result.response_id.clone();
-                    // In-memory loop has no signal mechanism, so
-                    // has_pending_user_messages is always false.
-                    state_machine.on_reason_completed(
-                        reason_result.text.clone(),
-                        tool_call_count,
-                        reason_result.success,
-                        reason_result.error.clone(),
-                        reason_result.finish_reason.clone(),
-                        false,
-                    );
-
-                    // Store for ActAtom if needed
-                    if reason_result.has_tool_calls {
-                        last_reason_result = Some(reason_result);
+                    if !reason_result.text.is_empty() {
+                        response = reason_result.text.clone();
                     }
+                    plan = execution
+                        .advance(
+                            ActivityOutcome::Reason(Box::new(reason_result)),
+                            0,
+                            Utc::now(),
+                            HostFacts::default(),
+                        )
+                        .plan;
                 }
-
-                TurnAction::ExecuteAct => {
-                    let reason_result = last_reason_result
-                        .take()
-                        .expect("ExecuteAct requires prior ReasonResult with tool calls");
-                    let base_context = ExecutionContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
-                    self.act_atom
-                        .execute(ActInput {
-                            org_id: Some(0),
-                            context: base_context.next_exec(),
-                            harness_id: self.harness_id,
-                            agent_id: Some(self.agent_id),
-                            tool_calls: reason_result.tool_calls,
-                            tool_definitions: reason_result.tool_definitions,
-                            locale: reason_result.locale,
-                            blueprint_id: None,
-                            network_access: reason_result.network_access,
-                            // Request-level parallel tool calling preference,
-                            // carried from agent config through reason (EVE-598).
-                            parallel_tool_calls: reason_result.parallel_tool_calls,
-                        })
-                        .await?;
-                    state_machine.on_act_completed();
+                TurnPlan::ScheduleAct(act_plan) => {
+                    let act_result = self.act_atom.execute(act_plan.input).await?;
+                    plan = execution
+                        .advance(
+                            ActivityOutcome::Act(ActOutcome {
+                                blocked: act_result.blocked,
+                                waiting_for_tool_results: act_result.waiting_for_tool_results,
+                            }),
+                            0,
+                            Utc::now(),
+                            HostFacts::default(),
+                        )
+                        .plan;
                 }
-
-                TurnAction::Complete(outcome) => {
-                    let turn_id = state_machine.context().turn_id;
-                    let mut result = TurnResult::from_outcome(outcome, turn_id);
+                TurnPlan::Complete { stop_reason, error } => {
+                    let state = execution.state();
+                    let mut result = TurnResult {
+                        response,
+                        iterations: state.llm_call_count as usize,
+                        tool_calls_count: state.tool_call_count as usize,
+                        success: error.is_none(),
+                        error,
+                        stop_reason,
+                        turn_id,
+                        llm_generations: vec![],
+                    };
                     result.llm_generations = self
                         .events()
                         .await
@@ -767,6 +700,18 @@ impl InMemoryAgenticLoop {
                         })
                         .collect();
                     return Ok(result);
+                }
+                TurnPlan::WaitForToolResults { .. } => {
+                    return Ok(TurnResult {
+                        response,
+                        iterations: execution.state().llm_call_count as usize,
+                        tool_calls_count: execution.state().tool_call_count as usize,
+                        success: true,
+                        error: None,
+                        stop_reason: TurnStopReason::EndTurn,
+                        turn_id,
+                        llm_generations: vec![],
+                    });
                 }
             }
         }
@@ -1104,6 +1049,15 @@ mod tests {
             .build()
             .await
             .unwrap();
+
+        let configured_agent = everruns_core::execution_loading::AgentStore::get_agent(
+            &runner.agent_store,
+            runner.agent_id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(configured_agent.max_iterations, Some(5));
 
         let result = runner.run_turn("Test").await.unwrap();
         assert_eq!(result.response, "Custom response");

@@ -68,6 +68,7 @@ filesystem = ["everruns-host/filesystem"]
 # inside the host-provided session filesystem; the others are explicit opt-ins.
 bashkit = ["everruns-host/bashkit"]
 web-fetch = ["everruns-host/web-fetch"]
+duckduckgo = ["everruns-host/duckduckgo"]
 lua = ["everruns-host/lua"]
 mcp = ["everruns-host/mcp"]
 # Enable local-process (stdio) MCP servers, mirroring `everruns-host/mcp-stdio`.
