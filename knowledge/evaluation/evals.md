@@ -216,6 +216,10 @@ The product supports:
 Exact page structure, component names, table columns, and navigation placement
 belong to the UI source and design system.
 
+Remaining aggregation, trend, filtering, and export decisions for externally
+published results are tracked in
+[`external-results-publishing.md`](external-results-publishing.md).
+
 ## Security and isolation
 
 - Every eval, case, run, result, artifact, dataset, and management token is

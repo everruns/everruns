@@ -37,7 +37,7 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
   dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
   or API shapes. `docs/` holds public product documentation only — durable decisions and
-  investigations belong in `knowledge/` or `proposals/`. Run `just check-okf` after knowledge
+  investigations belong in `knowledge/`. Run `just check-okf` after knowledge
   changes.
 - Linear: OSS project, EVE team.
 

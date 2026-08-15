@@ -72,7 +72,7 @@ pub const DATASET_EXPORT: Policy = Policy {
 ///
 /// Unlike `EVAL_RUN`, importing creates no sessions — the run is ingested
 /// already-complete — so it requires only eval-management, not session
-/// management. See proposals/mira-results-publishing.md.
+/// management. See knowledge/evaluation/evals.md.
 pub const EVAL_IMPORT: Policy = Policy {
     id: "eval.import",
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
@@ -771,7 +771,7 @@ impl EvalService {
     /// Ingest a full external run group (one external run → one EvalRun per
     /// eval, sharing `source.run_id`). Upserts evals/cases by name and stores
     /// fully-scored, completed results. Everruns trusts the external verdicts;
-    /// it never re-grades. See proposals/mira-results-publishing.md.
+    /// it never re-grades. See knowledge/evaluation/evals.md.
     pub async fn import_run(
         &self,
         caller: &Caller,

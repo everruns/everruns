@@ -2,6 +2,7 @@
 
 * [Test Cases Specification](test-cases.md) - Manual test case format.
 * [Evals](evals.md) - User-facing behavioral evals.
+* [External Evaluation Results Publishing](external-results-publishing.md) - Publishing externally executed eval results into Everruns and remaining reporting work.
 * [Agent Checks](agent-checks.md) - Advisory agent config checks (lint, LLM analysis, health checks).
 * [Online Evals (Observers)](online-evals.md) - Online evals (Observers) over production sessions (proposed).
 * [SWE-bench Lite on Everruns](swe-bench-lite.md) - SWE-bench Lite evaluation harness.

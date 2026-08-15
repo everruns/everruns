@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-15
+
+* Moved the remaining active design work out of the temporary `proposals/`
+  area and into its owning knowledge domains: secret-leak guardrails under
+  security, external evaluation publishing under evaluation, and the portable
+  sandbox abstraction under harnesses. Implemented Platform proposals were
+  removed rather than preserved as historical design documents.
+
 ## 2026-08-13
 
 * **EVE-897 closed at two families: the `ToolContext` service bag mostly cannot

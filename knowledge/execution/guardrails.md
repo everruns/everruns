@@ -315,6 +315,9 @@ Clients localize copy from the code rather than the human text. The
 
 ## Future phases (not implemented)
 
+The defense-in-depth design and its remaining success bar are tracked in
+[`secret-leak-guardrails.md`](../security/secret-leak-guardrails.md).
+
 - More model-backed checks: PII (NER), prompt-injection classifiers; a dedicated
   provider moderation API (e.g. OpenAI moderations) as an alternative backend to
   the utility-model classifier; local/on-device models later. The end-of-message
