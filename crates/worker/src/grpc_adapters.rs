@@ -852,27 +852,6 @@ impl GrpcOrgAdapter {
     }
 }
 
-// Type aliases for backward compatibility at call sites
-pub type GrpcMessageRetriever = GrpcAdapter;
-pub type GrpcSessionFileStore = GrpcAdapter;
-pub type GrpcEventEmitter = GrpcAdapter;
-pub type GrpcSessionStorageStore = GrpcAdapter;
-pub type GrpcConnectionResolver = GrpcAdapter;
-pub type GrpcLeasedResourceStore = GrpcAdapter;
-pub type GrpcSessionResourceRegistry = GrpcAdapter;
-pub type GrpcSessionTaskRegistry = GrpcAdapter;
-pub type GrpcSessionSqlDbStore = GrpcAdapter;
-
-pub type GrpcAgentStore = GrpcOrgAdapter;
-pub type GrpcHarnessStore = GrpcOrgAdapter;
-pub type GrpcSessionStore = GrpcOrgAdapter;
-pub type GrpcProviderStore = GrpcOrgAdapter;
-pub type GrpcImageResolver = GrpcOrgAdapter;
-pub type GrpcImageArtifactStore = GrpcOrgAdapter;
-pub type GrpcProviderCredentialStore = GrpcOrgAdapter;
-pub type GrpcSessionMutator = GrpcOrgAdapter;
-pub type GrpcScheduleStore = GrpcOrgAdapter;
-pub type GrpcPlatformStore = GrpcOrgAdapter;
 /// Budget checker that carries org_id and optional agent_id (captured at
 /// construction) for gRPC calls.
 pub struct GrpcBudgetChecker {
@@ -2590,7 +2569,7 @@ impl SessionStorageStore for GrpcAdapter {
 }
 
 // ============================================================================
-// GrpcConnectionResolver - UserConnectionResolver over gRPC
+// GrpcAdapter - UserConnectionResolver over gRPC
 // ============================================================================
 
 #[async_trait]
@@ -2651,7 +2630,7 @@ impl everruns_core::connection_services::UserConnectionResolver for GrpcAdapter 
 }
 
 // ============================================================================
-// GrpcSessionMutator - SessionMutator over gRPC
+// GrpcOrgAdapter - SessionMutator over gRPC
 // ============================================================================
 
 #[async_trait]
@@ -2668,7 +2647,7 @@ impl everruns_platform::SessionMutator for GrpcOrgAdapter {
 }
 
 // ============================================================================
-// GrpcLeasedResourceStore - LeasedResourceStore over gRPC
+// GrpcAdapter - LeasedResourceStore over gRPC
 // ============================================================================
 
 #[async_trait]
@@ -2740,7 +2719,7 @@ impl LeasedResourceStore for GrpcAdapter {
 }
 
 // ============================================================================
-// GrpcSessionResourceRegistry - SessionResourceRegistry over gRPC
+// GrpcAdapter - SessionResourceRegistry over gRPC
 // ============================================================================
 
 fn proto_session_resource_to_schema(
@@ -2860,7 +2839,7 @@ impl everruns_core::session_services::SessionResourceRegistry for GrpcAdapter {
 }
 
 // ============================================================================
-// GrpcScheduleStore - SessionScheduleStore over gRPC
+// GrpcOrgAdapter - SessionScheduleStore over gRPC
 // ============================================================================
 
 fn proto_leased_resource_to_schema(s: proto::LeasedResourceProto) -> Result<LeasedResource> {
@@ -3112,7 +3091,7 @@ impl everruns_core::session_services::SessionScheduleStore for GrpcOrgAdapter {
 }
 
 // ============================================================================
-// GrpcPlatformStore - PlatformStore implementation over gRPC
+// GrpcOrgAdapter - PlatformStore implementation over gRPC
 // ============================================================================
 
 #[async_trait]
@@ -3888,7 +3867,7 @@ impl everruns_platform::PlatformStore for GrpcOrgAdapter {
 }
 
 // ============================================================================
-// GrpcSessionSqlDbStore - SessionSqlDbStore implementation over gRPC
+// GrpcAdapter - SessionSqlDbStore implementation over gRPC
 // ============================================================================
 
 use everruns_platform::session_sqldb::{
@@ -4287,7 +4266,7 @@ impl everruns_core::delegation_services::SessionCreationAuthority for GrpcSessio
 }
 
 // ============================================================================
-// GrpcSessionTaskRegistry - SessionTaskRegistry over gRPC
+// GrpcAdapter - SessionTaskRegistry over gRPC
 // ============================================================================
 //
 // Task and message payloads travel as native protobuf messages (EVE-642), so

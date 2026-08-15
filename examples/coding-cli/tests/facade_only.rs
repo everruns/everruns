@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use everruns::Model;
+use everruns::{InMemoryEngine, Model};
 use everruns_coding_cli::agent_builder;
 
 #[tokio::test]
@@ -14,7 +14,7 @@ async fn offline_smoke_runs_a_turn() {
         .model(Model::simulated("Done."))
         .build()
         .expect("agent builds via the facade");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let turn = session
         .run("list the files")
         .await
@@ -35,7 +35,7 @@ async fn session_history_persists_across_two_prompts() {
         .model(Model::simulated("ack"))
         .build()
         .expect("agent builds");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let first = session.run("first prompt").await.expect("first turn");
     let second = session.run("second prompt").await.expect("second turn");

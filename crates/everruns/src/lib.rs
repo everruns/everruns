@@ -22,7 +22,7 @@
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::{Agent, Engine, InMemoryEngine, Model};
+//! use everruns::{Agent, InMemoryEngine, Model};
 //!
 //! let agent = Agent::builder()
 //!     .instructions("You are a helpful assistant.")

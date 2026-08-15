@@ -26,7 +26,7 @@ async fn stream_emits_ordered_start_delta_completion() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     // Subscribe before running so the turn's events are observed from the start.
     let stream = session.events();
 
@@ -167,7 +167,7 @@ async fn pre_cancelled_token_yields_cancelled_stop_reason() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let stream = session.events();
     let token = CancellationToken::new();
     token.cancel();
@@ -200,7 +200,7 @@ async fn dropped_and_slow_consumers_do_not_stall_the_runner() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     // One consumer subscribes then immediately drops its stream; another never
     // reads. Neither must block or fail the turn.
@@ -224,8 +224,8 @@ async fn two_sessions_do_not_receive_each_others_events() {
         .build()
         .expect("valid agent");
 
-    let first = agent.session();
-    let second = agent.session();
+    let first = InMemoryEngine::new().create(agent.clone());
+    let second = InMemoryEngine::new().create(agent.clone());
 
     let first_stream = first.events();
     let second_stream = second.events();
@@ -265,7 +265,7 @@ async fn send_routes_to_the_active_turn_and_returns_before_completion() {
         .model(model)
         .build()
         .expect("valid agent");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let initial = tokio::time::timeout(Duration::from_millis(25), session.send("Plan my trip"))
         .await
@@ -302,7 +302,7 @@ async fn send_after_completion_starts_a_follow_up_turn() {
         .model(Model::simulated("done"))
         .build()
         .expect("valid agent");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let initial = session.send("first").await.expect("first accepted");
     initial.wait().await.expect("first completes");
@@ -320,7 +320,7 @@ async fn send_and_wait_is_request_response_convenience() {
         .model(Model::simulated("hello"))
         .build()
         .expect("valid agent");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let turn = session
         .send_and_wait("hi")
@@ -339,7 +339,7 @@ async fn send_acknowledges_before_turn_start_hooks_finish() {
         })
         .build()
         .expect("valid agent");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
 
     let pending = tokio::time::timeout(Duration::from_millis(25), session.send("hi"))
         .await
@@ -359,7 +359,7 @@ async fn turn_handle_cancellation_emits_a_correlated_terminal_event() {
         .model(model)
         .build()
         .expect("valid agent");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let mut events = session.events();
 
     let pending = session.send("hi").await.expect("message accepted");

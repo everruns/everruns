@@ -1,4 +1,4 @@
-use everruns::{Agent, FunctionTool, LlmSimConfig, Model, ToolCall};
+use everruns::{Agent, FunctionTool, InMemoryEngine, LlmSimConfig, Model, ToolCall};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -159,7 +159,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
         .max_iterations(6)
         .build()?;
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let mut events = session.events();
     let context = session.inspect().await?;
     let tool_names = context.tools.iter().map(|tool| tool.name.clone()).collect();
@@ -193,7 +193,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
 #[cfg(test)]
 mod tests {
     use super::{lookup_neighborhood_spot, run_weekend_concierge_demo};
-    use everruns::{Agent, Model};
+    use everruns::{Agent, InMemoryEngine, Model};
 
     #[tokio::test]
     async fn weekend_concierge_demo_stays_deterministic() {
@@ -221,7 +221,7 @@ mod tests {
             .tool(lookup_neighborhood_spot())
             .build()
             .expect("tool should be valid");
-        let context = agent.session().inspect().await.expect("context");
+        let context = InMemoryEngine::new().create(agent.clone()).inspect().await.expect("context");
         assert_eq!(context.tools[0].name, "lookup_neighborhood_spot");
     }
 }

@@ -1,7 +1,6 @@
 // Host-facing builders for core seed models.
 // Decision: keep these in everruns-host so core domain structs stay literal
-// data models while the host owns low-level embedding ergonomics. The runtime
-// compatibility crate only re-exports these builders.
+// data models while the host owns low-level embedding ergonomics.
 
 use std::collections::HashMap;
 

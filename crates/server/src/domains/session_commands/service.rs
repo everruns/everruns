@@ -24,10 +24,7 @@ use everruns_core::runtime_context::resolve_runtime_capabilities;
 use everruns_host::StoreCommandHost;
 use everruns_platform::Harness;
 use everruns_provider::typed_id::SessionId;
-use everruns_worker::worker_adapters::{
-    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
-    AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore, WorkerAdapters,
-};
+use everruns_worker::worker_adapters::{OrgAdapter, SessionAdapter, WorkerAdapters};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -186,19 +183,16 @@ impl SessionCommandService {
         let adapters = self.adapters();
         StoreCommandHost::new(
             session_id,
-            Arc::new(AdapterHarnessStore::new(adapters.clone(), org_id)),
-            Arc::new(AdapterAgentStore::new(adapters.clone(), org_id)),
-            Arc::new(AdapterSessionStore::new(adapters.clone(), org_id)),
-            Arc::new(AdapterMessageRetriever::new(adapters.clone())),
-            Arc::new(AdapterProviderStore::new(adapters.clone(), org_id)),
+            Arc::new(OrgAdapter::new(adapters.clone(), org_id)),
+            Arc::new(OrgAdapter::new(adapters.clone(), org_id)),
+            Arc::new(OrgAdapter::new(adapters.clone(), org_id)),
+            Arc::new(SessionAdapter::new(adapters.clone())),
+            Arc::new(OrgAdapter::new(adapters.clone(), org_id)),
             self.capability_registry.clone(),
             self.driver_registry.clone(),
         )
-        .with_image_resolver(Arc::new(AdapterImageResolver::new(
-            adapters.clone(),
-            org_id,
-        )))
-        .with_file_store(Arc::new(AdapterSessionFileStore::new(adapters)))
+        .with_image_resolver(Arc::new(OrgAdapter::new(adapters.clone(), org_id)))
+        .with_file_store(Arc::new(SessionAdapter::new(adapters)))
     }
 
     async fn load_session_components(
@@ -207,7 +201,7 @@ impl SessionCommandService {
         session_id: SessionId,
     ) -> Result<(Harness, Option<AgentDefinition>, everruns_platform::Session)> {
         let adapters = self.adapters();
-        let agent_store = AdapterAgentStore::new(adapters.clone(), org_id);
+        let agent_store = OrgAdapter::new(adapters.clone(), org_id);
 
         // Stored record (EVE-882): owner authorization is a platform surface,
         // so it reads the persisted Session rather than the execution view.

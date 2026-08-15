@@ -6,10 +6,8 @@
 //! `HostComposition`. The builder validates the value-first configuration and
 //! adapts it, inside [`AgentBuilder::build`], to the existing runtime builders.
 //!
-//! The built Agent owns the configured session lifecycle: it opens independent
-//! sessions, shares their private catalog and canonical event log across Agent
-//! clones, and can resume typed session identities while that lifecycle remains
-//! available.
+//! A built Agent is an immutable behavior description. An application-owned
+//! [`Engine`](crate::Engine) owns session creation, identity, and resumption.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -253,9 +251,9 @@ impl std::error::Error for BuildError {}
 /// The immutable, validated description of an agent.
 ///
 /// Produced by [`AgentBuilder::build`]. It holds the value-first configuration
-/// and materializes independent in-process runtimes from it, one per
-/// [`session`](Agent::session); the underlying runtime composition is kept in
-/// private fields.
+/// and materializes independent in-process runtimes when an execution engine
+/// creates sessions from it. The underlying runtime composition remains
+/// private.
 #[derive(Clone)]
 pub struct Agent {
     name: String,
@@ -317,8 +315,6 @@ struct AgentState {
     backends: OnceCell<HostBackends>,
     binding_store: OnceCell<Arc<dyn EnvironmentBindingStore>>,
     workspace_providers: Mutex<HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>>,
-    issued_sessions: Mutex<HashSet<SessionId>>,
-    compatibility_engine: std::sync::OnceLock<crate::InMemoryEngine>,
 }
 
 impl AgentState {
@@ -327,23 +323,7 @@ impl AgentState {
             backends: OnceCell::new(),
             binding_store: OnceCell::new(),
             workspace_providers: Mutex::new(workspace_providers),
-            issued_sessions: Mutex::new(HashSet::new()),
-            compatibility_engine: std::sync::OnceLock::new(),
         }
-    }
-
-    fn remember(&self, session_id: SessionId) {
-        self.issued_sessions
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .insert(session_id);
-    }
-
-    fn issued(&self, session_id: SessionId) -> bool {
-        self.issued_sessions
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .contains(&session_id)
     }
 
     fn remember_provider(&self, provider: Arc<dyn WorkspaceProvider>) -> bool {
@@ -372,18 +352,12 @@ impl AgentState {
 
 impl fmt::Debug for AgentState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let issued_sessions = self
-            .issued_sessions
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .len();
         f.debug_struct("AgentState")
             .field("backends_initialized", &self.backends.initialized())
             .field(
                 "binding_store_initialized",
                 &self.binding_store.initialized(),
             )
-            .field("issued_sessions", &issued_sessions)
             .finish()
     }
 }
@@ -439,7 +413,7 @@ impl BackendInitError {
         }
     }
 
-    fn resume_error(&self) -> crate::ResumeError {
+    pub(crate) fn resume_error(&self) -> crate::ResumeError {
         match self {
             Self::Event(EventLogError::Corruption { .. }) => crate::ResumeError::Corrupt,
             Self::Event(_) | Self::Host(_) => crate::ResumeError::Unavailable,
@@ -466,73 +440,6 @@ impl Agent {
     /// ```
     pub fn builder() -> AgentBuilder {
         AgentBuilder::default()
-    }
-
-    /// Open a new, independent multi-turn [`Session`](crate::Session) with this
-    /// agent.
-    ///
-    /// The session is lazy: the in-process runtime is assembled on the first
-    /// [`Session::send`](crate::Session::send) or
-    /// [`Session::inspect`](crate::Session::inspect). Before assembling that
-    /// runtime it selects and persists the Agent's default workspace head.
-    /// Each session gets a fresh id and isolated history. The Agent and its
-    /// clones share the private
-    /// session catalog and event log so a dropped session can be resumed while
-    /// the Agent's configured persistence lifecycle remains available.
-    pub fn session(&self) -> crate::Session {
-        use crate::Engine as _;
-        self.compatibility_engine().create(self.clone())
-    }
-
-    /// Resume a session through this Agent's configured session catalog.
-    ///
-    /// The default catalog is Agent-lifetime memory and is shared by Agent
-    /// clones. With [`LocalConfig`](crate::LocalConfig), the catalog and
-    /// canonical event log survive a new Agent and process. The resumed session
-    /// uses this Agent's current model, instructions, tools, and hooks. A
-    /// session that was explicitly bound to an Environment reopens its exact
-    /// recorded workspace head through the registered provider; the Agent's
-    /// default workspace is never substituted for that head.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ResumeError`](crate::ResumeError) when the id is unknown, the
-    /// configured catalog is unavailable, persisted local state is corrupt, or
-    /// an exact recorded workspace head cannot be reopened.
-    pub async fn resume(
-        &self,
-        session_id: SessionId,
-    ) -> Result<crate::Session, crate::ResumeError> {
-        use crate::Engine as _;
-        let engine = self.compatibility_engine();
-        if engine.agent(session_id).is_none() {
-            let backends = self
-                .shared_backends()
-                .await
-                .map_err(|error| error.resume_error())?;
-            let exists = backends
-                .session_store
-                .get_session(session_id)
-                .await
-                .map_err(|_| crate::ResumeError::Unavailable)?
-                .is_some();
-            if !exists {
-                return Err(crate::ResumeError::SessionNotFound { session_id });
-            }
-            self.state.remember(session_id);
-            engine.attach(session_id, self.clone());
-        }
-        engine.resume(session_id).await
-    }
-
-    fn compatibility_engine(&self) -> &crate::InMemoryEngine {
-        self.state
-            .compatibility_engine
-            .get_or_init(crate::InMemoryEngine::new)
-    }
-
-    pub(crate) fn remember_session(&self, session_id: SessionId) {
-        self.state.remember(session_id);
     }
 
     pub(crate) async fn bind_session_environment(
@@ -680,7 +587,7 @@ impl Agent {
             .await
     }
 
-    pub(crate) async fn ensure_session_cataloged(
+    pub(crate) async fn catalog_session(
         &self,
         session_id: SessionId,
     ) -> Result<(), crate::HistoryError> {
@@ -696,9 +603,6 @@ impl Agent {
             .is_some()
         {
             return Ok(());
-        }
-        if !self.state.issued(session_id) {
-            return Err(crate::HistoryError::SessionNotFound { session_id });
         }
         // Catalog identity is intentionally independent from event presence.
         // A zero-message session becomes resumable without inventing a history
@@ -1605,7 +1509,7 @@ mod tests {
     use serde_json::{Value, json};
 
     use super::*;
-    use crate::FunctionTool;
+    use crate::{FunctionTool, InMemoryEngine};
 
     fn obj_schema() -> Value {
         json!({ "type": "object", "properties": {}, "additionalProperties": false })
@@ -1711,7 +1615,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let turn = session.run("Please greet Ada.").await.expect("turn runs");
 
         assert!(turn.success, "turn should succeed: {:?}", turn.error);
@@ -1750,7 +1654,7 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         // The handler error becomes a tool result the model consumes; the turn
         // still completes rather than panicking.
         let turn = session.run("go").await.expect("turn runs");

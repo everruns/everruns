@@ -6,7 +6,9 @@
 use std::fs;
 use std::path::Path;
 
-use everruns::{Agent, CompactionConfig, CompactionStrategy, LocalConfig, McpServer, Model};
+use everruns::{
+    Agent, CompactionConfig, CompactionStrategy, InMemoryEngine, LocalConfig, McpServer, Model,
+};
 
 #[tokio::test]
 async fn compaction_policy_runs_without_host_checkpoint_types() {
@@ -20,8 +22,8 @@ async fn compaction_policy_runs_without_host_checkpoint_types() {
         )
         .build()
         .expect("agent builds");
-    agent
-        .session()
+    InMemoryEngine::new()
+        .create(agent)
         .run("offline turn")
         .await
         .expect("turn runs");
@@ -39,7 +41,7 @@ async fn workspace_files_and_context_are_application_values() {
         .build()
         .expect("agent builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let before = session.inspect().await.expect("context before a turn");
     assert!(before.messages.is_empty());
     assert_eq!(before.model.model.as_str(), "llmsim-model");
@@ -91,7 +93,7 @@ async fn local_plugin_and_http_mcp_config_use_the_framework() {
         .mcp_server(McpServer::http("remote", "https://mcp.invalid/example").tool_discovery(false))
         .build()
         .expect("agent builds");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("plugin context");
     assert!(context.instructions.contains("PLUGIN_CONTEXT_SENTINEL"));
 }
@@ -105,7 +107,11 @@ async fn stdio_mcp_discovers_a_local_tool() {
         .mcp_server(McpServer::stdio("echo", "python3").arg(fixture.to_string_lossy()))
         .build()
         .expect("agent builds");
-    let context = agent.session().inspect().await.expect("MCP discovery");
+    let context = InMemoryEngine::new()
+        .create(agent.clone())
+        .inspect()
+        .await
+        .expect("MCP discovery");
     assert!(
         context
             .tools
@@ -127,7 +133,7 @@ async fn local_profile_supplies_workspace_and_schedule_state() {
         .build()
         .expect("agent builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("local context");
     assert!(
         context

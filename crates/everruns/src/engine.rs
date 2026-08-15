@@ -12,6 +12,7 @@ use crate::{Agent, ResumeError, Session, SessionId};
 ///
 /// The binding deliberately exposes only Framework identity. Backend, store,
 /// host-runtime, and platform transport values remain private to each engine.
+#[async_trait]
 pub trait SessionExecution: Send + Sync + fmt::Debug {
     /// The stable Framework session identity owned by this binding.
     fn session_id(&self) -> SessionId;
@@ -22,6 +23,10 @@ pub trait SessionExecution: Send + Sync + fmt::Debug {
     /// Session does not store the Agent value itself.
     #[doc(hidden)]
     fn agent_snapshot(&self) -> Agent;
+
+    /// Ensure this engine-owned identity is present in its session catalog.
+    #[doc(hidden)]
+    async fn ensure_cataloged(&self) -> Result<(), crate::HistoryError>;
 }
 
 /// Application-facing service-provider interface for session execution.
@@ -75,6 +80,29 @@ impl InMemoryEngine {
         Self::default()
     }
 
+    /// Create a new engine-owned session from an immutable Agent snapshot.
+    pub fn create(&self, agent: Agent) -> Session {
+        let session_id = SessionId::new();
+        self.attach_unchecked(session_id, agent);
+        let session = Session::new(self.binding(session_id), None);
+        self.remember_state(session_id, &session);
+        session
+    }
+
+    /// Reopen a session already attached to this engine.
+    pub async fn resume(&self, session_id: SessionId) -> Result<Session, ResumeError> {
+        if let Some(state) = self.state(session_id) {
+            return Ok(Session::from_inner(state));
+        }
+        let agent = self
+            .agent(session_id)
+            .ok_or(ResumeError::SessionNotFound { session_id })?;
+        let environment = agent.reopen_session_environment(session_id).await?;
+        let session = Session::new(self.binding(session_id), environment);
+        self.remember_state(session_id, &session);
+        Ok(session)
+    }
+
     pub(crate) fn agent(&self, session_id: SessionId) -> Option<Agent> {
         self.inner
             .sessions
@@ -84,12 +112,47 @@ impl InMemoryEngine {
             .map(|entry| entry.agent.clone())
     }
 
-    pub(crate) fn attach(&self, session_id: SessionId, agent: Agent) {
+    fn attach_unchecked(&self, session_id: SessionId, agent: Agent) {
         self.inner
             .sessions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert(session_id, EngineSessionEntry { agent, state: None });
+    }
+
+    /// Attach a persisted local session to this process-local engine.
+    ///
+    /// Agent values may contain provider drivers, function handlers, and hook
+    /// closures, so the local catalog deliberately never serializes them. After
+    /// a process restart, rebuild the Agent from trusted application
+    /// configuration, attach it to its persisted session id, then call
+    /// [`Engine::resume`]. Same-process sessions created by this engine need no
+    /// attachment. Attachment is idempotent: an existing engine binding keeps
+    /// its original Agent snapshot.
+    pub async fn attach(&self, session_id: SessionId, agent: Agent) -> Result<(), ResumeError> {
+        if self.agent(session_id).is_some() {
+            return Ok(());
+        }
+        let backends = agent
+            .shared_backends()
+            .await
+            .map_err(|error| error.resume_error())?;
+        let exists = backends
+            .session_store
+            .get_session(session_id)
+            .await
+            .map_err(|_| ResumeError::Unavailable)?
+            .is_some();
+        if !exists {
+            return Err(ResumeError::SessionNotFound { session_id });
+        }
+        self.inner
+            .sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .entry(session_id)
+            .or_insert(EngineSessionEntry { agent, state: None });
+        Ok(())
     }
 
     fn state(&self, session_id: SessionId) -> Option<Arc<crate::session::SessionInner>> {
@@ -124,25 +187,11 @@ impl InMemoryEngine {
 #[async_trait]
 impl Engine for InMemoryEngine {
     fn create(&self, agent: Agent) -> Session {
-        let session_id = SessionId::new();
-        agent.remember_session(session_id);
-        self.attach(session_id, agent);
-        let session = Session::new(self.binding(session_id), None);
-        self.remember_state(session_id, &session);
-        session
+        InMemoryEngine::create(self, agent)
     }
 
     async fn resume(&self, session_id: SessionId) -> Result<Session, ResumeError> {
-        if let Some(state) = self.state(session_id) {
-            return Ok(Session::from_inner(state));
-        }
-        let agent = self
-            .agent(session_id)
-            .ok_or(ResumeError::SessionNotFound { session_id })?;
-        let environment = agent.reopen_session_environment(session_id).await?;
-        let session = Session::new(self.binding(session_id), environment);
-        self.remember_state(session_id, &session);
-        Ok(session)
+        InMemoryEngine::resume(self, session_id).await
     }
 }
 
@@ -160,6 +209,7 @@ impl fmt::Debug for InMemorySessionExecution {
     }
 }
 
+#[async_trait]
 impl SessionExecution for InMemorySessionExecution {
     fn session_id(&self) -> SessionId {
         self.session_id
@@ -169,5 +219,15 @@ impl SessionExecution for InMemorySessionExecution {
         self.engine
             .agent(self.session_id)
             .expect("engine binding references a cataloged session")
+    }
+
+    async fn ensure_cataloged(&self) -> Result<(), crate::HistoryError> {
+        let agent =
+            self.engine
+                .agent(self.session_id)
+                .ok_or(crate::HistoryError::SessionNotFound {
+                    session_id: self.session_id,
+                })?;
+        agent.catalog_session(self.session_id).await
     }
 }

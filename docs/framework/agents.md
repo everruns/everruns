@@ -3,8 +3,8 @@ title: Agents
 description: Describe an agent with instructions, a model, tools, files, integrations, and an optional workspace.
 ---
 
-An `Agent` is an immutable, validated application description. Build it once,
-then open independent sessions from it.
+An `Agent` is an immutable, validated application description. Pass it to an
+application-owned engine to create independent sessions.
 
 ```rust
 use everruns::{Agent, McpServer, Model};
@@ -55,7 +55,9 @@ the application-facing session context.
 Inspect the next model call before or after a turn:
 
 ```rust
-let session = agent.session();
+# use everruns::InMemoryEngine;
+let engine = InMemoryEngine::new();
+let session = engine.create(agent);
 let context = session.inspect().await?;
 println!("messages: {}", context.messages.len());
 println!("tools: {}", context.tools.len());

@@ -30,7 +30,7 @@ const MAX_POLICY_WALK_ENTRIES: usize = 100_000;
 
 /// Default vendored / build directory names that `WriteBlocklistFileStore`
 /// rejects writes into. Embedders can override via `with_blocklist`.
-const LEGACY_WRITE_BLOCKLIST: &[&str] = &[
+const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
     ".git",
     "node_modules",
     "target",
@@ -42,14 +42,6 @@ const LEGACY_WRITE_BLOCKLIST: &[&str] = &[
     ".tox",
     ".gradle",
 ];
-
-/// Legacy default for [`WriteBlocklistFileStore`].
-///
-/// New applications should configure [`WorkspacePolicy`] instead. This alias
-/// remains only for 0.17 source compatibility; policy defaults are owned by the
-/// policy value and may evolve without a permanent public list.
-#[deprecated(since = "0.17.25", note = "use WorkspacePolicy instead")]
-pub const DEFAULT_WRITE_BLOCKLIST: &[&str] = LEGACY_WRITE_BLOCKLIST;
 
 /// Apply a backend-independent [`WorkspacePolicy`] to a session filesystem.
 ///
@@ -342,11 +334,11 @@ pub struct WriteBlocklistFileStore {
 }
 
 impl WriteBlocklistFileStore {
-    /// Wrap `inner` with the compatibility blocklist.
+    /// Wrap `inner` with the default defense-in-depth blocklist.
     pub fn new(inner: Arc<dyn SessionFileSystem>) -> Self {
         Self {
             inner,
-            blocklist: LEGACY_WRITE_BLOCKLIST
+            blocklist: DEFAULT_WRITE_BLOCKLIST
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),

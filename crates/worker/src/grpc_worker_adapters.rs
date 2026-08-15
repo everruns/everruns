@@ -30,11 +30,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::grpc_adapters::{
-    GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
-    GrpcOutboundToolRateLimiter, GrpcPaymentAuthority, GrpcProviderCredentialStore,
-    GrpcProviderStore, GrpcSessionCreationAuthority, GrpcSessionFileStore, GrpcSessionSqlDbStore,
-    GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcAdapter, GrpcBudgetChecker, GrpcClient, GrpcOrgAdapter, GrpcOutboundToolRateLimiter,
+    GrpcPaymentAuthority, GrpcSessionCreationAuthority,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -113,12 +110,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        let store = GrpcAgentStore::new(self.client.clone(), org_id);
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         store.fetch_agent_record(AgentId::from_uuid(agent_id)).await
     }
 
     async fn get_harness(&self, org_id: i64, harness_id: Uuid) -> Result<Option<Harness>> {
-        let store = GrpcHarnessStore::new(self.client.clone(), org_id);
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         // The server returns a single pre-merged stored record (EVE-881).
         store
             .fetch_harness_record(HarnessId::from_uuid(harness_id))
@@ -130,7 +127,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<ExecutionSession>> {
-        let store = GrpcSessionStore::new(self.client.clone(), org_id);
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         everruns_core::execution_loading::SessionStore::get_session(
             &store,
             SessionId::from_uuid(session_id),
@@ -160,7 +157,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn get_message(&self, session_id: Uuid, message_id: Uuid) -> Result<Option<Message>> {
-        let retriever = GrpcMessageRetriever::new(self.client.clone());
+        let retriever = GrpcAdapter::new(self.client.clone());
         everruns_core::MessageRetriever::get(
             &retriever,
             SessionId::from_uuid(session_id),
@@ -170,12 +167,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
-        let retriever = GrpcMessageRetriever::new(self.client.clone());
+        let retriever = GrpcAdapter::new(self.client.clone());
         everruns_core::MessageRetriever::load(&retriever, SessionId::from_uuid(session_id)).await
     }
 
     async fn load_message_history(&self, query: MessageQuery) -> Result<MessageHistory> {
-        let retriever = GrpcMessageRetriever::new(self.client.clone());
+        let retriever = GrpcAdapter::new(self.client.clone());
         everruns_core::MessageRetriever::load_filtered_history(&retriever, query).await
     }
 
@@ -184,7 +181,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn emit_event(&self, request: EventRequest) -> Result<Event> {
-        let emitter = GrpcEventEmitter::new(self.client.clone());
+        let emitter = GrpcAdapter::new(self.client.clone());
         everruns_core::event_emitter::EventEmitter::emit(&emitter, request).await
     }
 
@@ -193,7 +190,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn get_model_spec(&self, org_id: i64, model_id: Uuid) -> Result<Option<ModelSpec>> {
-        let store = GrpcProviderStore::new(self.client.clone(), org_id);
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         everruns_core::provider_resolution::ProviderStore::get_model_spec(
             &store,
             ModelId::from_uuid(model_id),
@@ -202,7 +199,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn get_default_model_spec(&self, org_id: i64) -> Result<Option<ModelSpec>> {
-        let store = GrpcProviderStore::new(self.client.clone(), org_id);
+        let store = GrpcOrgAdapter::new(self.client.clone(), org_id);
         everruns_core::provider_resolution::ProviderStore::get_default_model_spec(&store).await
     }
 
@@ -221,7 +218,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn resolve_image(&self, org_id: i64, image_id: Uuid) -> Result<Option<ResolvedImage>> {
-        let resolver = GrpcImageResolver::new(self.client.clone(), org_id);
+        let resolver = GrpcOrgAdapter::new(self.client.clone(), org_id);
         everruns_core::image_services::ImageResolver::resolve_image(&resolver, image_id).await
     }
 
@@ -230,7 +227,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         org_id: i64,
         image_ids: &[Uuid],
     ) -> Result<HashMap<Uuid, ResolvedImage>> {
-        let resolver = GrpcImageResolver::new(self.client.clone(), org_id);
+        let resolver = GrpcOrgAdapter::new(self.client.clone(), org_id);
         resolver
             .resolve_images_batch(image_ids)
             .await
@@ -242,7 +239,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::read_file(
             &store,
             SessionId::from_uuid(session_id),
@@ -258,7 +255,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::write_file(
             &store,
             SessionId::from_uuid(session_id),
@@ -278,7 +275,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::write_file_if_content_matches(
             &store,
             SessionId::from_uuid(session_id),
@@ -292,7 +289,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::delete_file(
             &store,
             SessionId::from_uuid(session_id),
@@ -303,7 +300,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::list_directory(
             &store,
             SessionId::from_uuid(session_id),
@@ -313,7 +310,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::stat_file(
             &store,
             SessionId::from_uuid(session_id),
@@ -328,7 +325,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::grep_files(
             &store,
             SessionId::from_uuid(session_id),
@@ -344,7 +341,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::grep_files_with_options(
             &store,
             SessionId::from_uuid(session_id),
@@ -355,7 +352,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
-        let store = GrpcSessionFileStore::new(self.client.clone());
+        let store = GrpcAdapter::new(self.client.clone());
         everruns_core::session_files::SessionFileSystem::create_directory(
             &store,
             SessionId::from_uuid(session_id),
@@ -414,28 +411,25 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     fn sqldb_store(
         &self,
     ) -> std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> {
-        Arc::new(GrpcSessionSqlDbStore::new(self.client.clone()))
+        Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
-        Some(Arc::new(GrpcMessageRetriever::new(self.client.clone())))
+        Some(Arc::new(GrpcAdapter::new(self.client.clone())))
     }
 
     fn storage_store(&self) -> Arc<dyn everruns_core::session_services::SessionStorageStore> {
-        Arc::new(GrpcSessionStorageStore::new(self.client.clone()))
+        Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
-        Arc::new(GrpcImageArtifactStore::new(self.client.clone(), org_id))
+        Arc::new(GrpcOrgAdapter::new(self.client.clone(), org_id))
     }
 
     fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore> {
-        Arc::new(GrpcProviderCredentialStore::new(
-            self.client.clone(),
-            org_id,
-        ))
+        Arc::new(GrpcOrgAdapter::new(self.client.clone(), org_id))
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
@@ -452,7 +446,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         session_id: SessionId,
     ) -> Arc<dyn everruns_platform::PlatformStore> {
         Arc::new(
-            crate::grpc_adapters::GrpcPlatformStore::new_for_platform_session(
+            crate::grpc_adapters::GrpcOrgAdapter::new_for_platform_session(
                 self.client.clone(),
                 org_id,
                 Some(session_id),
@@ -463,38 +457,36 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     fn connection_resolver(
         &self,
     ) -> Arc<dyn everruns_core::connection_services::UserConnectionResolver> {
-        Arc::new(crate::grpc_adapters::GrpcConnectionResolver::new(
-            self.client.clone(),
-        ))
+        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
     }
 
     fn leased_resource_store(
         &self,
     ) -> Arc<dyn everruns_core::session_services::LeasedResourceStore> {
-        Arc::new(GrpcLeasedResourceStore::new(self.client.clone()))
+        Arc::new(GrpcAdapter::new(self.client.clone()))
     }
 
     fn session_resource_registry(
         &self,
     ) -> Option<Arc<dyn everruns_core::session_services::SessionResourceRegistry>> {
-        Some(Arc::new(
-            crate::grpc_adapters::GrpcSessionResourceRegistry::new(self.client.clone()),
-        ))
+        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
+            self.client.clone(),
+        )))
     }
 
     fn session_task_registry(
         &self,
     ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
-        Some(Arc::new(
-            crate::grpc_adapters::GrpcSessionTaskRegistry::new(self.client.clone()),
-        ))
+        Some(Arc::new(crate::grpc_adapters::GrpcAdapter::new(
+            self.client.clone(),
+        )))
     }
 
     fn schedule_store(
         &self,
         org_id: i64,
     ) -> Arc<dyn everruns_core::session_services::SessionScheduleStore> {
-        Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
+        Arc::new(crate::grpc_adapters::GrpcOrgAdapter::new(
             self.client.clone(),
             org_id,
         ))
@@ -622,9 +614,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         // Reuse the same gRPC-backed session-task registry the worker uses for
         // executor RPCs — lifecycle invariants, events, and wake_policy all
         // flow through the server's DbSessionTaskRegistry.
-        Arc::new(crate::grpc_adapters::GrpcSessionTaskRegistry::new(
-            self.client.clone(),
-        ))
+        Arc::new(crate::grpc_adapters::GrpcAdapter::new(self.client.clone()))
     }
 
     async fn prune_terminal_session_tasks(

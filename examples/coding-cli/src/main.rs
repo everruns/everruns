@@ -9,8 +9,9 @@ use clap::{Parser, ValueEnum};
 use crossterm::event::{self, Event as TerminalEvent, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use everruns::{
-    Agent, AgentBuilder, BearerAuth, Controls, InputMessage, Model, Provider, ReasoningConfig,
-    Session, SessionEventKind, StaticHeaderAuth, ToolStartContext, WorkspaceHeadAccess,
+    Agent, AgentBuilder, BearerAuth, Controls, InMemoryEngine, InputMessage, Model, Provider,
+    ReasoningConfig, Session, SessionEventKind, StaticHeaderAuth, ToolStartContext,
+    WorkspaceHeadAccess,
 };
 use everruns_anthropic::AnthropicChatDriver;
 use everruns_coding_cli::{Cli, CodingWorkspace, ProviderChoice, SessionMode, agent_builder};
@@ -44,18 +45,23 @@ async fn main() -> Result<()> {
     let provider = cli.provider();
     let model = cli.model();
     let agent = build_agent(&workspace, &cli, provider, &model)?;
+    let engine = InMemoryEngine::new();
 
     let session = match session_mode {
         SessionMode::NewHead { name, base, shared } => {
             let head = workspace.create_head(name, base.as_deref(), shared).await?;
-            workspace.start_session(&agent, head).await?
+            workspace.start_session(&engine, &agent, head).await?
         }
         SessionMode::SharedHead { recorded_session } => {
             workspace
-                .start_shared_session(&agent, recorded_session)
+                .start_shared_session(&engine, &agent, recorded_session)
                 .await?
         }
-        SessionMode::Resume { session_id } => workspace.resume_session(&agent, session_id).await?,
+        SessionMode::Resume { session_id } => {
+            workspace
+                .resume_session(&engine, &agent, session_id)
+                .await?
+        }
     };
 
     let head = session
@@ -81,7 +87,7 @@ async fn main() -> Result<()> {
     if let Some(prompt) = cli.prompt_text() {
         run_prompt(&session, &prompt, false, cli.reasoning_effort()).await
     } else if std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
-        tui(&workspace, &cli, agent, session, provider, model).await
+        tui(&workspace, &cli, engine, agent, session, provider, model).await
     } else {
         Err(anyhow!(
             "interactive mode requires a terminal; use --print <PROMPT>"
@@ -246,11 +252,16 @@ async fn run_prompt(
     Ok(())
 }
 
+struct ActiveSession {
+    engine: InMemoryEngine,
+    agent: Agent,
+    session: Session,
+}
+
 async fn handle_input(
     workspace: &CodingWorkspace,
     cli: &Cli,
-    agent: &mut Agent,
-    session: &mut Session,
+    active: &mut ActiveSession,
     provider: &mut ProviderChoice,
     model: &mut String,
     line: &str,
@@ -261,7 +272,10 @@ async fn handle_input(
             "/help  /tools  /cwd  /mcp  /clear  /model  /quit\nAll other input runs a turn."
         ),
         "/cwd" => {
-            let head = session.workspace_head().context("missing workspace head")?;
+            let head = active
+                .session
+                .workspace_head()
+                .context("missing workspace head")?;
             eprintln!(
                 "workspace={} head={} base={}",
                 head.workspace_id(),
@@ -270,12 +284,13 @@ async fn handle_input(
             );
         }
         "/tools" => {
-            for tool in session.inspect().await?.tools {
+            for tool in active.session.inspect().await?.tools {
                 eprintln!("{} — {}", tool.name, tool.description);
             }
         }
         "/mcp" => {
-            for tool in session
+            for tool in active
+                .session
                 .inspect()
                 .await?
                 .tools
@@ -288,14 +303,20 @@ async fn handle_input(
         "/clear" => {
             let environment = everruns::Environment::builder()
                 .workspace(
-                    session
+                    active
+                        .session
                         .workspace_head()
                         .context("missing workspace head")?
                         .clone(),
                 )
                 .build()?;
-            *session = agent.session().environment(environment).start().await?;
-            eprintln!("new session={}", session.session_id());
+            active.session = active
+                .engine
+                .create(active.agent.clone())
+                .environment(environment)
+                .start()
+                .await?;
+            eprintln!("new session={}", active.session.session_id());
         }
         "/model" => {
             eprintln!("model={provider:?}/{model}");
@@ -304,18 +325,24 @@ async fn handle_input(
             let selection = command.trim_start_matches("/model ").trim();
             let (next_provider, next_model) = parse_model_selection(selection, *provider)?;
             let next_agent = build_agent(workspace, cli, next_provider, &next_model)?;
-            let next_session = next_agent
-                .resume(session.session_id())
+            let next_engine = InMemoryEngine::new();
+            next_engine
+                .attach(active.session.session_id(), next_agent.clone())
+                .await
+                .context("attach session to selected model")?;
+            let next_session = next_engine
+                .resume(active.session.session_id())
                 .await
                 .context("resume session with selected model")?;
             *provider = next_provider;
             *model = next_model;
-            *agent = next_agent;
-            *session = next_session;
+            active.engine = next_engine;
+            active.agent = next_agent;
+            active.session = next_session;
             eprintln!("model={provider:?}/{model}");
         }
         command if command.starts_with('/') => eprintln!("unknown command: {command}"),
-        prompt => run_prompt(session, prompt, true, cli.reasoning_effort()).await?,
+        prompt => run_prompt(&active.session, prompt, true, cli.reasoning_effort()).await?,
     }
     Ok(false)
 }
@@ -323,11 +350,17 @@ async fn handle_input(
 async fn tui(
     workspace: &CodingWorkspace,
     cli: &Cli,
-    mut agent: Agent,
-    mut session: Session,
+    engine: InMemoryEngine,
+    agent: Agent,
+    session: Session,
     mut provider: ProviderChoice,
     mut model: String,
 ) -> Result<()> {
+    let mut active = ActiveSession {
+        engine,
+        agent,
+        session,
+    };
     enable_raw_mode().context("enable terminal raw mode")?;
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut terminal = Terminal::with_options(
@@ -338,7 +371,10 @@ async fn tui(
     )?;
     let mut input = TextArea::default();
     input.set_block(Block::default().borders(Borders::ALL).title(" prompt "));
-    let mut status = format!("{provider:?}/{model} · session {}", session.session_id());
+    let mut status = format!(
+        "{provider:?}/{model} · session {}",
+        active.session.session_id()
+    );
 
     let result = async {
         loop {
@@ -382,8 +418,7 @@ async fn tui(
                 let quit = handle_input(
                     workspace,
                     cli,
-                    &mut agent,
-                    &mut session,
+                    &mut active,
                     &mut provider,
                     &mut model,
                     text.trim(),
@@ -393,7 +428,10 @@ async fn tui(
                 if quit? {
                     break;
                 }
-                status = format!("{provider:?}/{model} · session {}", session.session_id());
+                status = format!(
+                    "{provider:?}/{model} · session {}",
+                    active.session.session_id()
+                );
                 continue;
             }
             let _ = input.input(key);

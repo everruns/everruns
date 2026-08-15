@@ -5,7 +5,7 @@
 
 use std::fs;
 
-use everruns::{Agent, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 #[cfg(feature = "builtins")]
 #[tokio::test]
@@ -22,8 +22,8 @@ async fn compaction_is_configured_without_checkpoint_store_types() {
         )
         .build()
         .expect("agent builds");
-    agent
-        .session()
+    InMemoryEngine::new()
+        .create(agent)
         .run("offline turn")
         .await
         .expect("turn runs");
@@ -41,7 +41,7 @@ async fn real_workspace_seeding_and_context_inspection_use_framework_types() {
         .build()
         .expect("agent builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let before = session.inspect().await.expect("context before first turn");
     assert!(before.messages.is_empty());
     assert_eq!(before.model.model.as_str(), "llmsim-model");
@@ -84,7 +84,7 @@ async fn local_plugin_contributes_to_the_same_inspected_context() {
         .expect("plugin compiles")
         .build()
         .expect("agent builds");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("plugin context");
     assert!(context.instructions.contains("PLUGIN_CONTEXT_SENTINEL"));
 }
@@ -102,7 +102,7 @@ async fn stdio_mcp_is_discovered_through_the_framework() {
         .mcp_server(McpServer::stdio("echo", "python3").arg(server.to_string_lossy()))
         .build()
         .expect("agent builds");
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("MCP discovery");
     assert!(
         context
@@ -134,7 +134,7 @@ async fn local_profile_exposes_workspace_and_schedule_tools() {
         .build()
         .expect("agent builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("local context");
     assert!(
         context

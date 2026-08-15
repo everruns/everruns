@@ -4,7 +4,7 @@
 
 use everruns::{
     Agent, BuildError, CapabilityRef, CapabilitySpec, CompactionConfig, FunctionTool,
-    IntoCapability, Model, ToolSearch,
+    InMemoryEngine, IntoCapability, Model, ToolSearch,
 };
 use serde_json::{Value, json};
 
@@ -21,8 +21,8 @@ async fn typed_compaction_runs_offline() {
         .build()
         .expect("typed compaction config builds");
 
-    let turn = agent
-        .session()
+    let turn = InMemoryEngine::new()
+        .create(agent)
         .run("Keep this context useful.")
         .await
         .expect("offline turn runs");
@@ -41,7 +41,7 @@ async fn typed_tool_search_activates_the_model_adaptive_builtin() {
         .build()
         .expect("typed tool search builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("context assembles");
     assert!(context.tools.iter().any(|tool| tool.name == "tool_search"));
     assert!(
@@ -59,7 +59,7 @@ async fn dynamic_reference_activates_a_known_capability() {
         .build()
         .expect("dynamic reference builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("context assembles");
     assert!(
         context
@@ -84,7 +84,7 @@ async fn external_conversion_contract_needs_only_the_facade() {
         .build()
         .expect("external capability value builds");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let context = session.inspect().await.expect("context assembles");
     assert!(
         context
@@ -103,8 +103,8 @@ async fn unknown_dynamic_reference_remains_an_open_noop_until_implemented() {
         .build()
         .expect("open third-party reference builds");
 
-    let turn = agent
-        .session()
+    let turn = InMemoryEngine::new()
+        .create(agent)
         .run("Continue without a local implementation.")
         .await
         .expect("unknown references do not break offline execution");
@@ -252,7 +252,7 @@ fn function_tool_and_capability_reference_do_not_overwrite_each_other() {
 
 #[cfg(feature = "capabilities")]
 mod definitions {
-    use everruns::{Agent, BuildError, CapabilityRef, Model, capability};
+    use everruns::{Agent, BuildError, CapabilityRef, InMemoryEngine, Model, capability};
 
     #[derive(capability::Deserialize, capability::JsonSchema)]
     #[serde(crate = "everruns::capability::serde")]
@@ -310,7 +310,7 @@ mod definitions {
             .build()
             .expect("code definition builds");
 
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let context = session.inspect().await.expect("context assembles");
         assert!(context.tools.iter().any(|tool| tool.name == "vendor_echo"));
     }

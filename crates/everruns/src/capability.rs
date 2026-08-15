@@ -290,7 +290,10 @@ mod tests {
     use tokio::time::timeout;
 
     use super::*;
-    use crate::{Agent, CancellationToken, Model, RunOptions, SessionEventKind, TurnStopReason};
+    use crate::{
+        Agent, CancellationToken, InMemoryEngine, Model, RunOptions, SessionEventKind,
+        TurnStopReason,
+    };
 
     #[derive(Deserialize, JsonSchema)]
     struct LookupInput {
@@ -459,7 +462,7 @@ mod tests {
             .capability(lookup_capability())
             .build()
             .expect("valid agent");
-        let session = agent.session();
+        let session = InMemoryEngine::new().create(agent.clone());
         let mut events = session.events();
 
         let turn = session.run("Weather?").await.expect("turn runs");
@@ -501,8 +504,8 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent
-            .session()
+        let turn = InMemoryEngine::new()
+            .create(agent)
             .run("Find Atlantis")
             .await
             .expect("turn runs");
@@ -568,7 +571,11 @@ mod tests {
             .build()
             .expect("valid agent");
 
-        let turn = agent.session().run("start").await.expect("turn runs");
+        let turn = InMemoryEngine::new()
+            .create(agent.clone())
+            .run("start")
+            .await
+            .expect("turn runs");
         assert!(turn.success);
         timeout(Duration::from_secs(2), child_cancelled.notified())
             .await
@@ -638,9 +645,9 @@ mod tests {
         let cancellation = CancellationToken::new();
         let cancel_from_test = cancellation.clone();
 
+        let session = InMemoryEngine::new().create(agent);
         let run = tokio::spawn(async move {
-            agent
-                .session()
+            session
                 .run_with("start", RunOptions::new().cancel_token(cancellation))
                 .await
         });

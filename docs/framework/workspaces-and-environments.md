@@ -19,7 +19,7 @@ Enable the `local` feature to use the public Git-worktree provider:
 ```rust
 use std::sync::Arc;
 use everruns::{
-    Agent, Environment, LocalGitWorkspaceProvider, Model, Workspace,
+    Agent, Environment, InMemoryEngine, LocalGitWorkspaceProvider, Model, Workspace,
     WorkspacePolicy,
 };
 
@@ -39,7 +39,8 @@ let agent = Agent::builder()
     .model(Model::simulated("ready"))
     .workspace_policy(WorkspacePolicy::read_write())
     .build()?;
-let session = agent.session().environment(environment).start().await?;
+let engine = InMemoryEngine::new();
+let session = engine.create(agent).environment(environment).start().await?;
 
 assert!(session.workspace_head().is_some());
 # Ok(())
@@ -63,16 +64,16 @@ it does not revoke a filesystem handle already owned by a running session.
 ## Exact resume
 
 `start()` persists the provider's credential-free opaque binding before the
-session can execute. `Agent::resume` asks the recorded provider to reopen that
+session can execute. `Engine::resume` asks the recorded provider to reopen that
 exact workspace and head. It returns a structured `ResumeError` when the
 provider is missing, the head is unavailable, the binding is corrupt, or the
 provider returns a different identity. It never substitutes an empty or
 different head.
 
-A newly constructed Agent that resumes durable sessions created from an
-explicit provider must register that provider with
+After a process restart, the Agent attached to a durable session created from
+an explicit provider must register that provider with
 `AgentBuilder::workspace_provider`. The provider used by a live Environment is
-remembered automatically for that Agent lifetime. The default memory provider
+remembered automatically in that Agent snapshot. The default memory provider
 and `AgentBuilder::workspace(path)` shorthand provider are registered by the
 Framework itself.
 
@@ -98,7 +99,7 @@ When a compute resource needs the selected filesystem, attach it with
 `EnvironmentBuilder::workspace_extension`; its constructor receives the exact
 head that Framework file tools will use.
 
-For a simple application, `agent.session()` remains the concise path.
+For a simple application, `engine.create(agent)` is the concise path.
 Its first `send` or `inspect` selects the default head automatically; optional
 `session.start().await` selects it earlier without running a turn.
 `AgentBuilder::workspace(path)` is shorthand for one explicitly shared local

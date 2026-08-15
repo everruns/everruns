@@ -7,13 +7,13 @@ description: Move Rust code off `everruns-core` paths that changed in 0.18, with
 
 ## Retain an Engine for sessions
 
-The Framework now exposes its application execution SPI explicitly. Existing
-`agent.session()` and `agent.resume(id)` calls remain available, but new code
-should retain the engine that owns resume authority:
+The Framework exposes its application execution SPI explicitly. The 0.18 API
+removes `agent.session()` and `agent.resume(id)`; applications retain the
+engine that owns session identity and resume authority:
 
 ```diff
 - let session = agent.session();
-+ use everruns::{Engine, InMemoryEngine};
++ use everruns::InMemoryEngine;
 + let engine = InMemoryEngine::new();
 + let session = engine.create(agent);
   let id = session.session_id();
@@ -24,6 +24,12 @@ should retain the engine that owns resume authority:
 `InMemoryEngine` resume is deliberately process-local and engine-scoped. It
 retains the immutable Agent snapshot and exact Environment/WorkspaceHead; it
 does not serialize a Scale-compatible Agent definition.
+
+For a locally persisted session after process restart, rebuild the Agent from
+trusted application configuration, call `engine.attach(id, agent).await?`, and
+then `engine.resume(id).await?`. Attachment verifies the persisted session
+catalog before accepting the behavior snapshot; credentials and closures are
+never serialized.
 
 This affects you if your Rust code imports from `everruns_core` directly. If you use the `everruns` facade, most of this is invisible: the facade re-exports what applications need, and where a moved type is part of that surface it is re-exported from its new home under the same name.
 

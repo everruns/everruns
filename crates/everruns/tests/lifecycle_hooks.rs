@@ -56,7 +56,7 @@ async fn agent_turn_and_completion_hooks_are_ordered_and_scoped() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     session.run("one").await.expect("first turn");
     session.run("two").await.expect("second turn");
 
@@ -89,11 +89,11 @@ async fn agent_start_runs_once_for_each_session() {
         .build()
         .expect("valid agent");
 
-    let first = agent.session();
+    let first = InMemoryEngine::new().create(agent.clone());
     first.run("one").await.expect("first session starts");
     first.run("two").await.expect("first session stays started");
-    agent
-        .session()
+    InMemoryEngine::new()
+        .create(agent)
         .run("three")
         .await
         .expect("second session starts independently");
@@ -131,7 +131,7 @@ async fn inspection_does_not_run_lifecycle_hooks() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     session.inspect().await.expect("context can be inspected");
     assert_eq!(calls.load(Ordering::SeqCst), 0);
 
@@ -159,7 +159,7 @@ async fn pre_effect_error_is_typed_and_agent_start_retries() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let error = session.run("first").await.expect_err("start hook fails");
     let RunError::Hook(failure) = error else {
         panic!("expected typed hook failure")
@@ -201,7 +201,7 @@ async fn turn_start_error_prevents_the_turn_without_restarting_the_agent() {
         .build()
         .expect("valid agent");
 
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let error = session.run("first").await.expect_err("turn hook fails");
     let RunError::Hook(failure) = error else {
         panic!("expected typed hook failure")
@@ -230,7 +230,11 @@ async fn completion_errors_are_isolated_and_visible() {
         .build()
         .expect("valid agent");
 
-    let turn = agent.session().run("hello").await.expect("turn succeeds");
+    let turn = InMemoryEngine::new()
+        .create(agent.clone())
+        .run("hello")
+        .await
+        .expect("turn succeeds");
 
     assert!(turn.success);
     assert_eq!(later.load(Ordering::SeqCst), 1);
@@ -257,8 +261,8 @@ async fn pre_cancelled_run_skips_every_hook() {
     let token = CancellationToken::new();
     token.cancel();
 
-    let turn = agent
-        .session()
+    let turn = InMemoryEngine::new()
+        .create(agent)
         .run_with("hello", RunOptions::new().cancel_token(token))
         .await
         .expect("cancelled run resolves");

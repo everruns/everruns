@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()?;
 
     // --- Observe a turn's events -----------------------------------------
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let mut events = session.events();
 
     let pending = session.send("hi").await?;
@@ -47,7 +47,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(rendered, turn.response);
 
     // --- Cancel a turn ---------------------------------------------------
-    let session = agent.session();
+    let session = InMemoryEngine::new().create(agent.clone());
     let token = CancellationToken::new();
     token.cancel(); // cancel up front for a deterministic example
 

@@ -23,7 +23,7 @@ offline without a key.
 ## Quick Example: Agent With OpenAI
 
 ```rust,no_run
-use everruns::{Agent, OpenAI};
+use everruns::{Agent, InMemoryEngine, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,8 +32,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .provider(OpenAI::from_env()?)
         .model("gpt-5.6-terra")
         .build()?;
-    let result = agent
-        .session()
+    let result = InMemoryEngine::new()
+        .create(agent)
         .run("Write one sentence about reliable agents.")
         .await?;
 

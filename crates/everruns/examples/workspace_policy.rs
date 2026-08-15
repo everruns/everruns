@@ -1,6 +1,6 @@
 //! Configure portable workspace access without importing runtime backends.
 
-use everruns::{Agent, Model, WorkspacePolicy};
+use everruns::{Agent, InMemoryEngine, Model, WorkspacePolicy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,8 +24,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .readonly_file("input/brief.md", "Summarize the workspace policy.")
         .build()?;
 
-    let turn = agent
-        .session()
+    let turn = InMemoryEngine::new()
+        .create(agent)
         .send_and_wait("Confirm the policy is active.")
         .await?;
     assert_eq!(turn.response, "Workspace policy configured.");

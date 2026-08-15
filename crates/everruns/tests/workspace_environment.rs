@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use everruns::core::session_files::SessionFileSystem;
 use everruns::{
-    Agent, Engine, Environment, InMemoryEngine, LlmSimConfig, LocalConfig,
-    LocalGitWorkspaceProvider, Model, SessionEnvironmentError, ToolCall, Workspace,
-    WorkspaceHeadId, WorkspacePolicy,
+    Agent, Environment, InMemoryEngine, LlmSimConfig, LocalConfig, LocalGitWorkspaceProvider,
+    Model, ResumeError, Session, SessionEnvironmentError, ToolCall, Workspace, WorkspaceHeadId,
+    WorkspacePolicy,
 };
 use serde_json::json;
 
@@ -53,6 +53,16 @@ fn agent(config: LocalConfig) -> Agent {
         .unwrap()
 }
 
+fn create_session(agent: Agent) -> Session {
+    InMemoryEngine::new().create(agent)
+}
+
+async fn restore(agent: Agent, session_id: everruns::SessionId) -> Result<Session, ResumeError> {
+    let engine = InMemoryEngine::new();
+    engine.attach(session_id, agent).await?;
+    engine.resume(session_id).await
+}
+
 #[tokio::test]
 async fn ordinary_sessions_select_a_permanent_head_before_execution() {
     let engine = InMemoryEngine::new();
@@ -81,8 +91,9 @@ async fn workspace_shorthand_is_one_explicitly_shared_reopenable_head() {
         .workspace(root.path())
         .build()
         .unwrap();
-    let first = agent.session();
-    let second = agent.session();
+    let engine = InMemoryEngine::new();
+    let first = engine.create(agent.clone());
+    let second = engine.create(agent);
     first.start().await.unwrap();
     second.start().await.unwrap();
 
@@ -92,7 +103,7 @@ async fn workspace_shorthand_is_one_explicitly_shared_reopenable_head() {
     assert_eq!(first_head.workspace_id(), second_head.workspace_id());
     assert_eq!(first_head.access(), everruns::WorkspaceHeadAccess::Shared);
 
-    let resumed = agent.resume(first.session_id()).await.unwrap();
+    let resumed = engine.resume(first.session_id()).await.unwrap();
     assert_eq!(resumed.workspace_head().unwrap().id(), first_head.id());
 }
 
@@ -113,16 +124,14 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
     let config = LocalConfig::new(data.path().join("runtime"));
 
     let first_agent = agent(config.clone());
-    let session = first_agent
-        .session()
+    let session = create_session(first_agent.clone())
         .environment(environment.clone())
         .start()
         .await
         .unwrap();
     assert_eq!(session.workspace_head().unwrap().id(), head.id());
 
-    let collision = first_agent
-        .session()
+    let collision = create_session(first_agent.clone())
         .environment(environment)
         .start()
         .await
@@ -135,16 +144,14 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
     drop(first_agent);
 
     let reopened_provider = Arc::new(LocalGitWorkspaceProvider::new(&provider_state).unwrap());
-    let resumed = Agent::builder()
+    let resumed_agent = Agent::builder()
         .instructions("Be concise.")
         .model(Model::simulated("ok"))
         .local(config)
         .workspace_provider(reopened_provider)
         .build()
-        .unwrap()
-        .resume(session_id)
-        .await
         .unwrap();
+    let resumed = restore(resumed_agent, session_id).await.unwrap();
     assert_eq!(resumed.workspace_head().unwrap().id(), head.id());
     assert_eq!(
         resumed.workspace_head().unwrap().workspace_id(),
@@ -152,7 +159,7 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
     );
 
     head.clone().destroy().await.unwrap();
-    let missing = Agent::builder()
+    let missing_agent = Agent::builder()
         .instructions("Be concise.")
         .model(Model::simulated("ok"))
         .local(LocalConfig::new(data.path().join("runtime")))
@@ -160,8 +167,8 @@ async fn typed_resume_reopens_exact_head_and_isolation_is_enforced() {
             LocalGitWorkspaceProvider::new(&provider_state).unwrap(),
         ))
         .build()
-        .unwrap()
-        .resume(session_id)
+        .unwrap();
+    let missing = restore(missing_agent, session_id)
         .await
         .err()
         .expect("destroyed head must never be substituted");
@@ -183,14 +190,12 @@ async fn shared_head_requires_explicit_shared_creation() {
     let environment = Environment::builder().workspace(shared).build().unwrap();
     let agent = agent(LocalConfig::new(data.path().join("runtime")));
 
-    let first = agent
-        .session()
+    let first = create_session(agent.clone())
         .environment(environment.clone())
         .start()
         .await
         .unwrap();
-    let second = agent
-        .session()
+    let second = create_session(agent)
         .environment(environment)
         .start()
         .await
@@ -217,8 +222,7 @@ async fn workspace_scoped_compute_extension_addresses_the_selected_head() {
         .unwrap()
         .build()
         .unwrap();
-    let session = agent(LocalConfig::new(data.path().join("runtime")))
-        .session()
+    let session = create_session(agent(LocalConfig::new(data.path().join("runtime"))))
         .environment(environment)
         .start()
         .await
@@ -275,8 +279,7 @@ async fn head_filesystem_keeps_policy_and_symlink_containment() {
         .local(LocalConfig::new(data.path().join("readonly-runtime")))
         .build()
         .unwrap();
-    readonly_agent
-        .session()
+    create_session(readonly_agent)
         .environment(
             Environment::builder()
                 .workspace(readonly_head)
@@ -316,8 +319,7 @@ async fn head_filesystem_keeps_policy_and_symlink_containment() {
         .workspace_policy(WorkspacePolicy::read_write())
         .build()
         .unwrap();
-    writable_agent
-        .session()
+    create_session(writable_agent)
         .environment(
             Environment::builder()
                 .workspace(writable_head)
@@ -367,8 +369,7 @@ async fn concurrent_sessions_write_separate_heads_without_collisions() {
     };
     let left_agent = make_agent("left", "left-runtime");
     let right_agent = make_agent("right", "right-runtime");
-    let left_session = left_agent
-        .session()
+    let left_session = create_session(left_agent)
         .environment(
             Environment::builder()
                 .workspace(left.clone())
@@ -378,8 +379,7 @@ async fn concurrent_sessions_write_separate_heads_without_collisions() {
         .start()
         .await
         .unwrap();
-    let right_session = right_agent
-        .session()
+    let right_session = create_session(right_agent)
         .environment(
             Environment::builder()
                 .workspace(right.clone())

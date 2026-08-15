@@ -44,7 +44,7 @@ for feature boundaries and advanced-host composition.
 ## Offline Quickstart
 
 ```rust
-use everruns::{Agent, Engine, InMemoryEngine, Model};
+use everruns::{Agent, InMemoryEngine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -69,9 +69,8 @@ response locally. It needs no credential or network connection.
 
 `InMemoryEngine` owns Agent snapshots, the process-local session catalog, and
 runtime state. `engine.create(agent)` and `engine.resume(session_id)` return the
-same first-class `Session` abstraction. `Agent::session` and `Agent::resume`
-remain compatibility conveniences for applications that do not yet retain an
-engine explicitly.
+same first-class `Session` abstraction. Agents never own hidden execution
+engines or session catalogs.
 
 ## Open Provider Setup
 
@@ -171,16 +170,17 @@ graph.
 
 ## Sessions, Events, and Cancellation
 
-An agent opens independent live sessions. `send` accepts a message immediately,
+An engine creates independent live sessions from Agent behavior. `send` accepts a message immediately,
 automatically steering an active turn or starting the next turn after
 completion. `send_and_wait` is the request/response convenience. Subscribe
 before sending to observe live events, or pass a cancellation token through
 `RunOptions`.
 
 ```rust
-use everruns::{CancellationToken, RunOptions};
+use everruns::{CancellationToken, InMemoryEngine, RunOptions};
 
-let session = agent.session();
+let engine = InMemoryEngine::new();
+let session = engine.create(agent);
 let mut events = session.events();
 let first = session.send("Remember this turn.").await?;
 
@@ -204,7 +204,7 @@ next model call without exposing backend records.
 
 ## Workspace Heads and Environments
 
-Simple applications keep `agent.session()` and may use
+Simple applications retain an `InMemoryEngine` and may use
 `AgentBuilder::workspace(path)` as shorthand for one shared local directory.
 Applications that need isolated mutable project views use the open
 `WorkspaceProvider` SPI, create a `WorkspaceHead`, and permanently bind it
@@ -212,7 +212,7 @@ before execution:
 
 ```rust
 use std::sync::Arc;
-use everruns::{Environment, LocalGitWorkspaceProvider, Workspace};
+use everruns::{Environment, InMemoryEngine, LocalGitWorkspaceProvider, Workspace};
 
 # async fn bind(agent: &everruns::Agent, repository: &std::path::Path, state: &std::path::Path)
 # -> Result<(), Box<dyn std::error::Error>> {
@@ -220,7 +220,8 @@ let provider = Arc::new(LocalGitWorkspaceProvider::new(state)?);
 let workspace = Workspace::open(provider, repository.to_string_lossy()).await?;
 let head = workspace.head("feature").from_revision("main").create().await?;
 let environment = Environment::builder().workspace(head).build()?;
-let session = agent.session().environment(environment).start().await?;
+let engine = InMemoryEngine::new();
+let session = engine.create(agent.clone()).environment(environment).start().await?;
 assert!(session.workspace_head().is_some());
 # Ok(())
 # }
@@ -259,8 +260,8 @@ let agent = Agent::builder()
 ## Persistence
 
 By default, conversation history is offline, database-free, and retained for
-the lifetime of an `Agent` and its clones. Keep a typed `SessionId` and call
-`Agent::resume`; use `Session::history().page()` for bounded event-derived
+the lifetime of an engine and its sessions. Keep a typed `SessionId` and call
+`Engine::resume`; use `Session::history().page()` for bounded event-derived
 reads. The `local` feature adds a crash-durable canonical event log and session
 catalog alongside its real workspace and task/schedule state.
 

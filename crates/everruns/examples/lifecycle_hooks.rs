@@ -9,7 +9,7 @@
 //! Lifecycle hooks are awaited extension points. Use `Session::events()`
 //! instead when code only needs a non-blocking observation stream.
 
-use everruns::{Agent, OpenAI};
+use everruns::{Agent, InMemoryEngine, OpenAI};
 
 /// Return a deterministic service status so the model has a tool to call.
 #[everruns::tool]
@@ -49,8 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .build()?;
 
-    let turn = agent
-        .session()
+    let turn = InMemoryEngine::new()
+        .create(agent)
         .send_and_wait("Is the payments service healthy?")
         .await?;
     println!("response: {}", turn.response);

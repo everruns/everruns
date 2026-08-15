@@ -301,15 +301,10 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - Individual operations for messages, files, providers
 
 2. **gRPC Client Adapters** (in worker crate):
-   - `GrpcMessageRetriever` - Implements `MessageRetriever` trait via gRPC
-   - `GrpcAgentStore` - Implements `AgentStore` trait via gRPC
-   - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
+   - `GrpcAdapter` - Implements session-scoped message, event, filesystem, task, and budget effects via gRPC
+   - `GrpcOrgAdapter` - Implements organization-scoped agent, session, provider, platform, and scheduling effects via gRPC
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-host` host execution
-   - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
-   - `GrpcSessionFileStore` - Implements `SessionFileSystem` trait via gRPC
-   - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
-   - `GrpcPlatformStore` - Implements `PlatformStore` trait via gRPC (platform management capability)
 
 3. **Durable Execution gRPC Operations**:
    - `ClaimDurableTasks` - Workers poll for pending tasks
