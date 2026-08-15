@@ -36,7 +36,7 @@ mod turn;
 
 // Internal aliases keep the execution algorithms focused on their contracts
 // while preserving the one-way engine -> core/provider/capability boundary.
-pub(crate) use everruns_capability::CapabilityRef as AgentCapabilityConfig;
+pub(crate) use everruns_capability::CapabilityRef;
 pub(crate) use everruns_core::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
     CompactionCheckpointStore, EgressService, McpToolInvoker, MessageQuery,

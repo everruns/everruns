@@ -14,6 +14,7 @@ use everruns_core::events::{
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::session::SessionExecutionState;
+#[cfg(feature = "platform")]
 use everruns_core::tools::Tool;
 use everruns_core::{
     CapabilityRegistry, CapabilityStatus, DependencyBlocker, EgressService,
@@ -35,10 +36,11 @@ use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_platform::SessionMutator;
+#[cfg(feature = "platform")]
 use everruns_platform::capabilities::{
     report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
 };
+#[cfg(feature = "platform")]
 use everruns_platform::{
     KnowledgeIndexSearch, KnowledgeIndexSearchExt, KnowledgeStore, KnowledgeStoreExt, PlatformStore,
 };
@@ -46,6 +48,7 @@ use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::tool_types::ToolDefinition;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_provider::user_facing_error::{ErrorDisclosure, UserFacingError};
+use everruns_session_services::{SessionMutator, SessionMutatorExt};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -219,6 +222,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// Knowledge store backing the `search_knowledge` tool. Default: none.
+    #[cfg(feature = "platform")]
     fn knowledge_store(&self) -> Option<Arc<dyn KnowledgeStore>> {
         None
     }
@@ -229,6 +233,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     /// Session SQL database backend. Installed as a typed context extension
     /// (EVE-897) — the kernel does not name this service.
+    #[cfg(feature = "platform")]
     fn sqldb_store(&self) -> Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> {
         None
     }
@@ -251,6 +256,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    #[cfg(feature = "platform")]
     fn platform_store(
         &self,
         _org_id: i64,
@@ -262,6 +268,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Get the Knowledge Index search service for the `search_index` tool.
     /// Org-scoped; returns None when retrieval is not available (e.g. gRPC
     /// workers without a search RPC, or in-memory test backends).
+    #[cfg(feature = "platform")]
     fn knowledge_index_search(&self, _org_id: i64) -> Option<Arc<dyn KnowledgeIndexSearch>> {
         None
     }
@@ -379,9 +386,9 @@ struct RuntimeExecutionCapabilities {
 fn subagent_nesting_policy_from_configs(
     resolved_capability_configs: &[everruns_capability::CapabilityRef],
 ) -> everruns_core::delegation_services::SubagentNestingPolicy {
-    let subagents_config = resolved_capability_configs.iter().find(|config| {
-        config.capability_id() == everruns_platform::capabilities::SUBAGENTS_CAPABILITY_ID
-    });
+    let subagents_config = resolved_capability_configs
+        .iter()
+        .find(|config| config.capability_id() == "subagents");
 
     let configured_depth = subagents_config
         .and_then(|config| {
@@ -438,6 +445,7 @@ fn finalize_specs_from_configs(
 ) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
     let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
         Vec::new();
+    #[allow(unused_mut)]
     let mut disabled_contributions: Vec<String> = Vec::new();
     for config in resolved_capability_configs {
         let Some(capability) = capability_registry.get(config.capability_id()) else {
@@ -447,6 +455,7 @@ fn finalize_specs_from_configs(
         if !specs.is_empty() {
             hook_contributions.push((config.capability_id().to_string(), specs));
         }
+        #[cfg(feature = "platform")]
         if config.capability_id() == "user_hooks" {
             disabled_contributions.extend(
                 everruns_platform::capabilities::user_hooks::disabled_contributions(
@@ -685,25 +694,29 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     // longer names it. Thread it as the neutral delegation contract and, when
     // present, as the typed
     // `PlatformStoreExt` extension the hosted platform capabilities resolve.
+    #[cfg(feature = "platform")]
     let platform_store = adapter.platform_store(org_id, session_id);
+    #[cfg(feature = "platform")]
     let subagent_delegate = platform_store.clone().map(|store| {
         Arc::new(everruns_platform::PlatformStoreSubagentDelegate(store))
             as Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>
     });
     let extensions = {
         let mut extensions = everruns_core::tool_context::ToolContextExtensions::default();
+        #[cfg(feature = "platform")]
         if let Some(store) = platform_store {
             extensions.insert(Arc::new(everruns_platform::PlatformStoreExt(store)));
         }
+        #[cfg(feature = "platform")]
         if let Some(store) = adapter.knowledge_store() {
             extensions.insert(Arc::new(KnowledgeStoreExt(store)));
         }
+        #[cfg(feature = "platform")]
         if let Some(search) = adapter.knowledge_index_search(org_id) {
             extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
         }
-        extensions.insert(Arc::new(
-            everruns_platform::session_mutator::SessionMutatorExt(adapter.session_mutator(org_id)),
-        ));
+        extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
+        #[cfg(feature = "platform")]
         if let Some(store) = adapter.sqldb_store() {
             extensions.insert(Arc::new(
                 everruns_platform::session_sqldb::SessionSqlDbStoreExt(store),
@@ -724,7 +737,10 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         agent_store: Some(adapter.agent_store(org_id)),
         connection_resolver: adapter.connection_resolver(),
         schedule_store: adapter.schedule_store(org_id),
+        #[cfg(feature = "platform")]
         subagent_delegate,
+        #[cfg(not(feature = "platform"))]
+        subagent_delegate: None,
         extensions,
         leased_resource_store: adapter.leased_resource_store(),
         session_resource_registry: adapter.session_resource_registry(),
@@ -763,36 +779,25 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         }
     }
 
-    async fn set_session_status(&self, status: SessionExecutionState, action: &'static str) {
-        if let Err(error) = self
-            .adapter
+    async fn set_session_status(
+        &self,
+        status: SessionExecutionState,
+        _action: &'static str,
+    ) -> everruns_provider::error::Result<()> {
+        self.adapter
             .set_session_status(self.org_id, self.session_id, status)
             .await
-        {
-            warn!(
-                session_id = %self.session_id,
-                org_id = self.org_id,
-                action,
-                %error,
-                "runtime host lifecycle status update failed"
-            );
-        }
     }
 
-    async fn emit_event(&self, request: EventRequest) {
-        let event_type = request.event_type.clone();
-        if let Err(error) = self.adapter.event_emitter().emit(request).await {
-            warn!(
-                session_id = %self.session_id,
-                org_id = self.org_id,
-                event_type,
-                %error,
-                "runtime host lifecycle event emission failed"
-            );
-        }
+    async fn emit_event(&self, request: EventRequest) -> everruns_provider::error::Result<()> {
+        self.adapter.event_emitter().emit(request).await.map(|_| ())
     }
 
-    pub async fn turn_started(&self, turn_id: TurnId, input_message_id: MessageId) {
+    pub async fn turn_started(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+    ) -> everruns_provider::error::Result<()> {
         let input_content = self
             .adapter
             .message_store()
@@ -803,7 +808,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             .map(|message| message.content_to_llm_string());
 
         self.set_session_status(SessionExecutionState::Active, "turn_started")
-            .await;
+            .await?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -813,7 +818,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 input_message_id,
             },
         ))
-        .await;
+        .await?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -824,17 +829,22 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 input_content,
             },
         ))
-        .await;
+        .await?;
+        Ok(())
     }
 
-    pub async fn emit_turn_completed(&self, input_message_id: MessageId, data: TurnCompletedData) {
+    pub async fn emit_turn_completed(
+        &self,
+        input_message_id: MessageId,
+        data: TurnCompletedData,
+    ) -> everruns_provider::error::Result<()> {
         let turn_id = data.turn_id;
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
             data,
         ))
-        .await;
+        .await
     }
 
     pub async fn emit_session_idled(
@@ -843,9 +853,9 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         iterations: Option<u32>,
         usage: Option<TokenUsage>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         self.set_session_status(SessionExecutionState::Idle, "emit_session_idled")
-            .await;
+            .await?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -856,7 +866,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 usage,
             },
         ))
-        .await;
+        .await
     }
 
     pub async fn turn_completed(
@@ -866,7 +876,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         iterations: u32,
         usage: Option<TokenUsage>,
         input_content: Option<String>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         self.emit_turn_completed(
             input_message_id,
             TurnCompletedData {
@@ -883,9 +893,9 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 status: Some("completed".to_string()),
             },
         )
-        .await;
+        .await?;
         self.emit_session_idled(turn_id, input_message_id, Some(iterations), usage)
-            .await;
+            .await
     }
 
     /// Turn was deliberately sealed (EVE-534): emit `turn.sealed` + a
@@ -901,7 +911,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         reason: &str,
         iterations: u32,
         usage: Option<TokenUsage>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         let context = EventContext::turn(turn_id, input_message_id);
 
         self.emit_event(EventRequest::new(
@@ -915,10 +925,10 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 usage: usage.clone(),
             },
         ))
-        .await;
+        .await?;
 
         self.emit_session_idled(turn_id, input_message_id, Some(iterations), usage)
-            .await;
+            .await
     }
 
     /// Fire `turn_end` lifecycle hooks (advisory). Collects the session's hook
@@ -982,7 +992,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         reason: &str,
         user_message: Option<&str>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         let user_error =
             UserFacingError::new(everruns_provider::user_facing_error::codes::BLOCKED_BY_HOOK);
         let shown = user_message.unwrap_or(reason);
@@ -996,10 +1006,10 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             EventContext::turn(turn_id, input_message_id),
             OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
         ))
-        .await;
+        .await?;
 
         self.turn_failed(turn_id, input_message_id, reason, Some(&user_error))
-            .await;
+            .await
     }
 
     pub async fn turn_failed(
@@ -1008,9 +1018,9 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_message_id: MessageId,
         error: &str,
         user_error: Option<&UserFacingError>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         self.turn_failed_with_disclosure(turn_id, input_message_id, error, user_error, None)
-            .await;
+            .await
     }
 
     /// `turn_failed` with the applied error-disclosure mode recorded on the
@@ -1023,9 +1033,9 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         error: &str,
         user_error: Option<&UserFacingError>,
         disclosure: Option<ErrorDisclosure>,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         self.set_session_status(SessionExecutionState::Idle, "turn_failed")
-            .await;
+            .await?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -1044,7 +1054,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 data
             },
         ))
-        .await;
+        .await?;
 
         self.emit_event(EventRequest::new(
             self.session_id,
@@ -1055,15 +1065,15 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                 usage: None,
             },
         ))
-        .await;
+        .await
     }
 
-    pub async fn waiting_for_tool_results(&self) {
+    pub async fn waiting_for_tool_results(&self) -> everruns_provider::error::Result<()> {
         self.set_session_status(
             SessionExecutionState::WaitingForToolResults,
             "waiting_for_tool_results",
         )
-        .await;
+        .await
     }
 
     pub async fn dependency_blocked(
@@ -1071,7 +1081,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         turn_id: TurnId,
         input_message_id: MessageId,
         blocker: DependencyBlocker,
-    ) {
+    ) -> everruns_provider::error::Result<()> {
         let user_error = UserFacingError::new(blocker.error_code())
             .with_field(
                 "dependency",
@@ -1103,7 +1113,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             EventContext::turn(turn_id, input_message_id),
             OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
         ))
-        .await;
+        .await?;
 
         self.turn_failed(
             turn_id,
@@ -1111,7 +1121,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             blocker.message(),
             Some(&user_error),
         )
-        .await;
+        .await
     }
 }
 
@@ -1148,7 +1158,7 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
 
     RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
         .turn_started(input.context.turn_id, input.context.input_message_id)
-        .await;
+        .await?;
 
     let atom = InputAtom::new(adapter.message_store());
     atom.execute(input).await
@@ -1254,7 +1264,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                 input.context.input_message_id,
                 blocker,
             )
-            .await;
+            .await?;
         return Ok(ReasonResult {
             success: false,
             text: blocker.message().to_string(),
@@ -1301,7 +1311,7 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
                         &reason,
                         user_message.as_deref(),
                     )
-                    .await;
+                    .await?;
                 return Ok(ReasonResult {
                     success: false,
                     text: user_message.unwrap_or_else(|| reason.clone()),
@@ -1367,9 +1377,11 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .tool_registry
         .validate_context_services(&validation_services)?;
 
+    #[allow(unused_mut)]
     let mut turn_inputs = adapter
         .load_resolved_turn(org_id, input.context.session_id)
         .await?;
+    #[cfg(feature = "platform")]
     if let Some(registry) = adapter.session_task_registry() {
         let session_store = adapter.session_store(org_id);
         if let Some(tool) = report_result_tool_for_child_session(
@@ -1524,7 +1536,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
                 input.context.input_message_id,
                 blocker,
             )
-            .await;
+            .await?;
         return Ok(ActResult {
             results: vec![],
             completed: true,
@@ -1549,6 +1561,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     .await?;
     let mut tool_registry = execution_capabilities.tool_registry;
 
+    #[cfg(feature = "platform")]
     if input
         .tool_definitions
         .iter()
@@ -1563,6 +1576,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     {
         tool_registry.register_boxed(Box::new(tool.with_file_store(adapter.file_store())));
     }
+    #[cfg(feature = "platform")]
     if input
         .tool_definitions
         .iter()

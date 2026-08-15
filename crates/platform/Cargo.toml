@@ -7,7 +7,7 @@
 # auth-facing identity values no core code names (OrgMembership, ANONYMOUS_USER_*,
 # generate_org_public_id/validate_org_public_id, PrincipalStatus). Cross-cutting
 # value types that core's runtime, permissions, and domain models embed (OrgRole,
-# PrincipalKind, PrincipalSummary, the DEFAULT_ORG_* constants, and the payment
+# PrincipalKind, PrincipalSummary, the public execution-org value, and payment
 # execution contract PaymentRail/PaymentMethod/MachinePaymentRequest/
 # MachinePaymentResponse) remain in `everruns-core` and are re-exported here.
 #
@@ -53,15 +53,19 @@ environment-capabilities = [
 lua = ["dep:everruns-integrations-lua"]
 # Outbound A2A delegation is product-owned and optional for lightweight hosts.
 a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
+# Concrete outbound email transport is product opt-in. Platform record and
+# contract consumers do not compile an HTTP stack by default.
+email-resend = ["dep:reqwest"]
 
 [dependencies]
 # Cross-cutting value types (OrgRole, PrincipalKind/PrincipalSummary, Caller, the
 # payment execution contract), typed IDs, domain aggregates
-# (Harness/Agent/Session), and the DEFAULT_ORG_* constants live in core; the
+# (Harness/Agent/Session), plus shared execution identity values live in core; the
 # platform aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
 everruns-capability.workspace = true
 everruns-provider.workspace = true
+everruns-session-services.workspace = true
 everruns-builtins = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
@@ -95,7 +99,7 @@ inventory.workspace = true
 # client. System email intentionally uses its own provider client outside the
 # runtime egress boundary — it is operator-owned deployment traffic.
 thiserror.workspace = true
-reqwest = { workspace = true, features = ["json", "rustls"] }
+reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
 
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }

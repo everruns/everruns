@@ -17,7 +17,8 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::Caller;
-use everruns_core::budget::{Budget, BudgetCheckResult, BudgetPeriod, LedgerEntry};
+use everruns_core::budget::{BudgetCheckResult, BudgetPeriod};
+use everruns_platform::{Budget, LedgerEntry};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};

@@ -41,16 +41,16 @@ pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> 
 /// product composition.
 fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {
     if registry
-        .get(everruns_platform::capabilities::SESSION_CAPABILITY_ID)
+        .get(everruns_session_services::SESSION_CAPABILITY_ID)
         .is_none()
     {
-        registry.register(everruns_platform::capabilities::SessionCapability);
+        registry.register(everruns_session_services::SessionCapability);
     }
     if registry
-        .get(everruns_platform::capabilities::SESSION_STORAGE_CAPABILITY_ID)
+        .get(everruns_session_services::SESSION_STORAGE_CAPABILITY_ID)
         .is_none()
     {
-        registry.register(everruns_platform::capabilities::SessionStorageCapability);
+        registry.register(everruns_session_services::SessionStorageCapability);
     }
 }
 
@@ -132,9 +132,13 @@ mod tests {
 
     #[test]
     fn composition_preserves_caller_selected_core_capabilities() {
-        let mut selected = CapabilityRegistry::new();
+        let selected = CapabilityRegistry::new();
         #[cfg(feature = "builtins")]
-        everruns_builtins::register_runtime_capabilities(&mut selected).unwrap();
+        let selected = {
+            let mut selected = selected;
+            everruns_builtins::register_runtime_capabilities(&mut selected).unwrap();
+            selected
+        };
         let registry = compose_runtime_capability_registry(selected);
         // A caller-selected capability survives environment composition.
         assert!(registry.has("session_storage"));

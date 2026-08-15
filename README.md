@@ -168,9 +168,9 @@ deterministic simulator; opt-in providers, typed tools, multi-turn sessions, eve
 cancellation, files, MCP, and context inspection all stay on the same public facade. Start with
 the [Framework quickstart](https://docs.everruns.com/framework/quickstart/).
 
-Applications retain an `everruns::Engine` as their session owner. The explicit
-`InMemoryEngine` keeps immutable Agent snapshots and process-local resume state;
-`Session` remains the same public abstraction for create and resume.
+Applications retain the concrete `everruns::Engine` as their session owner.
+`InMemoryEngine` is a compatibility alias; Engine keeps immutable Agent
+snapshots and owns the resources required to create and resume Sessions.
 
 Typed built-ins, dynamic third-party references, and reusable packages all use
 `AgentBuilder::capability`; packages can implement the open `IntoCapability`

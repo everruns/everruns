@@ -112,7 +112,19 @@ FRAMEWORK_MINIMAL_TREE=$(cargo tree -p everruns --no-default-features -e normal 
 assert_tree_excludes \
   "everruns --no-default-features normal dependency tree" \
   "$FRAMEWORK_MINIMAL_TREE" \
-  everruns-builtins
+  everruns-builtins everruns-platform reqwest rustls hyper
+
+HOST_MINIMAL_TREE=$(cargo tree -p everruns-host --no-default-features -e normal --prefix none)
+assert_tree_excludes \
+  "everruns-host --no-default-features normal dependency tree" \
+  "$HOST_MINIMAL_TREE" \
+  everruns-platform reqwest rustls hyper
+
+SESSION_SERVICES_TREE=$(cargo tree -p everruns-session-services -e normal --prefix none)
+assert_tree_excludes \
+  "everruns-session-services normal dependency tree" \
+  "$SESSION_SERVICES_TREE" \
+  everruns-host everruns-platform everruns-server everruns-worker reqwest rustls hyper sqlx
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Portable built-ins isolation guard failed."

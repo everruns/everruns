@@ -27,6 +27,7 @@
 //! is useful. The dependency direction remains `platform -> core`.
 
 pub mod audit;
+pub mod budget;
 #[cfg(feature = "openapi")]
 pub mod capability_schema;
 pub mod organization;
@@ -83,7 +84,6 @@ pub mod background_run;
 // kernel never mutated a session; it only carried the trait so a hosted
 // capability could reach it. That capability resolves the store as a typed
 // extension now.
-pub mod session_mutator;
 
 // Session SQL database store carved out of `everruns-core` (EVE-897). The
 // value types are the signature vocabulary of `SessionSqlDbStore`, so records
@@ -149,7 +149,8 @@ pub use session::{
 };
 
 // Session metadata mutation (EVE-897).
-pub use session_mutator::{SessionMutator, SessionMutatorExt};
+pub use everruns_session_services::session_mutator;
+pub use everruns_session_services::{SessionMutator, SessionMutatorExt};
 
 // Session SQL database (EVE-897).
 pub use session_sqldb::{
@@ -210,6 +211,7 @@ pub use audit::{
     AgentAction, AuditAction, AuditDomain, AuditEvent, AuditEventBuilder, AuditLogger, AuditTarget,
     HasAuditTargetId, ManagementAction,
 };
+pub use budget::{Budget, LedgerEntry};
 
 // Re-export the identity value types and multitenancy constants that remain in
 // `everruns-core`, so `everruns_platform` exposes the complete identity surface.
@@ -228,6 +230,7 @@ pub use connector::{
 pub use email::{
     BasicEmailTemplate, DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult,
     EmailSender, EmailTag, EmailTemplate, MinimalEmailTemplate, NoopEmailSender, RenderedEmail,
-    ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
-    system_email_from,
+    SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig, system_email_from,
 };
+#[cfg(feature = "email-resend")]
+pub use email::{ResendEmailConfig, ResendEmailSender};

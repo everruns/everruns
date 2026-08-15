@@ -19,11 +19,12 @@ use everruns_provider::error::AgentLoopError;
 use everruns_provider::typed_id::{MessageId, SessionId, TurnId};
 use tokio::sync::{OnceCell, mpsc, oneshot, watch};
 
+use crate::Agent;
+use crate::engine::SessionExecution;
 use crate::events::{EventStream, FacadeEventBus, RunOptions};
 use crate::hooks::{
     AgentStartContext, CompletionContext, HookFailure, HookRunState, TurnStartContext,
 };
-use crate::{Agent, SessionExecution};
 
 /// A live, multi-turn conversation with an [`Agent`](crate::Agent).
 ///
@@ -123,14 +124,6 @@ impl Session {
         self.inner.session_id
     }
 
-    /// The object-safe engine binding that owns this session identity.
-    ///
-    /// Advanced applications can retain this binding without depending on a
-    /// concrete engine, store, platform, or host runtime type.
-    pub fn execution(&self) -> Arc<dyn SessionExecution> {
-        self.inner.execution.clone()
-    }
-
     /// Permanently bind this new session to an explicit Environment.
     ///
     /// [`EnvironmentSessionBuilder::start`] persists the opaque head binding
@@ -153,12 +146,7 @@ impl Session {
         if self.inner.environment.get().is_some() {
             return Ok(());
         }
-        let environment = self
-            .inner
-            .execution
-            .agent_snapshot()
-            .bind_default_session_environment(self.inner.session_id)
-            .await?;
+        let environment = self.inner.execution.bind_default_environment().await?;
         self.inner
             .environment
             .set(environment)
@@ -391,6 +379,7 @@ enum TurnCompletion {
 }
 
 struct SessionActor {
+    execution: Arc<dyn SessionExecution>,
     agent: Agent,
     session_id: SessionId,
     event_bus: Arc<FacadeEventBus>,
@@ -404,6 +393,7 @@ struct SessionActor {
 impl SessionActor {
     fn new(inner: &SessionInner) -> Self {
         Self {
+            execution: inner.execution.clone(),
             agent: inner.execution.agent_snapshot(),
             session_id: inner.session_id,
             event_bus: inner.event_bus.clone(),
@@ -640,6 +630,12 @@ impl SessionActor {
             self.runtime = Some(
                 self.agent
                     .build_runtime_with_event_sink(
+                        self.execution
+                            .backends()
+                            .await
+                            .map_err(crate::agent::BackendInitError::into_agent_loop)?
+                            .host
+                            .clone(),
                         self.session_id,
                         self.environment.clone(),
                         self.event_bus.clone(),
@@ -678,8 +674,7 @@ impl EnvironmentSessionBuilder {
         self.session
             .inner
             .execution
-            .agent_snapshot()
-            .bind_session_environment(self.session.inner.session_id, &self.environment)
+            .bind_environment(&self.environment)
             .await?;
         if let Some(recorded) = self.session.inner.environment.get() {
             if recorded.workspace_head().binding() != self.environment.workspace_head().binding() {
@@ -1020,10 +1015,13 @@ mod tests {
 
         session.run("hello").await.expect("turn runs");
 
-        let event_log = agent
-            .shared_backends()
+        let event_log = session
+            .inner
+            .execution
+            .backends()
             .await
             .unwrap_or_else(|_| panic!("run built the shared backends"))
+            .host
             .event_log
             .clone();
         let events = event_log

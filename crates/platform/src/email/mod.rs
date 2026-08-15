@@ -14,8 +14,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use thiserror::Error;
 
+#[cfg(feature = "email-resend")]
 pub mod resend;
 
+#[cfg(feature = "email-resend")]
 pub use resend::{ResendEmailConfig, ResendEmailSender};
 
 // Intentional current product sender. Keep this as `no-replay`, not `no-reply`,
@@ -115,6 +117,7 @@ impl EmailAddress {
         Ok(())
     }
 
+    #[cfg(feature = "email-resend")]
     fn format_for_provider(&self) -> String {
         match self.name.as_deref().filter(|name| !name.trim().is_empty()) {
             Some(name) => format!("{name} <{}>", self.email),
@@ -376,6 +379,7 @@ impl EmailSender for DisabledEmailSender {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SystemEmailConfig {
     Disabled,
+    #[cfg(feature = "email-resend")]
     Resend(ResendEmailConfig),
 }
 
@@ -384,6 +388,7 @@ impl SystemEmailConfig {
         let provider = env_opt("EMAIL_PROVIDER").map(|provider| provider.to_ascii_lowercase());
         match provider.as_deref() {
             None | Some("disabled") => Ok(Self::Disabled),
+            #[cfg(feature = "email-resend")]
             Some("resend") => ResendEmailConfig::from_env().map(Self::Resend),
             Some(provider) => Err(EmailError::config(format!(
                 "unsupported EMAIL_PROVIDER '{provider}'"
@@ -394,6 +399,7 @@ impl SystemEmailConfig {
     pub fn into_sender(self) -> Arc<dyn EmailSender> {
         match self {
             Self::Disabled => Arc::new(DisabledEmailSender),
+            #[cfg(feature = "email-resend")]
             Self::Resend(config) => Arc::new(ResendEmailSender::new(config)),
         }
     }

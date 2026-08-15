@@ -32,10 +32,11 @@ if violations:
 
 engine = Path("crates/everruns/src/engine.rs").read_text()
 required = (
-    "pub trait Engine",
-    "pub struct InMemoryEngine",
+    "pub struct Engine",
+    "pub type InMemoryEngine = Engine",
     "pub fn create(&self, agent: Agent) -> Session",
     "pub async fn resume(&self, session_id: SessionId)",
+    "pub async fn attach(&self, session_id: SessionId, agent: Agent)",
 )
 missing = [needle for needle in required if needle not in engine]
 if missing:
@@ -43,6 +44,15 @@ if missing:
         "crates/everruns/src/engine.rs lost the canonical Engine API: "
         + ", ".join(missing)
     )
+
+facade = Path("crates/everruns/src/lib.rs").read_text()
+for forbidden_api in (
+    "pub use everruns_core as core",
+    "SessionExecution",
+    "pub use everruns_host::{\n    HarnessBuilder",
+):
+    if forbidden_api in facade:
+        raise SystemExit(f"facade leaked internal API: {forbidden_api}")
 PY
 
 legacy_worker_aliases='GrpcAgentStore|GrpcEventEmitter|GrpcMessageRetriever|GrpcProviderStore|GrpcSessionFileStore|GrpcSessionStore|AdapterAgentStore|AdapterEventEmitter|AdapterMessageRetriever|AdapterProviderStore|AdapterSessionFileStore|AdapterSessionStore'

@@ -7,22 +7,23 @@ description: Move Rust code off `everruns-core` paths that changed in 0.18, with
 
 ## Retain an Engine for sessions
 
-The Framework exposes its application execution SPI explicitly. The 0.18 API
+The Framework exposes a concrete application execution owner. The 0.18 API
 removes `agent.session()` and `agent.resume(id)`; applications retain the
 engine that owns session identity and resume authority:
 
 ```diff
 - let session = agent.session();
-+ use everruns::InMemoryEngine;
-+ let engine = InMemoryEngine::new();
++ use everruns::Engine;
++ let engine = Engine::new();
 + let session = engine.create(agent);
   let id = session.session_id();
 - let resumed = agent.resume(id).await?;
 + let resumed = engine.resume(id).await?;
 ```
 
-`InMemoryEngine` resume is deliberately process-local and engine-scoped. It
-retains the immutable Agent snapshot and exact Environment/WorkspaceHead; it
+`Engine` volatile resume is deliberately process-local and engine-scoped. The
+old `InMemoryEngine` name remains a type alias. Engine retains the immutable
+Agent snapshot and exact Environment/WorkspaceHead; it
 does not serialize a Scale-compatible Agent definition.
 
 For a locally persisted session after process restart, rebuild the Agent from
@@ -48,6 +49,7 @@ everruns-platform = "0.18"   # persisted records, hosted service contracts
 everruns-host     = "0.18"   # execution composition and host wiring
 everruns-provider = "0.18"   # provider SPI, typed IDs, sqlx impls
 everruns-capability = "0.18" # capability identity/configuration contract
+everruns-session-services = "0.18" # neutral session host contracts
 everruns-mcp      = "0.18"   # MCP adapter and the OAuth protocol client
 ```
 
@@ -147,6 +149,7 @@ These are database and API records. Execution consumes a portable projection of 
 | `Eval`, `EvalCase`, `EvalRun`, `EvalCaseResult`, `EvalRunDataset`, `EvalTarget`, `Scorer` | `everruns_platform::` |
 | `Observer`, `ObserverMatch`, `LlmJudgeConfig`, `TraceScore` | `everruns_platform::` |
 | `FeatureFlags`, `FeatureFlagMap`, `FeatureFlagDefinition` | `everruns_platform::` |
+| `Budget`, `LedgerEntry` | `everruns_platform::` |
 
 If you were reading a stored record to run a turn, you probably want the portable projection instead — `AgentDefinition`, `HarnessDefinition` and `ExecutionSession` all stay in `everruns_core`, produced at the platform loading seam by `Agent::execution_definition`, `Harness::execution_definition` and `Session::execution_session`.
 
@@ -155,7 +158,7 @@ If you were reading a stored record to run a turn, you probably want the portabl
 | 0.17 (`everruns_core::`) | 0.18 |
 |---|---|
 | `session_sqldb::*` — `SessionSqlDbStore`, `DatabaseInfo`, `SqlQueryResult`, `SqlExecuteResult`, `TableSchema`, `ColumnSchema`, `SessionSqlDbError` | `everruns_platform::session_sqldb::` |
-| `traits::SessionMutator` | `everruns_platform::SessionMutator` |
+| `traits::SessionMutator` | `everruns_session_services::SessionMutator` (also re-exported by platform) |
 | `session_sandbox::*` — config, state, instance, exec/file payloads, `SessionSandboxProvider`, `SessionSandboxProviderPlugin` | `everruns_platform::session_sandbox::` |
 | `Connector`, `ConnectorRegistry`, `ConnectorPlugin` | `everruns_platform::connector::` |
 | `EmailSender`, `EmailMessage`, `SystemEmailConfig`, `ResendEmailSender` | `everruns_platform::email::` |
@@ -188,7 +191,8 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | what | 0.18 home |
 |---|---|
 | Knowledge Bases and Indexes, Memories, delegation, subagents, background and scheduled work, user hooks, citations, model scouting, platform management | `everruns_platform::capabilities::` |
-| Session info, session storage, session SQL database, session sandbox | `everruns_platform::capabilities::` |
+| Session info and session storage | `everruns_session_services::capabilities::` (also re-exported by platform) |
+| Session SQL database and session sandbox | `everruns_platform::capabilities::` |
 | `spawn_background` and its runtime — event sink, admission permits, reattach | `everruns_platform::background_run::` |
 | Portable built-ins — human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
 | OpenRouter workspace, model scout, and provider-executed server tools | `everruns_integrations_openrouter_workspace::` |
@@ -290,6 +294,9 @@ Worth knowing so you do not go looking:
 
 - **`SessionTask`, `TaskMessage`** and the task registry stay in `everruns_core`. They are turn-execution vocabulary — `wake_queue` decides mid-turn wakes from a task's wake policy — and they appear in the canonical `task.created` / `task.updated` / `task.message.*` event payloads.
 - **`SessionSchedule`, `SessionScheduleStore`** stay. A portable built-in (`usage_limit_auto_continue`) schedules an auto-resume after a provider usage limit, and it sits below platform in the dependency graph.
+- Schedule quota and minimum-interval environment variables are no longer read
+  by core. Local/server adapters resolve deployment policy and call the
+  parameterized core validation helpers.
 - **`SessionResourceRegistry`** stays. `resource_ownership` and the portable skills capabilities consume it.
 - **`SessionFileSystem`, `SessionStorageStore`** and the other neutral store contracts stay. Core owns the contract; hosts own the backend.
 

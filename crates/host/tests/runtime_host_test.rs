@@ -27,13 +27,13 @@ use everruns_host::{
     TurnStopReason, advance_host_execution, execute_act_activity, execute_input_activity,
     inspect_turn_context,
 };
-use everruns_platform::SessionMutator;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::{ToolCall, ToolResult};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_provider::user_facing_error::codes as user_facing_error_codes;
+use everruns_session_services::SessionMutator;
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability,
     llmsim_driver::register_driver,
@@ -41,12 +41,14 @@ use everruns_test_support::{
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
 struct TestSessionStore {
     sessions: Arc<RwLock<HashMap<SessionId, ExecutionSession>>>,
+    fail_status_writes: Arc<AtomicBool>,
 }
 
 impl TestSessionStore {
@@ -58,11 +60,16 @@ impl TestSessionStore {
         &self,
         session_id: SessionId,
         status: SessionExecutionState,
-    ) -> ExecutionSession {
+    ) -> everruns_provider::error::Result<ExecutionSession> {
+        if self.fail_status_writes.load(Ordering::SeqCst) {
+            return Err(everruns_provider::error::AgentLoopError::config(
+                "injected session status failure",
+            ));
+        }
         let mut sessions = self.sessions.write().await;
         let session = sessions.get_mut(&session_id).expect("session exists");
         session.status = status;
-        session.clone()
+        Ok(session.clone())
     }
 }
 
@@ -112,7 +119,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         session_id: SessionId,
         status: SessionExecutionState,
     ) -> everruns_provider::error::Result<()> {
-        self.session_store.set_status(session_id, status).await;
+        self.session_store.set_status(session_id, status).await?;
         Ok(())
     }
 
@@ -413,7 +420,7 @@ impl Tool for ContextParityTool {
             "file_store": context.file_store.is_some(),
             "message_retriever": context.message_retriever.is_some(),
             "session_store": context.session_store.is_some(),
-            "session_mutator": context.extensions.get::<everruns_platform::SessionMutatorExt>().is_some(),
+            "session_mutator": context.extensions.get::<everruns_session_services::SessionMutatorExt>().is_some(),
             "agent_store": context.agent_store.is_some(),
             "session_task_registry": context.session_task_registry.is_some(),
             "capability_registry": context.capability_registry.is_some(),
@@ -1676,7 +1683,8 @@ async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
 
     RuntimeSessionLifecycle::new(adapter.clone(), 1, session_id)
         .waiting_for_tool_results()
-        .await;
+        .await
+        .unwrap();
 
     let session = adapter
         .session_store
@@ -1685,6 +1693,42 @@ async fn lifecycle_helper_sets_waiting_for_tool_results_status() {
         .unwrap()
         .unwrap();
     assert_eq!(session.status, SessionExecutionState::WaitingForToolResults);
+}
+
+#[tokio::test]
+async fn execution_propagates_required_lifecycle_write_failures() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let mut waiting_session = session(session_id, harness_id);
+    waiting_session.hints = Some(HashMap::from([(
+        "setup_connection".to_string(),
+        serde_json::Value::Bool(true),
+    )]));
+    adapter.session_store.insert(waiting_session).await;
+    adapter
+        .session_store
+        .fail_status_writes
+        .store(true, Ordering::SeqCst);
+
+    let error = advance_from_state(
+        &adapter,
+        "act",
+        &turn_state(session_id, harness_id),
+        &serde_json::json!({
+            "blocked": false,
+            "waiting_for_tool_results": true
+        }),
+        0,
+    )
+    .await
+    .expect_err("required status writes must fail the durable/immediate transition");
+
+    assert!(
+        error
+            .to_string()
+            .contains("injected session status failure")
+    );
 }
 
 #[tokio::test]
@@ -2699,6 +2743,7 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
 }
 
 #[tokio::test]
+#[cfg(feature = "platform")]
 async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
     use everruns_core::session_task::{
         SessionTaskState, TASK_KIND_AGENT_HANDOFF, TaskLinks, TaskWakePolicy,

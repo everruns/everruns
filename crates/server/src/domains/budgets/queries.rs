@@ -1,7 +1,7 @@
 use crate::domains::budgets::BudgetService;
 use crate::domains::common::CommandError;
 use crate::storage::models::{BudgetLedgerRow, BudgetRow};
-use everruns_core::budget::{Budget, LedgerEntry};
+use everruns_platform::{Budget, LedgerEntry};
 use everruns_provider::typed_id::BudgetId;
 
 pub fn parse_budget_id(input: &str) -> Result<uuid::Uuid, CommandError> {

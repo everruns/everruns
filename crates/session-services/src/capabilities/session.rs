@@ -1,4 +1,4 @@
-//! Session Capability
+//! Session capability.
 //!
 //! Provides session metadata tools:
 //! - `write_session_title`: update session title

@@ -22,36 +22,6 @@ pub const DEFAULT_MIN_INTERVAL_SECONDS: i64 = 300;
 /// Default maximum number of active (enabled) schedules per org.
 pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 
-/// Minimum seconds between consecutive recurring session-schedule fires.
-///
-/// Configurable via `SESSION_SCHEDULE_MIN_INTERVAL_SECONDS`; default 300 (5 min).
-/// Each fire dispatches a real worker turn, so on open-signup deployments a
-/// `* * * * *` (every-minute) cron is a sustained amplifier of operator compute.
-/// This is the session-schedule sibling of the app `schedule` channel's
-/// `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS` (see `knowledge/integrations/app-invocation-channels.md`).
-pub fn min_interval_seconds() -> i64 {
-    std::env::var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_MIN_INTERVAL_SECONDS)
-}
-
-/// Maximum number of active (enabled) schedules per org.
-///
-/// Configurable via `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`; default 100.
-/// `MAX_ACTIVE_SCHEDULES_PER_SESSION` only bounds a single session, so without an
-/// org-wide cap unlimited sessions imply unlimited active schedules per org. Uses
-/// the `RESOURCE_LIMIT_*` env family so the SaaS wrapper sets it per plan via
-/// `PlanResourceLimits::apply_to_env`.
-pub fn max_active_schedules_per_org() -> i64 {
-    std::env::var("RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|&v| v > 0)
-        .unwrap_or(DEFAULT_MAX_SCHEDULES_PER_ORG)
-}
-
 /// Returns the minimum interval (seconds) between the next few consecutive
 /// triggers of `cron_expression`, or `None` when the expression cannot be parsed
 /// or fires fewer than twice.
@@ -87,7 +57,14 @@ pub fn cron_min_interval_seconds(cron_expression: &str) -> Option<i64> {
 /// next-trigger computation, so this gate never false-rejects a valid cron form
 /// it does not recognize.
 pub fn validate_cron_min_interval(cron_expression: &str) -> Result<(), String> {
-    let min_limit = min_interval_seconds();
+    validate_cron_min_interval_with(cron_expression, DEFAULT_MIN_INTERVAL_SECONDS)
+}
+
+/// Validate a cron against a host-selected minimum interval.
+pub fn validate_cron_min_interval_with(
+    cron_expression: &str,
+    min_limit: i64,
+) -> Result<(), String> {
     if let Some(interval) = cron_min_interval_seconds(cron_expression)
         && interval < min_limit
     {
@@ -135,7 +112,7 @@ pub async fn validate_schedule_create_limits<
         )));
     }
 
-    let max_per_org = max_active_schedules_per_org();
+    let max_per_org = DEFAULT_MAX_SCHEDULES_PER_ORG;
     let per_org = store
         .count_active_org_schedules()
         .await
@@ -223,45 +200,9 @@ impl SessionSchedule {
     }
 }
 
-/// Test-only RAII guard that saves a process-global env var, applies a change,
-/// and restores the original value (or absence) on drop. Env is shared across the
-/// parallel test binary, so saving/restoring keeps env-reading tests independent
-/// of each other and of the environment the suite was launched with.
-#[cfg(test)]
-pub(crate) struct EnvVarGuard {
-    key: &'static str,
-    prev: Option<String>,
-}
-
-#[cfg(test)]
-impl EnvVarGuard {
-    /// Save the current value and unset the var.
-    pub(crate) fn unset(key: &'static str) -> Self {
-        let prev = std::env::var(key).ok();
-        unsafe { std::env::remove_var(key) };
-        Self { key, prev }
-    }
-}
-
-#[cfg(test)]
-impl Drop for EnvVarGuard {
-    fn drop(&mut self) {
-        match &self.prev {
-            Some(v) => unsafe { std::env::set_var(self.key, v) },
-            None => unsafe { std::env::remove_var(self.key) },
-        }
-    }
-}
-
 #[cfg(test)]
 mod limit_tests {
     use super::*;
-
-    #[test]
-    fn min_interval_default_is_300() {
-        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
-        assert_eq!(min_interval_seconds(), DEFAULT_MIN_INTERVAL_SECONDS);
-    }
 
     #[test]
     fn cron_interval_every_minute_is_60() {
@@ -288,13 +229,11 @@ mod limit_tests {
 
     #[test]
     fn validate_rejects_every_minute_at_default() {
-        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         assert!(validate_cron_min_interval("* * * * *").is_err());
     }
 
     #[test]
     fn validate_accepts_daily() {
-        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         assert!(validate_cron_min_interval("0 3 * * *").is_ok());
     }
 

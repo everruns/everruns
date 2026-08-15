@@ -2,7 +2,8 @@
 
 use everruns_core::AssembledTurnContext;
 
-use crate::{ContentPart, MessageRole, ModelSpec};
+use crate::{ContentPart, MessageRole};
+use everruns_provider::model_spec::ModelSpec;
 
 /// The effective context a session will send to its model on the next turn.
 ///

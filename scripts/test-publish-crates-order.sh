@@ -111,6 +111,9 @@ for earlier, later in (
     ("everruns-capability", "everruns"),
     ("everruns-core", "everruns-engine"),
     ("everruns-core", "everruns-host"),
+    ("everruns-core", "everruns-session-services"),
+    ("everruns-session-services", "everruns-host"),
+    ("everruns-session-services", "everruns-platform"),
     ("everruns-engine", "everruns-host"),
     ("everruns-mcp", "everruns-host"),
     ("everruns-platform", "everruns-host"),
@@ -133,6 +136,8 @@ for manifest_rel, dependency in (
     ("crates/host/Cargo.toml", "everruns-engine"),
     ("crates/host/Cargo.toml", "everruns-mcp"),
     ("crates/host/Cargo.toml", "everruns-platform"),
+    ("crates/host/Cargo.toml", "everruns-session-services"),
+    ("crates/platform/Cargo.toml", "everruns-session-services"),
     ("crates/everruns/Cargo.toml", "everruns-host"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
 ):

@@ -107,7 +107,7 @@ pub trait SessionScheduleStore: Send + Sync {
             ));
         }
 
-        let max_per_org = crate::session_schedule::max_active_schedules_per_org();
+        let max_per_org = crate::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG;
         let per_org = self
             .count_active_org_schedules()
             .await

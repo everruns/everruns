@@ -19,11 +19,14 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_services::SessionScheduleStore,
     session_services::SessionStorageStore,
 };
+#[cfg(feature = "platform")]
 use everruns_platform::PlatformStore;
-use everruns_platform::SessionMutator;
 use everruns_provider::error::Result;
 use everruns_provider::model_spec::ModelSpec;
-use everruns_provider::typed_id::{HarnessId, SessionId};
+use everruns_provider::typed_id::HarnessId;
+#[cfg(feature = "platform")]
+use everruns_provider::typed_id::SessionId;
+use everruns_session_services::SessionMutator;
 use std::sync::Arc;
 
 /// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a
@@ -34,6 +37,7 @@ pub type ScheduleStoreFactory = Arc<dyn Fn(i64) -> Arc<dyn SessionScheduleStore>
 /// Factory producing a per-(org, session) [`PlatformStore`]. The session id is
 /// supplied because platform stores are scoped to the calling session for
 /// subagent spawning and platform-management tools.
+#[cfg(feature = "platform")]
 pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
 
 /// Agent store contract for runtime seeding and lookup.
@@ -114,6 +118,7 @@ pub struct HostBackends {
     pub schedule_store_factory: Option<ScheduleStoreFactory>,
     /// Optional per-(org, session) platform store factory. `None` (the
     /// default) leaves `RuntimeHostAdapter::platform_store` returning `None`.
+    #[cfg(feature = "platform")]
     pub platform_store_factory: Option<PlatformStoreFactory>,
 }
 
@@ -135,6 +140,7 @@ impl HostBackends {
             connection_resolver: None,
             session_task_registry: None,
             schedule_store_factory: None,
+            #[cfg(feature = "platform")]
             platform_store_factory: None,
         }
     }
@@ -210,6 +216,7 @@ impl HostBackends {
 
     /// Inject a per-(org, session) platform store factory. The closure is
     /// invoked with the internal org id and the calling session id.
+    #[cfg(feature = "platform")]
     pub fn with_platform_store_factory(mut self, factory: PlatformStoreFactory) -> Self {
         self.platform_store_factory = Some(factory);
         self

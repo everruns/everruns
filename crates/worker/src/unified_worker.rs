@@ -1014,31 +1014,10 @@ where
                 let act_input: ActInput = serde_json::from_value(task.input.clone())
                     .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
-                // Extract previous_response_id injected by reason→act scheduling
-                let previous_response_id = task
-                    .input
-                    .get("previous_response_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-
-                // Extract iteration count from act task input (carried through from reason)
-                let iteration = task
-                    .input
-                    .get("iteration")
-                    .and_then(|v| v.as_u64())
-                    .and_then(|raw| u32::try_from(raw).ok())
-                    .filter(|&it| it > 0)
-                    .unwrap_or(1);
-
-                let act_request_id = task
-                    .input
-                    .get("request_id")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
                 let resume_state = parse_resume_state(&task.input)?;
 
                 // Create DurableTurnInput from ActInput context
-                let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
+                let turn_input = resume_state.unwrap_or(DurableTurnInput {
                     org_id: act_input.org_id.ok_or_else(|| {
                         anyhow::anyhow!("ActInput.org_id must be set for durable turns")
                     })?,
@@ -1047,9 +1026,9 @@ where
                     agent_id: act_input.agent_id,
                     input_message_id: act_input.context.input_message_id,
                     turn_id: Some(act_input.context.turn_id),
-                    previous_response_id: previous_response_id.clone(),
-                    iteration,
-                    request_id: act_request_id.clone(),
+                    previous_response_id: None,
+                    iteration: 1,
+                    request_id: None,
                     started_at: None,
                     cumulative_usage: None,
                     tool_call_count: 0,
@@ -1058,10 +1037,6 @@ where
                     final_message_id: None,
                     final_answer_preview: None,
                 });
-                turn_input.previous_response_id = previous_response_id;
-                turn_input.iteration = iteration;
-                turn_input.request_id = act_request_id;
-
                 let res = execute_act_activity(adapters, &act_input).await;
                 (res, Some(turn_input))
             }
@@ -1406,20 +1381,21 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     }
 
     let mut execution = DurableExecution::new(input.clone());
-    match advance_host_execution(
+    let plan = advance_host_execution(
         &WorkerRuntimeHost::new(adapters.clone()),
         &mut execution,
         completed_activity,
         output,
         pending_user_message_count,
     )
-    .await?
-    {
-        TurnPlan::ScheduleReason(next) => {
-            enqueue_reason_task(store, workflow_id, &next).await?;
+    .await?;
+    let checkpoint = execution.checkpoint();
+    match plan {
+        TurnPlan::ScheduleReason(_) => {
+            enqueue_reason_task(store, workflow_id, &checkpoint).await?;
         }
         TurnPlan::ScheduleAct(plan) => {
-            enqueue_act_task(store, workflow_id, &plan).await?;
+            enqueue_act_task(store, workflow_id, &plan, &checkpoint).await?;
         }
         TurnPlan::Complete { stop_reason, error } => {
             let turn_output = turn_output_with_stop_reason(output.clone(), stop_reason);
@@ -1427,18 +1403,18 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
                 .complete_workflow(
                     workflow_id,
                     turn_output,
-                    None,
+                    Some(serde_json::to_value(&checkpoint)?),
                     error.map(everruns_durable::WorkflowError::new),
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
         }
-        TurnPlan::WaitForToolResults { resume } => {
+        TurnPlan::WaitForToolResults { .. } => {
             store
                 .complete_workflow(
                     workflow_id,
                     output.clone(),
-                    Some(serde_json::to_value(&resume)?),
+                    Some(serde_json::to_value(&checkpoint)?),
                     None,
                 )
                 .await
@@ -1520,16 +1496,9 @@ async fn enqueue_act_task<S: TaskStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     plan: &ActPlan,
+    checkpoint: &DurableTurnInput,
 ) -> Result<()> {
-    let mut act_input_json = serde_json::to_value(&plan.input)?;
-    if let Some(response_id) = &plan.previous_response_id {
-        act_input_json["previous_response_id"] = serde_json::json!(response_id);
-    }
-    act_input_json["iteration"] = serde_json::json!(plan.iteration);
-    if let Some(request_id) = &plan.request_id {
-        act_input_json["request_id"] = serde_json::json!(request_id);
-    }
-    act_input_json["resume_state"] = serde_json::to_value(plan.resume_state.as_ref())?;
+    let act_input_json = act_task_input(plan, checkpoint)?;
 
     let activity_id = format!("act_{}", Uuid::now_v7());
     store
@@ -1537,6 +1506,12 @@ async fn enqueue_act_task<S: TaskStore>(
         .await
         .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
     Ok(())
+}
+
+fn act_task_input(plan: &ActPlan, checkpoint: &DurableTurnInput) -> Result<serde_json::Value> {
+    let mut input = serde_json::to_value(&plan.input)?;
+    input["resume_state"] = serde_json::to_value(checkpoint)?;
+    Ok(input)
 }
 
 #[cfg(test)]
@@ -1692,6 +1667,79 @@ mod tests {
         assert_eq!(output["success"], true);
         assert_eq!(output["error"], serde_json::Value::Null);
         assert_eq!(output["stop_reason"], "max_tokens");
+    }
+
+    #[test]
+    fn act_wire_input_uses_the_engine_checkpoint_as_its_only_resume_state() {
+        use everruns_engine::{ActSchedulingFacts, TurnState, plan_after_reason};
+        use everruns_provider::typed_id::{HarnessId, MessageId, SessionId};
+
+        let state = TurnState {
+            org_id: 7,
+            session_id: SessionId::new(),
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            input_message_id: MessageId::new(),
+            turn_id: Some(TurnId::new()),
+            previous_response_id: Some("before".into()),
+            iteration: 2,
+            request_id: Some("request-before".into()),
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
+        };
+        let reason = ReasonResult {
+            success: true,
+            text: String::new(),
+            tool_calls: vec![everruns_provider::tool_types::ToolCall {
+                id: "call-1".into(),
+                name: "noop".into(),
+                arguments: serde_json::json!({}),
+            }],
+            has_tool_calls: true,
+            tool_definitions: vec![],
+            max_iterations: 8,
+            error: None,
+            user_facing_error: None,
+            error_disclosure: None,
+            usage: None,
+            output_message_id: None,
+            time_to_first_token_ms: None,
+            response_id: Some("response-after".into()),
+            finish_reason: Some("tool_calls".into()),
+            locale: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+        let (TurnPlan::ScheduleAct(plan), _) = plan_after_reason(
+            &state,
+            reason,
+            0,
+            chrono::Utc::now(),
+            Some(ActSchedulingFacts::default()),
+        ) else {
+            panic!("reason with a tool call must schedule act");
+        };
+        let mut checkpoint = state;
+        checkpoint.previous_response_id = Some("checkpoint-response".into());
+        checkpoint.iteration = 9;
+        checkpoint.request_id = Some("checkpoint-request".into());
+
+        let input = act_task_input(&plan, &checkpoint).expect("serialize act input");
+
+        assert_eq!(input["resume_state"]["iteration"], 9);
+        assert_eq!(
+            input["resume_state"]["previous_response_id"],
+            "checkpoint-response"
+        );
+        assert_eq!(input["resume_state"]["request_id"], "checkpoint-request");
+        assert!(input.get("iteration").is_none());
+        assert!(input.get("previous_response_id").is_none());
+        assert!(input.get("request_id").is_none());
     }
 
     #[tokio::test]

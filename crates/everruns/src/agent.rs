@@ -19,14 +19,13 @@ use everruns_core::InitialFile;
 use everruns_host::{
     AgentBuilder as RuntimeAgentBuilder, Environment, EnvironmentBindingError,
     EnvironmentBindingStore, EventLogError, EventSink, HarnessBuilder, HostBackends,
-    InMemoryEnvironmentBindingStore, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
-    WorkspaceProvider, WorkspaceProviderId,
+    InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceProvider,
+    WorkspaceProviderId,
 };
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::typed_id::SessionId;
 use everruns_test_support::{LlmSimConfig, LlmSimDriver};
-use tokio::sync::OnceCell;
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 
@@ -312,16 +311,12 @@ impl fmt::Debug for CapabilityImplementation {
 }
 
 struct AgentState {
-    backends: OnceCell<HostBackends>,
-    binding_store: OnceCell<Arc<dyn EnvironmentBindingStore>>,
     workspace_providers: Mutex<HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>>,
 }
 
 impl AgentState {
     fn new(workspace_providers: HashMap<WorkspaceProviderId, Arc<dyn WorkspaceProvider>>) -> Self {
         Self {
-            backends: OnceCell::new(),
-            binding_store: OnceCell::new(),
             workspace_providers: Mutex::new(workspace_providers),
         }
     }
@@ -353,10 +348,12 @@ impl AgentState {
 impl fmt::Debug for AgentState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AgentState")
-            .field("backends_initialized", &self.backends.initialized())
             .field(
-                "binding_store_initialized",
-                &self.binding_store.initialized(),
+                "workspace_provider_count",
+                &self
+                    .workspace_providers
+                    .lock()
+                    .map_or(0, |providers| providers.len()),
             )
             .finish()
     }
@@ -397,7 +394,7 @@ pub(crate) enum BackendInitError {
 }
 
 impl BackendInitError {
-    fn into_agent_loop(self) -> everruns_provider::error::AgentLoopError {
+    pub(crate) fn into_agent_loop(self) -> everruns_provider::error::AgentLoopError {
         match self {
             Self::Event(error) => {
                 everruns_provider::error::AgentLoopError::store(error.to_string())
@@ -444,6 +441,7 @@ impl Agent {
 
     pub(crate) async fn bind_session_environment(
         &self,
+        binding_store: &dyn EnvironmentBindingStore,
         session_id: SessionId,
         environment: &Environment,
     ) -> Result<(), crate::SessionEnvironmentError> {
@@ -451,9 +449,7 @@ impl Agent {
         if !self.state.remember_provider(head.provider()) {
             return Err(crate::SessionEnvironmentError::ProviderConflict);
         }
-        self.environment_binding_store()
-            .await
-            .map_err(|_| crate::SessionEnvironmentError::Unavailable)?
+        binding_store
             .bind(session_id, head.binding())
             .await
             .map_err(crate::SessionEnvironmentError::from)?;
@@ -462,6 +458,7 @@ impl Agent {
 
     pub(crate) async fn bind_default_session_environment(
         &self,
+        binding_store: &dyn EnvironmentBindingStore,
         session_id: SessionId,
     ) -> Result<Environment, crate::SessionEnvironmentError> {
         let environment = self
@@ -469,19 +466,17 @@ impl Agent {
             .environment(session_id)
             .await
             .map_err(crate::SessionEnvironmentError::Workspace)?;
-        self.bind_session_environment(session_id, &environment)
+        self.bind_session_environment(binding_store, session_id, &environment)
             .await?;
         Ok(environment)
     }
 
     pub(crate) async fn reopen_session_environment(
         &self,
+        binding_store: &dyn EnvironmentBindingStore,
         session_id: SessionId,
     ) -> Result<Option<Environment>, crate::ResumeError> {
-        let Some(binding) = self
-            .environment_binding_store()
-            .await
-            .map_err(|_| crate::ResumeError::Unavailable)?
+        let Some(binding) = binding_store
             .load(session_id)
             .await
             .map_err(|error| match error {
@@ -516,20 +511,6 @@ impl Agent {
         ))
     }
 
-    async fn environment_binding_store(
-        &self,
-    ) -> Result<&Arc<dyn EnvironmentBindingStore>, BackendInitError> {
-        let _ = self.shared_backends().await?;
-        Ok(self
-            .state
-            .binding_store
-            .get_or_init(|| async {
-                Arc::new(InMemoryEnvironmentBindingStore::default())
-                    as Arc<dyn EnvironmentBindingStore>
-            })
-            .await)
-    }
-
     pub(crate) fn name(&self) -> &str {
         &self.name
     }
@@ -538,63 +519,16 @@ impl Agent {
         self.lifecycle_hooks.clone()
     }
 
-    pub(crate) async fn shared_backends(&self) -> Result<&HostBackends, BackendInitError> {
-        self.state
-            .backends
-            .get_or_try_init(|| async {
-                let backends = HostBackends::in_memory();
-                #[cfg(feature = "local")]
-                let backends = if let Some(config) = &self.local {
-                    let profile = config.profile();
-                    profile.ensure_dirs().map_err(|error| {
-                        BackendInitError::Host(everruns_provider::error::AgentLoopError::config(
-                            error.to_string(),
-                        ))
-                    })?;
-                    let event_log = Arc::new(
-                        everruns_host::JsonlEventLog::open(config.data_dir().join("events.jsonl"))
-                            .await
-                            .map_err(BackendInitError::Event)?,
-                    );
-                    let local = everruns_local::LocalBackends::new(
-                        profile,
-                        backends.with_event_log(event_log),
-                    )
-                    .map_err(BackendInitError::Host)?;
-                    let session_store = Arc::new(
-                        everruns_local::LocalSessionStore::new(local.db.clone())
-                            .map_err(BackendInitError::Host)?,
-                    );
-                    let _ = self
-                        .state
-                        .binding_store
-                        .set(session_store.clone() as Arc<dyn EnvironmentBindingStore>);
-                    local.runtime_backends.with_session_store(session_store)
-                } else {
-                    let _ = self
-                        .state
-                        .binding_store
-                        .set(Arc::new(InMemoryEnvironmentBindingStore::default()));
-                    backends
-                };
-                #[cfg(not(feature = "local"))]
-                let _ = self
-                    .state
-                    .binding_store
-                    .set(Arc::new(InMemoryEnvironmentBindingStore::default()));
-                Ok(backends)
-            })
-            .await
+    #[cfg(feature = "local")]
+    pub(crate) fn local_config(&self) -> Option<&crate::LocalConfig> {
+        self.local.as_ref()
     }
 
     pub(crate) async fn catalog_session(
         &self,
+        backends: &HostBackends,
         session_id: SessionId,
     ) -> Result<(), crate::HistoryError> {
-        let backends = self
-            .shared_backends()
-            .await
-            .map_err(|error| error.history_error())?;
         if backends
             .session_store
             .get_session(session_id)
@@ -627,12 +561,14 @@ impl Agent {
     /// envelopes; the host log remains the sole write path and sequence owner.
     pub(crate) async fn build_runtime_with_event_sink(
         &self,
+        backends: HostBackends,
         session_id: SessionId,
         environment: Option<Environment>,
         event_sink: Arc<dyn EventSink>,
         hook_state: Arc<crate::hooks::HookRunState>,
     ) -> Result<InProcessRuntime, everruns_provider::error::AgentLoopError> {
         self.build_runtime_with_backends(
+            backends,
             session_id,
             environment,
             Some(event_sink),
@@ -647,6 +583,7 @@ impl Agent {
 
     async fn build_runtime_with_backends(
         &self,
+        mut backends: HostBackends,
         session_id: SessionId,
         environment: Option<Environment>,
         event_sink: Option<Arc<dyn EventSink>>,
@@ -709,11 +646,6 @@ impl Agent {
             .model_spec(self.model.clone())
             .workspace_policy(self.workspace_policy.clone());
 
-        let mut backends = self
-            .shared_backends()
-            .await
-            .map_err(BackendInitError::into_agent_loop)?
-            .clone();
         if let Some(event_sink) = event_sink {
             backends = backends.with_event_sink(event_sink);
         }
@@ -1412,6 +1344,8 @@ fn map_workspace_resume_error(error: everruns_host::WorkspaceError) -> crate::Re
 }
 
 fn framework_capability_registry(hosted_base: bool) -> everruns_core::CapabilityRegistry {
+    #[cfg(not(feature = "builtins"))]
+    let _ = hosted_base;
     let registry = everruns_core::CapabilityRegistry::new();
     #[cfg(feature = "builtins")]
     let registry = {
@@ -1770,7 +1704,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None, None, None)
+            .build_runtime_with_backends(HostBackends::in_memory(), session_id, None, None, None)
             .await
             .expect("runtime builds");
         let visible = runtime
@@ -1811,7 +1745,13 @@ mod tests {
             .expect("valid agent");
 
         let runtime = agent
-            .build_runtime_with_backends(SessionId::new(), None, None, None)
+            .build_runtime_with_backends(
+                HostBackends::in_memory(),
+                SessionId::new(),
+                None,
+                None,
+                None,
+            )
             .await
             .expect("openai runtime builds offline");
         let _ = runtime;
@@ -1827,7 +1767,7 @@ mod tests {
 
         let session_id = SessionId::new();
         let runtime = agent
-            .build_runtime_with_backends(session_id, None, None, None)
+            .build_runtime_with_backends(HostBackends::in_memory(), session_id, None, None, None)
             .await
             .expect("runtime builds");
         // The seeded session id is usable directly: a caller can run a turn

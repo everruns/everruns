@@ -9,7 +9,7 @@ running session cannot disagree about the conversation.
 
 ## Default: engine-lifetime memory
 
-By default, `InMemoryEngine` owns a volatile session catalog and event log. It
+By default, `Engine` owns a volatile session catalog and event log. It
 retains the immutable Agent snapshot associated with each session and requires
 no database, server, network connection, credential, or filesystem access.
 
@@ -48,6 +48,9 @@ the committed session by ID.
 
 The local profile is designed for one embedded process at a time. Coordinate
 process ownership before handing the directory to another application process.
+Within one process, every live Engine configured with the same local data
+directory shares one backend bundle, so concurrent Engine values cannot build
+divergent JSONL indexes or SQLite handles for that profile.
 
 The event-log file format and host backends are not Framework APIs. Do not edit
 the log or build application writes around its representation. Use
@@ -74,6 +77,10 @@ with `Engine::resume` and traverse bounded event-derived pages from
 A host that needs its own storage implements the public `EventLog`/`EventReader`
 SPI and supplies it through `HostBackends::with_event_log`; see
 [Implementing a custom event log](/framework/canonical-events/#implementing-a-custom-event-log).
+
+`JsonlEventLog` bounds startup recovery before indexing: the default accepts at
+most 128 MiB and 1,000,000 canonical events. Oversize logs fail to open with a
+typed recovery-limit error instead of allocating or scanning without bound.
 
 Do not design new application persistence around a legacy storage
 representation.

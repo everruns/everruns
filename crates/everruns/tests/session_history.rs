@@ -237,6 +237,52 @@ async fn local_profile_resumes_empty_and_multi_turn_sessions_across_agents() {
 
 #[cfg(feature = "local")]
 #[tokio::test]
+async fn local_profile_is_coherent_across_live_engines() {
+    let root = tempfile::tempdir().unwrap();
+    let first_engine = Engine::new();
+    let first = first_engine.create(local_agent(root.path()));
+    let session_id = first.session_id();
+    first.run("written by first engine").await.unwrap();
+
+    let second_engine = Engine::new();
+    second_engine
+        .attach(session_id, local_agent(root.path()))
+        .await
+        .unwrap();
+    let second = second_engine.resume(session_id).await.unwrap();
+    assert_eq!(second.history().page().await.unwrap().len(), 2);
+
+    second.run("written by second engine").await.unwrap();
+    let history = first.history().page().await.unwrap();
+    assert_eq!(history.len(), 4);
+    assert_eq!(history.messages[2].text(), "written by second engine");
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
+async fn live_local_profile_rejects_a_conflicting_workspace_root() {
+    let root = tempfile::tempdir().unwrap();
+    let first_engine = Engine::new();
+    let first = first_engine.create(local_agent(root.path()));
+    let session_id = first.session_id();
+    first.start().await.unwrap();
+
+    let conflicting = Agent::builder()
+        .instructions("Keep durable history.")
+        .model(Model::simulated("reply"))
+        .local(LocalConfig::new(root.path()).workspace(root.path().join("other-workspace")))
+        .build()
+        .unwrap();
+    let second_engine = Engine::new();
+
+    assert_eq!(
+        second_engine.attach(session_id, conflicting).await,
+        Err(ResumeError::Unavailable)
+    );
+}
+
+#[cfg(feature = "local")]
+#[tokio::test]
 async fn repeated_attach_keeps_the_engine_original_agent_snapshot() {
     let root = tempfile::tempdir().unwrap();
     let session_id = {
@@ -348,6 +394,9 @@ async fn local_resume_distinguishes_missing_corrupt_torn_and_unavailable_state()
         session.run("committed").await.unwrap();
         session.session_id()
     };
+    // Dropping the last facade handle closes its actor asynchronously. Let the
+    // actor release the live profile before simulating an offline file edit.
+    tokio::task::yield_now().await;
     std::fs::OpenOptions::new()
         .append(true)
         .open(corrupt_root.path().join("events.jsonl"))

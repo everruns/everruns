@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use everruns::{Agent, Engine, InMemoryEngine, Model, ResumeError};
 
 fn simulated(response: &str) -> Agent {
@@ -12,7 +10,7 @@ fn simulated(response: &str) -> Agent {
 
 #[tokio::test]
 async fn session_survives_agent_drop_and_resumes_from_engine() {
-    let engine: Arc<dyn Engine> = Arc::new(InMemoryEngine::new());
+    let engine = Engine::new();
     let session = {
         let agent = simulated("retained");
         engine.create(agent)
@@ -26,7 +24,7 @@ async fn session_survives_agent_drop_and_resumes_from_engine() {
     drop(session);
 
     let resumed = engine.resume(session_id).await.unwrap();
-    assert_eq!(resumed.execution().session_id(), session_id);
+    assert_eq!(resumed.session_id(), session_id);
     assert_eq!(
         resumed.send_and_wait("second").await.unwrap().response,
         "retained"

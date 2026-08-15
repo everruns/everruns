@@ -68,6 +68,9 @@ pub struct SessionEvent {
     pub turn_id: Option<String>,
     /// The event-specific projection.
     pub kind: SessionEventKind,
+    event_type: String,
+    timestamp: String,
+    data: Value,
     raw: Value,
 }
 
@@ -196,10 +199,7 @@ impl SessionEvent {
     /// The stable dot-notation type string for this event (e.g.
     /// `"turn.started"`), matching the canonical event protocol.
     pub fn event_type(&self) -> &str {
-        self.raw
-            .get("type")
-            .and_then(Value::as_str)
-            .expect("canonical events always carry a string type")
+        &self.event_type
     }
 
     /// Persisted replay sequence within this session.
@@ -217,10 +217,7 @@ impl SessionEvent {
 
     /// RFC 3339 timestamp from the canonical event envelope.
     pub fn timestamp(&self) -> &str {
-        self.raw
-            .get("ts")
-            .and_then(Value::as_str)
-            .expect("canonical events always carry a string timestamp")
+        &self.timestamp
     }
 
     /// The complete canonical event envelope as JSON.
@@ -244,9 +241,7 @@ impl SessionEvent {
     /// [`SessionEventKind`], such as tool narration, a completed message's
     /// structured content, model token usage, or failure classification.
     pub fn data(&self) -> &Value {
-        self.raw
-            .get("data")
-            .expect("canonical events always carry data")
+        &self.data
     }
 
     /// Human-readable tool narration, when the event carries it.
@@ -261,6 +256,8 @@ impl SessionEvent {
     /// so no event is ever dropped.
     fn from_core_event(event: &Event) -> Self {
         let raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
+        let data = serde_json::to_value(&event.data)
+            .expect("canonical event payloads are JSON serializable");
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
             events::INPUT_MESSAGE => match &event.data {
@@ -384,6 +381,9 @@ impl SessionEvent {
             session_id: event.session_id.to_string(),
             turn_id,
             kind,
+            event_type: event.event_type.clone(),
+            timestamp: event.ts.to_rfc3339(),
+            data,
             raw,
         }
     }
@@ -392,7 +392,7 @@ impl SessionEvent {
         SessionEventKind::Other {
             event_type: event.event_type.clone(),
             payload: serde_json::to_value(&event.data)
-                .expect("canonical event data is JSON serializable"),
+                .expect("canonical event payloads are JSON serializable"),
         }
     }
 }
