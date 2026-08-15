@@ -3,13 +3,12 @@ set -euo pipefail
 
 # Upload a screenshot and add a PR comment with the embedded image
 #
-# Uses Cloudinary for image hosting (signed upload)
+# Uses GitHub's user-attachments CDN, the same storage as drag-and-drop uploads.
 #
 # Usage: upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
 #
 # Environment variables:
-#   GITHUB_TOKEN   - Required for PR comments
-#   CLOUDINARY_URL - Cloudinary URL: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+#   GITHUB_TOKEN - Optional when `gh auth token` is available; must have push access
 #
 # Example:
 #   ./upload-screenshot.sh screenshot.png 195 "Dev components page"
@@ -28,55 +27,49 @@ if [ ! -f "$SCREENSHOT_PATH" ]; then
   exit 1
 fi
 
-if [ -z "${GITHUB_TOKEN:-}" ]; then
-  echo "❌ GITHUB_TOKEN environment variable not set"
-  exit 1
-fi
-
-if [ -z "${CLOUDINARY_URL:-}" ]; then
-  echo "❌ CLOUDINARY_URL environment variable not set"
-  echo "   Format: cloudinary://API_KEY:API_SECRET@CLOUD_NAME"
-  exit 1
-fi
-
-# Parse CLOUDINARY_URL: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
-CLOUDINARY_URL_PARSED="${CLOUDINARY_URL#cloudinary://}"
-API_KEY="${CLOUDINARY_URL_PARSED%%:*}"
-REMAINDER="${CLOUDINARY_URL_PARSED#*:}"
-API_SECRET="${REMAINDER%%@*}"
-CLOUD_NAME="${REMAINDER#*@}"
-
-if [ -z "$API_KEY" ] || [ -z "$API_SECRET" ] || [ -z "$CLOUD_NAME" ]; then
-  echo "❌ Invalid CLOUDINARY_URL format"
-  echo "   Expected: cloudinary://API_KEY:API_SECRET@CLOUD_NAME"
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  TOKEN="$GITHUB_TOKEN"
+elif command -v gh &> /dev/null && TOKEN=$(gh auth token 2>/dev/null); then
+  :
+else
+  echo "❌ Set GITHUB_TOKEN or authenticate the gh CLI"
   exit 1
 fi
 
 FILENAME=$(basename "$SCREENSHOT_PATH")
-TIMESTAMP=$(date +%s)
+CONTENT_TYPE=$(file -b --mime-type "$SCREENSHOT_PATH")
 
 echo "📤 Uploading screenshot: $FILENAME"
 
-# Generate signature for signed upload
-# Parameters must be sorted alphabetically
-PARAMS_TO_SIGN="folder=pr-screenshots&timestamp=${TIMESTAMP}"
-SIGNATURE=$(echo -n "${PARAMS_TO_SIGN}${API_SECRET}" | sha1sum | cut -d' ' -f1)
+REPOSITORY_RESPONSE=$(curl -sS \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
+  "https://api.github.com/repos/everruns/everruns")
+REPOSITORY_ID=$(echo "$REPOSITORY_RESPONSE" | jq -r '.id // empty')
 
-# Upload to Cloudinary (signed upload)
-echo "   Uploading to Cloudinary..."
-UPLOAD_RESPONSE=$(curl -s -X POST \
-  "https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload" \
-  -F "file=@$SCREENSHOT_PATH" \
-  -F "api_key=${API_KEY}" \
-  -F "timestamp=${TIMESTAMP}" \
-  -F "signature=${SIGNATURE}" \
-  -F "folder=pr-screenshots")
+if [ -z "$REPOSITORY_ID" ]; then
+  echo "❌ Failed to resolve the everruns/everruns repository ID"
+  echo "$REPOSITORY_RESPONSE" | jq .
+  exit 1
+fi
 
-IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.secure_url // empty')
+ENCODED_FILENAME=$(jq -rn --arg value "$FILENAME" '$value | @uri')
+ENCODED_CONTENT_TYPE=$(jq -rn --arg value "$CONTENT_TYPE" '$value | @uri')
+UPLOAD_URL="https://uploads.github.com/user-attachments/assets?name=${ENCODED_FILENAME}&content_type=${ENCODED_CONTENT_TYPE}&repository_id=${REPOSITORY_ID}"
+UPLOAD_RESPONSE=$(curl -sS \
+  -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/json" \
+  --data-binary "@$SCREENSHOT_PATH" \
+  "$UPLOAD_URL")
+
+IMAGE_URL=$(echo "$UPLOAD_RESPONSE" | jq -r '.url // empty')
 
 if [ -z "$IMAGE_URL" ]; then
   echo "❌ Upload failed"
   echo "$UPLOAD_RESPONSE" | jq .
+  echo "   HTTP 422 means unsupported media; HTTP 404 usually means a bad repository ID or no push access."
   exit 1
 fi
 
@@ -93,7 +86,7 @@ COMMENT_BODY="## 📸 UI Screenshot
 
 # Post comment
 COMMENT_RESPONSE=$(curl -s -X POST \
-  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/vnd.github+json" \
   -H "X-GitHub-Api-Version: 2022-11-28" \
   "https://api.github.com/repos/everruns/everruns/issues/$PR_NUMBER/comments" \

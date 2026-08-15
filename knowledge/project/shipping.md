@@ -70,7 +70,8 @@ rather than running every check mechanically. Whatever set is chosen, the eviden
 - impacted flows were smoke tested against the repository's canonical local startup contract
 - performance impact was considered where relevant: indexes, scans, N+1 patterns, pagination, and
   bounded result sets
-- UI changes were captured as screenshots in validation or PR comments — never committed to the repo
+- UI changes were captured as screenshots or recordings in validation or PR comments — never
+  committed to the repo
 
 ## CI Opt-Out Labels
 

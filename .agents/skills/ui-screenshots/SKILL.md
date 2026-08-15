@@ -8,14 +8,16 @@ metadata:
 # UI Screenshots
 
 Capture UI state for review evidence with [agent-browser](https://github.com/vercel-labs/agent-browser).
-Screenshots are never committed — they are uploaded to Cloudinary and embedded in a PR comment.
+Screenshots are never committed — the helper uploads them to GitHub's user-attachments CDN and
+embeds them in a PR comment. The general media and video rules live in
+[`../ship/references/pr-and-merge.md`](../ship/references/pr-and-merge.md#publish-evidence-assets).
 
 ## Scripts
 
 Each script documents its own usage and requirements in its header; read it if the flags matter.
 
 ```bash
-.agents/skills/ui-screenshots/scripts/check-config.sh                       # GITHUB_TOKEN, CLOUDINARY_URL, agent-browser
+.agents/skills/ui-screenshots/scripts/check-config.sh                       # GitHub auth, agent-browser
 .agents/skills/ui-screenshots/scripts/take-screenshot.sh <URL> <OUTPUT>
 .agents/skills/ui-screenshots/scripts/upload-screenshot.sh <PATH> <PR> [DESCRIPTION]
 ```
@@ -30,7 +32,8 @@ npm install -g agent-browser
 agent-browser install            # add --with-deps on Linux when system libs are missing
 ```
 
-Uploading needs `CLOUDINARY_URL` (`cloudinary://API_KEY:API_SECRET@CLOUD_NAME`) and `GITHUB_TOKEN`.
+Uploading needs `GITHUB_TOKEN` or an authenticated `gh` CLI session. The token must have push access
+to `everruns/everruns`.
 
 ## Non-obvious failures
 
