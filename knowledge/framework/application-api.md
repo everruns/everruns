@@ -28,7 +28,8 @@ is no separate runtime compatibility crate.
 
 The Framework owns value-first configuration for:
 
-- agent instructions, plain model ids, one provider per agent, function tools,
+- agent instructions, model values that may bundle their one provider (or plain
+  model ids with a separately configured provider), function tools,
   and one open capability-configuration entrypoint for typed built-ins,
   code-defined implementations, and dynamic references;
 - editable and read-only initial files plus an optional real-disk workspace;
@@ -143,7 +144,7 @@ remove. Advanced integrations depend on `everruns-host` directly.
 | Audited use case | Classification | Why / Framework mapping |
 |---|---|---|
 | Host README, skill, and documentation quickstarts | Promote | Ordinary agent/model/session execution is the Framework's primary path. |
-| Built-in simulation and real or custom model providers | Promote | Applications select a plain credential-free model id and attach one provider configuration or custom protocol driver without constructing a `ModelSpec` or platform registry. |
+| Built-in simulation and real or custom model providers | Promote | Applications select a model value that may carry its provider, or pair a plain credential-free model id with one provider configuration, without constructing a `ModelSpec` or platform registry. |
 | Application-defined function tools and initial files | Promote | These are agent behavior and workspace inputs, not host entities. |
 | In-process and OpenAI host examples | Promote | They map to normal agent construction and one or more Framework sessions. |
 | Live message send, steering, and optional waiting | Promote | A Framework session is a live conversation: message acceptance is independent of turn completion, and routing to the active or next turn is decided atomically by the session. |
@@ -205,8 +206,11 @@ and multi-host lifecycle management remain host concerns.
   not add builder methods, and third-party values must not require a core or
   host dependency. Dynamic references validate their open ID and JSON object
   boundary at agent build time; known implementations additionally own schema
-  validation. Duplicate references and implementation collisions are errors,
-  never registry overwrites.
+  validation. Typed activation and configuration values live with their
+  capability implementation packages; the Framework facade may re-export
+  feature-enabled values but does not own a closed capability catalog.
+  Duplicate references and implementation collisions are errors, never
+  registry overwrites.
 - Local-process MCP stays opt-in and must not enter hosted builds by default.
 - Real workspaces keep the runtime filesystem's traversal and symlink-escape
   protections.
