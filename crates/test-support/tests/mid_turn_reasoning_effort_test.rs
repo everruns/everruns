@@ -16,8 +16,8 @@ use everruns_core::message::{Controls, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{tool_context::ReasoningEffortHandle, tool_context::ToolContext};
+use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_test_support::InMemoryAgenticLoop;
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
 /// A tool that, when invoked, sets the shared reasoning-effort handle to a new
 /// value. This is the "seam" exercised by the test: a tool changing effort

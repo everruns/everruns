@@ -10,8 +10,8 @@
 use everruns_builtins::MessageMetadataCapability;
 use everruns_core::MessageRetriever;
 use everruns_core::message::MessageRole;
+use everruns_llmsim::LlmSimConfig;
 use everruns_test_support::InMemoryAgenticLoop;
-use everruns_test_support::LlmSimConfig;
 
 #[tokio::test]
 async fn message_metadata_annotates_llm_view_not_storage() {

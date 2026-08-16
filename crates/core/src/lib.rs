@@ -39,9 +39,9 @@
 //! live in `everruns-builtins`. Core exposes only neutral collection hooks,
 //! registry algorithms, and type-keyed extension seams.
 //!
-//! Deterministic simulation (the `llmsim` driver, the in-memory agentic
-//! loop, and demo fixture capabilities) lives in the `everruns-test-support`
-//! crate; core carries no test implementations.
+//! Deterministic simulation lives in `everruns-llmsim`; the in-memory agentic
+//! loop, writable test doubles, and demo fixture capabilities live in
+//! `everruns-test-support`. Core carries neither implementation.
 //!
 //! Composition is not core's job either. The execution surface an embedder
 //! assembles — capability registry, provider registry, egress, utility LLM and

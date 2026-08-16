@@ -18,13 +18,13 @@ use everruns_engine::{ReasonInput, ReasonResult};
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
+use everruns_llmsim::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_provider::driver_registry::ProviderConfig;
 use everruns_provider::driver_registry::{DriverId, DriverRegistry};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::AgentId;
 use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
-use everruns_test_support::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, reason_atom_with_stores,
 };

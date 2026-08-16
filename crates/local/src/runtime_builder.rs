@@ -72,8 +72,8 @@ impl LocalRuntimeBuilder {
     /// the runtime model to `model_id` on it when nothing else set one.
     ///
     /// Deterministic local runs pass the `llmsim` provider built by
-    /// `everruns_test_support::llm_sim_provider(...)` here; the simulator no
-    /// longer ships with the production crates (EVE-875).
+    /// `everruns_llmsim::llm_sim_provider(...)` here; testing/demo helpers are
+    /// not part of the production dependency tree.
     pub fn provider_with_default_model(
         mut self,
         provider: everruns_provider::runtime_provider::Provider,

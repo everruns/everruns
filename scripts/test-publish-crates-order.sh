@@ -118,6 +118,9 @@ for earlier, later in (
     ("everruns-mcp", "everruns-host"),
     ("everruns-platform", "everruns-host"),
     ("everruns-host", "everruns"),
+    ("everruns-host", "everruns-llmsim"),
+    ("everruns-llmsim", "everruns-test-support"),
+    ("everruns-llmsim", "everruns"),
     ("everruns-macros", "everruns"),
 ):
     if earlier not in order:
@@ -139,7 +142,11 @@ for manifest_rel, dependency in (
     ("crates/host/Cargo.toml", "everruns-session-services"),
     ("crates/platform/Cargo.toml", "everruns-session-services"),
     ("crates/everruns/Cargo.toml", "everruns-host"),
+    ("crates/everruns/Cargo.toml", "everruns-llmsim"),
     ("crates/everruns/Cargo.toml", "everruns-macros"),
+    ("crates/llmsim/Cargo.toml", "everruns-provider"),
+    ("crates/llmsim/Cargo.toml", "everruns-host"),
+    ("crates/test-support/Cargo.toml", "everruns-llmsim"),
 ):
     entry = re.search(
         rf'"{re.escape(manifest_rel)}":\s*\[(.*?)\]', workflow_text, re.DOTALL
@@ -156,7 +163,7 @@ workspace_pins = re.search(r"WORKSPACE_PIN_DEPS:\s*list\[str\]\s*=\s*\[(.*?)\]",
 if workspace_pins is None:
     fail("could not find WORKSPACE_PIN_DEPS in scripts/sync-publish-pin-versions.py")
 else:
-    for dependency in ("everruns-capability", "everruns-engine", "everruns-macros"):
+    for dependency in ("everruns-capability", "everruns-engine", "everruns-llmsim", "everruns-macros"):
         if f'"{dependency}"' not in workspace_pins.group(1):
             fail(f"scripts/sync-publish-pin-versions.py does not sync the {dependency} workspace pin")
 

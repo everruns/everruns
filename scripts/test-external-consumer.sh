@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Build and run real out-of-workspace consumers of the published crates:
 #
-#   external-consumer-app     runs offline turns on the `everruns` facade,
+#   external-consumer-app     preserves `Model::simulated` facade ergonomics,
+#                             imports advanced simulator configuration from
+#                             `everruns-llmsim`, and runs offline turns,
 #                             including capabilities installed from the
 #                             external capability pack.
 #   external-capability-pack  implements `IntoCapability` and a code-defined
@@ -49,7 +51,7 @@ if [ "$answer" != "4" ]; then
   exit 1
 fi
 
-echo "External consumer runs on the public everruns facade under -D warnings: $answer"
+echo "External consumer runs on the public everruns facade and everruns-llmsim under -D warnings: $answer"
 
 CARGO_TARGET_DIR="$TARGET_DIR" RUSTFLAGS="-D warnings" \
   cargo test --quiet --locked --manifest-path "$FIXTURE" -p external-capability-pack

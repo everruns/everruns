@@ -89,10 +89,9 @@ everruns-builtins = { workspace = true, optional = true }
 everruns-core.workspace = true
 everruns-provider.workspace = true
 everruns-host.workspace = true
-# Deterministic in-process simulator backing `Model::simulated` (EVE-875).
-# `sim` only: the facade never links the demo fixture capabilities, so
-# applications cannot accidentally register them.
-everruns-test-support = { workspace = true, default-features = false, features = ["sim"] }
+# Production-safe deterministic in-process simulator backing
+# `Model::simulated`; no dependency on testing/demo helpers.
+everruns-llmsim.workspace = true
 everruns-local = { workspace = true, optional = true }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }

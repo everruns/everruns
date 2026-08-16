@@ -8,10 +8,10 @@ use everruns_core::{DEFAULT_ORG_ID, ResolvedExecutionSnapshot};
 use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RuntimeHostAdapter, SessionBuilder,
 };
+use everruns_llmsim::LlmSimConfig;
+use everruns_llmsim::{LlmSimRuntimeExt, llm_sim_provider};
 use everruns_provider::runtime_provider::BearerAuth;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_test_support::llmsim_driver::LlmSimConfig;
-use everruns_test_support::{LlmSimRuntimeExt, llm_sim_provider};
 
 const HEADER_SECRET: &str = "SECRET-MCP-HEADER-MARKER";
 const PROVIDER_SECRET: &str = "SECRET-PROVIDER-KEY-MARKER";

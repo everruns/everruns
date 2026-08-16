@@ -9,7 +9,7 @@
 //   cargo run -p everruns-host --example plugin_from_dir
 
 use everruns_host::InProcessRuntimeBuilder;
-use everruns_test_support::LlmSimRuntimeExt;
+use everruns_llmsim::LlmSimRuntimeExt;
 use std::path::Path;
 
 #[tokio::main]
@@ -23,9 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load and compile the plugin. Compilation errors surface here.
     let builder = InProcessRuntimeBuilder::new()
-        .llm_sim_as_default(everruns_test_support::llmsim_driver::LlmSimConfig::fixed(
-            "ok",
-        ))
+        .llm_sim_as_default(everruns_llmsim::LlmSimConfig::fixed("ok"))
         .with_plugin_dir(plugin_dir)?;
 
     // Retrieve the hydrated capability config so we can attach it to the agent.

@@ -25,6 +25,10 @@ let agent = Agent::builder()
 # Ok::<(), everruns::BuildError>(())
 ```
 
+`Model::simulated` is backed by the focused `everruns-llmsim` crate. Depend on
+that crate directly when building a low-level host or scripting multi-turn
+provider behavior; ordinary Framework applications need only `everruns`.
+
 ## OpenAI convenience
 
 With the `openai` feature, `OpenAI::from_env` reads `OPENAI_API_KEY` and the

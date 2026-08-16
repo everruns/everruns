@@ -469,6 +469,7 @@ deployment composition outside the engine.
 
 4. **Concrete In-Memory Implementations**:
    - `everruns-host` owns application stores and canonical event history
+   - `everruns-llmsim` owns the deterministic production-safe LLM simulator
    - `everruns-test-support` owns writable deterministic message/event fixtures
    - `everruns-core` exposes traits and values, not concrete public backends
 

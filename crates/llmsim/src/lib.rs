@@ -1,14 +1,29 @@
-// LLM Simulator Driver
-//
-// This module provides a fake LLM driver for testing purposes using llmsim.
-// It supports:
-// - Configurable response generators (fixed, lorem, echo, sequence)
-// - Optional tool call responses
-// - Configurable latency simulation
-// - Token counting
-//
-// Design: This driver is intended for unit and integration tests.
-// It can be configured per-test to return specific responses or tool calls.
+#![deny(missing_docs)]
+
+//! Deterministic, offline LLM simulation for
+//! [Everruns](https://everruns.com) agents and runtimes.
+//!
+//! `everruns-llmsim` implements the provider contracts from
+//! [`everruns-provider`](https://docs.rs/everruns-provider) with configurable
+//! fixed, echo, sequence, and scripted responses. It runs in process without
+//! credentials or network access and supports deterministic tool calls,
+//! injected failures, latency controls, and request capture.
+//!
+//! Framework applications can use `everruns::Model::simulated` without naming
+//! this crate. Advanced hosts and tests can configure the driver directly:
+//!
+//! ```
+//! use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
+//!
+//! let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello."));
+//! # let _ = driver;
+//! ```
+
+#[cfg(feature = "host")]
+mod runtime_ext;
+
+#[cfg(feature = "host")]
+pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
 
 use async_trait::async_trait;
 use futures::StreamExt;
@@ -32,7 +47,7 @@ use llmsim::stream::TokenStreamBuilder;
 // Configuration Types
 // ============================================================================
 
-/// Configuration for the LlmSim driver
+/// Configuration for the LlmSim driver.
 #[derive(Debug, Clone)]
 pub struct LlmSimConfig {
     /// Response generation configuration
@@ -130,25 +145,25 @@ impl LlmSimConfig {
         self
     }
 
-    /// Add tool calls to the response
+    /// Add tool calls to the response.
     pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
         self.tool_calls = Some(ToolCallConfig::Fixed(tool_calls));
         self
     }
 
-    /// Add a sequence of tool calls (different per call)
+    /// Add a sequence of tool calls (different per call).
     pub fn with_tool_call_sequence(mut self, sequences: Vec<Vec<ToolCall>>) -> Self {
         self.tool_calls = Some(ToolCallConfig::Sequence(sequences));
         self
     }
 
-    /// Enable latency simulation
+    /// Enable latency simulation.
     pub fn with_latency(mut self) -> Self {
         self.simulate_latency = true;
         self
     }
 
-    /// Set model name for metadata
+    /// Set model name for metadata.
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model_name = model.into();
         self
@@ -206,7 +221,7 @@ impl LlmSimConfig {
     }
 }
 
-/// Response generation configuration
+/// Response generation configuration.
 #[derive(Debug, Clone)]
 pub enum ResponseConfig {
     /// Return a fixed response
@@ -214,12 +229,17 @@ pub enum ResponseConfig {
     /// Echo back the last user message with a prefix
     Echo,
     /// Generate lorem ipsum text with target token count
-    Lorem { target_tokens: usize },
+    Lorem {
+        /// Approximate number of generated tokens.
+        target_tokens: usize,
+    },
     /// Return responses from a sequence (cycles when exhausted)
     Sequence(Vec<String>),
     /// Replay scripted assistant turns for multi-turn agent scenario tests.
     Scripted {
+        /// Ordered turns to replay.
         turns: Vec<SimTurn>,
+        /// Behavior after all turns have been consumed.
         on_exhausted: OnExhausted,
     },
     /// Empty response (useful for tool-only responses)
@@ -239,7 +259,9 @@ pub enum SimTurn {
     ToolCalls(Vec<SimToolCall>),
     /// Mixed assistant text and tool calls in the same turn.
     Mixed {
+        /// Assistant text emitted before the tool calls.
         text: String,
+        /// Tool calls emitted in the same assistant turn.
         tool_calls: Vec<SimToolCall>,
     },
     /// Simulate an API/transport error on this turn.
@@ -251,22 +273,34 @@ pub enum SimTurn {
 /// A single tool call inside a scripted turn.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SimToolCall {
+    /// Tool name.
     pub name: String,
+    /// JSON arguments passed to the tool.
     pub arguments: serde_json::Value,
+    /// Optional stable tool-call id; generated deterministically when absent.
     pub id: Option<String>,
 }
 
 /// Error to inject for a scripted turn.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SimError {
+    /// Provider rate limit.
     RateLimit,
+    /// Provider timeout.
     Timeout,
+    /// Transport failure.
     Transport,
+    /// Provider overload.
     Overloaded,
+    /// Authentication failure.
     Authentication,
+    /// Provider quota exhaustion.
     QuotaExhausted,
+    /// Unsupported model id.
     UnsupportedModel(String),
+    /// Invalid provider response.
     InvalidResponse(String),
+    /// Other injected LLM error.
     Other(String),
 }
 
@@ -321,7 +355,7 @@ pub enum OnExhausted {
     Loop,
 }
 
-/// Tool call configuration
+/// Tool call configuration.
 #[derive(Debug, Clone)]
 pub enum ToolCallConfig {
     /// Always return these tool calls
@@ -345,6 +379,7 @@ pub struct ToolCallPattern {
 }
 
 impl ToolCallPattern {
+    /// Match user messages containing `contains` and return `tool_calls`.
     pub fn new(contains: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             contains: contains.into(),
@@ -380,7 +415,7 @@ fn materialize_scripted_tool_calls(
 // Driver Implementation
 // ============================================================================
 
-/// LLM Simulator Driver for testing
+/// Deterministic LLM simulator driver.
 ///
 /// This driver generates simulated responses based on configuration.
 /// It's intended for unit and integration tests where you need
@@ -389,7 +424,7 @@ fn materialize_scripted_tool_calls(
 /// # Example
 ///
 /// ```ignore
-/// use everruns_test_support::llmsim_driver::{LlmSimDriver, LlmSimConfig};
+/// use everruns_llmsim::{LlmSimDriver, LlmSimConfig};
 ///
 /// // Simple fixed response
 /// let driver = LlmSimDriver::new(LlmSimConfig::fixed("Hello!"));
@@ -801,7 +836,7 @@ impl std::fmt::Debug for LlmSimDriver {
 ///
 /// ```ignore
 /// use everruns_core::DriverRegistry;
-/// use everruns_test_support::llmsim_driver::register_driver;
+/// use everruns_llmsim::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
@@ -861,7 +896,7 @@ fn parse_ttft_from_model_name(model_name: &str) -> Option<std::time::Duration> {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_test_support::llmsim_driver::{create_chat_driver, LlmSimConfig};
+/// use everruns_llmsim::{create_chat_driver, LlmSimConfig};
 ///
 /// let driver = create_chat_driver(
 ///     LlmSimConfig::fixed("I'll help you with that!")

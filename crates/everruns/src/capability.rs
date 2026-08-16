@@ -282,9 +282,9 @@ mod tests {
 
     use everruns_core::tool_context::ToolContext;
     use everruns_core::tools::Tool as _;
+    use everruns_llmsim::LlmSimConfig;
     use everruns_provider::tool_types::ToolCall;
     use everruns_provider::typed_id::SessionId;
-    use everruns_test_support::LlmSimConfig;
     use serde_json::{Value, json};
     use tokio::sync::Notify;
     use tokio::time::timeout;

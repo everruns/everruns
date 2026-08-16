@@ -28,10 +28,9 @@ everruns-provider.workspace = true
 # Telemetry init (OTLP exporter + tracing-subscriber layers) — installed
 # explicitly by the worker binary; core no longer ships it (EVE-876).
 everruns-observability = { workspace = true }
-# Deterministic `llmsim` provider (seeded LlmSim models, LLMSIM_DEMO
-# scenarios). `sim` only — the worker never links the demo fixture
-# capabilities; scripts/lib/check-test-support-isolation.sh guards this.
-everruns-test-support = { workspace = true, features = ["sim"] }
+# Production-safe deterministic `llmsim` provider (seeded LlmSim models and
+# LLMSIM_DEMO scenarios). Testing/demo helpers stay out of the worker tree.
+everruns-llmsim.workspace = true
 everruns-platform = { path = "../platform", features = ["embedded-platform-docs", "environment-capabilities", "portable-builtins", "a2a"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }

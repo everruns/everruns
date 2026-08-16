@@ -4,7 +4,7 @@
 // neutral provider seams, and this extension trait adapts an `LlmSimConfig`
 // into an `llmsim` provider on top of them.
 
-use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+use crate::{LlmSimConfig, LlmSimDriver};
 use everruns_host::InProcessRuntimeBuilder;
 
 /// Canonical provider name and model id used by simulated runtimes.

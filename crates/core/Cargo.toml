@@ -93,8 +93,9 @@ utoipa = { workspace = true, optional = true }
 # Plugin system for external integrations
 inventory.workspace = true
 
-# Note: LLM simulation (`llmsim`) moved to the `everruns-test-support` crate
-# (EVE-875). Core carries no llmsim dependency or feature; the architecture
+# Note: LLM simulation (`llmsim`) lives in `everruns-llmsim`; testing/demo
+# helpers live in `everruns-test-support` (EVE-875). Core carries neither
+# dependency or feature; the architecture
 # guard in scripts/lib/check-test-support-isolation.sh enforces it.
 
 [features]

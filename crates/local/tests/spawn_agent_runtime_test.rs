@@ -40,6 +40,8 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
 };
+use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
 use everruns_platform::{PlatformMessage, PlatformStore};
@@ -49,10 +51,6 @@ use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_test_support::LlmSimRuntimeExt;
-use everruns_test_support::llmsim_driver::{
-    LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern,
-};
 
 /// Substrings that steer the content-keyed llmsim: a parent prompt containing
 /// one of these makes the model emit the matching `spawn_agent` call. Child

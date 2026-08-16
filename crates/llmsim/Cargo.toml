@@ -1,0 +1,37 @@
+[package]
+name = "everruns-llmsim"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-llmsim"
+description = "Deterministic in-process LLM simulation for Everruns agents and runtimes"
+readme = "README.md"
+keywords = ["agent", "llm", "testing", "simulation", "offline"]
+categories = ["development-tools", "asynchronous"]
+
+[features]
+default = []
+# `.llm_sim(...)` registration and `.llm_sim_as_default(...)` selection
+# conveniences for `everruns_host::InProcessRuntimeBuilder`.
+host = ["dep:everruns-host"]
+
+[dependencies]
+everruns-provider.workspace = true
+everruns-host = { workspace = true, optional = true }
+
+async-trait.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["time"] }
+
+# Only the in-process library surface is needed. Disabling defaults avoids
+# llmsim's server, CLI, TUI, tokenization, and tracing-subscriber subtrees.
+llmsim = { version = "0.5.1", default-features = false }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "time"] }

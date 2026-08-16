@@ -25,10 +25,11 @@ use everruns_core::session::SessionExecutionState;
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionStore,
 };
+use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::driver_registry::LlmStreamEvent;
 use everruns_provider::provider::DriverId;
 use everruns_provider::typed_id::{AgentId, HarnessId};
-use everruns_test_support::{InMemoryMessageRetriever, LlmSimConfig, LlmSimDriver};
+use everruns_test_support::InMemoryMessageRetriever;
 use futures::StreamExt;
 
 #[tokio::test]

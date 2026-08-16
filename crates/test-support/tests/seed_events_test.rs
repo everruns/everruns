@@ -11,7 +11,8 @@
 use everruns_core::MessageRetriever;
 use everruns_core::events::{EventData, InputMessageData, OutputMessageCompletedData};
 use everruns_core::message::{Message, MessageRole};
-use everruns_test_support::{InMemoryAgenticLoop, LlmSimConfig};
+use everruns_llmsim::LlmSimConfig;
+use everruns_test_support::InMemoryAgenticLoop;
 
 #[tokio::test]
 async fn seeded_events_project_into_history_before_the_next_turn() {

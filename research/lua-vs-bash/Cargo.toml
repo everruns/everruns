@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 everruns-core = { path = "../../crates/core" }
 everruns-provider = { path = "../../crates/provider", default-features = false }
-everruns-test-support = { path = "../../crates/test-support" }
+everruns-llmsim = { path = "../../crates/llmsim" }
 everruns-host = { path = "../../crates/host", features = ["lua"] }
 everruns-integrations-bashkit = { path = "../../integrations/bashkit" }
 everruns-integrations-lua = { path = "../../integrations/lua" }

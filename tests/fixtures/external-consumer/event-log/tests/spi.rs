@@ -24,7 +24,7 @@ use everruns_host::{
     RuntimeSessionStore,
 };
 use everruns_session_services::SessionMutator;
-use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt};
+use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use external_event_log::ExternalEventLog;
 
 struct ExternalAgentStore(Arc<dyn RuntimeAgentStore>);

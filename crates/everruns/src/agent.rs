@@ -22,10 +22,10 @@ use everruns_host::{
     InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder, WorkspaceProvider,
     WorkspaceProviderId,
 };
+use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::typed_id::SessionId;
-use everruns_test_support::{LlmSimConfig, LlmSimDriver};
 
 use crate::tool::{FunctionTool, IntoTool, Tool, validate_tool_name, validate_tool_schema};
 

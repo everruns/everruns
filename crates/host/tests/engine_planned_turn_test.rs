@@ -20,12 +20,12 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, SessionBuilder,
     TurnStopReason,
 };
+use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_llmsim::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
-use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimToolCall, SimTurn};
 use serde_json::json;
 
 fn math_platform() -> HostComposition {

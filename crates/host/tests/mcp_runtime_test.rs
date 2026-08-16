@@ -16,12 +16,12 @@ use everruns_core::{
 };
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::{ToolCall, ToolResult};
-use everruns_test_support::LlmSimRuntimeExt;
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};

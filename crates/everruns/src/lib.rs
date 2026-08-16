@@ -184,7 +184,7 @@ pub use everruns_provider::tool_types::ToolCall;
 pub use everruns_provider::typed_id::{SessionId, WorkspaceId};
 
 // --- Deterministic in-process LLM simulator -----------------------------
-pub use everruns_test_support::LlmSimConfig;
+pub use everruns_llmsim::LlmSimConfig;
 
 /// The common path: everything needed to describe an agent and run turns.
 ///

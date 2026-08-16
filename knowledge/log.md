@@ -2,6 +2,13 @@
 
 ## 2026-08-15
 
+* **Production simulation has a focused owner.** The deterministic LLM driver,
+  scripted-turn configuration, registry helpers, and optional host-builder
+  extension live in the publishable `everruns-llmsim` crate. Framework and
+  worker production graphs depend on it directly; `everruns-test-support`
+  retains testing/demo helpers and a documented 0.18 compatibility re-export
+  for its 0.17 simulator paths.
+
 * **Framework architecture is public and unambiguous.** The Framework guide
   now presents concrete `everruns::Engine` as the canonical application API,
   separates it from the low-level `everruns-engine::Execution` host contract,

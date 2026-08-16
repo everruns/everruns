@@ -11,7 +11,7 @@ Two modes:
 
 The pin set mirrors `dependency_versions` in
 `.github/workflows/publish-crates.yml` and `workspace.dependencies` in
-`Cargo.toml` (everruns-core, everruns-provider).
+`Cargo.toml`.
 """
 
 from __future__ import annotations
@@ -64,9 +64,10 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-host",
         "everruns-local",
         "everruns-macros",
-        "everruns-test-support",
+        "everruns-llmsim",
     ],
-    "crates/test-support/Cargo.toml": ["everruns-core"],
+    "crates/llmsim/Cargo.toml": ["everruns-provider", "everruns-host"],
+    "crates/test-support/Cargo.toml": ["everruns-core", "everruns-llmsim"],
     "crates/local/Cargo.toml": [
         "everruns-builtins",
         "everruns-core",
@@ -118,6 +119,7 @@ WORKSPACE_PIN_DEPS: list[str] = [
     "everruns-ard",
     "everruns",
     "everruns-macros",
+    "everruns-llmsim",
     "everruns-test-support",
     "everruns-integrations-filesystem",
     "everruns-integrations-bashkit",
