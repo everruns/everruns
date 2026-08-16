@@ -18,10 +18,10 @@ categories = ["development-tools", "asynchronous"]
 # execution values. It owns no host, platform, database, network, process, or
 # interpreter implementation edge.
 everruns-capability.workspace = true
-everruns-core = { path = "../core", version = "0.17.26", default-features = false }
+everruns-core = { path = "../core", version = "0.18.0", default-features = false }
 everruns-provider.workspace = true
-everruns-openui = { path = "../openui", version = "0.17.26", optional = true }
-everruns-a2ui = { path = "../a2ui", version = "0.17.26", optional = true }
+everruns-openui = { path = "../openui", version = "0.18.0", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.18.0", optional = true }
 
 async-trait.workspace = true
 chrono.workspace = true

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-16
+
+### Highlights
+
+- **The 0.18 neutral-kernel boundary** - `everruns-core` is now a neutral execution kernel. Hosted platform records — sessions, agents and agent versions, harnesses, evals and observers, connectors, system email, feature flags, and OAuth/credential infrastructure — moved out to `everruns-platform` (and sibling crates), and the logic-free `everruns-runtime` compatibility crate was removed. REST/gRPC shapes and stored schema are unchanged; see the [0.18 migration guide](https://github.com/everruns/everruns/pull/3148) and the **Breaking** notes below ([#3160](https://github.com/everruns/everruns/pull/3160), [#3101](https://github.com/everruns/everruns/pull/3101)).
+- **Engine-owned sessions and unified execution** - Engines now own the session lifecycle, and a single execution path serves both in-process and durable runs ([#3179](https://github.com/everruns/everruns/pull/3179), [#3173](https://github.com/everruns/everruns/pull/3173), [#3167](https://github.com/everruns/everruns/pull/3167)).
+- **Multi-head workspaces** - Framework workspaces now support multiple heads ([#3166](https://github.com/everruns/everruns/pull/3166)).
+- **Metered embedding spend** - Retrieval and knowledge-index embedding spend is now metered and ledgered against the organization ([#3149](https://github.com/everruns/everruns/pull/3149), [#3163](https://github.com/everruns/everruns/pull/3163)).
+- **Chats as core functionality** - Chats is always present in navigation and search for every organization with no feature opt-in, and now supports chat pinning.
+
 ### Breaking
 
 - **Moved concrete in-memory backends out of `everruns-core`.** Embedded-host
@@ -154,6 +164,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   envelopes into a fixture session's event log. It is the supported way to
   give an in-memory loop a prior conversation now that history projects from
   canonical events and `EventHistory` is read-only.
+
+### What's Changed
+
+- refactor(llmsim): extract publishable simulator crate by [@chaliy](https://github.com/chaliy)
+- fix(framework): close provider adoption gaps ([#3189](https://github.com/everruns/everruns/pull/3189)) by [@chaliy](https://github.com/chaliy)
+- docs(framework): publish execution architecture ([#3188](https://github.com/everruns/everruns/pull/3188)) by [@chaliy](https://github.com/chaliy)
+- fix: resolve deep smoke test regressions ([#3187](https://github.com/everruns/everruns/pull/3187)) by [@chaliy](https://github.com/chaliy)
+- refactor(framework): simplify coding agent setup ([#3186](https://github.com/everruns/everruns/pull/3186)) by [@chaliy](https://github.com/chaliy)
+- ci(actions): move every action off the deprecated Node 20 runtime ([#3184](https://github.com/everruns/everruns/pull/3184)) by [@chaliy](https://github.com/chaliy)
+- refactor(engine): split reason execution states ([#3185](https://github.com/everruns/everruns/pull/3185)) by [@chaliy](https://github.com/chaliy)
+- refactor(framework): complete library boundary cleanup ([#3182](https://github.com/everruns/everruns/pull/3182)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): bump the nanoid override to the actual GHSA-2v37-7h3g-55p8 fix ([#3183](https://github.com/everruns/everruns/pull/3183)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): move active proposals into knowledge ([#3181](https://github.com/everruns/everruns/pull/3181)) by [@chaliy](https://github.com/chaliy)
+- chore(agents): document PR evidence publishing ([#3180](https://github.com/everruns/everruns/pull/3180)) by [@chaliy](https://github.com/chaliy)
+- fix(engine): retry stalls after reasoning output ([#3177](https://github.com/everruns/everruns/pull/3177)) by [@chaliy](https://github.com/chaliy)
+- refactor(framework)!: make engines own session lifecycle ([#3179](https://github.com/everruns/everruns/pull/3179)) by [@chaliy](https://github.com/chaliy)
+- refactor(engine): finish unified execution migration ([#3175](https://github.com/everruns/everruns/pull/3175)) by [@chaliy](https://github.com/chaliy)
+- perf(build): speed up worktree validation ([#3176](https://github.com/everruns/everruns/pull/3176)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): prevent shell injection in release workflow ([#3174](https://github.com/everruns/everruns/pull/3174)) by [@chaliy](https://github.com/chaliy)
+- refactor(engine): unify in-process and durable execution ([#3173](https://github.com/everruns/everruns/pull/3173)) by [@chaliy](https://github.com/chaliy)
+- revert(scale): remove portable distributed engine ([#3172](https://github.com/everruns/everruns/pull/3172)) by [@chaliy](https://github.com/chaliy)
+- feat(scale): add portable distributed engine by [@chaliy](https://github.com/chaliy)
+- refactor(engine)!: own shared execution kernel ([#3170](https://github.com/everruns/everruns/pull/3170)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add engine-owned sessions ([#3167](https://github.com/everruns/everruns/pull/3167)) by [@chaliy](https://github.com/chaliy)
+- refactor(example): use Framework workspace heads ([#3168](https://github.com/everruns/everruns/pull/3168)) by [@chaliy](https://github.com/chaliy)
+- feat(framework): add multi-head workspaces ([#3166](https://github.com/everruns/everruns/pull/3166)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): bump the nanoid override to the actual GHSA-2v37-7h3g-55p8 fix ([#3165](https://github.com/everruns/everruns/pull/3165)) by [@chaliy](https://github.com/chaliy)
+- feat(embeddings): ledger index-sync embedding spend against the org ([#3163](https://github.com/everruns/everruns/pull/3163)) by [@chaliy](https://github.com/chaliy)
+- fix(research): migrate lua eval from core exports ([#3164](https://github.com/everruns/everruns/pull/3164)) by [@chaliy](https://github.com/chaliy)
+- fix(server): preserve credentialless gRPC provider type ([#3162](https://github.com/everruns/everruns/pull/3162)) by [@chaliy](https://github.com/chaliy)
+- fix(research): replay seeded conversation events into the session log ([#3161](https://github.com/everruns/everruns/pull/3161)) by [@chaliy](https://github.com/chaliy)
+- refactor(core)!: freeze the 0.18 neutral-kernel boundary ([#3160](https://github.com/everruns/everruns/pull/3160)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): move store-backed execution resolution ([#3159](https://github.com/everruns/everruns/pull/3159)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): split execution service contracts ([#3158](https://github.com/everruns/everruns/pull/3158)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): isolate TLS and transport dependencies ([#3157](https://github.com/everruns/everruns/pull/3157)) by [@chaliy](https://github.com/chaliy)
+- refactor(storage): move in-memory backends to owners by [@chaliy](https://github.com/chaliy)
+- refactor(core): move concrete capabilities out of kernel by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): close EVE-897 and record why the context bag stays ([#3154](https://github.com/everruns/everruns/pull/3154)) by [@chaliy](https://github.com/chaliy)
+- chore(ui): retire the Dashboard as a top-level page ([#3153](https://github.com/everruns/everruns/pull/3153)) by [@chaliy](https://github.com/chaliy)
+- fix(research): finish the HostComposition rename in lua-vs-bash ([#3152](https://github.com/everruns/everruns/pull/3152)) by [@chaliy](https://github.com/chaliy)
+- feat(openresponses): report per-call cost for compaction requests ([#3150](https://github.com/everruns/everruns/pull/3150)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): breadcrumbs name their navigation group ([#3151](https://github.com/everruns/everruns/pull/3151)) by [@chaliy](https://github.com/chaliy)
+- feat(embeddings): meter retrieval embedding spend ([#3149](https://github.com/everruns/everruns/pull/3149)) by [@chaliy](https://github.com/chaliy)
+- docs(how-to): add the 0.18 migration guide for direct core consumers ([#3148](https://github.com/everruns/everruns/pull/3148)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): drop the dead embedded-platform-docs feature from the kernel ([#3146](https://github.com/everruns/everruns/pull/3146)) by [@chaliy](https://github.com/chaliy)
+- refactor(context): resolve the session mutator as a typed extension ([#3147](https://github.com/everruns/everruns/pull/3147)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): drop the vestigial sqlx feature from the kernel ([#3145](https://github.com/everruns/everruns/pull/3145)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): close EVE-880 — three session families stay in the kernel ([#3143](https://github.com/everruns/everruns/pull/3143)) by [@chaliy](https://github.com/chaliy)
+- test(llm): skip explicit OpenRouter credit ceilings ([#3144](https://github.com/everruns/everruns/pull/3144)) by [@chaliy](https://github.com/chaliy)
+- test(llm): separate sampling misses from contract failures ([#3142](https://github.com/everruns/everruns/pull/3142)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): move background tool runs out of the kernel ([#3140](https://github.com/everruns/everruns/pull/3140)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): stop export-openapi truncating the committed spec ([#3139](https://github.com/everruns/everruns/pull/3139)) by [@chaliy](https://github.com/chaliy)
+- refactor(context): resolve the session SQL store as a typed extension ([#3138](https://github.com/everruns/everruns/pull/3138)) by [@chaliy](https://github.com/chaliy)
+- refactor(composition): move the composition root out of the kernel ([#3137](https://github.com/everruns/everruns/pull/3137)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move the Workspace and managed session sandbox records out of the kernel ([#3133](https://github.com/everruns/everruns/pull/3133)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): protect built-in agents at the command layer ([#3136](https://github.com/everruns/everruns/pull/3136)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump @astrojs/markdown-satteri from 0.3.4 to 0.3.5 in /apps/docs ([#3125](https://github.com/everruns/everruns/pull/3125)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump distroless/cc-debian12 from `fccdbb0` to `adcd20c` in /docker ([#3124](https://github.com/everruns/everruns/pull/3124)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump distroless/cc-debian12 from `fccdbb0` to `adcd20c` in /crates/server ([#3122](https://github.com/everruns/everruns/pull/3122)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): take syn 3, hold buffa and js-yaml majors ([#3135](https://github.com/everruns/everruns/pull/3135)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump distroless/cc-debian12 from `fccdbb0` to `adcd20c` in /crates/worker ([#3123](https://github.com/everruns/everruns/pull/3123)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump marked from 18.0.6 to 18.0.9 in /apps/docs ([#3127](https://github.com/everruns/everruns/pull/3127)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @astrojs/check from 0.9.9 to 0.9.10 in /apps/docs ([#3128](https://github.com/everruns/everruns/pull/3128)) by [@dependabot](https://github.com/dependabot)
+- ci: stop third-party apt repo failures from reddening main ([#3134](https://github.com/everruns/everruns/pull/3134)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): move session-service capabilities out of the kernel ([#3132](https://github.com/everruns/everruns/pull/3132)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): move portable policy builtins out of core ([#3131](https://github.com/everruns/everruns/pull/3131)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): move hosted knowledge, delegation and platform capabilities out of core ([#3111](https://github.com/everruns/everruns/pull/3111)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): move environment implementations out of core ([#3119](https://github.com/everruns/everruns/pull/3119)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move connector, OAuth, credential and system-email infrastructure out of core ([#3120](https://github.com/everruns/everruns/pull/3120)) by [@chaliy](https://github.com/chaliy)
+- fix(core): fail closed on unknown capability registration gates ([#3121](https://github.com/everruns/everruns/pull/3121)) by [@chaliy](https://github.com/chaliy)
+- feat(models): use platform default fallback ([#3114](https://github.com/everruns/everruns/pull/3114)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move eval, observer and feature-management records out of core ([#3118](https://github.com/everruns/everruns/pull/3118)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move the persisted Session aggregate out of core ([#3117](https://github.com/everruns/everruns/pull/3117)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move Harness records and built-in provisioning out of core ([#3116](https://github.com/everruns/everruns/pull/3116)) by [@chaliy](https://github.com/chaliy)
+- fix(llm-tests): skip subagent live test on provider quota exhaustion ([#3115](https://github.com/everruns/everruns/pull/3115)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): separate session recording projections ([#3113](https://github.com/everruns/everruns/pull/3113)) by [@chaliy](https://github.com/chaliy)
+- feat(chats): add chat pinning by [@chaliy](https://github.com/chaliy)
+- refactor(providers): remove provider crates' direct dependency on core ([#3110](https://github.com/everruns/everruns/pull/3110)) by [@chaliy](https://github.com/chaliy)
+- refactor(platform): move Agent and AgentVersion persistence records out of core ([#3109](https://github.com/everruns/everruns/pull/3109)) by [@chaliy](https://github.com/chaliy)
+- refactor(observability): move telemetry and event-listener implementations out of core ([#3108](https://github.com/everruns/everruns/pull/3108)) by [@chaliy](https://github.com/chaliy)
+- refactor(test-support): move llmsim, in-memory loop and fake capabilities out of core ([#3107](https://github.com/everruns/everruns/pull/3107)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): establish one neutral capability contract for Framework and product ([#3106](https://github.com/everruns/everruns/pull/3106)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): repair standalone crates after session-events and DriverId API drift ([#3105](https://github.com/everruns/everruns/pull/3105)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): replace stored record inputs with resolved execution snapshot ([#3103](https://github.com/everruns/everruns/pull/3103)) by [@chaliy](https://github.com/chaliy)
+- fix(host): make the canonical EventLog SPI externally implementable ([#3102](https://github.com/everruns/everruns/pull/3102)) by [@chaliy](https://github.com/chaliy)
+- refactor(0.18)!: delete the everruns-runtime compatibility crate ([#3101](https://github.com/everruns/everruns/pull/3101)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): make Chats unconditional ([#3100](https://github.com/everruns/everruns/pull/3100)) by [@chaliy](https://github.com/chaliy)
+- test: use obvious credential fixtures ([#3099](https://github.com/everruns/everruns/pull/3099)) by [@chaliy](https://github.com/chaliy)
+- fix(release): correct everruns-local publish dependency map ([#3098](https://github.com/everruns/everruns/pull/3098)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.17.26] - 2026-08-10
 

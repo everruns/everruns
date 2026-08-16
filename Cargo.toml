@@ -67,7 +67,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.26"
+version = "0.18.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -179,30 +179,30 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-capability = { path = "crates/capability", version = "0.17.26", default-features = false }
-everruns-builtins = { path = "crates/builtins", version = "0.17.26" }
-everruns-core = { path = "crates/core", version = "0.17.26" }
-everruns-engine = { path = "crates/engine", version = "0.17.26" }
-everruns-host = { path = "crates/host", version = "0.17.26" }
-everruns-session-services = { path = "crates/session-services", version = "0.17.26" }
-everruns-http = { path = "crates/http", version = "0.17.26" }
-everruns-llmsim = { path = "crates/llmsim", version = "0.17.26", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.17.26", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.17.26" }
-everruns-provider = { path = "crates/provider", version = "0.17.26", default-features = false }
-everruns-observability = { path = "crates/observability", version = "0.17.1" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.26" }
-everruns-ard = { path = "crates/ard", version = "0.17.26" }
-everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-local = { path = "crates/local", version = "0.17.26" }
-everruns = { path = "crates/everruns", version = "0.17.26" }
-everruns-macros = { path = "crates/macros", version = "0.17.26" }
-everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.17.26" }
-everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.17.26" }
-everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.17.26" }
-everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.17.26" }
-everruns-integrations-lua = { path = "integrations/lua", version = "0.17.26" }
-everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.17.26" }
+everruns-capability = { path = "crates/capability", version = "0.18.0", default-features = false }
+everruns-builtins = { path = "crates/builtins", version = "0.18.0" }
+everruns-core = { path = "crates/core", version = "0.18.0" }
+everruns-engine = { path = "crates/engine", version = "0.18.0" }
+everruns-host = { path = "crates/host", version = "0.18.0" }
+everruns-session-services = { path = "crates/session-services", version = "0.18.0" }
+everruns-http = { path = "crates/http", version = "0.18.0" }
+everruns-llmsim = { path = "crates/llmsim", version = "0.18.0", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.18.0", default-features = false }
+everruns-platform = { path = "crates/platform", version = "0.18.0" }
+everruns-provider = { path = "crates/provider", version = "0.18.0", default-features = false }
+everruns-observability = { path = "crates/observability", version = "0.18.0" }
+everruns-mcp = { path = "crates/mcp", version = "0.18.0" }
+everruns-ard = { path = "crates/ard", version = "0.18.0" }
+everruns-openai = { path = "crates/openai", version = "0.18.0" }
+everruns-local = { path = "crates/local", version = "0.18.0" }
+everruns = { path = "crates/everruns", version = "0.18.0" }
+everruns-macros = { path = "crates/macros", version = "0.18.0" }
+everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.0" }
+everruns-integrations-bashkit = { path = "integrations/bashkit", version = "0.18.0" }
+everruns-integrations-web-fetch = { path = "integrations/web-fetch", version = "0.18.0" }
+everruns-integrations-duckduckgo = { path = "integrations/duckduckgo", version = "0.18.0" }
+everruns-integrations-lua = { path = "integrations/lua", version = "0.18.0" }
+everruns-integrations-openrouter-workspace = { path = "integrations/openrouter-workspace", version = "0.18.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
