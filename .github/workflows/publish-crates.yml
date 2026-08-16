@@ -151,7 +151,6 @@ jobs:
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
                   "everruns-integrations-web-fetch",
-                  "everruns-integrations-duckduckgo",
                   "everruns-integrations-lua",
                   "everruns-integrations-openrouter-workspace",
               ],
@@ -194,7 +193,6 @@ jobs:
                   "everruns-llmsim",
               ],
               "crates/local/Cargo.toml": [
-                  "everruns-builtins",
                   "everruns-core",
                   "everruns-host",
                   "everruns-platform",
