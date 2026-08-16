@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instructions("Answer concisely.")
         .model(Model::simulated("Hello from Everruns."))
         .build()?;
-    let session = InMemoryEngine::new().create(agent.clone());
+    let session = Engine::new().create(agent.clone());
     let mut events = session.events();
 
     let observer = tokio::spawn(async move {

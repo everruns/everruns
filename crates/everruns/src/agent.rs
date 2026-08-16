@@ -210,11 +210,20 @@ pub enum BuildError {
     /// A live model was selected without a provider.
     MissingProvider,
     /// More than one provider was attached to the agent.
-    MultipleProviders { registered: Vec<String> },
+    MultipleProviders {
+        /// Stable keys of the providers attached to the agent.
+        registered: Vec<String>,
+    },
     /// MCP server configuration was invalid or duplicated.
-    InvalidMcpServer { reason: String },
+    InvalidMcpServer {
+        /// Why the MCP server configuration was rejected.
+        reason: String,
+    },
     /// Two workspace providers registered the same stable SPI id.
-    DuplicateWorkspaceProvider { id: String },
+    DuplicateWorkspaceProvider {
+        /// The colliding workspace provider id.
+        id: String,
+    },
 }
 
 impl fmt::Display for BuildError {

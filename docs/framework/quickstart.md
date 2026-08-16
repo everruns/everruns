@@ -17,7 +17,7 @@ do not select a network provider.
 ## Run one turn
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Everruns is ready."))
         .build()?;
 
-    let engine = InMemoryEngine::new();
+    let engine = Engine::new();
     let session = engine.create(agent);
     let turn = session.send_and_wait("Are you ready?").await?;
     println!("{}", turn.response);
@@ -65,5 +65,6 @@ let agent = Agent::builder()
 The model id stays credential-free. `OpenAI::from_env` configures the separate
 provider at the application boundary and redacts the key from debug output.
 
-Continue with [Agents](/framework/agents/), [Tools and macros](/framework/tools-and-macros/),
+Continue with [Framework Architecture](/framework/architecture/),
+[Agents](/framework/agents/), [Tools and macros](/framework/tools-and-macros/),
 and [Sessions](/framework/sessions/).

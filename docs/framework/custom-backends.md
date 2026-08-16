@@ -29,17 +29,21 @@ one facade.
 
 ## Two engine boundaries
 
-`everruns::Engine` is the application SPI that owns Agent snapshots, sessions,
-history, and resume authority. Implement it when replacing session ownership.
+`everruns::Engine` is a concrete application object that owns Agent snapshots,
+sessions, history, and resume authority. It is the normal Framework entrypoint,
+not an extension trait. Applications do not implement it.
 
-`everruns-engine` is the lower-level shared execution kernel. It owns the
-`Execution` contract, serializable `TurnExecution` state machine,
+`everruns-engine` is the lower-level shared execution kernel. Advanced hosts
+compose its `Execution` contract and serializable `TurnExecution` state machine,
 `InputAtom`/`ReasonAtom`/`ActAtom`, and phase values. The immediate implementation
 lives in `everruns-host`; the checkpointed implementation lives in
 `everruns-durable`. Both use narrow contracts from `everruns-core`. The kernel
 has no dependency on host, platform, server, worker, or durable crates. Do not
 copy state advancement or the phase loop into a custom backend; implement the
 execution boundary and keep deployment-specific service selection in the host.
+
+See [Framework Architecture](/framework/architecture/) for the complete layer
+map and the distinction between immediate and durable execution.
 
 Conversation persistence is the one backend with a single write path. Replace it
 by implementing the canonical `EventLog`/`EventReader` SPI and passing it to

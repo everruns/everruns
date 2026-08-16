@@ -18,6 +18,12 @@ application lifecycle, and marks `everruns-host` as advanced host material.
 The `everruns` README and rustdoc are concise entrances
 to that same path rather than independent architecture narratives.
 
+The public architecture guide names the concrete `everruns::Engine` as the
+application session owner and separately explains the lower-level
+`everruns-engine::Execution` host contract. It shows both immediate and durable
+execution converging on one turn kernel and distinguishes volatile, local
+crash-durable, and distributed Platform persistence.
+
 Exact API shapes belong in source/rustdoc. Public guides link there instead of
 freezing exhaustive fields or variants in durable knowledge.
 

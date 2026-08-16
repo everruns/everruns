@@ -7,7 +7,7 @@ Every Framework session has a typed `SessionId`. Keep that value when an
 application may need to reopen the conversation:
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model, SessionId};
+use everruns::{Agent, Engine, Model, SessionId};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ let agent = Agent::builder()
     .model(Model::simulated("Acknowledged."))
     .build()?;
 
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let session = engine.create(agent);
 let session_id: SessionId = session.session_id();
 session.send_and_wait("My project is Atlas.").await?;
@@ -40,14 +40,14 @@ snapshot attached to that engine; it never reconstructs behavior from events.
 messages by default in canonical event-sequence order, oldest first:
 
 ```rust
-# use everruns::{Agent, InMemoryEngine, Model};
+# use everruns::{Agent, Engine, Model};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder()
 #     .instructions("Be concise.")
 #     .model(Model::simulated("Done."))
 #     .build()?;
-# let session = InMemoryEngine::new().create(agent);
+# let session = Engine::new().create(agent);
 let page = session.history().page().await?;
 for message in &page.messages {
     println!("{:?}: {}", message.role, message.text());
@@ -62,14 +62,14 @@ maximum. A page never claims to contain the entire transcript. Continue from
 its opaque cursor:
 
 ```rust
-# use everruns::{Agent, InMemoryEngine, Model};
+# use everruns::{Agent, Engine, Model};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder()
 #     .instructions("Be concise.")
 #     .model(Model::simulated("Done."))
 #     .build()?;
-# let session = InMemoryEngine::new().create(agent);
+# let session = Engine::new().create(agent);
 let first = session.history().limit(25)?.page().await?;
 if let Some(cursor) = first.next_cursor {
     let second = session.history().limit(25)?.after(cursor)?.page().await?;
@@ -92,14 +92,14 @@ For callers that intentionally walk the whole snapshot, `pages` is a lazy
 convenience that still reads one bounded page at a time:
 
 ```rust
-# use everruns::{Agent, InMemoryEngine, Model};
+# use everruns::{Agent, Engine, Model};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder()
 #     .instructions("Be concise.")
 #     .model(Model::simulated("Done."))
 #     .build()?;
-# let session = InMemoryEngine::new().create(agent);
+# let session = Engine::new().create(agent);
 let mut pages = session.history().limit(50)?.pages();
 while let Some(page) = pages.next_page().await? {
     for message in page.messages {
@@ -124,7 +124,7 @@ Enable `local` and configure a trusted application data directory when sessions
 must survive a new Agent or process:
 
 ```rust
-use everruns::{Agent, InMemoryEngine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -134,13 +134,13 @@ let build_agent = || Agent::builder()
     .local(LocalConfig::new(".everruns-data"))
     .build();
 
-let first_engine = InMemoryEngine::new();
+let first_engine = Engine::new();
 let session = first_engine.create(build_agent()?);
 session.start().await?;
 let session_id = session.session_id();
 
 // In a later process, rebuild trusted behavior before resuming persisted state.
-let restarted_engine = InMemoryEngine::new();
+let restarted_engine = Engine::new();
 restarted_engine.attach(session_id, build_agent()?).await?;
 let resumed = restarted_engine.resume(session_id).await?;
 # Ok::<(), Box<dyn std::error::Error>>(())

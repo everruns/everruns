@@ -8,14 +8,14 @@ crate. Use it to describe agents, attach models and tools, run multi-turn sessio
 observe events, and embed agent execution directly in a Rust process.
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 let agent = Agent::builder()
     .instructions("Answer in one short sentence.")
     .model(Model::simulated("Hello from Everruns."))
     .build()?;
 
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let turn = engine.create(agent).send_and_wait("Say hello.").await?;
 assert_eq!(turn.response, "Hello from Everruns.");
 # Ok::<(), Box<dyn std::error::Error>>(())
@@ -39,6 +39,7 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 ## Start here
 
 - [Quickstart](/framework/quickstart/) — install the crate and run an offline agent.
+- [Architecture](/framework/architecture/) — understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
 - [Agents](/framework/agents/) — instructions, files, workspaces, MCP, plugins, and context inspection.
 - [Workspace security](/framework/workspace-security/) — configure portable read and write scopes with secure defaults.
 - [Workspaces and Environments](/framework/workspaces-and-environments/) — bind sessions to isolated or explicitly shared provider-owned heads.

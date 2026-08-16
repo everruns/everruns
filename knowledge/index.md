@@ -13,6 +13,7 @@ okf_version: "0.2"
 * [foundations/](foundations/) - Core entities, architecture, runtime, providers, and developer conventions.
 * [execution/](execution/) - API contracts, capability behavior, tool execution, and streaming.
 * [runtime-resources/](runtime-resources/) - Agents, sessions, workspaces, knowledge, memory, and runtime-owned resources.
+* [docs/](docs/) - Public documentation structure, diagrams, and visual artifact contracts.
 * [ui/](ui/) - User interface, message rendering, generative UI, and product presentation.
 * [integrations/](integrations/) - MCP, external integrations, apps, plugins, and messaging channels.
 * [operations/](operations/) - Deployment, persistence, scheduling, observability, networking, and operations.

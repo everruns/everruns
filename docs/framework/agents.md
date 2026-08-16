@@ -55,8 +55,8 @@ the application-facing session context.
 Inspect the next model call before or after a turn:
 
 ```rust
-# use everruns::InMemoryEngine;
-let engine = InMemoryEngine::new();
+# use everruns::Engine;
+let engine = Engine::new();
 let session = engine.create(agent);
 let context = session.inspect().await?;
 println!("messages: {}", context.messages.len());

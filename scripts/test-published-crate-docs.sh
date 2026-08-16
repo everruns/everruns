@@ -113,7 +113,11 @@ for package in published:
     require(re.search(r"^## License\s*$", readme_text, re.M | re.I) is not None, readme, "add a License section")
     require("github.com/everruns/everruns/blob/main/LICENSE" in readme_text, readme, "link the repository MIT license")
 
-    require(rustdoc.startswith("//!"), lib, "start with crate-level rustdoc")
+    # Crate-level lint attributes may precede the inner rustdoc. Strip only
+    # single-line inner attributes; executable items or ordinary comments must
+    # still fail the structural contract.
+    rustdoc_start = re.sub(r"\A(?:#!\[[^\n]*\]\s*)*", "", rustdoc)
+    require(rustdoc_start.startswith("//!"), lib, "start with crate-level rustdoc")
     require("https://everruns.com" in crate_docs, lib, "mirror the Everruns ecosystem link in rustdoc")
     require(
         re.search(r"^//! ```(?:rust|no_run)?\s*$", crate_docs, re.M) is not None,

@@ -3,9 +3,7 @@
 //! Run offline with:
 //! `cargo run -p everruns --example capability_configuration`
 
-use everruns::{
-    Agent, CapabilityRef, CompactionConfig, InMemoryEngine, Model, ToolSearch, capability,
-};
+use everruns::{Agent, CapabilityRef, CompactionConfig, Engine, Model, ToolSearch, capability};
 
 #[derive(capability::Deserialize, capability::JsonSchema)]
 #[serde(crate = "everruns::capability::serde")]
@@ -69,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .build()?;
 
-    let turn = InMemoryEngine::new()
+    let turn = Engine::new()
         .create(agent)
         .run("Confirm the agent is configured.")
         .await?;
