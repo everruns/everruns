@@ -29,7 +29,7 @@ contributions that are safe to describe as data rather than custom code:
 - Skill packages mounted under `/.agents/skills/{name}` and discovered by the
   built-in `skills` capability
 - UI feature strings and dependency declarations
-- *(Planned)* User-hook bundles (`user_hooks: [UserHookSpec]`) — see
+- *(Planned)* User-hook bundles (`user_hooks: [UserHookSpec]`), see
   [user-hooks.md](../runtime-resources/user-hooks.md). The field is **not yet present** on
   `DeclarativeCapabilityDefinition`; when it lands, a non-empty
   `user_hooks` array must force the persisted record's `risk_level` to
@@ -109,8 +109,8 @@ mark themselves with `is_guardrail()` (surfaced as `is_guardrail` on
 `CapabilityInfo`) for UI grouping and catalog filtering; the marker has no
 runtime semantics. The `guardrails` capability is config-driven: its per-agent
 config declares deterministic checks over model output and tool calls that
-compile onto the streaming-output and pre/post-tool-hook seams. Guardrails are
-opt-in and removable like any capability — there is no org-mandated enforcement
+compile onto the streaming-output and pre/post-tool-hook boundaries. Guardrails are
+opt-in and removable like any capability, there is no org-mandated enforcement
 layer. See [guardrails.md](guardrails.md).
 
 ### Neutral capability contract
@@ -118,7 +118,7 @@ layer. See [guardrails.md](guardrails.md).
 One open identity/configuration contract is shared by the Framework and the
 product (EVE-873), owned by `crates/capability` (`everruns-capability`):
 validated `CapabilityId`s, the `CapabilityRef` reference/config value,
-`CapabilitySpec` plus the non-sealed `IntoCapability` conversion seam, the
+`CapabilitySpec` plus the non-sealed `IntoCapability` conversion boundary, the
 code-defined capability authoring surface (`definition` feature), structured
 validation/execution errors, and registry identity bookkeeping with
 duplicate/collision rejection.
@@ -127,7 +127,7 @@ Contract rules:
 
 - `AgentCapabilityConfig` (persisted attachment rows) and
   `BuiltInCapabilityDefinition` (built-in harness provisioning) are the same
-  `CapabilityRef` type under historical names — there is no second semantic
+  `CapabilityRef` type under historical names, there is no second semantic
   model. The `{"ref", "config"}` wire shape round-trips unchanged through
   Framework activation, persisted attachments, and worker resolution.
 - Validation is single-sourced: the Framework's `AgentBuilder::build` and the
@@ -210,7 +210,7 @@ without rebuilding the runtime or replacing the session:
 - `InProcessRuntime::deactivate_capability(session_id, id)` atomically removes
   a capability previously activated on the session layer.
 - Both methods return `CapabilityDelta`. `surfaces_dirty = true` is the
-  embedder refresh seam; the following reason/act boundary re-collects the
+  embedder refresh boundary; the following reason/act boundary re-collects the
   system prompt, model-visible tool definitions, executable tools, pre/post
   tool hooks, tool-call hooks, commands, and capability-contributed MCP
   servers from the updated source of truth.
@@ -224,7 +224,7 @@ without rebuilding the runtime or replacing the session:
   changed at its owning layer.
 
 `SessionMutator::{upsert_session_capability, remove_session_capability}` is the
-host-storage seam. Its default implementation fails closed, while the bundled
+host-storage boundary. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
 
 ### Automatic session titles
@@ -342,7 +342,7 @@ impl Capability for CurrentTimeCapability {
 }
 ```
 
-Call-sites reference capabilities via the constant rather than a bare string literal. Capabilities whose ID is generated at runtime (MCP, declarative, attach-skill) are exempt — those use prefix constants (`MCP_CAPABILITY_PREFIX`, `DECLARATIVE_CAPABILITY_PREFIX`, `SKILL_CAPABILITY_PREFIX`) and helper constructors instead.
+Call-sites reference capabilities via the constant rather than a bare string literal. Capabilities whose ID is generated at runtime (MCP, declarative, attach-skill) are exempt, those use prefix constants (`MCP_CAPABILITY_PREFIX`, `DECLARATIVE_CAPABILITY_PREFIX`, `SKILL_CAPABILITY_PREFIX`) and helper constructors instead.
 
 ##### ID Aliases
 
@@ -358,18 +358,18 @@ Associates a capability with an agent via `ref` (CapabilityId) + optional `confi
 
 See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_hook()`.
 
-##### LLM Error Hook Seam
+##### LLM Error Hook Boundary
 
 `llm_error_hook() -> Option<Arc<dyn LlmErrorHook>>` (default `None`) is the
-platform seam for **capability-owned error recovery**. It is an *in-process
-capability hook* — the same family as `tool_call_hooks()`,
+platform boundary for **capability-owned error recovery**. It is an *in-process
+capability hook*, the same family as `tool_call_hooks()`,
 `message_filter_provider()`, and `output_guardrails()` (typed traits invoked
-in-process with host services) — as distinct from the user-hook system
+in-process with host services), as distinct from the user-hook system
 (`knowledge/runtime-resources/user-hooks.md`), which runs user-authored shell commands at lifecycle
 events. When a turn fails with a *terminal* LLM error (one that will not be
 retried), the reason atom collects the hooks contributed by the active
-capabilities and invokes each generically — before the user-facing error message
-is built — passing an `LlmErrorContext` (session id, classified `error_code`,
+capabilities and invokes each generically, before the user-facing error message
+is built, passing an `LlmErrorContext` (session id, classified `error_code`,
 structured `error_fields`, the capability's per-agent config, and host
 `LlmErrorHookServices`). A hook may perform a side effect and/or return extra
 fields to merge into the `UserFacingError` (for example to unlock
@@ -381,9 +381,9 @@ resets); see `crates/core/src/llm_error_hook.rs`.
 
 ##### System Prompt Methods
 
-- **`system_prompt_addition()`** — Sync, returns static `&str`. Used by sync collection path.
-- **`system_prompt_contribution(ctx)`** — Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
-- **`system_prompt_contribution_with_config(ctx, config)`** — Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
+- **`system_prompt_addition()`**: Sync, returns static `&str`. Used by sync collection path.
+- **`system_prompt_contribution(ctx)`**: Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
+- **`system_prompt_contribution_with_config(ctx, config)`**: Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
 
 ##### Facts (Cache-Friendly Dynamic Context)
 
@@ -398,7 +398,7 @@ This is the generic mechanism behind "the current time is X": baking a changing 
 
 `facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per request (to render the live tail block via `collect_dynamic_facts`), so implementations must be cheap and side-effect free. See `crates/core/src/capabilities/facts.rs`.
 
-**Cache-anchor interaction.** Appending a volatile tail would, by default, pull a driver's message-level cache breakpoint onto content that changes every turn — evicting the conversation-history cache. `ReasonAtom` therefore sets `LlmCallConfig.volatile_suffix_len` to the number of trailing volatile messages; the Anthropic driver anchors its breakpoint on the last *stable* block, letting the volatile tail ride as an uncached suffix. Drivers that do not implement message-level anchoring ignore the field and behave exactly as before (`0` is the default).
+**Cache-anchor interaction.** Appending a volatile tail would, by default, pull a driver's message-level cache breakpoint onto content that changes every turn, evicting the conversation-history cache. `ReasonAtom` therefore sets `LlmCallConfig.volatile_suffix_len` to the number of trailing volatile messages; the Anthropic driver anchors its breakpoint on the last *stable* block, letting the volatile tail ride as an uncached suffix. Drivers that do not implement message-level anchoring ignore the field and behave exactly as before (`0` is the default).
 
 ##### System Prompt Content Contract
 
@@ -440,7 +440,7 @@ or PR description.
 
 ##### Config-Aware Methods
 
-- **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
+- **`tools_with_config(config)`**: Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
 
 ##### Config Schema and UI Metadata
 
@@ -460,7 +460,7 @@ Readability rules for schemas:
 - Only user-meaningful fields are exposed. Advanced or internal tuning fields
   may be consumed by the capability without appearing in the schema, but
   `validate_config` must still tolerate them. Secrets and API keys never go
-  through capability config — they flow through user connections and the
+  through capability config, they flow through user connections and the
   session secret store.
 
 ##### Localization
@@ -495,16 +495,16 @@ See [egress.md](../operations/egress.md) and [network-access.md](../operations/n
 
 ##### Collection Functions
 
-- **`collect_capabilities()`** — Sync. Collects tools, mounts, static prompts.
-- **`collect_capabilities_async(ctx)`** — Async. Calls `system_prompt_contribution()` for dynamic prompts.
-- **`collect_capabilities_with_configs(ctx, configs)`** — Async. Calls config-aware methods (`tools_with_config`, `system_prompt_contribution_with_config`) for capabilities with per-agent config.
-- **`RuntimeAgentBuilder::with_capabilities_async(ctx)`** — Async builder method.
+- **`collect_capabilities()`**: Sync. Collects tools, mounts, static prompts.
+- **`collect_capabilities_async(ctx)`**: Async. Calls `system_prompt_contribution()` for dynamic prompts.
+- **`collect_capabilities_with_configs(ctx, configs)`**: Async. Calls config-aware methods (`tools_with_config`, `system_prompt_contribution_with_config`) for capabilities with per-agent config.
+- **`RuntimeAgentBuilder::with_capabilities_async(ctx)`**: Async builder method.
 
 **Note**: `message_filter_provider()` returns an optional filter that modifies message retrieval. See [Message Filters](#message-filters).
 
 ##### Capability-Contributed Skills
 
-Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-builtins` then discovers and serves them through the same VFS scan used for filesystem and registry skills — no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
+Capabilities may ship reusable skills in code via `contribute_skills() -> Vec<SkillContribution>` (default empty). Each `SkillContribution` carries a name, description, SKILL.md body, bundled files, and invocability flags. During capability collection each contribution is normalized into a read-only mount at `/.agents/skills/{name}/` containing a reconstructed `SKILL.md` plus bundled files. The portable `skills` capability in `everruns-builtins` then discovers and serves them through the same VFS scan used for filesystem and registry skills, no parallel pipeline, no special-case prompt injection, and `/slash` invocability + `disable-model-invocation` flags are honored through the same frontmatter. See `knowledge/project/skills-registry.md` for the discovery/activation contract and `crates/core/src/capabilities/skill_contribution.rs` for the neutral contribution values and mount normalization.
 
 ### Capability Dependencies
 
@@ -563,7 +563,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 
 1. **Declaration**: Capabilities implement `features()` returning a list of feature strings
 2. **Aggregation**: `compute_features()` resolves dependencies and collects features from all resolved capabilities
-3. **Deduplication**: Features are deduplicated — multiple capabilities contributing the same feature produce one entry
+3. **Deduplication**: Features are deduplicated, multiple capabilities contributing the same feature produce one entry
 4. **Session DTO**: The `Session.features` field is computed at read time (not stored in the database)
 5. **UI Rendering**: The UI conditionally renders tabs based on the feature set (e.g., Workspace tab only appears when `"file_system"` is present)
 
@@ -598,7 +598,7 @@ MCP and Skill virtual capabilities currently declare no features.
 
 #### compute_features()
 
-See `crates/core/src/capabilities/mod.rs` for `compute_features()` — resolves dependencies, collects features, deduplicates.
+See `crates/core/src/capabilities/mod.rs` for `compute_features()`, resolves dependencies, collects features, deduplicates.
 
 ### Risk Levels (TM-AGENT-005)
 
@@ -620,7 +620,7 @@ See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/s
 
 - **Trust rationale.**
   - `bashkit_shell` is sandboxed (workspace-only FS, no real network), but exposes scripted code execution. Combined with LLM-driven invocation it is a meaningful trust elevation versus single-purpose tools.
-  - `web_fetch` doubles as a data-exfiltration channel (TM-AGENT-013) and a partial SSRF vector. Loopback/RFC1918 are blocked with DNS pinning (TM-API-008), and outbound URL filtering now exists via per-layer `NetworkAccessList` plus the system allowlist at the egress boundary (TM-AGENT-018 MITIGATED, `knowledge/operations/network-access.md`) — but both default to open, so admin assignment remains the explicit trust gate for enabling the capability.
+  - `web_fetch` doubles as a data-exfiltration channel (TM-AGENT-013) and a partial SSRF vector. Loopback/RFC1918 are blocked with DNS pinning (TM-API-008), and outbound URL filtering now exists via per-layer `NetworkAccessList` plus the system allowlist at the egress boundary (TM-AGENT-018 MITIGATED, `knowledge/operations/network-access.md`), but both default to open, so admin assignment remains the explicit trust gate for enabling the capability.
 - **Gate location.** Canonical agent create / update enforcement lives in `check_high_risk_caps` (`crates/server/src/domains/agents/commands.rs`), invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`. The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents.rs` enforces the same contract on agent-import / copy paths. Member-attempted assignments are rejected with HTTP 403 and an error message that names the offending capability ids.
 - **Migration / grandfathering.** The gate is *not* enforced at runtime. Member-owned agents that already had `bashkit_shell` or `web_fetch` before this change continue to run. Members can still edit other fields on those agents; the gate fires only when a member request would *add or keep* a high-risk capability that violates the role contract on a write that is itself reshaping the capability set.
 - **Member experience.** Members trying to add `bashkit_shell` or `web_fetch` see a 403 with the locked capability id. Admin approval is the path: an admin must either own the agent or perform the update on the member's behalf. A self-serve "request admin approval" UI flow is not part of this contract; it is tracked separately and may be added later without breaking the gate.
@@ -833,7 +833,7 @@ The system prompt instructs agents to use task management when:
 
 ##### Design Decision: Prompt-Only Capability
 
-OpenUI is a pure system prompt capability — it provides no tools. It instructs the LLM to output OpenUI Lang code in ` ```openui ` fenced code blocks. The UI frontend detects and renders these blocks using `@openuidev/react-lang` and `@openuidev/react-ui`.
+OpenUI is a pure system prompt capability, it provides no tools. It instructs the LLM to output OpenUI Lang code in ` ```openui ` fenced code blocks. The UI frontend detects and renders these blocks using `@openuidev/react-lang` and `@openuidev/react-ui`.
 
 ##### Design Decision: Component Library from Crate
 
@@ -856,7 +856,7 @@ A2UI is a *parallel* capability to `openui`, not a replacement. Both are opt-in 
 
 ##### Design Decision: Prompt-First, Native Renderer
 
-Follows the A2UI v0.9 prompt-first model: the catalog is embedded in the system prompt and the LLM emits JSON freely, validated lightly at render time. The UI renderer is implemented using the project's own shadcn/ui primitives — no third-party npm dependency. This preserves design-system consistency and is A2UI's canonical pattern (the client owns the rendering).
+Follows the A2UI v0.9 prompt-first model: the catalog is embedded in the system prompt and the LLM emits JSON freely, validated lightly at render time. The UI renderer is implemented using the project's own shadcn/ui primitives, no third-party npm dependency. This preserves design-system consistency and is A2UI's canonical pattern (the client owns the rendering).
 
 See `knowledge/ui/a2ui.md` for full architecture, the canonical catalog, and the wire format.
 
@@ -869,7 +869,7 @@ See `knowledge/ui/a2ui.md` for full architecture, the canonical catalog, and the
 
 ##### Design Decision: VFS-Based Discovery
 
-This is the built-in skills discovery mechanism. It does NOT ship with any skills — users upload SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session filesystem. The agent discovers them at runtime via `list_skills` and activates them on demand via `activate_skill`.
+This is the built-in skills discovery mechanism. It does NOT ship with any skills, users upload SKILL.md files to `/.agents/skills/{name}/SKILL.md` in the session filesystem. The agent discovers them at runtime via `list_skills` and activates them on demand via `activate_skill`.
 
 This complements registry-based skills (`skill:{uuid}` capabilities) which are database-stored and org-wide. VFS-discovered skills are per-session and project-specific.
 
@@ -885,23 +885,23 @@ Following the agentskills.io specification:
 - **ID**: `loop_detection`
 - **Purpose**: Detects repeated tool loops and injects a warning to break the loop
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
-- **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
+- **Config**: `{"threshold": N}`, number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/builtins/src/loop_detection.rs`
 
 #### ToolApproval
 
 - **ID**: `tool_approval`
 - **Purpose**: Suspends the turn and asks a human before a risky tool runs
-- **Status**: Not registered by default — it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`.
+- **Status**: Not registered by default, it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `HostComposition`.
 - **Tools**: None (contributes a `PreToolUseHook`)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/builtins/src/tool_approval.rs`
-- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints` — `readonly` is never gated, `destructive`/`open_world` always can be, and an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which allows the call — a client with no permission UI keeps working autonomously instead of deadlocking on every mutating tool. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
+- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`, `readonly` is never gated, `destructive`/`open_world` always can be, and an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which allows the call, a client with no permission UI keeps working autonomously instead of deadlocking on every mutating tool. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
 #### ProgressGuard
 
 - **ID**: `progress_guard`
-- **Purpose**: Interrupts investigation that is not producing progress — many exploration tools without an edit or a validation run, repeated identical searches, zero-evidence searches, re-reading unchanged files, re-running a validation against an unchanged workspace, and poll-loops waiting on external events
+- **Purpose**: Interrupts investigation that is not producing progress, many exploration tools without an edit or a validation run, repeated identical searches, zero-evidence searches, re-reading unchanged files, re-running a validation against an unchanged workspace, and poll-loops waiting on external events
 - **Status**: Registered, opt-in per agent. Behavior-only.
 - **Tools**: None (contributes a `PostToolExecHook`)
 - **Config**: None
@@ -912,9 +912,9 @@ Following the agentskills.io specification:
 
 - **ID**: `tool_call_repair`
 - **Purpose**: Detects and repairs malformed tool-call arguments from the model, recovering the turn instead of surfacing a raw parse error
-- **Status**: Opt-in. Registered but **disabled by default** — contributes nothing unless an agent explicitly enables it; with it off, behavior is byte-for-byte unchanged.
+- **Status**: Opt-in. Registered but **disabled by default**: contributes nothing unless an agent explicitly enables it; with it off, behavior is byte-for-byte unchanged.
 - **Tools**: None (intercepts in the `reason` atom, after tool calls are finalized and before the assistant message is built)
-- **Config**: `{"max_reprompts": N}` — corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
+- **Config**: `{"max_reprompts": N}`, corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
 - **Source**: `crates/builtins/src/tool_call_repair.rs`
 - **Behavior**: Runs a pure, table-tested `salvage_tool_arguments` over each call's `arguments`: unwraps fenced ```json blocks and surrounding prose, strips trailing commas, normalizes single quotes, and coerces string-typed known keys against the tool's JSON schema (`"42"` → `42`). The already-valid case is a no-op. When local salvage fails the bounded re-prompt path applies (capped by `max_reprompts`), then falls through to today's exact error. Emits one `tool.call_repaired` event per malformed call with an outcome label (`local-salvage` | `re-prompt` | `gave-up`). Salvage parses untrusted model output and is bounded: inputs over 256 KiB are rejected and all scanning is linear and non-recursive.
 
@@ -923,7 +923,7 @@ Following the agentskills.io specification:
 - **ID**: `message_metadata`
 - **Purpose**: Annotates user and agent messages with metadata (message timestamp, UTC) in the prompt-facing model view so the model can reason about timing and gaps between messages
 - **Tools**: None (uses `ModelViewProvider` only; priority 100, after compaction masking)
-- **Config**: `{"fields": ["timestamp"]}` — which metadata fields to render, in order (default `["timestamp"]`; `[]` disables annotations). User and agent messages are always annotated; system and tool-result messages never are.
+- **Config**: `{"fields": ["timestamp"]}`, which metadata fields to render, in order (default `["timestamp"]`; `[]` disables annotations). User and agent messages are always annotated; system and tool-result messages never are.
 - **Source**: `crates/builtins/src/message_metadata.rs`
 - **Behavior**: Prefixes the first text part of each user/agent message with one bracketed segment per configured field (e.g. `[time <RFC3339 UTC>]` from `Message::created_at`); tool-call-only agent messages get the annotation as a leading text part. Fields are an extensible enum (`MessageMetadataField`); future fields (e.g. the LLM model behind an agent message, once stored messages record it) render their own segment and may skip messages that lack the data. Stored messages are unchanged, and `created_at` is immutable, so annotations are deterministic across turns and do not invalidate provider prompt caches. A small system prompt addition explains the annotation and forbids the model from emitting it.
 
@@ -932,8 +932,8 @@ Following the agentskills.io specification:
 - **ID**: `prompt_canary_guardrail`
 - **Purpose**: Streaming output guardrail that withholds the assistant message when the model echoes the first sentence of its system prompt
 - **Tools**: None (uses `output_guardrails()` only)
-- **Config**: `{"replacement": "..."}` — optional replacement text shown in place of the leak (default: a generic "withheld" message)
-- **Risk**: `Low` — read-only inspection of model output
+- **Config**: `{"replacement": "..."}`, optional replacement text shown in place of the leak (default: a generic "withheld" message)
+- **Risk**: `Low`, read-only inspection of model output
 - **Source**: `crates/builtins/src/prompt_canary_guardrail.rs`
 - **Behavior**: At stream arm time, extracts the first sentence of the assembled system prompt whose normalized form is ≥ 30 chars and uses it as a substring needle (lowercased, whitespace-collapsed). Each batched delta runs the substring check; on hit, the stream is aborted and `output.message.replaced` is emitted. The original tokens are never persisted or replayed. See [Output Guardrails](#output-guardrails).
 
@@ -1061,7 +1061,7 @@ Capabilities are managed via the agents API (`POST /v1/agents`, `PATCH /v1/agent
 
 See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` table DDL.
 
-**Note**: The `capability_id` column has no CHECK constraint — validation is at the application layer via `CapabilityRegistry`. This allows adding capabilities without database migrations.
+**Note**: The `capability_id` column has no CHECK constraint, validation is at the application layer via `CapabilityRegistry`. This allows adding capabilities without database migrations.
 
 ### Design Decisions
 
@@ -1087,9 +1087,9 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
     host services are present; hosted-only capabilities stay in product
     composition.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
-6. No database migration required — capability ID validated at runtime
+6. No database migration required, capability ID validated at runtime
 7. Add or update registry tests that prove the capability appears in the intended preset(s) and is absent from inappropriate preset(s)
-8. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+8. Update documentation at `docs/capabilities/`, add a page for the new capability and update the overview table in `docs/capabilities/index.md`
 
 Runtime-default eligibility is based on host services, not risk level. A high-risk
 capability may be runtime-usable when it runs entirely through runtime-provided
@@ -1155,7 +1155,7 @@ carries mounts in product registries.
   is bound to the session owner and org. The distributed adapter sends the
   session and org to the server, which reloads the session, resolves its owner,
   and constructs the authenticated command context. The worker cannot nominate
-  a user or elevate the caller.
+  a user or raise the caller.
 - **Command contract**: MCP and capability adapters share catalog search,
   positional rewriting, script limits, output formatting, and safe error
   classification in `crates/server/src/services/platform_command_surface.rs`.
@@ -1227,9 +1227,9 @@ under `test_cases/agents/platform_chat/`.
 - **Purpose**: Legacy handwritten management tools retained for compatibility
   with existing custom agents and harnesses. New built-ins use `platform`.
 - **System Prompt**: Describes available management tools, common workflows, and platform docs availability
-- **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
+- **Mounts**: `/docs`, Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
-- **Tools**: Read/write split — read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_context_report`, `session_read_messages`, `session_read_response`) return single item by ID, filtered lists, or latest session context usage; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
+- **Tools**: Read/write split, read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_context_report`, `session_read_messages`, `session_read_response`) return single item by ID, filtered lists, or latest session context usage; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
 
 Lifecycle rules for platform management:
 - `delete` archives.
@@ -1261,7 +1261,7 @@ The `read_capabilities` tool enables agents (particularly the Platform Chat) to 
 The `PlatformStore` trait and its management capabilities live in
 `everruns-platform`. `DirectPlatformStore` (in `everruns-server`) implements it
 using the existing `StorageBackend` and `SessionService`; core carries only the
-type-keyed extension seam and the narrow neutral subagent delegate contract.
+type-keyed extension boundary and the narrow neutral subagent delegate contract.
 
 ##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
 
@@ -1276,10 +1276,10 @@ Experimental capabilities are available in development environments only (`Deplo
 
 #### Lua execution (`lua`) and code-mode routing (`lua_code_mode`)
 
-- `lua` — sandboxed Lua 5.4 interpreter over the session workspace. High risk,
+- `lua`, sandboxed Lua 5.4 interpreter over the session workspace. High risk,
   admin-gated, `FEATURE_LUA` + `lua` cargo feature. See
   [lua-execution.md](lua-execution.md).
-- `lua_code_mode` — depends on `lua`; hides code-mode-eligible tools from the
+- `lua_code_mode`, depends on `lua`; hides code-mode-eligible tools from the
   model's direct tool list (via a `ToolDefinitionHook`) so the agent
   orchestrates them inside a `lua` script through `tools.<name>(args)`. This is
   the canonical example of using the tool-filtering extension point to reshape
@@ -1289,7 +1289,7 @@ Experimental capabilities are available in development environments only (`Deplo
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
-- **Crate**: `integrations/docker/` (auto-registered via `inventory`, force-linked — see [architecture.md](../foundations/architecture.md#integration-plugin-force-linking))
+- **Crate**: `integrations/docker/` (auto-registered via `inventory`, force-linked, see [architecture.md](../foundations/architecture.md#integration-plugin-force-linking))
 - **Purpose**: Run commands and manage files in a session-scoped Docker container
 - **Tools**: `docker_exec`, `docker_read_file`, `docker_write_file`, `docker_logs`, `docker_stop`
 - **Container Lifecycle**: Lazily started on first use, persists for session, named `everruns-{session_id}`
@@ -1366,7 +1366,7 @@ Capabilities can contribute streaming output guardrails that inspect the model's
 
 1. **Contribution**: Capabilities implement `output_guardrails()` returning a list of `Arc<dyn OutputGuardrail>` providers
 2. **Arming**: At the start of each assistant message stream, `ReasonAtom` calls `OutputGuardrail::arm(ctx)` per provider. `ctx` carries the fully assembled system prompt and the contributing capability's per-agent config. Providers may return `None` to skip arming for this stream (e.g. nothing useful to derive from the prompt)
-3. **Streaming check**: After each text delta is appended to the accumulated assistant text, every armed `OutputGuardrailRun::check(accumulated, delta)` runs synchronously in the streaming hot path. The contract is that `check` is cheap — substring matches, regex, hash lookups; not network calls or LLM inference
+3. **Streaming check**: After each text delta is appended to the accumulated assistant text, every armed `OutputGuardrailRun::check(accumulated, delta)` runs synchronously in the streaming hot path. The contract is that `check` is cheap, substring matches, regex, hash lookups; not network calls or LLM inference
 4. **Block decision**: A guardrail returns `GuardrailDecision::Block { reason_code, replacement }` to abort the stream. The pending (unsuppressed) delta is dropped, the LLM stream is dropped, and `output.message.replaced` is emitted. The replacement text becomes the assistant message body in `output.message.completed`; the original tokens are never persisted or replayed on subsequent turns
 5. **Pass decision**: `GuardrailDecision::Pass` lets streaming continue. The next delta runs the check again
 
@@ -1396,7 +1396,7 @@ See `crates/core/src/output_guardrail.rs` for `OutputGuardrail`, `OutputGuardrai
 |----------|----------|
 | Sync vs async `check`? | Sync. Guardrails run on every batched delta in the hot path; slow checks would throttle the stream. Heavy guardrails (e.g. an LLM moderator) must run elsewhere |
 | Where do guardrails live? | On `Capability` trait, not `RuntimeAgent`. They are derived from `resolved_capability_configs` at execution time so `RuntimeAgent` stays serializable |
-| What surface is checked? | Assistant text only (`output.message.delta`). `tool.output.delta` and `reason.thinking.delta` are out of scope for v1 — easy to extend later by adding a surface enum |
+| What surface is checked? | Assistant text only (`output.message.delta`). `tool.output.delta` and `reason.thinking.delta` are out of scope for v1, easy to extend later by adding a surface enum |
 | Original tokens persisted? | No. After replacement, every downstream event (`llm.generation`, `output.message.completed`) carries the replacement text. The model itself never sees the leak on subsequent turns |
 | What if multiple guardrails trip? | The first to return `Block` (in capability registration order) wins. Subsequent guardrails are not consulted on a blocked stream |
 | Per-stream state? | Yes. `arm()` returns a fresh `Box<dyn OutputGuardrailRun>` per stream so guardrails can hold cursors, dedup tables, etc. without sharing across sessions |

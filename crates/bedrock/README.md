@@ -13,7 +13,7 @@ implements the provider-neutral `ChatDriver` contract using the Bedrock Runtime
 `ConverseStream` API, mapping Everruns' messages, tools, and reasoning onto the
 Bedrock wire format.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-openai`](https://crates.io/crates/everruns-openai) and
 [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for other

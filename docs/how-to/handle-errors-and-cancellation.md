@@ -19,7 +19,7 @@ async for event in client.events.stream(session.id):
         break
 ```
 
-The `error` field is a structured object — type, message, optional cause. Inspect it to decide whether to retry, surface to the user, or escalate.
+The `error` field is a structured object, type, message, optional cause. Inspect it to decide whether to retry, surface to the user, or escalate.
 
 ## Cancel a long-running turn
 
@@ -66,7 +66,7 @@ async def send_with_retry(client, session_id, content, attempts=2):
     return False
 ```
 
-Don't retry indefinitely — a turn that fails twice usually fails for a reason (rate limit, malformed prompt, missing capability). Surface to the user.
+Don't retry indefinitely, a turn that fails twice usually fails for a reason (rate limit, malformed prompt, missing capability). Surface to the user.
 
 ## Common error patterns
 
@@ -75,10 +75,10 @@ Don't retry indefinitely — a turn that fails twice usually fails for a reason 
 | `rate_limit_exceeded` | LLM provider rate-limited the worker | Wait, retry with backoff |
 | `request_too_large` | Context overflowed even after compaction | Trim the conversation, start a fresh session |
 | `tool_call_failed` (terminal) | A tool errored repeatedly | Inspect tool result events, fix the agent prompt or tool config |
-| `cancelled` | User or app called `sessions.cancel` | No retry — user intent |
+| `cancelled` | User or app called `sessions.cancel` | No retry, user intent |
 
 ## See also
 
 - [Stream events](/how-to/stream-events/)
-- [Event Reference](/event-reference/) — all event types and payloads.
-- [The agentic loop](/explanation/agentic-loop/#what-happens-when-the-loop-gets-stuck) — failure modes.
+- [Event Reference](/event-reference/), all event types and payloads.
+- [The agentic loop](/explanation/agentic-loop/#what-happens-when-the-loop-gets-stuck), failure modes.

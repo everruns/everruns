@@ -5,20 +5,20 @@ sidebar:
   label: Concepts
 ---
 
-This page is the **concept cheat-sheet** — short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
+This page is the **concept cheat-sheet**: short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
 
 ## High Level
 
-Harness and Agent are **configuration containers** — they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Harness and Agent are **configuration containers**: they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
 ![Configuration Hierarchy](../images/concepts/configuration-hierarchy.svg)
 
-- **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
-- **Dashed arrows** — runtime assembly: config merges into RuntimeAgent, which executes in a Session
+- **Solid arrows**: configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
+- **Dashed arrows**: runtime assembly: config merges into RuntimeAgent, which executes in a Session
 
 ### Harness
 
-A Harness is the top-level entity that represents a setup for agent execution. It defines the infrastructure, defaults, and constraints under which sessions run — configuring how agents are invoked, which capabilities are available by default, and what execution environment is provided.
+A Harness is the top-level entity that represents a setup for agent execution. It defines the infrastructure, defaults, and constraints under which sessions run, configuring how agents are invoked, which capabilities are available by default, and what execution environment is provided.
 
 - There can be many harnesses in the system
 - Each session has exactly one assigned harness
@@ -49,9 +49,9 @@ A Session is a working instance of an agentic loop. It is configured by its harn
 
 A Capability is a modular, reusable configuration unit that extends the behavior of a harness, agent, or session. Each capability can contribute:
 
-1. **System prompt additions** — text prepended to the agent's prompt
-2. **Tools** — functions the agent can invoke
-3. **Mount points** — files and directories populated in the session filesystem
+1. **System prompt additions**: text prepended to the agent's prompt
+2. **Tools**: functions the agent can invoke
+3. **Mount points**: files and directories populated in the session filesystem
 
 - Can be attached to a harness, an agent, or a session
 - Session capabilities are additive to agent capabilities
@@ -71,7 +71,7 @@ A Tool is a function the agent can invoke during execution. Tools are provided b
 
 ### App
 
-An App is a deployable unit that binds a Harness and Agent to a distribution channel such as Slack. Apps provide a publish/unpublish lifecycle — only published apps accept incoming requests from their configured channel.
+An App is a deployable unit that binds a Harness and Agent to a distribution channel such as Slack. Apps provide a publish/unpublish lifecycle, only published apps accept incoming requests from their configured channel.
 
 - Each app references exactly one Harness and one Agent
 - Each app has a channel type (e.g., `slack`) with channel-specific configuration
@@ -104,9 +104,9 @@ Understanding the reason-act loop is key to building effective agents. Here's wh
 
 Each iteration:
 
-1. **Reason** — The LLM receives the full conversation history (system prompt + messages + tool results) and produces either a text response or tool calls
-2. **Act** — All tool calls from the LLM are executed in parallel. Results are added to the conversation history
-3. **Loop** — If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
+1. **Reason**: The LLM receives the full conversation history (system prompt + messages + tool results) and produces either a text response or tool calls
+2. **Act**: All tool calls from the LLM are executed in parallel. Results are added to the conversation history
+3. **Loop**: If there were tool calls, go back to Reason. If the LLM produced a final text response, the turn is complete
 
 The loop runs for a maximum of **10 iterations** per turn to prevent runaway execution.
 
@@ -151,8 +151,8 @@ Each session has an isolated virtual filesystem stored in PostgreSQL.
 
 Each session has scoped storage with two tiers:
 
-- **Key/Value** — plain text storage for general data such as state, preferences, or intermediate results
-- **Secrets** — AES-256-GCM encrypted at rest for API keys, tokens, and credentials
+- **Key/Value**: plain text storage for general data such as state, preferences, or intermediate results
+- **Secrets**: AES-256-GCM encrypted at rest for API keys, tokens, and credentials
 - Storage is session-isolated and cannot be accessed across sessions
 
 ---

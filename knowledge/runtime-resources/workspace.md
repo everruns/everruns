@@ -10,11 +10,11 @@ tags:
 
 ## Abstract
 
-This document defines the **Workspace** — an org-scoped, named, durable
+This document defines the **Workspace**: an org-scoped, named, durable
 working area that contains an agent's active state for a task. A Workspace
 holds the files an agent reads and writes during execution, exposed at the
 `/workspace` mount point. Capabilities (`session_file_system`, `bashkit_shell`) read
-and write through the `WorkspaceFileSystem` seam.
+and write through the `WorkspaceFileSystem` boundary.
 
 The application-facing Framework also models **WorkspaceHead** and
 **Environment** at the host boundary. That model adds provider-owned mutable
@@ -62,16 +62,16 @@ matching legacy behavior).
 
 Workspace is the **session tier** of the memory model:
 
-* **Workspace** (this spec) — named, durable working area. One or more
+* **Workspace** (this spec), named, durable working area. One or more
   sessions attach to a Workspace. Files are workspace-scoped.
-* **Memory** (`knowledge/runtime-resources/memory.md`) — org-scoped, named, durable shared
+* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped, named, durable shared
   store. Mounted into a Workspace via the `memory` capability at session
   creation, RO by default.
 
 Surfaces of a Workspace today:
 
-* **Files** — virtual filesystem mounted at `/workspace`, this spec.
-* **Tables** — session-scoped SQL databases (`knowledge/runtime-resources/session-sqldb.md`)
+* **Files**: virtual filesystem mounted at `/workspace`, this spec.
+* **Tables**: session-scoped SQL databases (`knowledge/runtime-resources/session-sqldb.md`)
   remain session-scoped for now; future work may promote them to a
   Workspace surface.
 
@@ -82,10 +82,10 @@ Future surfaces (key-value, secrets) are out of scope.
 Workspaces follow the standard building-block lifecycle from
 `knowledge/foundations/models.md`:
 
-* `active` — assignable to sessions, editable, listed by default.
-* `archived` — hidden from default lists, not assignable to new sessions,
+* `active`, assignable to sessions, editable, listed by default.
+* `archived`, hidden from default lists, not assignable to new sessions,
   files become read-only.
-* `deleted` — tombstone; detail/list APIs return 404 except for historical
+* `deleted`, tombstone; detail/list APIs return 404 except for historical
   references (existing session links).
 
 A Workspace is hard-deleted only after all attached sessions are
@@ -150,7 +150,7 @@ Adds `workspace_id UUID NOT NULL REFERENCES workspaces(id)`.
 
 Sessions cannot exist without a Workspace. Existing rows are backfilled by
 the migration: one Workspace is created per pre-existing session, named
-`session-<full-32-hex>` (the full UUID-without-dashes — UUIDv7 prefixes are
+`session-<full-32-hex>` (the full UUID-without-dashes, UUIDv7 prefixes are
 time-derived and collide under bursty creation, which would violate the
 per-org name uniqueness constraint), and the session's `workspace_id` is set.
 
@@ -169,13 +169,13 @@ REST endpoints:
 * `POST   /v1/workspaces`
 * `GET    /v1/workspaces/{workspace_id}`
 * `PATCH  /v1/workspaces/{workspace_id}`
-* `DELETE /v1/workspaces/{workspace_id}` — archive / delete per lifecycle
+* `DELETE /v1/workspaces/{workspace_id}`, archive / delete per lifecycle
 * `GET    /v1/workspaces/{workspace_id}/fs/...`
 * `POST   /v1/workspaces/{workspace_id}/fs/...`
 * `PUT    /v1/workspaces/{workspace_id}/fs/...`
 * `DELETE /v1/workspaces/{workspace_id}/fs/...`
 * `POST   /v1/workspaces/{workspace_id}/fs/_/{move,copy,stat,grep}`
-* `GET    /v1/workspaces/{workspace_id}/fs/_/download/...` — raw bytes
+* `GET    /v1/workspaces/{workspace_id}/fs/_/download/...`, raw bytes
 
 A `GET` on a file path also returns raw bytes when the request carries
 `Accept: application/octet-stream`; otherwise it returns the JSON envelope.
@@ -212,8 +212,8 @@ session IDs do not need to change.
 auto-created on session creation when not specified. Multiple sessions
 may attach to the same Workspace.
 **Alternatives considered:**
-- Strict 1:1 with no sharing — rejected: blocks shared working state.
-- Explicit-only attach (no defaults) — rejected: breaks existing clients.
+- Strict 1:1 with no sharing, rejected: blocks shared working state.
+- Explicit-only attach (no defaults), rejected: breaks existing clients.
 **Rationale:** Defaulting preserves legacy ergonomics while opening the
 multi-session sharing story for API clients.
 
@@ -227,7 +227,7 @@ multi-session sharing story for API clients.
 GitHub Codespaces). It is a **mount point + the default cwd**, not a separate
 namespace: `everruns_core::mount_fs::MountFs` is the single resolver (EVE-660),
 and its root mount makes any path addressable with `/workspace` as the starting
-cwd. Capabilities do not strip/add `/workspace` themselves — they route every
+cwd. Capabilities do not strip/add `/workspace` themselves, they route every
 path through the `SessionFileSystem` (a `MountFs`), which resolves all accepted
 spellings and formats display paths. See `knowledge/runtime-resources/file-store.md`.
 
@@ -236,8 +236,8 @@ spellings and formats display paths. See `knowledge/runtime-resources/file-store
 the HTTP API path and the agent tool path.
 
 **Limits (env-configurable):**
-- `WORKSPACE_FILE_MAX_BYTES` — total bytes per workspace (default 500 MB)
-- `WORKSPACE_FILE_SINGLE_MAX_BYTES` — per-file ceiling (default 100 MB)
+- `WORKSPACE_FILE_MAX_BYTES`, total bytes per workspace (default 500 MB)
+- `WORKSPACE_FILE_SINGLE_MAX_BYTES`, per-file ceiling (default 100 MB)
 
 **Rationale:** Prevents unbounded PostgreSQL BYTEA growth from agentic file
 writes (TM-FS-008 / TM-DOS-005).
@@ -261,7 +261,7 @@ writes (TM-FS-008 / TM-DOS-005).
 ### Workspace Mount Point
 
 Workspace files are exposed to agents at `/workspace`. Same translation as
-before — agent paths use `/workspace/*` prefix, storage paths are normalized
+before, agent paths use `/workspace/*` prefix, storage paths are normalized
 internally.
 
 ### Path Validation
@@ -275,7 +275,7 @@ internally.
 ### Behavior
 
 1. **Auto-create parents:** Creating `/a/b/c.txt` automatically creates `/a` and `/a/b` directories.
-2. **Delete cascade vs archive:** `DELETE /v1/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only — the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
+2. **Delete cascade vs archive:** `DELETE /v1/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only, the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded.
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files.
 5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash. A stale edit safely rebases only when every exact replacement remains unique and non-overlapping in the current content; conflicts and write races fail without modifying the file.
@@ -288,7 +288,7 @@ See `crates/server/migrations/056_workspaces.sql` for the schema.
 
 ### UI Integration
 
-For the foundational PR (#PR2), no UI changes are made — the existing
+For the foundational PR (#PR2), no UI changes are made, the existing
 session-detail "Workspace" tab continues to work via the session-aliased
 routes. A dedicated Workspaces page is follow-up work.
 
@@ -300,8 +300,8 @@ workspace-scoping is follow-up work.
 
 ### Storage
 
-- `session_git_objects` — session-scoped content-addressable store
-- `session_git_refs` — session-scoped refdb
+- `session_git_objects`, session-scoped content-addressable store
+- `session_git_refs`, session-scoped refdb
 - See `crates/server/migrations/008_v0.8.7.sql` for DDL
 
 ### API Endpoints
@@ -310,10 +310,10 @@ All under `/v1/sessions/{session_id}/git/`. Unchanged.
 
 ## Open Questions
 
-- **Workspace-scoped Git** — promote `session_git_*` to `workspace_git_*` so
+- **Workspace-scoped Git**: promote `session_git_*` to `workspace_git_*` so
   multi-session workspaces share one git history?
-- **Workspace tables / KV / secrets** — promote `session_sqldb`,
+- **Workspace tables / KV / secrets**: promote `session_sqldb`,
   `session_key_values`, `session_secrets` to workspace-scoping?
-- **Workspace UI** — dedicated listing/detail page, like Memory?
-- **Per-workspace quotas in DB** — enforce `WORKSPACE_FILE_MAX_BYTES` via a
+- **Workspace UI**: dedicated listing/detail page, like Memory?
+- **Per-workspace quotas in DB**: enforce `WORKSPACE_FILE_MAX_BYTES` via a
   DB trigger as defense in depth?

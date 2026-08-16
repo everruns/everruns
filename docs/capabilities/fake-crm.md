@@ -29,6 +29,6 @@ Simulated CRM and customer support tools for testing and demonstrations. Manage 
 
 ## See Also
 
-- [Fake Warehouse](/capabilities/fake-warehouse/) — simulated warehouse operations
-- [Fake AWS](/capabilities/fake-aws/) — simulated cloud infrastructure
+- [Fake Warehouse](/capabilities/fake-warehouse/), simulated warehouse operations
+- [Fake AWS](/capabilities/fake-aws/), simulated cloud infrastructure
 - [Capabilities Overview](/capabilities/)

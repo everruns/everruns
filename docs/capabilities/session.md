@@ -20,7 +20,7 @@ Automatic title maintenance is opt-in. Set `auto_title` to `true` in the
 capability configuration to have the agent create a concise 3–7 word title
 before handling the first substantive request. The title is a required pre-work
 update. The agent updates it later, also before other work or a response, only
-when the conversation's primary theme materially changes—not for minor
+when the conversation's primary theme materially changes, not for minor
 follow-ups or subtopics. Title writes update session metadata and do not count
 as project or workspace file changes.
 
@@ -45,6 +45,6 @@ Update the session title.
 
 ## See Also
 
-- [Storage](/capabilities/session-storage/) — persist data within the session
-- [Schedules](/capabilities/session-schedules/) — schedule future tasks
+- [Storage](/capabilities/session-storage/), persist data within the session
+- [Schedules](/capabilities/session-schedules/), schedule future tasks
 - [Capabilities Overview](/capabilities/)

@@ -104,6 +104,6 @@ Both tools return:
 
 ## See Also
 
-- [File System](/capabilities/file-system/) — read and reuse workspace images
-- [Storage](/capabilities/session-storage/) — store per-session OpenAI overrides
+- [File System](/capabilities/file-system/), read and reuse workspace images
+- [Storage](/capabilities/session-storage/), store per-session OpenAI overrides
 - [Capabilities Overview](/capabilities/)

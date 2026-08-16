@@ -10,14 +10,14 @@ tags:
 
 ## Summary
 
-Generic mechanism for clients to declare capabilities and preferences to the server via arbitrary key-value pairs. Distinct from the agent-scoped `capabilities` system — hints are client-scoped signals that influence server behavior without a fixed schema.
+Generic mechanism for clients to declare capabilities and preferences to the server via arbitrary key-value pairs. Distinct from the agent-scoped `capabilities` system, hints are client-scoped signals that influence server behavior without a fixed schema.
 
 ## Design
 
 ### Storage
 
-- **Session level:** `Session.hints: Option<HashMap<String, Value>>` — defaults for every turn.
-- **Message level:** `Controls.hints: Option<HashMap<String, Value>>` — per-message overrides.
+- **Session level:** `Session.hints: Option<HashMap<String, Value>>`, defaults for every turn.
+- **Message level:** `Controls.hints: Option<HashMap<String, Value>>`, per-message overrides.
 
 ### Resolution
 
@@ -31,9 +31,9 @@ Per-message hints override session hints key-by-key. See `Controls::resolve_hint
 
 ### API surface
 
-- `POST /v1/sessions` — `CreateSessionRequest.hints` sets session-level defaults.
-- `POST /v1/sessions/{id}/messages` — `CreateMessageRequest.controls.hints` sets per-message overrides.
-- `GET /v1/sessions/{id}` — `Session.hints` in response.
+- `POST /v1/sessions`, `CreateSessionRequest.hints` sets session-level defaults.
+- `POST /v1/sessions/{id}/messages`, `CreateMessageRequest.controls.hints` sets per-message overrides.
+- `GET /v1/sessions/{id}`, `Session.hints` in response.
 
 ### No server-side validation
 

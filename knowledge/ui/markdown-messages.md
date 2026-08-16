@@ -19,13 +19,13 @@ Specification for rendering markdown content in chat messages with streaming sup
 **Package**: `streamdown` ([streamdown.ai](https://streamdown.ai/), [GitHub](https://github.com/vercel/streamdown))
 
 **Why Streamdown**:
-1. **React 19 support** — Requires React 19.1.1+, compatible with project's React 19.2.4
-2. **Drop-in replacement** — Same props API as react-markdown (remarkPlugins, rehypePlugins)
-3. **Unterminated block parsing** — Handles incomplete markdown during streaming gracefully
-4. **Memoized rendering** — Only re-renders changed portions of document
-5. **Syntax highlighting** — Shiki-based with copy/download buttons
-6. **Security hardening** — Built-in XSS protection via rehype-harden
-7. **GFM support** — Tables, task lists, strikethrough built-in
+1. **React 19 support**: Requires React 19.1.1+, compatible with project's React 19.2.4
+2. **Drop-in replacement**: Same props API as react-markdown (remarkPlugins, rehypePlugins)
+3. **Unterminated block parsing**: Handles incomplete markdown during streaming gracefully
+4. **Memoized rendering**: Only re-renders changed portions of document
+5. **Syntax highlighting**: Shiki-based with copy/download buttons
+6. **Security hardening**: Built-in XSS protection via rehype-harden
+7. **GFM support**: Tables, task lists, strikethrough built-in
 
 ### Alternatives Considered
 
@@ -52,7 +52,7 @@ pnpm add streamdown @streamdown/code @streamdown/mermaid
 | `@streamdown/mermaid` | Mermaid diagram rendering |
 
 Optional plugins (add when needed):
-- `@streamdown/math` — KaTeX math rendering
+- `@streamdown/math`, KaTeX math rendering
 
 ## Architecture
 

@@ -2,9 +2,9 @@
 
 This crate hosts two independent Parallel capabilities. They share only the vendor:
 
-- `parallel_search` — **free**, connection-backed. Contributes Parallel's hosted MCP
+- `parallel_search`, **free**, connection-backed. Contributes Parallel's hosted MCP
   server for web search/fetch. Experimental (dev-only).
-- `parallel` — **paid**, payment-backed. Implements in-process search/extract/task tools
+- `parallel`, **paid**, payment-backed. Implements in-process search/extract/task tools
   that spend real money through the core `PaymentAuthority`. Gated by the
   deployment-controlled `machine_payments` feature flag (off by default everywhere).
 
@@ -41,10 +41,10 @@ The `parallel` capability contributes in-process tools that route paid calls thr
 core `PaymentAuthority`. See [`knowledge/security/machine-payments.md`](../../knowledge/security/machine-payments.md)
 for the trust boundary and rails.
 
-- `parallel_search` — paid web search. Up to `$0.01` per call.
-- `parallel_extract` — structured extraction. Up to `$0.01` per URL, minimum `$0.01`.
-- `parallel_task` — deep async task. Up to `$0.10` (`pro`) / `$0.30` (`ultra`).
-- `parallel_task_status` — free polling of a task run; no payment.
+- `parallel_search`, paid web search. Up to `$0.01` per call.
+- `parallel_extract`, structured extraction. Up to `$0.01` per URL, minimum `$0.01`.
+- `parallel_task`, deep async task. Up to `$0.10` (`pro`) / `$0.30` (`ultra`).
+- `parallel_task_status`, free polling of a task run; no payment.
 
 The paid tools never sign or submit payments themselves: they build a typed
 `MachinePaymentRequest` and call `ToolContext.payment_authority`. With no authority wired

@@ -4,7 +4,7 @@ description: Choose volatile memory, crash-durable local state, or the distribut
 ---
 
 Framework history is a read-only projection of canonical events. Normal
-execution has one write path—the engine's event log—so a resumed session and a
+execution has one write path, the engine's event log, so a resumed session and a
 running session cannot disagree about the conversation.
 
 | Deployment | Conversation state | Recovery boundary | Use when |

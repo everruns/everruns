@@ -5,7 +5,7 @@ sidebar:
   label: CLI
 ---
 
-The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK — agents, sessions, messages, capabilities — and is designed to compose well with shell pipelines.
+The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK, agents, sessions, messages, capabilities, and is designed to compose well with shell pipelines.
 
 This page covers installation, configuration, and the command surface. For scripting patterns and `jq` examples, see [Automate with the CLI](/how-to/automate-with-the-cli/).
 
@@ -59,7 +59,7 @@ export EVERRUNS_API_KEY=dev
 |---|---|
 | `agents` | `create`, `list`, `get`, `update`, `delete` |
 | `sessions` | `create`, `list`, `get`, `cancel`, `delete` |
-| `capabilities` | (list — no subcommand) |
+| `capabilities` | (list, no subcommand) |
 | `chat` | Send a message and stream the response |
 
 ### Agents
@@ -125,13 +125,13 @@ everruns agents list -o json
 everruns agents list -o yaml
 ```
 
-`--quiet` suppresses headers and prints only the essential identifier — useful for capturing IDs in shell variables.
+`--quiet` suppresses headers and prints only the essential identifier, useful for capturing IDs in shell variables.
 
 ## See also
 
-- [Automate with the CLI](/how-to/automate-with-the-cli/) — `jq`, quiet mode, scripting patterns.
-- [Define agents as files](/how-to/define-agents-as-files/) — file formats for `-f`.
-- [SDK](/features/sdk/) — the programmatic equivalent.
+- [Automate with the CLI](/how-to/automate-with-the-cli/), `jq`, quiet mode, scripting patterns.
+- [Define agents as files](/how-to/define-agents-as-files/), file formats for `-f`.
+- [SDK](/features/sdk/), the programmatic equivalent.
 
 ## Agent composition
 

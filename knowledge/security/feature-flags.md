@@ -65,17 +65,17 @@ Current API-visible experimental flags include:
 - `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `knowledge/runtime-resources/agent-versions.md`.
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). Deployment disablement prevents registration; org-effective disablement removes them from API and Platform listings, assignment, and runtime tool construction. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `knowledge/evaluation/online-evals.md`.
-- `public_chat`: gates the Public Chat feature — the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
+- `public_chat`: gates the Public Chat feature, the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `knowledge/integrations/public-chat.md`.
 - `webmcp`: gates browser-native tools exposed by the authenticated UI. The deployment gate also controls the `tools` Permissions Policy; org opt-in controls registration. Env var: `FEATURE_WEBMCP`. See `knowledge/ui/webmcp.md`.
 
 ## Architecture
 
 ### Backend
 
-- **Platform**: `crates/platform/src/feature_flags.rs` — `FeatureFlags` records, catalog, org opt-in resolution, `from_env()` (EVE-878)
-- **Core**: `crates/core/src/execution_features.rs` — `InternalFeatureFlags` and the resolved `ExecutionFeatureDecisions` consumed at capability registration; execution never loads feature-management records
-- **API**: `GET /v1/feature-flags` — public endpoint, returns deployment-level `FeatureFlags` as JSON
-- **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings` — org opt-in (admin for PATCH)
+- **Platform**: `crates/platform/src/feature_flags.rs`, `FeatureFlags` records, catalog, org opt-in resolution, `from_env()` (EVE-878)
+- **Core**: `crates/core/src/execution_features.rs`, `InternalFeatureFlags` and the resolved `ExecutionFeatureDecisions` consumed at capability registration; execution never loads feature-management records
+- **API**: `GET /v1/feature-flags`, public endpoint, returns deployment-level `FeatureFlags` as JSON
+- **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings`, org opt-in (admin for PATCH)
 - **Server**: `crates/server/src/api/feature_flags.rs`, `crates/server/src/api/org_feature_flags.rs`
 - **Storage**: `org_feature_flags` table (migration `046_org_feature_flags.sql`)
 
@@ -88,8 +88,8 @@ capability.
 ### Frontend
 
 - **API client**: `apps/ui/src/lib/api/feature-flags.ts`
-- **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx` — fetches org-effective flags when an org is selected
-- **Settings**: `apps/ui/src/app/(main)/settings/features/page.tsx` — admin opt-in toggles
+- **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx`, fetches org-effective flags when an org is selected
+- **Settings**: `apps/ui/src/app/(main)/settings/features/page.tsx`, admin opt-in toggles
 - **Hooks**: `useFeatureFlags()` (effective flags), `useFeatureFlag("flag_name")` (single flag)
 - **Types**: `FeatureFlags` in `apps/ui/src/lib/api/legacy-api-types.ts`
 

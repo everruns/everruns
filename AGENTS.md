@@ -11,7 +11,7 @@ Keep each fact in exactly one layer, and read the layer that owns it.
 | Layer | Owns |
 |---|---|
 | `AGENTS.md` (this file, plus per-subtree ones) | repo gotchas that are not discoverable from the code |
-| `knowledge/` | why and what: OKF v0.2 design intent, contracts, success bars — start at `knowledge/index.md` |
+| `knowledge/` | why and what: OKF v0.2 design intent, contracts, success bars, start at `knowledge/index.md` |
 | `.agents/skills/` | how: workflows loaded on demand (`/ship`, `/maintenance`, `/process-issues`, `/manual-ui-testing`) |
 | source, `justfile`, `.github/workflows/` | exact commands, fields, shapes, and checks |
 
@@ -36,7 +36,7 @@ closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deeps
 - Run `just pre-push` before pushing. It scopes expensive checks to changed surfaces and shares a
   dedicated pre-push Rust target across worktrees; use `just pre-push-full` to force every check.
 - Knowledge captures why/what; link to source instead of copying fields, enum variants, SQL DDL,
-  or API shapes. `docs/` holds public product documentation only — durable decisions and
+  or API shapes. `docs/` holds public product documentation only, durable decisions and
   investigations belong in `knowledge/`. Run `just check-okf` after knowledge
   changes.
 - Linear: OSS project, EVE team.
@@ -104,5 +104,5 @@ doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'
 - Commit as the real human user. If `git config user.name`/`user.email` are missing or agent-like,
   set them from `GIT_USER_NAME`/`GIT_USER_EMAIL`; if those are absent, ask instead of committing
   with a bot identity.
-- No AI attribution anywhere — commits, PRs, docs, code comments. The sole exception is yolop's
+- No AI attribution anywhere, commits, PRs, docs, code comments. The sole exception is yolop's
   standard `Co-Authored-By` trailer and `Generated with yolop` PR footer for work yolop performed.

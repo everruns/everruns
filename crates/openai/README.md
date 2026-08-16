@@ -13,7 +13,7 @@ driver plus a Chat Completions compatibility driver for OpenAI-compatible
 endpoints, mapping Everruns' provider-neutral messages, tools, and reasoning
 onto the OpenAI wire format.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
 models. Framework applications use the application-facing

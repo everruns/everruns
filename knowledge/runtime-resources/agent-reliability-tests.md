@@ -122,13 +122,13 @@ PostgreSQL-backed run.
 
 **Decision:** Test at the store + executor level, not full server process management.
 
-**Rationale:** Store-level tests are deterministic, fast, and can exercise all failure paths without Docker/process management. The store is the source of truth — if store-level recovery works, the system recovers.
+**Rationale:** Store-level tests are deterministic, fast, and can exercise all failure paths without Docker/process management. The store is the source of truth, if store-level recovery works, the system recovers.
 
 ### Executor-Driven Workflows
 
 **Decision:** Use `WorkflowExecutor` with test workflow types to test full workflow lifecycle.
 
-**Rationale:** Existing failure tests only test individual store operations. Reliability tests need to verify that workflows *complete* despite failures — that requires driving the full executor→store→claim→complete→process cycle.
+**Rationale:** Existing failure tests only test individual store operations. Reliability tests need to verify that workflows *complete* despite failures, that requires driving the full executor→store→claim→complete→process cycle.
 
 ## Related Testing Specs
 

@@ -12,7 +12,7 @@ and read or write files without touching the host. Sandboxes are managed per
 session with leased-resource cleanup, and authenticate with a user-supplied E2B
 API key.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
 [`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
 integration plugin system.

@@ -9,14 +9,14 @@ sidebar:
 
 [Azure OpenAI](https://azure.microsoft.com/products/ai-services/openai-service)
 serves OpenAI models from your own Azure resource. Everruns ships a dedicated
-`azure_openai` provider type — distinct from the [OpenAI](/providers/openai/)
-provider — so Azure deployments resolve with the right endpoint and model
+`azure_openai` provider type, distinct from the [OpenAI](/providers/openai/)
+provider, so Azure deployments resolve with the right endpoint and model
 behavior rather than being configured as a generic OpenAI base-URL override.
 
 ## What you get
 
 - **Azure OpenAI Responses API** through your Azure resource endpoint.
-- **Stateful continuation and context compaction** — Azure OpenAI hosts are
+- **Stateful continuation and context compaction**: Azure OpenAI hosts are
   recognized as stateful, like `api.openai.com`.
 - **Streaming, tool calls, and reasoning** mapped to provider-neutral Everruns
   types.

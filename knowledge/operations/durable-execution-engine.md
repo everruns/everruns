@@ -139,7 +139,7 @@ Guidance:
 
 ### Generic Queue (Standalone Tasks)
 
-The task queue supports standalone tasks that run independently of any workflow. `TaskDefinition.workflow_id` is `Option<Uuid>` — when `None`, the task is a standalone queue entry.
+The task queue supports standalone tasks that run independently of any workflow. `TaskDefinition.workflow_id` is `Option<Uuid>`, when `None`, the task is a standalone queue entry.
 
 - **Enqueue**: `POST /v1/durable/tasks` with `activity_type`, `input`, and optional retry/priority config
 - **Processing**: Workers claim and execute standalone tasks identically to workflow tasks
@@ -171,20 +171,20 @@ See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/s
 ### Forward-progress guard and Sealed terminal (EVE-534)
 
 `RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn
-that crashes and is reclaimed repeatedly without ever advancing can still loop —
-re-running reason/act and burning tokens/billing — until it incidentally hits
+that crashes and is reclaimed repeatedly without ever advancing can still loop,
+re-running reason/act and burning tokens/billing, until it incidentally hits
 max-iterations or max_attempts. The forward-progress guard adds a poison-turn
 defense tied to *progress* and a deliberate **Sealed** terminal.
 
-- **Progress token** — a per-turn, monotonically advancing marker derived from
+- **Progress token**: a per-turn, monotonically advancing marker derived from
   durably-recorded facts so it is stable under replay and cannot be advanced by
   a non-progressing retry. It is the highest `durable_workflow_events.sequence_num`
   for the turn's workflow (encoded so "no events yet" = 0). Each stale reclaim
   records the token observed for the task (`durable_task_queue.progress_token`).
-- **No-progress detection** — on each reclaim, the store compares the current
+- **No-progress detection**: on each reclaim, the store compares the current
   token to the previously recorded one. If it did not advance, the per-task
   `no_progress_count` is incremented; any advance resets it to 0.
-- **Sealing** — when `no_progress_count` reaches `N` (default 3, configurable via
+- **Sealing**: when `no_progress_count` reaches `N` (default 3, configurable via
   `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`), the reclaim path marks the task `dead`
   (→ DLQ) instead of returning it to `pending`. This stops scheduling, makes the
   turn **non-retryable**, and surfaces a distinct `turn.sealed { reason }` event
@@ -198,7 +198,7 @@ The turn-level outcome is `everruns_engine::TurnPlan::Terminal` with
 distinct from `Success` and `Failed`. `SealReason` is `no_progress` (this guard)
 or `budget`.
 
-**Budget interplay** — work-budget-exceeded (`HardLimitStopRule` balance ≤ 0,
+**Budget interplay**: work-budget-exceeded (`HardLimitStopRule` balance ≤ 0,
 see `knowledge/security/budgeting.md`) resolves to `Sealed { reason: budget }` rather than
 retrying: the worker classifies the budget-exhausted failure as a deliberate,
 non-retryable seal, routes it straight to the DLQ (no re-billing retries), and
@@ -220,7 +220,7 @@ turns from the DLQ. Sealed tasks already carry the seal reason and counters via
 - Semantic conventions: `durable.workflow.*`, `durable.activity.*`, `durable.worker.*`
 - Metrics: workflows started/completed/failed, activity durations, queue depth
 - Admin API: `/api/durable/workers`, `/api/durable/workflows`, `/api/durable/dlq`
-- Metrics time series: `/v1/durable/metrics/timeseries` — server-side ring buffer (360 points, 10s resolution)
+- Metrics time series: `/v1/durable/metrics/timeseries`, server-side ring buffer (360 points, 10s resolution)
 
 ### Metrics Dashboard
 
@@ -230,10 +230,10 @@ Real-time metrics on the durable overview page via SSE streaming. Shows last 15 
 
 `get_system_health` (feeding `/v1/durable/health`, the ~10s metrics sampler, and the durable SSE stream) splits its fields by cost:
 
-- **Live gauges** — pending/claimed tasks, running/pending workflows, workers, capacity/load, DLQ size — are queried directly. They are bounded by current work and backed by partial indexes, so they stay cheap.
-- **Cumulative totals** — completed/failed/started for tasks and workflows (the Prometheus-style monotonic counters) — are read from `durable_stat_counters`, a tiny table maintained incrementally by AFTER triggers on `durable_task_queue` and `durable_workflow_instances` (migration `082`). The history tables are never pruned in production, so these grew without bound; counting them per call forced repeated full scans (~127MB heap at ~156k rows) and could starve the DB pool.
+- **Live gauges**: pending/claimed tasks, running/pending workflows, workers, capacity/load, DLQ size, are queried directly. They are bounded by current work and backed by partial indexes, so they stay cheap.
+- **Cumulative totals**: completed/failed/started for tasks and workflows (the Prometheus-style monotonic counters), are read from `durable_stat_counters`, a tiny table maintained incrementally by AFTER triggers on `durable_task_queue` and `durable_workflow_instances` (migration `082`). The history tables are never pruned in production, so these grew without bound; counting them per call forced repeated full scans (~127MB heap at ~156k rows) and could starve the DB pool.
 
-Each counter uses delta accounting (increment on entering a counted state, decrement on leaving or deletion), so it is always exactly equal to the `COUNT(*)` it replaces — there is no staleness window. Reads are O(1) point lookups independent of history size. The per-transition trigger writes touch one shared counter row per metric; this is acceptable at the engine's task throughput, and can be sharded later if a single counter row becomes a write hotspot.
+Each counter uses delta accounting (increment on entering a counted state, decrement on leaving or deletion), so it is always exactly equal to the `COUNT(*)` it replaces, there is no staleness window. Reads are O(1) point lookups independent of history size. The per-transition trigger writes touch one shared counter row per metric; this is acceptable at the engine's task throughput, and can be sharded later if a single counter row becomes a write hotspot.
 
 ### Worker Heartbeat & Stale Worker Handling
 

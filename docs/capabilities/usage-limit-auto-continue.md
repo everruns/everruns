@@ -14,13 +14,13 @@ sidebar:
 | **Risk** | Low |
 
 Some providers cap usage per subscription window rather than per minute. When a
-plan usage limit is hit — for example the ChatGPT/Codex `429`
-`usage_limit_reached` response — the turn fails and the session goes idle until
+plan usage limit is hit, for example the ChatGPT/Codex `429`
+`usage_limit_reached` response, the turn fails and the session goes idle until
 the limit resets, often hours later. This capability makes the session resume on
 its own once the window clears, so long-running work is not silently stranded.
 
 It contributes **no tools**. The behavior is encapsulated behind a reusable
-platform seam — the capability supplies an *LLM error hook* (an in-process
+platform boundary, the capability supplies an *LLM error hook* (an in-process
 capability hook, the same family as tool-call hooks and message filters) that the
 agent runtime invokes generically when a turn fails with a terminal error. The
 runtime has no special-casing for usage limits; any capability can provide the
@@ -28,19 +28,19 @@ same kind of error-recovery hook.
 
 ## How It Works
 
-1. **Classification** — The provider error is classified as
+1. **Classification**: The provider error is classified as
    `provider_usage_limit_reached`, which captures the absolute reset time
    (`resets_at`, unix seconds) reported by the provider. This is
    driver-agnostic: any driver whose error body carries the `usage_limit_reached`
    wording is covered.
-2. **Scheduling** — When the capability is enabled and a reset time is present,
+2. **Scheduling**: When the capability is enabled and a reset time is present,
    a one-shot session schedule is created to fire `delay_seconds` after the
    reset. When it fires, the configured `prompt` is injected as a user message
    and the interrupted work resumes.
-3. **Message copy** — The user-facing error reads *"You're out of LLM usage
+3. **Message copy**: The user-facing error reads *"You're out of LLM usage
    limits. Your usage limit resets at &lt;time&gt;."* When (and only when) a
    continuation was actually scheduled, it appends *"We'll continue work
-   automatically once it resets."* — so the copy never promises a resumption
+   automatically once it resets."*, so the copy never promises a resumption
    that will not happen. Without the capability, the same error stays generic
    and no continuation is scheduled.
 
@@ -91,12 +91,12 @@ otherwise require a human to manually restart the session.
 - The continuation is delivered through the session schedule machinery, so it
   requires both a session schedule store and a schedule poller in the deployment.
   The hosted platform provides both. The default embedded runtime provides
-  neither, so this capability is **not** part of the runtime-safe preset — an
+  neither, so this capability is **not** part of the runtime-safe preset, an
   embedder must wire a `SessionScheduleStore` (e.g. via a schedule-store factory)
   and run a poller for it to take effect; otherwise its error hook is a no-op and
   the error copy stays generic.
 
 ## See Also
 
-- [Schedules](/capabilities/session-schedules/) — the scheduling machinery the continuation reuses
-- [Capabilities](/features/capabilities/) — the capability model
+- [Schedules](/capabilities/session-schedules/), the scheduling machinery the continuation reuses
+- [Capabilities](/features/capabilities/), the capability model

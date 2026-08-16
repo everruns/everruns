@@ -88,6 +88,6 @@ Deno API token is resolved automatically from **Settings > Connections > Deno**.
 
 ## See Also
 
-- [Storage](/capabilities/session-storage/) — token and state persistence
-- [Deno integration guide](/integrations/deno/) — setup and configuration
+- [Storage](/capabilities/session-storage/), token and state persistence
+- [Deno integration guide](/integrations/deno/), setup and configuration
 - [Capabilities Overview](/capabilities/)

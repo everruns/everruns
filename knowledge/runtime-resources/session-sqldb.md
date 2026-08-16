@@ -20,7 +20,7 @@ Session-scoped SQLite databases backed by PostgreSQL page-level storage. Each se
 - Full blob (serialize entire DB as BYTEA): Simple but 50MB blobs per query wasteful
 - Table-level blobs: Doesn't map to SQLite's B-tree page architecture
 - PostgreSQL Large Objects: Quirky API, less control than explicit rows
-**Rationale:** Only dirty pages written per mutation (typically 3-5 pages regardless of DB size). SQLite's internal page cache (default ~8MB) serves hot reads from memory. No size ceiling — 50MB is just ~12K rows.
+**Rationale:** Only dirty pages written per mutation (typically 3-5 pages regardless of DB size). SQLite's internal page cache (default ~8MB) serves hot reads from memory. No size ceiling, 50MB is just ~12K rows.
 
 ### Decision 2: sqlite-plugin Crate for VFS
 **Chosen:** `sqlite-plugin` crate (v0.5.0) for VFS registration
@@ -312,9 +312,9 @@ You have access to session-scoped SQL databases. Use these tools to create table
 ### T4: Filesystem Escape
 **Risk:** SQLite tries to access files outside VFS.
 **Mitigation:**
-- Custom VFS intercepts ALL file I/O — no real filesystem access
+- Custom VFS intercepts ALL file I/O, no real filesystem access
 - Authorizer blocks ATTACH (prevents opening other files)
-- DEV_MODE uses Connection::open_in_memory() — no disk access
+- DEV_MODE uses Connection::open_in_memory(), no disk access
 
 ### T5: Cross-Session Data Access
 **Risk:** Session A reads Session B's databases.
@@ -342,9 +342,9 @@ You have access to session-scoped SQL databases. Use these tools to create table
 In-memory backend provides full API parity without PostgreSQL:
 
 1. `Connection::open_in_memory()` for each database, held as `Arc<Mutex<Connection>>`
-2. Live connections persist for session lifetime — no serialize/deserialize round-trips
+2. Live connections persist for session lifetime, no serialize/deserialize round-trips
 3. Size tracking via `conn.serialize(DatabaseName::Main)` length estimation
-4. No VFS complexity — standard rusqlite in-memory mode
+4. No VFS complexity, standard rusqlite in-memory mode
 5. Concurrency via `RwLock` on the database map, `Mutex` per connection
 6. Async wrapper (`InMemorySqlDbStore`) uses `tokio::task::spawn_blocking`
 
@@ -361,12 +361,12 @@ enum DatabaseScope {
 }
 ```
 
-Org-level databases would share the same crate, VFS, and query execution — only the API routing and FK relationships change.
+Org-level databases would share the same crate, VFS, and query execution, only the API routing and FK relationships change.
 
 ## Database Schema
 
-The `session_databases` and `session_database_pages` tables — columns, constraints
-(unique name, name-format check), indexes, and the `updated_at` trigger — are
+The `session_databases` and `session_database_pages` tables, columns, constraints
+(unique name, name-format check), indexes, and the `updated_at` trigger, are
 defined in `crates/server/migrations/001_base_schema.sql`. `session_database_pages`
 holds the paged SQLite backing store keyed by `(database_id, page_number)`.
 

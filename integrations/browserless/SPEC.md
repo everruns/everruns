@@ -45,7 +45,7 @@ The CDP session uses Browserless's `Browserless.reconnect` command to keep the b
 2. **Use**: Reconnect via stored endpoint → reattach to the current `page` target → do work → call `Browserless.reconnect` → disconnect
 3. **Close**: Reconnect → disconnect without calling reconnect → browser destroyed → clean up state
 
-Session state (`ws_endpoint`, timestamps) stored as plain key-value in `session_storage` (not encrypted secrets). API token is always resolved from user connection at call time — never stored in session state.
+Session state (`ws_endpoint`, timestamps) stored as plain key-value in `session_storage` (not encrypted secrets). API token is always resolved from user connection at call time, never stored in session state.
 
 ### API Token Resolution
 
@@ -84,17 +84,17 @@ Reconnect endpoints use the path returned by `Browserless.reconnect`.
 Auth: `?token=<api_token>` query parameter on WebSocket URL.
 
 CDP commands used:
-- `Target.getTargets` — Discover the current browser page targets
-- `Target.createTarget` — Create an `about:blank` page when the browser has no page targets yet
-- `Target.attachToTarget` — Attach to the active page target with `flatten: true`
-- `Page.enable` — Enable page events
-- `Page.navigate` — Navigate to URL
-- `Page.captureScreenshot` — Take screenshot (returns base64 PNG)
-- `Runtime.evaluate` — Execute JavaScript (DOM access, page info, wait logic)
-- `Input.dispatchMouseEvent` — Click, mouse move
-- `Input.dispatchKeyEvent` — Keyboard input
-- `Input.dispatchTouchEvent` — Touch/tap simulation
-- `Browserless.reconnect` — Keep browser alive after disconnect (returns new WS endpoint)
+- `Target.getTargets`, Discover the current browser page targets
+- `Target.createTarget`, Create an `about:blank` page when the browser has no page targets yet
+- `Target.attachToTarget`, Attach to the active page target with `flatten: true`
+- `Page.enable`, Enable page events
+- `Page.navigate`, Navigate to URL
+- `Page.captureScreenshot`, Take screenshot (returns base64 PNG)
+- `Runtime.evaluate`, Execute JavaScript (DOM access, page info, wait logic)
+- `Input.dispatchMouseEvent`, Click, mouse move
+- `Input.dispatchKeyEvent`, Keyboard input
+- `Input.dispatchTouchEvent`, Touch/tap simulation
+- `Browserless.reconnect`, Keep browser alive after disconnect (returns new WS endpoint)
 
 `Page.*`, `Runtime.*`, and `Input.*` must be sent with the attached target `sessionId` as a top-level CDP field. Browser-wide commands such as `Target.*` and `Browserless.*` stay on the root session.
 
@@ -114,7 +114,7 @@ Close the persistent browser session.
 
 - **Parameters**: none
 - **Returns**: `{ status, message }`
-- **Behavior**: Reconnects and disconnects without calling `Browserless.reconnect` — browser is destroyed.
+- **Behavior**: Reconnects and disconnects without calling `Browserless.reconnect`, browser is destroyed.
 
 ### browserless_navigate
 
@@ -152,7 +152,7 @@ Extract structured data using CSS selectors. REST-only (no CDP equivalent).
 Multi-step browser interactions.
 
 - **Parameters**: `url` (required), `steps` (required), `return_screenshot` (optional, default false), `return_content` (optional, default false)
-- **Returns**: `{ title, url, screenshot?, content? }` — when both flags are true, both fields are included. If neither is set, returns content by default.
+- **Returns**: `{ title, url, screenshot?, content? }`, when both flags are true, both fields are included. If neither is set, returns content by default.
 - **Session-aware**: Uses CDP session (click, type, keyboard, mouse, touch via CDP commands) if active, generates Puppeteer code for REST `/function` otherwise.
 
 **Supported step actions**: See `src/tools.rs:build_interaction_code()` for REST and `execute_with_context()` for CDP.
@@ -180,7 +180,7 @@ The `browserless_interact` tool supports `${{secrets.<name>}}` placeholders in s
 4. Plaintext never appears in tool arguments, agent messages, or tool results
 
 **Security constraints:**
-- Secret refs only allowed in step `value` fields — blocked in `url` parameter and `navigate` action values to prevent exfiltration via URL
+- Secret refs only allowed in step `value` fields, blocked in `url` parameter and `navigate` action values to prevent exfiltration via URL
 - All referenced secrets must exist; tool fails fast with a clear error if any are missing
 - Supports mixed values: `"Bearer ${{secrets.api_token}}"` resolves correctly
 
@@ -195,7 +195,7 @@ Browser stays alive on Browserless servers between tool calls via `Browserless.r
 2. Reconnect timeout expires (browser auto-destroyed by Browserless)
 3. Session ends (stored state becomes stale, browser auto-destroyed by timeout)
 
-No long-lived WebSocket connections from our side — we connect/disconnect for each tool call.
+No long-lived WebSocket connections from our side, we connect/disconnect for each tool call.
 
 ## Security
 
@@ -239,9 +239,9 @@ CI keeps Browserless live coverage off `pull_request`: `.github/workflows/ci.yml
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | Plugin registration, constants, `BrowserlessCapability` impl |
-| `src/cdp.rs` | `CdpSession` — minimal CDP client over WebSocket |
-| `src/client.rs` | `BrowserlessClient` — REST HTTP client |
-| `src/connection.rs` | `BrowserlessConnectionProvider` — API-token connection plugin |
+| `src/cdp.rs` | `CdpSession`, minimal CDP client over WebSocket |
+| `src/client.rs` | `BrowserlessClient`, REST HTTP client |
+| `src/connection.rs` | `BrowserlessConnectionProvider`, API-token connection plugin |
 | `src/state.rs` | API token resolution, browser session state, parameter helpers |
 | `src/session_tools.rs` | `browserless_open_browser` / `browserless_close_browser` tools |
 | `src/tools.rs` | 5 session-aware tool implementations + interaction code generator |
@@ -272,7 +272,7 @@ A pre-configured seed agent (`Browser Tester`) demonstrates the capability:
 
 ### Dual-mode: REST + CDP
 
-REST for simple one-shot operations, CDP for persistent sessions. CDP sessions preserve login state, cookies, and navigation history across tool calls — essential for testing login-protected pages.
+REST for simple one-shot operations, CDP for persistent sessions. CDP sessions preserve login state, cookies, and navigation history across tool calls, essential for testing login-protected pages.
 
 ### Minimal CDP client
 

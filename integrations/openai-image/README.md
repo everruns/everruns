@@ -4,8 +4,8 @@ OpenAI GPT Image generation and editing capability for Everruns agents.
 
 Exposes the `gpt_image_gen` capability with two tools:
 
-- `generate_image` — create raster images from a text prompt.
-- `edit_image` — edit existing session images with OpenAI's image edit API.
+- `generate_image`, create raster images from a text prompt.
+- `edit_image`, edit existing session images with OpenAI's image edit API.
 
 The capability auto-registers via the inventory `IntegrationPlugin` system, so
 linking this crate into a binary (e.g. `everruns-server`, `everruns-worker`) is

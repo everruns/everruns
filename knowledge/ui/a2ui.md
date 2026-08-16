@@ -1,12 +1,12 @@
 ---
 type: Specification
-title: "A2UI — Google Generative UI Integration"
+title: "A2UI, Google Generative UI Integration"
 description: "A2UI generative-UI capability."
 tags:
   - everruns
   - ui
 ---
-# A2UI — Google Generative UI Integration
+# A2UI, Google Generative UI Integration
 
 ## Purpose
 
@@ -27,13 +27,13 @@ they prefer, or run neither.
 
 ## Decisions
 
-- **Prompt-first, not strict schema.** Follow A2UI v0.9 — embed the catalog in the
+- **Prompt-first, not strict schema.** Follow A2UI v0.9, embed the catalog in the
   system prompt and let the model emit JSON freely. We validate lightly at render
   time and render partial trees rather than rejecting on the first error.
 - **JSON over DSL.** A2UI is JSON; parsers exist in every language. This is A2UI's
   key portability win over OpenUI Lang.
 - **Fenced code block transport.** Agent emits `` ```a2ui `` fenced blocks inline
-  with markdown, mirroring the OpenUI pattern. No separate wire protocol needed —
+  with markdown, mirroring the OpenUI pattern. No separate wire protocol needed,
   our existing SSE message stream is enough.
 - **Native renderer.** The UI renders A2UI JSON using Everruns' own shadcn/ui
   components. No third-party npm dependency. This is A2UI's model: the client owns
@@ -104,27 +104,27 @@ they parse.
 Path: `crates/a2ui/`.
 
 Mirrors the `everruns-openui` pattern: static Rust catalog definitions plus a
-prompt generator. No runtime parsing — the LLM receives a prompt and the renderer
+prompt generator. No runtime parsing, the LLM receives a prompt and the renderer
 lives in the UI.
 
 ### Types
 
-- `ComponentDef` — `{ name, props, description, has_children }`
-- `PropDef` — `{ name, type_annotation, optional, description }`
-- `ComponentCategory` — logical grouping for the prompt
-- `Catalog` — root component hint, components, categories
-- `PromptOptions` — custom preamble, additional rules, examples
+- `ComponentDef`, `{ name, props, description, has_children }`
+- `PropDef`, `{ name, type_annotation, optional, description }`
+- `ComponentCategory`, logical grouping for the prompt
+- `Catalog`, root component hint, components, categories
+- `PromptOptions`, custom preamble, additional rules, examples
 
 ### Prompt sections
 
 `generate_prompt(catalog, options)` emits:
 
-1. **Preamble** — when and how to use `` ```a2ui `` blocks
-2. **Schema rules** — JSON shape, every node has `type`, optional `props`, optional `children`
-3. **Catalog** — components grouped by category with prop signatures and descriptions
-4. **Action types** — `{ type: "message", text }`, `{ type: "open_url", url }`
-5. **Streaming guidance** — emit shell first, fill children progressively
-6. **Important rules** — stay within catalog, omit unknown props, prefer lists over repeats
+1. **Preamble**: when and how to use `` ```a2ui `` blocks
+2. **Schema rules**: JSON shape, every node has `type`, optional `props`, optional `children`
+3. **Catalog**: components grouped by category with prop signatures and descriptions
+4. **Action types**: `{ type: "message", text }`, `{ type: "open_url", url }`
+5. **Streaming guidance**: emit shell first, fill children progressively
+6. **Important rules**: stay within catalog, omit unknown props, prefer lists over repeats
 
 Ref: `crates/a2ui/src/prompt.rs`.
 
@@ -149,7 +149,7 @@ Registered by the hosted product's portable catalog when
 `everruns-builtins/ui-capabilities` is enabled. The capability appends the A2UI
 prompt to the agent's system prompt and contributes no tools.
 
-The capability coexists with `openui`. Enabling both is legal but wasteful —
+The capability coexists with `openui`. Enabling both is legal but wasteful,
 instruct the agent to prefer one. Neither is enabled by default.
 
 Ref: `crates/builtins/src/a2ui.rs`.
@@ -197,7 +197,7 @@ Here's the weekly summary:
 {
   "type": "Card",
   "children": [
-    { "type": "Heading", "props": { "text": "Orders — Week of Apr 7", "level": 3 } },
+    { "type": "Heading", "props": { "text": "Orders, Week of Apr 7", "level": 3 } },
     {
       "type": "List",
       "children": [

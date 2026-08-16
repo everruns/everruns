@@ -17,7 +17,7 @@ nothing more than:
 data.narration.unwrap_or(display_name_or_tool_name)
 ```
 
-Narration is emitted on tool events (see [`knowledge/execution/events.md`](events.md) — the
+Narration is emitted on tool events (see [`knowledge/execution/events.md`](events.md), the
 `narration` field) and is localizable (see [`knowledge/operations/localization.md`](../operations/localization.md),
 `tool.narration.*`).
 
@@ -25,7 +25,7 @@ Narration is emitted on tool events (see [`knowledge/execution/events.md`](event
 
 There is **no central, name-keyed narrator** that recognizes tools globally.
 Narration is owned by the tool that defines it, and surfaced by the capability
-that contributes that tool. This holds for host-registered capabilities too —
+that contributes that tool. This holds for host-registered capabilities too,
 when a host (e.g. Yolop) adds a capability with its own tools to the runtime,
 those tools narrate themselves. everruns does not narrate tools it does not own;
 unowned/foreign calls fall back to generic display-name phrasing.
@@ -54,16 +54,16 @@ Two levels:
    ```
 
    A capability **overrides** this only when narration is config-driven, spans
-   tools, or the tools are dynamic with no local `Tool` struct — e.g. the `mcp`
+   tools, or the tools are dynamic with no local `Tool` struct, e.g. the `mcp`
    capability narrates proxied `*__search` tools by pattern, and the
    `browserless`/`cursor` integrations narrate their families in one place.
 
-So adding a tool that implements `Tool::narrate` "just works" — nothing to wire
+So adding a tool that implements `Tool::narrate` "just works", nothing to wire
 in the capability. A capability returns `None` for tools it does not provide, so
 other capabilities or the generic fallback can handle them.
 
-Ownership boundary (EVE-876): narration is an execution-semantic value — it is
-authored during tool execution and persisted on tool events — so it stays with
+Ownership boundary (EVE-876): narration is an execution-semantic value, it is
+authored during tool execution and persisted on tool events, so it stays with
 the tool/capability contracts in `everruns-core`
 ([`tool_narration`](../../crates/core/src/tool_narration.rs)). Observability
 exporters never author or re-format narration; they only export the `narration`
@@ -104,10 +104,10 @@ the same helper for their respective tools.
 When no capability narrates a call, `render_tool_narration_with_locale` applies,
 in order:
 
-1. **`narration_noun` operation narration** — CRUD tools whose `ToolHints` set
+1. **`narration_noun` operation narration**: CRUD tools whose `ToolHints` set
    `narration_noun` and whose args carry `operation`/`action` (see
    [`knowledge/execution/tool-execution.md`](tool-execution.md#narration-formatting)).
-2. **Display-name fallback** — `"{verb} {display_name}"` from the localized
+2. **Display-name fallback**: `"{verb} {display_name}"` from the localized
    display name or title-cased tool name.
 
 This is the only path that runs without a capability, and it never matches
@@ -147,10 +147,10 @@ Arguments shown in narration are **display values, not faithful echoes**:
   query may carry tokens). `url_display` does this.
 - **Never show secrets.** A field whose key contains `token`, `api_key`,
   `password`, `secret`, `authorization`, or similar is never rendered, even as
-  the only candidate — fall back to the bare verb. `safe_arg_str` enforces this;
+  the only candidate, fall back to the bare verb. `safe_arg_str` enforces this;
   capability `narrate()` implementations must uphold it.
-- **Never dump prompts.** Long free text — background-agent instructions, full
-  approval-action text, slash-command argument bodies — is not shown.
+- **Never dump prompts.** Long free text, background-agent instructions, full
+  approval-action text, slash-command argument bodies, is not shown.
 
 ## Localization
 
@@ -175,7 +175,7 @@ to a generic localized verb phrase rather than mixing languages.
 
 `builtin_tools_have_narration_or_documented_generic_fallback` (in
 `crates/core/src/capabilities/mod.rs`) walks every tool of every built-in
-production capability and fails unless the tool is **covered** — its capability
+production capability and fails unless the tool is **covered**: its capability
 `narrate()` returns `Some`, or it carries a `narration_noun` hint (data-driven
 CRUD narration). A capability whose generic display-name presentation is
 deliberate is listed in that test's `GENERIC_NARRATION_ALLOWLIST` with a

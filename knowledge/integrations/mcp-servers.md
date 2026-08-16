@@ -38,7 +38,7 @@ Supported transport types:
 | Type | Description |
 |------|-------------|
 | `http` | HTTP-based MCP transport (Streamable HTTP) |
-| `stdio` | Local-process transport — runtime/CLI hosts only; rejected by the hosted control plane (see [runtime-mcp.md](runtime-mcp.md)) |
+| `stdio` | Local-process transport, runtime/CLI hosts only; rejected by the hosted control plane (see [runtime-mcp.md](runtime-mcp.md)) |
 
 Future transport types (not yet implemented):
 - `websocket` - WebSocket-based transport
@@ -70,7 +70,7 @@ connection:
 | `io.modelcontextprotocol/clientInfo` | `{name, version}` |
 | `io.modelcontextprotocol/clientCapabilities` | `{}` |
 
-The empty capabilities object is load-bearing, not a placeholder. `elicitation`,
+The empty capabilities object is essential, not a placeholder. `elicitation`,
 `sampling`, and `roots` each require a user or model to answer a server-initiated
 request mid-call, which this transport cannot reach. Under MRTR a server **MUST
 NOT** ask for an input type the client did not declare, so declaring them absent
@@ -85,8 +85,8 @@ zero, or negative `ttlMs` means "immediately stale" and is not cached at all, so
 
 `cacheScope` decides the cache key. A `public` result is stored
 credential-independently and shared across authorization contexts, which is what
-the scope exists to permit. A `private` result — or one with no recognized scope,
-the conservative default — keeps the credential hash in its key and therefore
+the scope exists to permit. A `private` result, or one with no recognized scope,
+the conservative default, keeps the credential hash in its key and therefore
 never crosses authorization contexts.
 
 #### Multi round-trip requests (MRTR)
@@ -95,10 +95,10 @@ A `2026-07-28` server may answer `tools/call` with
 `resultType: "input_required"` rather than a result. The client handles both
 shapes (`crates/mcp/src/http.rs::resolve_input_required`):
 
-- **No `inputRequests`** — the server only needs the round trip, having stashed
+- **No `inputRequests`**: the server only needs the round trip, having stashed
   context in `requestState`. Retry once, echoing `requestState` verbatim under a
   *different* JSON-RPC id, since MRTR treats the retry as an independent request.
-- **`inputRequests` present** — the server is asking for elicitation, sampling,
+- **`inputRequests` present**: the server is asking for elicitation, sampling,
   or roots, none of which this client declares. Fail with an error naming the
   requested keys rather than returning the empty result a caller would misread as
   success.
@@ -335,7 +335,7 @@ definitions cannot remain registered indefinitely after refresh failures:
 - **Fresh** (within the 1h TTL): cached tools are returned directly.
 - **Stale but within the maximum stale lifetime** (older than the TTL, under 24h,
   with a prior successful fetch): cached tools are returned immediately and a
-  refresh is kicked off in the background. OAuth servers are excluded — they
+  refresh is kicked off in the background. OAuth servers are excluded, they
   cannot self-refresh without a user connection token, so they take the blocking
   path instead of spawning a no-op background refresh.
 - **Expired stale** (24h or older), **cold** (never fetched), or **forced**: the
@@ -344,7 +344,7 @@ definitions cannot remain registered indefinitely after refresh failures:
 - The 24h max-stale window also bounds **OAuth** servers: since they can't
   self-refresh without a user connection token, their cached tools are served
   only while inside the window. Past 24h the blocking refresh fails (and batch
-  resolution omits them) until the user reconnects — so revoked/poisoned OAuth
+  resolution omits them) until the user reconnects, so revoked/poisoned OAuth
   tool metadata can't be served indefinitely either.
 - Concurrent refreshes for the same server are coalesced (single-flight), so a
   burst of agent runs triggers at most one upstream fetch rather than a herd.

@@ -11,7 +11,7 @@ the [Browserless](https://www.browserless.io) REST API and CDP (Chrome DevTools
 Protocol) WebSocket sessions. Agents can capture screenshots, read the DOM, scrape
 structured data, and drive multi-step browser flows.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

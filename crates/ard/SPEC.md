@@ -1,9 +1,9 @@
-# Agentic Resource Discovery (ARD) — Client Capability Specification
+# Agentic Resource Discovery (ARD), Client Capability Specification
 
 ## Abstract
 
 The `resource_discovery` capability lets a running agent **discover and
-dynamically attach external capabilities** — MCP servers and A2A agents — via
+dynamically attach external capabilities**: MCP servers and A2A agents, via
 the [Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)
 protocol. This is the **client/consumer** side only. Publishing an Everruns
 catalog + registry endpoint (ARD-as-a-server) is tracked separately.
@@ -25,10 +25,10 @@ answers *"which MCP server / A2A agent should even be attached?"*
 
 ## Architecture
 
-### Why this seam
+### Why this boundary
 
 Attachment reuses the existing config-overlay + scoped-server + A2A machinery,
-so **nothing in the agent loop changes** — ARD just becomes a *source* for
+so **nothing in the agent loop changes**: ARD just becomes a *source* for
 `mcpServers` / external agents. URN resolution, trust verification, and
 federation handling are the only genuinely new logic.
 
@@ -94,30 +94,30 @@ Attachments are torn down with the session (KV + registry are session-scoped).
 }
 ```
 
-- **registries** — allowlist. The model selects a `registry_id`; raw registry
+- **registries**: allowlist. The model selects a `registry_id`; raw registry
   URLs are never accepted from the model (mirrors the A2A safety rule).
-- **require_trust** — attestation types required on an entry's `trustManifest`
+- **require_trust**: attestation types required on an entry's `trustManifest`
   before it can be attached.
-- **allow_attach_types** — defaults to MCP + A2A.
-- **max_attachments** — per-session attach cap (default 5).
-- **allow_local_urls** — permit loopback/private artifact + endpoint URLs. Tests
+- **allow_attach_types**: defaults to MCP + A2A.
+- **max_attachments**: per-session attach cap (default 5).
+- **allow_local_urls**: permit loopback/private artifact + endpoint URLs. Tests
   / dev only; `false` in production.
 
 ## Protocol Mapping
 
-- **Manifest / entry** — catalog entries carry `identifier` (URN),
+- **Manifest / entry**: catalog entries carry `identifier` (URN),
   `displayName`, `type` (IANA media type), optional `description`/`score`/
   `source`, and a value-or-reference envelope: exactly one of `url`
   (artifact reference) or `data` (embedded artifact). Both-present or
   both-absent is rejected.
-- **URN** — `urn:ai:<publisher>:<namespace...>:<name>`. The `<publisher>` FQDN
+- **URN**: `urn:ai:<publisher>:<namespace...>:<name>`. The `<publisher>` FQDN
   is the trust anchor.
-- **trustManifest** — `{ identity, identityType, attestations[] }`. The identity
+- **trustManifest**: `{ identity, identityType, attestations[] }`. The identity
   domain (e.g. `spiffe://acme.com/...` → `acme.com`, or `did:web:acme.com`) must
   match the URN publisher (exact or subdomain).
-- **Media types** — `application/mcp-server+json` → scoped MCP server;
+- **Media types**: `application/mcp-server+json` → scoped MCP server;
   `application/a2a-agent-card+json` → external A2A agent.
-- **Federation** — `none | referrals | auto`, passed through per registry. We
+- **Federation**: `none | referrals | auto`, passed through per registry. We
   honor whatever federation the upstream registry returns; we do not run our own
   merge.
 
@@ -126,20 +126,20 @@ Attachments are torn down with the session (KV + registry are session-scoped).
 Relevant threat categories: `TM-API`, `TM-TOOL`, `TM-AGENT`, `TM-DOS` (see
 `knowledge/security/threat-model.md`).
 
-- **Registry allowlist** — model chooses a configured `registry_id`; no
+- **Registry allowlist**: model chooses a configured `registry_id`; no
   model-supplied registry URLs.
-- **Trust gate** — enforced before any attach; reject entries whose
+- **Trust gate**: enforced before any attach; reject entries whose
   `trustManifest` domain does not match the URN, or that lack a required
   attestation, or that omit the manifest entirely when `require_trust` is set.
-- **SSRF** — `validate_url_dns_pinned` / `validate_safe_url` on every resolved
+- **SSRF**: `validate_url_dns_pinned` / `validate_safe_url` on every resolved
   artifact + endpoint URL (blocks loopback/private/link-local/metadata,
   DNS-pinned against rebinding). The scoped-server path re-validates on every
   subsequent MCP call.
-- **`max_attachments`** — bounds blast radius / prompt-injection-driven attach
+- **`max_attachments`**: bounds blast radius / prompt-injection-driven attach
   storms.
-- **Untrusted external data** — all registry-returned text (descriptions,
+- **Untrusted external data**: all registry-returned text (descriptions,
   queries, URNs) is treated as untrusted.
-- **Forgery resistance** — `ard_attach:` / `ard_disco:` KV prefixes are reserved
+- **Forgery resistance**: `ard_attach:` / `ard_disco:` KV prefixes are reserved
   from `kv_store`.
 
 ## Auth
@@ -152,17 +152,17 @@ token.
 
 ## Testing
 
-- **Unit** (`src/`) — plugin/connector registration, config + param validation,
+- **Unit** (`src/`), plugin/connector registration, config + param validation,
   URN parse + domain extraction, `trustManifest` verification (pass/mismatch/
   missing-attestation/missing-manifest), envelope value-or-reference enforcement,
   media-type → attachment-kind mapping, server-name sanitization, registry
   selection.
-- **Integration** (`tests/tool_integration.rs`) — `discover_resources` +
+- **Integration** (`tests/tool_integration.rs`), `discover_resources` +
   `attach_resource` `execute_with_context` flows against a **wiremock** ARD
   registry: MCP entry → scoped `mcpServers` record; A2A entry → external agent;
   local-URL blocking unless `allow_local_urls`; trust-gate rejection;
   idempotency; discovery-required.
-- **Live** (`tests/live_api_test.rs`, feature `ard-live-tests`) — runs against
+- **Live** (`tests/live_api_test.rs`, feature `ard-live-tests`), runs against
   the public reference registry. **Fail-closed**: when the feature is on but
   `ARD_LIVE_REGISTRY_URL` is missing/empty the test `panic!`s.
 

@@ -18,12 +18,12 @@ PostgreSQL schema migrations live in `crates/server/migrations/`. They use SQLx'
 NNN_<description>.sql
 ```
 
-- `NNN` — zero-padded 3-digit sequential number (001, 002, ...)
-- `<description>` — descriptive migration name; historical version tags remain valid in older files, but new migrations should use feature names
+- `NNN`, zero-padded 3-digit sequential number (001, 002, ...)
+- `<description>`, descriptive migration name; historical version tags remain valid in older files, but new migrations should use feature names
 
 Examples:
-- `011_evals_target.sql` — feature migration added during development
-- `010_v0.8.9.sql` — historical release-named migration kept for compatibility
+- `011_evals_target.sql`, feature migration added during development
+- `010_v0.8.9.sql`, historical release-named migration kept for compatibility
 
 ## Development Workflow
 
@@ -65,5 +65,5 @@ Migration numbers must be strictly sequential with no gaps and no duplicates. `j
 
 Migrations are the most common source of merge conflicts because multiple branches often claim the same next number. The fix is always: renumber your migration to the next available number after rebase.
 
-`scripts/lib/check-migration-ordering.sh` is the enforcement point — run after every rebase and
+`scripts/lib/check-migration-ordering.sh` is the enforcement point, run after every rebase and
 again immediately before merge. It is wired into `just pre-push`, `just pre-pr`, and `/ship`.

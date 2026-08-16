@@ -19,14 +19,14 @@ This is intentionally narrow: a single substring match against one normalized ne
 
 ## Tools
 
-None — this capability hooks the streaming output via the capability framework's output-guardrail extension point.
+None, this capability hooks the streaming output via the capability framework's output-guardrail extension point.
 
 ## How It Works
 
-1. **Arming** — At the start of each assistant message stream, the capability walks sentence boundaries in the assembled system prompt and picks the first sentence whose normalized form is **≥ 30 characters**. This skips short generic openers like "You are a helpful assistant." in favor of an agent-specific identifying sentence
-2. **Normalization** — Both sides of the comparison are lowercased, and runs of whitespace are collapsed to a single space, so the canary survives reformatting (extra spaces, capitalization drift, line wrapping)
-3. **Streaming check** — After every text delta, the canary runs a substring scan over the accumulated assistant text. The check is synchronous and cheap — no I/O, no allocations beyond the normalized buffer
-4. **Block on match** — When the needle appears in the accumulated output, the stream is aborted, the offending pending delta is suppressed, and `output.message.replaced` is emitted with `reason_code: "system_prompt_leak"`. The replacement text becomes the persisted assistant message
+1. **Arming**: At the start of each assistant message stream, the capability walks sentence boundaries in the assembled system prompt and picks the first sentence whose normalized form is **≥ 30 characters**. This skips short generic openers like "You are a helpful assistant." in favor of an agent-specific identifying sentence
+2. **Normalization**: Both sides of the comparison are lowercased, and runs of whitespace are collapsed to a single space, so the canary survives reformatting (extra spaces, capitalization drift, line wrapping)
+3. **Streaming check**: After every text delta, the canary runs a substring scan over the accumulated assistant text. The check is synchronous and cheap, no I/O, no allocations beyond the normalized buffer
+4. **Block on match**: When the needle appears in the accumulated output, the stream is aborted, the offending pending delta is suppressed, and `output.message.replaced` is emitted with `reason_code: "system_prompt_leak"`. The replacement text becomes the persisted assistant message
 
 When the system prompt is too short or too generic to produce a needle ≥ 30 characters, the capability declines to arm for that stream and is a no-op.
 
@@ -82,9 +82,9 @@ Use this capability when:
 
 Do **not** rely on this for:
 
-- General-purpose data-loss prevention (PII, secrets in tool output, etc.) — those need their own surfaces
-- Defense against paraphrased or summarized prompt leaks — the canary only catches verbatim or near-verbatim copies of the first sentence
-- Tool output or extended-thinking surfaces — the canary only inspects assistant text
+- General-purpose data-loss prevention (PII, secrets in tool output, etc.), those need their own surfaces
+- Defense against paraphrased or summarized prompt leaks, the canary only catches verbatim or near-verbatim copies of the first sentence
+- Tool output or extended-thinking surfaces, the canary only inspects assistant text
 
 ## Limitations
 
@@ -94,5 +94,5 @@ Do **not** rely on this for:
 
 ## See Also
 
-- [Events](/features/events/) — the streaming event protocol that carries `output.message.replaced`
-- [Capabilities](/features/capabilities/) — the extension model these guardrails plug into
+- [Events](/features/events/), the streaming event protocol that carries `output.message.replaced`
+- [Capabilities](/features/capabilities/), the extension model these guardrails plug into

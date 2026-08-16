@@ -17,23 +17,23 @@ private durable context that follows an agent or user across sessions.
 
 This spec is the durable design intent for the Memory tier. The file surface
 is the only surface implemented today (it descends from the earlier
-"Workspace Volumes" concept). Future surfaces — tables, key-value, secrets,
-structured — are tracked under [Open Questions](#open-questions).
+"Workspace Volumes" concept). Future surfaces, tables, key-value, secrets,
+structured, are tracked under [Open Questions](#open-questions).
 
 ## Model
 
 Everruns has two memory tiers, distinguished by lifetime and scope:
 
-* **Workspace** (`knowledge/runtime-resources/workspace.md`) — the active working area for a
+* **Workspace** (`knowledge/runtime-resources/workspace.md`), the active working area for a
   session. Today: per-session, singleton, ephemeral by default. Future:
   may be shareable across sessions. Mounted at `/workspace`.
-* **Memory** (this spec) — org-scoped, named, durable, shared. Selected and
+* **Memory** (this spec), org-scoped, named, durable, shared. Selected and
   mounted into a Workspace at session creation. RO by default; RW where
   trust permits.
 
 A Memory is a **named addressable thing**. An org can have many
 (`mem:crm`, `mem:legal`, `mem:runbooks`). Projects bundle multiple memories
-or subtrees under a single mount prefix — bundles are out of scope for V1
+or subtrees under a single mount prefix, bundles are out of scope for V1
 but the mount API is shaped so they can be added without a breaking change.
 
 ## Concepts
@@ -55,9 +55,9 @@ but the mount API is shaped so they can be added without a breaking change.
 
 Memories follow the standard building-block lifecycle from `knowledge/foundations/models.md`:
 
-* `active` — assignable and editable.
-* `archived` — read-only, hidden from default lists, not assignable to new mounts.
-* `deleted` — tombstone; detail/list APIs return 404 except for historical references.
+* `active`, assignable and editable.
+* `archived`, read-only, hidden from default lists, not assignable to new mounts.
+* `deleted`, tombstone; detail/list APIs return 404 except for historical references.
 
 ## Data Model
 
@@ -145,7 +145,7 @@ memory archival/deletion is handled gracefully against this snapshot.
 |-----------------|-----------|---------------------------------------------|
 | `id`            | UUID PK   |                                             |
 | `session_id`    | UUID FK   | `ON DELETE CASCADE`.                        |
-| `memory_id`     | UUID FK   | Snapshot — survives memory archive/delete.  |
+| `memory_id`     | UUID FK   | Snapshot, survives memory archive/delete.  |
 | `mount_path`    | TEXT      | Normalized under `/workspace`.              |
 | `access`        | VARCHAR   | `readonly` / `readwrite`.                   |
 | `created_at`    | TIMESTAMPTZ |                                           |
@@ -158,7 +158,7 @@ memory archival/deletion is handled gracefully against this snapshot.
 * **Icon:** `brain`
 * **Dependencies:** `workspace`
 * **Features:** `file_system`
-* **Risk:** `Medium` — shared writeable mounts can let one session influence
+* **Risk:** `Medium`, shared writeable mounts can let one session influence
   future sessions.
 
 ### Config Schema
@@ -316,7 +316,7 @@ OpenAPI exposure):
 * `POST   /v1/memories`
 * `GET    /v1/memories/{memory_id}`
 * `PATCH  /v1/memories/{memory_id}`
-* `DELETE /v1/memories/{memory_id}` — archive / delete per lifecycle
+* `DELETE /v1/memories/{memory_id}`, archive / delete per lifecycle
 * `GET    /v1/memories/{memory_id}/fs/...`
 * `POST   /v1/memories/{memory_id}/fs/...`
 * `PUT    /v1/memories/{memory_id}/fs/...`
@@ -324,21 +324,21 @@ OpenAPI exposure):
 * `POST   /v1/memories/{memory_id}/fs/_/{stat,grep}`
 * `GET    /v1/memories/{memory_id}/fs/_/download/{path}`
 
-`move` and `copy` actions are deferred — the spec leaves room for them but
+`move` and `copy` actions are deferred, the spec leaves room for them but
 the file CRUD ships first; clients can compose them with create + delete.
 Filesystem sub-routes mirror `knowledge/runtime-resources/workspace.md` request/response shapes so
 DTOs and UI components can be reused.
 
 ## UI
 
-* Top-level **Memory** page — list, search, archive toggle, create button.
-* **Memory detail** page — editable name/description, file browser/editor
+* Top-level **Memory** page, list, search, archive toggle, create button.
+* **Memory detail** page, editable name/description, file browser/editor
   reusing the Workspace tab components, archive/delete actions, and a usage
   panel showing agents/harnesses/sessions currently mounting the Memory.
-* **Capability config UI** for `memory` — add/remove mount rows with
+* **Capability config UI** for `memory`, add/remove mount rows with
   Memory selector, mount path input, access mode selector, and inline
   validation for duplicate/overlapping paths and archived/deleted Memories.
-* **Session Workspace UI** — mounted files render with a `Memory` badge plus
+* **Session Workspace UI**: mounted files render with a `Memory` badge plus
   a `Read-only` or `Read-write` mode badge; tooltip shows source Memory name
   and mount path; read-only write attempts surface a clear error.
 

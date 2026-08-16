@@ -38,5 +38,5 @@ The agent's own capabilities are added on top of the empty harness. In this exam
 
 ## See Also
 
-- [Generic Harness](/built-ins/harnesses/generic/) — recommended default with core capabilities
-- [Harnesses feature guide](/features/harnesses/) — harness selection and API management
+- [Generic Harness](/built-ins/harnesses/generic/), recommended default with core capabilities
+- [Harnesses feature guide](/features/harnesses/), harness selection and API management

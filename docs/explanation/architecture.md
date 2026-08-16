@@ -1,6 +1,6 @@
 ---
 title: Architecture
-description: How Everruns is structured — control plane, workers, REST API — and the design choices behind the API-first, horizontally-scalable, headless approach.
+description: How Everruns is structured, control plane, workers, REST API, and the design choices behind the API-first, horizontally-scalable, headless approach.
 sidebar:
   order: 3
 ---
@@ -12,11 +12,11 @@ Everruns is **API-first** and **headless**. The web UI is optional, the SDKs are
 A running Everruns deployment is two kinds of process plus PostgreSQL:
 
 - The **control plane** exposes the REST API, owns auth, serves SSE event streams, and persists all state in PostgreSQL.
-- **Workers** execute the agentic loop. They claim durable tasks, call LLMs, run tools, and report results back. They hold no long-lived state — restart any worker at any time and nothing breaks.
+- **Workers** execute the agentic loop. They claim durable tasks, call LLMs, run tools, and report results back. They hold no long-lived state, restart any worker at any time and nothing breaks.
 
 ![Platform Overview](../images/architecture/platform-overview.svg)
 
-The control plane scales vertically and is fronted by a load balancer. Workers scale horizontally — add more for throughput, remove some to save cost. PostgreSQL is the only piece of stateful infrastructure.
+The control plane scales vertically and is fronted by a load balancer. Workers scale horizontally, add more for throughput, remove some to save cost. PostgreSQL is the only piece of stateful infrastructure.
 
 ## Why a separate worker tier?
 
@@ -38,7 +38,7 @@ The consequences:
 - You can ship Everruns as backend infrastructure for a product whose UI looks nothing like ours.
 - Multitenancy, auth, and quotas are enforced at the API layer, so you cannot accidentally bypass them by using a different client.
 
-The management UI exists for operators — configuring providers, browsing sessions, debugging events — not as the primary interaction surface.
+The management UI exists for operators, configuring providers, browsing sessions, debugging events, not as the primary interaction surface.
 
 ## Why REST + SSE, not WebSockets
 
@@ -56,7 +56,7 @@ Everruns is organization-scoped end-to-end:
 
 - All resources (agents, sessions, capabilities, providers) belong to exactly one organization.
 - API keys carry an org membership; the API enforces the boundary on every request.
-- Sessions are isolated at the database row level — there is no cross-session filesystem or key-value access.
+- Sessions are isolated at the database row level, there is no cross-session filesystem or key-value access.
 - Secrets are encrypted at rest with an organization-scoped key chain.
 
 ## Where the boundaries are

@@ -149,7 +149,7 @@ emit a successful durable `context.compacted` event.
 - Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
 
 **Infinity Context** (`crates/builtins/src/infinity_context.rs`):
-- Separate, optional capability — not part of compaction. Keeps a recent window + provides the `query_history` tool.
+- Separate, optional capability, not part of compaction. Keeps a recent window + provides the `query_history` tool.
 - **Not freely composable with compaction.** Infinity context evicts during message loading, before compaction runs, so enabling both naively means compaction only sees the recent window. Compaction is the stronger primary strategy (always-present summary); infinity context is a pull-based backstop. When both are enabled, infinity context defers token-budget eviction to compaction. See `knowledge/runtime-resources/infinity-context.md`.
 
 ### Current Caveats
@@ -191,7 +191,7 @@ pub enum CompactionStrategy {
 | `native` | Low (API call) | Highest (encrypted blobs) | `supports_compact()` = true | OpenAI Responses API users |
 | `observation_masking` | Zero (no LLM call) | High (reasoning preserved) | None | All providers, cost-sensitive |
 | `summarization` | Medium (extra LLM call) | Medium (lossy) | None | Long conversations, any provider |
-| `auto` | Varies | Best available | None | Default — adapts to provider |
+| `auto` | Varies | Best available | None | Default, adapts to provider |
 
 ### `auto` Cascade
 
@@ -369,7 +369,7 @@ through the compaction response onto the generation event two ways:
   operator can see how much of a turn's spend was compaction rather than
   generation.
 - It is also folded into `metadata.usage.actual_cost_usd`, because the usage
-  listener reads only `metadata.usage` — that is the sole path to budget debits
+  listener reads only `metadata.usage`, that is the sole path to budget debits
   and `llm_generations`.
 
 When the generation itself reports no usage, the compaction cost creates a usage
@@ -420,7 +420,7 @@ encrypted content, or the at-rest ciphertext.
 
 **Reason enum:** `proactive_budget` | `request_too_large` | `manual`
 
-The `steps` array shows the cascade — which strategies ran and their individual contribution. This is critical for debugging and tuning.
+The `steps` array shows the cascade, which strategies ran and their individual contribution. This is critical for debugging and tuning.
 
 ### Existing Event Enhancement
 
@@ -487,7 +487,7 @@ When tool type is known, apply type-specific compression:
 
 | Tool | Mask Strategy |
 |------|--------------|
-| `activate_skill` | **Never mask** — protected, always kept verbatim |
+| `activate_skill` | **Never mask**: protected, always kept verbatim |
 | `read_file` | Keep path + line count: `[read_file("src/main.rs") → 245 lines]` |
 | `bash` | Keep exit code + last 20 lines |
 | `search` / `grep` | Keep matched file paths only |
@@ -498,7 +498,7 @@ When tool type is known, apply type-specific compression:
 
 Tool results from `PROTECTED_TOOL_NAMES` (currently `activate_skill`) are exempt from all compaction strategies:
 
-1. **Observation masking**: excluded from the maskable tool index — never replaced with summaries
+1. **Observation masking**: excluded from the maskable tool index, never replaced with summaries
 2. **Aggressive trim**: budget reserved first; always kept even when other messages are dropped
 3. **Hierarchical memory**: rescued from cold tier into output verbatim
 4. **Summarization**: `skill_instructions` in default preserve list; prompt instructs LLM to include skill content verbatim
@@ -560,7 +560,7 @@ LlmMessage {
 }
 ```
 
-Marked with `[CONVERSATION_SUMMARY]` tags so future compaction rounds can identify and re-summarize if needed, but never recursively — a summary is only re-summarized if new context has accumulated around it.
+Marked with `[CONVERSATION_SUMMARY]` tags so future compaction rounds can identify and re-summarize if needed, but never recursively, a summary is only re-summarized if new context has accumulated around it.
 
 ## Hierarchical Memory (Tier 3)
 
@@ -625,8 +625,8 @@ visibility rather than changing the capability ownership model.
 - [NAACL 2025: Prompt Compression Survey](https://aclanthology.org/2025.naacl-long.368.pdf)
 - [OpenAI: GPT-5.2 Codex Context Compaction](https://openai.com/index/introducing-gpt-5-2/)
 - [Google ADK: Context Compaction](https://google.github.io/adk-docs/context/compaction/)
-- `knowledge/runtime-resources/infinity-context.md` — pull-based backstop capability; defers to compaction when both are enabled
-- `knowledge/execution/events.md` — event schema
-- `knowledge/execution/capabilities.md` — capability system
-- `crates/provider/src/driver_registry.rs` — `ChatDriver` trait with `supports_compact()` / `compact()`
-- `crates/provider/src/openresponses_protocol.rs` — `CompactRequest` / `CompactResponse` types
+- `knowledge/runtime-resources/infinity-context.md`, pull-based backstop capability; defers to compaction when both are enabled
+- `knowledge/execution/events.md`, event schema
+- `knowledge/execution/capabilities.md`, capability system
+- `crates/provider/src/driver_registry.rs`, `ChatDriver` trait with `supports_compact()` / `compact()`
+- `crates/provider/src/openresponses_protocol.rs`, `CompactRequest` / `CompactResponse` types

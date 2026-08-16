@@ -1,6 +1,6 @@
 ---
 title: Agent Checks
-description: Advisory quality checks for agent configurations — structural problems, completeness gaps, and cost warnings surfaced while you build.
+description: Advisory quality checks for agent configurations, structural problems, completeness gaps, and cost warnings surfaced while you build.
 ---
 
 # Agent Checks
@@ -22,7 +22,7 @@ Each finding includes:
 | Field | Description |
 |-------|-------------|
 | `rule_id` | Stable rule identifier, e.g. `prompt.duplicate_paragraphs` |
-| `severity` | `warning`, `info`, or `suggestion` — there is no `error`; checks never block |
+| `severity` | `warning`, `info`, or `suggestion`, there is no `error`; checks never block |
 | `category` | `structure`, `completeness`, `effectiveness`, `safety`, or `cost` |
 | `message` | Human-readable explanation |
 | `location` | The config field (and byte span, when applicable) the finding points at |
@@ -48,7 +48,7 @@ A **health check** runs the agent for real. It generates a handful of smoke-test
 - **Deterministic**: the agent produced a non-empty answer and finished within a turn budget.
 - **AI judge**: the platform's utility LLM grades the agent's final response against a rubric generated for that case.
 
-A case passes only when both checks pass. The run surfaces a score card (pass rate, passed count, average score, average turns) and a per-case list — each case links to the real session so you can inspect the full conversation, tool calls, and events.
+A case passes only when both checks pass. The run surfaces a score card (pass rate, passed count, average score, average turns) and a per-case list, each case links to the real session so you can inspect the full conversation, tool calls, and events.
 
 Health checks are asynchronous (they run several real sessions and take a minute or two). Trigger one and poll for the result:
 
@@ -62,7 +62,7 @@ Runs are stored per agent and keyed by the resolved config hash. Health checks r
 
 ## Built-in Rules
 
-Checks run against the *resolved* configuration — after harness and capability contributions are merged — so they can catch issues that span layers.
+Checks run against the *resolved* configuration, after harness and capability contributions are merged, so they can catch issues that span layers.
 
 | Rule | Severity | What it catches |
 |------|----------|-----------------|

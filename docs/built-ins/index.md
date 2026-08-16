@@ -7,7 +7,7 @@ Everruns ships with built-in **harness types** and **capabilities** that provide
 
 ## Harnesses
 
-A harness defines the base environment for sessions — system prompt, default model, and bundled capabilities. Every session is assigned a harness.
+A harness defines the base environment for sessions, system prompt, default model, and bundled capabilities. Every session is assigned a harness.
 
 | Harness | Description | Capabilities |
 |---------|-------------|-------------|

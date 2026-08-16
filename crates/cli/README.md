@@ -7,7 +7,7 @@ deployment from a terminal or a script: managing agents and sessions, running
 turns, and streaming events. It supports text and JSON output for scripting and
 resolves credentials from a config file with environment-variable overrides.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.
 
 ## Usage

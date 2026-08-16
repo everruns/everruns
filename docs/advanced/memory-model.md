@@ -1,16 +1,16 @@
 ---
 title: Memory model
-description: How Workspace and Memory relate — the two-tier model for what an agent can read and write.
+description: How Workspace and Memory relate, the two-tier model for what an agent can read and write.
 ---
 
 Everruns separates **where the agent works** from **what the agent remembers across runs**. That split is the whole memory model:
 
-- **Workspace** — the active working area for a session. Per-run, singleton, ephemeral by default. Mounted at `/workspace`.
-- **Memory** — org-scoped, named stores. Durable, governed, mountable into Workspaces. RO by default.
+- **Workspace**: the active working area for a session. Per-run, singleton, ephemeral by default. Mounted at `/workspace`.
+- **Memory**: org-scoped, named stores. Durable, governed, mountable into Workspaces. RO by default.
 
 These two tiers are intentional. Workspace is where an agent does its current task; Memory is where the org persists state it wants reused across tasks.
 
-For the shipped organization, agent, and user ownership tiers—including the private `/memory/user` and automatic `/memory/agent` mounts—see [Agent and user memory](/features/memory-scopes/).
+For the shipped organization, agent, and user ownership tiers, including the private `/memory/user` and automatic `/memory/agent` mounts, see [Agent and user memory](/features/memory-scopes/).
 
 ## The two-axis grid
 
@@ -30,7 +30,7 @@ Secrets   │ per-run creds          │ org credentials (TBD)  │
           └────────────────────────┴────────────────────────┘
 ```
 
-Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are durable design intent — see `knowledge/runtime-resources/memory.md`.
+Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are durable design intent, see `knowledge/runtime-resources/memory.md`.
 
 ## Org → Session: Mount
 
@@ -82,10 +82,10 @@ The same tools (`read_file`, `list_directory`, `grep_files`, `bashkit_shell`) tr
 
 A single "everything is Memory" abstraction was considered and rejected for two reasons:
 
-1. **Lifecycle and governance differ.** Workspace files are intermediate — agents probe, edit, discard. Memory is durable shared state with audit, lifecycle (active/archived/deleted), and trust boundaries. Forcing one set of policies on both was wrong for both.
+1. **Lifecycle and governance differ.** Workspace files are intermediate, agents probe, edit, discard. Memory is durable shared state with audit, lifecycle (active/archived/deleted), and trust boundaries. Forcing one set of policies on both was wrong for both.
 2. **Naming clarity.** "Memory" anthropomorphizes what the agent recalls across tasks. "Workspace" describes the desk it's working on. Mixing the two names ("session memory" vs "org memory") forced every sentence to carry a qualifier.
 
-External validation: Anthropic's Claude Managed Agents settled on essentially the same split — workspace files (per-run) plus Memory Stores (`/mnt/memory/`, durable, named, RO/RW mountable). The terminology in this doc mirrors that convention deliberately.
+External validation: Anthropic's Claude Managed Agents settled on essentially the same split, workspace files (per-run) plus Memory Stores (`/mnt/memory/`, durable, named, RO/RW mountable). The terminology in this doc mirrors that convention deliberately.
 
 ## Invariants
 
@@ -99,9 +99,9 @@ External validation: Anthropic's Claude Managed Agents settled on essentially th
 
 These exist in Everruns but live outside this model:
 
-- **Transcripts and events** — the conversation history is the session's append-only log, not a memory surface.
-- **Sandboxes** — managed compute environments (`knowledge/runtime-resources/session-sandbox.md`) are a separate primitive from storage.
-- **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`) — curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
+- **Transcripts and events**: the conversation history is the session's append-only log, not a memory surface.
+- **Sandboxes**: managed compute environments (`knowledge/runtime-resources/session-sandbox.md`) are a separate primitive from storage.
+- **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`), curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
 
 ## Mapping to other systems
 
@@ -110,12 +110,12 @@ These exist in Everruns but live outside this model:
 | Per-run scratch              | Workspace         | Memory Tool           | Working memory          |
 | Durable named store          | Memory            | Memory Store          | Archival memory         |
 | Mount access control         | RO / RW per mount | RO / RW per attach    | n/a                     |
-| Background consolidation     | —                 | Dreaming              | Reflection              |
+| Background consolidation     |, | Dreaming              | Reflection              |
 | Multi-surface (files/tables) | Files today; more planned | Files only       | Text blocks             |
 
 ## Further reading
 
-- [Agent and user memory](/features/memory-scopes/) — scoped memory mounts, access, and privacy defaults
-- [`knowledge/runtime-resources/memory.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/memory.md) — durable design intent for the Memory tier
-- [`knowledge/runtime-resources/workspace.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/workspace.md) — Workspace specification (file surface, mount point, git VCS)
-- [`knowledge/runtime-resources/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/knowledge-bases.md) — curated org knowledge, the curation-first sibling of Memory
+- [Agent and user memory](/features/memory-scopes/), scoped memory mounts, access, and privacy defaults
+- [`knowledge/runtime-resources/memory.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/memory.md), durable design intent for the Memory tier
+- [`knowledge/runtime-resources/workspace.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/workspace.md), Workspace specification (file surface, mount point, git VCS)
+- [`knowledge/runtime-resources/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/knowledge-bases.md), curated org knowledge, the curation-first sibling of Memory

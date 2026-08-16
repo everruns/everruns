@@ -40,7 +40,7 @@ later change is a deliberate one.
 | Decision | V1 choice | Rationale |
 |----------|-----------|-----------|
 | Fork point | Full history (everything up to "now") | Covers the common "branch from here" case; arbitrary-point rewind is a clean follow-up (see [Fork point](#fork-point)). |
-| Workspace/files | **Isolated copy** — new workspace, deep-copy files | True fork semantics: edits in the child never affect the parent. |
+| Workspace/files | **Isolated copy**: new workspace, deep-copy files | True fork semantics: edits in the child never affect the parent. |
 | Conversation | Copy all persisted events as-is | Faithful snapshot; reconstruction logic is unchanged. |
 | Compaction checkpoint | Copy the latest checkpoint within the copied event range | The fork keeps the canonical model view without weakening raw-history fidelity. |
 | KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
@@ -87,33 +87,33 @@ state.
   blob pointer is copied (content is content-addressed and immutable, so the
   child shares the underlying blob; it is never mutated in place).
 - **Key/value store and secrets.** All `session_key_values` and
-  `session_secrets` rows are copied. Secret ciphertext is copied verbatim — the
+  `session_secrets` rows are copied. Secret ciphertext is copied verbatim, the
   org envelope key is unchanged, so no re-encryption is needed.
 - **SQL databases.** `session_databases` + `session_database_pages` are
   copied page-for-page into new database ids.
 
 ### Skip (child starts fresh)
 
-- **Leased resources** (`leased_resources`, `session_resources`) — sandboxes,
+- **Leased resources** (`leased_resources`, `session_resources`), sandboxes,
   browser sessions, voice connections, sprites. These are provider-managed and
   often billed; duplicating the lease would double external state and cost. The
   child re-leases on first tool use.
-- **Session sandbox state** (encrypted `session_sandbox` secret) — tied to a
+- **Session sandbox state** (encrypted `session_sandbox` secret), tied to a
   remote sandbox lifecycle. Re-created on demand from the (copied) sandbox
   capability config.
-- **Session tasks** (`session_tasks`, `session_task_messages`) — subagent runs,
+- **Session tasks** (`session_tasks`, `session_task_messages`), subagent runs,
   background tool runs, monitors. Execution-scoped to the parent. A monitor's
   *definition* lives in capability config (copied); its live instances do not.
-- **Voice connections** — short-lived realtime provider state.
-- **Schedules** — a fork should not silently inherit cron triggers that would
+- **Voice connections**: short-lived realtime provider state.
+- **Schedules**: a fork should not silently inherit cron triggers that would
   fire twice. Re-create explicitly if wanted.
-- **Pins, usage totals, previews** — child starts with zero cumulative usage;
+- **Pins, usage totals, previews**: child starts with zero cumulative usage;
   previews are recomputed from copied history.
 
 ### Re-derive
 
-- **`features`** — computed at read time from the (copied) capability set.
-- **Ownership** — the fork is owned by the caller's principal, resolved the
+- **`features`**: computed at read time from the (copied) capability set.
+- **Ownership**: the fork is owned by the caller's principal, resolved the
   same way `create_session` resolves it. It is not inherited from the parent's
   owner (forking is an act by the caller).
 
@@ -124,9 +124,9 @@ Forking is **not** subagent nesting, so it does not reuse `parent_session_id`
 record fork provenance:
 
 - `forked_from_session_id UUID NULL REFERENCES sessions(id) ON DELETE SET NULL`
-  — the session this one was forked from. `ON DELETE SET NULL` so deleting a
+, the session this one was forked from. `ON DELETE SET NULL` so deleting a
   parent does not cascade-delete its forks (a fork is independent once made).
-- `forked_from_sequence INTEGER NULL` — the parent event sequence the fork was
+- `forked_from_sequence INTEGER NULL`, the parent event sequence the fork was
   taken at (the high-water mark of copied history). Records the fork point for
   display and for future arbitrary-point forking.
 
@@ -143,7 +143,7 @@ internal budget-root override, which public HTTP session creation strips.
 
 ## Fork point
 
-V1 forks at "now" — the parent's full persisted history. The schema
+V1 forks at "now", the parent's full persisted history. The schema
 (`forked_from_sequence`) and the copy routine are written in terms of an
 **upper-bound sequence**, so arbitrary-point forking is an additive follow-up:
 the request gains an optional `up_to_sequence` (or `up_to_message_id`), and the
@@ -153,7 +153,7 @@ event copy filters `sequence <= up_to_sequence`. When forking mid-history:
   cutoff (`turn.completed` / `turn.sealed`), never a half-written turn, so the
   child opens on a coherent conversation.
 - Workspace files / KV / SQL are still copied as of "now" in V1 (point-in-time
-  file snapshots are out of scope — files are not event-sourced).
+  file snapshots are out of scope, files are not event-sourced).
 
 ## Concurrency and consistency
 
@@ -168,7 +168,7 @@ event copy filters `sequence <= up_to_sequence`. When forking mid-history:
   long histories make forking a heavier operation than `create_session`; it is
   an explicit user action, not on a hot path. If it grows into a latency
   concern, the copy moves to a durable background job that creates the child in
-  a `started`-but-`copying` state — out of scope for V1.
+  a `started`-but-`copying` state, out of scope for V1.
 
 ## API
 
@@ -176,7 +176,7 @@ event copy filters `sequence <= up_to_sequence`. When forking mid-history:
 POST /v1/sessions/{session_id}/fork
 ```
 
-Request body (all fields optional — omitted fields inherit from the parent):
+Request body (all fields optional, omitted fields inherit from the parent):
 
 ```json
 {
@@ -200,14 +200,14 @@ in *its* lifecycle); the first input drives it like any new session.
 
 Errors:
 
-- `400` — invalid session id / invalid override payload.
-- `404` — parent not found (or archived/deleted dependency).
-- `409` — parent is mid-turn (`active` / `waiting_for_tool_results`).
+- `400`, invalid session id / invalid override payload.
+- `404`, parent not found (or archived/deleted dependency).
+- `409`, parent is mid-turn (`active` / `waiting_for_tool_results`).
 
 ### Auth & policy
 
 Requires `SESSION_VIEW` on the parent (to read it) and `SESSION_MANAGE` (to
-create the child) — the same policies guarding read and create today. The fork
+create the child), the same policies guarding read and create today. The fork
 is created in the caller's org and owned by the caller's principal; cross-org
 forking is not permitted.
 
@@ -244,7 +244,7 @@ records lineage. KV/secrets copy (phase 2), SQL-database copy (phase 3),
 single-transaction atomicity and arbitrary fork point (phase 4), and the list
 filter + UI (phase 5) are follow-ups. The copy is currently sequential
 (per-table), not a single transaction, so a mid-copy failure can leave an
-incompletely-populated fork that the caller can delete and retry — matching the
+incompletely-populated fork that the caller can delete and retry, matching the
 best-effort posture of `create_session`'s post-commit side effects.
 
 ## Implementation references

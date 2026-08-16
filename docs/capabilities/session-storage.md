@@ -9,13 +9,13 @@ sidebar:
 |---|---|
 | **ID** | `session_storage` |
 | **Category** | Storage |
-| **Features** | `secrets`, `key_value` (unlocks Storage tab) |
+| **Features** | `secrets`, `key_value` (enables Storage tab) |
 | **Dependencies** | None |
 
 Two storage mechanisms scoped to the current session:
 
-- **Key/Value store** — plain-text storage for general data
-- **Secret store** — AES-256-GCM encrypted storage for sensitive data
+- **Key/Value store**: plain-text storage for general data
+- **Secret store**: AES-256-GCM encrypted storage for sensitive data
 
 ## Tools
 
@@ -41,7 +41,7 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 
 ## Notes
 
-- Data is session-scoped — no cross-session access
+- Data is session-scoped, no cross-session access
 - `set` uses upsert semantics (overwrites existing keys)
 - Secret operations require `SECRETS_ENCRYPTION_KEY` to be configured
 - `list` returns keys/names only (not values) for secrets
@@ -51,6 +51,6 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 
 ## See Also
 
-- [Session](/capabilities/session/) — session metadata
-- [File System](/capabilities/file-system/) — file-based storage alternative
+- [Session](/capabilities/session/), session metadata
+- [File System](/capabilities/file-system/), file-based storage alternative
 - [Capabilities Overview](/capabilities/)

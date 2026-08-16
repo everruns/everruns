@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Scheduled tasks extend the durable execution engine with cron-based scheduling capabilities. Users can define recurring tasks that automatically trigger workflows or activities at specified intervals. This feature integrates seamlessly with existing durable infrastructure—sharing the same reliability guarantees, observability, and management APIs.
+Scheduled tasks extend the durable execution engine with cron-based scheduling capabilities. Users can define recurring tasks that automatically trigger workflows or activities at specified intervals. This feature integrates smoothly with existing durable infrastructure, sharing the same reliability guarantees, observability, and management APIs.
 
 See `knowledge/operations/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution. Consumers of this durable scheduler include App schedule channels (`knowledge/integrations/app-invocation-channels.md`) and agent triggers (`knowledge/runtime-resources/agent-triggers.md`).
 
@@ -133,7 +133,7 @@ The `WorkflowEventStore` trait is extended with schedule CRUD, scheduler claimin
 
 ## Database Schema
 
-See `crates/server/migrations/002_durable_execution.sql` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id` — multi-tenancy will be added to the entire durable engine in a future PR.
+See `crates/server/migrations/002_durable_execution.sql` for the full DDL. Key tables: `durable_schedules` (schedule definitions with polling index on `next_trigger_at`), `durable_schedule_executions` (execution history with indexes for schedule listing and running-count queries), and `durable_scheduler_instances` (heartbeat-based instance registration for horizontal scaling). Note: no `org_id`, multi-tenancy will be added to the entire durable engine in a future PR.
 
 ## UI Design
 
@@ -172,7 +172,7 @@ Extends existing durable SSE with schedule events: `ScheduleCreated`, `ScheduleU
 Key test scenarios (unit and integration):
 - Cron parsing and next-trigger calculation
 - Schedule CRUD via in-memory store
-- Multi-instance claiming (concurrent `claim_due_schedules` — only one wins)
+- Multi-instance claiming (concurrent `claim_due_schedules`, only one wins)
 - `max_concurrent` enforcement (second trigger skipped when limit reached)
 - End-to-end: schedule triggers workflow, execution record created with workflow_id
 

@@ -44,9 +44,9 @@ plugins/everruns-dev/
 
 Marketplace registrations live outside the plugin directory:
 
-- `.claude-plugin/marketplace.json` — Claude Code marketplace
-- `.agents/plugins/marketplace.json` — Codex marketplace
-- `.cursor-plugin/marketplace.json` — Cursor marketplace
+- `.claude-plugin/marketplace.json`, Claude Code marketplace
+- `.agents/plugins/marketplace.json`, Codex marketplace
+- `.cursor-plugin/marketplace.json`, Cursor marketplace
 
 ## Sync Contract
 
@@ -118,7 +118,7 @@ The shared `.mcp.json` file (with leading dot) lives at the plugin root.
 Cursor's default convention is `mcp.json` (no dot); we override discovery via
 the explicit `mcpServers: "./.mcp.json"` path so all three hosts read the
 same file. Cursor's official plugin validator emits a "no mcp.json file"
-warning, which is informational — the manifest path resolves correctly.
+warning, which is informational, the manifest path resolves correctly.
 
 Portable Agent Plugins clients instead discover fixed root `plugin.json` and
 `mcp.json`. The portable MCP entry uses `type: "streamable-http"`; OAuth is
@@ -142,20 +142,20 @@ new host-specific keys SHOULD live on the matching host's manifest only.
 
 Cursor's manifest schema is `additionalProperties: false`, so unknown fields
 are rejected. Slash command files MUST declare both `name` and `description`
-in YAML frontmatter for Cursor compatibility — this is a no-op for Claude
+in YAML frontmatter for Cursor compatibility, this is a no-op for Claude
 Code and Codex, which ignore the extra `name` field.
 
 ### Marketplace Registrations
 
-- Claude Code: `.claude-plugin/marketplace.json` — top-level `description` is
+- Claude Code: `.claude-plugin/marketplace.json`, top-level `description` is
   required for the plugin browser to render. The plugin entry's `version` MUST
   match `plugin.json`.
-- Codex: `.agents/plugins/marketplace.json` — the top-level marketplace name is
+- Codex: `.agents/plugins/marketplace.json`, the top-level marketplace name is
   the neutral `everruns` source because it contains both dev and production
   plugins. Plugin entries use `source: { source: local, path:
   ./plugins/<plugin-name> }` and a `policy` block (`installation: AVAILABLE`,
   `authentication: ON_INSTALL`).
-- Cursor: `.cursor-plugin/marketplace.json` at the repo root — uses
+- Cursor: `.cursor-plugin/marketplace.json` at the repo root, uses
   `source: "./plugins/<plugin-name>"`. Both `metadata.version` and the per-plugin
   `version` MUST match `plugin.json`. The marketplace entry's `logo` is
   resolved from the repo root (`plugins/<plugin-name>/assets/everruns.png`),
@@ -186,7 +186,7 @@ context. See `knowledge/integrations/mcp.md`.
 When changing the plugin:
 
 1. Update the shared payload (`.mcp.json`, `commands/`, `skills/`, README) once
-   — all three hosts pick it up.
+, all three hosts pick it up.
 2. Update the portable and all three host `plugin.json` files together for any shared metadata change.
 3. Bump `version` in all four `plugin.json` files, in
    `.claude-plugin/marketplace.json`, and in `.cursor-plugin/marketplace.json`
@@ -222,7 +222,7 @@ rest is up to the host.
 Cursor reads the `mcpServers` path from `plugin.json` and registers the
 remote MCP server during plugin install. OAuth runs in the user's browser on
 first use; there is no plugin-side switch to skip the consent flow. The
-manifest shape is the same as Claude/Codex — the differences are purely in
+manifest shape is the same as Claude/Codex, the differences are purely in
 how each host renders consent and lifetime of the granted credential.
 
 If any host adds or changes its auto-install policy, this spec and the

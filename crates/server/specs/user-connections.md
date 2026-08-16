@@ -42,8 +42,8 @@ For `api_key` connections, OAuth-specific fields (`provider_user_id`, `scopes`, 
 API-key providers register themselves via `ConnectorPlugin` (parallel to `IntegrationPlugin`). Each provider defines:
 - `provider_id`, `display_name`, `description`, `icon`
 - `connection_type` (OAuth vs ApiKey)
-- `form_schema` — fields and instructions for the UI dialog
-- `validate()` — async validation of credential before saving
+- `form_schema`, fields and instructions for the UI dialog
+- `validate()`, async validation of credential before saving
 
 Registration uses `inventory::submit!`. Server discovers providers at runtime via `GET /v1/user/connections/providers`.
 
@@ -57,7 +57,7 @@ Registration uses `inventory::submit!`. Server discovers providers at runtime vi
 6. Key encrypted and upserted into `user_connections` with `connection_type = 'api_key'`
 
 **Resolution priority** (for tools like Daytona):
-1. Session secret (highest priority — local to session)
+1. Session secret (highest priority, local to session)
 2. User connection (persistent, configured in Settings)
 3. Error with guidance to Settings > Connections
 
@@ -93,7 +93,7 @@ A **GitHub App** (not an OAuth App) provides granular, per-repo permissions with
 **Permissions requested in App manifest:**
 - Clone-only: `contents: read`
 - Clone+push: `contents: write` (includes read)
-- No admin, no webhooks, no issues, no PRs — unless needed
+- No admin, no webhooks, no issues, no PRs, unless needed
 
 ### Scoping
 
@@ -196,12 +196,12 @@ Create an API-key connection. Validates the key, encrypts, and stores.
 **Response:** `201 Created` with `ConnectionResponse`
 
 **Errors:**
-- `404` — Unknown provider
-- `400` — Provider uses OAuth (not API key), or validation failed
+- `404`, Unknown provider
+- `400`, Provider uses OAuth (not API key), or validation failed
 
 #### POST /v1/user/connections/{provider}/verify
 
-Verify a stored API key still works. Decrypts the stored credential and calls the provider's `validate()` method. Generic — works for any API-key provider.
+Verify a stored API key still works. Decrypts the stored credential and calls the provider's `validate()` method. Generic, works for any API-key provider.
 
 **Response:** `200 OK`
 ```json
@@ -213,8 +213,8 @@ or
 ```
 
 **Errors:**
-- `404` — No connection found or unknown provider
-- `400` — Provider is not API-key type
+- `404`, No connection found or unknown provider
+- `400`, Provider is not API-key type
 
 #### DELETE /v1/user/connections/{provider}
 
@@ -255,14 +255,14 @@ Create a GitHub App:
    |-------|-------|
    | **GitHub App name** | `Everruns` (or `Everruns (Dev)` for local) |
    | **Homepage URL** | `https://everruns.com` |
-   | **Callback URL** | _(leave blank — not used, we use installation flow, not OAuth)_ |
+   | **Callback URL** | _(leave blank, not used, we use installation flow, not OAuth)_ |
    | **Setup URL** (Post installation) | `https://<domain>/api/v1/user/connections/github/callback` |
    | **Redirect on update** | Checked |
    | **Webhook → Active** | Unchecked |
    | **Repository permissions** | `Contents: Read & write` (or `Read-only` for clone-only) |
    | **Where can this be installed?** | `Any account` |
 
-   > **Setup URL vs Callback URL:** The Callback URL is for OAuth user-authorization flow — we don't use it. The Setup URL is where GitHub redirects after a user **installs** the app on their repos. The server receives the `installation_id` there, verifies it, stores it, then redirects to the UI.
+   > **Setup URL vs Callback URL:** The Callback URL is for OAuth user-authorization flow, we don't use it. The Setup URL is where GitHub redirects after a user **installs** the app on their repos. The server receives the `installation_id` there, verifies it, stores it, then redirects to the UI.
 
 3. After creation:
    - Copy **App ID** → `GITHUB_APP_ID`
@@ -311,7 +311,7 @@ Pre-configured for local development: <https://github.com/settings/apps/everruns
 | User-scoped not org-scoped? | Yes | Installation represents user's GitHub identity/access, not Everruns org's. Different org members have different repo access. Connections are private. |
 | Store installation_id not token? | Yes | Tokens minted on demand via App private key. No long-lived secrets in database. |
 | No DB unique constraint? | Yes | Enforce in app code. Allows future multi-account per provider without migration. |
-| Auto-inject into sessions? | Yes | Seamless UX. User installs once, all sessions get access. |
+| Auto-inject into sessions? | Yes | Smooth UX. User installs once, all sessions get access. |
 | Credential helper not URL-embedded token? | Yes | Token never appears in command line, process list, or exec output. Safer. |
 | Generic `user_connections` not `github_connections`? | Yes | Same pattern works for GitLab, Bitbucket. Provider-generic table + provider-specific connection code. |
 | Backward-compatible resolver? | Yes | Resolver checks `installation_id` first (GitHub App path), falls back to `access_token_encrypted` (legacy OAuth path). Supports migration period. |

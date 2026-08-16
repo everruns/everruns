@@ -8,7 +8,7 @@ tags:
 ---
 # SWE-bench Lite on Everruns
 
-Status: **tooling ready** — loader, runner, scorer scripts in `evals/swe-bench/`
+Status: **tooling ready**: loader, runner, scorer scripts in `evals/swe-bench/`
 
 ## What is SWE-bench Lite?
 
@@ -41,29 +41,29 @@ Status: **tooling ready** — loader, runner, scorer scripts in `evals/swe-bench
 
 ## Findings and blockers
 
-### 1. ~~Eval workflow not implemented~~ — FIXED (#1248)
+### 1. ~~Eval workflow not implemented~~, FIXED (#1248)
 
 `EvalService::create_run()` now dispatches a background task that creates sessions, sends conversation + post messages, and runs scorers. Fire-and-forget (not durable yet); server crash mid-run leaves run stuck at `running`.
 
-### 2. ~~Tool resolution: agent capabilities override harness~~ — IRRELEVANT
+### 2. ~~Tool resolution: agent capabilities override harness~~, IRRELEVANT
 
 Using the built-in `coding-daytona` harness (which extends `generic` with the `daytona` capability) removes the need for a custom agent. No custom agent needed at all.
 
-### 3. ~~Sandbox Python version~~ — BYPASSED via external scoring
+### 3. ~~Sandbox Python version~~, BYPASSED via external scoring
 
-Default Daytona snapshot uses Python 3.14; SWE-bench repos need 3.8-3.10. **No longer blocking** — we don't run tests in the sandbox. The agent only produces a patch; the official SWE-bench Docker harness (which has all correct environments pre-built) scores externally. Scores are written back via the bulk PATCH API.
+Default Daytona snapshot uses Python 3.14; SWE-bench repos need 3.8-3.10. **No longer blocking**: we don't run tests in the sandbox. The agent only produces a patch; the official SWE-bench Docker harness (which has all correct environments pre-built) scores externally. Scores are written back via the bulk PATCH API.
 
-### 4. ~~No `command` scorer~~ — RESOLVED by `post` messages (#1248)
+### 4. ~~No `command` scorer~~, RESOLVED by `post` messages (#1248)
 
 EvalCase now has an optional `post: Vec<EvalInputMessage>` field sent after the conversation completes. A `post` message tells the agent to run a verification script that prints a structured `swe-result: pass` / `swe-result: fail` line, and a standard `contains` scorer matches it. No new scorer type needed.
 
-### 5. ~~Test patch application~~ — RESOLVED
+### 5. ~~Test patch application~~, RESOLVED
 
 `git apply` of the gold test_patch was failing because the patch content was truncated (missing trailing context lines). Root cause: WebFetch summarization dropped context. Fix: use the HuggingFace datasets API (`datasets-server.huggingface.co/rows`) to get the exact, byte-accurate test_patch. Confirmed working after using the correct patch content.
 
-### 6. ~~Post script dependencies~~ — BYPASSED via external scoring
+### 6. ~~Post script dependencies~~, BYPASSED via external scoring
 
-No longer needed — the agent doesn't run tests in the sandbox. External Docker harness handles all dependencies.
+No longer needed, the agent doesn't run tests in the sandbox. External Docker harness handles all dependencies.
 
 ### 7. Agent reliability with sandbox creation
 
@@ -81,13 +81,13 @@ The Daytona `list_snapshots` API returns a format the integration doesn't expect
 
 ## What to build next
 
-1. ~~**EvalRun workflow**~~ — DONE (#1248), but not durable
-2. ~~**Dataset loader**~~ — DONE (`evals/swe-bench/swe_bench/loader.py`)
-3. ~~**Artifact collection**~~ — DONE (EVE-327, #1334)
-4. ~~**Score write-back API**~~ — DONE (EVE-328)
-5. ~~**EvalRun-level overrides**~~ — DONE (#1239: EvalTarget can be set at Eval, EvalCase, or EvalRun level)
-6. ~~**Runner + scorer scripts**~~ — DONE (`evals/swe-bench/swe_bench/runner.py`, `scorer.py`)
-7. **Durable eval runs** — replace `tokio::spawn` fire-and-forget with the durable execution engine
+1. ~~**EvalRun workflow**~~, DONE (#1248), but not durable
+2. ~~**Dataset loader**~~, DONE (`evals/swe-bench/swe_bench/loader.py`)
+3. ~~**Artifact collection**~~, DONE (EVE-327, #1334)
+4. ~~**Score write-back API**~~, DONE (EVE-328)
+5. ~~**EvalRun-level overrides**~~, DONE (#1239: EvalTarget can be set at Eval, EvalCase, or EvalRun level)
+6. ~~**Runner + scorer scripts**~~, DONE (`evals/swe-bench/swe_bench/runner.py`, `scorer.py`)
+7. **Durable eval runs**: replace `tokio::spawn` fire-and-forget with the durable execution engine
 
 ## Tooling
 

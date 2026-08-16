@@ -7,7 +7,7 @@ description: Send emails through the Resend remote MCP server (https://mcp.resen
 
 Resend (<https://resend.com>) is an email platform for developers. This plugin
 wires the official Resend remote MCP server into the agent, so email is sent
-under the user's own Resend account via OAuth — no API key is ever placed in
+under the user's own Resend account via OAuth, no API key is ever placed in
 agent context.
 
 ## Tools

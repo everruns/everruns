@@ -9,14 +9,14 @@
 
 **Everruns is an open-source platform for building, deploying, and operating durable AI agents.**
 
-Define agents and their tools, compose them into reusable harnesses, then ship them to real users through Slack, web chat, scheduled jobs, webhooks, A2A, MCP, or a plain HTTP API — backed by a Rust + PostgreSQL durable execution engine that survives restarts and scales horizontally.
+Define agents and their tools, compose them into reusable harnesses, then ship them to real users through Slack, web chat, scheduled jobs, webhooks, A2A, MCP, or a plain HTTP API, backed by a Rust + PostgreSQL durable execution engine that survives restarts and scales horizontally.
 
 ## Why Everruns
 
-- **Durable by default** — every session is a PostgreSQL-backed workflow that survives restarts, worker crashes, and network partitions. No lost runs, no in-memory state to babysit.
-- **One agent, every channel** — define a harness once, then [publish](https://docs.everruns.com/features/apps/) it to Slack, web chat, A2A, webhooks, cron schedules, voice, or a plain HTTP/[MCP](https://docs.everruns.com/features/mcp/) API.
-- **Open and provider-neutral** — implements the [Open Responses](https://www.openresponses.org/) spec across OpenAI, Anthropic, Gemini, and Azure; register remote MCP servers as tools. MIT-licensed and self-hostable.
-- **Built for production** — multi-tenant orgs, fine-grained permissions, envelope-encrypted secrets, budgets, [observability](https://docs.everruns.com/observability/), and a control-plane / worker split that scales horizontally.
+- **Durable by default**: every session is a PostgreSQL-backed workflow that survives restarts, worker crashes, and network partitions. No lost runs, no in-memory state to babysit.
+- **One agent, every channel**: define a harness once, then [publish](https://docs.everruns.com/features/apps/) it to Slack, web chat, A2A, webhooks, cron schedules, voice, or a plain HTTP/[MCP](https://docs.everruns.com/features/mcp/) API.
+- **Open and provider-neutral**: implements the [Open Responses](https://www.openresponses.org/) spec across OpenAI, Anthropic, Gemini, and Azure; register remote MCP servers as tools. MIT-licensed and self-hostable.
+- **Built for production**: multi-tenant orgs, fine-grained permissions, envelope-encrypted secrets, budgets, [observability](https://docs.everruns.com/observability/), and a control-plane / worker split that scales horizontally.
 
 ## Architecture
 
@@ -49,46 +49,46 @@ graph TB
     Server -.-> Valkey
 ```
 
-Workers are stateless and hold no database credentials — they reach the control plane over gRPC only. See [Architecture](https://docs.everruns.com/explanation/architecture/) for the full picture.
+Workers are stateless and hold no database credentials, they reach the control plane over gRPC only. See [Architecture](https://docs.everruns.com/explanation/architecture/) for the full picture.
 
 ## What's inside
 
 ### Build agents
 
-- **[Harnesses](https://docs.everruns.com/features/harnesses/), Agents, Capabilities, Skills** — modular configuration that composes into a runtime agent. [Built-in harness types](https://docs.everruns.com/built-ins/) for general chat, data analysis, and coding (sandbox or Daytona-backed).
-- **[Agent versioning](https://docs.everruns.com/features/agent-versions/), blueprints, and identities** — iterate safely on production agents and run unattended workloads under virtual principals.
-- **[Capabilities library](https://docs.everruns.com/features/capabilities/)** — web fetch, bash sandbox, session filesystem, session SQL DB, memory, knowledge bases, MCP, voice, and more.
-- **[Skills registry](https://docs.everruns.com/features/skills-registry/)** — agentskills.io-format skills with discovery, search, and usage tracking.
-- **Generative UI** — agents can return rich cards via [OpenUI](https://github.com/openuidev/openui), [A2UI](https://github.com/google/a2ui), and inline `ui://everruns/...` MCP App resources.
+- **[Harnesses](https://docs.everruns.com/features/harnesses/), Agents, Capabilities, Skills**: modular configuration that composes into a runtime agent. [Built-in harness types](https://docs.everruns.com/built-ins/) for general chat, data analysis, and coding (sandbox or Daytona-backed).
+- **[Agent versioning](https://docs.everruns.com/features/agent-versions/), blueprints, and identities**: iterate safely on production agents and run unattended workloads under virtual principals.
+- **[Capabilities library](https://docs.everruns.com/features/capabilities/)**: web fetch, bash sandbox, session filesystem, session SQL DB, memory, knowledge bases, MCP, voice, and more.
+- **[Skills registry](https://docs.everruns.com/features/skills-registry/)**: agentskills.io-format skills with discovery, search, and usage tracking.
+- **Generative UI**: agents can return rich cards via [OpenUI](https://github.com/openuidev/openui), [A2UI](https://github.com/google/a2ui), and inline `ui://everruns/...` MCP App resources.
 
 ### Connect any model and any tool
 
 - **LLM providers**: OpenAI (Responses + Chat Completions), Azure OpenAI, Anthropic, Gemini, plus `llmsim` for tests. Model resolution is layered: message → session → agent → system default.
-- **[MCP](https://docs.everruns.com/features/mcp/), both ways** — register remote MCP servers as virtual capabilities (auto-discovered and namespaced), and use every deployment's always-available authenticated MCP endpoint with OAuth 2.1 so other agents can call yours.
-- **[Integrations](https://docs.everruns.com/integrations/)**: Docker, Daytona, E2B, Deno, Browserless, Brave Search, DuckDuckGo, Parallel, Sprites, Cursor — auto-registered via the `inventory` plugin system.
+- **[MCP](https://docs.everruns.com/features/mcp/), both ways**: register remote MCP servers as virtual capabilities (auto-discovered and namespaced), and use every deployment's always-available authenticated MCP endpoint with OAuth 2.1 so other agents can call yours.
+- **[Integrations](https://docs.everruns.com/integrations/)**: Docker, Daytona, E2B, Deno, Browserless, Brave Search, DuckDuckGo, Parallel, Sprites, Cursor, auto-registered via the `inventory` plugin system.
 - **Client-side tools** for SDK/API consumers that want to run tools locally.
 
 ### Ship agents to real channels
 
 Define an **[App](https://docs.everruns.com/features/apps/)** that binds a Harness + Agent to one or more **channels**:
 
-- `slack` — Slack app with thread/channel/user routing
-- `ag_ui` — embeddable web chat (AG-UI)
-- `a2a` — Agent2Agent inbound JSON-RPC + outbound delegation
-- `webhook` — HTTP-triggered invocations
-- `schedule` — cron-based scheduled tasks
-- Voice — realtime voice sessions with hardened tool authorization
+- `slack`, Slack app with thread/channel/user routing
+- `ag_ui`, embeddable web chat (AG-UI)
+- `a2a`, Agent2Agent inbound JSON-RPC + outbound delegation
+- `webhook`, HTTP-triggered invocations
+- `schedule`, cron-based scheduled tasks
+- Voice, realtime voice sessions with hardened tool authorization
 
 ### Run reliably at scale
 
-- **[Durable execution engine](https://docs.everruns.com/explanation/durable-execution/)** — PostgreSQL-backed workflows; agent sessions survive restarts, worker crashes, and network partitions.
-- **Control-plane / worker split** — workers talk to the control-plane over gRPC only; no DB credentials on workers.
-- **[Streaming events](https://docs.everruns.com/features/events/)** — SSE with NATS JetStream (production) or in-memory broadcast (dev) for ephemeral deltas, PostgreSQL for durable events.
-- **Multi-tenant** — organizations, fine-grained permissions, audit logging, envelope encryption (AES-256-GCM) for secrets.
-- **Infinity context** — automatic compaction keeps conversations going past any model's context window.
-- **[Observability](https://docs.everruns.com/observability/)** — OpenTelemetry GenAI semantic conventions, Prometheus `/metrics`, optional Braintrust.
-- **Budgeting, usage tracking, reporting** — token meters, budgets with soft enforcement, and async analytical projections (StarRocks or DuckDB-over-object-storage).
-- **[Evals](https://docs.everruns.com/features/evals/)** — user-facing behavioral evals plus a SWE-bench Lite harness.
+- **[Durable execution engine](https://docs.everruns.com/explanation/durable-execution/)**: PostgreSQL-backed workflows; agent sessions survive restarts, worker crashes, and network partitions.
+- **Control-plane / worker split**: workers talk to the control-plane over gRPC only; no DB credentials on workers.
+- **[Streaming events](https://docs.everruns.com/features/events/)**: SSE with NATS JetStream (production) or in-memory broadcast (dev) for ephemeral deltas, PostgreSQL for durable events.
+- **Multi-tenant**: organizations, fine-grained permissions, audit logging, envelope encryption (AES-256-GCM) for secrets.
+- **Infinity context**: automatic compaction keeps conversations going past any model's context window.
+- **[Observability](https://docs.everruns.com/observability/)**: OpenTelemetry GenAI semantic conventions, Prometheus `/metrics`, optional Braintrust.
+- **Budgeting, usage tracking, reporting**: token meters, budgets with soft enforcement, and async analytical projections (StarRocks or DuckDB-over-object-storage).
+- **[Evals](https://docs.everruns.com/features/evals/)**: user-facing behavioral evals plus a SWE-bench Lite harness.
 
 ## Quick start
 
@@ -147,7 +147,7 @@ curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
 curl -N http://localhost:9300/api/v1/sessions/{session_id}/sse
 ```
 
-Everruns implements the [Open Responses](https://www.openresponses.org/) spec — a vendor-neutral API for multi-provider LLM interfaces with native tool calls and semantic streaming.
+Everruns implements the [Open Responses](https://www.openresponses.org/) spec, a vendor-neutral API for multi-provider LLM interfaces with native tool calls and semantic streaming.
 
 ## Use from Claude Code, Codex, or Cursor
 
@@ -177,31 +177,31 @@ Typed built-ins, dynamic third-party references, and reusable packages all use
 contract or use the curated
 [`everruns::capability`](https://docs.everruns.com/framework/advanced-capabilities/) authoring API.
 
-Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates —
+Advanced execution hosts combine `everruns` with `everruns-host` and focused sibling crates,
 see [Custom backends](https://docs.everruns.com/framework/custom-backends/).
 
-A CLI (`everruns-cli`) is also available for scripting against a deployment — see the [CLI](https://docs.everruns.com/features/cli/) guide.
+A CLI (`everruns-cli`) is also available for scripting against a deployment, see the [CLI](https://docs.everruns.com/features/cli/) guide.
 
 ## Documentation
 
 Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
 
-- [Introduction](https://docs.everruns.com/getting-started/introduction/) — what Everruns is and core [concepts](https://docs.everruns.com/getting-started/concepts/)
-- [Everruns Framework](https://docs.everruns.com/framework/) — build and run agents inside a Rust application
-- [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) — run the full stack
-- [How-to guides](https://docs.everruns.com/how-to/) — give agents tools, stream events, publish to Slack, enforce budgets
-- [Capabilities](https://docs.everruns.com/features/capabilities/) and [Harnesses](https://docs.everruns.com/features/harnesses/) — the building blocks
-- [Architecture](https://docs.everruns.com/explanation/architecture/) and [Durable execution](https://docs.everruns.com/explanation/durable-execution/) — how it works under the hood
-- [API Reference](https://docs.everruns.com/api/) — OpenAPI 3.0
-- [SDKs](https://docs.everruns.com/features/sdk/) — Rust, Python, and TypeScript clients
+- [Introduction](https://docs.everruns.com/getting-started/introduction/), what Everruns is and core [concepts](https://docs.everruns.com/getting-started/concepts/)
+- [Everruns Framework](https://docs.everruns.com/framework/), build and run agents inside a Rust application
+- [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/), run the full stack
+- [How-to guides](https://docs.everruns.com/how-to/), give agents tools, stream events, publish to Slack, enforce budgets
+- [Capabilities](https://docs.everruns.com/features/capabilities/) and [Harnesses](https://docs.everruns.com/features/harnesses/), the building blocks
+- [Architecture](https://docs.everruns.com/explanation/architecture/) and [Durable execution](https://docs.everruns.com/explanation/durable-execution/), how it works under the hood
+- [API Reference](https://docs.everruns.com/api/), OpenAPI 3.0
+- [SDKs](https://docs.everruns.com/features/sdk/), Rust, Python, and TypeScript clients
 
 ## Security
 
-Everruns runs untrusted agent and tool code for multiple tenants, so security is a core design goal. Threats are tracked with stable IDs across categories — authentication, tenant isolation, permissions, tool execution, LLM integration, the bash and SQLite sandboxes, durable execution, and channel integrations — each with a documented mitigation and, where feasible, test coverage.
+Everruns runs untrusted agent and tool code for multiple tenants, so security is a core design goal. Threats are tracked with stable IDs across categories, authentication, tenant isolation, permissions, tool execution, LLM integration, the bash and SQLite sandboxes, durable execution, and channel integrations, each with a documented mitigation and, where feasible, test coverage.
 
-- [Threat model](./knowledge/security/threat-model.md) — full analysis, mitigation status, and accepted risks
-- [Security testing](./knowledge/security/security-testing.md) — threat-model tests, fail-rs failure injection, DeepSec scanning, and supply-chain checks
-- [Security policy](./SECURITY.md) — how to report a vulnerability
+- [Threat model](./knowledge/security/threat-model.md), full analysis, mitigation status, and accepted risks
+- [Security testing](./knowledge/security/security-testing.md), threat-model tests, fail-rs failure injection, DeepSec scanning, and supply-chain checks
+- [Security policy](./SECURITY.md), how to report a vulnerability
 
 ## Contributing
 

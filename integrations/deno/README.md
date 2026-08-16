@@ -11,7 +11,7 @@ Deno Sandboxes, letting agents run code inside isolated environments without
 touching the host. Sandboxes are managed per session, each identified by its own
 sandbox id.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

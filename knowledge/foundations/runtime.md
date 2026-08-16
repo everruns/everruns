@@ -123,8 +123,8 @@ handling, lifecycle event emission, and generic turn-strategy planning for
 server-backed hosts.
 
 The host execution contract is value-first (EVE-872): turn execution consumes
-`everruns_core::ResolvedExecutionSnapshot` — a neutral, secret-free projection
-of the effective harness → agent → session configuration — never stored
+`everruns_core::ResolvedExecutionSnapshot`, a neutral, secret-free projection
+of the effective harness → agent → session configuration, never stored
 `Agent`/`Harness`/`Session` aggregates. `RuntimeHostAdapter::load_resolved_turn`
 returns that snapshot plus the turn's message and MCP tool inputs; adapters
 perform the platform projection (`ResolvedExecutionSnapshot::project`) so
@@ -136,16 +136,16 @@ prevents the contract module from naming the record types again; the
 configuration until they are separately replaced.
 
 `RuntimeHostAdapter` also exposes an optional, per-session
-`reasoning_effort_handle(session_id)` seam (default `None`). When a host returns
+`reasoning_effort_handle(session_id)` boundary (default `None`). When a host returns
 a stable handle for a session, `ReasonAtom` re-reads it on every LLM step and
 lets its value override the message-derived `controls.reasoning.effort` (still
 gated by the model profile). This lets a tool change reasoning effort
 mid-`run_turn` and have subsequent steps in the same turn observe it, instead of
-only on the next turn. Hosts that do not override the seam are unaffected.
+only on the next turn. Hosts that do not override the boundary are unaffected.
 
 `InProcessRuntime` implements `RuntimeHostAdapter` and drives its own turn
 loop by calling these activity functions directly. Atom construction lives
-in one place — host-side — so any improvement (tool-registry caching,
+in one place, host-side, so any improvement (tool-registry caching,
 error semantics, hook ordering) flows to both embedded and durable hosts
 automatically.
 
@@ -310,7 +310,7 @@ can choose `InMemorySessionFileSystemFactory` (default),
 `RealDiskSessionFileSystemFactory` (rooted at a host directory; honours
 `.gitignore` for grep), or a custom future factory such as S3. See
 `knowledge/runtime-resources/file-store.md` for the trait contract, path namespace, and the rule that
-capabilities should consume the seam rather than touching `std::fs` directly.
+capabilities should consume the boundary rather than touching `std::fs` directly.
 
 Factories that depend on host values receive them through
 `SessionFileSystemFactoryContext`; the in-process builder accepts this context
@@ -319,7 +319,7 @@ and passes it to the selected platform factory before runtime seeding.
 This keeps `everruns-core` storage traits read-oriented where they already were,
 while making custom embedded backends a supported public path.
 
-`everruns-host` owns the public extension seam for embedder-supplied
+`everruns-host` owns the public extension boundary for embedder-supplied
 backends. `everruns-worker` ships the first-party durable/server-backed host
 adapter (`WorkerRuntimeHost`) that bridges worker storage/adapters into the
 runtime host contract.
@@ -333,8 +333,8 @@ projection of it. Embedders replace it by implementing the `EventReader` and
 through the event-log backend slot.
 
 That pair is a supported public SPI, not an in-crate detail. A detached crate
-outside this workspace must be able to implement both — including stable
-snapshot pagination — from published paths alone, so the reader must be able to
+outside this workspace must be able to implement both, including stable
+snapshot pagination, from published paths alone, so the reader must be able to
 inspect a read request's cursor, build a snapshot-pinned continuation, and
 construct a result page. Construction is validated in one place so in-crate and
 external implementations expose the same observable invariants: per-session
@@ -353,11 +353,11 @@ externally implementable.
 the host forwards into `ActAtom` when present (see
 `crates/host/src/runtime.rs` and `crates/host/src/host.rs`):
 
-- `session_task_registry` — persists background-tool / subagent / monitor task
+- `session_task_registry`, persists background-tool / subagent / monitor task
   lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
-- `schedule_store_factory` — per-org `SessionScheduleStore` for local schedules
+- `schedule_store_factory`, per-org `SessionScheduleStore` for local schedules
   and monitors.
-- `platform_store_factory` — per-(org, session) `PlatformStore` for local
+- `platform_store_factory`, per-(org, session) `PlatformStore` for local
   session management and subagent spawning.
 
 Each slot defaults to `None`; leaving it unset preserves the prior in-memory
@@ -370,12 +370,12 @@ can be added without further runtime changes.
 `everruns-local` is the first-party crate that populates the optional
 host-backend slots with local, file-backed implementations for embedded,
 single-process hosts (where Yolop and miy would otherwise each reinvent them).
-The runtime stays generic and owns only the seams; durable local storage choices
+The runtime stays generic and owns only the boundaries; durable local storage choices
 live in this separate opt-in crate. It ships on crates.io alongside
 `everruns-host` so external embedders can depend on it directly.
 
-It provides SQLite-backed, restart-survivable stores —
-`LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore` — plus a
+It provides SQLite-backed, restart-survivable stores,
+`LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, plus a
 `LocalProfile` (data dir / workspace / identity defaults), a composable
 `LocalBackends` (which preserves a caller-supplied event bus and
 `SessionFileSystemFactory`), and an optional `LocalRuntimeBuilder` convenience

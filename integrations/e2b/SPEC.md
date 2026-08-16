@@ -12,8 +12,8 @@ The E2B capability integrates [E2B](https://e2b.dev/docs) cloud sandboxes as an 
 
 E2B uses two surfaces:
 
-1. **Management API** (`https://api.e2b.app`) — sandbox lifecycle, metadata, timeout, and detail fetches. Auth: `X-API-KEY: <key>`.
-2. **envd sandbox endpoint** (`https://49983-<sandboxId>.<domain>`) — in-sandbox file access and command execution. Auth: `X-Access-Token`, `E2b-Sandbox-Id`, and `E2b-Sandbox-Port` headers.
+1. **Management API** (`https://api.e2b.app`), sandbox lifecycle, metadata, timeout, and detail fetches. Auth: `X-API-KEY: <key>`.
+2. **envd sandbox endpoint** (`https://49983-<sandboxId>.<domain>`), in-sandbox file access and command execution. Auth: `X-Access-Token`, `E2b-Sandbox-Id`, and `E2b-Sandbox-Port` headers.
 
 The Everruns integration mirrors Daytona's session-scoped state model, but uses E2B's native split between the management API and envd runtime endpoints.
 

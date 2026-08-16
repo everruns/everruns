@@ -9,10 +9,10 @@
 `everruns-mcp` is the shared [MCP](https://modelcontextprotocol.io) **client**
 used across Everruns hosts. It owns the JSON-RPC client, credential acquisition,
 result mapping, and tool-call routing so every host wires MCP the same way
-without duplicating protocol logic — letting agents discover and call tools
+without duplicating protocol logic, letting agents discover and call tools
 exposed by any MCP server.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It plugs MCP tools into the
 [`everruns-core`](https://crates.io/crates/everruns-core) `ToolRegistry` as
 first-class tools.

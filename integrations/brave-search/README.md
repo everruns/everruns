@@ -10,7 +10,7 @@
 [Brave Search](https://brave.com/search/api/) REST API. It registers a single
 `brave_web_search` tool, authenticated with a user-supplied Brave Search API key.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

@@ -121,7 +121,7 @@ After all CLI binaries are built and uploaded, the `Publish CLI Binaries` workfl
 
 #### Trigger rationale
 
-Docker images are expensive to build — the slow path is `linux/arm64` via QEMU cross-compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
+Docker images are expensive to build, the slow path is `linux/arm64` via QEMU cross-compilation. Earlier versions of this workflow built on every push to `main` to keep a `:development` rolling tag, and on every PR to validate the build. That produced ~40–60 min of multi-arch build time per merge to main and ~18 min per PR, almost all of which was wasted when the change did not touch Docker infrastructure.
 
 The current trigger shape (`docker-publish.yml`):
 

@@ -180,15 +180,15 @@ Examples and detailed behavior live in [app-invocation-channels.md](app-invocati
 ### Session Strategy
 
 Controls how incoming messages map to sessions:
-- `per_thread` — each thread gets its own session (default)
-- `per_channel` — one session per channel
-- `per_user` — one session per user
+- `per_thread`, each thread gets its own session (default)
+- `per_channel`, one session per channel
+- `per_user`, one session per user
 
 ### Slack Reply Mode
 
 Controls what gets posted back to Slack:
-- `all_messages` — forward completed assistant messages directly to Slack (default)
-- `report_progress_only` — send an immediate handoff acknowledgement, then only forward explicit `report_progress` tool updates
+- `all_messages`, forward completed assistant messages directly to Slack (default)
+- `report_progress_only`, send an immediate handoff acknowledgement, then only forward explicit `report_progress` tool updates
 
 ### Lifecycle
 
@@ -220,7 +220,7 @@ Apps are the publish surface for Harnesses and Agents. To avoid forcing users to
 - Harness detail → `/apps/new?harness_id={harness_id}`
 - Agent detail → `/apps/new?agent_id={agent_id}`
 
-The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness and Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Selecting an Agent — from the query-string shortcut or in the form — prefills the harness from that Agent's `harness_id` (still editable).
+The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness and Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Selecting an Agent, from the query-string shortcut or in the form, prefills the harness from that Agent's `harness_id` (still editable).
 
 ## Data Model
 

@@ -18,7 +18,7 @@ agents that can be addressed for individual turns, and the users watching or
 driving the conversation.
 
 This spec captures the durable model and its invariants. Field-level shapes,
-enum variants, and SQL live in code — see `crates/core/src/session.rs`
+enum variants, and SQL live in code, see `crates/core/src/session.rs`
 (`SessionParticipant`, `SessionParticipantKind`, `SessionParticipantRole`), the
 command layer in `crates/server/src/domains/sessions/commands.rs`, and migrations
 `095_session_participants.sql` / `098_session_participant_user_identity.sql` /
@@ -28,19 +28,19 @@ command layer in `crates/server/src/domains/sessions/commands.rs`, and migration
 
 Each participant row binds a principal to a session:
 
-- **kind** — `agent` or `user`. Agent participants carry an `agent_id` (and,
+- **kind**: `agent` or `user`. Agent participants carry an `agent_id` (and,
   when known, the immutable `agent_version_id`); user participants do not.
-- **role** — `host` or `member`. The host anchors the session; members are
+- **role**: `host` or `member`. The host anchors the session; members are
   ordinary participants (invited guest agents, additional users).
-- **principal_id** — the principal that joined. This is the provenance anchor:
+- **principal_id**: the principal that joined. This is the provenance anchor:
   turns, resources, and audit attribute back to the participant's principal
   rather than to `system`.
-- **display name** — the human-readable identity captured with the participant.
+- **display name**: the human-readable identity captured with the participant.
   Signed-in users use the authoritative user profile and existing participant
   rows track profile renames. External-channel participants retain their
   explicit actor name. Missing names fall back to the actor kind rather than
   implying that all unnamed people share the same identity.
-- **joined_at / left_at** — the participation interval. `left_at = null` means
+- **joined_at / left_at**: the participation interval. `left_at = null` means
   the participant is still active; a set `left_at` marks a past membership that
   is retained for history.
 
@@ -53,7 +53,7 @@ Participant ids use the `part_` prefix (see `knowledge/foundations/id-schema.md`
   and cannot leave through the ordinary leave path.
 - **Host supplies the harness.** The session runs on the host agent's harness
   (the agent-owns-harness foundation from P1). Invited members overlay behavior
-  only — see routing below — and do not replace the host's execution
+  only, see routing below, and do not replace the host's execution
   environment.
 - **Membership history is append-only in spirit.** Leaving sets `left_at`; rows
   are not deleted, so provenance and the join/leave timeline stay reconstructable.
@@ -67,13 +67,13 @@ Participant ids use the `part_` prefix (see `knowledge/foundations/id-schema.md`
 Participants are managed under a session
 (`crates/server/src/api/sessions.rs`):
 
-- `GET /v1/sessions/{session_id}/participants` — full participant history
+- `GET /v1/sessions/{session_id}/participants`, full participant history
   (active and left), ordered by `joined_at`. Policy `SESSION_VIEW`.
-- `POST /v1/sessions/{session_id}/participants` — add a **member**. Body carries
+- `POST /v1/sessions/{session_id}/participants`, add a **member**. Body carries
   `kind` and, for agents, `agent_id`; `role` defaults to `member` and an
   explicit `host` is rejected (the host is owned by session creation). Policy
   `SESSION_MANAGE`.
-- `DELETE /v1/sessions/{session_id}/participants/{participant_id}` — leave: sets
+- `DELETE /v1/sessions/{session_id}/participants/{participant_id}`, leave: sets
   `left_at`. An active host cannot leave through this endpoint (`409`). Policy
   `SESSION_MANAGE`.
 

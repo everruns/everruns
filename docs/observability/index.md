@@ -5,13 +5,13 @@ sidebar:
   order: 0
 ---
 
-Everruns emits structured events for every agent turn — model calls, tool invocations, retries, token usage, latency. The integrations in this section forward those signals to dedicated observability platforms so you can monitor agents in production, evaluate prompt changes, and debug failures with full trace context.
+Everruns emits structured events for every agent turn, model calls, tool invocations, retries, token usage, latency. The integrations in this section forward those signals to dedicated observability platforms so you can monitor agents in production, evaluate prompt changes, and debug failures with full trace context.
 
 ## Available Integrations
 
-- [Braintrust](/observability/braintrust/) — LLM observability, evaluation, and trace visualization. Turn traces are grouped by session, with token usage, time-to-first-token, and tool execution times.
+- [Braintrust](/observability/braintrust/), LLM observability, evaluation, and trace visualization. Turn traces are grouped by session, with token usage, time-to-first-token, and tool execution times.
 
 ## Related
 
-- [Events](/features/events/) — the streaming event protocol that backs every observability export.
-- [Environment Variables](/sre/environment-variables/) — configure exporters, sampling, and OTLP endpoints.
+- [Events](/features/events/), the streaming event protocol that backs every observability export.
+- [Environment Variables](/sre/environment-variables/), configure exporters, sampling, and OTLP endpoints.

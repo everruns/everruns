@@ -43,6 +43,6 @@ Infinity Context and Context Compaction work together to keep long sessions unbo
 
 ## See Also
 
-- [Base Harness](/built-ins/harnesses/base/) — empty harness for full control
-- [Platform Chat Harness](/built-ins/harnesses/platform-chat/) — focused operator chat built on Base
-- [Harnesses feature guide](/features/harnesses/) — harness selection and API management
+- [Base Harness](/built-ins/harnesses/base/), empty harness for full control
+- [Platform Chat Harness](/built-ins/harnesses/platform-chat/), focused operator chat built on Base
+- [Harnesses feature guide](/features/harnesses/), harness selection and API management

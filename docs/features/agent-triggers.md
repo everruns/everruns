@@ -63,6 +63,6 @@ App webhook channels and session schedules solve different problems and are unch
 
 ## See also
 
-- [Apps](/features/apps/) — publish agents to inbound channels.
-- [Session participants](/features/session-participants/) — understand the host agent used by a trigger-created session.
-- [API reference](/api/) — exact trigger schemas and responses.
+- [Apps](/features/apps/), publish agents to inbound channels.
+- [Session participants](/features/session-participants/), understand the host agent used by a trigger-created session.
+- [API reference](/api/), exact trigger schemas and responses.

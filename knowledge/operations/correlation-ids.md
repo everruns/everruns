@@ -22,7 +22,7 @@ A per-HTTP-request opaque identifier.
 - **Response**: Always echoed back in the `X-Request-ID` response header.
 - **Scope**: Single HTTP request → persists into any async durable run triggered by that request.
 
-Why `X-Request-ID` and not W3C `traceparent`? `traceparent` is the official distributed-tracing standard and Everruns supports it automatically via OpenTelemetry. `X-Request-ID` complements it as a human-readable, stable ID for log search and support workflows — clients can inject their own ID and find all related log lines without understanding OTel trace format.
+Why `X-Request-ID` and not W3C `traceparent`? `traceparent` is the official distributed-tracing standard and Everruns supports it automatically via OpenTelemetry. `X-Request-ID` complements it as a human-readable, stable ID for log search and support workflows, clients can inject their own ID and find all related log lines without understanding OTel trace format.
 
 ### Session ID (`session_id`)
 

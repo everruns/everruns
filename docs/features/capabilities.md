@@ -5,9 +5,9 @@ description: Capabilities are the modular units that give an agent its tools, sy
 
 A **capability** is a self-contained unit that extends an agent. Each capability can contribute three kinds of thing:
 
-1. **Tools** — functions the agent can invoke during a turn.
-2. **System prompt additions** — text prepended to the agent's prompt that teaches the model when and how to use those tools.
-3. **Mount points** — files, directories, or session state the tools need to operate.
+1. **Tools**: functions the agent can invoke during a turn.
+2. **System prompt additions**: text prepended to the agent's prompt that teaches the model when and how to use those tools.
+3. **Mount points**: files, directories, or session state the tools need to operate.
 
 Agents *compose* capabilities. Enable as many as you need; leave the rest disabled. The runtime resolves capabilities in topological order (dependencies first) and concatenates their system prompt fragments in the order you configured them on the agent.
 
@@ -32,9 +32,9 @@ All four kinds participate in the same merge, dependency resolution, and tool-na
 
 Capabilities can be attached at three layers, and the layers stack additively:
 
-- **Harness** — defaults for every session that uses this harness.
-- **Agent** — capabilities for this specific role.
-- **Session** — extras for this one conversation.
+- **Harness**: defaults for every session that uses this harness.
+- **Agent**: capabilities for this specific role.
+- **Session**: extras for this one conversation.
 
 See [Why three configuration layers](/explanation/concepts/#why-three-configuration-layers-harness-agent-session) for how the merge works.
 
@@ -42,14 +42,14 @@ See [Why three configuration layers](/explanation/concepts/#why-three-configurat
 
 The full list of built-in capabilities, organised by category, lives in the reference:
 
-- **[Capabilities reference](/capabilities/)** — every capability with ID, tools, parameters, and dependencies.
+- **[Capabilities reference](/capabilities/)**: every capability with ID, tools, parameters, and dependencies.
 
 ## Do something
 
-- [Equip an agent with tools](/how-to/equip-agents-with-tools/) — the practical recipe.
-- [Give an agent web access](/how-to/give-an-agent-web-access/) — narrower task with network policies.
-- [Customize a harness](/how-to/customize-a-harness/) — bundle capabilities at the harness layer.
+- [Equip an agent with tools](/how-to/equip-agents-with-tools/), the practical recipe.
+- [Give an agent web access](/how-to/give-an-agent-web-access/), narrower task with network policies.
+- [Customize a harness](/how-to/customize-a-harness/), bundle capabilities at the harness layer.
 
 ## See also
 
-- [Concepts](/explanation/concepts/) — the entity model in full.
+- [Concepts](/explanation/concepts/), the entity model in full.

@@ -13,12 +13,12 @@ contracts for the `input → reason → act` execution kernel. The concrete phas
 algorithms live in `everruns-engine`. Core carries no store
 or provider-loading orchestration, filesystem, shell,
 web-fetch, Lua, MCP-client, concrete HTTP, server, or database runtime of its
-own — hosts and focused integration crates wire these abstractions together.
+own, hosts and focused integration crates wire these abstractions together.
 Knowledge Bases and Indexes, Memories, delegation, schedules/tasks, user hooks,
 and platform-management capabilities live in `everruns-platform` and are not
 advertised by the Framework preset.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Provider crates such as
 [`everruns-openai`](https://crates.io/crates/everruns-openai) and
 [`everruns-host`](https://crates.io/crates/everruns-host) depend on these

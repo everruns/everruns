@@ -25,7 +25,7 @@ privacy because, unlike aggregate reporting, it exports raw model-view content.
 ## Goals
 
 1. Export a completed `EvalRun` as reward-labeled NDJSON, one record per case.
-2. Be faithful to what the model saw — use the **model view** (post-compaction
+2. Be faithful to what the model saw, use the **model view** (post-compaction
    masking), not the lossless durable log.
 3. Be privacy- and tenant-safe by construction: org-scoped, behind an explicit
    policy, with redaction controls and always-on secret scrubbing.
@@ -35,7 +35,7 @@ privacy because, unlike aggregate reporting, it exports raw model-view content.
 ## Non-Goals
 
 - Continuous capture from arbitrary production sessions (Phase 1 is eval runs
-  only — bounded, consented, already labeled).
+  only, bounded, consented, already labeled).
 - RL-style preference-pair / DPO construction (Phase 1 is SFT-shaped single
   trajectories).
 - The post-training / fine-tune orchestration itself (this only produces its
@@ -105,7 +105,7 @@ than storing a body larger than the shared 50 MiB artifact-export limit.
 
 - `trajectory` (generic, canonical):
   `{ source_key, eval_run_id, case_id, case_name, session_id, reward: { pass, score, scorers: [{name, value, pass, reason}] }, messages: [...model-view messages...], metadata: { model, turns, input_tokens, output_tokens, latency_ms } }`
-- `sft`: `{ source_key, messages: [{role, content}], reward: { pass, score, scorers } }` — chat-message shape loadable by common SFT pipelines, with reward in a sidecar field so verifiable-reward filtering happens before training.
+- `sft`: `{ source_key, messages: [{role, content}], reward: { pass, score, scorers } }`, chat-message shape loadable by common SFT pipelines, with reward in a sidecar field so verifiable-reward filtering happens before training.
 - `atif`: one complete ATIF-v1.7 trajectory object per line, folded from the
   case session's **model-view messages** (the same post-compaction masking as
   the other dataset formats), with reward and case identity in root `extra`
@@ -114,7 +114,7 @@ than storing a body larger than the shared 50 MiB artifact-export limit.
   per-step token metrics or turn roll-up (messages lack per-step usage);
   case-level token totals appear in `final_metrics`. Same policy gate, filters,
   scrubbing, and redaction as the other formats. See `knowledge/evaluation/atif-adoption.md`.
-  (The whole-session export, `?format=atif`, still folds the raw event log — it
+  (The whole-session export, `?format=atif`, still folds the raw event log, it
   is a debug/backup surface, not training data.)
 
 Scorer identities are not persisted on the result (only the ordered
@@ -131,8 +131,8 @@ re-export is idempotent and records can be deduplicated downstream.
 
 ### Selection filters
 
-- `pass` — keep only cases whose pass/fail equals this.
-- `min_score` — keep only cases whose mean scorer value is ≥ this.
+- `pass`, keep only cases whose pass/fail equals this.
+- `min_score`, keep only cases whose mean scorer value is ≥ this.
 
 Filters never reference `org_id`; the org scope is injected from the
 authenticated caller and cannot be widened by a filter.

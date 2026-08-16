@@ -41,7 +41,7 @@ finishing its synchronous work (validation, app/channel resolution, session
 resolution, history seed, event subscription, and the synchronous part of
 message creation) and just before it returns the SSE stream. The durable
 turn workflow itself is scheduled by `MessageService::create` via a detached
-`tokio::spawn`, so this event marks the end of the handler's work — not a
+`tokio::spawn`, so this event marks the end of the handler's work, not a
 guaranteed enqueue point for the workflow.
 
 Fields:
@@ -72,7 +72,7 @@ Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-
 
 ### Turn Completion via SSE
 
-Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after creation. Turn completion is detected by waiting for the `session.idled` event on this stream. No polling — one persistent connection per session replaces the previous approach of polling `GET /sessions/{id}` and `GET /sessions/{id}/messages` every 50ms.
+Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after creation. Turn completion is detected by waiting for the `session.idled` event on this stream. No polling, one persistent connection per session replaces the previous approach of polling `GET /sessions/{id}` and `GET /sessions/{id}/messages` every 50ms.
 
 ### Flow
 
@@ -81,7 +81,7 @@ Each session opens a single SSE connection (`GET /v1/sessions/{id}/sse`) after c
 3. Spawn N concurrent sessions (controlled by semaphore)
 4. Each session:
    a. Creates session via API
-   b. Opens SSE stream (`GET /v1/sessions/{id}/sse`) and eagerly connects (polls once to establish HTTP connection before any messages are sent — prevents missing fast `session.idled` events)
+   b. Opens SSE stream (`GET /v1/sessions/{id}/sse`) and eagerly connects (polls once to establish HTTP connection before any messages are sent, prevents missing fast `session.idled` events)
    c. Sends M messages sequentially
    d. After each message: waits for `session.idled` SSE event (turn complete)
    e. Measures latency from POST /messages to `session.idled` received

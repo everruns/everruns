@@ -111,5 +111,5 @@ Browserless API token is resolved automatically from **Settings > Connections > 
 
 ## See Also
 
-- [Browserless integration guide](/integrations/browserless/) — setup and configuration
+- [Browserless integration guide](/integrations/browserless/), setup and configuration
 - [Capabilities Overview](/capabilities/)

@@ -87,7 +87,7 @@ These concepts are deliberately separate:
 | `WorkspacePolicy` | Portable read/write authorization composed over the selected filesystem |
 | Sandbox | A process/compute isolation boundary; not provided by path policy alone |
 
-The Environment carries its head plus an open type-keyed extension seam for
+The Environment carries its head plus an open type-keyed extension boundary for
 future compute or network resources. Providers implement the async
 `WorkspaceProvider` trait directly; there is no backend enum or vendor switch.
 Every head supplies the existing `SessionFileSystem`, so file tools, seeded

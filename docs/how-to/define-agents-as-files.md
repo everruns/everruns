@@ -3,7 +3,7 @@ title: Define agents as files
 description: Author agent definitions in Markdown, TOML, YAML, or JSON so they can be version-controlled, reviewed in pull requests, and imported via the SDK or CLI.
 ---
 
-Agents can be defined as files with structured metadata and a system prompt. This makes them shareable, reviewable, and version-controllable — useful for teams that want agents in git rather than only in the API.
+Agents can be defined as files with structured metadata and a system prompt. This makes them shareable, reviewable, and version-controllable, useful for teams that want agents in git rather than only in the API.
 
 ## Markdown with front matter
 
@@ -93,7 +93,7 @@ The long form (`ref` + `config`) is required for per-agent capability configurat
 
 ## JSON
 
-JSON is supported for tooling that generates agent definitions programmatically. It has no special features over TOML/YAML — pick the format your team prefers.
+JSON is supported for tooling that generates agent definitions programmatically. It has no special features over TOML/YAML, pick the format your team prefers.
 
 ```bash
 everruns agents create -f agent.json
@@ -117,8 +117,8 @@ Run axe-core audits...
 
 Entries can be:
 
-- `.` — the entire current directory (non-hidden files plus `.agents/`).
-- A subdirectory — walked recursively. Glob suffixes like `/*` are stripped.
+- `.`, the entire current directory (non-hidden files plus `.agents/`).
+- A subdirectory, walked recursively. Glob suffixes like `/*` are stripped.
 - A single file path.
 
 Hidden files outside `.agents/` are skipped; symlinks outside the base directory are rejected; binary files are ignored.
@@ -129,6 +129,6 @@ Hidden files outside `.agents/` are skipped; symlinks outside the base directory
 
 ## See also
 
-- [CLI reference](/features/cli/) — full command surface.
-- [Equip an agent with tools](/how-to/equip-agents-with-tools/) — choosing capabilities.
-- [Use AGENTS.md for project instructions](/how-to/use-agents-md/) — adding per-project guidance.
+- [CLI reference](/features/cli/), full command surface.
+- [Equip an agent with tools](/how-to/equip-agents-with-tools/), choosing capabilities.
+- [Use AGENTS.md for project instructions](/how-to/use-agents-md/), adding per-project guidance.

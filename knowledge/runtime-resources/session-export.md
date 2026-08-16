@@ -20,7 +20,7 @@ Returns `application/x-ndjson` with `Content-Disposition: attachment` header.
 
 Each line is a JSON object representing one message (user or agent).
 Tool results are embedded as `tool_result` content parts within agent messages.
-Delta events are excluded — only materialized messages are exported.
+Delta events are excluded, only materialized messages are exported.
 
 ### `?format=atif`
 
@@ -33,8 +33,8 @@ is unchanged.
 Documents over the server size cap are rejected with HTTP 413. Add
 `&segmented=true` to get the recoverable path: a forward-linked chain of
 byte-bounded segments (each a standalone ATIF-v1.7 document) instead of one
-document. Follow each segment's root `continued_trajectory_ref` URL — which
-carries an opaque `cursor` query param — until a segment omits it (the final
+document. Follow each segment's root `continued_trajectory_ref` URL, which
+carries an opaque `cursor` query param, until a segment omits it (the final
 one). A malformed or foreign cursor is rejected with HTTP 400. Segment
 bookkeeping (`X-Atif-Segment-Index`, `X-Atif-Next-Cursor`, per-segment
 `X-Atif-Images-Omitted`) is mirrored in headers. See the segmented-export
@@ -68,7 +68,7 @@ Fields `controls`, `metadata`, `external_actor` are included when present.
 
 ### Auth & Policy
 
-Same as `GET /v1/sessions/{session_id}` — requires `SESSION_VIEW`.
+Same as `GET /v1/sessions/{session_id}`, requires `SESSION_VIEW`.
 
 ## UI
 
@@ -80,4 +80,4 @@ ATIF limit alerts surface on the shared toast surface (notifications provider):
 HTTP 413 (document over the server size cap) shows an error toast with the
 server message when parseable, and a non-zero `X-Atif-Images-Omitted` response
 header still downloads but shows an informational toast. Both signals are
-optional — against servers without them the flow behaves like JSONL export.
+optional, against servers without them the flow behaves like JSONL export.

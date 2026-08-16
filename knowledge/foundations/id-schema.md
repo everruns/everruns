@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-This document defines the standardized identifier schema for all entity types in Everruns. All external-facing identifiers use **Stripe-style prefixed IDs backed by a UUID** (UUIDv7 for DB-backed keys, UUIDv4 for random-public ids — see [ID classes](#id-classes-time-ordered-vs-random-public)) for type safety, debuggability, and consistency.
+This document defines the standardized identifier schema for all entity types in Everruns. All external-facing identifiers use **Stripe-style prefixed IDs backed by a UUID** (UUIDv7 for DB-backed keys, UUIDv4 for random-public ids, see [ID classes](#id-classes-time-ordered-vs-random-public)) for type safety, debuggability, and consistency.
 
 This pattern was popularized by Stripe (`cus_`, `sub_`, `pi_`) and formalized by the [TypeID spec](https://github.com/jetpack-io/typeid). Our implementation uses hex encoding (32 chars) rather than TypeID's base32 (26 chars) for simpler debugging and UUID compatibility.
 
@@ -42,7 +42,7 @@ Agent version IDs use the `agentver_` prefix.
 ### ID Generation
 
 - The UUID is formatted as lowercase hex without dashes (32 chars); the prefix is prepended with an underscore separator
-- The UUID *version* depends on the id class (see below). The wire format (`{prefix}_{32-hex}`) and validation regex are identical for every class, so version is an internal generation detail — never a parse or storage concern
+- The UUID *version* depends on the id class (see below). The wire format (`{prefix}_{32-hex}`) and validation regex are identical for every class, so version is an internal generation detail, never a parse or storage concern
 
 ```rust
 // Example generation (time-ordered, default)
@@ -56,8 +56,8 @@ let id = format!("agent_{}", uuid.simple()); // agent_0193...
 
 | Class | UUID version | Rationale |
 |-------|--------------|-----------|
-| **Time-ordered** (default) — DB-backed keys: `agent`, `session`, `event`, `turn`, `org`, and all other entities with a table/PK/index | UUIDv7 | Time-ordering gives B-tree insert locality and lets the id double as a sort key. |
-| **Random-public** — `message` | UUIDv4 (`TypedId::new_random()`) | Messages are **not** DB entities: they live embedded in `events.data` JSONB with no table, FK, index, or sort dependency on the id, and the id is the *public* identifier serialized to clients (`output.message.completed`, `EventContext.input_message_id`). UUIDv7's time-ordering does no work here and would leak a creation timestamp into a client-visible id, so message ids are random. Same wire format → no migration; legacy UUIDv7 message ids keep parsing. |
+| **Time-ordered** (default), DB-backed keys: `agent`, `session`, `event`, `turn`, `org`, and all other entities with a table/PK/index | UUIDv7 | Time-ordering gives B-tree insert locality and lets the id double as a sort key. |
+| **Random-public**: `message` | UUIDv4 (`TypedId::new_random()`) | Messages are **not** DB entities: they live embedded in `events.data` JSONB with no table, FK, index, or sort dependency on the id, and the id is the *public* identifier serialized to clients (`output.message.completed`, `EventContext.input_message_id`). UUIDv7's time-ordering does no work here and would leak a creation timestamp into a client-visible id, so message ids are random. Same wire format → no migration; legacy UUIDv7 message ids keep parsing. |
 
 `TurnId` stays UUIDv7: turn ordering is used by durable execution, and the raw turn UUID's current public exposure via AG-UI is being removed by the streaming `message_id` work rather than by re-randomizing the turn id. To make a new id class random, override `generate_uuid()` on its marker in `crates/provider/src/typed_id.rs`.
 
@@ -65,7 +65,7 @@ let id = format!("agent_{}", uuid.simple()); // agent_0193...
 
 IDs must match `^{prefix}_[0-9a-f]{32}$`. See `TypedId` validation in `crates/provider/src/typed_id.rs`.
 
-### Database Storage — Dual-ID Pattern
+### Database Storage, Dual-ID Pattern
 
 All entities use a **dual-ID pattern** with an internal UUID primary key and an external public_id:
 
@@ -75,9 +75,9 @@ All entities use a **dual-ID pattern** with an internal UUID primary key and an 
 | External | `public_id` | `TEXT` (UNIQUE per org) | API-facing identifier. Client-supplied or auto-generated. Format: `{prefix}_{32-hex}`. |
 
 **Rules:**
-- API always shows `public_id` as `"id"` — internal UUID is never exposed
+- API always shows `public_id` as `"id"`, internal UUID is never exposed
 - Client can supply `public_id` on create; server auto-generates `{prefix}_{uuidv7_hex}` if omitted
-- `UNIQUE(org_id, public_id)` — same public_id allowed across orgs
+- `UNIQUE(org_id, public_id)`, same public_id allowed across orgs
 - Format validated: `^{prefix}_[0-9a-f]{32}$`
 - FKs between tables use internal `UUID` columns
 - When auto-generating: derive `public_id` from the internal UUID for consistency (`{prefix}_{uuid_hex}`)
@@ -115,7 +115,7 @@ For the full list of well-known IDs and range allocations, see `crates/provider/
 |----------|----------|
 | Why prefixed IDs? | Type safety, debuggability, prevents mixing ID types |
 | Why UUIDv7 for DB-backed ids? | Time-ordering gives B-tree insert locality + sortability; globally unique |
-| Why UUIDv4 for message ids? | Messages are not DB entities (embedded in `events.data` JSONB, no index/sort on the id) and the id is client-visible; v7 would leak a creation timestamp with no benefit — see the ID-class table |
+| Why UUIDv4 for message ids? | Messages are not DB entities (embedded in `events.data` JSONB, no index/sort on the id) and the id is client-visible; v7 would leak a creation timestamp with no benefit, see the ID-class table |
 | Why dual-ID? | Internal UUID PK for FK integrity; external public_id for client-facing API, client-supplied IDs, upsert |
 | Why not expose UUID? | Decouples internal PK from API contract; allows client-supplied IDs |
 | Why lowercase hex? | Consistency, case-insensitive matching, URL-safe |

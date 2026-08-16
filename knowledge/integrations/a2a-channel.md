@@ -27,9 +27,9 @@ other agents without conflating it with bare HTTP webhook ingress.
 References:
 
 - A2A protocol: <https://a2aproject.github.io/A2A>
-- `knowledge/integrations/app-invocation-channels.md` — sibling invocation channels
-- `knowledge/integrations/apps.md` — app entity, harness, agent identity binding
-- `crates/server/specs/slack-integration.md` — sibling messaging channel
+- `knowledge/integrations/app-invocation-channels.md`, sibling invocation channels
+- `knowledge/integrations/apps.md`, app entity, harness, agent identity binding
+- `crates/server/specs/slack-integration.md`, sibling messaging channel
 
 ## Goals
 
@@ -41,7 +41,7 @@ References:
 
 ## Non-Goals
 
-1. The full A2A method surface — this iteration canonically supports
+1. The full A2A method surface, this iteration canonically supports
    `message/send`, `message/stream`, `tasks/get`, and `tasks/cancel`.
    `tasks/resubscribe`, push notifications, and authenticated extensions
    remain out of scope.
@@ -49,9 +49,9 @@ References:
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
 
-This spec covers **inbound** A2A only — exposing an Everruns App as an A2A
-server for other agents to call. The complementary **outbound** direction —
-letting an Everruns agent call an external A2A agent — lives as a separate
+This spec covers **inbound** A2A only, exposing an Everruns App as an A2A
+server for other agents to call. The complementary **outbound** direction,
+letting an Everruns agent call an external A2A agent, lives as a separate
 capability spec, [`knowledge/integrations/a2a-capability.md`](a2a-capability.md), and a
 separate threat-model surface (TM-AGENT-005 covers the high-risk capability
 gate; SSRF protection comes from `validate_safe_url`, response size is
@@ -92,7 +92,7 @@ Storage uses the existing `app_channels` row schema. The migration extends the
 
 API key generation:
 
-- Format: `evra2a_<64 hex chars>` — 32 random bytes (256-bit entropy),
+- Format: `evra2a_<64 hex chars>`, 32 random bytes (256-bit entropy),
   prefix-scoped so secret scanners can target A2A keys distinctly from
   platform `evr_` API keys.
 - Hash: `SHA-256` of the full key, hex-encoded. Matches `auth/api_key.rs`.
@@ -150,7 +150,7 @@ Response: A2A JSON-RPC 2.0 success with a non-terminal `Task` result:
 }
 ```
 
-The task `id` is the underlying Everruns `SessionId` — it is intentionally
+The task `id` is the underlying Everruns `SessionId`, it is intentionally
 the same value as `contextId`. The durable workflow is asynchronous, so the
 initial response is always non-terminal (`submitted`). Clients observe
 state transitions via `tasks/get` (see "Task Lifecycle" below) or
@@ -163,10 +163,10 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 
 | HTTP | JSON-RPC code | Reason                                |
 |------|---------------|---------------------------------------|
-| 401  | —             | Missing or invalid API key            |
-| 403  | —             | App not published or channel disabled |
-| 404  | —             | App or channel not found              |
-| 400  | —             | Invalid path-level input (e.g. malformed channel ID) |
+| 401  |, | Missing or invalid API key            |
+| 403  |, | App not published or channel disabled |
+| 404  |, | App or channel not found              |
+| 400  |, | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
 | 200  | `-32601`      | Method not found (only canonical `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` and their legacy linked-client aliases are supported) |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id) |
@@ -184,14 +184,14 @@ frame.
 
 Frame kinds emitted:
 
-- `status-update` with `status.state = "working"` and `final = false` — sent
+- `status-update` with `status.state = "working"` and `final = false`, sent
   immediately after the session is resolved so clients see liveness even
   before the durable runtime emits its first event.
 - `message` with `role = "agent"` and `parts: [{ kind: "text", text: ... }]`
-  — emitted from `output.message.completed` events for the same session.
+, emitted from `output.message.completed` events for the same session.
   Tool calls and intermediate deltas are not surfaced in this iteration.
 - A terminal `status-update` with `final = true` and one of
-  `state = "completed" | "failed" | "canceled"` — emitted from the
+  `state = "completed" | "failed" | "canceled"`, emitted from the
   corresponding `turn.completed` / `turn.failed` / `turn.cancelled` event.
   The stream closes after this frame.
 
@@ -232,7 +232,7 @@ found`. A malformed task id surfaces `-32602 Invalid params`.
 
 **Structured result artifact.** When the underlying session reported a
 deterministic, schema-bound result (`result.json`, produced by a task declared
-with a `result_schema` — see [`knowledge/runtime-resources/subagents.md`](../runtime-resources/subagents.md) and
+with a `result_schema`, see [`knowledge/runtime-resources/subagents.md`](../runtime-resources/subagents.md) and
 [`knowledge/runtime-resources/session-tasks.md`](../runtime-resources/session-tasks.md)), `tasks/get` surfaces that JSON as
 an A2A `Artifact` on the task rather than leaving the caller to parse
 last-message text:
@@ -252,7 +252,7 @@ returns the task with no `artifacts`. When a session reported more than one
 structured result the most recently updated one wins. Retrieval is org-scoped
 and further fenced by the same channel-binding check as the rest of `tasks/get`
 (TM-A2A-012): the artifact for a session created by one channel is never
-returned to an API key for a different channel, even within the same org — the
+returned to an API key for a different channel, even within the same org, the
 cross-channel lookup collapses to `-32001 Task not found` with no artifact leak.
 
 `tasks/cancel` cancels the in-flight durable workflow for the underlying
@@ -335,11 +335,11 @@ Template context:
 - `app.id`, `app.name`
 - `channel.id`, `channel.type` (`"a2a"`)
 - `invocation.source` (`"a2a"`), `invocation.triggered_at`
-- `payload` — the A2A `params` object verbatim
-- `a2a.text` — concatenated text parts of `params.message.parts` (joined with
+- `payload`, the A2A `params` object verbatim
+- `a2a.text`, concatenated text parts of `params.message.parts` (joined with
   newlines), for cheap default templates like `{{a2a.text}}`
-- `a2a.message_id`, `a2a.task_id`, `a2a.context_id` — protocol identifiers
-- `a2a.role` — `params.message.role`
+- `a2a.message_id`, `a2a.task_id`, `a2a.context_id`, protocol identifiers
+- `a2a.role`, `params.message.role`
 
 If no `text` part is present the channel rejects the request with
 `-32602 Invalid params`.
@@ -375,10 +375,10 @@ common app-channel invocation helper, not by the A2A HTTP adapter.
 A2A channels are reachable through the same surfaces as other channels:
 
 - HTTP app APIs:
-  - `POST /v1/apps/{id}/a2a-channels` — create channel + return plaintext key once
-  - `POST /v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key` — rotate key
-  - `PATCH /v1/apps/{id}/channels/{channel_id}` — update non-secret fields
-  - `DELETE /v1/apps/{id}/channels/{channel_id}` — delete channel
+  - `POST /v1/apps/{id}/a2a-channels`, create channel + return plaintext key once
+  - `POST /v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key`, rotate key
+  - `PATCH /v1/apps/{id}/channels/{channel_id}`, update non-secret fields
+  - `DELETE /v1/apps/{id}/channels/{channel_id}`, delete channel
 - MCP/bash command catalog: `add_a2a_app_channel` flat command, plus
   `update_app_channel` / `delete_app_channel`
 - `platform_management` capability (`manage_app_channels`)
@@ -409,7 +409,7 @@ Coverage required:
 ## Rate Limiting
 
 Per-channel rate limiting bounds unattended agent-to-agent traffic that the
-global API limit alone does not — a runaway counterparty agent should not be
+global API limit alone does not, a runaway counterparty agent should not be
 able to drain an app's quota or LLM budget while it is unattended.
 
 - Field: `A2aChannelConfig::rate_limit_per_minute: Option<u32>`. `None` or
@@ -421,7 +421,7 @@ able to drain an app's quota or LLM budget while it is unattended.
   caller cannot grow the limiter cache or learn whether a channel exists
   from rate-limit signals.
 - Implementation: shared `ChannelRateLimiter` primitive
-  (`crates/server/src/api/channel_rate_limit.rs`) with two backends —
+  (`crates/server/src/api/channel_rate_limit.rs`) with two backends,
   in-memory (governor) for single-instance/dev, Valkey for distributed.
   The same primitive backs the AG-UI channel; namespace strings (`agui`
   vs `a2a`) keep Valkey keys disjoint and separate `ChannelRateLimiter`
@@ -448,14 +448,14 @@ timestamp + signature header pair; otherwise the channel keeps the
 existing authentication-only behavior. This closes TM-A2A-010
 (captured-request replay until rotation) without breaking deployments
 that have not opted in. Signing is **orthogonal** to the inline endpoint
-auth (`channel_config.auth`) — it layers replay protection on top of
+auth (`channel_config.auth`), it layers replay protection on top of
 whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
 OAuth2, or mTLS).
 
 Headers (sent by the client):
 
-- `X-Everruns-A2A-Timestamp` — unix-second timestamp of the request.
-- `X-Everruns-A2A-Signature` — `v0={hex}`, where `{hex}` is
+- `X-Everruns-A2A-Timestamp`, unix-second timestamp of the request.
+- `X-Everruns-A2A-Signature`, `v0={hex}`, where `{hex}` is
   `HMAC-SHA256(signing_secret, "v0:{timestamp}:{channel_scope}:{raw_body}")`.
   `channel_scope` is the literal string `{app_id}:{channel_id}` (the same
   values that appear in the request path). Including the scope inside the
@@ -484,7 +484,7 @@ check covers:
   that may legitimately repeat identical payloads (e.g. unkeyed
   notifications) must either include a per-request token in the body or
   bump the timestamp by at least one second between retries. Two
-  backends mirror the rate limiter — in-memory `HashMap` for
+  backends mirror the rate limiter, in-memory `HashMap` for
   single-instance/dev (with threshold-triggered TTL pruning) and Valkey
   `SET ... NX EX` for distributed deployments. The per-channel rate
   limiter runs **before** the nonce-record path, so rate-limited

@@ -29,7 +29,7 @@ stored.
 
 The placement test for a new entity is a single question:
 
-> What does the user do with it — talk to it, look at what it did, author it, register it
+> What does the user do with it, talk to it, look at what it did, author it, register it
 > once and reference it by name, or check the quality of something else with it?
 
 The first answer that is true names the group. If two answers feel true, the earlier one
@@ -41,7 +41,7 @@ authoring is the activity that brings the user to the page.
 | Group | Assertion |
 |---|---|
 | **Chats** | Where you talk. First, no section header, and it carries the new-chat affordance. |
-| **Operational** | What ran. Recordings and views over them — read, not authored. |
+| **Operational** | What ran. Recordings and views over them, read, not authored. |
 | **Building** | What you author. Editable definitions the user composes and owns. |
 | **Registries** | What you register once and reference by name. Mostly-write-once entries other things point at. |
 | **Quality** | How you check it. Instruments that judge or observe other entities. |
@@ -60,7 +60,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   authors what goes into it and curates it deliberately. The verb is authoring, so it
   sits with the things you compose.
 * **Reports is Operational, not Quality.** A report reads what ran. Quality is reserved
-  for instruments that judge — Evals and Observers.
+  for instruments that judge, Evals and Observers.
 * **Identities is Building, not Registries.** An identity is authored per agent
   deployment with credentials and scope decisions, not registered once and forgotten.
 
@@ -88,7 +88,7 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   [`session-header.tsx`](../../apps/ui/src/components/session/session-header.tsx) and
   gated on the session's capability features.
 * **Fork is what makes read-only acceptable.** The escape hatches from a recording are
-  Fork into chat, Open agent and Export — nothing else. Forking creates a *new* session
+  Fork into chat, Open agent and Export, nothing else. Forking creates a *new* session
   seeded with this one's conversation, workspace and durable storage
   ([forking sessions](../runtime-resources/forking-sessions.md)) and lands the user in it
   as a thread, so a recording can always be turned back into something you can talk to
@@ -102,28 +102,28 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
   section definitions in [`navigation.ts`](../../apps/ui/src/lib/navigation.ts) rather than
   taking it as a prop, so a page's group is never stated in two places that can disagree
   and moving a route between groups needs no page-level change. The group is a label, not a
-  link — there is no group index page to point at, and inventing one would add a hop nobody
+  link, there is no group index page to point at, and inventing one would add a hop nobody
   wants. Pages outside a labelled section (Chats, Settings) take no prefix.
 
 ## Dismissed options
 
 These were considered and rejected. They are recorded so they are not re-proposed.
 
-* **Agent is the product** — four groups, Compute / Knowledge / Tools / Delivery, framed
+* **Agent is the product**: four groups, Compute / Knowledge / Tools / Delivery, framed
   around what an agent is made of. Dismissed because the grouping needed defending on
   every new entity: each addition triggered a fresh argument about which of the four
   substances it was made of, which is exactly the cost the placement rule exists to
   remove.
-* **Use / Build modes** — a mode switch that shows either the operating surface or the
+* **Use / Build modes**: a mode switch that shows either the operating surface or the
   authoring surface. Dismissed because modes hide things, and the builder switches
   between using and building too often for the hidden half to stay out of the way.
   Search does not rescue a hidden item for a user who does not yet know its name.
-* **No navigation** — search and in-context links only. Dismissed because it kills
+* **No navigation**: search and in-context links only. Dismissed because it kills
   discovery for the first-time builder, who is the primary user. The idea survives in a
   narrower form: the inspector pattern is kept inside session detail, where the user
   already knows what they are looking at.
 
 ## See also
 
-* [Brand Specification](brand.md) — visual language the shell renders in.
-* [Documentation Site Specification](documentation.md) — the public documentation surface.
+* [Brand Specification](brand.md), visual language the shell renders in.
+* [Documentation Site Specification](documentation.md), the public documentation surface.

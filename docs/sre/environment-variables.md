@@ -206,7 +206,7 @@ VALKEY_URL=rediss://user:password@valkey.example.com:6380
 
 **Notes:**
 - When not set, rate limiting falls back to in-memory governor (per-instance, no coordination)
-- With N instances behind a load balancer, per-instance rate limiting allows N× the intended budget per IP — set `VALKEY_URL` for coordinated limits
+- With N instances behind a load balancer, per-instance rate limiting allows N× the intended budget per IP, set `VALKEY_URL` for coordinated limits
 - Accepts `redis://`, `rediss://` (TLS), `valkey://`, `valkeys://` (TLS) schemes
 - Fail-open: if Valkey is unreachable, requests are allowed (availability over strictness)
 - Only used by control-plane (server); workers don't need this variable
@@ -239,19 +239,19 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 
 Optional backend that offloads workspace-file and image *content bytes* to an
 S3-compatible object store while keeping all metadata in PostgreSQL. Everruns
-remains the proxy for every read/write — no presigned URLs are handed to
+remains the proxy for every read/write, no presigned URLs are handed to
 clients or workers. See [knowledge/runtime-resources/object-storage.md](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/object-storage.md).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `STORAGE_BLOB_BACKEND` | No | `db` | `db` keeps bytes inline in PostgreSQL (current behavior); `s3` offloads to object storage. |
-| `STORAGE_S3_BUCKET` | When `s3` | — | Target bucket name. |
-| `STORAGE_S3_REGION` | No | — | Bucket region / region label. |
-| `STORAGE_S3_ENDPOINT` | No | — | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS S3. |
-| `STORAGE_S3_ACCESS_KEY_ID` | No | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | No | — | Static secret key. |
+| `STORAGE_S3_BUCKET` | When `s3` |, | Target bucket name. |
+| `STORAGE_S3_REGION` | No |, | Bucket region / region label. |
+| `STORAGE_S3_ENDPOINT` | No |, | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS S3. |
+| `STORAGE_S3_ACCESS_KEY_ID` | No |, | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | No |, | Static secret key. |
 | `STORAGE_S3_PREFIX` | No | (empty) | Key prefix isolating multiple deployments within one bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS over HTTP). |
+| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only, e.g. SeaweedFS over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by SeaweedFS; harmless on AWS S3). |
 | `STORAGE_BLOB_GC_INTERVAL_SECONDS` | No | `21600` (6h) | Interval between blob GC sweeps that reclaim orphaned objects. `0` disables GC. Only effective with the `s3` backend (inline `db` storage has no orphans). |
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | No | `86400` (24h) | Safety grace period; orphaned objects younger than this are never deleted (avoids racing in-flight creates). |
@@ -300,7 +300,7 @@ NATS_URL=nats://nats1:4222,nats://nats2:4222,nats://nats3:4222
 ```
 
 **Notes:**
-- When not set, the system behaves exactly as before — all events persist to PG, SSE polls PG, task notifications use PG NOTIFY. Zero behavioral change.
+- When not set, the system behaves exactly as before, all events persist to PG, SSE polls PG, task notifications use PG NOTIFY. Zero behavioral change.
 - When set, enables two features:
   - **Ephemeral event delivery**: delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL and flow only through NATS JetStream. SSE streams subscribe to NATS instead of polling PG.
   - **Task notifications**: `task.available.{activity_type}` subjects replace PG NOTIFY for push-based worker notification. Lower latency (~1ms vs ~30ms), supports multi-instance deployments.

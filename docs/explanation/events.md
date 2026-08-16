@@ -57,15 +57,15 @@ Because events are the API contract, Everruns treats them like a public protocol
 | Add a new event type | yes |
 | Add an optional field to an existing event | yes |
 | Add a new enum value to an existing field | yes |
-| Remove a field | no — breaking change |
-| Change the type of a field | no — breaking change |
-| Reuse a sequence number | no — sequence numbers are atomic per session |
+| Remove a field | no, breaking change |
+| Change the type of a field | no, breaking change |
+| Reuse a sequence number | no, sequence numbers are atomic per session |
 
 Consumers must follow the dual: ignore unknown fields, ignore unknown event types, and treat optional fields as optional. The SDK clients do this automatically.
 
 ## What about volume?
 
-A long agent session can produce thousands of events — streaming deltas alone can be hundreds per turn. Two things keep this manageable:
+A long agent session can produce thousands of events, streaming deltas alone can be hundreds per turn. Two things keep this manageable:
 
 - **Delta events are batched** at ~100ms. The model produces tokens faster than that, but consumers don't need every token as a separate event.
 - **Sessions are bounded by intent, not duration.** Even busy sessions rarely exceed five-figure event counts. PostgreSQL handles that easily.
@@ -74,6 +74,6 @@ For very long-running sessions, [context compaction](/advanced/compaction/) redu
 
 ## Further reading
 
-- [Event Reference](/event-reference/) — every event type and payload.
-- [The agentic loop](/explanation/agentic-loop/) — what produces events during a turn.
-- [How-to: stream events](/how-to/stream-events/) — practical patterns.
+- [Event Reference](/event-reference/), every event type and payload.
+- [The agentic loop](/explanation/agentic-loop/), what produces events during a turn.
+- [How-to: stream events](/how-to/stream-events/), practical patterns.

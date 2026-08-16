@@ -25,5 +25,5 @@ Get the current date and time.
 
 ## See Also
 
-- [Schedules](/capabilities/session-schedules/) — schedule future tasks
+- [Schedules](/capabilities/session-schedules/), schedule future tasks
 - [Capabilities Overview](/capabilities/)

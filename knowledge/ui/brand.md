@@ -18,7 +18,7 @@ Brand guidelines for the Everruns project ensuring visual and verbal consistency
 
 1. **Name**: Everruns
 2. **Tagline**: "Durable Agentic Harness. Unstoppable agents."
-3. **Meaning**: A harness engine where AI agents **ever run** — continuous, uninterrupted, eternal execution
+3. **Meaning**: A harness engine where AI agents **ever run**: continuous, uninterrupted, eternal execution
 
 ### Logo
 
@@ -26,8 +26,8 @@ Three interlocking rings (Borromean rings pattern) representing **Durability × 
 
 #### Centering invariant (mathematically correct)
 
-**Every logo asset is centered on the rings' centroid** — the 3-fold rotational
-symmetry center, which is also the gold convergence point — **not** the bounding
+**Every logo asset is centered on the rings' centroid**: the 3-fold rotational
+symmetry center, which is also the gold convergence point, **not** the bounding
 box. The centroid is placed at the exact center of its frame so the mark stays
 balanced in circular and square crops (favicon, avatar, app icon, GitHub org
 avatar). Bounding-box ("optical") centering is **wrong** here: because two rings
@@ -84,11 +84,11 @@ up `18.09` to reach `256`. Exact gradient/stop values live in the source SVGs.)
 Any new logo instance must be **centroid-centered**: place the centroid at the
 center of its frame (or, in a composed layout, at the center of the intended
 area). When in doubt, copy `logo.svg` / `logo-mono.svg` and only adjust the
-surrounding canvas — never re-derive ring coordinates by bounding box.
+surrounding canvas, never re-derive ring coordinates by bounding box.
 
 ### Color Palette
 
-#### Primary Colors (Use sparingly — for accents only)
+#### Primary Colors (Use sparingly, for accents only)
 
 | Name | Hex | Usage |
 |------|-----|-------|
@@ -133,16 +133,33 @@ surrounding canvas — never re-derive ring coordinates by bounding box.
 
 1. **Confident**, not arrogant
 2. **Technical**, but accessible
-3. **Direct** — say it simply
-4. **Calm** — we handle chaos so you don't have to
+3. **Direct**: say it simply
+4. **Calm**: we handle chaos so you don't have to
+
+#### Writing mechanics
+
+Prose should read as written by a person, not a model. Applies to public docs
+(docs.everruns.com), `knowledge/`, `README`s, and UI copy.
+
+1. **No em-dashes (`—`).** Use a comma, colon, semicolon, parentheses, or two
+   sentences. Pick the punctuation that fits the clause. (Hyphens in compound
+   words and en-dashes in numeric ranges are fine.)
+2. **Avoid AI-tell coinages and filler.** Do not use "seam", "load-bearing",
+   "seamless(ly)", "delve", "tapestry", "realm" (as a metaphor), "testament",
+   "underscore(s)" (as a metaphor), "boasts", "elevate", "supercharge",
+   "cutting-edge", "game-changer", "meticulous(ly)", "pivotal", "unlock" (as a
+   metaphor), "empower", or "it's worth noting". Say the plain thing: name the
+   interface or extension point, a feature is enabled not "unlocked". Keep real
+   terms of art where they carry precise meaning, and reword the metaphor
+   everywhere else.
 
 ### Design Principles
 
-1. **Simple and clean** — no fancy colors, gradients only in logo
-2. **Grayscale dominant** — content-first, minimal distraction
-3. **Generous whitespace** — let content breathe
-4. **Mobile-first** — responsive, works on all devices
-5. **Fast** — minimal JavaScript, optimized images
+1. **Simple and clean**: no fancy colors, gradients only in logo
+2. **Grayscale dominant**: content-first, minimal distraction
+3. **Generous whitespace**: let content breathe
+4. **Mobile-first**: responsive, works on all devices
+5. **Fast**: minimal JavaScript, optimized images
 
 ### UI Design System (Slate)
 
@@ -153,10 +170,10 @@ The "Slate" design system defines the visual language for the Everruns UI applic
 The Slate design system has two co-located, machine-readable sources of truth in
 the UI app:
 
-- `apps/ui/src/app/design-system.css` — the **runtime** source of truth: CSS
+- `apps/ui/src/app/design-system.css`, the **runtime** source of truth: CSS
   custom properties, theme tokens, utilities, and animations consumed at build
   time. Downstream apps import this file rather than duplicating it.
-- `apps/ui/DESIGN.md` — the **agent- and human-readable** source of truth in the
+- `apps/ui/DESIGN.md`, the **agent- and human-readable** source of truth in the
   [DESIGN.md format](https://github.com/google-labs-code/design.md) (YAML token
   front matter + design-rationale prose). Its tokens mirror the light-mode values
   in `design-system.css`.
@@ -165,7 +182,7 @@ These two files MUST stay in sync: when changing a token in `design-system.css`,
 update `DESIGN.md` in the same change (and vice versa). Validate `DESIGN.md`
 structurally and against WCAG contrast with `pnpm run design:lint` (in
 `apps/ui`), which runs `@google/design.md lint`. This spec captures intent only;
-do not duplicate the full token tables here — read them from those two files.
+do not duplicate the full token tables here, read them from those two files.
 
 #### Corners & Radius
 
@@ -307,8 +324,8 @@ The canonical Figma file for the Everruns design system lives in the **Everruns*
 
 **File structure:**
 
-- **Page 1 — Component Library**: Color palette (13 tokens, light/dark), typography scale (7 levels), button variants (7 × 3 sizes), badge variants (5), inputs (text, search with ⌘K), card component, capability chips, navigation items (active/inactive), and Agent Card component.
-- **Page 2 — Agents Page**: Full desktop (1440px) recreation of the `/agents` route with sidebar, populated agent cards, and example agents section. Uses real Lucide SVG icons imported from `lucide-react`.
+- **Page 1, Component Library**: Color palette (13 tokens, light/dark), typography scale (7 levels), button variants (7 × 3 sizes), badge variants (5), inputs (text, search with ⌘K), card component, capability chips, navigation items (active/inactive), and Agent Card component.
+- **Page 2, Agents Page**: Full desktop (1440px) recreation of the `/agents` route with sidebar, populated agent cards, and example agents section. Uses real Lucide SVG icons imported from `lucide-react`.
 
 **Design tokens** are defined as Figma variables with Light and Dark modes in the "Slate Design System" collection, matching `apps/ui/src/app/globals.css`.
 

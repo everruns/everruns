@@ -19,13 +19,13 @@ A turn is capped at **10 iterations** by default. That cap exists for one reason
 
 ## Why parallel act?
 
-The model often emits several tool calls in one response — "read these three files" or "fetch these two URLs". Executing them sequentially would serialize independent work for no reason. Everruns runs all tool calls from a single reason step concurrently and only re-enters reason once every call has completed (or failed).
+The model often emits several tool calls in one response, "read these three files" or "fetch these two URLs". Executing them sequentially would serialize independent work for no reason. Everruns runs all tool calls from a single reason step concurrently and only re-enters reason once every call has completed (or failed).
 
 This means tool implementations cannot assume ordering between calls within a single act phase. If two tools must run in order, the model has to emit them across two turns.
 
 ## Execution phases
 
-When an assistant message includes tool calls, the model hasn't given a final answer yet — it's just narrating its plan. When the message has no tool calls, that's the final answer.
+When an assistant message includes tool calls, the model hasn't given a final answer yet, it's just narrating its plan. When the message has no tool calls, that's the final answer.
 
 Everruns labels each assistant message with an **execution phase**: `Commentary` (intermediate, before/between tool calls) or `FinalAnswer` (completed response). Two consumers care:
 
@@ -54,7 +54,7 @@ A naïve implementation of the loop would hold all turn state in worker memory. 
 
 Instead each step (reason, each tool call) is a separate durable task. The worker persists state after every step. If a worker crashes between steps, the control plane detects the missed heartbeat and re-queues the next task on a different worker. From the application's perspective: a brief delay, then the stream continues. No retry button required.
 
-This trade-off — paying for a database write on every step — is what makes Everruns a *durable* agentic harness rather than a thin LLM wrapper. See [Durable execution](/explanation/durable-execution/).
+This trade-off, paying for a database write on every step, is what makes Everruns a *durable* agentic harness rather than a thin LLM wrapper. See [Durable execution](/explanation/durable-execution/).
 
 ## What happens when the loop "gets stuck"
 

@@ -14,9 +14,9 @@ Citations attach **claim-level provenance** to assistant messages: a span of
 generated text is linked to the source that backs it, so a reader (or an eval)
 can trace a claim to its evidence and verify it. Citations are delivered as
 **capabilities**, not as a single built-in feature. Multiple, independently
-enable/disable-able citation capabilities can coexist on one agent — one for
+enable/disable-able citation capabilities can coexist on one agent, one for
 retrieval-backed answers, one for provider-native document citations, one for
-web results — and a separate guardrail capability verifies them. Because every
+web results, and a separate guardrail capability verifies them. Because every
 citation capability writes into the **same thin render contract** (an annotation
 on message text), the UI renders them uniformly and evals can hold the feed
 fixed while varying the verifier, or compare two feeds head-to-head.
@@ -33,7 +33,7 @@ and `search_knowledge` returns `KnowledgeSearchHit`
 each carrying a stable id (`kchk_…` / `kbe_…`), `source_uri`, `location`, and a
 `snippet`. But nothing ties those sources to the *specific sentence* the model
 wrote, nothing renders them as a linkable affordance (there is no citation UI
-component today), and provider-native citations (Anthropic's Citations API —
+component today), and provider-native citations (Anthropic's Citations API,
 the `citations` capability flag is detected at `crates/anthropic/src/driver.rs`
 but unused) are not wired in. The public OpenResponses API already models inline
 citations (`OutputText.annotations: Vec<UrlCitation>` in
@@ -60,7 +60,7 @@ the rendering contract and let each producer own its own representation.
 ### The narrow waist: one render contract, not one domain model
 
 The only shared type is a **rendering envelope** attached to generated text.
-Producers agree on "here is a text span and a thing to link to" — nothing about
+Producers agree on "here is a text span and a thing to link to", nothing about
 citation *semantics*.
 
 * A new optional field `annotations` on `TextContentPart`
@@ -73,7 +73,7 @@ citation *semantics*.
   * an `origin` = the producing capability id, so the UI and evals can attribute
     and filter each chip by feed;
   * a `source` reference: `uri`, optional `title`, optional `snippet`, optional
-    `location` (reusing the existing `location` JSONB shape — line/char/page/
+    `location` (reusing the existing `location` JSONB shape, line/char/page/
     block ranges);
   * an opaque `external_id` (`kchk_…` / `kbe_…` / url-hash / provider index) the
     waist never interprets;
@@ -87,20 +87,20 @@ surface maps onto it.
 ### Citation approaches are capabilities
 
 Each approach is a product-owned `Capability`, registered by the hosted
-platform catalog and implemented outside core using neutral trait seams. They
+platform catalog and implemented outside core using neutral trait boundaries. They
 coexist because they all emit into the annotation envelope, tagged by `origin`.
 
 | Capability | Feed | Emission mechanism |
 | --- | --- | --- |
 | `citation_retrieval` | knowledge-index / knowledge-base tool results | reads citations off `search_index` / `search_knowledge` results (`post_tool_exec_hooks`), then attaches spans via the post-generation annotation hook (below) by matching claims to retrieved snippets |
-| `citation_native` | Anthropic Citations API (`search_result` / `document` blocks) | the Anthropic driver emits `citations.enabled` source blocks and parses `citations_delta` / text-block `citations[]` back into annotations directly — token-free, pointer-guaranteed |
+| `citation_native` | Anthropic Citations API (`search_result` / `document` blocks) | the Anthropic driver emits `citations.enabled` source blocks and parses `citations_delta` / text-block `citations[]` back into annotations directly, token-free, pointer-guaranteed |
 | `citation_web` | provider server-side web search (`openrouter_server_tools`) | maps URL results into `source.uri` |
 
 Per-capability config lives in `config_schema()` / `validate_config()`; the UI
 renders it generically. `features()` returns `"citations"` so the citation UI
 surface only appears when some citation capability is active.
 
-### The post-generation annotation seam
+### The post-generation annotation boundary
 
 The reason atom already runs end-of-message guardrails on the fully-assembled
 assistant text before the `Message` is built
@@ -110,11 +110,11 @@ Those are **block/allow only**. Citations need a **mutating sibling in the same
 family**: a `PostGenerationAnnotationHook` that receives the assembled text (and
 an LLM-capable context) and returns `Vec<TextAnnotation>` to attach to the
 `TextContentPart` before the `output.message.completed` event is emitted. It
-runs alongside the existing guardrail seam and is assembled per-capability via a
+runs alongside the existing guardrail boundary and is assembled per-capability via a
 new trait method (mirroring `post_output_guardrails_with_config`). This is the
-one net-new platform seam; everything else reuses existing hooks.
+one net-new platform boundary; everything else reuses existing hooks.
 
-`citation_native` does not use this seam — its annotations arrive inline from the
+`citation_native` does not use this boundary, its annotations arrive inline from the
 provider stream and are attached during driver parsing (a new `LlmStreamEvent`
 variant carries citation deltas up to the reason atom).
 
@@ -122,11 +122,11 @@ variant carries citation deltas up to the reason atom).
 
 `citation_verification` is a standalone capability with `is_guardrail() = true`.
 It consumes annotations produced by **any** citation feed via the
-`CitationVerifier` seam (run once over the collected set after the feeds), and
+`CitationVerifier` boundary (run once over the collected set after the feeds), and
 stamps each annotation's `verified` verdict (`entailed` / `unsupported` /
-`uncertain`, with a score). Two modes (config `mode`): `heuristic` (default) —
+`uncertain`, with a score). Two modes (config `mode`): `heuristic` (default),
 deterministic lexical entailment (token overlap between the claim span and
-`source.snippet`), no model call; and `llm` — a utility-model NLI judgement
+`source.snippet`), no model call; and `llm`, a utility-model NLI judgement
 (claim = hypothesis, `source.snippet` = premise) that falls back to the
 heuristic when no utility model is available. Keeping it decoupled from the
 feeds means any feed can be paired with any verifier, and evals can vary one
@@ -164,13 +164,13 @@ Because each feed is a capability with the same output contract, a citation
 eval is two agents identical except for the enabled `citation_*` capability,
 scored on citation faithfulness and coverage. The `Scorer::CitationFaithful`
 rule (`crates/platform/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
-reads the `TextAnnotation`s off the final message — they already ride in the
-event log the runner fetches — and scores coverage (min citations) plus
+reads the `TextAnnotation`s off the final message, they already ride in the
+event log the runner fetches, and scores coverage (min citations) plus
 faithfulness (fraction verified `entailed`), so it composes with
 `citation_verification`. A second scorer, `Scorer::CitationJudged`, grades each
 cited claim/source pair with the org's model (reusing
 `observers::judge::JudgeClient`) so faithfulness is measured even when
-verification is off. This makes citation approaches directly benchmarkable — the
+verification is off. This makes citation approaches directly benchmarkable, the
 payoff of keeping the waist thin.
 
 ## Security and privacy
@@ -187,20 +187,20 @@ payoff of keeping the waist thin.
 
 ## Phasing
 
-1. **Waist** *(landed)* — `TextAnnotation` + optional `annotations` on
-   `TextContentPart`; the `PostGenerationAnnotationHook` seam in the reason
+1. **Waist** *(landed)*, `TextAnnotation` + optional `annotations` on
+   `TextContentPart`; the `PostGenerationAnnotationHook` boundary in the reason
    atom; regenerated TS types. No behavior change until a capability emits.
-2. **`citation_retrieval`** *(landed, backend)* — feed over existing
+2. **`citation_retrieval`** *(landed, backend)*, feed over existing
    `search_index` / `search_knowledge` with deterministic token-overlap
    alignment. No provider work.
-3. **`citation_verification`** *(landed)* — guardrail capability + verifier
-   seam (heuristic default, `llm` mode).
-4. **Eval scorers** *(landed)* — `CitationFaithful` (coverage + verdict-based
+3. **`citation_verification`** *(landed)*, guardrail capability + verifier
+   boundary (heuristic default, `llm` mode).
+4. **Eval scorers** *(landed)*, `CitationFaithful` (coverage + verdict-based
    faithfulness) and `CitationJudged` (LLM-judged faithfulness via the reused
    observer judge).
-5. **UI** *(landed)* — inline numbered chips + hover popover + source strip +
+5. **UI** *(landed)*, inline numbered chips + hover popover + source strip +
    verified badge, gated on the `citations` feature.
-6. **`citation_native`** *(deferred)* — Anthropic `search_result`/`document`
+6. **`citation_native`** *(deferred)*, Anthropic `search_result`/`document`
    blocks + `citations_delta` parsing + `LlmStreamEvent`/`LlmResponse` carriage.
    Proves the multi-capability, same-contract design with a provider-native
    feed. Deferred because its provider round-trip needs live-API validation and
@@ -210,7 +210,7 @@ payoff of keeping the waist thin.
 
 ## Open questions
 
-* Chip numbering across multiple concurrent feeds — global sequential vs.
+* Chip numbering across multiple concurrent feeds, global sequential vs.
   per-origin namespaced. Leaning global-sequential, deduped by `uri`.
 * Whether `citation_retrieval` should attach spans by deterministic string match
   only, or fall back to an LLM span-alignment pass when the model paraphrases

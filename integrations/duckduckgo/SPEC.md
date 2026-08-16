@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The DuckDuckGo capability integrates [DuckDuckGo Instant Answer API](https://api.duckduckgo.com/api) as an agent tool. Agents can get instant answers, abstracts (from Wikipedia and other sources), definitions, and related topics. Stateless — no per-resource state management needed.
+The DuckDuckGo capability integrates [DuckDuckGo Instant Answer API](https://api.duckduckgo.com/api) as an agent tool. Agents can get instant answers, abstracts (from Wikipedia and other sources), definitions, and related topics. Stateless, no per-resource state management needed.
 
 **Status**: Experimental (Dev only)
 
@@ -12,7 +12,7 @@ The DuckDuckGo capability integrates [DuckDuckGo Instant Answer API](https://api
 
 DuckDuckGo exposes one API layer:
 
-1. **Instant Answer API** (`https://api.duckduckgo.com/`) — get instant answers. Auth: none (free, no API key required).
+1. **Instant Answer API** (`https://api.duckduckgo.com/`), get instant answers. Auth: none (free, no API key required).
 
 ```
 ┌────────────────────────────────────────────┐
@@ -33,27 +33,27 @@ DuckDuckGo exposes one API layer:
 
 ### No API Key Required
 
-The DuckDuckGo Instant Answer API is free and requires no authentication. This makes it simpler than Brave Search — no connection resolver or session secrets needed. The tool does not require context (`requires_context() = false`).
+The DuckDuckGo Instant Answer API is free and requires no authentication. This makes it simpler than Brave Search, no connection resolver or session secrets needed. The tool does not require context (`requires_context() = false`).
 
 ## Tools
 
 ### duckduckgo_instant_answer
 
-Look up a DuckDuckGo Instant Answer. This is an instant-answer lookup (curated facts, definitions, abstracts), **not** a full web/SERP search. An empty result means DuckDuckGo has no curated instant answer for the query — it does **not** mean no matching web pages exist. For general web discovery agents should use a web-search or web-fetch tool.
+Look up a DuckDuckGo Instant Answer. This is an instant-answer lookup (curated facts, definitions, abstracts), **not** a full web/SERP search. An empty result means DuckDuckGo has no curated instant answer for the query, it does **not** mean no matching web pages exist. For general web discovery agents should use a web-search or web-fetch tool.
 
 - **Parameters**:
-  - `query`: string (required) — search query
-  - `no_html`: boolean (optional, default: true) — strip HTML from result text
+  - `query`: string (required), search query
+  - `no_html`: boolean (optional, default: true), strip HTML from result text
 - **Returns**: Object with available fields:
   - `query`: the original query
-  - `type`: response type — `article`, `disambiguation`, `category`, `name`, `exclusive`, or `nothing`
+  - `type`: response type, `article`, `disambiguation`, `category`, `name`, `exclusive`, or `nothing`
   - `heading`: topic heading (if available)
-  - `abstract`: `{ text, source, url }` — topic summary from Wikipedia or other sources
-  - `answer`: `{ text, type }` — direct answer (calculations, IP lookups, etc.)
-  - `definition`: `{ text, source, url }` — dictionary definition
-  - `related_topics`: array of `{ text, url }` — related topics (flattened from groups, max 10)
-  - `results`: array of `{ text, url }` — official/direct results
-  - `note`: present **only** when no instant answer was found — an explicit caveat that the empty result is not a definitive web-search result and matching web pages may still exist
+  - `abstract`: `{ text, source, url }`, topic summary from Wikipedia or other sources
+  - `answer`: `{ text, type }`, direct answer (calculations, IP lookups, etc.)
+  - `definition`: `{ text, source, url }`, dictionary definition
+  - `related_topics`: array of `{ text, url }`, related topics (flattened from groups, max 10)
+  - `results`: array of `{ text, url }`, official/direct results
+  - `note`: present **only** when no instant answer was found, an explicit caveat that the empty result is not a definitive web-search result and matching web pages may still exist
 
 ## Security
 
@@ -94,7 +94,7 @@ The API can return many related topics, especially for disambiguation queries. W
 
 ### Unit & mock tests
 
-Run without flags — no API key needed:
+Run without flags, no API key needed:
 
 ```bash
 cargo test -p everruns-integrations-duckduckgo

@@ -12,7 +12,7 @@ description: Prompt-only guidance for agents to reason about a user-requested in
 | **Included in** | Generic harness (default) |
 | **Dependencies** | None |
 
-Teaches the agent how to self-manage an **indicative** budget that the user mentions in conversation — for example, "you have $7" or "keep this under 20k tokens". The capability contributes prompt text only; it adds no tools and performs no enforcement.
+Teaches the agent how to self-manage an **indicative** budget that the user mentions in conversation, for example, "you have $7" or "keep this under 20k tokens". The capability contributes prompt text only; it adds no tools and performs no enforcement.
 
 For platform-enforced budgets (authoritative limits that pause or stop sessions automatically), use the separate [`budgeting`](/capabilities/budgeting/) capability.
 
@@ -23,7 +23,7 @@ For platform-enforced budgets (authoritative limits that pause or stop sessions 
 - The self-budget is an **agent-managed soft target**, not a hard limit.
 - Session usage metadata (exposed via `get_session_info`) is the source of truth for current spend.
 - The agent decides when to start tracking, when to re-check, and when to stop.
-- As the target tightens, the agent should adapt — shorter outputs, fewer retries, narrower exploration, fewer redundant tool calls.
+- As the target tightens, the agent should adapt, shorter outputs, fewer retries, narrower exploration, fewer redundant tool calls.
 - The agent avoids claiming exact cost certainty when only token counts or partial pricing are available.
 - The agent distinguishes between platform-enforced budgets and user-requested indicative budgets when reporting progress.
 
@@ -43,6 +43,6 @@ The two capabilities are non-conflicting and can run together. The Generic harne
 
 ## Related
 
-- [Budgeting](/capabilities/budgeting/) — platform-enforced budgets with the `check_budget` tool
-- [Session](/capabilities/session/) — provides `get_session_info`, the usage data source
-- [Budgets](/advanced/budgets/) — full budgeting system documentation
+- [Budgeting](/capabilities/budgeting/), platform-enforced budgets with the `check_budget` tool
+- [Session](/capabilities/session/), provides `get_session_info`, the usage data source
+- [Budgets](/advanced/budgets/), full budgeting system documentation

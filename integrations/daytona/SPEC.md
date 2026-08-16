@@ -12,8 +12,8 @@ The Daytona capability integrates [Daytona](https://www.daytona.io/) cloud-based
 
 Daytona exposes two API layers:
 
-1. **Management API** (`https://app.daytona.io/api`) — sandbox lifecycle (create, start, stop, delete). Auth: `Bearer <api_key>`.
-2. **Toolbox API** (`https://proxy.app.daytona.io/toolbox/{sandboxId}`) — in-sandbox operations (exec, files). Auth: `Bearer <api_key>`.
+1. **Management API** (`https://app.daytona.io/api`), sandbox lifecycle (create, start, stop, delete). Auth: `Bearer <api_key>`.
+2. **Toolbox API** (`https://proxy.app.daytona.io/toolbox/{sandboxId}`), in-sandbox operations (exec, files). Auth: `Bearer <api_key>`.
 
 ```
 ┌────────────────────────────────────────────┐
@@ -78,23 +78,23 @@ This avoids entering the key in chat (see TM-AGENT-016).
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
 | POST | `/sandbox` | Create sandbox | `{ name?, snapshot?, autoStopInterval, autoArchiveInterval, autoDeleteInterval, labels? }` |
-| GET | `/sandbox/{id}` | Get sandbox info | — |
-| GET | `/snapshots` | List available snapshots | — |
-| POST | `/sandbox/{id}/start` | Start sandbox | — |
-| POST | `/sandbox/{id}/stop` | Stop sandbox | — |
-| DELETE | `/sandbox/{id}` | Delete sandbox | — |
-| POST | `/sandbox/{id}/autostop/{minutes}` | Set auto-stop | — |
+| GET | `/sandbox/{id}` | Get sandbox info |, |
+| GET | `/snapshots` | List available snapshots |, |
+| POST | `/sandbox/{id}/start` | Start sandbox |, |
+| POST | `/sandbox/{id}/stop` | Stop sandbox |, |
+| DELETE | `/sandbox/{id}` | Delete sandbox |, |
+| POST | `/sandbox/{id}/autostop/{minutes}` | Set auto-stop |, |
 
 ### Toolbox API Endpoints (at `proxy.app.daytona.io/toolbox/{sandboxId}`)
 
 | Method | Path | Purpose | Request Body |
 |--------|------|---------|-------------|
 | POST | `/process/execute` | Execute command (sync) | `{ command, cwd?, timeout? }` |
-| GET | `/files?path=` | List directory | — |
-| GET | `/files/download?path=` | Download file | — |
+| GET | `/files?path=` | List directory |, |
+| GET | `/files/download?path=` | Download file |, |
 | POST | `/files/upload?path=` | Upload file (multipart) | multipart/form-data |
-| DELETE | `/files?path=` | Delete file/directory | — |
-| POST | `/files/folder?path=&mode=` | Create directory | — |
+| DELETE | `/files?path=` | Delete file/directory |, |
+| POST | `/files/folder?path=&mode=` | Create directory |, |
 
 ## Tools
 
@@ -103,10 +103,10 @@ This avoids entering the key in chat (see TM-AGENT-016).
 Creates a new sandbox. Optionally uploads files from session storage.
 
 - **Parameters**:
-  - `title`: string (optional) — sandbox name
-  - `size`: string (optional) — sandbox size tier: `small` (1 vCPU, 1 GiB RAM, 3 GiB disk), `medium` (2 vCPU, 4 GiB RAM, 8 GiB disk), `large` (4 vCPU, 8 GiB RAM, 10 GiB disk). Default: `small`.
-  - `snapshot`: string (optional) — explicit Daytona snapshot name (advanced, overrides `size`)
-  - `upload_files`: array (optional) — `[{session_path, sandbox_path}]`
+  - `title`: string (optional), sandbox name
+  - `size`: string (optional), sandbox size tier: `small` (1 vCPU, 1 GiB RAM, 3 GiB disk), `medium` (2 vCPU, 4 GiB RAM, 8 GiB disk), `large` (4 vCPU, 8 GiB RAM, 10 GiB disk). Default: `small`.
+  - `snapshot`: string (optional), explicit Daytona snapshot name (advanced, overrides `size`)
+  - `upload_files`: array (optional), `[{session_path, sandbox_path}]`
 - **Naming**: Everruns appends a 6-character lowercase alphanumeric suffix before sending the sandbox name to Daytona, and retries once with a fresh suffix if Daytona reports a name conflict. This preserves the readable prefix while making concurrent creates statistically unique.
 - **Returns**: `{ sandbox_id, name, requested_name, status, workspace_path }`
 - **Resource mapping**: The `size` parameter maps to a pre-built Daytona snapshot with the appropriate resources. The Daytona REST API does not support per-sandbox resource overrides for snapshot-based creation (see [daytonaio/daytona#2296](https://github.com/daytonaio/daytona/issues/2296)), so we use tiered snapshots instead.
@@ -117,9 +117,9 @@ Executes a shell command in a sandbox with real-time output streaming.
 
 - **Parameters**:
   - `sandbox_id`: string (required)
-  - `command`: string (required) — shell command
-  - `cwd`: string (optional) — working directory
-  - `timeout`: integer (optional) — timeout in ms (default: 300000)
+  - `command`: string (required), shell command
+  - `cwd`: string (optional), working directory
+  - `timeout`: integer (optional), timeout in ms (default: 300000)
 - **Returns**: `{ stdout, stderr, exit_code, success, cwd?, sandbox_id, truncated?, total_lines?, hint?, full_output?, output_files? }`
 - **Streaming**: Emits `tool.output.delta` events on the correct `stream` (`"stdout"` or `"stderr"`) as the command runs (polled every ~1s). The final tool result is the authoritative structured stdout/stderr snapshot.
 - **Recovery**: If a command times out or the shared exec shell is detected as dead, Everruns resets the Daytona exec session before returning the error so the next command can recover cleanly.
@@ -130,7 +130,7 @@ Executes a shell command in a sandbox with real-time output streaming.
 Read a file from sandbox filesystem.
 
 - **Parameters**: `sandbox_id` (required), `path` (required)
-- **Returns**: `{ path, content, encoding }` — `encoding` is `"text"` for UTF-8 text files or `"base64"` for binary files (auto-detected via null-byte heuristic)
+- **Returns**: `{ path, content, encoding }`, `encoding` is `"text"` for UTF-8 text files or `"base64"` for binary files (auto-detected via null-byte heuristic)
 
 ### daytona_write_file
 
@@ -179,9 +179,9 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
 
 - **Parameters**:
   - `sandbox_id`: string (required)
-  - `repo_url`: string (required) — supports `https://`, `git@`, or `user/repo` shorthand
-  - `branch`: string (optional) — branch to clone (defaults to default branch)
-  - `path`: string (optional) — destination inside sandbox (defaults to `/home/daytona/<owner>/<repo>`)
+  - `repo_url`: string (required), supports `https://`, `git@`, or `user/repo` shorthand
+  - `branch`: string (optional), branch to clone (defaults to default branch)
+  - `path`: string (optional), destination inside sandbox (defaults to `/home/daytona/<owner>/<repo>`)
 - **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
 
 **Implementation:** Runs `git clone` via the `exec` endpoint (`POST /process/execute`). For authenticated clones, the GitHub token is embedded in the HTTPS URL (`https://oauth2:<token>@<host>/...`) only when the URL host is on the trusted-host allowlist (see [GitHub Clone-Auth Host Allowlist](#github-clone-auth-host-allowlist)). Uses `--depth 1` for faster clones.
@@ -205,18 +205,18 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
 
 **Authentication flow:** Same token resolution as `daytona_git_clone` (connection_resolver → GITHUB_TOKEN fallback). Fails with actionable error if no credentials found.
 
-**Design:** Avoids per-verb tools (git_push, git_fetch, etc.). Instead, configures standard git credential store once, then agent uses `daytona_exec` for all git operations naturally. Token in `/tmp` — lost on sandbox stop, same trust boundary as sandbox exec access.
+**Design:** Avoids per-verb tools (git_push, git_fetch, etc.). Instead, configures standard git credential store once, then agent uses `daytona_exec` for all git operations naturally. Token in `/tmp`, lost on sandbox stop, same trust boundary as sandbox exec access.
 
 ### daytona_api_call (opt-in)
 
 Call any Daytona REST API endpoint directly. Enabled via capability config `enable_api_calling: true`.
 
 - **Parameters**:
-  - `method`: string (required) — `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`
-  - `path`: string (required) — API path. Management API: `/sandbox`, `/sandbox/{id}`, etc. Toolbox API: `/toolbox/{sandbox_id}/files`, `/toolbox/{sandbox_id}/process/execute`, etc.
-  - `body`: object (optional) — JSON request body for POST/PUT/PATCH
+  - `method`: string (required), `GET`, `POST`, `PUT`, `PATCH`, or `DELETE`
+  - `path`: string (required), API path. Management API: `/sandbox`, `/sandbox/{id}`, etc. Toolbox API: `/toolbox/{sandbox_id}/files`, `/toolbox/{sandbox_id}/process/execute`, etc.
+  - `body`: object (optional), JSON request body for POST/PUT/PATCH
 - **Returns**: Raw JSON response from the Daytona API
-- **Headers**: Authentication (`Bearer <api_key>`) and `Content-Type` headers are injected automatically — callers do NOT specify headers.
+- **Headers**: Authentication (`Bearer <api_key>`) and `Content-Type` headers are injected automatically, callers do NOT specify headers.
 - **Routing**: Paths starting with `/toolbox/{sandbox_id}/...` route to the Toolbox API proxy; all other paths route to the Management API.
 - **Resource tracking**: `POST /sandbox` requests get `everruns.*` ownership labels auto-injected into the body (same labels as `daytona_create_sandbox`). Responses register sandbox state and leased-resource lease. `DELETE /sandbox/{id}` releases state and lease. Other endpoints do not track resources.
 - **OpenAPI spec**: The Daytona OpenAPI spec is always mounted at `/daytona/openapi.yaml` in the session filesystem (regardless of `enable_api_calling`). The tool description references this path so agents can read it to discover endpoints.
@@ -233,7 +233,7 @@ To prevent the GitHub token from leaking to arbitrary hosts that contain the sub
   - `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS=github.acme.com,git.internal.corp`
 - **Matching rules:**
   - Case-insensitive exact match against the URL host (with optional `:port` stripped).
-  - **No** suffix or wildcard match. To allow `github.acme.com`, list it explicitly. `*.acme.com` patterns are deliberately not supported — they would re-introduce the lookalike-host attack class.
+  - **No** suffix or wildcard match. To allow `github.acme.com`, list it explicitly. `*.acme.com` patterns are deliberately not supported, they would re-introduce the lookalike-host attack class.
   - The default `github.com` is always present, even if the env var lists other hosts. A misconfigured env var cannot silently disable public-GitHub auth.
 - **Validation:** Entries containing `/`, `@`, whitespace, or `..` are rejected with a `tracing::warn!` and the rest of the list is honored. This protects against operator misconfig embedding a credential, scheme, or path-traversal target into the env var.
 - **Credentials helper:** `daytona_git_credentials` writes one `https://oauth2:<token>@<host>` entry per trusted host so all configured GitHub servers authenticate transparently.
@@ -272,7 +272,7 @@ Required labels:
 
 | Label key | Value | Source |
 |-----------|-------|--------|
-| `everruns` | `"true"` | Static — identifies Everruns-owned sandboxes |
+| `everruns` | `"true"` | Static, identifies Everruns-owned sandboxes |
 | `everruns.session_id` | Session ID | `context.session_id` |
 | `everruns.harness_id` | Harness ID | `session.harness_id` |
 | `everruns.org_id` | Organization ID | `session.organization_id` |
@@ -293,13 +293,13 @@ During exec, a background heartbeat task calls `touch_sandbox_lease` every 3 min
 
 ### Shell profile sourcing in exec
 
-Daytona sessions use a bare (non-login) shell. Unlike E2B and Deno — which spawn `bash -l -c` per command and get automatic profile sourcing — Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
+Daytona sessions use a bare (non-login) shell. Unlike E2B and Deno, which spawn `bash -l -c` per command and get automatic profile sourcing, Daytona's persistent session never sources login profiles. Tools installed mid-session (e.g. `rustup` writing `~/.cargo/env`, `nvm` writing `~/.nvm/nvm.sh`) aren't visible in `PATH` on subsequent commands.
 
 Three fixes were considered:
 
-1. **Source on session creation** — Only runs once; installs after session creation still broken. Rejected.
-2. **Wrap every command with preamble** — Sources `~/.profile`, `~/.cargo/env`, `~/.nvm/nvm.sh` before each command. ~2ms overhead, handles mid-session installs. **Chosen.** Deliberately excludes `~/.bashrc` — most distros guard it with an interactive-mode check (`case $-`) that returns early in non-interactive exec contexts.
-3. **Login shell for session** — Depends on Daytona API support; same limitation as (1) for mid-session installs. Rejected.
+1. **Source on session creation**: Only runs once; installs after session creation still broken. Rejected.
+2. **Wrap every command with preamble**: Sources `~/.profile`, `~/.cargo/env`, `~/.nvm/nvm.sh` before each command. ~2ms overhead, handles mid-session installs. **Chosen.** Deliberately excludes `~/.bashrc`, most distros guard it with an interactive-mode check (`case $-`) that returns early in non-interactive exec contexts.
+3. **Login shell for session**: Depends on Daytona API support; same limitation as (1) for mid-session installs. Rejected.
 
 The preamble redirects both stdout and stderr to `/dev/null` on each source to suppress noise (motd, banners, etc.). The loop variable (`__f`) is `unset` after sourcing to avoid polluting the command's environment.
 
@@ -319,7 +319,7 @@ Files are managed through the Toolbox API proxy (`proxy.app.daytona.io`). Upload
 
 Git credentials for push/pull/fetch are configured by writing a `git credential store` file (`/tmp/.git-credentials`) inside the sandbox. This is the same mechanism used by CI systems (GitHub Actions, etc.).
 
-**Considered and dismissed: per-verb git tools.** Creating `daytona_git_push`, `daytona_git_fetch`, `daytona_git_pull`, etc. would duplicate `daytona_exec` with credential injection. Doesn't scale — every new git operation needs a new tool.
+**Considered and dismissed: per-verb git tools.** Creating `daytona_git_push`, `daytona_git_fetch`, `daytona_git_pull`, etc. would duplicate `daytona_exec` with credential injection. Doesn't scale, every new git operation needs a new tool.
 
 **Considered and dismissed: magic git detection in `daytona_exec`.** Auto-detecting git commands and injecting credentials transparently. Fragile heuristic, surprising behavior, hard to debug.
 
@@ -331,7 +331,7 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 **Why capability config (not a separate capability):** API calling reuses the same Daytona API key, client, and resource tracking. A separate capability would duplicate connection resolution and state management. `tools_with_config` is the established pattern (see `WebFetchCapability`).
 
-**OpenAPI spec mount:** The spec is always mounted at `/daytona/openapi.yaml` (regardless of config) to avoid needing a `mounts_with_config` mechanism that doesn't exist yet. The spec file is inert documentation — mounting it has zero cost when the tool isn't enabled.
+**OpenAPI spec mount:** The spec is always mounted at `/daytona/openapi.yaml` (regardless of config) to avoid needing a `mounts_with_config` mechanism that doesn't exist yet. The spec file is inert documentation, mounting it has zero cost when the tool isn't enabled.
 
 **No header control:** The tool does not accept a `headers` parameter. Authentication and content-type are controlled internally to prevent credential leakage or header injection.
 
@@ -343,19 +343,19 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
 
-**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](../../knowledge/foundations/architecture.md#integration-plugin-force-linking).
+**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;`, otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](../../knowledge/foundations/architecture.md#integration-plugin-force-linking).
 
 | File | Purpose |
 |------|---------|
 | `src/lib.rs` | Plugin registration, constants, `DaytonaCapability` impl |
 | `src/client.rs` | `DaytonaClient` HTTP client (management + toolbox APIs), URL encoding |
-| `src/connection.rs` | `DaytonaConnectionProvider` — API-key connection plugin |
+| `src/connection.rs` | `DaytonaConnectionProvider`, API-key connection plugin |
 | `src/openapi_spec.rs` | Embedded Daytona OpenAPI spec (YAML) for session filesystem mount |
 | `src/state.rs` | API types (`SandboxInfo`, `ExecResult`, `SandboxState`), session state helpers |
 | `src/tools.rs` | 11 tool implementations (`DaytonaCreateSandboxTool`, `DaytonaApiCallTool`, etc.) |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration |
 | `tests/tool_integration.rs` | Integration tests: tool execution + wiremock Daytona API |
-| `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY` — see `knowledge/integrations/integrations.md`) |
+| `tests/live_api_test.rs` | Live API integration tests (feature-gated: `daytona-live-tests`; fail-closed on missing `DAYTONA_API_KEY`, see `knowledge/integrations/integrations.md`) |
 
 Change-scoped CI keeps Daytona live coverage off `pull_request`: `.github/workflows/ci.yml` runs this job only on pushes to `main` when `integrations/daytona/**` changes. The weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml` reruns the same live test without path filters so shared regressions in crates, harness code, or dependencies still surface.
 

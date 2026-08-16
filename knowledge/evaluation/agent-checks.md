@@ -26,7 +26,7 @@ tags:
     one-click action. Evals stay user-curated; health checks are
     system-generated and disposable.
   - Findings are computed per resolved config (after harness/capability layer
-    merge) — cross-layer visibility is our structural advantage over
+    merge), cross-layer visibility is our structural advantage over
     prompt-only linters. Cached by agent version config_hash.
   - Extensibility (org-defined rules) is deliberately last: ship built-in
     rules first, learn which ones users mute, then design the custom-rule
@@ -57,7 +57,7 @@ The atomic unit of feedback, analogous to an eval `Score`.
 | Field | Description |
 |-------|-------------|
 | `rule_id` | Stable identifier, e.g. `prompt.contradiction`, `tools.unknown_reference` |
-| `severity` | `warning`, `info`, `suggestion` (no `error` — advisory only) |
+| `severity` | `warning`, `info`, `suggestion` (no `error`, advisory only) |
 | `category` | `structure`, `completeness`, `effectiveness`, `safety`, `cost` |
 | `message` | Human-readable explanation of the problem and why it matters |
 | `location` | Optional pointer: config field, or prompt span (byte offsets into the authored system prompt) |
@@ -66,25 +66,25 @@ The atomic unit of feedback, analogous to an eval `Score`.
 
 ### Check tiers
 
-1. **Deterministic rules** (tier 1) — pure Rust, run synchronously as part of
+1. **Deterministic rules** (tier 1), pure Rust, run synchronously as part of
    agent preview. Free and instant. Examples: prompt references a tool absent
    from the resolved tool list (and the inverse: enabled capability never
    mentioned), near-duplicate instruction blocks, keyword-class conflicts
    ("be brief" vs "be exhaustive"), agent prompt restating harness/capability
    contributions, over-permissive `network_access`, unused `{{variables}}`,
    prompt length relative to model context.
-2. **LLM checkers** (tier 2) — narrow single-purpose analysis prompts run
+2. **LLM checkers** (tier 2), narrow single-purpose analysis prompts run
    against the resolved config via the utility LLM service: contradiction and
    interference detection across layers, ambiguity/vagueness, redundancy
    beyond string matching, structure quality, missing per-tool guidance.
    On-demand ("Analyze" action), asynchronous, seconds. Each checker is
    narrowly scoped (contradiction checker, structure checker, ...) rather
-   than one mega-prompt — scoped checkers produce higher-precision findings.
-3. **Health checks** (tier 3) — behavioral mini-evals: the system synthesizes
+   than one mega-prompt, scoped checkers produce higher-precision findings.
+3. **Health checks** (tier 3), behavioral mini-evals: the system synthesizes
    a small set of smoke test cases from the agent's own description, prompt,
    and capabilities, executes them as real sessions through the existing eval
    runner machinery, and scores the results. On-demand ("Health check"
-   action), minutes, costs real model usage — the UI states this before
+   action), minutes, costs real model usage, the UI states this before
    running.
 
 ### Check run
@@ -99,7 +99,7 @@ Health check runs reuse the durable execution and bounded-concurrency
 machinery of eval runs but are not `Eval` entities: they do not appear in
 `/evals`, are not user-editable collections, and their generated cases are
 disposable. Sessions created by health checks are tagged for filtering, and
-case results link to the real sessions for debugging — same debuggability
+case results link to the real sessions for debugging, same debuggability
 contract as evals.
 
 ## Phases
@@ -141,7 +141,7 @@ Decided ordering (Option A → C → B from the design review):
    even when the server has not restarted. Together these guarantee a run never
    shows a perpetual `running` spinner.
 4. **Extensible rules.** Org-level rule registry: per-rule enable/severity
-   config for built-ins, plus two custom rule types — declarative
+   config for built-ins, plus two custom rule types, declarative
    (keyword/regex/structural, no code) and natural-language rubrics judged by
    the utility LLM. Admin-managed.
 
@@ -164,9 +164,9 @@ Decided ordering (Option A → C → B from the design review):
 
 - No enforcement: findings never gate save/publish/version-creation.
 - No continuous background analysis while typing.
-- No public ad hoc LLM endpoint — tier 2 goes through the internal utility
+- No public ad hoc LLM endpoint, tier 2 goes through the internal utility
   LLM service only.
-- No user-facing dataset management for health checks — curated behavioral
+- No user-facing dataset management for health checks, curated behavioral
   testing is what Evals are for (`knowledge/evaluation/evals.md`).
 
 ## Relationship to existing systems

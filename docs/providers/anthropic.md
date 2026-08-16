@@ -15,7 +15,7 @@ and reasoning onto the Anthropic wire format.
 
 - **Claude Messages API** streaming.
 - **Tool use** mapped to provider-neutral Everruns tools.
-- **Extended thinking** — adaptive thinking on recent Claude families and
+- **Extended thinking**: adaptive thinking on recent Claude families and
   budget-based thinking on older ones, with the chain-of-thought signature
   preserved across multi-turn conversations.
 - **Prompt caching** via bounded `cache_control` breakpoints on stable, high-value

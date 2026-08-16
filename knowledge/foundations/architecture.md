@@ -57,7 +57,7 @@ graph TB
 
 Events are delivered to SSE clients via the `EventDelivery` abstraction (`crates/server/src/event_delivery.rs`), which follows the same enum dispatch pattern as `StorageBackend`:
 
-- **InMemory** (dev mode): Partitioned `broadcast::channel` — zero external dependencies
+- **InMemory** (dev mode): Partitioned `broadcast::channel`, zero external dependencies
 - **NATS JetStream** (production): Per-session subjects with short-term retention for replay
 
 Events are classified as **ephemeral** or **durable**:
@@ -104,7 +104,7 @@ Production event routing therefore prefers:
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
-   - `session-services/` → `everruns-session-services` - Backend-neutral session mutation and storage capability seam shared by host and platform
+   - `session-services/` → `everruns-session-services` - Backend-neutral session mutation and storage capability boundary shared by host and platform
    - `platform/` → `everruns-platform` - Hosted product records, services, and capability implementations
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
    - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
@@ -244,7 +244,7 @@ See [knowledge/foundations/runtime.md](runtime.md) for the public embedded runti
 
 ### Integration Plugin Force-Linking
 
-Integration crates (`docker`, `daytona`, `e2b`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections — if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
+Integration crates (`docker`, `daytona`, `e2b`) register capabilities at startup via `inventory::submit!`. The `inventory` crate uses linker sections, if the crate is not explicitly referenced, Rust's linker will optimize it out and the `submit!` registrations silently disappear.
 
 **Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must have `extern crate` statements for every integration crate** (see those files for the current list).
 
@@ -253,7 +253,7 @@ Adding a new integration crate requires:
 2. Add it as a dependency in `crates/server/Cargo.toml` and `crates/worker/Cargo.toml`
 3. Add `extern crate` to both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs`
 
-Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error — the integration simply does not appear at runtime.
+Without step 3, the crate compiles but its capabilities are never registered. There is no compile-time error, the integration simply does not appear at runtime.
 
 Important: inventory discovery is now confined to default presets. Embedders can bypass those presets entirely by constructing `HostComposition` directly.
 
@@ -261,7 +261,7 @@ Important: inventory discovery is now confined to default presets. Embedders can
 
 The server binary (`main.rs`) uses `ServerAppBuilder` from the library crate. The builder pattern enables SaaS wrappers and embedders to compose their own binary with custom auth, routes, event listeners, background tasks, and a custom `HostComposition`.
 
-See `crates/server/src/app_builder.rs` for `ServerAppBuilder` — composable builder with `auth()`, `host_composition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
+See `crates/server/src/app_builder.rs` for `ServerAppBuilder`, composable builder with `auth()`, `host_composition()`, `routes()`, and `run()` methods. Key modules in lib crate: `app_builder`, `server` (config + router), `seed` (database seeding), `grpc_service` (WorkerService), `platform` (default OSS preset).
 
 The worker binary mirrors this pattern through `WorkerAppBuilder` in `crates/worker/src/app_builder.rs`, which also accepts `host_composition()`.
 
@@ -331,7 +331,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
 5. **Security** (see `knowledge/security/threat-model.md` TM-DURABLE-002):
    - Bearer token auth (`WORKER_GRPC_AUTH_TOKEN`) required in production
    - Optional mutual TLS (mTLS) via `WORKER_GRPC_TLS_*` env vars for transport encryption + identity verification
-   - Workers are intentionally cross-org — they process tasks from any org's queue; org-scoping enforced at HTTP API layer
+   - Workers are intentionally cross-org, they process tasks from any org's queue; org-scoping enforced at HTTP API layer
 
 ### Worker Communication Flow
 
@@ -538,7 +538,7 @@ Capabilities are modular functionality units that extend Agent behavior. See [kn
 3. **CI/CD**: GitHub Actions for format, lint, test, smoke test, Docker build
 4. **License Compliance**: cargo-deny for dependency license checking
 5. **Secrets Management**: [Doppler](https://www.doppler.com/) for development secrets (API keys, tokens). Project: `everruns-dev`, config: `dev`. Use `doppler run -- <command>` to inject secrets into processes.
-6. **Valkey**: Redis-compatible key-value store (Linux Foundation fork) for distributed rate limiting across control-plane instances. Optional — when `VALKEY_URL` is not set, rate limiting falls back to in-memory governor (per-instance). See `crates/server/src/valkey.rs`.
+6. **Valkey**: Redis-compatible key-value store (Linux Foundation fork) for distributed rate limiting across control-plane instances. Optional, when `VALKEY_URL` is not set, rate limiting falls back to in-memory governor (per-instance). See `crates/server/src/valkey.rs`.
 
 ### Development Mode (DEV_MODE)
 
@@ -586,9 +586,9 @@ See [docs/sre/environment-variables.md](../../docs/sre/environment-variables.md)
 Observability is decoupled from business logic through the `EventListener` trait (see `crates/core/src/event_listeners.rs`).
 
 **Key components**:
-- `EventListener` trait — Interface for observability backends
-- `OtelEventListener` (`crates/observability/src/otel.rs`) — Generates OTel spans from events
-- `EventService` (`server/src/services/event.rs`) — Notifies listeners after event persistence
+- `EventListener` trait, Interface for observability backends
+- `OtelEventListener` (`crates/observability/src/otel.rs`), Generates OTel spans from events
+- `EventService` (`server/src/services/event.rs`), Notifies listeners after event persistence
 
 **Event-to-span mapping** (following gen-ai semantic conventions):
 - `llm.generation` → `chat {model}` span with tokens, finish_reasons, response_id

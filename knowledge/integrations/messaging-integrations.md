@@ -83,13 +83,13 @@ Every messaging integration must ship with the following artifacts. Use Slack as
 | **Delivery adapter** | Implement `ChannelDeliveryAdapter` trait for outbound message delivery. Handle retry with exponential backoff. |
 | **Signing/auth verification** | Platform-specific request authentication (e.g. HMAC signing secret for Slack, Ed25519 for Discord). |
 | **Unit tests** | Webhook parsing, signature verification, session tag construction, delivery text extraction, bot message filtering. |
-| **Integration tests** | `crates/server/tests/{platform}_integration_test.rs` — webhook→session→message flows against in-memory storage. |
+| **Integration tests** | `crates/server/tests/{platform}_integration_test.rs`, webhook→session→message flows against in-memory storage. |
 | **Live API tests** | Feature-gated tests against real platform API. Doppler credentials: `TEST_{PLATFORM}_*` vars. |
 | **CI: unit tests** | Tests run in the `unit-test` job. |
 | **CI: change detection** | Path filter for `{platform}` files. |
 | **CI: live-test job** | Dedicated `{platform}-live-test` job, conditional on change detection + `push` event. |
-| **User docs** | `docs/integrations/{platform}.md` — setup guide, scopes, session strategies, reply modes. |
-| **UI test case** | `test_cases/ui/{platform}_app/TC001_*.md` — manual test for app creation, webhook verification, message flow. |
+| **User docs** | `docs/integrations/{platform}.md`, setup guide, scopes, session strategies, reply modes. |
+| **UI test case** | `test_cases/ui/{platform}_app/TC001_*.md`, manual test for app creation, webhook verification, message flow. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering platform-specific threats (signing bypass, bot loops, replay). |
 | **Startup recovery** | Re-register active deliveries after server restart (query sessions with `{platform}:*` tags). |
 | **DEV_MODE fallback** | Polling-based delivery when EventNotificationBroadcaster is unavailable (in-memory mode). |
@@ -147,14 +147,14 @@ Channel adapters should optionally contribute platform-specific tools via the `C
 | Discord | `create_thread`, `add_reaction`, `pin_message` |
 | Teams | `send_adaptive_card`, `create_tab` |
 
-The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no adapter uses it yet. Tools would receive platform context via `ToolContext` (session access → channel config lookup). **Not implementing now** — recorded as a known gap for future work.
+The plumbing exists (`Capability::tools()` returns `Vec<Box<dyn Tool>>`), but no adapter uses it yet. Tools would receive platform context via `ToolContext` (session access → channel config lookup). **Not implementing now**: recorded as a known gap for future work.
 
 ## Files
 
-- `crates/core/src/channel.rs` — All types and traits defined here
-- `crates/platform/src/app.rs` — `SlackChannelConfig`, `SessionStrategy` (→ `SessionRoutingStrategy`), `SlackReplyMode` (→ `ChannelReplyMode`)
-- `crates/core/src/progress_reporting.rs` — Generalized tag handling, backward compat
-- `crates/core/src/lib.rs` — Module registration and re-exports
-- `crates/server/src/messaging/` — Platform-specific webhook handlers and delivery adapters
-- `crates/server/specs/slack-integration.md` — Slack-specific implementation spec
-- `knowledge/integrations/messaging-integrations.md` — This spec
+- `crates/core/src/channel.rs`, All types and traits defined here
+- `crates/platform/src/app.rs`, `SlackChannelConfig`, `SessionStrategy` (→ `SessionRoutingStrategy`), `SlackReplyMode` (→ `ChannelReplyMode`)
+- `crates/core/src/progress_reporting.rs`, Generalized tag handling, backward compat
+- `crates/core/src/lib.rs`, Module registration and re-exports
+- `crates/server/src/messaging/`, Platform-specific webhook handlers and delivery adapters
+- `crates/server/specs/slack-integration.md`, Slack-specific implementation spec
+- `knowledge/integrations/messaging-integrations.md`, This spec

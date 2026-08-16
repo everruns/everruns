@@ -65,10 +65,10 @@ the route, not wrapped in a `semantic` object.
 
 Routers follow the standard building-block lifecycle from `knowledge/foundations/models.md`:
 
-* `active` — assignable, editable, listed by default.
-* `archived` — read-only, hidden from default lists, not assignable to new
+* `active`, assignable, editable, listed by default.
+* `archived`, read-only, hidden from default lists, not assignable to new
   bindings; existing bindings continue resolving.
-* `deleted` — tombstone; detail/list APIs return 404 except for historical
+* `deleted`, tombstone; detail/list APIs return 404 except for historical
   references.
 
 Routes and candidates live as child rows under a router. Editing a route or
@@ -170,7 +170,7 @@ struct ResolvedModelInvocation {
 Resolution order at any binding site:
 
 1. If the binding has a concrete `default_model_id`, return it directly with
-   no overrides — current behavior, preserved for backward compatibility.
+   no overrides, current behavior, preserved for backward compatibility.
 2. If the binding has a `model_router_id`, look up the router's route. The
    route key is determined by the caller (initial implementation: a single
    `base` route). Apply the strategy to candidates with the binding's
@@ -190,7 +190,7 @@ REST endpoints (full surface ships in the CRUD slice):
 * `POST   /v1/model-routers`
 * `GET    /v1/model-routers/{router_id}`
 * `PATCH  /v1/model-routers/{router_id}`
-* `DELETE /v1/model-routers/{router_id}` — archive / delete per lifecycle
+* `DELETE /v1/model-routers/{router_id}`, archive / delete per lifecycle
 * `GET    /v1/model-routers/{router_id}/routes`
 * `POST   /v1/model-routers/{router_id}/routes`
 * `PATCH  /v1/model-routers/{router_id}/routes/{route_id}`
@@ -198,7 +198,7 @@ REST endpoints (full surface ships in the CRUD slice):
 * `POST   /v1/model-routers/{router_id}/routes/{route_id}/candidates`
 * `PATCH  /v1/model-routers/{router_id}/routes/{route_id}/candidates/{candidate_id}`
 * `DELETE /v1/model-routers/{router_id}/routes/{route_id}/candidates/{candidate_id}`
-* `POST   /v1/model-routers/{router_id}/preview` — given `params`, return the resolved `model_id` and overrides per route (no LLM call).
+* `POST   /v1/model-routers/{router_id}/preview`, given `params`, return the resolved `model_id` and overrides per route (no LLM call).
 
 Existing model-binding endpoints on harnesses/agents/sessions accept either a
 concrete `model_id` or a `model_router_id` + optional `params`. Server-side
@@ -261,7 +261,7 @@ The first PR delivering this spec lands:
   if a binding-site needs to surface them externally.
 * Migration `026_model_routers.sql` (tables `model_routers`,
   `model_router_routes`, `model_router_candidates`).
-* `crates/core/src/model_router.rs` — entity types, strategy enum, candidate
+* `crates/core/src/model_router.rs`, entity types, strategy enum, candidate
   shape, structural validation (route key format, strategy parse, candidate
   must reference a model, weight non-negative).
 * CHANGELOG entry.

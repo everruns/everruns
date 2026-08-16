@@ -21,23 +21,23 @@ interface NetworkAccessList {
 ```
 
 **Pattern format:**
-- `example.com` — exact domain match
-- `*.example.com` — domain and all subdomains
-- `https://example.com/api/` — URL prefix match (scheme + host + path)
+- `example.com`, exact domain match
+- `*.example.com`, domain and all subdomains
+- `https://example.com/api/`, URL prefix match (scheme + host + path)
 
 Matching is case-insensitive for domains. Blocked takes precedence over allowed.
 
 ## Layer Model
 
 `NetworkAccessList` is a top-level field on **Harness**, **Agent**, and **Session**.
-Not per-capability config — it's a cross-cutting security concern.
+Not per-capability config, it's a cross-cutting security concern.
 
 ### Merge Semantics (each layer can only narrow, never widen)
 
 | Field | Merge Rule | Rationale |
 |-------|-----------|-----------|
-| `allowed` | **Intersection** — child entries kept only if they match a parent pattern | Child cannot grant access parent didn't allow |
-| `blocked` | **Union** — all blocked patterns from all layers combined | Child cannot un-block a parent's block |
+| `allowed` | **Intersection**: child entries kept only if they match a parent pattern | Child cannot grant access parent didn't allow |
+| `blocked` | **Union**: all blocked patterns from all layers combined | Child cannot un-block a parent's block |
 
 If no layer sets `allowed`, all hosts are permitted (open by default).
 If a child's `allowed` list is empty, it inherits the parent's list.
@@ -79,7 +79,7 @@ Outbound HTTP for `bashkit_shell` is opt-in via per-capability config
 `{"enable_http": true}` and follows the same path as `web_fetch`: bashkit's
 `HttpTransport` is backed by `EgressService`
 (`integrations/bashkit/src/egress_transport.rs`), which
-receives `ToolContext.network_access` and enforces it on every hop —
+receives `ToolContext.network_access` and enforces it on every hop,
 curl/wget follow redirects manually, so redirect targets are re-checked too.
 With the config flag off (the default) or no egress service in context, the
 interpreter has no network path at all (TM-BASH-003).

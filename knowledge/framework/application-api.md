@@ -85,7 +85,7 @@ intentionally stricter than the requirement for a complete execution host.
 The default facade and `everruns-host --no-default-features` graphs do not
 contain `everruns-platform`, Reqwest, Rustls, or Hyper. The small shared
 `everruns-session-services` crate owns the session mutation/storage capability
-seam below host and platform; hosted product services remain opt-in through
+boundary below host and platform; hosted product services remain opt-in through
 platform-enabled product composition.
 
 An advanced system integrator may combine `everruns` with `everruns-host` and

@@ -16,12 +16,12 @@ Adopted from the current [`everruns/landing` diagram specification](https://gith
 
 - **File format**: SVG (rendered), Mermaid `.mmd` (source of truth)
 - **Location**: Co-locate the `.svg` and `.mmd` in the **same directory as the markdown page that embeds the diagram** (e.g. `docs/advanced/physical-architecture.md` + `docs/advanced/physical-architecture.svg` + `docs/advanced/physical-architecture.mmd`).
-- **Embedding**: `![alt text](./<diagram-name>.svg)` in markdown — relative to the page.
+- **Embedding**: `![alt text](./<diagram-name>.svg)` in markdown, relative to the page.
 - **Naming**: When a diagram is used by exactly one page, name it after the page (`<page-slug>.svg`). When a single page has multiple diagrams, use `<page-slug>-<short-suffix>.svg`.
 - **Shared diagrams**: A diagram referenced by multiple pages may live alongside its primary owner page; secondary pages embed it with a relative path.
 - **Legacy `docs/images/<category>/`** paths remain valid for existing diagrams and are not subject to mass migration, but new diagrams must follow the co-located convention.
 
-Every SVG diagram **must** have a co-located `.mmd` file containing the Mermaid source that describes the same content. The `.mmd` file is the **source of truth** for the diagram's information architecture — entity names, relationships, and flow. The hand-authored SVG is the rendered artifact that follows this visual spec. When updating a diagram, update the `.mmd` first, then regenerate/update the SVG to match.
+Every SVG diagram **must** have a co-located `.mmd` file containing the Mermaid source that describes the same content. The `.mmd` file is the **source of truth** for the diagram's information architecture, entity names, relationships, and flow. The hand-authored SVG is the rendered artifact that follows this visual spec. When updating a diagram, update the `.mmd` first, then regenerate/update the SVG to match.
 
 This separation means:
 - `.mmd` captures **what** the diagram shows (machine-readable, diffable, easy to update)
@@ -32,7 +32,7 @@ This separation means:
 - **Width**: 800px (standard). Use `viewBox` so the SVG scales responsively.
 - **Height**: Varies. Keep it tight - no empty space at the bottom. Typical range 300-500px.
 - **Fill**: Set `fill="none"` on the root `<svg>` element. Add an explicit white background rect.
-- **Root element**: Use `viewBox` only. Do **not** set `width` or `height` attributes on the root `<svg>` — let the browser scale via `viewBox`.
+- **Root element**: Use `viewBox` only. Do **not** set `width` or `height` attributes on the root `<svg>`, let the browser scale via `viewBox`.
 - **No outer border**: The white background rect must have no stroke. The diagram should blend with the page.
 
 ## Colors
@@ -173,13 +173,13 @@ Copy-paste these snippets when constructing a diagram.
 
 These are the most common layout mistakes. Check each one before finishing a diagram.
 
-1. **Route arrows around boxes, not through them.** If an arrow from A to C must pass near B, use an L-shaped right-angle path that goes around B — never a straight line that crosses B's rect. Route via the left/right/bottom edge of the obstacle.
+1. **Route arrows around boxes, not through them.** If an arrow from A to C must pass near B, use an L-shaped right-angle path that goes around B, never a straight line that crosses B's rect. Route via the left/right/bottom edge of the obstacle.
 2. **Keep labels clear of boxes.** Arrow labels (`class="arrow-label"`) must not overlap with any box's label or sublabel text. Place them above or beside the arrow, offset from the nearest box edge by at least 10px.
-3. **Separate step badges.** When two arrows are parallel (e.g., bidirectional), put their step badges on opposite sides — one left, one right — so they don't stack on top of each other.
+3. **Separate step badges.** When two arrows are parallel (e.g., bidirectional), put their step badges on opposite sides, one left, one right, so they don't stack on top of each other.
 4. **Use right-angle paths for long connections.** Diagonal arrows that span multiple rows or columns cross over other elements. Use L-shaped or Z-shaped polylines (`<line>` segments) that follow the gaps between boxes.
 5. **Widen boxes for long labels.** A 13px `.label` needs roughly 8px per character. "Management UI" (13 chars) needs ~110px minimum. "RuntimeAgent" needs ~100px. If the label clips, widen the box.
 6. **Section headers need clearance.** Uppercase Silver headers sit above boxes. Leave at least 15px between a header's y-position and the nearest arrow label or step badge to prevent overlap.
-7. **Use inline `<polygon>` for arrowheads.** Do not use `<defs><marker>` — markers render inconsistently across SVG rasterizers and can produce oversized or misaligned heads. Each arrowhead is a separate `<polygon points="...">` element.
+7. **Use inline `<polygon>` for arrowheads.** Do not use `<defs><marker>`, markers render inconsistently across SVG rasterizers and can produce oversized or misaligned heads. Each arrowhead is a separate `<polygon points="...">` element.
 
 ## Visual review (required)
 

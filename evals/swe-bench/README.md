@@ -16,9 +16,9 @@ HuggingFace ──►  Everruns API  ──►  predictions.jsonl  ──►  SW
 
 Three scripts, three steps:
 
-1. **`loader`** — Pulls SWE-bench Lite from HuggingFace, creates an Eval with one case per instance
-2. **`runner`** — Triggers an eval run, polls until completion, exports `predictions.jsonl`
-3. **`scorer`** — Runs the official SWE-bench Docker harness, writes pass/fail scores back via the bulk PATCH API
+1. **`loader`**: Pulls SWE-bench Lite from HuggingFace, creates an Eval with one case per instance
+2. **`runner`**: Triggers an eval run, polls until completion, exports `predictions.jsonl`
+3. **`scorer`**: Runs the official SWE-bench Docker harness, writes pass/fail scores back via the bulk PATCH API
 
 ## Setup
 
@@ -37,7 +37,7 @@ export EVERRUNS_API_URL=http://localhost:9300/api
 export EVERRUNS_API_KEY=dev
 ```
 
-## Quick Start — Integration Test (2 cases)
+## Quick Start, Integration Test (2 cases)
 
 ```bash
 # Load 2 representative instances
@@ -114,7 +114,7 @@ Each case gives the agent:
 - The problem statement from the SWE-bench instance
 - Instructions to checkout the correct commit, fix the bug, and write `git diff` to `/workspace/fix.patch`
 
-The `artifacts` field on each case tells the eval runner to collect `/workspace/fix.patch` after the agent finishes. A lightweight `file_contains` scorer checks that the patch file exists and contains a diff (sanity check only — real scoring happens externally).
+The `artifacts` field on each case tells the eval runner to collect `/workspace/fix.patch` after the agent finishes. A lightweight `file_contains` scorer checks that the patch file exists and contains a diff (sanity check only, real scoring happens externally).
 
 ### External Scoring
 

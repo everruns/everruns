@@ -10,19 +10,19 @@ tags:
 
 ## Overview
 
-`everruns` — command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync.
+`everruns`, command-line interface for the Everruns platform. Manages agents, sessions, chat, and file sync.
 
 **Crate:** `crates/cli/`
 
 **Global Flags:**
-- `-o, --output` — Output format: `text` (default), `json`, `yaml`
-- `-q, --quiet` — Suppress non-essential output
-- `--profile <name>` — Credential profile (default: `default`)
+- `-o, --output`, Output format: `text` (default), `json`, `yaml`
+- `-q, --quiet`, Suppress non-essential output
+- `--profile <name>`, Credential profile (default: `default`)
 
 **Configuration (precedence order):**
 1. CLI flags (`--api-key`, `--api-url`)
 2. Environment variables (`EVERRUNS_API_KEY`, `EVERRUNS_API_URL`)
-3. Credential file (`<config_dir>/everruns/credentials.json` — Linux: `~/.config/everruns/`, macOS: `~/Library/Application Support/everruns/`)
+3. Credential file (`<config_dir>/everruns/credentials.json`, Linux: `~/.config/everruns/`, macOS: `~/Library/Application Support/everruns/`)
 
 **Credential File:**
 - Multi-profile support: `{ "profiles": { "default": { "api_url", "api_key", "org_id" } }, "current_profile": "default" }`
@@ -35,8 +35,8 @@ tags:
 
 Interactive authentication. Uses localhost HTTP callback OAuth flow.
 
-- `login` — Open browser for OAuth login, receive a personal access token via localhost callback
-- `login --token` — Paste a personal access token directly (headless/SSH fallback)
+- `login`, Open browser for OAuth login, receive a personal access token via localhost callback
+- `login --token`, Paste a personal access token directly (headless/SSH fallback)
 
 Flow: CLI → `POST /v1/auth/cli/start` (returns `auth_url` + a CSRF `state` nonce) → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...&state=...` → CLI rejects the callback unless `state` matches the value from `/cli/start` (CSRF binding) → CLI calls `POST /v1/auth/cli/exchange` → receives a personal access token + user info + orgs → interactive org selection → stores in credential file.
 
@@ -52,17 +52,17 @@ Show current user, API URL, org, and masked personal access token.
 
 Organization management.
 
-- `orgs` — List organizations (marks current with `*`)
-- `orgs select` — Interactive org picker
+- `orgs`, List organizations (marks current with `*`)
+- `orgs select`, Interactive org picker
 
 ### `everruns agents`
 
 Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 
-- `create --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; the CLI normalizes TOML to JSON and otherwise forwards the file as-is. Upserts when `id:` is present in the definition. If `--file` is omitted and `./agent.toml` exists, the CLI uses it automatically unless inline creation flags are present. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`. `--writable` makes collected files writable. Alternatively, `initial_files` can be specified directly in the definition as a list of relative paths — each entry is resolved relative to the agent file's parent directory, directories are walked recursively, and files are collected with the same security rules as `--initial-files-dir`.
-- `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]` — create from CLI flags. `--harness` (`-H`) accepts a harness id (`harness_<32-hex>`) or a name (e.g. `generic`); a strict id is sent as `harness_id`, anything else as `harness_name`. Omitting it defaults to the org's built-in `generic` harness. On the `--file` path the harness comes from the definition's `harness_id` / `harness_name` key instead.
-- `update --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; TOML is normalized client-side, and `./agent.toml` is used automatically when `--file` is omitted, no inline update flags are present, and no positional `<id>` is provided. Requires `id:` in the definition for upsert. `--initial-files-dir` and definition `initial_files` work the same as in create.
-- `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]` — update from CLI flags. `--harness` (`-H`) uses the same id-vs-name detection as create.
+- `create --file <path> [--initial-files-dir <dir>] [--writable]`, send file to server import API; the CLI normalizes TOML to JSON and otherwise forwards the file as-is. Upserts when `id:` is present in the definition. If `--file` is omitted and `./agent.toml` exists, the CLI uses it automatically unless inline creation flags are present. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`. `--writable` makes collected files writable. Alternatively, `initial_files` can be specified directly in the definition as a list of relative paths, each entry is resolved relative to the agent file's parent directory, directories are walked recursively, and files are collected with the same security rules as `--initial-files-dir`.
+- `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]`, create from CLI flags. `--harness` (`-H`) accepts a harness id (`harness_<32-hex>`) or a name (e.g. `generic`); a strict id is sent as `harness_id`, anything else as `harness_name`. Omitting it defaults to the org's built-in `generic` harness. On the `--file` path the harness comes from the definition's `harness_id` / `harness_name` key instead.
+- `update --file <path> [--initial-files-dir <dir>] [--writable]`, send file to server import API; TOML is normalized client-side, and `./agent.toml` is used automatically when `--file` is omitted, no inline update flags are present, and no positional `<id>` is provided. Requires `id:` in the definition for upsert. `--initial-files-dir` and definition `initial_files` work the same as in create.
+- `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--harness <id|name>] [--tag <t>]`, update from CLI flags. `--harness` (`-H`) uses the same id-vs-name detection as create.
 - `list`
 - `get <id>`
 - `delete <id>` (soft archive)
@@ -71,9 +71,9 @@ Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 
 `initial_files` collection (whether from `--initial-files-dir` or definition globs) gates hidden (dot-prefixed) path components to prevent accidental upload of host secrets. The policy has three layers, evaluated per path component:
 
-1. **Hard-deny floor** — known credential / version-control / shell-history paths are never uploaded. Examples: `.env`, `.env.local`, `.envrc`, `.ssh`, `.gnupg`, `.aws`, `.azure`, `.gcloud`, `.kube`, `.docker`, `.npmrc`, `.yarnrc`, `.pypirc`, `.netrc`, `.cargo`, `.git`, `.hg`, `.svn`, `.bash_history`, `.zsh_history`, `.python_history`, `.node_repl_history`. The full list lives in `crates/cli/src/commands/agents.rs::DENIED_DOT_ENTRIES`. The hard-deny floor cannot be bypassed by user opt-in.
-2. **Built-in allowlist** — common dev-ecosystem assets are allowed by default. Exact basenames: `.agents`, `.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.prettierrc`, `.prettierrc.json`, `.prettierrc.yaml`, `.prettierrc.yml`, `.prettierrc.js`, `.prettierrc.cjs`, `.prettierrc.mjs`, `.eslintrc`, `.eslintrc.json`, `.eslintrc.yaml`, `.eslintrc.yml`, `.eslintrc.js`, `.eslintrc.cjs`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`. The authoritative list lives in `crates/cli/src/commands/agents.rs::ALLOWED_DOT_ENTRIES`.
-3. **Per-agent opt-in** — the agent manifest may declare `initial_files_allow_hidden: [".mytool", ".otherproj"]` to extend the allowlist for project-specific tooling. Each entry must be a single hidden basename (starts with `.`, contains no `/` or `\\`, and is not `.` or `..`). Entries that match the hard-deny floor are silently filtered out of the opt-in. The `initial_files_allow_hidden` field is consumed locally and stripped from the upload payload before the server import call.
+1. **Hard-deny floor**: known credential / version-control / shell-history paths are never uploaded. Examples: `.env`, `.env.local`, `.envrc`, `.ssh`, `.gnupg`, `.aws`, `.azure`, `.gcloud`, `.kube`, `.docker`, `.npmrc`, `.yarnrc`, `.pypirc`, `.netrc`, `.cargo`, `.git`, `.hg`, `.svn`, `.bash_history`, `.zsh_history`, `.python_history`, `.node_repl_history`. The full list lives in `crates/cli/src/commands/agents.rs::DENIED_DOT_ENTRIES`. The hard-deny floor cannot be bypassed by user opt-in.
+2. **Built-in allowlist**: common dev-ecosystem assets are allowed by default. Exact basenames: `.agents`, `.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.prettierrc`, `.prettierrc.json`, `.prettierrc.yaml`, `.prettierrc.yml`, `.prettierrc.js`, `.prettierrc.cjs`, `.prettierrc.mjs`, `.eslintrc`, `.eslintrc.json`, `.eslintrc.yaml`, `.eslintrc.yml`, `.eslintrc.js`, `.eslintrc.cjs`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`. The authoritative list lives in `crates/cli/src/commands/agents.rs::ALLOWED_DOT_ENTRIES`.
+3. **Per-agent opt-in**: the agent manifest may declare `initial_files_allow_hidden: [".mytool", ".otherproj"]` to extend the allowlist for project-specific tooling. Each entry must be a single hidden basename (starts with `.`, contains no `/` or `\\`, and is not `.` or `..`). Entries that match the hard-deny floor are silently filtered out of the opt-in. The `initial_files_allow_hidden` field is consumed locally and stripped from the upload payload before the server import call.
 
 The hard-deny floor is checked on **every** path component, not just the root. So `.github/.env` is still rejected even though `.github` is allowlisted; `.claude/.ssh/config` is rejected even if a user adds `.claude` opt-ins. A skipped hidden path emits a `Warning:` to stderr identifying the rejected path and the built-in allowlist. Symlinks pointing outside the base directory are skipped regardless of policy. See `knowledge/security/threat-model.md` (TM-FS-009) for the security rationale.
 
@@ -90,25 +90,25 @@ Session management.
   - `--agent-identity` sets the resident agent identity for unattended/background execution. See [`agent-identities.md`](../runtime-resources/agent-identities.md).
   - `--max-iterations` must be greater than zero.
   - `--budget-limit` is repeatable. Format: `[CURRENCY:]LIMIT`. Currency defaults to `usd`. Multiple limits stack (most restrictive wins). Examples:
-    - `--budget-limit 10` — $10 USD hard limit
-    - `--budget-limit usd:10 --budget-soft-limit usd:8` — $10 hard, $8 soft pause
-    - `--budget-limit tokens:2000000` — 2M token limit
-    - `--budget-limit usd:10 --budget-limit tokens:2000000` — both limits, whichever hits first
+    - `--budget-limit 10`, $10 USD hard limit
+    - `--budget-limit usd:10 --budget-soft-limit usd:8`, $10 hard, $8 soft pause
+    - `--budget-limit tokens:2000000`, 2M token limit
+    - `--budget-limit usd:10 --budget-limit tokens:2000000`, both limits, whichever hits first
 - `list`
 - `get <id>`
-- `watch <id>` — stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
-- `export <id> [-o <path>] [--format jsonl|atif]` — export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
+- `watch <id>`, stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
+- `export <id> [-o <path>] [--format jsonl|atif]`, export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
 
 ### `everruns triggers`
 
 Manage schedule triggers scoped to an agent with `--agent <id>`.
 
-- `list` — list the agent's active triggers. Text output renders common cron schedules as a human-readable cadence with timezone; JSON and YAML retain the API response.
+- `list`, list the agent's active triggers. Text output renders common cron schedules as a human-readable cadence with timezone; JSON and YAML retain the API response.
 - `create --cron <expression> --message <text> [--timezone <iana>] [--session-mode shared-session|session-per-invocation] [--disabled]`
 - `update <trigger-id> [--cron <expression>] [--message <text>] [--timezone <iana>] [--session-mode shared-session|session-per-invocation]`
 - `enable <trigger-id>`
 - `disable <trigger-id>`
-- `run-now <trigger-id>` — fire one invocation immediately.
+- `run-now <trigger-id>`, fire one invocation immediately.
 
 Examples:
 
@@ -126,9 +126,9 @@ everruns triggers --agent agent_... run-now trg_...
 
 Manage participants scoped to a session with `--session <id>`.
 
-- `list` — list active and past participants, including host/member role and leave status.
-- `add --agent <agent-id>` (alias: `invite`) — invite an agent as a member.
-- `remove <participant-id>` — mark an active member as having left. The session host cannot be removed.
+- `list`, list active and past participants, including host/member role and leave status.
+- `add --agent <agent-id>` (alias: `invite`), invite an agent as a member.
+- `remove <participant-id>`, mark an active member as having left. The session host cannot be removed.
 
 ```bash
 everruns participants --session session_... add --agent agent_...
@@ -155,13 +155,13 @@ List platform capabilities.
 
 Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browserless`, `deno`, `sprites`).
 
-- `set <provider> [--stdin]` — set an API key for a provider (read the key from stdin with `--stdin`).
-- `list` — list connected providers.
-- `remove <provider>` — remove a connection.
+- `set <provider> [--stdin]`, set an API key for a provider (read the key from stdin with `--stdin`).
+- `list`, list connected providers.
+- `remove <provider>`, remove a connection.
 
 ### `everruns files`
 
-Session filesystem operations — sync, push, pull, list. See [Files](#files) section below.
+Session filesystem operations, sync, push, pull, list. See [Files](#files) section below.
 
 ---
 
@@ -182,7 +182,7 @@ Session filesystem operations — sync, push, pull, list. See [Files](#files) se
 - Pure polling both sides: Higher latency, more API calls.
 **Rationale:** `notify` gives near-instant local detection. Remote polling at 2-5s intervals is acceptable for MVP. Server can add file-change SSE events later to eliminate remote polling.
 
-#### Decision 3: Conflict Resolution — Last-Write-Wins with Warning
+#### Decision 3: Conflict Resolution, Last-Write-Wins with Warning
 
 **Chosen:** If both sides changed the same file since last sync, apply last-write-wins and print a warning. Optionally `--conflict=ask` to prompt user.
 **Alternatives considered:**
@@ -303,13 +303,13 @@ Uses existing session filesystem REST API:
 - **Delete file:** `DELETE /v1/sessions/{id}/fs/{path}`
 - **Create dir:** `POST /v1/sessions/{id}/fs/{path}` with `{ "is_directory": true }`
 
-Binary detection: same as server — null bytes in first 8KB → base64.
+Binary detection: same as server, null bytes in first 8KB → base64.
 
 ### Dependencies (new for CLI crate)
 
-- `notify` — cross-platform filesystem watcher
-- `ignore` — gitignore-compatible pattern matching
-- `sha2` — content hashing
-- `base64` — binary encoding (may already be transitive)
-- `chrono` — timestamp handling
-- `indicatif` — progress bars for push/pull (optional)
+- `notify`, cross-platform filesystem watcher
+- `ignore`, gitignore-compatible pattern matching
+- `sha2`, content hashing
+- `base64`, binary encoding (may already be transitive)
+- `chrono`, timestamp handling
+- `indicatif`, progress bars for push/pull (optional)

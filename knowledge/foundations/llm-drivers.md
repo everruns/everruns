@@ -86,9 +86,9 @@ Drivers MUST use the following error types from `AgentLoopError`:
 ### Error Detection Requirements
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
-- `crates/openai/src/` — OpenAI error detection
-- `crates/anthropic/src/` — Anthropic error detection
-- `crates/gemini/src/` — Gemini error detection
+- `crates/openai/src/`, OpenAI error detection
+- `crates/anthropic/src/`, Anthropic error detection
+- `crates/gemini/src/`, Gemini error detection
 
 ### Provider registry and 0.17 compatibility catalog
 
@@ -145,9 +145,9 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 
 Current provider mappings:
 
-- **OpenAI Responses API** — derives a deterministic `prompt_cache_key` within OpenAI's 64-character request limit from stable cache-family inputs, not the changing per-turn transcript
-- **Anthropic** — adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental — the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Volatile trailing content (a live `<facts>` block) is skipped so the cached prefix does not diverge every turn
-- **Gemini** — uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
+- **OpenAI Responses API**: derives a deterministic `prompt_cache_key` within OpenAI's 64-character request limit from stable cache-family inputs, not the changing per-turn transcript
+- **Anthropic**: adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block: the tool array, the system prompt, and the **two** most recent stable messages. The pair on the transcript is what makes caching incremental, the newest marks where this turn's history is written, the one behind it sits where the previous turn already wrote, so each turn reads its predecessor's cache instead of re-paying for the transcript. Four total, Anthropic's per-request maximum. Volatile trailing content (a live `<facts>` block) is skipped so the cached prefix does not diverge every turn
+- **Gemini**: uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
@@ -201,7 +201,7 @@ Reasoning parameters are validated at two levels to prevent API errors from non-
 
 1. **ReasonAtom (`reason.rs`)**: Before building the LLM call config:
    - Strips `reasoning_effort` when value is `"none"` (no-op)
-   - Looks up model profile via `get_model_profile()` — if `reasoning: false`, strips reasoning_effort with a warning log
+   - Looks up model profile via `get_model_profile()`, if `reasoning: false`, strips reasoning_effort with a warning log
    - Unknown models (no profile) pass through to let the API decide
 
 2. **Driver level**: Both OpenAI drivers filter out `effort: "none"` before sending:
@@ -218,7 +218,7 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
 
-Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables — the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI — Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
+Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables, the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI, Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
 
 ### Verbosity
 
@@ -395,7 +395,7 @@ to the Microsoft-vendor profiles in `crates/provider/src/model_profiles.rs` (the
 ### Model Discovery
 
 Foundry exposes an OpenAI-compatible `/models` endpoint, but it is **bare**
-(`id`/`created`/`owned_by` only — no capabilities, limits, or cost), exactly
+(`id`/`created`/`owned_by` only, no capabilities, limits, or cost), exactly
 like OpenAI's. So `list_models` syncs model/deployment **ids** with
 `discovered_profile: None` and relies on the built-in profile registry to supply
 capabilities by matching the id at sync time (the OpenAI/Azure OpenAI pattern).
@@ -406,18 +406,18 @@ authenticated with the same runtime `ProviderAuth` as chat (so it works for both
 api-key and OAuth) and is gated to recognized Foundry hosts
 (`*.services.ai.azure.com` / `*.openai.azure.com`); custom proxy URLs return
 `None`. Project-scoped Foundry endpoints (`.../api/projects/<project>`) expose
-`/openai/v1/chat/completions` but **not** a `/models` catalog — a 404 (or 501)
+`/openai/v1/chat/completions` but **not** a `/models` catalog, a 404 (or 501)
 on the listing endpoint is treated as "discovery not supported" (`Ok(None)`),
 not an error, so model sync degrades gracefully. **Caveat:** Azure deployment
 names are operator-chosen, so a deployment id that does not match a known
-profile (e.g. `mai-code-1-flash`) falls back to a minimal profile — the same
+profile (e.g. `mai-code-1-flash`) falls back to a minimal profile, the same
 limitation Azure OpenAI has.
 
 ### Authentication storage and end-to-end OAuth
 
 `MaiAuth::from_driver_config` resolves auth in two ways. In-process / embedder
 callers may pass an Entra OAuth block in `ProviderMetadata.extra`. Server-stored
-providers carry their secret as the driver's declared typed credential fields —
+providers carry their secret as the driver's declared typed credential fields,
 **either** a plain Azure AI Foundry `api_key` **or** discrete Entra OAuth fields
 (`tenant_id`, `client_id`, `client_secret`, optional `scope` / `authority`),
 which the operator enters as separate inputs (no hand-authored JSON). These
@@ -441,14 +441,14 @@ driver about service identity. Bedrock keeps the AWS SDK client in
 provider-owned `BedrockAuth`, preserving SDK SigV4 signing and event-stream
 framing.
 
-The four request seams are deliberately separate and compose as follows:
+The four request boundaries are deliberately separate and compose as follows:
 
 - **Credential storage / resolution** (`CredentialProvider`,
   `crates/core/src/credential_provider.rs`) resolves a *static*
   `ProviderCredentials` (`api_key`, `base_url`) **before** the driver is built.
   It cannot mint or refresh request-time tokens.
 - **Request auth** (`ProviderAuth`) runs **per HTTP attempt** and may return
-  multiple headers. This is the seam for static, refreshable, and signed auth.
+  multiple headers. This is the boundary for static, refreshable, and signed auth.
 - **Request decoration** (`OpenResponsesRequestExtension`, Open Responses only)
   layers provider-specific *non-auth* body fields and headers (routing,
   attribution, `session_id`, `OpenAI-Beta`, `originator`, account ids). It must
@@ -458,8 +458,8 @@ The four request seams are deliberately separate and compose as follows:
 
 The MAI crate ships two providers built on that hook:
 
-- **API key** — emits `("api-key", <key>)`.
-- **Entra ID OAuth** — client-credentials grant against
+- **API key**: emits `("api-key", <key>)`.
+- **Entra ID OAuth**: client-credentials grant against
   `{authority}/{tenant_id}/oauth2/v2.0/token` (default scope
   `https://cognitiveservices.azure.com/.default`). Minted bearer tokens are
   cached and refreshed ~120s before expiry.
@@ -479,8 +479,8 @@ additive: implement `ProviderAuth` without touching the protocol driver.
 (self-hosted proxies) return `None` and are not synced.
 
 OpenAI's `/models` response is bare (`id`, `created`, `owned_by`) and yields no
-profile. OpenRouter returns richer metadata — notably a `supported_parameters`
-array — which the driver parses into an `LlmModelProfile`: `reasoning` (or the
+profile. OpenRouter returns richer metadata, notably a `supported_parameters`
+array, which the driver parses into an `LlmModelProfile`: `reasoning` (or the
 legacy `reasoning_effort` alias) maps to `profile.reasoning` plus a low/medium/high
 `reasoning_effort` config, and `tools`/`response_format`/modalities map to the
 corresponding capability flags. This matters because most OpenRouter models
@@ -500,7 +500,7 @@ top-level `session_id` request field, sourced from `config.metadata["session_id"
 groups all generations from one Everruns session into a single session in the OpenRouter
 dashboard. Like the routing controls, it is emitted only for OpenRouter requests; direct
 OpenAI / Azure ignore the field, so it is omitted there. The same id also rides along
-inside the `metadata` map for provider-side correlation — the top-level field is what
+inside the `metadata` map for provider-side correlation, the top-level field is what
 OpenRouter's session feature reads.
 
 `OpenRouterRoutingConfig.plugins` exposes optional OpenRouter plugin activations:
@@ -519,9 +519,9 @@ The `openrouter_workspace` capability contributes two host-facing tools for read
 - **`check_openrouter_policy_compatibility`**: fetches workspace info and compares it against caller-supplied routing parameters (`min_remaining_budget_usd`, `requires_paid_features`), returning a `PolicyCompatibilityReport` with a list of `WorkspacePolicyDrift` entries.
 
 Drift kinds:
-- `budget_exhausted` — workspace spend cap is reached.
-- `budget_below_threshold` — remaining budget is below the requested threshold.
-- `free_tier_restriction` — workspace is on the free tier but paid-tier features were requested.
+- `budget_exhausted`, workspace spend cap is reached.
+- `budget_below_threshold`, remaining budget is below the requested threshold.
+- `free_tier_restriction`, workspace is on the free tier but paid-tier features were requested.
 
 The check is read-only and does not modify workspace state. Results should be treated as advisory; operators are responsible for acting on detected drifts.
 
@@ -546,7 +546,7 @@ loop therefore never dispatches them; the only client-visible artifact is
   `OpenRouterRequestExtension` appends the entries. Emitted only for OpenRouter requests.
 - **Runtime configuration**: the `openrouter_server_tools` capability exposes per-agent
   toggles (`config_schema`) and compiles the selection into
-  `RuntimeAgent.openrouter_routing.server_tools` during capability collection — the same path
+  `RuntimeAgent.openrouter_routing.server_tools` during capability collection, the same path
   `prompt_caching` uses. It contributes *request intent only*, no executable tools. Because
   `web_search` and `web_fetch` run outside Everruns' egress boundary, the capability is
   `RiskLevel::High` and uses the admin-only assignment gate. Enabling it on a
@@ -562,7 +562,7 @@ allocation intent without encoding raw OpenRouter provider flags directly:
 
 | Variant | Behaviour |
 |---------|-----------|
-| `SharedCapacity` (default / `None`) | No changes — uses OpenRouter's shared capacity pool as-is. |
+| `SharedCapacity` (default / `None`) | No changes, uses OpenRouter's shared capacity pool as-is. |
 | `ByokFirst` | Sets `provider.allow_fallbacks = true` (if not already set) so OpenRouter tries BYOK providers first and falls back to shared capacity when exhausted. |
 | `ByokOnly` | Requires `provider.only` to list at least one BYOK provider slug; sets `provider.allow_fallbacks = false` so no fallback to shared capacity occurs. Returns an error at request time if `provider.only` is empty. |
 
@@ -585,7 +585,7 @@ clears `presets` from the resulting config. The driver calls this before seriali
 routing fields to the request wire format. Explicit `provider` fields always override
 preset-derived values; when multiple presets target the same field, later ones win.
 
-Presets are applied before capacity strategy — `apply_presets()` runs first, then
+Presets are applied before capacity strategy, `apply_presets()` runs first, then
 `apply_capacity_strategy()` runs on the result.
 
 | Preset | Wire effect |
@@ -604,15 +604,15 @@ When `presets` is empty the driver skips calling `apply_presets()` entirely (clo
 
 ### Stateful Continuation Invariant
 
-When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input` — that double-counts context and inflates prompt-cache keys.
+When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input`, that double-counts context and inflates prompt-cache keys.
 
-Invariant: **a request with `previous_response_id` only carries delta items in `input`** — typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
+Invariant: **a request with `previous_response_id` only carries delta items in `input`**: typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
 `OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol.rs`).
 
 ### Provider-declared statefulness
 
-Server-side continuation only works where the endpoint actually stores responses. OpenAI-compatible gateways that expose a stateless `/responses` shim — e.g. OpenRouter and Google Gemini's compat endpoint — *accept* `previous_response_id` but silently ignore it (`store: false`). Chaining against them drops the conversation from turn 2 onward (only the latest tool output reaches the model), so the agent loses the task and loops on exploration.
+Server-side continuation only works where the endpoint actually stores responses. OpenAI-compatible gateways that expose a stateless `/responses` shim, e.g. OpenRouter and Google Gemini's compat endpoint, *accept* `previous_response_id` but silently ignore it (`store: false`). Chaining against them drops the conversation from turn 2 onward (only the latest tool output reaches the model), so the agent loses the task and loops on exploration.
 
 Statefulness is service semantics, not a hostname property. The provider
 assembly explicitly enables it for OpenAI, Azure OpenAI, and Meta. Stateless
@@ -656,8 +656,8 @@ Authentication, invalid-request, and exhausted billing/quota errors fail fast.
 Once output exists, the runtime preserves it as a partial success instead of
 replaying the generation and risking duplicate visible output.
 
-A provider stream stall — the runtime's stream-liveness watchdog aborting a
-stream that produced no tokens within its window — is treated the same way as an
+A provider stream stall, the runtime's stream-liveness watchdog aborting a
+stream that produced no tokens within its window, is treated the same way as an
 in-band transient error: before any output it is classified transient and routed
 through the same bounded retry path, re-issuing the identical request with no
 artificial history; after output, or once the retry budget is exhausted, it
@@ -728,7 +728,7 @@ this ordering rule is identical for proactive and reactive compaction.
 
 The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/provider/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
-The trait also exposes an optional effective context-window seam. A driver
+The trait also exposes an optional effective context-window boundary. A driver
 whose runtime model aliases or profiles are not represented in Everruns'
 built-in provider/model table returns its authoritative context limit there.
 Host proactive policy prefers that value and falls back to the built-in profile
@@ -763,7 +763,7 @@ useful headroom instead of accepting any merely smaller response.
 This section is the single source of truth for **where provider credentials may
 come from**. Read it before touching any provider assembly, `DriverConfig`
 builder, provider store, or resolver. Violating it can silently fund tenant
-execution from platform credentials — a cost-runaway and trust boundary
+execution from platform credentials, a cost-runaway and trust boundary
 incident, not a cosmetic bug.
 
 ### The one rule
@@ -801,7 +801,7 @@ path must be one of them; there is no third option and no fallback between them.
               (no env reads anywhere on either path)
 ```
 
-### Path 1 — Server-Side Tenant Path
+### Path 1, Server-Side Tenant Path
 
 All API key resolution for tenant/org-scoped execution flows through
 `crates/server/src/services/provider_resolver.rs`. The contract is **fail-closed**:
@@ -829,17 +829,17 @@ compile-time integration decision without putting secrets back into
 implicit env fallback silently funds tenant execution from platform credentials.
 Fail-closed prevents accidental cost-runaway under open signup.
 
-### Path 2 — Dev / CLI / Standalone Path
+### Path 2, Dev / CLI / Standalone Path
 
 Env-based credential loading is an explicit, injected concern routed through a
-single shared seam in `crates/core/src/credential_provider.rs`:
+single shared boundary in `crates/core/src/credential_provider.rs`:
 
-- **`CredentialProvider`** (trait) — the injectable source. Its one method,
+- **`CredentialProvider`** (trait), the injectable source. Its one method,
   `resolve(&DriverId) -> Option<ProviderCredentials>`, returns the `api_key` and
   optional `base_url` for a driver, decoupled from where they came from. Drivers
   and dev stores depend on this trait, not on the environment.
-- **`ProviderCredentials`** — `{ api_key: Option<String>, base_url: Option<String> }`.
-- **`EnvCredentialProvider`** — the shared library implementation of the
+- **`ProviderCredentials`**: `{ api_key: Option<String>, base_url: Option<String> }`.
+- **`EnvCredentialProvider`**: the shared library implementation of the
   env-based source, and the **sanctioned pattern** for any caller that wants
   env-driven credentials. It is the only *library/shared* component that reads
   provider credential env vars; new env-credential code belongs here, not in a
@@ -859,7 +859,7 @@ single shared seam in `crates/core/src/credential_provider.rs`:
   its dev credentials explicitly.
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
-passing it where credentials are needed — e.g.
+passing it where credentials are needed, e.g.
 `everruns_host::InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
 in-memory dev store used by `just start-dev`. **The server path never constructs
 an `EnvCredentialProvider`.**
@@ -876,8 +876,8 @@ into the DB, never read by a driver.
   driver constructors remain credential-free.
 - In a standalone/dev/CLI entrypoint, construct `EnvCredentialProvider` (or any
   other `CredentialProvider`) and inject it.
-- Add a new env var mapping for an existing driver in `EnvCredentialProvider` —
-  that one file — if dev ergonomics need it.
+- Add a new env var mapping for an existing driver in `EnvCredentialProvider`,
+  that one file, if dev ergonomics need it.
 
 **Don't**
 
@@ -895,7 +895,7 @@ A new driver inherits the contract for free: implement only credential-taking
 constructors, never an env read. If the driver should be configurable from the
 environment for dev/CLI use, add its env var mapping to the `match` in
 `EnvCredentialProvider::resolve_with` (`crates/core/src/credential_provider.rs`)
-and a unit test beside the existing ones — do **not** add a `from_env` to the
+and a unit test beside the existing ones, do **not** add a `from_env` to the
 driver crate.
 
 ### Single-Tenant / Dev: Startup Materialization
@@ -911,7 +911,7 @@ path as any user-configured key.
 Rules:
 
 - Only the **default org's** seed providers are filled, and only slots that have
-  **no** key — a key configured via UI/API is never overwritten.
+  **no** key, a key configured via UI/API is never overwritten.
 - Requires the encryption service (`SECRETS_ENCRYPTION_KEY`); if absent, the step
   is skipped with a warning.
 - Gated by `materialize_env_provider_keys_allowed`:
@@ -934,8 +934,8 @@ Rules:
 
 This invariant is verified by the unit tests `resolve_provider_api_key_env_key_set_does_not_leak`
 and `resolve_provider_credentials_env_key_set_does_not_leak` in
-`crates/server/src/services/provider_resolver.rs`. The complementary rule — that
-drivers never read env — is anchored by `EnvCredentialProvider` being the sole
+`crates/server/src/services/provider_resolver.rs`. The complementary rule, that
+drivers never read env, is anchored by `EnvCredentialProvider` being the sole
 env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 
 ## Testing
@@ -944,8 +944,8 @@ env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 2. **LlmSim**: Use `ProviderType::LlmSim` for integration tests and offline product demos without real API keys. The production-safe driver lives in `everruns-llmsim` (`crates/llmsim/src/lib.rs`); core carries no simulation code, and product consumers depend on the simulator rather than test-support. `LlmSimConfig::scripted(...)` supports deterministic multi-turn scenarios with assistant text, tool calls, mixed turns, injected errors, and configurable exhaustion behavior. `everruns-test-support` uses the driver for its in-memory loop and keeps 0.17 simulator paths only as a 0.18 migration bridge.
 3. **Error Detection Tests**: Cover all documented error patterns for each provider
 4. **Parametrized Integration Tests**: Use `rstest` matrix in `crates/core/tests/`:
-   - `llm_test_matrix/mod.rs` — shared `ProviderModelConfig` structs and `all_providers_registry()`
-   - `agent_run_basic.rs` — basic completion + tool call, parameterized over all providers
-   - `agent_run_with_thinking.rs` — extended thinking, parameterized over thinking-capable providers
+   - `llm_test_matrix/mod.rs`, shared `ProviderModelConfig` structs and `all_providers_registry()`
+   - `agent_run_basic.rs`, basic completion + tool call, parameterized over all providers
+   - `agent_run_with_thinking.rs`, extended thinking, parameterized over thinking-capable providers
    - Add new providers: one `const` in `llm_test_matrix` + one `#[case]` per test function
    - Tests skip gracefully when provider API key env var is not set

@@ -11,7 +11,7 @@ tags:
 Closed vocabulary of custom OpenAPI extension fields that encode
 LLM-relevant operation metadata not expressible in standard OpenAPI.
 Lets an agent toolcaller reason about **cost, safety, and preference**
-before picking between similar endpoints — without out-of-band docs.
+before picking between similar endpoints, without out-of-band docs.
 
 The vocabulary is intentionally small (five fields), additive, and
 **namespace-clean**: every key starts with `x-` so standard OpenAPI
@@ -27,27 +27,27 @@ consumers ignore them unchanged.
 | `x-error-codes`   | array of strings | `ErrorResponse.code` values              | (omitted)              | Closed set of `code` values this operation can emit.                                |
 | `x-superseded-by` | string           | OpenAPI `operationId`                    | (omitted)              | Recommended successor when this operation is deprecated.                            |
 
-Untagged operations inherit defaults — an agent only needs to read
+Untagged operations inherit defaults, an agent only needs to read
 fields that are present.
 
 ## When to add each tag
 
-* **`x-side-effect`** — set on every mutating operation (`POST`,
+* **`x-side-effect`**: set on every mutating operation (`POST`,
   `PUT`, `PATCH`, `DELETE`). Use `irreversible` on hard-delete /
   rotate-credentials / destructive bash; `reversible` on soft-delete,
   archive, pause, unarchive, undo-eligible writes.
-* **`x-llm-prefer`** — set `avoid` on hard-delete or other
+* **`x-llm-prefer`**: set `avoid` on hard-delete or other
   semantically-destructive operations that have a safer alternative
   (e.g. `delete_agent` → recommend `archive` instead). Set `prefer`
   on the cheap/safe sibling when two operations overlap. Pair with
   `x-llm-rationale` whenever non-`neutral`.
-* **`x-llm-rationale`** — one sentence, present tense, addresses the
+* **`x-llm-rationale`**: one sentence, present tense, addresses the
   caller. "Use POST /v1/agents/{id}/archive instead unless audit
   trail must be removed."
-* **`x-error-codes`** — set when the operation has a closed set of
+* **`x-error-codes`**: set when the operation has a closed set of
   `ErrorResponse.code` values it can return. Skip on operations
   that re-emit upstream errors verbatim (no closed taxonomy).
-* **`x-superseded-by`** — set when the operation is deprecated and
+* **`x-superseded-by`**: set when the operation is deprecated and
   there's a drop-in replacement. Value is the successor's
   `operationId`. Pair with the standard OpenAPI `deprecated: true`.
 

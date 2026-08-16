@@ -2,8 +2,8 @@
 
 Agentic Resource Discovery (ARD) **client** capability for Everruns agents.
 
-ARD is a platform-level discovery protocol — a sibling of MCP and A2A, not an
-external-service integration — so it lives in `crates/` alongside `everruns-mcp`.
+ARD is a platform-level discovery protocol, a sibling of MCP and A2A, not an
+external-service integration, so it lives in `crates/` alongside `everruns-mcp`.
 
 Adds a `resource_discovery` capability that lets a running agent discover
 external capabilities (MCP servers, A2A agents) from ARD registries and attach
@@ -17,11 +17,11 @@ agent to attach in the first place.
 
 ## Tools
 
-- `discover_resources({ text, filter?, registry_id? })` — semantic `POST /search`
+- `discover_resources({ text, filter?, registry_id? })`, semantic `POST /search`
   against a configured registry; returns ranked entries with a `urn`.
-- `attach_resource({ urn })` — verify trust + SSRF, then materialize the entry as
+- `attach_resource({ urn })`, verify trust + SSRF, then materialize the entry as
   a session-scoped MCP server or external A2A agent. Idempotent per URN.
-- `list_attached_resources()` — list what's attached this session.
+- `list_attached_resources()`, list what's attached this session.
 
 ## Configuration
 

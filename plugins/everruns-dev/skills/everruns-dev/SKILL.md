@@ -121,7 +121,7 @@ Examples:
 | `agent_run` | Create a session and send the first message in one go. Returns `session_id`, `message_id`. |
 | `session_send_message` | Follow-up user message in an existing session. |
 | `session_get_status` | Poll session status + latest agent message + recent events. Supports `since_event_id` for incremental polling and `event_types` to filter. |
-| `agent_get_card` | Render an MCP-Apps card for an agent: a sandboxed `text/html` resource at `ui://everruns/agent/{agent_id}/card` plus a one-line summary. Use in MCP-UI-aware hosts (Claude Desktop, mcp-ui clients, the Everruns chat UI) to surface a stats card alongside text. Falls back gracefully — hosts that ignore embedded resources still get the summary line. Read-only; safe to call in `query`-style flows. Only available under MCP `2025-06-18`; older clients should fall back to `get_agent`. |
+| `agent_get_card` | Render an MCP-Apps card for an agent: a sandboxed `text/html` resource at `ui://everruns/agent/{agent_id}/card` plus a one-line summary. Use in MCP-UI-aware hosts (Claude Desktop, mcp-ui clients, the Everruns chat UI) to surface a stats card alongside text. Falls back gracefully, hosts that ignore embedded resources still get the summary line. Read-only; safe to call in `query`-style flows. Only available under MCP `2025-06-18`; older clients should fall back to `get_agent`. |
 | `discover` | Search the API catalog. Returns operation name, category, description, parameters. |
 | `query` | Run a bash script where only read-only Everruns(Dev) API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
 | `execute` | Run a bash script where every Everruns(Dev) API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
@@ -288,7 +288,7 @@ query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name
 
 `resolve_org` takes any prefixed entity id (`agent_...`, `session_...`,
 `harness_...`, `app_...`, `skill_...`, `mcp:...`, `identity_...`, `eval_...`)
-and returns `{org_id, org_name}` of the owning org — but only if the caller
+and returns `{org_id, org_name}` of the owning org, but only if the caller
 is a member of that org. Use it to recover from a direct link into a
 resource owned by a different org you also belong to.
 
@@ -328,7 +328,7 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
 
 ## Entity cards (MCP Apps)
 
-Everruns(Dev) exposes a small family of *entity cards* — sandboxed HTML
+Everruns(Dev) exposes a small family of *entity cards*, sandboxed HTML
 resources hosts can render alongside text output. See
 [`knowledge/ui/mcp-cards.md`](https://github.com/everruns/everruns/blob/main/knowledge/ui/mcp-cards.md)
 for the standard.

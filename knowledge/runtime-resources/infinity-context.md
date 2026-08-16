@@ -20,9 +20,9 @@ This approach lets the model "pull" relevant context rather than us "pushing" ev
 
 **Relationship to Compaction:** Compaction (`knowledge/runtime-resources/compaction.md`) actively reduces what is sent by stripping reproducible tool output (observation masking) and summarizing older turns into an always-present `[CONVERSATION_SUMMARY]`. Infinity Context instead keeps a recent window and exposes evicted history through `query_history` (pull-based retrieval).
 
-These are two answers to the same problem and they are **not** freely composable. Infinity Context evicts older messages during message loading (`post_load`), before compaction runs in the reason atom, so when both are enabled infinity context would destroy history before compaction could summarize it — leaving compaction only the recent window. Therefore:
+These are two answers to the same problem and they are **not** freely composable. Infinity Context evicts older messages during message loading (`post_load`), before compaction runs in the reason atom, so when both are enabled infinity context would destroy history before compaction could summarize it, leaving compaction only the recent window. Therefore:
 
-- **Compaction is the stronger primary strategy** for long-running agents: its summary keeps the gist always present, so the model never has to know to query. Pull-based retrieval has a well-known failure mode — the model does not know what it does not know — and on its own loses the original task once the window slides.
+- **Compaction is the stronger primary strategy** for long-running agents: its summary keeps the gist always present, so the model never has to know to query. Pull-based retrieval has a well-known failure mode, the model does not know what it does not know, and on its own loses the original task once the window slides.
 - **Infinity Context is a backstop**, valuable mainly for its lossless `query_history` search over full storage.
 - When both are enabled, infinity context detects compaction (via the derived `compaction_active` flag set during capability collection) and **defers token-budget eviction to compaction**: it anchors the task, provides `query_history`, and stops trimming, so compaction owns reduction.
 
@@ -106,7 +106,7 @@ When searching history:
   }
   ```
 - `keep_first_messages` (default 0, maximum 16) is the number of leading messages
-  kept as an anchor — the original task/goal. It is opt-in because the anchor is
+  kept as an anchor, the original task/goal. It is opt-in because the anchor is
   **additional** to `max_recent_messages` (which caps only the recent tail) and is
   preserved outside the token budget when configured. The value is capped at 16 to
   bound the extra head fetch and the always-preserved prompt anchor.
@@ -158,7 +158,7 @@ Selection is "protect the head + tail, drop the middle" (see
 `anchored_window` in `crates/core/src/message_filter.rs`). The agent system
 prompt is assembled separately and is never part of this list. When
 `keep_first_messages` is explicitly configured, the head anchor protects the
-**first conversation message — the original task/goal**.
+**first conversation message, the original task/goal**.
 
 ```python
 def select_messages(all_messages, budget, keep_head, min_tail, max_tail=None):
@@ -206,7 +206,7 @@ than zero, and every storage backend honors it: the first `keep_head` messages
 (the task anchor) are loaded **in addition to** the latest `limit` tail,
 de-duplicated when the windows overlap and returned in chronological order. When
 enabled, the genuine first message is always fetched, and the anchor never
-silently degrades to a mid-conversation message — even for conversations far
+silently degrades to a mid-conversation message, even for conversations far
 longer than the candidate window or when `max_recent_messages` is set very low.
 The default is 0 so public or multi-user endpoints do not keep an
 attacker-controlled first message beyond configured prompt resource limits, and

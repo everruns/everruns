@@ -83,5 +83,5 @@ E2B API key is resolved automatically from **Settings > Connections > E2B**.
 
 ## See Also
 
-- [Storage](/capabilities/session-storage/) — API key and state persistence
+- [Storage](/capabilities/session-storage/), API key and state persistence
 - [Capabilities Overview](/capabilities/)

@@ -14,7 +14,7 @@ implementing the provider-neutral driver contract over the Gemini API.
 
 - **Gemini API** streaming.
 - **Tool calls and reasoning** mapped to provider-neutral Everruns types.
-- **Context caching** — explicit caching via `cachedContent` when a cached-content
+- **Context caching**: explicit caching via `cachedContent` when a cached-content
   resource is supplied, otherwise Gemini's default implicit caching on supported
   models.
 

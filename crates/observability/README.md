@@ -10,12 +10,12 @@ core's initialization path.
 
 ## Modules
 
-- **`telemetry`** — OpenTelemetry initialization: OTLP exporter wiring,
+- **`telemetry`**: OpenTelemetry initialization: OTLP exporter wiring,
   tracing-subscriber layers, `TelemetryConfig` / `TelemetryGuard` /
   `init_telemetry`.
-- **`composite`** — `CompositeEventListener` fan-out with panic isolation.
-- **`braintrust`** — Braintrust tracing and logging over HTTP (`reqwest`).
-- **`otel`** — OpenTelemetry spans following the gen-AI semantic conventions.
+- **`composite`**: `CompositeEventListener` fan-out with panic isolation.
+- **`braintrust`**: Braintrust tracing and logging over HTTP (`reqwest`).
+- **`otel`**: OpenTelemetry spans following the gen-AI semantic conventions.
   Emits plain `tracing` spans; the OTLP exporter wiring lives in `telemetry`.
 
 Listener backends implement `everruns_core::EventListener`. Core keeps only

@@ -55,14 +55,14 @@ individual entries via the `disabled_contributions` field on a sibling
 ## Sharing bundles across an organization
 
 Declarative-capability hook bundles (one POST to register, many agents
-to reuse) are on the roadmap — see the "Deferred" note in
+to reuse) are on the roadmap, see the "Deferred" note in
 [`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md). Until then, paste
 the JSON from this directory into each agent's `user_hooks` config.
 
 ## See also
 
-- [`docs/capabilities/user-hooks.md`](../../docs/capabilities/user-hooks.md) — capability docs
-- [`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md) — full contract
+- [`docs/capabilities/user-hooks.md`](../../docs/capabilities/user-hooks.md), capability docs
+- [`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md), full contract
 
 ## Live end-to-end demo: guarded bash
 
@@ -82,7 +82,7 @@ cargo run -p everruns-server
 
 The scripted model first attempts `rm -rf /`, then a safe `ls`. With the
 `pre_tool_use` block hook attached, the first tool call is refused before
-it ever reaches the sandbox and the second succeeds — the agent observes
+it ever reaches the sandbox and the second succeeds, the agent observes
 the difference in tool results.
 
 The `LLMSIM_DEMO=guarded` switch is opt-in. Without it, `LlmSim` returns

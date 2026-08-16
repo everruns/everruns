@@ -13,7 +13,7 @@ tags:
 >
 > **Workspace Mount**: Session files are mounted at `/workspace` in the bash environment.
 > Both `bashkit_shell` and `session_file_system` capabilities normalize paths, enabling
-> seamless file sharing between bash commands and file system tools.
+> smooth file sharing between bash commands and file system tools.
 >
 > **Indexed Search**: `SessionFileSystemAdapter` implements bashkit's `SearchCapable` trait,
 > delegating `grep -r` to `SessionFileSystem::grep_files` for single-query database search
@@ -37,7 +37,7 @@ See `integrations/bashkit/src/lib.rs` for the full implementation.
 
 ## Output Sanitization
 
-`BashTool` sanitizes stdout/stderr before returning results to the LLM. This is the tool's responsibility — it calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
+`BashTool` sanitizes stdout/stderr before returning results to the LLM. This is the tool's responsibility, it calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
 
 Pipeline: strip ANSI escape codes → collapse `\r`-overwritten lines → middle-truncate at 16 KiB (20% head / 80% tail).
 
@@ -47,12 +47,12 @@ This reduces token waste from verbose build output (`cargo build`, `pnpm install
 
 `bashkit_shell` installs observational-only bashkit interceptors on every `Bash` instance it builds (`install_observability_hooks` in `integrations/bashkit/src/lib.rs`). The hooks emit structured `tracing` events at the `bashkit.hook` target, tagged with the active `session_id` for audit correlation:
 
-- `before_tool` / `after_tool` — per-builtin invocation and completion. Logs tool name, arg count, exit code, and stdout byte length. Argument values and stdout bytes are never logged (tenant paths, URLs, or embedded secrets may appear there).
-- `on_error` — interpreter errors. The error message is truncated to 256 bytes on a UTF-8 boundary before logging to bound per-event payload size.
+- `before_tool` / `after_tool`, per-builtin invocation and completion. Logs tool name, arg count, exit code, and stdout byte length. Argument values and stdout bytes are never logged (tenant paths, URLs, or embedded secrets may appear there).
+- `on_error`, interpreter errors. The error message is truncated to 256 bytes on a UTF-8 boundary before logging to bound per-event payload size.
 
 Every hook returns `HookAction::Continue`; none widen bashkit's existing limits, network allowlist, or sandbox boundaries (TM-BASH).
 
-HTTP hooks (`before_http` / `after_http`) are registered by `configure_http` when the per-capability `enable_http` config turns outbound HTTP on (egress-routed; see TM-BASH-003 and `knowledge/operations/network-access.md`). They log method and status only — URLs and headers can carry tenant data or secrets.
+HTTP hooks (`before_http` / `after_http`) are registered by `configure_http` when the per-capability `enable_http` config turns outbound HTTP on (egress-routed; see TM-BASH-003 and `knowledge/operations/network-access.md`). They log method and status only, URLs and headers can carry tenant data or secrets.
 
 ## Benefits
 

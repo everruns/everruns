@@ -8,10 +8,10 @@
 
 `everruns-integrations-parallel` contributes [Parallel](https://parallel.ai)'s
 hosted MCP server so agents get provider-owned `web_search` and `web_fetch`
-tools — free by default, with an optional Parallel API-key connection for
+tools, free by default, with an optional Parallel API-key connection for
 authenticated usage.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
 [`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
 integration plugin system.

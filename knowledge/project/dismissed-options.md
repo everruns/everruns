@@ -34,7 +34,7 @@ This document records technical options that were considered but dismissed for s
 **What it was**: Making the existing `/v1/sessions/*` management endpoints accept
 the app-scoped execution key (`evr_app_...`) by threading an app-execution
 identity through the core auth middleware, the `Caller` / permission resolver,
-and every session command policy — a new `OrgSessionsExecute` permission plus a
+and every session command policy, a new `OrgSessionsExecute` permission plus a
 confinement `Rule` pinning the key to its App's sessions.
 
 **Why dismissed**: High blast radius across the shared auth and permission path

@@ -11,7 +11,7 @@ tags:
 ## Abstract
 
 The Everruns MCP endpoint (`/mcp`, see [`knowledge/integrations/mcp.md`](../integrations/mcp.md)) exposes
-*entity cards* — small interactive HTML views of first-party Everruns entities
+*entity cards*, small interactive HTML views of first-party Everruns entities
 (Agent first, then Session, Harness, App, Capability, …). Cards are returned as
 MCP **embedded resources** with the [`ui://`] URI scheme so any MCP-Apps-aware
 host (Claude Desktop, mcp-ui clients, the Everruns chat UI itself) can render
@@ -19,7 +19,7 @@ them in a sandboxed iframe alongside textual tool output.
 
 Cards are read-only in the first iteration but are designed end-to-end so that
 later iterations can wire **mutation actions** (run agent, archive, edit) into
-the card without protocol changes — actions flow back to the host via
+the card without protocol changes, actions flow back to the host via
 `window.postMessage` and are dispatched as ordinary MCP `tools/call`
 invocations on the same Everruns server.
 
@@ -118,7 +118,7 @@ Tools are registered alongside the existing tier-1 set in
 
 `resources/templates/list` exposure of card URIs as templated resources
 (`ui://everruns/agent/{agent_id}/card`) is planned but not part of the first
-iteration — see *Open Questions* below.
+iteration, see *Open Questions* below.
 
 ## HTML Contract
 
@@ -143,7 +143,7 @@ Cards are intentionally minimal:
 
 - Neutral palette (system / dark-mode-aware via `prefers-color-scheme`).
 - One header row with display name + status badge.
-- A description block (raw text, not Markdown — link-rendering is the host's
+- A description block (raw text, not Markdown, link-rendering is the host's
   job for now).
 - A stats grid: cumulative token totals, session count, last-activity date.
 - A future `<div data-actions>` slot for buttons (see *Action Protocol*).
@@ -151,7 +151,7 @@ Cards are intentionally minimal:
 The first version pins the card at ~360 px wide so it composes inside chat
 panes; hosts may resize the iframe.
 
-## Action Protocol (Phase 2 — design now, ship later)
+## Action Protocol (Phase 2, design now, ship later)
 
 When mutation actions are added, buttons inside the card communicate with the
 host via `window.parent.postMessage(payload, "*")`. The payload schema is
@@ -186,7 +186,7 @@ The host is the trust boundary, not the iframe.
 
 Hosts that render `ui://everruns/...` resources MUST:
 
-1. Render the HTML inside an `<iframe>` with `sandbox="allow-scripts"` —
+1. Render the HTML inside an `<iframe>` with `sandbox="allow-scripts"`,
    crucially **without** `allow-same-origin`, `allow-top-navigation`,
    `allow-forms`, or `allow-popups`.
 2. Set `referrerpolicy="no-referrer"` on the iframe.
@@ -194,10 +194,10 @@ Hosts that render `ui://everruns/...` resources MUST:
    (the Everruns MCP endpoint emits one inline in `<meta http-equiv>`):
    `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'`.
    Note the policy is delivered as a `<meta>` tag inside `srcdoc`
-   content, not an HTTP response header — `frame-ancestors` and a few
+   content, not an HTTP response header, `frame-ancestors` and a few
    other directives are not enforceable in this delivery mode, so iframe
    sandboxing is the primary clickjacking and same-origin defense.
-4. Never fetch the HTML over HTTP via the iframe `src` attribute —
+4. Never fetch the HTML over HTTP via the iframe `src` attribute,
    populate the iframe from the resource `text` field directly via
    `srcdoc`. (`srcdoc` keeps the document inline so no network request
    is made and the document inherits the iframe's opaque sandboxed
@@ -223,13 +223,13 @@ Implementation lives in `crates/server/src/api/mcp_endpoint/cards.rs`:
 
 - `EntityCard` struct (entity kind, public ID, title, optional subtitle
   and description, status, tags, stats, footer lines).
-- `render_html(card: &EntityCard) -> Option<String>` — emits the
+- `render_html(card: &EntityCard) -> Option<String>`, emits the
   sandboxed document with the CSP meta tag. Returns `None` when the
   rendered output exceeds `MAX_CARD_BYTES`; callers surface this as a
   tool error rather than truncating.
 - `card_uri(kind: EntityKind, public_id: &str) -> String`.
 - `card_tool_content(card: &EntityCard, summary: &str) -> Result<Value, String>`
-  — produces the `tools/call` content array (resource + summary text).
+, produces the `tools/call` content array (resource + summary text).
 - HTML escape helper (`escape_html`) used by every interpolation point.
 - `MAX_CARD_BYTES = 64 * 1024` enforced before returning.
 
@@ -245,7 +245,7 @@ session counter.
 Initial Agent card stats:
 
 - Cumulative `TokenUsage` (`input_tokens`, `output_tokens`,
-  `cache_read_tokens`, `cache_creation_tokens`) — already on
+  `cache_read_tokens`, `cache_creation_tokens`), already on
   `Agent::usage`.
 - Session count via `count_sessions_for_agent`.
 - `created_at`, `updated_at`, `archived_at` (when archived).
@@ -305,5 +305,5 @@ to `get_agent` JSON otherwise.
   exist.
 - Whether to support light/dark theme negotiation via an `_get_card`
   parameter or via the host's `prefers-color-scheme` exclusively.
-  Currently the latter — server emits a single CSS block keyed on the
+  Currently the latter, server emits a single CSS block keyed on the
   media query.

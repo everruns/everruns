@@ -8,10 +8,10 @@
 
 `everruns-integrations-docker` gives agents a Docker container tied to the
 session lifecycle. The container starts lazily on first tool use, and agents can
-run commands, read and write files, and stop it when done — a self-hosted way to
+run commands, read and write files, and stop it when done, a self-hosted way to
 give an agent a real execution environment.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

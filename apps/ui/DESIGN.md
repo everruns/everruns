@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: Slate
-description: Everruns design system — sharp-cornered, grayscale-dominant, navy primary with a single gold accent.
+description: Everruns design system, sharp-cornered, grayscale-dominant, navy primary with a single gold accent.
 colors:
   # Mirrors the light-mode CSS custom properties in src/app/design-system.css,
   # which is the runtime single source of truth. Values use hsl() to match those
@@ -144,7 +144,7 @@ canonical. Reconcile meaningful drift here rather than introducing parallel CSS 
 
 Slate feels like precision instrumentation: sober, dense, and engineered. The
 product manages and monitors AI agents, so the UI favors legibility and calm
-over decoration. The personality is **architectural** — sharp corners, a
+over decoration. The personality is **architectural**: sharp corners, a
 grayscale foundation, and a single gold accent reserved for moments that matter.
 When a rule is not spelled out, prefer the restrained, professional, slightly
 utilitarian choice over the playful or ornamental one.
@@ -159,7 +159,7 @@ gold accent. Descriptive brand names map to systematic tokens as follows:
   `primary` inverts to near-white (`hsl(0 0% 95%)`) so actions stay prominent.
 - **Gold (`accent` / `ring`, `hsl(43 60% 53%)` ≈ `#D4A43A`):** The sole accent,
   reserved for active states, focus rings, highlights, and the dark-mode dot
-  grid. Use it sparingly — never as a large text surface.
+  grid. Use it sparingly, never as a large text surface.
 - **Ink (`foreground`, `hsl(0 0% 10%)`):** Core text on light surfaces.
 - **Surfaces (`background` `hsl(0 0% 98%)`, `card` white):** A near-white page
   with pure-white cards. Dark mode shifts to a navy-tinted charcoal
@@ -190,8 +190,8 @@ Experimental features use the Lucide flask marker in navigation rather than a pa
 
 Layouts use a 4px base spacing scale (`xs`–`2xl`) consistent with the Tailwind
 defaults already in use. Content sits on a near-white page textured by a branded
-**dot grid** — navy dots at 8% opacity in light mode, gold dots at 10% in dark
-mode — repeating on a 24px cell (`spacing.dot-grid`). Group related items into
+**dot grid**: navy dots at 8% opacity in light mode, gold dots at 10% in dark
+mode, repeating on a 24px cell (`spacing.dot-grid`). Group related items into
 white cards with generous internal padding to separate them from the textured
 background.
 
@@ -250,10 +250,10 @@ status dots, circular Lucide glyphs, and the rings in the Everruns logo.
 - **Do** keep every corner sharp.
 - **Do** reserve gold (`accent`) for active states, focus rings, and highlights;
   use navy (`primary`) for the single most important action per screen.
-- **Don't** place dark text on a gold surface or use gold for body text — its
+- **Don't** place dark text on a gold surface or use gold for body text, its
   contrast is too low for WCAG AA.
 - **Don't** add decorative shadows to content cards or exceed `shadow-md` on overlays.
-- **Do** edit `src/app/design-system.css` and this file together — they must
+- **Do** edit `src/app/design-system.css` and this file together, they must
   stay in sync.
 - **Don't** create lookalike domain examples from lower-level primitives; render
   the real domain component.

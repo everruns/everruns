@@ -53,5 +53,5 @@ The adoptable **Coding (Daytona)** and **Coding (Container)** harness examples i
 
 ## See Also
 
-- [Sub Agents](/capabilities/sub-agents/) — lifecycle tools used to spawn and manage Scout
-- [Capabilities Overview](/capabilities/) — full capability catalog
+- [Sub Agents](/capabilities/sub-agents/), lifecycle tools used to spawn and manage Scout
+- [Capabilities Overview](/capabilities/), full capability catalog

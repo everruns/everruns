@@ -7,7 +7,7 @@ sidebar:
 
 By default, agents with the `web_fetch` capability can access any public URL. **Network access lists** let you restrict which hosts and URLs an agent can reach, giving you fine-grained control over outbound network access.
 
-Access lists are configured at three levels — harness, agent, and session — and each layer can only make access *more* restrictive, never less.
+Access lists are configured at three levels, harness, agent, and session, and each layer can only make access *more* restrictive, never less.
 
 ## Configuration
 
@@ -69,7 +69,7 @@ PATCH /v1/agents/{id}
 
 ## Layer Merging
 
-Network access lists merge across three layers using restrictive semantics — each layer can only narrow what the parent allows:
+Network access lists merge across three layers using restrictive semantics, each layer can only narrow what the parent allows:
 
 ```
 Harness (baseline)
@@ -81,8 +81,8 @@ The merge rules:
 
 | Field | Rule | Rationale |
 |-------|------|-----------|
-| `allowed` | **Intersection** — child entries kept only if covered by a parent pattern | Child cannot grant access the parent didn't allow |
-| `blocked` | **Union** — all blocked patterns combined | Child cannot un-block a parent's block |
+| `allowed` | **Intersection**: child entries kept only if covered by a parent pattern | Child cannot grant access the parent didn't allow |
+| `blocked` | **Union**: all blocked patterns combined | Child cannot un-block a parent's block |
 
 If a child layer doesn't set `allowed`, it inherits the parent's list unchanged.
 
@@ -98,8 +98,8 @@ Session:  blocked: ["malware.github.com"]
 
 The effective policy for the session is:
 
-- **Allowed**: `["api.github.com"]` — kept because it's a subset of `*.github.com`; `*.openai.com` dropped because the agent didn't include it
-- **Blocked**: `["evil.com", "malware.github.com"]` — union of all layers
+- **Allowed**: `["api.github.com"]`, kept because it's a subset of `*.github.com`; `*.openai.com` dropped because the agent didn't include it
+- **Blocked**: `["evil.com", "malware.github.com"]`, union of all layers
 
 Only `api.github.com` is reachable, and both `evil.com` and `malware.github.com` are explicitly denied.
 

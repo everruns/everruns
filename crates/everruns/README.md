@@ -229,7 +229,7 @@ assert!(session.workspace_head().is_some());
 
 This local Git provider is available with the `local` feature. Heads are
 isolated by default; sharing is an explicit head-creation choice. Typed resume
-reopens the recorded provider/workspace/head binding or fails structurally—it
+reopens the recorded provider/workspace/head binding or fails structurally, it
 never substitutes another directory. Archive and destroy are explicit, and
 Drop never removes worktrees or branches. See [Workspaces and
 Environments](https://docs.everruns.com/framework/workspaces-and-environments/).
@@ -281,17 +281,17 @@ catalog alongside its real workspace and task/schedule state.
 
 The [example catalog](./examples/README.md) includes:
 
-- `workspace_policy` — secure workspace scopes with an offline simulator
-- `hello` — smallest live-provider program
-- `production_agent` — production-style composition
-- `github_monitor --simulate` — credential-free typed-tool flow
-- `session_work` — offline background work and completion wakes
-- `canonical_events` — offline lossless event recording and typed rendering
-- `subagents` — public-facade delegation
-- `observe_and_cancel` — events and cancellation
-- `session_history` — offline durable resume and bounded history pages
-- `workspace_heads` — local Git heads, Environments, and durable exact binding
-- `lifecycle_hooks` — agent, turn, tool, and completion handlers
+- `workspace_policy`, secure workspace scopes with an offline simulator
+- `hello`, smallest live-provider program
+- `production_agent`, production-style composition
+- `github_monitor --simulate`, credential-free typed-tool flow
+- `session_work`, offline background work and completion wakes
+- `canonical_events`, offline lossless event recording and typed rendering
+- `subagents`, public-facade delegation
+- `observe_and_cancel`, events and cancellation
+- `session_history`, offline durable resume and bounded history pages
+- `workspace_heads`, local Git heads, Environments, and durable exact binding
+- `lifecycle_hooks`, agent, turn, tool, and completion handlers
 
 Examples are compiled in CI and import only `everruns`.
 

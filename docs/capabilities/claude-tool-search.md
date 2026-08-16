@@ -18,16 +18,16 @@ This reduces prompt token usage significantly for agents with 15+ tools, without
 
 ## Tools
 
-None — this capability configures the LLM driver, it does not provide tools.
+None, this capability configures the LLM driver, it does not provide tools.
 
 ## How It Works
 
-1. **Threshold check** — tool search only activates when the total tool count meets or exceeds the threshold (default: 15). Below the threshold, full schemas are sent as usual.
-2. **Deferred schemas** — every deferrable tool gets `defer_loading: true`, so only its name and description reach the model upfront. Anthropic defers each tool individually (there is no namespace grouping).
-3. **Hosted search tool** — a `tool_search_tool_bm25_20251119` server tool is added to the request. The model issues a natural-language query against the catalog (tool names, descriptions, argument names, and argument descriptions) and Anthropic returns the 3–5 most relevant tools, expanding them into full definitions inline.
-4. **Transparent execution** — the model then calls a discovered tool with a normal `tool_use`; tool calls and results work identically. The only difference is how tools are presented to the model.
+1. **Threshold check**: tool search only activates when the total tool count meets or exceeds the threshold (default: 15). Below the threshold, full schemas are sent as usual.
+2. **Deferred schemas**: every deferrable tool gets `defer_loading: true`, so only its name and description reach the model upfront. Anthropic defers each tool individually (there is no namespace grouping).
+3. **Hosted search tool**: a `tool_search_tool_bm25_20251119` server tool is added to the request. The model issues a natural-language query against the catalog (tool names, descriptions, argument names, and argument descriptions) and Anthropic returns the 3–5 most relevant tools, expanding them into full definitions inline.
+4. **Transparent execution**: the model then calls a discovered tool with a normal `tool_use`; tool calls and results work identically. The only difference is how tools are presented to the model.
 
-Because the hosted search tool is itself never deferred, Anthropic's requirement that *at least one tool be non-deferred* is always satisfied — even when every function tool is deferrable.
+Because the hosted search tool is itself never deferred, Anthropic's requirement that *at least one tool be non-deferred* is always satisfied, even when every function tool is deferrable.
 
 ### DeferrablePolicy
 
@@ -53,12 +53,12 @@ Tool search requires model-level support. Per Anthropic, it is available on:
 | Fable 5 (`claude-fable-5`) | Yes |
 | Claude 3.x and earlier | No (capability is silently ignored) |
 
-When the capability is enabled but the model doesn't support tool search, the feature is **silently skipped — full tool schemas are sent as usual**. This standalone capability does *not* add a client-side fallback: on an unsupported model it simply does nothing (no error, no behavior change). For automatic fallback to client-side deferral, use [Auto Tool Search](/capabilities/auto-tool-search/) (or add the [Tool Search](/capabilities/tool-search/) capability explicitly).
+When the capability is enabled but the model doesn't support tool search, the feature is **silently skipped, full tool schemas are sent as usual**. This standalone capability does *not* add a client-side fallback: on an unsupported model it simply does nothing (no error, no behavior change). For automatic fallback to client-side deferral, use [Auto Tool Search](/capabilities/auto-tool-search/) (or add the [Tool Search](/capabilities/tool-search/) capability explicitly).
 
 Claude models reached through a non–first-party transport don't get hosted tool search either, because those transports don't implement the hosted format:
 
-- **Amazon Bedrock** — this integration uses the ConverseStream API; Anthropic's server-side tool search on Bedrock is only available via the InvokeModel API.
-- **OpenRouter** — its stateless OpenAI-compatible endpoint accepts but does not implement Anthropic's hosted tool search.
+- **Amazon Bedrock**: this integration uses the ConverseStream API; Anthropic's server-side tool search on Bedrock is only available via the InvokeModel API.
+- **OpenRouter**: its stateless OpenAI-compatible endpoint accepts but does not implement Anthropic's hosted tool search.
 
 With `claude_tool_search` alone, those transports also send full schemas; pair with [Auto Tool Search](/capabilities/auto-tool-search/) to get client-side deferral there instead.
 
@@ -89,15 +89,15 @@ Lower thresholds activate tool search with fewer tools. Set to `1` to always act
 
 ## Limitations
 
-- **Claude-only** — this is an Anthropic Messages API feature; other providers (OpenAI, Gemini) ignore this capability. Use [Auto Tool Search](/capabilities/auto-tool-search/) for cross-provider agents.
-- **Supported Claude models only** — Claude 3.x and earlier don't support hosted tool search.
-- **First-party transport only** — Claude models reached via Bedrock (ConverseStream) or OpenRouter don't get hosted tool search; with this capability alone they send full schemas. Use [Auto Tool Search](/capabilities/auto-tool-search/) for client-side deferral there.
-- **No standalone fallback** — on an unsupported model/transport this capability is a no-op (full schemas), not a switch to client-side deferral. Combine with `auto_tool_search`, or add `tool_search`, if you want a fallback.
+- **Claude-only**: this is an Anthropic Messages API feature; other providers (OpenAI, Gemini) ignore this capability. Use [Auto Tool Search](/capabilities/auto-tool-search/) for cross-provider agents.
+- **Supported Claude models only**: Claude 3.x and earlier don't support hosted tool search.
+- **First-party transport only**: Claude models reached via Bedrock (ConverseStream) or OpenRouter don't get hosted tool search; with this capability alone they send full schemas. Use [Auto Tool Search](/capabilities/auto-tool-search/) for client-side deferral there.
+- **No standalone fallback**: on an unsupported model/transport this capability is a no-op (full schemas), not a switch to client-side deferral. Combine with `auto_tool_search`, or add `tool_search`, if you want a fallback.
 
 ## See Also
 
-- [Anthropic Tool search tool documentation](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool) — official Anthropic guide
-- [Auto Tool Search](/capabilities/auto-tool-search/) — model-adaptive default (recommended for multi-provider harnesses)
-- [OpenAI Tool Search](/capabilities/openai-tool-search/) — the equivalent for OpenAI models
-- [Tool Search](/capabilities/tool-search/) — the provider-agnostic client-side fallback
+- [Anthropic Tool search tool documentation](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool), official Anthropic guide
+- [Auto Tool Search](/capabilities/auto-tool-search/), model-adaptive default (recommended for multi-provider harnesses)
+- [OpenAI Tool Search](/capabilities/openai-tool-search/), the equivalent for OpenAI models
+- [Tool Search](/capabilities/tool-search/), the provider-agnostic client-side fallback
 - [Capabilities Overview](/capabilities/)

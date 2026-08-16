@@ -18,17 +18,17 @@ Tools to manage Everruns entities programmatically. Read, create, update, and de
 
 ## Platform Documentation
 
-This capability mounts the Everruns platform documentation at `/workspace/docs` as a virtual read-only filesystem. The documentation is embedded at compile time from the repository `docs/` directory (markdown files only) and served from memory — no database writes per session.
+This capability mounts the Everruns platform documentation at `/workspace/docs` as a virtual read-only filesystem. The documentation is embedded at compile time from the repository `docs/` directory (markdown files only) and served from memory, no database writes per session.
 
 Agents can browse and search the docs using standard file tools (`read_file`, `list_directory`, `grep`) and bash commands (`cat`, `ls`, `grep`) via the Bashkit Shell capability.
 
 Key sections:
-- `/workspace/docs/getting-started/` — Introduction, concepts, architecture
-- `/workspace/docs/features/` — SDK, CLI, UI, events, harnesses, capabilities
-- `/workspace/docs/capabilities/` — Per-capability reference
-- `/workspace/docs/integrations/` — External integrations (Slack, Daytona, etc.)
-- `/workspace/docs/advanced/` — Budgets, compaction, embedding, network access
-- `/workspace/docs/sre/` — Environment variables, runbooks
+- `/workspace/docs/getting-started/`, Introduction, concepts, architecture
+- `/workspace/docs/features/`, SDK, CLI, UI, events, harnesses, capabilities
+- `/workspace/docs/capabilities/`, Per-capability reference
+- `/workspace/docs/integrations/`, External integrations (Slack, Daytona, etc.)
+- `/workspace/docs/advanced/`, Budgets, compaction, embedding, network access
+- `/workspace/docs/sre/`, Environment variables, runbooks
 
 ## Tools
 
@@ -148,8 +148,8 @@ Read the latest estimated context-token breakdown for a session. Returns total e
 
 ## See Also
 
-- [Platform](/capabilities/platform/) — current catalog-backed capability
-- [Concepts](/getting-started/concepts/) — Harness, Agent, Session model
-- [Agent Skills](/capabilities/agent-skills/) — skill discovery
-- [API Reference](/api/) — full REST API
+- [Platform](/capabilities/platform/), current catalog-backed capability
+- [Concepts](/getting-started/concepts/), Harness, Agent, Session model
+- [Agent Skills](/capabilities/agent-skills/), skill discovery
+- [API Reference](/api/), full REST API
 - [Capabilities Overview](/capabilities/)

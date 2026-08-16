@@ -14,8 +14,8 @@ Slash commands for session interaction, following patterns from Claude Code, Cod
 
 Two command sources, unified under `CommandDescriptor`:
 
-1. **System Commands** — from capabilities via `Capability::commands()`. Execute directly without turning the command text into a persisted chat message.
-2. **Skill Commands** — from skills marked `user-invocable: true` in SKILL.md frontmatter. Expand to prompt injection (LLM processes the skill instructions).
+1. **System Commands**: from capabilities via `Capability::commands()`. Execute directly without turning the command text into a persisted chat message.
+2. **Skill Commands**: from skills marked `user-invocable: true` in SKILL.md frontmatter. Expand to prompt injection (LLM processes the skill instructions).
 
 Commands are NOT tools. They either execute directly (system) or inject instructions into the conversation (skills).
 
@@ -31,14 +31,14 @@ See `crates/builtins/src/btw.rs` for the built-in `/btw` capability.
 
 ## Command Host (EVE-543)
 
-Some commands need an out-of-band LLM call over the session's assembled context — `/btw` is the canonical case. Historically the server intercepted `/btw` with a bespoke executor before capability dispatch, so every other host (`InProcessRuntime` embedders) either got a broken `/btw` or vendored a reimplementation. The contract is instead extended so this class of command is implementable once, inside the capability.
+Some commands need an out-of-band LLM call over the session's assembled context, `/btw` is the canonical case. Historically the server intercepted `/btw` with a bespoke executor before capability dispatch, so every other host (`InProcessRuntime` embedders) either got a broken `/btw` or vendored a reimplementation. The contract is instead extended so this class of command is implementable once, inside the capability.
 
 ### Contract
 
 `CommandExecutionContext` carries, in addition to `session_id`, a host handle implementing `CommandHost` with two facilities:
 
-1. **Turn-context access** — `turn_context()` assembles the same merged view a main turn would see (capability message filters applied, merged harness/agent/session system prompt, resolved model identity). The returned view is credential-free: it exposes the model name and provider type for error classification but never API keys or base URLs.
-2. **Session completion** — `completion(request)` runs a tool-less completion against the session's resolved model (or a per-invocation `Controls` model override, resolved through the same org-scoped store as a main turn). The capability supplies the system prompt stack and core `Message`s; the host owns provider conversion (image resolution, external-actor prefixes, dangling-tool-call patching), driver creation, and credentials. Completion errors carry the resolved provider/model identity so callers can classify them into stable user-facing error codes. `completion_stream(request)` is the streaming variant for progressive output — same request semantics and guarantees, returning provider stream events plus the classification context for mid-stream errors. It defaults to unsupported so commands fall back to `completion` on hosts that cannot stream; the store-backed host supports it.
+1. **Turn-context access**: `turn_context()` assembles the same merged view a main turn would see (capability message filters applied, merged harness/agent/session system prompt, resolved model identity). The returned view is credential-free: it exposes the model name and provider type for error classification but never API keys or base URLs.
+2. **Session completion**: `completion(request)` runs a tool-less completion against the session's resolved model (or a per-invocation `Controls` model override, resolved through the same org-scoped store as a main turn). The capability supplies the system prompt stack and core `Message`s; the host owns provider conversion (image resolution, external-actor prefixes, dangling-tool-call patching), driver creation, and credentials. Completion errors carry the resolved provider/model identity so callers can classify them into stable user-facing error codes. `completion_stream(request)` is the streaming variant for progressive output, same request semantics and guarantees, returning provider stream events plus the classification context for mid-stream errors. It defaults to unsupported so commands fall back to `completion` on hosts that cannot stream; the store-backed host supports it.
 
 Command execution stays out-of-band by construction: the host facilities persist nothing (no messages, no events). A future facility for explicit persistence can be added if a command needs it.
 
@@ -60,12 +60,12 @@ and the reason-path message-building helpers, so the side answer sees exactly
 what a main turn would. `CommandTurnContext` carries only `session_id`, never a
 session record.
 
-- **Server (full and dev mode)** — `SessionCommandService` wires the store-backed host from its worker adapters and dispatches every system command through `Capability::execute_command`; the bespoke `/btw` executor and its command-name special case are gone.
-- **In-process runtime** — `InProcessRuntime::execute_command` wires the same host from its runtime stores, so embedders get working context-aware commands just by registering the capability.
+- **Server (full and dev mode)**: `SessionCommandService` wires the store-backed host from its worker adapters and dispatches every system command through `Capability::execute_command`; the bespoke `/btw` executor and its command-name special case are gone.
+- **In-process runtime**: `InProcessRuntime::execute_command` wires the same host from its runtime stores, so embedders get working context-aware commands just by registering the capability.
 
 Current built-in system command:
 
-- `/btw <question>` — ask an ephemeral side question about the current session. The answer:
+- `/btw <question>`, ask an ephemeral side question about the current session. The answer:
   - sees the current session prompt and conversation history
   - has no tool access
   - does not append a message to the main chat history
@@ -81,16 +81,16 @@ For DB-backed skills, `user_invocable` is stored in the metadata JSON field (no 
 
 ## API
 
-- `GET /v1/sessions/{session_id}/commands` — returns all available commands (system + invocable skills)
-- `POST /v1/sessions/{session_id}/commands/execute` — executes a system command without persisting a chat message
+- `GET /v1/sessions/{session_id}/commands`, returns all available commands (system + invocable skills)
+- `POST /v1/sessions/{session_id}/commands/execute`, executes a system command without persisting a chat message
 
 See `crates/server/src/api/commands.rs` for route handler.
 
 ## UI Integration
 
-- `apps/ui/src/components/chat/command-autocomplete.tsx` — autocomplete popup component
-- `apps/ui/src/hooks/use-commands.ts` — `useSessionCommands` React Query hook
-- `apps/ui/src/lib/api/commands.ts` — API client
+- `apps/ui/src/components/chat/command-autocomplete.tsx`, autocomplete popup component
+- `apps/ui/src/hooks/use-commands.ts`, `useSessionCommands` React Query hook
+- `apps/ui/src/lib/api/commands.ts`, API client
 
 The UI fetches commands via the GET endpoint to populate autocomplete when the user types `/` in the chat input. Keyboard navigation (arrows, Enter/Tab, Escape) is supported.
 

@@ -24,7 +24,7 @@ Email is not an agent capability, public API, or UI surface. It is a host servic
 ## Core Contract
 
 `everruns-platform` owns the email abstraction (moved out of `everruns-core`
-in EVE-879 — email is a hosted product side effect, never consumed during a
+in EVE-879, email is a hosted product side effect, never consumed during a
 turn, so the execution kernel carries none of it):
 
 - `EmailSender` is the async trait used by internal callers.

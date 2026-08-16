@@ -9,7 +9,7 @@ sidebar:
 
 Everruns integrates with [Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)
 as a **client**: a running agent can search ARD registries for capabilities it
-was not pre-provisioned with — MCP servers and A2A agents — and attach them to
+was not pre-provisioned with, MCP servers and A2A agents, and attach them to
 its session on the fly. Newly attached MCP tools appear on the next turn;
 attached A2A agents become `spawn_agent` targets.
 
@@ -21,12 +21,12 @@ agent to attach in the first place.
 
 ## What You Get
 
-- **Runtime discovery** — `discover_resources` runs a semantic search against a
+- **Runtime discovery**: `discover_resources` runs a semantic search against a
   configured registry, outside the model context (like `tool_search`).
-- **Dynamic attachment** — `attach_resource` materializes a result as a
+- **Dynamic attachment**: `attach_resource` materializes a result as a
   session-scoped MCP server or external A2A agent, reusing existing Everruns
   config-overlay machinery. The agent loop is unchanged.
-- **Safety by construction** — registry allowlist, `trustManifest` verification,
+- **Safety by construction**: registry allowlist, `trustManifest` verification,
   SSRF-safe URL validation, and a per-session attachment cap.
 
 ## Quick Start
@@ -34,7 +34,7 @@ agent to attach in the first place.
 ### 1. Enable the capability on an agent
 
 Add the `resource_discovery` capability and point it at one or more registries.
-The model selects a registry by `id` — it can never supply a raw URL.
+The model selects a registry by `id`, it can never supply a raw URL.
 
 ```json
 {
@@ -62,13 +62,13 @@ registries need no token.
 
 From a session, ask for something the agent can't yet do. It will:
 
-1. `discover_resources({ text: "..." })` — search the registry and get ranked
+1. `discover_resources({ text: "..." })`, search the registry and get ranked
    candidates, each with a `urn`.
-2. `attach_resource({ urn })` — verify trust, validate the URL, and attach.
-3. Use the new capability on the next turn — MCP tools appear prefixed
+2. `attach_resource({ urn })`, verify trust, validate the URL, and attach.
+3. Use the new capability on the next turn, MCP tools appear prefixed
    `mcp_<name>__*` (surfaced through `tool_search`); A2A agents are reachable via
    `spawn_agent`.
-4. `list_attached_resources()` — see what's attached this session.
+4. `list_attached_resources()`, see what's attached this session.
 
 ## Tools
 
@@ -89,17 +89,17 @@ From a session, ask for something the agent can't yet do. It will:
 
 ## Security
 
-- **Registry allowlist** — only configured registries are queryable; the model
+- **Registry allowlist**: only configured registries are queryable; the model
   picks a `registry_id`, never a URL.
-- **Trust gate** — an entry's `trustManifest` identity domain must match its URN
+- **Trust gate**: an entry's `trustManifest` identity domain must match its URN
   publisher, and any `require_trust` attestations (e.g. `["soc2"]`) must be
   present, before it can be attached.
-- **SSRF protection** — every resolved artifact and endpoint URL is validated
+- **SSRF protection**: every resolved artifact and endpoint URL is validated
   (DNS-pinned; loopback, private, link-local, and cloud-metadata addresses are
   blocked). `allow_local_urls` relaxes this for local testing only.
-- **Attachment cap** — `max_attachments` bounds how many capabilities a single
+- **Attachment cap**: `max_attachments` bounds how many capabilities a single
   session can attach, limiting prompt-injection-driven attach storms.
-- **Untrusted data** — all registry-returned text is treated as untrusted
+- **Untrusted data**: all registry-returned text is treated as untrusted
   external input.
 
 See the co-located [`SPEC.md`](https://github.com/everruns/everruns/blob/main/crates/ard/SPEC.md)

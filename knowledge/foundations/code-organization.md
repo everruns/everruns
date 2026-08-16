@@ -28,13 +28,13 @@ internal notes.
 2. An abstract: one short paragraph stating what the crate is and does.
 3. An ecosystem line linking [everruns.com](https://everruns.com) and naming how
    the crate fits (which crates it builds on or pairs with).
-4. A quick example — runnable when the crate exposes a usable standalone API;
+4. A quick example, runnable when the crate exposes a usable standalone API;
    a minimal usage snippet for internal or generated crates that cannot run
    standalone.
 5. A short "What It Provides" / "Features" list.
 6. A "Documentation" section linking the relevant
-   [docs.everruns.com](https://docs.everruns.com) page(s), and — for published
-   crates — the docs.rs API reference.
+   [docs.everruns.com](https://docs.everruns.com) page(s), and, for published
+   crates, the docs.rs API reference.
 7. A "License" section linking the repository
    [`LICENSE`](https://github.com/everruns/everruns/blob/main/LICENSE) (MIT).
 
@@ -53,7 +53,7 @@ compiled example, so docs.rs and crates.io tell the same story. Examples in
   inline code comments.
 
 **Badges** (crates.io version, docs.rs, license) belong only on crates that are
-actually published to crates.io — see the publish list in
+actually published to crates.io, see the publish list in
 `.github/workflows/publish-crates.yml`. A crates.io or docs.rs badge on an
 unpublished crate renders as a broken link, so unpublished crates use a
 badge-free header and omit docs.rs links.
@@ -69,7 +69,7 @@ credential form schema, and the LLM error taxonomy). It carries none of core's
 hosted subtrees (`a2a` gRPC, knowledge/vector stores, platform delegation), so a
 standalone provider build never pulls them in. A provider is therefore a pure
 `ChatDriver` implementation with no dependency on core's agent-loop runtime.
-Since EVE-874 provider crates carry **no** `everruns-core` edge at all — not
+Since EVE-874 provider crates carry **no** `everruns-core` edge at all, not
 even as a dev-dependency; wire-level tests build their fixtures in-crate, and
 `scripts/lib/check-provider-isolation.sh` (pre-push + CI) rejects a direct
 core/host/platform/server dependency on any edge kind, plus any heavy core
@@ -77,7 +77,7 @@ feature subtree (sqlx/utoipa/inventory/axum/tonic) in provider-only shipped
 trees. Default-product registration stays a composition concern: the worker
 (`crates/worker/src/adapters.rs`) assembles all official drivers into the
 product registry, and downstream providers register through the open
-`DriverRegistry` seams alone (see
+`DriverRegistry` boundaries alone (see
 `tests/fixtures/external-consumer/provider-pack/`).
 
 Deterministic simulation lives in the publishable `everruns-llmsim` crate:
@@ -140,8 +140,8 @@ control plane. `session_sql_database` and `session_sandbox` stay in
 `everruns-platform` because their implementations are hosted resources.
 
 The records those capabilities read follow them (EVE-880). The org-scoped
-`Workspace` row and the managed per-session sandbox — state record, provider
-SPI, inventory plugin and lifecycle helpers — live in `everruns-platform`; a
+`Workspace` row and the managed per-session sandbox, state record, provider
+SPI, inventory plugin and lifecycle helpers, live in `everruns-platform`; a
 turn resolves workspace *paths* through core's roots and policy types, and
 reaches a sandbox only through the capability. Session SQL values and the
 `SessionSqlDbStore` typed extension move together in platform. Session task,
@@ -526,9 +526,9 @@ Configuration: `apps/ui/playwright.config.ts`
 
 **Layering (when to put a test where):**
 
-- Jest + React Testing Library — component-level behavior, hook mocking, dialog interactions.
-- Playwright smoke — end-to-end rendering of shared primitives as composed pages; catches regressions that unit-rendered components do not (routing, SSR/CSR hydration, CSS load, provider wiring).
-- Durable workflow tests (Rust `workflow-test`) — backend-side end-to-end flows.
+- Jest + React Testing Library, component-level behavior, hook mocking, dialog interactions.
+- Playwright smoke, end-to-end rendering of shared primitives as composed pages; catches regressions that unit-rendered components do not (routing, SSR/CSR hydration, CSS load, provider wiring).
+- Durable workflow tests (Rust `workflow-test`), backend-side end-to-end flows.
 
 **CI Integration:** runs as the `ui-e2e` job on every PR where `apps/ui/**` changes. The job installs Playwright chromium, starts `pnpm run dev` via the Playwright webServer config, and executes `pnpm run e2e`.
 
@@ -570,13 +570,13 @@ Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
 
 **Rule:** Every dropdown (Select/Combobox) must show the human-readable display name of the selected option, never the raw internal value (e.g. `"Webhook"`, not `"webhook"`; `"Shared Session"`, not `"shared_session"`).
 
-**How it works:** The shared `<Select>` wrapper at `components/ui/select.tsx` walks its `<SelectItem>` children at render time and forwards a `value → label` map to base-ui's `items` prop. base-ui's `<SelectValue>` then resolves the label automatically. Callers do not need to do anything special — just render `<SelectItem value="..."><Label/></SelectItem>` and `<SelectValue />`.
+**How it works:** The shared `<Select>` wrapper at `components/ui/select.tsx` walks its `<SelectItem>` children at render time and forwards a `value → label` map to base-ui's `items` prop. base-ui's `<SelectValue>` then resolves the label automatically. Callers do not need to do anything special, just render `<SelectItem value="..."><Label/></SelectItem>` and `<SelectValue />`.
 
 **Authoring rules:**
-- Always put a human-readable label in `<SelectItem>` children — never just the raw value.
+- Always put a human-readable label in `<SelectItem>` children, never just the raw value.
 - Use `<SelectValue />` (no children, no manual lookup) for the common case. The wrapper resolves the label.
 - Pass an explicit `<SelectValue>{node}</SelectValue>` only when composing extra trigger content (e.g. icon + label).
-- Auto-collection traverses the JSX tree passed as `<Select>` children — it does **not** render custom wrapper components that internally return a `<SelectItem>` (e.g. `<MySelectItem />`). For such cases, or for options that aren't visible as static JSX children of `<Select>` (lists built far from the root, portals, async loads), pass an explicit `items={{ value: label, ... }}` prop on `<Select>`.
+- Auto-collection traverses the JSX tree passed as `<Select>` children, it does **not** render custom wrapper components that internally return a `<SelectItem>` (e.g. `<MySelectItem />`). For such cases, or for options that aren't visible as static JSX children of `<Select>` (lists built far from the root, portals, async loads), pass an explicit `items={{ value: label, ... }}` prop on `<Select>`.
 - For combobox/autocomplete, options must be `{ value, label }` pairs and the trigger must show `label`.
 
 **Why:** Internal values like `shared_session` or `webhook` leak implementation details into the UI and look unprofessional. Centralising the resolution in the shared wrapper makes "display name" the default and prevents the bug from recurring.
@@ -745,7 +745,7 @@ For pages listing entities with filters:
 ### Page Titles
 
 Every route under `apps/ui/src/app/` MUST set a meaningful `<title>`. Browser
-tabs, history, and screen readers rely on it — a single static title across
+tabs, history, and screen readers rely on it, a single static title across
 every page is not acceptable.
 
 **Format:** `<Specific> · <Section> · Everruns`
@@ -770,14 +770,14 @@ Examples:
 the title MUST use `getDisplayName(entity)` from
 `apps/ui/src/lib/entity-lifecycle.ts`. The slug `name` is for URLs, never the
 title. While the entity is still loading, fall back to the kind alone
-(`Agent · Everruns`) — the title updates in place once data resolves.
+(`Agent · Everruns`), the title updates in place once data resolves.
 
 **Implementation:** `apps/ui/src/lib/page-title.ts` exports `formatPageTitle()`
 and `apps/ui/src/hooks/use-page-title.ts` exports `usePageTitle()`. The hook
 sets `document.title` via `useEffect` and restores the previous title on
 unmount; `null` / `undefined` segments are skipped so loading states work.
 Server pages with no client interactivity SHOULD export Next.js `metadata`
-instead. Mixing both is fine — the hook overrides static metadata once
+instead. Mixing both is fine, the hook overrides static metadata once
 mounted.
 
 **Coverage by page type:**
@@ -794,5 +794,5 @@ mounted.
   matching the rendered fallback (e.g. `Page not found`,
   `Something went wrong`) so tabs do not advertise a nonexistent route
 
-When adding a new route, the page title is part of the work — pages without a
+When adding a new route, the page title is part of the work, pages without a
 title should fail review.

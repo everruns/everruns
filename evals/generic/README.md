@@ -1,8 +1,8 @@
-# Generic — a Mira eval
+# Generic, a Mira eval
 
 A [Mira](https://github.com/everruns/mira) eval **study** of generic agent
-behavior — instruction following, structured output, reasoning, extraction,
-multi-turn state, file/shell/time tool use, and tool safety — run **directly
+behavior, instruction following, structured output, reasoning, extraction,
+multi-turn state, file/shell/time tool use, and tool safety, run **directly
 through the local `everruns` Framework**, in-process. No server, no HTTP, no
 database.
 
@@ -13,7 +13,7 @@ capabilities** (add a config or harness profile, run the same dataset, compare).
 
 Mira is the host: it owns selection, the matrix, saved/resumable runs, and
 reporting (JSON / JUnit / Markdown / self-contained HTML). This crate is the
-*study* — it owns the dataset, the subject, and the scorers.
+*study*, it owns the dataset, the subject, and the scorers.
 
 ```text
 dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──► scorers
@@ -26,7 +26,7 @@ dataset.jsonl ──► Eval (generic) ──► GenericRuntimeSubject ──►
 
 The [`platform-capability`](../platform-capability) study drives a live server
 because its capability needs DB-backed platform stores. This study measures
-*generic* agent behavior, which the Framework provides in-process — so it uses
+*generic* agent behavior, which the Framework provides in-process, so it uses
 [`everruns`](../../crates/everruns) directly ([`src/subject.rs`](src/subject.rs)).
 Each case builds a fresh `Agent` and `Session`, runs the sample's turns, and
 normalizes the session event stream into a Mira `Transcript`. It is fast,
@@ -44,7 +44,7 @@ hermetic, and exercises exactly the code in your working tree.
 - **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
   `OPENROUTER_API_KEY`): missing key ⇒ those cases are *skipped*, never
   failed, so a key-free run stays green. OpenRouter carries any vendor it
-  proxies (GLM, Qwen, DeepSeek, …) — the model slug keeps its vendor prefix,
+  proxies (GLM, Qwen, DeepSeek, …), the model slug keeps its vendor prefix,
   e.g. `openrouter/z-ai/glm-5.2`.
 - **Effort** maps onto `Controls.reasoning.effort` on every input turn
   (`default` sends no override). Not every model supports every level; an
@@ -101,7 +101,7 @@ mira report <run_id>                           # re-render a saved run
 
 ## Dataset
 
-[`dataset.jsonl`](dataset.jsonl) is a portable Mira dataset — one `Sample` per
+[`dataset.jsonl`](dataset.jsonl) is a portable Mira dataset, one `Sample` per
 line, runner-agnostic. Cases are self-contained: samples that need workspace
 state seed it via the sample's `files` field, and multimodal (vision) cases
 carry their images inline as base64 `attachments`, so nothing depends on
@@ -121,23 +121,23 @@ Metadata keys (all optional):
 
 - `requires`: capability ids the case needs; unmet ⇒ the case is skipped on
   that harness profile. (A target route that rejects the sample's input
-  modality — e.g. no image endpoint — skips the same way.)
-- `expect_tools`: `[{ "tool": "write_file", "min": 2 }]` — each tool must be
+  modality, e.g. no image endpoint, skips the same way.)
+- `expect_tools`: `[{ "tool": "write_file", "min": 2 }]`, each tool must be
   called at least `min` times (default 1).
-- `forbid_tools`: `["delete_file"]` — must NOT be called (safety cases).
+- `forbid_tools`: `["delete_file"]`, must NOT be called (safety cases).
 - `expect_regex`: regex (or list that must ALL match) for the final response.
 - `forbid_regex`: regex (or list) the final response must NOT match.
 - `expect_files`: `[{ "path": "…", "contains": "…" }]` / `{ "path", "regex" }`
-  — post-run workspace file checks.
+, post-run workspace file checks.
 - `min_tool_calls` / `max_tool_calls`: bounds on total tool calls
   (`max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
 
 Tags select subsets: `text` (no tools; runs on every harness), `tools`,
 `smoke` (fast text-only sanity set), `safety`, `multimodal` / `vision`
-(image-input cases — sent with the first turn; a target route with no
+(image-input cases, sent with the first turn; a target route with no
 image-capable endpoint skips these as N/A rather than failing), and
 `robustness` (`vision-tiny-image`: a 64×32 image some vision pipelines
-mis-register — e.g. gpt-5.5 perceives it mirrored — so a fail there is a
+mis-register, e.g. gpt-5.5 perceives it mirrored, so a fail there is a
 preprocessing robustness signal, not a spatial-reasoning one), plus
 per-category tags (`instruction`, `format`, `reasoning`, `extraction`,
 `multi-turn`, `files`, `shell`, `time`, `knowledge`, `efficiency`).
@@ -153,12 +153,12 @@ subject error; infra faults score N/A and are retried). Skipped cases
 ## Caveats
 
 - **Regex scoring is intentionally strict on some instruction cases**
-  (e.g. `instruction-three-words`); they are discriminators, not guarantees —
+  (e.g. `instruction-three-words`); they are discriminators, not guarantees,
   expect sub-100% scores from good models. Track the trend, not the absolute.
 - **Effort × model support varies.** e.g. `xhigh` is not available on every
   model; such cases fail with a provider error rather than being skipped.
 - **`bashkit_shell` is the Framework's virtual shell** over the session
-  filesystem — behavior can differ from a real sandbox shell.
+  filesystem, behavior can differ from a real sandbox shell.
 
 ## Development
 

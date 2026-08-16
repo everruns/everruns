@@ -37,7 +37,7 @@ Returns: content body, status code, metadata, quality signals, redirect history,
 ## Notes
 
 - **Timeouts**: 1s for first byte, 30s for body. Partial content returned on body timeout.
-- **Binary content**: Images, PDFs, etc. return metadata only (content type, size) — not the binary data.
+- **Binary content**: Images, PDFs, etc. return metadata only (content type, size), not the binary data.
 - **Focused extraction**: Use `content_focus: "agent"` for FetchKit's lowest-noise extraction strategy.
 - **Rendered pages**: `render: "rakers"` runs bounded inline JavaScript without loading page subresources. It is intended for simple rendered pages, not full browser automation.
 - **Crawl scope**: Crawl discovery stays on the seed URL's origin and enforces FetchKit's page limit.
@@ -46,5 +46,5 @@ Returns: content body, status code, metadata, quality signals, redirect history,
 
 ## See Also
 
-- [File System](/capabilities/file-system/) — save fetched content to workspace
+- [File System](/capabilities/file-system/), save fetched content to workspace
 - [Capabilities Overview](/capabilities/)

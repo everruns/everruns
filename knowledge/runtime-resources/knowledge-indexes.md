@@ -24,10 +24,10 @@ vendor-neutral vector-store abstraction, capability registration).
 
 Two existing primitives sit next to this gap:
 
-* **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`) — human-curated short
+* **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`), human-curated short
   entries, keyword search, optional per-KB embedding model. Curation-first;
   no external sources, no chunking, no large-corpus retrieval.
-* **Memory** (`knowledge/runtime-resources/memory.md`) — org-scoped file stores mounted into
+* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped file stores mounted into
   `/workspace`, including **source-backed memories** synced from GitHub / Git.
   Filesystem-first; the agent reads/greps files, there is no semantic retrieval
   or chunk-level citation.
@@ -40,13 +40,13 @@ slot.
 
 The pieces this builds on already exist:
 
-* **Embeddings** — `ServiceKind::Embeddings` + `EmbeddingsDriver`, resolved via
+* **Embeddings**: `ServiceKind::Embeddings` + `EmbeddingsDriver`, resolved via
   `resolve_service(org, ServiceKind::Embeddings, binding)` (`knowledge/foundations/providers.md`).
-* **Source sync** — the background sync worker pattern from source-backed
+* **Source sync**: the background sync worker pattern from source-backed
   Memory (`crates/server/src/domains/memory/source_sync.rs`): claim → snapshot →
   complete/fail with optimistic claim-timestamp concurrency, sanitized errors,
   byte/file limits, secret-free source config.
-* **Connections** — GitHub App with on-demand 1-hour installation tokens and the
+* **Connections**: GitHub App with on-demand 1-hour installation tokens and the
   `ConnectorPlugin` registry for future OAuth sources
   (`crates/server/specs/user-connections.md`).
 
@@ -89,7 +89,7 @@ the previously indexed content and records a sanitized `last_sync_error`.
 ## Data Model
 
 Full DDL: `crates/server/migrations/074_knowledge_indexes.sql`. **Embedding
-vectors are not stored in Postgres** — Postgres is the management source of
+vectors are not stored in Postgres**: Postgres is the management source of
 truth; vectors and BM25 text live in the external vector store (see
 [Vector store](#vector-store)).
 
@@ -164,9 +164,9 @@ pluggable. OSS depends on no vendor SDK at the core layer.
 
 Backends:
 
-* **In-memory** (`InMemoryVectorStore`) — brute-force cosine, used by dev mode
+* **In-memory** (`InMemoryVectorStore`), brute-force cosine, used by dev mode
   and the in-memory storage-parity tests. No external dependency.
-* **Turbopuffer** (reference production backend) — namespace-oriented serverless
+* **Turbopuffer** (reference production backend), namespace-oriented serverless
   vector + BM25 engine. Multitenancy is first-class: each index is its own
   **namespace**, org-prefixed for isolation.
 
@@ -188,9 +188,9 @@ in the `Authorization` header and never logged or surfaced in errors.
 
 The store is **multitenant and multi-index** by construction:
 
-* **Multi-index** — one namespace per Knowledge Index. The namespace is recorded
+* **Multi-index**: one namespace per Knowledge Index. The namespace is recorded
   on `knowledge_indexes.vector_namespace` at creation and never reused.
-* **Multitenant** — the namespace name is org-prefixed:
+* **Multitenant**: the namespace name is org-prefixed:
   `org_{org_id}__{public_id}` (e.g. `org_1__kidx_<hex>`). Cross-org reads are
   structurally impossible because every query targets a single, org-derived
   namespace; the resolved namespace is always checked against the index's
@@ -200,9 +200,9 @@ The store is **multitenant and multi-index** by construction:
 
 Each point is keyed by the chunk `public_id` (`kchk_…`) and carries:
 
-* `vector` — the embedding (`vector_dim` from the index's embedding model).
-* `text` — the chunk passage, enabling Turbopuffer BM25.
-* attributes — `{ index_id, document_id }` for filtering and bulk delete.
+* `vector`, the embedding (`vector_dim` from the index's embedding model).
+* `text`, the chunk passage, enabling Turbopuffer BM25.
+* attributes, `{ index_id, document_id }` for filtering and bulk delete.
 
 ### Operations (trait surface)
 
@@ -305,8 +305,8 @@ citation that survives re-sync as long as the passage persists.
 
 Retrieval embeds the query once per bound index, since indexes may use different
 embedding models. Each call's usage and provider-reported cost travel back with
-the citations, and the `search_index` tool — which holds the session and turn
-context the retrieval seam lacks — emits one `llm.generation` event per call. So
+the citations, and the `search_index` tool, which holds the session and turn
+context the retrieval boundary lacks, emits one `llm.generation` event per call. So
 query-time embedding spend reaches `llm_generations`, the denormalized totals and
 budget debits on the same path chat generations use.
 
@@ -321,7 +321,7 @@ for exactly this case, and the reporting projection left-joins sessions so a
 session-less row still reaches `fact_llm_generation` with null session
 dimensions.
 
-A run writes one aggregate row rather than one per embedding call — a run embeds
+A run writes one aggregate row rather than one per embedding call, a run embeds
 every chunk of every document, and per-call rows carry no dimension the aggregate
 lacks.
 
@@ -339,7 +339,7 @@ prerequisite, not its decision.
 * **Icon:** `library`
 * **Dependencies:** none
 * **Features:** `knowledge`
-* **Risk:** `Medium` — retrieval surfaces untrusted external content into the
+* **Risk:** `Medium`, retrieval surfaces untrusted external content into the
   agent context (prompt-injection vector), unlike the org-curated Knowledge Base.
 
 ### Config Schema
@@ -348,9 +348,9 @@ prerequisite, not its decision.
 { "indexes": ["kidx_abc123...", "kidx_def456..."], "top_k": 10 }
 ```
 
-* `indexes` — IDs of Knowledge Indexes the agent can search. Empty/null = no
+* `indexes`, IDs of Knowledge Indexes the agent can search. Empty/null = no
   indexes bound; the tool returns an empty result set.
-* `top_k` — optional default result cap (1–50).
+* `top_k`, optional default result cap (1–50).
 
 Phase-1 validation enforces structural shape only (`kidx_<32-hex>` format, no
 duplicates, `top_k` bounds). Cross-org / archived-index rejection runs at tool
@@ -363,8 +363,8 @@ REST endpoints (conventions in `knowledge/execution/apis.md`), shipped with the 
 slice:
 
 * `GET/POST /v1/knowledge-indexes`
-* `GET/PATCH/DELETE /v1/knowledge-indexes/{index_id}` — DELETE archives per lifecycle
-* `POST /v1/knowledge-indexes/{index_id}/sync` — enqueue a manual sync
+* `GET/PATCH/DELETE /v1/knowledge-indexes/{index_id}`, DELETE archives per lifecycle
+* `POST /v1/knowledge-indexes/{index_id}/sync`, enqueue a manual sync
 * `GET /v1/knowledge-indexes/{index_id}/documents`
 
 List supports `?search=` and `?include_archived=`.
@@ -416,17 +416,17 @@ harness.
 
 PR-sized slices, each leaving the tree green:
 
-1. **Foundation** — entity IDs, Postgres schema, `VectorStore` trait +
+1. **Foundation**: entity IDs, Postgres schema, `VectorStore` trait +
    `InMemoryVectorStore`, `knowledge_index` capability registration + config
    validation. No retrieval, no sync yet.
-2. **Management + storage** — domain, repositories (in-memory + Postgres),
+2. **Management + storage**: domain, repositories (in-memory + Postgres),
    CRUD API, namespace assignment, OpenAPI.
-3. **Syncout** — GitHub source connector, chunking, embedding, the background
+3. **Syncout**: GitHub source connector, chunking, embedding, the background
    sync worker, Turbopuffer backend wired through `HostComposition` and
    `just start-all`.
-4. **Retrieval** — `search_index` tool, hybrid query + RRF, citation hydration.
-5. **UI** — list/detail/sync-status pages and capability config UI.
-6. **Later** — GitHub push webhooks, scheduling, richer extractors (PDF/Office),
+4. **Retrieval**: `search_index` tool, hybrid query + RRF, citation hydration.
+5. **UI**: list/detail/sync-status pages and capability config UI.
+6. **Later**: GitHub push webhooks, scheduling, richer extractors (PDF/Office),
    and additional sources (Dropbox, OneDrive, generic Git).
 
 ## Open Questions
@@ -438,4 +438,4 @@ PR-sized slices, each leaving the tree green:
   open question?
 * Should `search_index` and `search_knowledge` unify into one tool with a shared
   citation surface once both ship?
-* Chunking strategy knobs (size/overlap) — per-index config or platform default?
+* Chunking strategy knobs (size/overlap), per-index config or platform default?
