@@ -313,7 +313,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .with_session_task_registry(registry.clone())
         .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))
         .default_model(llmsim_model())
-        .llm_sim(spawn_agent_sim(HANDOFF_TARGET_ID))
+        .llm_sim_as_default(spawn_agent_sim(HANDOFF_TARGET_ID))
         .harness(parent_harness)
         .agent(parent_agent)
         .session(parent_subagent_session)

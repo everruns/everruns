@@ -32,7 +32,9 @@ impl CompactionStrategy {
 ///
 /// The default proactively compacts at 85% of the model's context budget and
 /// lets the runtime select the best available strategy. Durable checkpoint
-/// storage remains a host concern.
+/// storage remains a host concern. This is the canonical `CompactionConfig`
+/// exported from `everruns-builtins` and `everruns`; the expanded runtime
+/// representation is named `RuntimeCompactionConfig`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct CompactionConfig {
     strategy: CompactionStrategy,

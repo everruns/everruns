@@ -217,14 +217,19 @@ fn default_preserve() -> Vec<String> {
     ]
 }
 
-/// Compaction capability configuration.
+/// Fully hydrated compaction configuration used by the runtime implementation.
 ///
-/// Configured per agent/harness via `AgentCapabilityConfig`:
+/// Framework applications should use the root-level
+/// [`crate::CompactionConfig`] builder. This type represents the expanded
+/// execution policy after capability JSON has been resolved, including
+/// implementation-level masking and memory-tier settings.
+///
+/// Configured per agent/harness via `CapabilityRef`:
 /// ```json
 /// { "ref": "compaction", "config": { "strategy": "auto", "proactive": true } }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompactionConfig {
+pub struct RuntimeCompactionConfig {
     /// Which strategy to use.
     #[serde(default)]
     pub strategy: CompactionStrategy,
@@ -254,7 +259,7 @@ pub struct CompactionConfig {
     pub cost_control: CostControlConfig,
 }
 
-impl Default for CompactionConfig {
+impl Default for RuntimeCompactionConfig {
     fn default() -> Self {
         Self {
             strategy: CompactionStrategy::default(),
@@ -276,7 +281,7 @@ fn default_budget_percent() -> f32 {
     0.85
 }
 
-impl CompactionConfig {
+impl RuntimeCompactionConfig {
     /// Parse from JSON value, falling back to defaults for invalid config.
     pub fn from_json(value: &serde_json::Value) -> Self {
         serde_json::from_value(value.clone()).unwrap_or_default()
@@ -288,7 +293,7 @@ pub struct CompactionCapability;
 
 #[derive(Debug)]
 struct ConfiguredCompactionPolicy {
-    config: CompactionConfig,
+    config: RuntimeCompactionConfig,
 }
 
 impl CompactionPolicy for ConfiguredCompactionPolicy {
@@ -411,7 +416,7 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
     /// `observation_masking` / `summarization` / `memory_tiers` /
     /// `cost_control` objects are advanced tuning with safe defaults and stay
     /// out of the schema, but `validate_config` still accepts them via the
-    /// typed `CompactionConfig` parse.
+    /// typed `RuntimeCompactionConfig` parse.
     fn config_schema(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({
             "type": "object",
@@ -453,7 +458,7 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
         if config.is_null() {
             return Ok(());
         }
-        let typed: CompactionConfig = serde_json::from_value(config.clone())
+        let typed: RuntimeCompactionConfig = serde_json::from_value(config.clone())
             .map_err(|e| format!("invalid compaction config: {e}"))?;
         if !(0.1..=1.0).contains(&typed.budget_percent) {
             return Err(format!(
@@ -466,7 +471,7 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
 
     fn compaction_policy(&self, config: &serde_json::Value) -> Option<Arc<dyn CompactionPolicy>> {
         Some(Arc::new(ConfiguredCompactionPolicy {
-            config: CompactionConfig::from_json(config),
+            config: RuntimeCompactionConfig::from_json(config),
         }))
     }
 
@@ -531,7 +536,7 @@ impl ModelViewProvider for CompactionModelViewProvider {
         config: &serde_json::Value,
         context: &ModelViewContext<'_>,
     ) -> Vec<Message> {
-        let config = CompactionConfig::from_json(config);
+        let config = RuntimeCompactionConfig::from_json(config);
         let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
         if masking.masked_count > 0 {
             tracing::info!(
@@ -627,7 +632,7 @@ pub fn estimate_total_tokens(messages: &[LlmMessage]) -> usize {
 /// context window.
 pub fn should_compact_proactively(
     messages: &[LlmMessage],
-    config: &CompactionConfig,
+    config: &RuntimeCompactionConfig,
     context_window_tokens: usize,
 ) -> bool {
     if !config.proactive {
@@ -646,7 +651,7 @@ pub fn should_compact_proactively(
 pub fn should_compact_for_cost(
     estimated_input_tokens: usize,
     raw_tool_result_bytes: usize,
-    config: &CompactionConfig,
+    config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> bool {
     if !config.proactive
@@ -1034,7 +1039,7 @@ pub struct CostControlMaskingResult {
 /// configured.
 pub fn build_model_view_messages(
     stored_messages: &[Message],
-    compaction_config: &CompactionConfig,
+    compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
     apply_cost_control_masking(stored_messages, compaction_config, prior_usage)
@@ -1045,7 +1050,7 @@ pub fn build_model_view_messages(
 /// This avoids cloning the message list when masking does not apply.
 pub fn build_model_view_messages_owned(
     stored_messages: Vec<Message>,
-    compaction_config: &CompactionConfig,
+    compaction_config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
     apply_cost_control_masking_owned(stored_messages, compaction_config, prior_usage)
@@ -1061,7 +1066,7 @@ pub fn build_model_view_messages_owned(
 /// room.
 pub fn apply_cost_control_masking(
     messages: &[Message],
-    config: &CompactionConfig,
+    config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
     apply_cost_control_masking_owned(messages.to_vec(), config, prior_usage)
@@ -1069,7 +1074,7 @@ pub fn apply_cost_control_masking(
 
 fn apply_cost_control_masking_owned(
     messages: Vec<Message>,
-    config: &CompactionConfig,
+    config: &RuntimeCompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
     let cost_config = &config.cost_control;
@@ -1911,7 +1916,7 @@ mod tests {
     }
 
     // ====================================================================
-    // CompactionConfig tests
+    // RuntimeCompactionConfig tests
     // ====================================================================
 
     #[test]
@@ -1975,7 +1980,7 @@ mod tests {
 
     #[test]
     fn test_default_config() {
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         assert_eq!(config.strategy, CompactionStrategy::Auto);
         assert!(config.proactive);
         assert!((config.budget_percent - 0.85).abs() < f32::EPSILON);
@@ -1993,21 +1998,21 @@ mod tests {
 
     #[test]
     fn test_config_from_empty_json() {
-        let config = CompactionConfig::from_json(&json!({}));
+        let config = RuntimeCompactionConfig::from_json(&json!({}));
         assert_eq!(config.strategy, CompactionStrategy::Auto);
         assert!(config.proactive);
     }
 
     #[test]
     fn test_config_native_only() {
-        let config = CompactionConfig::from_json(&json!({"strategy": "native"}));
+        let config = RuntimeCompactionConfig::from_json(&json!({"strategy": "native"}));
         assert_eq!(config.strategy, CompactionStrategy::Native);
         assert!(config.proactive);
     }
 
     #[test]
     fn test_config_observation_masking_with_custom_settings() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "observation_masking",
             "proactive": false,
             "observation_masking": {
@@ -2026,7 +2031,7 @@ mod tests {
 
     #[test]
     fn test_config_cost_control_with_custom_settings() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "enabled": true,
                 "keep_recent_tool_results": 1,
@@ -2047,7 +2052,7 @@ mod tests {
 
     #[test]
     fn test_config_summarization_with_custom_model() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "summarization",
             "summarization": {
                 "model": "claude-haiku-4-5-20251001",
@@ -2104,7 +2109,7 @@ mod tests {
             ));
         }
 
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "keep_recent_tool_results": 2,
                 "mask_after_tool_results": 4
@@ -2173,7 +2178,7 @@ mod tests {
             }),
         ));
 
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "keep_recent_tool_results": 1,
                 "mask_after_tool_results": 2
@@ -2215,7 +2220,7 @@ mod tests {
             ));
         }
 
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         let result = build_model_view_messages(&messages, &config, None);
 
         assert_eq!(result.masked_count, 7);
@@ -2281,7 +2286,7 @@ mod tests {
             ));
         }
 
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "enabled": false,
                 "keep_recent_tool_results": 1,
@@ -2313,7 +2318,7 @@ mod tests {
             ));
         }
 
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "cost_control": {
                 "keep_recent_tool_results": 1,
                 "mask_after_tool_results": 99,
@@ -2390,7 +2395,7 @@ mod tests {
         }
         let usage = TokenUsage::with_cache(150_000, 100, Some(0), None);
 
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         let result = build_model_view_messages(&messages, &config, Some(&usage));
 
         assert_eq!(result.masked_count, 1);
@@ -2400,7 +2405,7 @@ mod tests {
 
     #[test]
     fn test_config_falls_back_to_defaults_for_invalid_json() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "nonexistent_strategy",
             "budget_percent": "not-a-number"
         }));
@@ -2410,7 +2415,7 @@ mod tests {
 
     #[test]
     fn test_config_partial_override() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "budget_percent": 0.7,
             "observation_masking": {
                 "keep_recent_tool_outputs": 3
@@ -2468,16 +2473,16 @@ mod tests {
 
     #[test]
     fn test_budget_percent_boundary_values() {
-        let config = CompactionConfig::from_json(&json!({"budget_percent": 0.1}));
+        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.1}));
         assert!((config.budget_percent - 0.1).abs() < f32::EPSILON);
 
-        let config = CompactionConfig::from_json(&json!({"budget_percent": 0.99}));
+        let config = RuntimeCompactionConfig::from_json(&json!({"budget_percent": 0.99}));
         assert!((config.budget_percent - 0.99).abs() < f32::EPSILON);
     }
 
     #[test]
     fn test_keep_recent_tool_outputs_zero() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "observation_masking": {"keep_recent_tool_outputs": 0}
         }));
         assert_eq!(config.observation_masking.keep_recent_tool_outputs, 0);
@@ -2908,7 +2913,7 @@ mod tests {
     #[test]
     fn test_should_compact_proactively_under_budget() {
         let messages = vec![make_user_msg("short")];
-        let config = CompactionConfig::default(); // 85% budget
+        let config = RuntimeCompactionConfig::default(); // 85% budget
         assert!(!should_compact_proactively(&messages, &config, 128_000));
     }
 
@@ -2917,7 +2922,7 @@ mod tests {
         // Create messages that exceed 85% of 1000 tokens = 850 tokens
         let big_text = "x".repeat(4000); // ~1000 tokens
         let messages = vec![make_user_msg(&big_text)];
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         assert!(should_compact_proactively(&messages, &config, 1000));
     }
 
@@ -2925,7 +2930,7 @@ mod tests {
     fn test_should_compact_proactively_disabled() {
         let big_text = "x".repeat(4000);
         let messages = vec![make_user_msg(&big_text)];
-        let config = CompactionConfig {
+        let config = RuntimeCompactionConfig {
             proactive: false,
             ..Default::default()
         };
@@ -2934,7 +2939,7 @@ mod tests {
 
     #[test]
     fn test_should_compact_for_cumulative_uncached_cost() {
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         let usage = TokenUsage::new(config.cost_control.max_uncached_input_tokens, 0);
 
         assert!(should_compact_for_cost(
@@ -2947,7 +2952,7 @@ mod tests {
 
     #[test]
     fn test_should_compact_for_raw_tool_result_bytes() {
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
 
         assert!(should_compact_for_cost(
             config.cost_control.compact_min_input_tokens,
@@ -2959,7 +2964,7 @@ mod tests {
 
     #[test]
     fn test_should_not_cost_compact_below_marginal_prompt_floor() {
-        let config = CompactionConfig::default();
+        let config = RuntimeCompactionConfig::default();
         let usage = TokenUsage::new(u32::MAX, 0);
 
         assert!(!should_compact_for_cost(
@@ -3199,7 +3204,7 @@ mod tests {
 
     #[test]
     fn test_compaction_config_with_memory_tiers() {
-        let config = CompactionConfig::from_json(&json!({
+        let config = RuntimeCompactionConfig::from_json(&json!({
             "strategy": "auto",
             "memory_tiers": {
                 "hot_messages": 15,

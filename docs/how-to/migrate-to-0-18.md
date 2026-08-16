@@ -252,6 +252,23 @@ Provider-owned modules are no longer compatibility-exported by
 This keeps credentials and concrete driver assembly out of the neutral kernel
 and makes the dependency owner visible in `Cargo.toml`.
 
+There are two common compiler-error shapes:
+
+1. **The module moved to another crate.** Add that crate and change the prefix.
+2. **The module stayed public, but its root convenience re-export was
+   removed.** Keep the dependency and qualify the symbol through its module.
+
+The second case produces the misleading-looking `no X in the root` error. It
+does not necessarily mean the type moved. These replacements are deliberately
+literal so they can be applied with ordinary search-and-replace:
+
+| before | after |
+|---|---|
+| `everruns_core::ProviderStore` | `everruns_core::provider_resolution::ProviderStore` |
+| `everruns_core::SessionStore` | `everruns_core::execution_loading::SessionStore` |
+| `everruns_core::MessageRetriever` | `everruns_core::message_retriever::MessageRetriever` |
+| `everruns_core::SessionFileSystem` | `everruns_core::session_files::SessionFileSystem` |
+
 | 0.17 core path | 0.18 direct path |
 |---|---|
 | `everruns_core::driver_registry::*` | `everruns_provider::driver_registry::*` |
@@ -280,6 +297,35 @@ transport boundaries now resolve two separate values:
 `ProviderStore::get_model_spec` and `get_default_model_spec` return only the
 first value. Hosts obtain provider configuration separately and join it only
 while constructing a non-serializable driver/provider execution value.
+
+`ProviderStore::get_provider_config` no longer has a default implementation.
+Every custom host must state where credentials live: return its resolved
+`ProviderConfig`, or explicitly return `None` when the provider was registered
+directly in the host registry or is selected but not configured. A missing
+credential no longer prevents turn-context/command assembly; the constructed
+driver rejects the first model/list/compact operation locally, before network
+I/O. This keeps recovery commands reachable without turning an empty token
+into an outbound authorization header.
+
+## Simulator and compaction naming
+
+`LlmSimRuntimeExt::llm_sim` now only registers/replaces the simulator provider.
+It never changes the selected model. Existing compact test setups that relied
+on implicit selection should use the explicit name:
+
+```diff
+- builder.llm_sim(config)
++ builder.llm_sim_as_default(config)
+```
+
+When a builder already calls `default_model(...)`, keep `.llm_sim(config)`;
+the selected model is preserved regardless of method order.
+
+`everruns_builtins::CompactionConfig` is the sole application-facing policy
+builder. The expanded implementation value previously available as
+`everruns_builtins::compaction::CompactionConfig` is now
+`everruns_builtins::compaction::RuntimeCompactionConfig` (also re-exported at
+the crate root). This makes an unqualified `CompactionConfig` unambiguous.
 
 The public core test/backend conveniences are gone as well:
 

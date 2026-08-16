@@ -1811,6 +1811,66 @@ pub type EmbeddingsDriverFactory =
 /// provider metadata) and returns a boxed driver.
 pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync>;
 
+/// A fully constructed driver whose provider selection is valid but whose
+/// credential document is not yet configured.
+///
+/// Hosts must be able to assemble a turn context so setup commands can repair
+/// provider configuration. The gate therefore sits at the first operation
+/// that could reach the provider, rather than at driver construction time.
+struct CredentialGateDriver {
+    inner: BoxedChatDriver,
+    message: String,
+}
+
+impl CredentialGateDriver {
+    fn error(&self) -> AgentLoopError {
+        AgentLoopError::llm_kind(LlmErrorKind::Authentication, self.message.clone())
+    }
+}
+
+#[async_trait]
+impl ChatDriver for CredentialGateDriver {
+    async fn chat_completion_stream(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _messages: Vec<LlmMessage>,
+        _config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        Err(self.error())
+    }
+
+    async fn list_models(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        Err(self.error())
+    }
+
+    fn supports_compact(&self) -> bool {
+        self.inner.supports_compact()
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        self.inner.supports_stateful_responses()
+    }
+
+    fn effective_context_window(&self, model: &str) -> Option<usize> {
+        self.inner.effective_context_window(model)
+    }
+
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        self.inner.supports_parallel_tool_calls(model)
+    }
+
+    async fn compact(
+        &self,
+        _endpoint: &crate::runtime_provider::ProviderEndpoint,
+        _request: CompactRequest,
+    ) -> Result<Option<CompactResponse>> {
+        Err(self.error())
+    }
+}
+
 /// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
 ///
 /// Declared in code by each driver, never stored in the database. Only `Chat`
@@ -2087,10 +2147,11 @@ impl DriverRegistry {
 
     /// Create an LLM driver based on configuration
     ///
-    /// API keys must be provided in the config for real providers. This function does NOT fall back to
-    /// environment variables. Keys should be decrypted from the database and passed here.
-    /// Exception: `LlmSim` and `External` providers do not require an API key
-    /// (external providers may authenticate via [`ProviderMetadata`]).
+    /// This function does not fall back to environment variables. Keys should
+    /// be decrypted by the host and passed here. A selected provider with
+    /// missing credentials still produces a driver so commands can inspect the
+    /// turn and repair configuration; that driver rejects every provider
+    /// operation locally before network I/O.
     ///
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
@@ -2100,17 +2161,6 @@ impl DriverRegistry {
         let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
             AgentLoopError::driver_not_registered(config.provider_type.to_string())
         })?;
-        let requires_api_key = descriptor
-            .credential_schema
-            .fields
-            .iter()
-            .any(|field| field.name == "api_key" && field.required && field.group.is_none());
-        if requires_api_key && config.api_key.is_none() {
-            return Err(AgentLoopError::llm(
-                "API key is required. Configure the API key in provider settings.",
-            ));
-        }
-
         // Look up the descriptor and its chat factory for this provider type
         let factory = descriptor.chat.as_ref().ok_or_else(|| {
             AgentLoopError::llm(format!(
@@ -2121,7 +2171,36 @@ impl DriverRegistry {
 
         // Create the driver using the factory
         let driver_config = DriverConfig::from_provider_config(config);
-        Ok(factory(&driver_config))
+        let driver = factory(&driver_config);
+        let mut credential_fields = driver_config.credentials.clone();
+        if let Some(serde_json::Value::Object(extra)) = &driver_config.metadata.extra {
+            for (name, value) in extra {
+                if let Some(value) = value.as_str() {
+                    credential_fields
+                        .entry(name.clone())
+                        .or_insert_with(|| value.to_string());
+                }
+            }
+        }
+        let credential_errors = descriptor.credential_schema.validate(&credential_fields);
+        if credential_errors.is_empty() {
+            Ok(driver)
+        } else {
+            let message = if descriptor.credential_schema.fields.len() == 1
+                && descriptor.credential_schema.fields[0].name == "api_key"
+            {
+                "API key is required. Configure the API key in provider settings.".to_string()
+            } else {
+                format!(
+                    "Provider credentials are required. Configure provider settings: {}",
+                    credential_errors.join(" ")
+                )
+            };
+            Ok(Box::new(CredentialGateDriver {
+                inner: driver,
+                message,
+            }))
+        }
     }
 
     /// Check if a driver is registered for a provider type
@@ -2517,12 +2596,14 @@ mod tests {
     }
 
     #[test]
-    fn test_driver_registry_requires_api_key() {
+    fn keyless_selection_constructs_but_fails_before_provider_call() {
         // Register a mock factory
         let mut registry = DriverRegistry::new();
-        registry.register(DriverId::OpenAI, |_config| {
+        let provider_called = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let called = provider_called.clone();
+        registry.register(DriverId::OpenAI, move |_config| {
             // Return a mock driver - just need something that compiles
-            struct MockDriver;
+            struct MockDriver(Arc<std::sync::atomic::AtomicBool>);
             #[async_trait]
             impl ChatDriver for MockDriver {
                 async fn chat_completion_stream(
@@ -2531,16 +2612,23 @@ mod tests {
                     _messages: Vec<LlmMessage>,
                     _config: &LlmCallConfig,
                 ) -> Result<LlmResponseStream> {
-                    unimplemented!()
+                    self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                    unreachable!("credential gate must reject before provider I/O")
                 }
             }
-            Box::new(MockDriver)
+            Box::new(MockDriver(called.clone()))
         });
 
-        // Driver without API key should fail
+        // Selection is constructible without credentials so command/context
+        // assembly can reach a provider-repair command.
         let config = ProviderConfig::new(DriverId::OpenAI);
-        let result = registry.create_chat_driver(&config);
-        assert!(result.is_err());
+        let driver = registry
+            .create_chat_driver(&config)
+            .expect("selected provider remains constructible");
+        let error = futures::executor::block_on(driver.list_models(&ProviderEndpoint::default()))
+            .expect_err("provider operation must fail locally");
+        assert!(error.to_string().contains("API key is required"));
+        assert!(!provider_called.load(std::sync::atomic::Ordering::SeqCst));
 
         // Driver with API key should succeed
         let config_with_key = ProviderConfig::new(DriverId::OpenAI).with_api_key("test-key");

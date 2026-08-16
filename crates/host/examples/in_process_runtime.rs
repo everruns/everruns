@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The runtime below uses the compact convenience.
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
                 vec![everruns_provider::tool_types::ToolCall {
                     id: "call_mul_1".into(),

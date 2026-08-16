@@ -317,7 +317,7 @@ async fn build_runtime(
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform(policy))
-        .llm_sim(LlmSimConfig::scripted(script))
+        .llm_sim_as_default(LlmSimConfig::scripted(script))
         .default_model(ModelSpec::on(
             (DriverId::LlmSim).as_str(),
             "llmsim-model".to_string(),

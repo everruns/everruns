@@ -129,7 +129,7 @@ async fn usage_limit_error_schedules_continuation_and_promises_resume() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_capability())
-        .llm_sim(LlmSimConfig::scripted(vec![SimTurn::Error(
+        .llm_sim_as_default(LlmSimConfig::scripted(vec![SimTurn::Error(
             SimError::Other(CODEX_USAGE_LIMIT_BODY.to_string()),
         )]))
         .default_model(llmsim_model())
@@ -197,7 +197,7 @@ async fn usage_limit_error_without_capability_stays_generic() {
     // harness. Nothing should be scheduled and the copy must stay generic.
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_capability())
-        .llm_sim(LlmSimConfig::scripted(vec![SimTurn::Error(
+        .llm_sim_as_default(LlmSimConfig::scripted(vec![SimTurn::Error(
             SimError::Other(CODEX_USAGE_LIMIT_BODY.to_string()),
         )]))
         .default_model(llmsim_model())

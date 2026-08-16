@@ -320,6 +320,9 @@ pub struct InProcessRuntimeBuilder {
     /// whose named model becomes the runtime default when nothing else set one.
     /// See [`Self::provider_with_default_model`].
     default_provider: Option<(everruns_provider::runtime_provider::Provider, String)>,
+    /// Providers that intentionally replace a same-id registration without
+    /// changing model selection. Used by deterministic simulator adapters.
+    replacement_providers: Vec<everruns_provider::runtime_provider::Provider>,
     providers: Vec<everruns_provider::runtime_provider::Provider>,
     model_spec: Option<everruns_provider::model_spec::ModelSpec>,
     backends: Option<HostBackends>,
@@ -356,7 +359,7 @@ impl InProcessRuntimeBuilder {
     ///
     /// Embedders must either:
     /// - call [`Self::provider_with_default_model`] (e.g. via the
-    ///   `everruns-test-support` `.llm_sim(...)` extension) for deterministic
+    ///   `everruns-test-support` `.llm_sim_as_default(...)` extension) for deterministic
     ///   local examples/tests, or
     /// - register their own driver(s) on the platform definition and set a
     ///   default model via [`Self::default_model`].
@@ -369,6 +372,7 @@ impl InProcessRuntimeBuilder {
                 .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
                 .build(),
             default_provider: None,
+            replacement_providers: Vec::new(),
             providers: Vec::new(),
             model_spec: None,
             backends: None,
@@ -423,12 +427,26 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Register a provider, replacing any same-id registration, without
+    /// changing the selected default model.
+    ///
+    /// This is useful for deterministic test/simulation adapters. Ordinary
+    /// applications should prefer [`Self::provider`], which rejects duplicate
+    /// identities instead of silently replacing them.
+    pub fn replace_provider(
+        mut self,
+        provider: everruns_provider::runtime_provider::Provider,
+    ) -> Self {
+        self.replacement_providers.push(provider);
+        self
+    }
+
     /// Register `provider` at build time — replacing any provider already
     /// registered under the same name — and default the runtime model to
     /// `model_id` on that provider when no other default was configured.
     ///
     /// This is the seam behind deterministic simulated runtimes: the
-    /// `everruns-test-support` crate's `.llm_sim(...)` extension builds an
+    /// `everruns-test-support` crate's `.llm_sim_as_default(...)` extension builds an
     /// `llmsim` provider and routes it through here.
     pub fn provider_with_default_model(
         mut self,
@@ -670,6 +688,12 @@ impl InProcessRuntimeBuilder {
             }
         }
 
+        for provider in self.replacement_providers {
+            self.host_composition
+                .driver_registry_mut()
+                .replace_provider(provider);
+        }
+
         for provider in self.providers {
             self.host_composition
                 .driver_registry_mut()
@@ -681,7 +705,7 @@ impl InProcessRuntimeBuilder {
                 "in-process runtime requires a default model; call \
                  InProcessRuntimeBuilder::model_spec(...) or \
                  InProcessRuntimeBuilder::provider_with_default_model(...) \
-                 (e.g. the everruns-test-support `.llm_sim(...)` extension)",
+                 (e.g. the everruns-test-support `.llm_sim_as_default(...)` extension)",
             )
         })?;
 

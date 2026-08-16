@@ -74,7 +74,7 @@ async fn hides_math_tools_but_runs_them_via_lua() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform())
-        .llm_sim(sim)
+        .llm_sim_as_default(sim)
         .default_model(ModelSpec::on(
             (DriverId::LlmSim).as_str(),
             "llmsim-model".to_string(),

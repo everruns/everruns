@@ -16,6 +16,7 @@ use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
+use everruns_provider::runtime_provider::Provider;
 use everruns_provider::tool_types::ToolCall;
 use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
@@ -27,6 +28,34 @@ fn minimal_platform() -> HostComposition {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
     HostComposition::new(capabilities, DriverRegistry::new())
+}
+
+#[tokio::test]
+async fn simulator_registration_does_not_change_an_explicit_default_model() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .provider(Provider::new(
+            "selected",
+            everruns_test_support::LlmSimDriver::new(LlmSimConfig::fixed("selected provider")),
+        ))
+        .default_model(ModelSpec::on("selected", "selected-model"))
+        .llm_sim(LlmSimConfig::fixed("unexpected simulator default"))
+        .single_session(|session| {
+            session
+                .harness("chat", "You are concise.")
+                .agent("chat-agent", "Reply once.")
+        })
+        .build()
+        .await
+        .expect("runtime builds");
+
+    let result = runtime
+        .run_text_turn(
+            runtime.default_session_id().expect("default session"),
+            "hello",
+        )
+        .await
+        .expect("turn runs");
+    assert_eq!(result.response, "selected provider");
 }
 
 fn harness(harness_id: everruns_provider::typed_id::HarnessId) -> everruns_host::SeededHarness {
@@ -105,7 +134,7 @@ fn per_type_builders_produce_portable_execution_values() {
 #[tokio::test]
 async fn default_runtime_uses_runtime_safe_capability_preset() {
     let runtime = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("time", "You know the current time.")
                 .with_capability("current_time")
@@ -127,7 +156,7 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
     );
 
     let platform_only_runtime = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("platform", "You manage the platform.")
                 .with_capability("platform_management")
@@ -163,7 +192,7 @@ async fn runtime_rejects_tools_missing_required_context_services_before_reason()
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::fixed("model must not be reached"))
+        .llm_sim_as_default(LlmSimConfig::fixed("model must not be reached"))
         .single_session(|s| {
             s.harness("tasks", "Manage session tasks.")
                 .with_capability("session_tasks")
@@ -199,7 +228,7 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Let me calculate that.").with_tool_call_sequence(vec![
                 vec![ToolCall {
                     id: "call_mul_1".into(),
@@ -268,7 +297,7 @@ async fn query_history_reads_messages_through_in_process_reason_act_path() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("History retrieved.").with_tool_call_sequence(vec![
                 vec![ToolCall {
                     id: "call_history_1".into(),
@@ -333,7 +362,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .backends(backends)
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Seeded history retrieved.").with_tool_call_sequence(vec![
                 vec![ToolCall {
                     id: "call_seeded_history".into(),
@@ -389,7 +418,7 @@ async fn query_history_reads_seeded_resumed_session_messages() {
 async fn single_session_builder_seeds_runnable_runtime() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("single session works"))
+        .llm_sim_as_default(LlmSimConfig::fixed("single session works"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
                 .with_capability("test_math")
@@ -426,7 +455,7 @@ async fn single_session_builder_pins_session_id_when_set() {
     let expected = everruns_provider::typed_id::SessionId::from_seed(481);
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("pinned id works"))
+        .llm_sim_as_default(LlmSimConfig::fixed("pinned id works"))
         .single_session(|s| {
             s.harness("h", "h")
                 .agent("a", "a")
@@ -446,7 +475,7 @@ async fn single_session_builder_pins_session_id_when_set() {
 async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness_network_access(NetworkAccessList::allow_only(["example.com"]))
                 .harness("math", "You are a math assistant.")
@@ -471,7 +500,7 @@ async fn single_session_builder_preserves_harness_acl_when_order_changes() {
 async fn single_session_builder_preserves_agent_acl_when_order_changes() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.agent_network_access(NetworkAccessList::allow_only(["example.com"]))
                 .agent("math-agent", "Use tools when needed.")
@@ -511,7 +540,7 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("No-op"))
+        .llm_sim_as_default(LlmSimConfig::fixed("No-op"))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(math_harness)
         .agent(agent(agent_id))
@@ -537,7 +566,7 @@ async fn runtime_runs_session_without_agent_entity() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("Harness-only runtime works"))
+        .llm_sim_as_default(LlmSimConfig::fixed("Harness-only runtime works"))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .session(session(session_id, harness_id, None))
@@ -568,7 +597,7 @@ async fn runtime_accepts_explicit_backend_bundle() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
         .backends(HostBackends::in_memory())
-        .llm_sim(LlmSimConfig::fixed("Custom backend bundle works"))
+        .llm_sim_as_default(LlmSimConfig::fixed("Custom backend bundle works"))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
@@ -613,7 +642,7 @@ async fn runtime_uses_platform_session_file_system_factory() {
         .session_file_system_factory_context(
             SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
         )
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .harness(harness)
         .session(session(session_id, harness_id, None))
         .build()
@@ -650,7 +679,7 @@ async fn workspace_policy_wraps_custom_platform_file_system_factory() {
             SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
         )
         .workspace_policy(policy)
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .harness(harness(harness_id))
         .session(session(session_id, harness_id, None))
         .seed_text_file(session_id, "/public/readme.md", "visible")
@@ -682,7 +711,7 @@ async fn runtime_exposes_assembled_context() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(minimal_platform())
-        .llm_sim(LlmSimConfig::fixed("Context inspection"))
+        .llm_sim_as_default(LlmSimConfig::fixed("Context inspection"))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(harness(harness_id))
         .agent(agent(agent_id))
@@ -729,7 +758,7 @@ async fn list_commands_returns_capability_commands_for_session() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| {
             s.harness("math", "You are a math assistant.")
                 .with_capability("test_math")
@@ -816,7 +845,7 @@ async fn execute_command_dispatches_to_capability_handler() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "prompt").with_capability("echo"))
         .build()
         .await
@@ -866,7 +895,7 @@ async fn execute_btw_command_returns_ephemeral_answer() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::sequence(vec![
+        .llm_sim_as_default(LlmSimConfig::sequence(vec![
             "main answer".to_string(),
             "the side answer".to_string(),
         ]))
@@ -1059,7 +1088,7 @@ async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(connection_platform())
         .backends(backends)
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "h").agent("a", "a"))
         .build()
         .await
@@ -1089,7 +1118,7 @@ async fn runtime_without_resolver_leaves_connection_resolver_unset() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(connection_platform())
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .single_session(|s| s.harness("h", "h").agent("a", "a"))
         .build()
         .await
@@ -1117,7 +1146,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(connection_platform())
         .backends(backends)
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("resolving token").with_tool_call_sequence(vec![
                 vec![ToolCall {
                     id: "call_echo_1".into(),
@@ -1184,7 +1213,7 @@ async fn runtime_with_microsoft_docs_plugin() -> (
     let plugin_dir = Path::new(MICROSOFT_DOCS_PLUGIN_DIR);
 
     let builder = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .with_plugin_dir(plugin_dir)
         .expect("microsoft-docs plugin should compile without error");
 
@@ -1263,7 +1292,7 @@ async fn plugin_warnings_are_accessible_on_built_runtime() {
 
     let plugin_dir = Path::new(MICROSOFT_DOCS_PLUGIN_DIR);
     let builder = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .with_plugin_dir(plugin_dir)
         .expect("plugin should compile");
 

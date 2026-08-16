@@ -115,7 +115,7 @@ async fn embedder_bus_and_fs_factory_are_used() {
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .backends(local.runtime_backends.clone())
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Let me calculate.").with_tool_call_sequence(vec![
                 vec![ToolCall {
                     id: "call_mul".into(),
@@ -192,7 +192,7 @@ async fn seam_task_lifecycle_round_trips_through_injected_registry() {
         .host_composition(platform)
         .backends(local.runtime_backends.clone())
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
-        .llm_sim(LlmSimConfig::fixed("ok"))
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
         .harness(HarnessBuilder::new("h", "p").id(harness_id).build())
         .agent(AgentBuilder::new("a", "p").id(agent_id).build())
         .session(

@@ -249,7 +249,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_egress(traffic.clone()))
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Calling the docs MCP tool.")
                 .with_tool_call_sequence(vec![vec![mcp_tool_call], vec![]]),
         )
@@ -325,7 +325,7 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::scripted(vec![
+        .llm_sim_as_default(LlmSimConfig::scripted(vec![
             SimTurn::Assistant("before activation".to_string()),
             SimTurn::ToolCalls(vec![
                 SimToolCall {

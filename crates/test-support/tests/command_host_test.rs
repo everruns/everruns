@@ -156,6 +156,80 @@ async fn llmsim_host(response: &str) -> StoreCommandHost {
     )
 }
 
+async fn selected_but_unconfigured_host() -> StoreCommandHost {
+    let harness_id: HarnessId = "harness_000000000000000000000000000000b1".parse().unwrap();
+    let agent_id: AgentId = "agent_000000000000000000000000000000b1".parse().unwrap();
+    let session_id: SessionId = "session_000000000000000000000000000000b1".parse().unwrap();
+
+    let harness_store = InMemoryHarnessStore::new();
+    harness_store.add_harness(harness_id, test_harness()).await;
+    let agent_store = InMemoryAgentStore::new();
+    agent_store.add_agent(test_agent(agent_id)).await;
+    let session_store = InMemorySessionStore::new();
+    session_store
+        .add_session(test_session(session_id, harness_id, agent_id))
+        .await;
+    let provider_store = InMemoryProviderStore::new();
+    provider_store
+        .set_default_model_spec(ModelSpec::on("openai", "gpt-test"))
+        .await;
+
+    struct NetworkSentinel;
+    #[async_trait::async_trait]
+    impl everruns_provider::driver_registry::ChatDriver for NetworkSentinel {
+        async fn chat_completion_stream(
+            &self,
+            _endpoint: &everruns_provider::runtime_provider::ProviderEndpoint,
+            _messages: Vec<everruns_provider::driver_registry::LlmMessage>,
+            _config: &everruns_provider::driver_registry::LlmCallConfig,
+        ) -> everruns_provider::error::Result<everruns_provider::driver_registry::LlmResponseStream>
+        {
+            panic!("missing credentials must be rejected before provider I/O")
+        }
+    }
+
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(DriverId::OpenAI, |_config| Box::new(NetworkSentinel));
+    let mut capability_registry = CapabilityRegistry::new();
+    capability_registry.register(TestMathCapability);
+
+    StoreCommandHost::new(
+        session_id,
+        Arc::new(harness_store),
+        Arc::new(agent_store),
+        Arc::new(session_store),
+        Arc::new(InMemoryMessageRetriever::new()),
+        Arc::new(provider_store),
+        capability_registry,
+        driver_registry,
+    )
+}
+
+#[tokio::test]
+async fn configuration_commands_can_inspect_a_selected_but_unconfigured_provider() {
+    let host = selected_but_unconfigured_host().await;
+    let turn = host
+        .turn_context()
+        .await
+        .expect("credential-free command context remains reachable");
+    assert_eq!(turn.provider_type, "openai");
+    assert_eq!(turn.model, "gpt-test");
+
+    let error = host
+        .completion(SessionCompletionRequest {
+            system_prompts: vec![turn.system_prompt],
+            messages: turn.messages,
+            controls: None,
+            metadata: HashMap::new(),
+        })
+        .await
+        .expect_err("model call must fail before network I/O");
+    let result = error
+        .into_command_result()
+        .expect("provider failure is classified");
+    assert_eq!(result.error_code.as_deref(), Some("provider_misconfigured"));
+}
+
 #[tokio::test]
 async fn store_host_resolves_per_completion_model_override() {
     let host = llmsim_host("override answer").await;

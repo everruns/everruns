@@ -21,15 +21,17 @@ pub trait ProviderStore: Send + Sync {
     async fn get_default_model_spec(&self) -> Result<Option<ModelSpec>>;
 
     /// Resolve runtime service configuration independently from the model.
-    /// Application-supplied providers registered directly on the platform do
-    /// not need a stored config, so the default maps the open provider id to an
-    /// equally named integration kind without credentials.
+    ///
+    /// Implementors must make credential ownership explicit. Return a config
+    /// when this store owns endpoint/authentication material; return `None`
+    /// only when the matching provider is registered directly in the host's
+    /// driver registry or is intentionally selected but not configured yet.
+    /// The latter remains constructible for configuration commands, but every
+    /// provider operation fails locally at the credential boundary.
     async fn get_provider_config(
         &self,
-        _provider: &ProviderKey,
-    ) -> Result<Option<crate::driver_registry::ProviderConfig>> {
-        Ok(None)
-    }
+        provider: &ProviderKey,
+    ) -> Result<Option<crate::driver_registry::ProviderConfig>>;
 }
 
 #[async_trait]

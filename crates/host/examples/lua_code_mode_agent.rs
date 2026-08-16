@@ -107,7 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(sim)
+        .llm_sim_as_default(sim)
         .default_model(ModelSpec::on(
             (DriverId::LlmSim).as_str(),
             "llmsim-model".to_string(),

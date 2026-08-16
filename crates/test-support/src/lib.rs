@@ -16,7 +16,8 @@
 //! - [`capabilities`] — fake AWS/CRM/financial/warehouse demo capabilities
 //!   and the test math/weather, sample-data, and noop fixtures
 //!   (`fixtures` feature)
-//! - [`LlmSimRuntimeExt`] — `.llm_sim(...)` sugar for
+//! - [`LlmSimRuntimeExt`] — registration-only `.llm_sim(...)` and explicit
+//!   `.llm_sim_as_default(...)` sugar for
 //!   `everruns_host::InProcessRuntimeBuilder` (`host` feature)
 //!
 //! Production compositions must not register the fixture capabilities;
@@ -58,7 +59,7 @@ pub mod doubles;
 #[cfg(feature = "fixtures")]
 pub mod capabilities;
 
-// `.llm_sim(...)` extension for the in-process host runtime builder.
+// Simulator extensions for the in-process host runtime builder.
 #[cfg(feature = "host")]
 mod runtime_ext;
 
