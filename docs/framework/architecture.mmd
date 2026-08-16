@@ -1,0 +1,20 @@
+flowchart TB
+    F["Everruns Framework<br/>Agent • Engine • Session"]
+    P["Everruns Platform<br/>Server • Worker"]
+    H["everruns-host<br/>InProcessExecution"]
+    D["everruns-durable<br/>DurableExecution"]
+    K["everruns-engine<br/>Execution • TurnExecution • Input / Reason / Act"]
+
+    F -->|"create / resume / run"| H
+    P -->|"schedule / checkpoint / retry"| D
+    H -->|"implements Execution"| K
+    D -->|"implements Execution"| K
+
+    classDef application fill:#F5F5F5,stroke:#0A0A0A,color:#0A0A0A
+    classDef immediate fill:#F5F5F5,stroke:#1B7F4B,color:#0A0A0A
+    classDef durable fill:#F5F5F5,stroke:#B45309,color:#0A0A0A
+    classDef kernel fill:#F5F5F5,stroke:#0A1636,color:#0A0A0A
+    class F,P application
+    class H immediate
+    class D durable
+    class K kernel

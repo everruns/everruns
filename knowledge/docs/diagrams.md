@@ -4,13 +4,13 @@ title: "Diagram Specification"
 description: "Diagram specification."
 tags:
   - everruns
-  - ui
+  - documentation
 ---
 # Diagram Specification
 
 Style guide for technical diagrams in documentation. All diagrams follow the Everruns brand system (see `knowledge/ui/brand.md`) and are hand-authored SVGs.
 
-Adopted from [`everruns/landing/knowledge/ui/diagrams.md`](https://github.com/everruns/landing/blob/main/knowledge/ui/diagrams.md).
+Adopted from the current [`everruns/landing` diagram specification](https://github.com/everruns/landing/blob/main/specs/diagrams.md), with the restrained semantic-color rule aligned to the Chaliy web diagram system.
 
 ## Placement
 
@@ -37,7 +37,13 @@ This separation means:
 
 ## Colors
 
-Grayscale palette with Navy as the only accent. No gradients. No other colors.
+Black and white first. Grayscale with Navy remains the default, and most
+diagrams should stay in it. A diagram may use restrained semantic color when it
+materially clarifies an important boundary, execution path, status, or state
+distinction. Color is informational, never decorative: use no more than two
+hues beyond the base palette, keep each meaning consistent within the diagram,
+label the distinction in text, and never rely on color alone. Prefer a narrow
+rail, label, or status marker over a full colored box. No gradients.
 
 | Element                      | Hex       | Brand name |
 | ---------------------------- | --------- | ---------- |
@@ -52,6 +58,14 @@ Grayscale palette with Navy as the only accent. No gradients. No other colors.
 | Step badge text              | `#FFFFFF` | White      |
 | Secondary connectors         | `#A0A0A0` | Silver     |
 | Annotation box stroke        | `#404040` | Slate      |
+
+Suggested semantic highlights, used only when needed:
+
+| Meaning | Accent |
+| --- | --- |
+| Success or immediate/local path | `#1B7F4B` |
+| Warning or durable/checkpointed path | `#B45309` |
+| Danger or failure | `#B42318` |
 
 ## Typography
 

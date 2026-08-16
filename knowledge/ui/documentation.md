@@ -296,7 +296,7 @@ hero: ./my-feature-screenshot.png
 
 (The legacy form `hero: ../images/features/my-feature-screenshot.png` still resolves for grandfathered assets under `docs/images/{section}/`, but new pages should follow the co-located form above.)
 
-Place new hero images (and any other diagrams or screenshots used by a single page) in the **same directory as the page that embeds them**, and reference them with relative paths (`hero: ./my-feature-screenshot.png`). Existing assets under `docs/images/{section}/` continue to work and are not migrated en masse. See `knowledge/ui/diagrams.md` for the colocation rule applied to diagrams.
+Place new hero images (and any other diagrams or screenshots used by a single page) in the **same directory as the page that embeds them**, and reference them with relative paths (`hero: ./my-feature-screenshot.png`). Existing assets under `docs/images/{section}/` continue to work and are not migrated en masse. See `knowledge/docs/diagrams.md` for the colocation rule applied to diagrams.
 
 **Generated files are gitignored** — `public/og/` and `public/og-image.png` are rebuilt on every `pnpm run build` (via the `prebuild` script). Only the generation script and source images are committed.
 
@@ -321,9 +321,9 @@ The docs site must ship a single `sitemap.xml` file at the site root.
 
 ### Diagram Rendering
 
-Diagrams are hand-authored SVGs following `knowledge/ui/diagrams.md`. Each SVG has a co-located `.mmd` (Mermaid) source-of-truth file.
+Diagrams are hand-authored SVGs following `knowledge/docs/diagrams.md`. Each SVG has a co-located `.mmd` (Mermaid) source-of-truth file.
 
-1. New SVGs (and their `.mmd` siblings) **must** live in the same directory as the markdown page that embeds them, and are referenced via `![alt](./<name>.svg)`. See `knowledge/ui/diagrams.md` for the full placement rule.
+1. New SVGs (and their `.mmd` siblings) **must** live in the same directory as the markdown page that embeds them, and are referenced via `![alt](./<name>.svg)`. See `knowledge/docs/diagrams.md` for the full placement rule.
 2. Legacy diagrams under `docs/images/<category>/` remain in place and continue to work; they are not migrated en masse.
 3. No client-side rendering library is needed — SVGs are static assets processed by Astro's image pipeline
 4. The Mermaid `.mmd` files are source-of-truth for diagram content but are not rendered at build time

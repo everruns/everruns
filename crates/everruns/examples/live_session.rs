@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model, SendDisposition};
+use everruns::{Agent, Engine, LlmSimConfig, Model, SendDisposition};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instructions("Plan trips and incorporate every user message.")
         .model(model)
         .build()?;
-    let session = InMemoryEngine::new().create(agent.clone());
+    let session = Engine::new().create(agent.clone());
 
     let initial = session.send("Plan my trip.").await?;
     let latest = session.send("Prefer trains.").await?;

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use everruns::{Agent, InMemoryEngine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, Model};
 
 fn agent(data_dir: &Path) -> Result<Agent, everruns::BuildError> {
     Agent::builder()
@@ -20,7 +20,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from("target/framework-session-history-example"));
 
     let session_id = {
-        let engine = InMemoryEngine::new();
+        let engine = Engine::new();
         let first_agent = agent(&data_dir)?;
         let session = engine.create(first_agent);
         session.send_and_wait("My project is Atlas.").await?;
@@ -32,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // configuration; the engine attaches it to identity/history from the same
     // local profile. Application code never opens an event log or database.
     let second_agent = agent(&data_dir)?;
-    let engine = InMemoryEngine::new();
+    let engine = Engine::new();
     engine.attach(session_id, second_agent).await?;
     let resumed = engine.resume(session_id).await?;
     let mut pages = resumed.history().limit(2)?.pages();

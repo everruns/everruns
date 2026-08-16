@@ -167,6 +167,7 @@ export default defineConfig({
                   items: [
                     { label: "Overview", slug: "framework" },
                     { label: "Quickstart", slug: "framework/quickstart" },
+                    { label: "Architecture", slug: "framework/architecture" },
                   ],
                 },
                 {

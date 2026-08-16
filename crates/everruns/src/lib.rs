@@ -1,3 +1,5 @@
+#![deny(missing_docs)]
+
 //! The application-facing crate for the [Everruns Framework](https://docs.everruns.com/framework/).
 //!
 //! Build agents, attach provider configuration, select model ids, add typed
@@ -22,14 +24,14 @@
 //! ```
 //! # #[tokio::main]
 //! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! use everruns::{Agent, InMemoryEngine, Model};
+//! use everruns::{Agent, Engine, Model};
 //!
 //! let agent = Agent::builder()
 //!     .instructions("You are a helpful assistant.")
 //!     .model(Model::simulated("4"))
 //!     .build()
 //!     .expect("valid agent");
-//! let engine = InMemoryEngine::new();
+//! let engine = Engine::new();
 //! let result = engine.create(agent).send_and_wait("What is 2 + 2?").await?;
 //! assert!(result.success);
 //! assert_eq!(result.response, "4");

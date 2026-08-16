@@ -6,7 +6,7 @@
 //! cargo run -p everruns --features openai --example production_agent
 //! ```
 
-use everruns::{Agent, InMemoryEngine, OpenAI};
+use everruns::{Agent, Engine, OpenAI};
 
 /// Look up an order in the read-only public order namespace.
 #[everruns::tool]
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .tool(lookup_order())
         .build()?;
 
-    let session = InMemoryEngine::new().create(agent.clone());
+    let session = Engine::new().create(agent.clone());
     let first = session
         .send_and_wait("What is the status of order A-42?")
         .await?;

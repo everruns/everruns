@@ -7,7 +7,7 @@ An `Agent` is immutable reusable behavior. An `Engine` owns session identity,
 history, and runtime state. A `Session` is an engine-bound live conversation.
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +16,7 @@ let agent = Agent::builder()
     .model(Model::simulated("Acknowledged."))
     .build()?;
 
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let session = engine.create(agent);
 let first = session.send_and_wait("My project is Atlas.").await?;
 let second = session.send_and_wait("Continue with that project.").await?;
@@ -34,11 +34,11 @@ reports which case occurred, so applications do not need to race on session
 state themselves:
 
 ```rust
-# use everruns::{Agent, InMemoryEngine, Model, SendDisposition};
+# use everruns::{Agent, Engine, Model, SendDisposition};
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let agent = Agent::builder().instructions("Remember input.").model(Model::simulated("Done.")).build()?;
-# let engine = InMemoryEngine::new();
+# let engine = Engine::new();
 let session = engine.create(agent);
 let initial = session.send("Plan my trip.").await?;
 let latest = session.send("Prefer trains.").await?;

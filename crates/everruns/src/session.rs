@@ -704,10 +704,15 @@ impl EnvironmentSessionBuilder {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SessionEnvironmentError {
+    /// The Session already started and its Environment can no longer change.
     AlreadyStarted,
+    /// The Session is already bound to a different Environment.
     AlreadyBound,
+    /// The Environment's workspace provider conflicts with the Agent configuration.
     ProviderConflict,
+    /// The recorded Environment or workspace head cannot be reopened.
     Unavailable,
+    /// The workspace provider rejected the requested operation.
     Workspace(everruns_host::WorkspaceError),
 }
 
@@ -846,7 +851,9 @@ impl TurnHandle {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum CancelError {
+    /// The Session closed before the cancellation request could be delivered.
     SessionClosed,
+    /// The turn had already reached a terminal state.
     TurnFinished,
 }
 

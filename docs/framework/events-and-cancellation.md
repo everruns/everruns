@@ -6,7 +6,7 @@ description: Subscribe to live Framework session events and cancel a turn cooper
 Subscribe before sending a message to observe its live event projection:
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,7 +14,7 @@ let agent = Agent::builder()
     .instructions("Be concise.")
     .model(Model::simulated("Done."))
     .build()?;
-let session = InMemoryEngine::new().create(agent);
+let session = Engine::new().create(agent);
 let mut events = session.events();
 
 let pending = session.send("Start.").await?;
@@ -50,13 +50,13 @@ A message receipt exposes the specific accepting turn, so live applications
 can cancel without racing against whichever turn is active later:
 
 ```rust
-# use everruns::{Agent, InMemoryEngine, LlmSimConfig, Model};
+# use everruns::{Agent, Engine, LlmSimConfig, Model};
 # use std::time::Duration;
 # #[tokio::main]
 # async fn main() -> Result<(), Box<dyn std::error::Error>> {
 # let model = Model::simulated_with_config(LlmSimConfig::fixed("Done.").with_response_delay(Duration::from_millis(100)));
 # let agent = Agent::builder().instructions("Be concise.").model(model).build()?;
-# let session = InMemoryEngine::new().create(agent);
+# let session = Engine::new().create(agent);
 let pending = session.send("Start.").await?;
 pending.turn().cancel().await?;
 let cancelled = pending.wait().await?;

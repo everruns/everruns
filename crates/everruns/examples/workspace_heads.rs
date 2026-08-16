@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use everruns::{
-    Agent, InMemoryEngine, LocalConfig, LocalGitWorkspaceProvider, Model, Workspace,
-    WorkspacePolicy,
+    Agent, Engine, LocalConfig, LocalGitWorkspaceProvider, Model, Workspace, WorkspacePolicy,
 };
 
 #[tokio::main]
@@ -31,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .workspace_provider(provider)
         .workspace_policy(WorkspacePolicy::read_write())
         .build()?;
-    let session = InMemoryEngine::new()
+    let session = Engine::new()
         .create(agent.clone())
         .workspace(head.clone())
         .start()

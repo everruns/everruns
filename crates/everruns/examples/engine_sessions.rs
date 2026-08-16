@@ -1,8 +1,8 @@
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let engine = InMemoryEngine::new();
+    let engine = Engine::new();
     let agent = Agent::builder()
         .instructions("Be concise.")
         .model(Model::simulated("Hello."))

@@ -2,6 +2,15 @@
 
 ## 2026-08-15
 
+* **Framework architecture is public and unambiguous.** The Framework guide
+  now presents concrete `everruns::Engine` as the canonical application API,
+  separates it from the low-level `everruns-engine::Execution` host contract,
+  and maps immediate and durable execution onto their shared turn kernel. The
+  persistence guide distinguishes volatile, local crash-durable, and
+  distributed Platform recovery boundaries. The diagram contract now lives in
+  the documentation knowledge domain and permits at most two restrained,
+  labeled semantic accents when color clarifies an important boundary.
+
 * Moved the remaining active design work out of the temporary `proposals/`
   area and into its owning knowledge domains: secret-leak guardrails under
   security, external evaluation publishing under evaluation, and the portable

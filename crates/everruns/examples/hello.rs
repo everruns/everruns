@@ -7,7 +7,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use everruns::{Agent, InMemoryEngine, OpenAI};
+use everruns::{Agent, Engine, OpenAI};
 
 /// Return the current Unix time in seconds.
 #[everruns::tool]
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .tool(current_time())
         .build()?;
 
-    let session = InMemoryEngine::new().create(agent.clone());
+    let session = Engine::new().create(agent.clone());
     let mut events = session.events();
     let pending = session.send("what time is it?").await?;
     let mut event_types = Vec::new();

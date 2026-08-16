@@ -1,11 +1,17 @@
 ---
 title: Persistence
-description: Choose volatile or crash-durable Framework session and local application state.
+description: Choose volatile memory, crash-durable local state, or the distributed durable Platform.
 ---
 
 Framework history is a read-only projection of canonical events. Normal
 execution has one write path—the engine's event log—so a resumed session and a
 running session cannot disagree about the conversation.
+
+| Deployment | Conversation state | Recovery boundary | Use when |
+| --- | --- | --- | --- |
+| `Engine::new()` | Volatile memory | One Engine in one process | Embedding, tests, and short-lived tools |
+| `Engine` with `LocalConfig` | Crash-durable local canonical events and catalog | One trusted application process | Desktop apps, CLIs, and single-node services |
+| Everruns Platform | PostgreSQL-backed durable workflow state and canonical events | Distributed server and workers | Restarts, retries, horizontal workers, and remote clients |
 
 ## Default: engine-lifetime memory
 
@@ -28,7 +34,7 @@ event log under the configured application data directory. It also supplies a
 trusted real-disk workspace plus SQLite-backed task and schedule state:
 
 ```rust
-use everruns::{Agent, InMemoryEngine, LocalConfig, Model};
+use everruns::{Agent, Engine, LocalConfig, Model};
 
 let local = LocalConfig::new(".everruns-data").workspace("./workspace");
 let agent = Agent::builder()
@@ -36,7 +42,7 @@ let agent = Agent::builder()
     .model(Model::simulated("Ready."))
     .local(local)
     .build()?;
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let session = engine.create(agent);
 # Ok::<(), everruns::BuildError>(())
 ```
@@ -84,3 +90,16 @@ typed recovery-limit error instead of allocating or scanning without bound.
 
 Do not design new application persistence around a legacy storage
 representation.
+
+## Platform: distributed durable execution
+
+The Everruns Platform uses the same `everruns-engine` turn state machine as the
+Framework, but adapts it through `everruns-durable`. The server schedules work,
+workers execute phases and apply effects, and PostgreSQL stores workflow
+checkpoints and canonical events. A worker can disappear between phases and a
+later worker can continue from the committed checkpoint.
+
+This is a deployment boundary, not another configuration mode on
+`everruns::Engine`. Remote applications use the Platform API or an SDK; product
+hosts compose the lower-level durable crates. See [Framework
+Architecture](/framework/architecture/) for the layer map.

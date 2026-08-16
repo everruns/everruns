@@ -16,9 +16,9 @@ ecosystem. Normal Rust applications should start here; focused core, engine,
 host, provider, and platform crates support the implementation and advanced
 execution hosts.
 
-The public `Engine` SPI owns sessions. `InMemoryEngine` is the explicit
-process-local implementation; `everruns-engine` is the shared execution kernel
-for Input/Reason/Act and turn planning.
+The concrete `Engine` owns process-local sessions. It uses `everruns-engine`,
+the shared execution kernel for Input/Reason/Act and turn planning. The same
+kernel also drives the Everruns Platform's durable server/worker path.
 
 ## Installation
 
@@ -44,7 +44,7 @@ for feature boundaries and advanced-host composition.
 ## Offline Quickstart
 
 ```rust
-use everruns::{Agent, InMemoryEngine, Model};
+use everruns::{Agent, Engine, Model};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .model(Model::simulated("Hello from Everruns."))
         .build()?;
 
-    let engine = InMemoryEngine::new();
+    let engine = Engine::new();
     let session = engine.create(agent);
     let session_id = session.session_id();
     let turn = session.send_and_wait("Say hello.").await?;
@@ -67,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 `Model::simulated` uses the normal provider/execution path and returns a fixed
 response locally. It needs no credential or network connection.
 
-`InMemoryEngine` owns Agent snapshots, the process-local session catalog, and
+`Engine` owns Agent snapshots, the process-local session catalog, and
 runtime state. `engine.create(agent)` and `engine.resume(session_id)` return the
 same first-class `Session` abstraction. Agents never own hidden execution
 engines or session catalogs.
@@ -177,9 +177,9 @@ before sending to observe live events, or pass a cancellation token through
 `RunOptions`.
 
 ```rust
-use everruns::{CancellationToken, InMemoryEngine, RunOptions};
+use everruns::{CancellationToken, Engine, RunOptions};
 
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let session = engine.create(agent);
 let mut events = session.events();
 let first = session.send("Remember this turn.").await?;
@@ -204,7 +204,7 @@ next model call without exposing backend records.
 
 ## Workspace Heads and Environments
 
-Simple applications retain an `InMemoryEngine` and may use
+Simple applications retain an `Engine` and may use
 `AgentBuilder::workspace(path)` as shorthand for one shared local directory.
 Applications that need isolated mutable project views use the open
 `WorkspaceProvider` SPI, create a `WorkspaceHead`, and permanently bind it
@@ -212,7 +212,7 @@ before execution:
 
 ```rust
 use std::sync::Arc;
-use everruns::{Environment, InMemoryEngine, LocalGitWorkspaceProvider, Workspace};
+use everruns::{Environment, Engine, LocalGitWorkspaceProvider, Workspace};
 
 # async fn bind(agent: &everruns::Agent, repository: &std::path::Path, state: &std::path::Path)
 # -> Result<(), Box<dyn std::error::Error>> {
@@ -220,7 +220,7 @@ let provider = Arc::new(LocalGitWorkspaceProvider::new(state)?);
 let workspace = Workspace::open(provider, repository.to_string_lossy()).await?;
 let head = workspace.head("feature").from_revision("main").create().await?;
 let environment = Environment::builder().workspace(head).build()?;
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let session = engine.create(agent.clone()).environment(environment).start().await?;
 assert!(session.workspace_head().is_some());
 # Ok(())
@@ -308,6 +308,7 @@ Examples are compiled in CI and import only `everruns`.
 ## Documentation
 
 - [Everruns Framework](https://docs.everruns.com/framework/)
+- [Framework architecture](https://docs.everruns.com/framework/architecture/)
 - [Framework quickstart](https://docs.everruns.com/framework/quickstart/)
 - [Workspace security](https://docs.everruns.com/framework/workspace-security/)
 - [Workspaces and environments](https://docs.everruns.com/framework/workspaces-and-environments/)

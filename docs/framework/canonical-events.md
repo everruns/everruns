@@ -16,7 +16,7 @@ let agent = Agent::builder()
     .instructions("Answer concisely.")
     .model(Model::simulated("Hello!"))
     .build()?;
-let engine = InMemoryEngine::new();
+let engine = Engine::new();
 let mut session = engine.create(agent);
 let mut events = session.events();
 
