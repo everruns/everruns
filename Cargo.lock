@@ -2573,11 +2573,11 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-filesystem",
  "everruns-integrations-web-fetch",
+ "everruns-llmsim",
  "everruns-local",
  "everruns-macros",
  "everruns-openai",
  "everruns-provider",
- "everruns-test-support",
  "futures",
  "schemars",
  "serde",
@@ -2875,6 +2875,7 @@ dependencies = [
  "everruns-integrations-filesystem",
  "everruns-integrations-lua",
  "everruns-integrations-web-fetch",
+ "everruns-llmsim",
  "everruns-mcp",
  "everruns-platform",
  "everruns-provider",
@@ -3289,6 +3290,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-llmsim"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-host",
+ "everruns-provider",
+ "futures",
+ "llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-local"
 version = "0.17.26"
 dependencies = [
@@ -3300,6 +3315,7 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-host",
+ "everruns-llmsim",
  "everruns-platform",
  "everruns-provider",
  "everruns-test-support",
@@ -3676,11 +3692,11 @@ dependencies = [
  "everruns-core",
  "everruns-engine",
  "everruns-host",
+ "everruns-llmsim",
  "everruns-platform",
  "everruns-provider",
  "futures",
  "inventory",
- "llmsim",
  "serde",
  "serde_json",
  "tokio",
@@ -3738,6 +3754,7 @@ dependencies = [
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
+ "everruns-llmsim",
  "everruns-mai",
  "everruns-mcp",
  "everruns-meta",
@@ -3746,7 +3763,6 @@ dependencies = [
  "everruns-openrouter",
  "everruns-platform",
  "everruns-provider",
- "everruns-test-support",
  "mimalloc",
  "prost-types",
  "reqwest 0.13.4",

@@ -422,9 +422,9 @@ dependencies = [
  "everruns-core",
  "everruns-host",
  "everruns-integrations-filesystem",
+ "everruns-llmsim",
  "everruns-macros",
  "everruns-provider",
- "everruns-test-support",
  "schemars",
  "serde",
  "serde_json",
@@ -551,33 +551,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-llmsim"
+version = "0.17.26"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-host",
+ "everruns-provider",
+ "futures",
+ "llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-macros"
 version = "0.17.26"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.3",
-]
-
-[[package]]
-name = "everruns-platform"
-version = "0.17.26"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-capability",
- "everruns-core",
- "everruns-provider",
- "everruns-session-services",
- "inventory",
- "jsonschema",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -620,28 +613,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-test-support"
-version = "0.17.26"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-capability",
- "everruns-core",
- "everruns-engine",
- "everruns-host",
- "everruns-platform",
- "everruns-provider",
- "futures",
- "inventory",
- "llmsim",
- "serde",
- "serde_json",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
@@ -663,6 +634,7 @@ name = "external-consumer-app"
 version = "0.0.0"
 dependencies = [
  "everruns",
+ "everruns-llmsim",
  "external-capability-pack",
  "serde_json",
  "tokio",
@@ -676,9 +648,9 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-host",
+ "everruns-llmsim",
  "everruns-provider",
  "everruns-session-services",
- "everruns-test-support",
  "tokio",
 ]
 

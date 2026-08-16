@@ -24,12 +24,13 @@ use everruns_host::{
     RealDiskFileStore, RuntimeHostAdapter, SessionBuilder, SessionFileSystemFactory,
     SessionFileSystemFactoryContext,
 };
+use everruns_llmsim::{LlmSimConfig, LlmSimRuntimeExt};
 use everruns_local::{LocalBackends, LocalProfile, SqliteDb};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::ToolCall;
-use everruns_test_support::{LlmSimConfig, LlmSimRuntimeExt, TestMathCapability};
+use everruns_test_support::TestMathCapability;
 
 // ---- Caller-supplied event bus decorator ----------------------------------
 

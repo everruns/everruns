@@ -359,7 +359,7 @@ impl InProcessRuntimeBuilder {
     ///
     /// Embedders must either:
     /// - call [`Self::provider_with_default_model`] (e.g. via the
-    ///   `everruns-test-support` `.llm_sim_as_default(...)` extension) for deterministic
+    ///   `everruns-llmsim` `.llm_sim_as_default(...)` extension) for deterministic
     ///   local examples/tests, or
     /// - register their own driver(s) on the platform definition and set a
     ///   default model via [`Self::default_model`].
@@ -446,7 +446,7 @@ impl InProcessRuntimeBuilder {
     /// `model_id` on that provider when no other default was configured.
     ///
     /// This is the seam behind deterministic simulated runtimes: the
-    /// `everruns-test-support` crate's `.llm_sim_as_default(...)` extension builds an
+    /// `everruns-llmsim` crate's `.llm_sim_as_default(...)` extension builds an
     /// `llmsim` provider and routes it through here.
     pub fn provider_with_default_model(
         mut self,
@@ -705,7 +705,7 @@ impl InProcessRuntimeBuilder {
                 "in-process runtime requires a default model; call \
                  InProcessRuntimeBuilder::model_spec(...) or \
                  InProcessRuntimeBuilder::provider_with_default_model(...) \
-                 (e.g. the everruns-test-support `.llm_sim_as_default(...)` extension)",
+                 (e.g. the everruns-llmsim `.llm_sim_as_default(...)` extension)",
             )
         })?;
 

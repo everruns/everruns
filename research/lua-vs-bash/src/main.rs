@@ -103,7 +103,7 @@ fn platform() -> HostComposition {
     let mut drivers = DriverRegistry::new();
     everruns_anthropic::register_driver(&mut drivers);
     everruns_openai::register_driver(&mut drivers);
-    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
+    everruns_llmsim::register_driver(&mut drivers);
 
     HostComposition::new(caps, drivers)
 }

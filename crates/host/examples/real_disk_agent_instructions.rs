@@ -12,7 +12,7 @@
 //   cargo run -p everruns-host --example real_disk_agent_instructions
 
 use everruns_host::HostComposition;
-use everruns_test_support::LlmSimRuntimeExt;
+use everruns_llmsim::LlmSimRuntimeExt;
 use std::sync::Arc;
 
 use everruns_builtins::AgentInstructionsCapability;
@@ -20,10 +20,10 @@ use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_host::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
+use everruns_llmsim::LlmSimConfig;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
-use everruns_test_support::llmsim_driver::LlmSimConfig;
 use tempfile::TempDir;
 
 #[tokio::main]

@@ -78,7 +78,9 @@ required-features = ["mcp"]
 everruns-builtins.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
-# Deterministic simulator + fixtures for host tests/examples. Version-less
-# path dependency: stripped on publish, so the host <-> test-support
-# dev-dependency cycle never reaches crates.io.
+# Deterministic simulator for host tests/examples. Version-less path
+# dependency: stripped on publish, so the optional llmsim -> host edge does
+# not create a published cycle.
+everruns-llmsim = { path = "../llmsim", features = ["host"] }
+# Test doubles and demo fixtures.
 everruns-test-support = { path = "../test-support" }

@@ -13,5 +13,5 @@ everruns-host = { path = "../../../../crates/host" }
 everruns-session-services = { path = "../../../../crates/session-services" }
 
 [dev-dependencies]
-everruns-test-support = { path = "../../../../crates/test-support" }
+everruns-llmsim = { path = "../../../../crates/llmsim", features = ["host"] }
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

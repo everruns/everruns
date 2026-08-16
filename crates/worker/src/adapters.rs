@@ -30,8 +30,8 @@ pub fn create_driver_registry() -> DriverRegistry {
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
 
-    // LlmSim (from `everruns-test-support`, `sim` surface only — the worker
-    // never links the demo fixture capabilities). The `LLMSIM_DEMO` env var
+    // LlmSim comes from the production-safe `everruns-llmsim` crate; the
+    // worker never links testing/demo helpers. The `LLMSIM_DEMO` env var
     // lets operators opt the in-process LlmSim driver into a pre-baked
     // scripted scenario without changing the default ("Hello! I'm a
     // simulated LLM response.") behavior.
@@ -57,27 +57,27 @@ pub fn create_driver_registry() -> DriverRegistry {
             tracing::info!(
                 "LLMSIM_DEMO=guarded: registering scripted LlmSim driver for the guarded-bash pre_tool_use demo"
             );
-            everruns_test_support::llmsim_driver::register_driver_with_config(
+            everruns_llmsim::register_driver_with_config(
                 &mut registry,
-                everruns_test_support::llmsim_driver::guarded_bash_demo_script(),
+                everruns_llmsim::guarded_bash_demo_script(),
             );
         }
         Some("tasks") => {
             tracing::info!(
                 "LLMSIM_DEMO=tasks: registering scripted LlmSim driver for the session tasks demo"
             );
-            everruns_test_support::llmsim_driver::register_driver_with_config(
+            everruns_llmsim::register_driver_with_config(
                 &mut registry,
-                everruns_test_support::llmsim_driver::session_tasks_demo_script(),
+                everruns_llmsim::session_tasks_demo_script(),
             );
         }
         Some("monitor") => {
             tracing::info!(
                 "LLMSIM_DEMO=monitor: registering scripted LlmSim driver for the monitor demo"
             );
-            everruns_test_support::llmsim_driver::register_driver_with_config(
+            everruns_llmsim::register_driver_with_config(
                 &mut registry,
-                everruns_test_support::llmsim_driver::monitor_demo_script(),
+                everruns_llmsim::monitor_demo_script(),
             );
         }
         Some(other) => {
@@ -85,10 +85,10 @@ pub fn create_driver_registry() -> DriverRegistry {
                 value = %other,
                 "LLMSIM_DEMO has an unrecognized value; falling back to default LlmSim driver"
             );
-            everruns_test_support::llmsim_driver::register_driver(&mut registry);
+            everruns_llmsim::register_driver(&mut registry);
         }
         None => {
-            everruns_test_support::llmsim_driver::register_driver(&mut registry);
+            everruns_llmsim::register_driver(&mut registry);
         }
     }
 
@@ -140,7 +140,7 @@ mod tests {
             DriverId::Anthropic,
             DriverId::Gemini,
             DriverId::Bedrock,
-            // Seeded simulation driver (test-support `sim` surface).
+            // Seeded production-safe simulation driver.
             DriverId::LlmSim,
         ];
         for id in official {

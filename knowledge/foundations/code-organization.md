@@ -80,14 +80,16 @@ product registry, and downstream providers register through the open
 `DriverRegistry` seams alone (see
 `tests/fixtures/external-consumer/provider-pack/`).
 
-Deterministic simulation and demo fixtures live in `everruns-test-support`
-(EVE-875): the `llmsim` driver, the in-memory agentic loop, mock test doubles,
-and the fake/demo capabilities (fake AWS/CRM/financial/warehouse, test
-math/weather, sample-data, noop). `everruns-core` carries no llmsim dependency
-or feature, product registries never register the fixtures, and
-`scripts/lib/check-test-support-isolation.sh` (pre-push + CI) enforces both.
-The facade's `Model::simulated` consumes only the crate's `sim` feature.
-Reusable writable message/event fixtures also live in test-support. Concrete
+Deterministic simulation lives in the publishable `everruns-llmsim` crate:
+the driver, configuration and scripted-turn types, registry helpers, and the
+optional host-builder extension. The Framework facade and worker consume it
+directly, so production never depends on a crate named test-support.
+`everruns-test-support` owns the in-memory agentic loop, mock test doubles,
+reusable writable message/event fixtures, and fake/demo capabilities. Its
+0.17 simulator paths are re-exported only as a documented 0.18 migration
+bridge. `everruns-core` carries no simulator edge, product registries never
+register fixtures, and `scripts/lib/check-test-support-isolation.sh`
+(pre-push + CI) enforces these boundaries. Concrete
 application-grade agent, harness, session, and provider stores live in
 `everruns-host`; hosted conversation writes append only to its canonical
 `EventLog`, with `EventHistory` providing the read-only message projection.

@@ -7,7 +7,7 @@
 //! deterministic and runs without credentials.
 
 use everruns_host::HostComposition;
-use everruns_test_support::LlmSimRuntimeExt;
+use everruns_llmsim::LlmSimRuntimeExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -24,12 +24,12 @@ use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{CapabilityRegistry, MessageRole};
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
 const CHILD_TASK_ID: &str = "task_wakedemo_child";
 
@@ -288,7 +288,7 @@ fn platform(policy: TaskWakePolicy) -> HostComposition {
     caps.register(WakeDemoCapability { policy });
     caps.register(InfinityContextCapability);
     let mut drivers = DriverRegistry::new();
-    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
+    everruns_llmsim::register_driver(&mut drivers);
     HostComposition::new(caps, drivers)
 }
 

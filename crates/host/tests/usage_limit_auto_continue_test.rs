@@ -15,12 +15,12 @@ use everruns_core::session_schedule::SessionSchedule;
 use everruns_core::session_services::SessionScheduleStore;
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
+use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_llmsim::{LlmSimConfig, SimError, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::typed_id::{AgentId, HarnessId, PrincipalId, ScheduleId, SessionId};
-use everruns_test_support::LlmSimRuntimeExt;
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimError, SimTurn};
 use std::sync::{Arc, Mutex};
 
 /// Codex/ChatGPT usage-limit 429 body. Classifies to

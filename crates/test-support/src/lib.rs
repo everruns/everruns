@@ -1,13 +1,10 @@
-//! Deterministic simulation and demo fixtures for testing
+//! In-memory loops, test doubles, writable fixtures, and demo capabilities for testing
 //! [Everruns](https://everruns.com) agents.
 //!
-//! `everruns-test-support` carries the pieces that used to live inside
-//! `everruns-core` purely for tests, examples, and demos, so production
-//! builds no longer ship them:
+//! `everruns-test-support` is the testing and demonstration companion to the
+//! production-safe [`everruns-llmsim`](https://docs.rs/everruns-llmsim) crate.
+//! It keeps reusable helpers out of production compositions:
 //!
-//! - [`llmsim_driver`] — the in-process `llmsim` chat driver: fixed, echo,
-//!   sequence, and scripted multi-turn responses, latency and error
-//!   injection, effort/message capture (`sim` feature)
 //! - [`in_memory_loop`] — a full in-memory agentic loop with no database or
 //!   network (`sim` + `host` features)
 //! - [`in_memory`] — deterministic message and event fixtures for isolated
@@ -16,13 +13,14 @@
 //! - [`capabilities`] — fake AWS/CRM/financial/warehouse demo capabilities
 //!   and the test math/weather, sample-data, and noop fixtures
 //!   (`fixtures` feature)
-//! - [`LlmSimRuntimeExt`] — registration-only `.llm_sim(...)` and explicit
-//!   `.llm_sim_as_default(...)` sugar for
-//!   `everruns_host::InProcessRuntimeBuilder` (`host` feature)
+//! - a source-compatible 0.18 migration bridge for the simulator types and
+//!   host extension previously published here, including registration-only
+//!   `.llm_sim(...)` and explicit `.llm_sim_as_default(...)` (`sim` / `host`
+//!   features)
 //!
-//! Production compositions must not register the fixture capabilities;
-//! ordinary applications use `everruns::Model::simulated` instead of
-//! depending on this crate directly.
+//! Production code should use `everruns::Model::simulated` or depend on
+//! `everruns-llmsim` directly. Do not add a production dependency on this
+//! crate or register its fixture capabilities.
 //!
 //! # Example
 //!
@@ -42,9 +40,14 @@
 //! # }
 //! ```
 
-// LLM Simulator driver (behind the `sim` feature).
+/// Compatibility module preserving the 0.17 simulator path during the 0.18
+/// migration.
+///
+/// New production code should import these items from `everruns_llmsim`.
 #[cfg(feature = "sim")]
-pub mod llmsim_driver;
+pub mod llmsim_driver {
+    pub use everruns_llmsim::*;
+}
 
 // In-memory agentic loop built on the llmsim driver.
 #[cfg(all(feature = "sim", feature = "host"))]
@@ -59,25 +62,20 @@ pub mod doubles;
 #[cfg(feature = "fixtures")]
 pub mod capabilities;
 
-// Simulator extensions for the in-process host runtime builder.
-#[cfg(feature = "host")]
-mod runtime_ext;
-
 #[cfg(feature = "host")]
 mod store_reason_atom;
-
-pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
-#[cfg(all(feature = "sim", feature = "host"))]
-pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
-#[cfg(feature = "sim")]
-pub use llmsim_driver::{
-    LlmSimConfig, LlmSimDriver, OnExhausted, ResponseConfig, SimError, SimToolCall, SimTurn,
-    ToolCallConfig, ToolCallPattern,
-};
 
 pub use doubles::{
     EchoToolExecutor, FailingToolExecutor, MockLlmResponse, MockProvider, MockToolExecutor,
 };
+#[cfg(feature = "sim")]
+pub use everruns_llmsim::{
+    LlmSimConfig, LlmSimDriver, OnExhausted, ResponseConfig, SimError, SimToolCall, SimTurn,
+    ToolCallConfig, ToolCallPattern,
+};
+pub use in_memory::{InMemoryEventEmitter, InMemoryMessageRetriever};
+#[cfg(all(feature = "sim", feature = "host"))]
+pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};
 
 #[cfg(feature = "fixtures")]
 pub use capabilities::{
@@ -89,6 +87,7 @@ pub use capabilities::{
 };
 
 #[cfg(feature = "host")]
-pub use runtime_ext::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
+pub use everruns_llmsim::{LLMSIM_MODEL_ID, LLMSIM_PROVIDER, LlmSimRuntimeExt, llm_sim_provider};
+
 #[cfg(feature = "host")]
 pub use store_reason_atom::reason_atom_with_stores;

@@ -4,7 +4,9 @@ description: Test Framework applications deterministically without network acces
 ---
 
 `Model::simulated` is the default testing tool. It uses the normal provider
-resolution and execution path while returning a fixed response locally.
+resolution and execution path while returning a fixed response locally. Its
+implementation comes from the publishable, production-safe
+`everruns-llmsim` crate; the Framework does not depend on test-support code.
 
 ```rust
 use everruns::{Agent, Engine, Model};
@@ -38,3 +40,37 @@ workspace and local-state tests so they do not read or modify developer data.
 
 The runnable programs in [Framework examples](/framework/examples/) are also compiled
 in CI using only the public `everruns` facade.
+
+## Scripted and low-level simulation
+
+Use `Model::simulated_with_config` when an application test needs multiple
+assistant turns, deterministic tool calls, an injected provider error, or
+request capture:
+
+```rust
+use everruns::{Agent, LlmSimConfig, Model};
+use everruns_llmsim::{SimToolCall, SimTurn};
+
+let simulation = LlmSimConfig::scripted(vec![
+    SimTurn::ToolCalls(vec![SimToolCall {
+        name: "lookup".into(),
+        arguments: serde_json::json!({"id": 7}),
+        id: Some("call_lookup".into()),
+    }]),
+    SimTurn::Assistant("approved".into()),
+]);
+
+let agent = Agent::builder()
+    .instructions("Use lookup, then report the result.")
+    .model(Model::simulated_with_config(simulation))
+    .build()?;
+# Ok::<(), everruns::BuildError>(())
+```
+
+Advanced hosts depend on `everruns-llmsim` with its `host` feature for
+`LlmSimRuntimeExt`. The `.llm_sim(...)` method registers the provider without
+changing model selection; `.llm_sim_as_default(...)` explicitly selects it
+when no default was already configured. Use `everruns-test-support` only for
+testing/demo helpers such as its in-memory agentic loop, writable fixtures,
+test doubles, and fake capabilities. The test-support simulator re-exports
+exist only as a 0.18 migration bridge for 0.17 import paths.

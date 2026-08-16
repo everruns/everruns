@@ -11,7 +11,6 @@
 
 use std::sync::Arc;
 
-use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use chrono::Utc;
 use everruns_capability::CapabilityRef as AgentCapabilityConfig;
 use everruns_core::ExecutionContext;
@@ -33,6 +32,7 @@ use everruns_host::{
     InMemoryAgentStore, InMemoryEventLog, InMemoryHarnessStore, InMemoryProviderStore,
     InMemorySessionStore, InProcessExecution, NoopEventSink, StoreTurnContextResolver,
 };
+use everruns_llmsim::{LlmSimConfig, LlmSimDriver};
 use everruns_provider::driver_registry::ProviderConfig;
 use everruns_provider::driver_registry::{DriverId, DriverRegistry};
 use everruns_provider::error::Result;

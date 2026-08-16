@@ -11,17 +11,17 @@
 //! ```
 
 use everruns_host::HostComposition;
-use everruns_test_support::LlmSimRuntimeExt;
+use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
 
 use everruns_core::{
     AgentDefinition, CapabilityRegistry, ExecutionSession, HarnessDefinition, SessionExecutionState,
 };
 use everruns_host::InProcessRuntimeBuilder;
+use everruns_llmsim::LlmSimConfig;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
-use everruns_test_support::llmsim_driver::LlmSimConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

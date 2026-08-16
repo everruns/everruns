@@ -35,12 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_core::CapabilityRegistry;
     use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
     use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
+    use everruns_llmsim::LlmSimRuntimeExt;
+    use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
     use everruns_provider::driver_registry::DriverRegistry;
     use everruns_provider::model_spec::ModelSpec;
     use everruns_provider::provider::DriverId;
     use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
-    use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
-    use everruns_test_support::{LlmSimRuntimeExt, TestMathCapability};
+    use everruns_test_support::TestMathCapability;
 
     // The math tools the agent will orchestrate through Lua. `tools.multiply` /
     // `tools.add` etc. become available inside the script.
@@ -66,7 +67,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     caps.register(TestMathCapability);
 
     let mut drivers = DriverRegistry::new();
-    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
+    everruns_llmsim::register_driver(&mut drivers);
     let platform = HostComposition::new(caps, drivers);
 
     // Simulated model: turn 1 calls `lua` with the orchestration script; turn 2

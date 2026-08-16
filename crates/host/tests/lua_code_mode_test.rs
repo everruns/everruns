@@ -15,13 +15,13 @@ use everruns_core::CapabilityRegistry;
 use everruns_host::HostComposition;
 use everruns_host::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use everruns_integrations_lua::{LuaCapability, LuaCodeModeCapability};
+use everruns_llmsim::LlmSimRuntimeExt;
+use everruns_llmsim::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
-use everruns_test_support::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 
 const ORCHESTRATION_SCRIPT: &str = r#"
     local product = tools.multiply({ a = 6, b = 7 })       -- 42
@@ -37,7 +37,7 @@ fn platform() -> HostComposition {
     caps.register(TestMathCapability);
 
     let mut drivers = DriverRegistry::new();
-    everruns_test_support::llmsim_driver::register_driver(&mut drivers);
+    everruns_llmsim::register_driver(&mut drivers);
 
     HostComposition::new(caps, drivers)
 }

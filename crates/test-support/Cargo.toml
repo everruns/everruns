@@ -1,11 +1,11 @@
-# Deterministic simulation and demo fixtures for testing Everruns agents.
+# Testing and demo helpers for Everruns agents.
 #
-# This crate carries everything that used to live inside `everruns-core`
-# purely for tests, examples, and demos: the in-process `llmsim` driver, the
-# in-memory agentic loop, mock/echo/failing test doubles, and the fake
+# This crate carries the in-memory agentic loop, mock/echo/failing test
+# doubles, writable stores, and the fake
 # demo capabilities (AWS/CRM/financial/warehouse, test math/weather,
-# sample-data and noop fixtures). Production compositions must never register
-# the `fixtures` surface; the architecture guard in
+# sample-data and noop fixtures). The simulator itself lives in the
+# production-safe `everruns-llmsim` crate. Production compositions must never
+# depend on this crate or register the `fixtures` surface; the architecture guard in
 # scripts/lib/check-test-support-isolation.sh enforces that server/worker
 # code cannot import the demo capabilities and that core and the provider
 # crates carry no llmsim edge at all.
@@ -21,18 +21,17 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-test-support"
 readme = "README.md"
-description = "Deterministic LLM simulation, in-memory agent loop, and demo capability fixtures for testing Everruns agents"
+description = "In-memory loops, test doubles, writable fixtures, and demo capabilities for testing Everruns agents"
 keywords = ["agent", "agentic", "llm", "testing", "simulation"]
 categories = ["development-tools", "asynchronous"]
 
 [features]
-# Everything on by default: test crates want the whole kit. Narrow consumers
-# (the `everruns` facade, the worker's llmsim provider) select only `sim` so
-# their dependency trees never carry the demo capability fixtures.
+# Everything on by default: test crates want the whole kit.
 default = ["sim", "fixtures", "host"]
-# The in-process `llmsim` chat driver. The agentic loop additionally requires
-# the `host` feature so conversation history is projected from canonical events.
-sim = ["dep:llmsim"]
+# Enables the simulator-backed in-memory loop and the deliberate 0.18
+# compatibility re-exports for the 0.17 simulator paths. The implementation
+# and stable production dependency live in `everruns-llmsim`.
+sim = ["dep:everruns-llmsim"]
 # Fake demo capabilities: fake AWS/CRM/financial/warehouse, test math and
 # weather, the sample-data mount demo, and the noop fixture. The fake AWS
 # connector registers into the hosted connector plugin system, which lives in
@@ -40,15 +39,16 @@ sim = ["dep:llmsim"]
 # `sim`-only consumers (the `everruns` facade, the worker) stay platform-free
 # through this crate.
 fixtures = ["dep:everruns-platform"]
-# `LlmSimRuntimeExt`: the `.llm_sim(...)` convenience for
-# `everruns_host::InProcessRuntimeBuilder`.
-host = ["dep:everruns-host", "sim"]
+# Host-backed in-memory loop, store helpers, and the transitional
+# `.llm_sim(...)` / `.llm_sim_as_default(...)` extension re-export.
+host = ["dep:everruns-host", "sim", "everruns-llmsim/host"]
 
 [dependencies]
 everruns-core = { path = "../core", version = "0.17.26", default-features = false }
 everruns-engine.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
+everruns-llmsim = { workspace = true, optional = true }
 everruns-host = { workspace = true, optional = true }
 everruns-platform = { workspace = true, optional = true }
 
@@ -61,12 +61,6 @@ serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["sync", "time", "rt"] }
 uuid.workspace = true
-
-# LLM simulation. default-features = false sheds the server/cli/tui/tokens
-# subtrees (axum, tower-http, tiktoken-rs, clap, tracing-subscriber,
-# crossterm, ratatui) — the driver only uses the in-process library types
-# (generator, latency, openai, script, stream).
-llmsim = { version = "0.5.1", default-features = false, optional = true }
 
 [dev-dependencies]
 everruns-builtins.workspace = true

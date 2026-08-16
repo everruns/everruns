@@ -51,6 +51,7 @@ everruns-provider = "0.18"   # provider SPI, typed IDs, sqlx impls
 everruns-capability = "0.18" # capability identity/configuration contract
 everruns-session-services = "0.18" # neutral session host contracts
 everruns-mcp      = "0.18"   # MCP adapter and the OAuth protocol client
+everruns-llmsim   = "0.18"   # deterministic production-safe simulator
 ```
 
 ## Composition
@@ -200,7 +201,8 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | MCP adapter | `everruns_mcp::` |
 | HTTP transports | `everruns_http::` |
 | Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_observability::` |
-| `llmsim` driver, in-memory loop, fixture capabilities | `everruns_test_support::` |
+| `llmsim` driver, configs, scripted turns, registry helpers, host-builder extension | `everruns_llmsim::` |
+| in-memory agentic loop, writable test doubles, fixture capabilities | `everruns_test_support::` |
 | `everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` | `everruns_host::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` |
 | `everruns_core::in_memory::{InMemoryMessageRetriever, InMemoryEventEmitter}` | `everruns_test_support::{InMemoryMessageRetriever, InMemoryEventEmitter}` for isolated deterministic tests |
 
@@ -213,6 +215,13 @@ Hosted conversation history has no writable message-store replacement. Append
 canonical events through `everruns_host::EventLog` / `HostEventEmitter` and
 read messages through `EventHistory`. This avoids message/event dual writes and
 keeps resume and replay behavior identical across in-memory and durable hosts.
+
+`everruns-test-support` continues to re-export its 0.17 simulator paths during
+the 0.18 migration, so existing test suites can upgrade without an immediate
+import rewrite. Treat that as a migration bridge: production code, new tests,
+and low-level hosts should depend on `everruns-llmsim` directly. The
+application-facing `everruns::Model::simulated` and
+`Model::simulated_with_config` APIs are unchanged.
 
 ## Features
 

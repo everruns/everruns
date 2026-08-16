@@ -2631,7 +2631,7 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_core::user_hook_types::HookEvent;
     use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
-    use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
+    use everruns_llmsim::{LlmSimConfig, register_driver_with_config};
 
     let mut adapter = mock_host();
     let provider_messages = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -2750,7 +2750,7 @@ async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
     };
     use everruns_engine::ReasonInput;
     use everruns_host::execute_reason_activity;
-    use everruns_test_support::llmsim_driver::{LlmSimConfig, register_driver_with_config};
+    use everruns_llmsim::{LlmSimConfig, register_driver_with_config};
 
     let mut adapter = mock_host();
     register_driver_with_config(&mut adapter.driver_registry, LlmSimConfig::fixed("ready"));

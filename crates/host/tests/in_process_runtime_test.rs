@@ -11,6 +11,8 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntimeBuilder, RealDiskFileStore,
     SessionBuilder, SessionFileSystemFactory, SessionFileSystemFactoryContext, TurnStopReason,
 };
+use everruns_llmsim::LlmSimConfig;
+use everruns_llmsim::LlmSimRuntimeExt;
 #[cfg(feature = "platform")]
 use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_provider::driver_registry::DriverRegistry;
@@ -18,9 +20,7 @@ use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::runtime_provider::Provider;
 use everruns_provider::tool_types::ToolCall;
-use everruns_test_support::LlmSimRuntimeExt;
 use everruns_test_support::TestMathCapability;
-use everruns_test_support::llmsim_driver::LlmSimConfig;
 use std::path::PathBuf;
 use std::sync::Arc;
 
