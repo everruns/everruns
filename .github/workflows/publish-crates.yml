@@ -132,8 +132,6 @@ jobs:
 
           dependency_versions = {
               "crates/core/Cargo.toml": [
-                  "everruns-openui",
-                  "everruns-a2ui",
                   "everruns-provider",
                   "everruns-capability",
               ],
@@ -141,6 +139,8 @@ jobs:
                   "everruns-core",
               ],
               "crates/builtins/Cargo.toml": [
+                  "everruns-openui",
+                  "everruns-a2ui",
                   "everruns-capability",
                   "everruns-core",
               ],

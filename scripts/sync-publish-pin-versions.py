@@ -27,12 +27,12 @@ REPO = Path(__file__).resolve().parent.parent
 # Path-pin versions kept in sub-crate manifests. Keep in sync with
 # .github/workflows/publish-crates.yml `dependency_versions`.
 INNER_PINS: dict[str, list[str]] = {
-    "crates/core/Cargo.toml": [
+    "crates/engine/Cargo.toml": ["everruns-core"],
+    "crates/builtins/Cargo.toml": [
         "everruns-openui",
         "everruns-a2ui",
+        "everruns-core",
     ],
-    "crates/engine/Cargo.toml": ["everruns-core"],
-    "crates/builtins/Cargo.toml": ["everruns-core"],
     "crates/platform/Cargo.toml": [
         "everruns-builtins",
         "everruns-core",
