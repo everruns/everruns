@@ -48,6 +48,17 @@ async function mockAppApi(page: Page) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
+    } else if (pathname === "/api/v1/sessions/facets") {
+      json = {
+        active_now: 0,
+        by_activity: [],
+        by_agent: [],
+        by_source: [],
+        failed_today: 0,
+        p95_duration_ms: 0,
+        tokens_today: 0,
+        total: 0,
+      };
     } else {
       json = { data: [], has_more: false, total: 0 };
     }
@@ -108,7 +119,9 @@ test.describe("Sidebar navigation prefetch", () => {
     await mockAppApi(page);
   });
 
-  test("Landing-surface startup does not prefetch unrelated sidebar routes or APIs", async ({ page }) => {
+  test("Landing-surface startup does not prefetch unrelated sidebar routes or APIs", async ({
+    page,
+  }) => {
     const requests: Request[] = [];
     page.on("request", (request) => requests.push(request));
 
@@ -150,6 +163,7 @@ test.describe("Sidebar navigation prefetch", () => {
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
     await page.getByRole("link", { name: "Sessions" }).click();
     await expect(page).toHaveURL(/\/sessions$/);
+    await expect(page.getByText("Tokens today 0")).toBeVisible();
   });
 
   test("Settings navigation avoids child route fan-out", async ({ page }) => {

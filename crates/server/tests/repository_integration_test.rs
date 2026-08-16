@@ -22,12 +22,12 @@ use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
-    CreateDeclarativeCapabilityRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
-    CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
+    CreateDeclarativeCapabilityRow, CreateEvalRow, CreateEventRow, CreateHarnessRow,
+    CreateImageRow, CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
     CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
     CreateUserConnectionRow, CreateUserRow, Database, SessionListFilters, StorageBackend,
-    UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateModel,
-    UpdateOrganization, UpdateOrganizationSettings, UpdateProvider, UpdateSession,
+    UpdateAgent, UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateEvalRow,
+    UpdateModel, UpdateOrganization, UpdateOrganizationSettings, UpdateProvider, UpdateSession,
     UpdateSessionFile, UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
@@ -58,6 +58,54 @@ async fn ensure_test_harness_id(
     org_init::generic_harness_id(backend, TEST_ORG_ID)
         .await
         .expect("generic harness id")
+}
+
+#[tokio::test]
+async fn test_eval_crud_matches_postgres_schema() {
+    let backend = create_test_backend().await;
+    let public_id = format!("eval_{}", Uuid::now_v7().simple());
+
+    let created = backend
+        .create_eval(
+            TEST_ORG_ID,
+            CreateEvalRow {
+                public_id: public_id.clone(),
+                name: "Postgres schema regression".to_string(),
+                description: Some("Exercises every EvalRow projection".to_string()),
+                target: None,
+                model_override: None,
+                tags: vec!["schema".to_string()],
+            },
+        )
+        .await
+        .expect("create eval using migrated schema");
+
+    let fetched = backend
+        .get_eval_by_public_id(TEST_ORG_ID, &public_id)
+        .await
+        .expect("fetch eval using migrated schema")
+        .expect("created eval exists");
+    assert_eq!(fetched.id, created.id);
+
+    let listed = backend
+        .list_evals(TEST_ORG_ID, Some("schema regression"), false)
+        .await
+        .expect("list evals using migrated schema");
+    assert!(listed.iter().any(|eval| eval.id == created.id));
+
+    let updated = backend
+        .update_eval(
+            TEST_ORG_ID,
+            created.id,
+            UpdateEvalRow {
+                name: Some("Updated Postgres schema regression".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update eval using migrated schema")
+        .expect("updated eval exists");
+    assert_eq!(updated.name, "Updated Postgres schema regression");
 }
 
 async fn create_test_principal(

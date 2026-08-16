@@ -74,6 +74,17 @@ async function mockAppApi(page: Page) {
       json = { success: true, org_id: DEFAULT_ORG_ID };
     } else if (pathname.endsWith("/config")) {
       json = { policies: {} };
+    } else if (pathname === "/api/v1/sessions/facets") {
+      json = {
+        active_now: 0,
+        by_activity: [],
+        by_agent: [],
+        by_source: [],
+        failed_today: 0,
+        p95_duration_ms: 0,
+        tokens_today: 0,
+        total: 0,
+      };
     } else {
       json = { data: [], has_more: false, total: 0 };
     }
@@ -132,4 +143,5 @@ test("registers and executes WebMCP shell tools", async ({
     await modelContext.executeTool(tool, JSON.stringify({ target_type: "page", page: "sessions" }));
   });
   await expect(page).toHaveURL(/\/sessions$/);
+  await expect(page.getByText("Tokens today 0")).toBeVisible();
 });

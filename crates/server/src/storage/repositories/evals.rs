@@ -18,7 +18,7 @@ impl Database {
             INSERT INTO evals (org_id, public_id, name, description, target, model_override, tags)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, org_id, public_id, name, description, target,
-                      model_override, tags, status, is_built_in, created_at, updated_at, archived_at, deleted_at
+                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -52,7 +52,7 @@ impl Database {
         let row = sqlx::query_as::<_, EvalRow>(
             r#"
             SELECT id, org_id, public_id, name, description, target,
-                   model_override, tags, status, is_built_in, created_at, updated_at, archived_at, deleted_at
+                   model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             FROM evals
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -79,7 +79,7 @@ impl Database {
         };
         let sql = format!(
             r#"SELECT id, org_id, public_id, name, description, target,
-                      model_override, tags, status, is_built_in, created_at, updated_at, archived_at, deleted_at
+                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
                FROM evals
                WHERE org_id = $1{status_sql}{search_sql}
                ORDER BY created_at DESC"#
@@ -111,7 +111,7 @@ impl Database {
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, public_id, name, description, target,
-                      model_override, tags, status, is_built_in, created_at, updated_at, archived_at, deleted_at
+                      model_override, tags, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
