@@ -171,6 +171,34 @@ describe("McpServersPage", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
+  it("surfaces a server-side create failure without closing the dialog", async () => {
+    const mockMutateAsync = jest
+      .fn()
+      .mockRejectedValue(
+        new Error("Invalid MCP server URL: Blocked host: 127.0.0.1 (private/internal address)"),
+      );
+    mockUseCreateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      isPending: false,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Server" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "local-mcp" } });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "http://127.0.0.1:9/mcp" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Server" }));
+
+    expect(
+      await within(dialog).findByText(/Blocked host: 127\.0\.0\.1 \(private\/internal address\)/),
+    ).toBeInTheDocument();
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("opens the edit dialog prefilled with the server's current values", () => {
     render(<McpServersPage />);
 

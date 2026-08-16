@@ -193,6 +193,7 @@ function AddMcpServerDialog({
   const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const createServer = useCreateMcpServer();
@@ -207,11 +208,13 @@ function AddMcpServerDialog({
     setProtocolMode("auto");
     setHeaders([]);
     setHeaderErrors(null);
+    setFormError(null);
     setFieldErrors({});
   }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
     const parsed = mcpServerFormSchema.safeParse({
       name,
       description,
@@ -246,7 +249,12 @@ function AddMcpServerDialog({
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
       headers: headersRecord,
     };
-    await createServer.mutateAsync(data);
+    try {
+      await createServer.mutateAsync(data);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "MCP server could not be created");
+      return;
+    }
     onOpenChange(false);
     setName("");
     setDescription("");
@@ -431,6 +439,11 @@ function AddMcpServerDialog({
             )}
             {headerErrors && <p className="text-xs text-destructive">{headerErrors}</p>}
           </div>
+          {formError && (
+            <p role="alert" className="text-sm text-destructive">
+              {formError}
+            </p>
+          )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
