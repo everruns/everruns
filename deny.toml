@@ -13,17 +13,8 @@ unmaintained = "none"
 # affected crate over ignoring; only ignore when no upstream fix path exists and
 # the advisory is not reachable in our usage.
 ignore = [
-    # RUSTSEC-2026-0194 / RUSTSEC-2026-0195: quick-xml <0.41 DoS (quadratic attr
-    # duplicate check / unbounded namespace-declaration allocation) via NsReader
-    # on UNTRUSTED XML. Reaches us only transitively through object_store 0.14
-    # (its S3 XML response parser). object_store 0.14.0 is the latest release and
-    # pins quick-xml ^0.40, so there is no upstream upgrade path yet (a [patch] to
-    # 0.41 cannot satisfy ^0.40). Our sole object_store use is the blob store
-    # against an operator-configured S3 endpoint (blob_store_from_env), i.e. a
-    # trusted backend — not attacker-controlled XML — so neither DoS is reachable.
-    # Remove once object_store ships a release depending on quick-xml >=0.41.
-    "RUSTSEC-2026-0194",
-    "RUSTSEC-2026-0195",
+    # Empty: every advisory in the tree must be fixed by upgrading, not ignored.
+    # Entries here need a justification comment and a removal condition.
 ]
 
 [licenses]
