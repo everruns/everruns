@@ -565,8 +565,14 @@ mod tests {
         let config = ProviderConfig::new(DriverId::Fireworks).with_api_key("fw-key");
         assert!(registry.create_chat_driver(&config).is_ok());
 
-        // Without an api key the registry rejects it (Fireworks is not exempt).
+        // A selected provider remains constructible for configuration
+        // commands, while its first provider operation fails locally.
         let no_key = ProviderConfig::new(DriverId::Fireworks);
-        assert!(registry.create_chat_driver(&no_key).is_err());
+        let driver = registry
+            .create_chat_driver(&no_key)
+            .expect("selected provider remains constructible");
+        let error = futures::executor::block_on(driver.list_models(&ProviderEndpoint::default()))
+            .expect_err("missing credentials fail before network I/O");
+        assert!(error.to_string().contains("API key is required"));
     }
 }

@@ -225,7 +225,7 @@ async fn inactive_agent_fails_at_loading_seam_before_execution() {
         .with_agent_store(std::sync::Arc::new(ArchivedAtSeamAgentStore))
         .with_session_store(session_store.clone());
     let runtime = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("unused"))
+        .llm_sim_as_default(LlmSimConfig::fixed("unused"))
         .backends(backends)
         .harness(harness)
         .build()

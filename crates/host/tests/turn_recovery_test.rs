@@ -32,7 +32,7 @@ async fn runtime(
 
     InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::scripted(turns).with_message_capture(capture))
+        .llm_sim_as_default(LlmSimConfig::scripted(turns).with_message_capture(capture))
         .provider_retry_config(retry)
         .provider_stall_timeout(Duration::from_millis(5))
         .single_session(|session| {
@@ -274,7 +274,7 @@ async fn interrupted_turn_history_survives_runtime_reconstruction() {
     let first_capture = Arc::new(Mutex::new(Vec::new()));
     let first = InProcessRuntimeBuilder::new()
         .backends(backends.clone())
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::scripted(vec![SimTurn::Error(SimError::Transport)])
                 .with_message_capture(first_capture),
         )
@@ -299,7 +299,7 @@ async fn interrupted_turn_history_survives_runtime_reconstruction() {
     let resumed_capture = Arc::new(Mutex::new(Vec::new()));
     let resumed = InProcessRuntimeBuilder::new()
         .backends(backends)
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("resumed completion").with_message_capture(resumed_capture.clone()),
         )
         .provider_retry_config(fast_retry(2))

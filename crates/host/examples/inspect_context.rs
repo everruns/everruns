@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
-        .llm_sim(LlmSimConfig::fixed("Context example"))
+        .llm_sim_as_default(LlmSimConfig::fixed("Context example"))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .harness(everruns_host::SeededHarness {
             id: harness_id,

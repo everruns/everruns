@@ -199,7 +199,7 @@ async fn runtime_emitting_batch(
 
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform_with_recording(log.clone()))
-        .llm_sim(
+        .llm_sim_as_default(
             LlmSimConfig::fixed("Running the requested tools.")
                 .with_tool_call_sequence(vec![batch, vec![]]),
         )

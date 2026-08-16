@@ -121,6 +121,13 @@ impl ProviderStore for ExternalProviderStore {
     async fn get_default_model_spec(&self) -> CoreResult<Option<ModelSpec>> {
         self.0.get_default_model_spec().await
     }
+
+    async fn get_provider_config(
+        &self,
+        provider: &everruns_provider::runtime_provider::ProviderKey,
+    ) -> CoreResult<Option<everruns_provider::driver_registry::ProviderConfig>> {
+        self.0.get_provider_config(provider).await
+    }
 }
 
 #[async_trait]
@@ -463,7 +470,7 @@ async fn a_reader_can_inspect_the_request_cursor() {
 async fn the_external_log_serves_host_composition_and_message_projection() {
     let log = Arc::new(ExternalEventLog::new());
     let runtime = InProcessRuntimeBuilder::new()
-        .llm_sim(LlmSimConfig::fixed("Four."))
+        .llm_sim_as_default(LlmSimConfig::fixed("Four."))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .backends(external_backends(log.clone()))
         .single_session(|session| {

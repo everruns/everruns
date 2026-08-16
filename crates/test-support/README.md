@@ -58,7 +58,8 @@ assert!(result.contains("4"));
   `TestMathCapability`, `TestWeatherCapability`, `SampleDataCapability`, and
   `NoopCapability` (`fixtures` feature; never registered by production
   compositions)
-- `LlmSimRuntimeExt` — `.llm_sim(...)` sugar for
+- `LlmSimRuntimeExt` — `.llm_sim(...)` registration-only and
+  `.llm_sim_as_default(...)` compact setup sugar for
   `everruns_host::InProcessRuntimeBuilder` (`host` feature)
 
 ## Documentation

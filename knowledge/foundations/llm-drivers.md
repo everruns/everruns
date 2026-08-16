@@ -812,8 +812,18 @@ All API key resolution for tenant/org-scoped execution flows through
 2. If the provider has an encrypted key but the encryption service is unavailable,
    log a warning and return `None` (not `Err`).
 3. If no database key is stored at all, return `None`.
-4. Callers receiving `None` MUST surface a "no provider configured" error to the
-   tenant — they must not fall through to environment variable reads.
+4. Callers receiving `None` MUST NOT fall through to environment variable
+   reads. A selected provider may still be assembled into a credential-gated
+   driver so configuration commands can inspect the turn and repair settings.
+   The gate rejects chat, model-listing, and compaction operations locally as
+   an authentication/configuration error before any provider network I/O.
+
+`ProviderStore::get_provider_config` has no default implementation. A custom
+host must explicitly return its credential-bearing `ProviderConfig`, or return
+`None` to declare that credentials are owned by a directly registered runtime
+provider or are currently absent. This makes the credential boundary a
+compile-time integration decision without putting secrets back into
+`ModelSpec` or provider selection.
 
 **Why**: With a platform-level `DEFAULT_*_API_KEY` present on the server host, an
 implicit env fallback silently funds tenant execution from platform credentials.

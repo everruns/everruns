@@ -23,7 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load and compile the plugin. Compilation errors surface here.
     let builder = InProcessRuntimeBuilder::new()
-        .llm_sim(everruns_test_support::llmsim_driver::LlmSimConfig::fixed(
+        .llm_sim_as_default(everruns_test_support::llmsim_driver::LlmSimConfig::fixed(
             "ok",
         ))
         .with_plugin_dir(plugin_dir)?;

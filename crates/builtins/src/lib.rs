@@ -115,10 +115,10 @@ pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
-    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig as RuntimeCompactionConfig,
-    CompactionStep, CompactionStrategy as RuntimeCompactionStrategy, CostControlConfig,
-    CostControlMaskingResult, HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier,
-    ObservationMaskingConfig, ObservationMaskingResult, SessionCompactionMetrics,
+    COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionStep,
+    CompactionStrategy as RuntimeCompactionStrategy, CostControlConfig, CostControlMaskingResult,
+    HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig,
+    ObservationMaskingResult, RuntimeCompactionConfig, SessionCompactionMetrics,
     SummarizationConfig, aggressive_trim, apply_cost_control_masking, apply_hierarchical_memory,
     apply_observation_masking, build_model_view_messages, build_summarization_prompt,
     build_summary_message, classify_memory_tiers, compose_summary_with_recent, estimate_tokens,

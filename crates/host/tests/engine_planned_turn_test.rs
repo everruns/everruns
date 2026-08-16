@@ -85,7 +85,7 @@ async fn runtime_running(
         .harness(harness(harness_id))
         .agent(agent(agent_id, max_iterations))
         .session(session(session_id, harness_id, agent_id))
-        .llm_sim(LlmSimConfig::scripted(script))
+        .llm_sim_as_default(LlmSimConfig::scripted(script))
         .default_model(ModelSpec::on((DriverId::LlmSim).as_str(), "llmsim-model"))
         .build()
         .await
