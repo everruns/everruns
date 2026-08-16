@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "everruns"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -421,9 +421,10 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-host",
+ "everruns-integrations-filesystem",
+ "everruns-llmsim",
  "everruns-macros",
  "everruns-provider",
- "everruns-test-support",
  "schemars",
  "serde",
  "serde_json",
@@ -434,7 +435,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -450,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -467,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-capability"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "schemars",
@@ -477,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -507,7 +508,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-engine"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -542,7 +543,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-host"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -551,8 +552,8 @@ dependencies = [
  "everruns-core",
  "everruns-engine",
  "everruns-integrations-filesystem",
- "everruns-platform",
  "everruns-provider",
+ "everruns-session-services",
  "futures",
  "ignore",
  "regex",
@@ -567,11 +568,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-filesystem"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.23.1",
+ "everruns-capability",
  "everruns-core",
  "everruns-provider",
  "hex",
@@ -581,8 +583,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-llmsim"
+version = "0.18.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-provider",
+ "futures",
+ "llmsim",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "everruns-macros"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -591,7 +606,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -605,7 +620,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -613,32 +628,11 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "everruns-platform"
-version = "0.17.26"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "everruns-capability",
- "everruns-core",
- "everruns-provider",
- "inventory",
- "jsonschema",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
 name = "everruns-provider"
-version = "0.17.26"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -664,23 +658,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-test-support"
-version = "0.17.26"
+name = "everruns-session-services"
+version = "0.18.0"
 dependencies = [
- "anyhow",
  "async-trait",
- "chrono",
  "everruns-capability",
  "everruns-core",
- "everruns-engine",
  "everruns-provider",
- "futures",
- "inventory",
- "llmsim",
  "serde",
  "serde_json",
- "tokio",
- "uuid",
 ]
 
 [[package]]
