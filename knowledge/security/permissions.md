@@ -24,7 +24,7 @@ Permissions are scoped **per domain**: each managed resource (apps, MCP servers,
 
 ### Rule
 
-Single predicate that evaluates to true/false given an auth context. Hardcoded enum variants (no dynamic rules). Rules are **additive within a policy** — all rules must pass (AND logic).
+Single predicate that evaluates to true/false given an auth context. Hardcoded enum variants (no dynamic rules). Rules are **additive within a policy**: all rules must pass (AND logic).
 
 See `crates/core/src/permissions.rs` for the `Rule` enum variants and `Policy` struct definitions.
 
@@ -62,7 +62,7 @@ AuthState::new(config, backend)
 AuthState::with_resolver(config, backend, Arc::new(MyResolver))
 ```
 
-Enforcement uses the resolver threaded through `Ctx` — every `Command::run` calls `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, so SaaS-custom resolvers apply uniformly across HTTP/MCP/gRPC/platform callers. Config endpoints (`/v1/{resource}/config`) use `evaluate_policies_with(resolver, caller, policies)` for UI gating hints.
+Enforcement uses the resolver threaded through `Ctx`, every `Command::run` calls `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, so SaaS-custom resolvers apply uniformly across HTTP/MCP/gRPC/platform callers. Config endpoints (`/v1/{resource}/config`) use `evaluate_policies_with(resolver, caller, policies)` for UI gating hints.
 
 ### Platform User Contract
 
@@ -79,7 +79,7 @@ Built-in OSS auth preserves previous behavior by deriving `is_platform_user` fro
 
 ### Command Runner (Primary Enforcement Point)
 
-Every user-facing operation is a domain `Command` (`crates/server/src/domains/common.rs`). Each command declares its policy statically via `Command::policy()`. All four caller kinds — HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`, and platform capability — invoke commands through **`Command::run`**, which evaluates `policy()` against the `PermissionResolver` carried in `Ctx` before delegating to `execute()`:
+Every user-facing operation is a domain `Command` (`crates/server/src/domains/common.rs`). Each command declares its policy statically via `Command::policy()`. All four caller kinds, HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`, and platform capability, invoke commands through **`Command::run`**, which evaluates `policy()` against the `PermissionResolver` carried in `Ctx` before delegating to `execute()`:
 
 ```rust
 impl Command for CreateAgent {
@@ -90,15 +90,15 @@ impl Command for CreateAgent {
 
 **Key properties:**
 
-- `Command::run` is the single public entry point. `execute` is the business-logic hook and must not be called directly from HTTP/MCP/gRPC adapters — doing so skips policy evaluation. A command may call another command's `execute` as an already-authorized composition.
-- `dispatch()` (used by MCP and gRPC `ExecuteCommand`) routes through `run` — enforcement is identical across HTTP and RPC paths.
+- `Command::run` is the single public entry point. `execute` is the business-logic hook and must not be called directly from HTTP/MCP/gRPC adapters, doing so skips policy evaluation. A command may call another command's `execute` as an already-authorized composition.
+- `dispatch()` (used by MCP and gRPC `ExecuteCommand`) routes through `run`, enforcement is identical across HTTP and RPC paths.
 - The resolver is threaded through `Ctx::new` from `AuthState.permission_resolver`. Internal callers (`Caller::internal`) use `DefaultPermissionResolver` so SaaS-custom restrictions never block internal ops.
 
 **Inventory coverage test.** `crates/server/tests/command_policy_enforcement_test.rs` iterates `inventory::iter::<CommandDescriptor>` and asserts every non-GET command declares a policy. New mutating commands that forget `policy()` fail the build.
 
 ### Retired: `#[policy]` Macro
 
-The `#[policy(...)]` attribute macro has been removed. It was the historical enforcement mechanism (inject `POLICY.evaluate(caller)?;` at the top of a service method) and hardcoded `DefaultPermissionResolver` — which bypassed the SaaS resolver contract (TM-AUTHZ-008). `Command::run` is now the single enforcement point and uses `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`. Service methods no longer perform policy checks; the authorization check happens at the command boundary.
+The `#[policy(...)]` attribute macro has been removed. It was the historical enforcement mechanism (inject `POLICY.evaluate(caller)?;` at the top of a service method) and hardcoded `DefaultPermissionResolver`, which bypassed the SaaS resolver contract (TM-AUTHZ-008). `Command::run` is now the single enforcement point and uses `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`. Service methods no longer perform policy checks; the authorization check happens at the command boundary.
 
 ### Durable Ownership
 
@@ -122,7 +122,7 @@ See `crates/core/src/permissions.rs` for evaluation logic. Policies support both
 Besides the `Permission` / `Policy` contract there is one hardcoded role gate in agent create/update enforcement: **assigning a `RiskLevel::High` capability to an agent requires `OrgRole::Admin`**.
 
 - **Where.** Canonical create/update enforcement is `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs` (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents.rs` enforces the same contract on agent-import / copy paths (TM-AGENT-005).
-- **Trigger.** Any capability whose `risk_level()` returns `High` — the canonical, current set is enumerated in `knowledge/execution/capabilities.md` and discoverable via `rg "RiskLevel::High" crates/core integrations` (sandbox/exec capabilities such as `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell` plus others including `web_fetch`, `user_hooks`, and `lua`); it is not frozen here. The full contract — including the rationale for `bashkit_shell` / `web_fetch` and migration semantics for grandfathered agents — lives in `knowledge/execution/capabilities.md` ("Admin-Only Tier Decision").
+- **Trigger.** Any capability whose `risk_level()` returns `High`, the canonical, current set is enumerated in `knowledge/execution/capabilities.md` and discoverable via `rg "RiskLevel::High" crates/core integrations` (sandbox/exec capabilities such as `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell` plus others including `web_fetch`, `user_hooks`, and `lua`); it is not frozen here. The full contract, including the rationale for `bashkit_shell` / `web_fetch` and migration semantics for grandfathered agents, lives in `knowledge/execution/capabilities.md` ("Admin-Only Tier Decision").
 - **Failure mode.** HTTP 403 with the offending capability ids; the request does not partially succeed.
 - **Why it lives outside the `Permission` enum.** The gate is based on per-capability metadata, not a per-action permission, and the set of capabilities is open (extensions can add them). Keeping it as a centralized hardcoded check in the agent enforcement path avoids a combinatorial explosion of `org:capability:<id>` permissions while preserving an explicit trust boundary.
 

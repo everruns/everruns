@@ -17,11 +17,11 @@ Markdown handshake that describes what the endpoint can do and how to
 authenticate.
 
 FCP is deliberately schema-free at the wire layer. Capability discovery,
-parameter collection, and error guidance happen in natural language — the
+parameter collection, and error guidance happen in natural language, the
 same way a person would ask a service what it does. See the upstream FCP
 specification at `https://github.com/everruns/fcp/blob/main/SPEC.md`.
 
-This spec captures the *channel* — how the protocol is exposed by an App
+This spec captures the *channel*, how the protocol is exposed by an App
 in this repo, the isolation invariants it must keep, and how operators
 configure it.
 
@@ -29,7 +29,7 @@ configure it.
 
 1. Provide an unattended, anonymous-by-default text-in / text-out
    endpoint for any published App.
-2. Make every response — success or error — readable and actionable
+2. Make every response, success or error, readable and actionable
    without parsing.
 3. Keep FCP's auth, rate-limit, and error surface isolated from every
    other channel and from the platform's user-session auth.
@@ -71,7 +71,7 @@ Both routes always respond with `Content-Type: text/markdown; charset=utf-8`.
 | `response_timeout_seconds`  | `120`        | Maximum seconds the endpoint waits for the agent's reply before returning `504`.            |
 
 `auth` (the inline IdP/Basic/mTLS verifier used by AG-UI and A2A) is
-**deliberately not accepted** on FCP channels — see the isolation
+**deliberately not accepted** on FCP channels, see the isolation
 invariants below.
 
 ## Isolation invariants
@@ -98,7 +98,7 @@ with anything else.
    codes) never reach the wire.
 
 > The same invariants are good architecture for AG-UI as well. This is
-> noted but is not part of this spec — refactoring AG-UI to match should
+> noted but is not part of this spec, refactoring AG-UI to match should
 > ship as its own change. New channels should follow the FCP shape, not
 > the AG-UI shape.
 
@@ -144,7 +144,7 @@ FCP sessions are reused via the `fcp_session` cookie:
   `Max-Age` when `session_expiration_seconds > 0`.
 - Subsequent `POST`s with the cookie resume that session if it still
   matches the tag and has not expired.
-- A stale or unknown cookie is silently ignored — the next `POST`
+- A stale or unknown cookie is silently ignored, the next `POST`
   creates a fresh session. This avoids stranding clients on the wrong
   side of an operator config change.
 - Expired sessions return `410 Gone` with body instructing the client to
@@ -159,7 +159,7 @@ remain consistent across all app channels.
 
 `043_app_channel_type_fcp.sql` extends the `channel_type` CHECK
 constraints on `apps` and `app_channels` to include `'fcp'`. No data
-migration is needed — existing rows are unaffected.
+migration is needed, existing rows are unaffected.
 
 ## Testing
 
@@ -184,9 +184,9 @@ serde/display round-trips include `fcp` and that `App::fcp_channel()` /
 ## Related
 
 - Upstream FCP specification: <https://github.com/everruns/fcp>
-- `knowledge/integrations/app-invocation-channels.md` — common app-channel invariants
+- `knowledge/integrations/app-invocation-channels.md`, common app-channel invariants
   (session ownership, internal tag prefixes).
-- `knowledge/execution/public-endpoints.md` — error-sanitization contract used by all
+- `knowledge/execution/public-endpoints.md`, error-sanitization contract used by all
   unauthenticated app channels.
-- `knowledge/security/threat-model.md` — TM-AUTHZ-005, TM-AUTHZ-006, TM-DOS-010,
+- `knowledge/security/threat-model.md`, TM-AUTHZ-005, TM-AUTHZ-006, TM-DOS-010,
   TM-LLM-020 mitigations apply to FCP via the same shape AG-UI uses.

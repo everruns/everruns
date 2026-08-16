@@ -15,8 +15,8 @@ on string parsing.
 
 ## Semantic driver errors
 
-LLM drivers classify provider failures at the provider boundary — where the
-HTTP status and response body are still available — into `LlmErrorKind`
+LLM drivers classify provider failures at the provider boundary, where the
+HTTP status and response body are still available, into `LlmErrorKind`
 (`crates/provider/src/error.rs`): authentication, quota exhaustion, rate limit,
 provider unavailable, invalid request, or other. All drivers (OpenAI chat,
 OpenAI Responses, Anthropic, Gemini, Bedrock) attach a kind; `other` falls
@@ -31,7 +31,7 @@ Detailed disclosure retains the existing operator opt-in for raw driver text.
 
 Rationale: string classification conflated distinct operator problems. The
 motivating case: OpenAI `insufficient_quota` (out of credits, top up the
-account) classified as `provider_misconfigured` — the same code shown for a
+account) classified as `provider_misconfigured`, the same code shown for a
 bad API key. Quota/billing exhaustion now has its own user-facing code,
 `provider_quota_exhausted`, and is treated as non-transient (drivers fail
 fast instead of retrying it as a 429).
@@ -39,7 +39,7 @@ fast instead of retrying it as a 429).
 Subscription/plan usage limits (e.g. the ChatGPT/Codex `429`
 `usage_limit_reached` body) are a third distinct case with their own code,
 `provider_usage_limit_reached`. Unlike an ordinary rate limit they do not
-recover within the driver backoff window — they reset hours later — and unlike
+recover within the driver backoff window, they reset hours later, and unlike
 quota exhaustion they need no operator action, recovering on their own at the
 reported reset time. The string classifier detects the `usage_limit_reached`
 wording provider-agnostically (so any driver surfacing it is covered), captures
@@ -59,7 +59,7 @@ events:
 
 | Mode | Behavior | Intended for |
 |---|---|---|
-| `generic` | Every blocking error collapses into `processing_error` with no fields — one generic, localizable message | Public-facing agents whose viewers must not learn provider/billing state |
+| `generic` | Every blocking error collapses into `processing_error` with no fields, one generic, localizable message | Public-facing agents whose viewers must not learn provider/billing state |
 | `standard` | Stable `error_code` + structured `error_fields` (platform default, also applies when the capability is not enabled) | Regular operator-facing sessions |
 | `detailed` | `standard` plus a `detail` field carrying the underlying driver error text (truncated) | Trusted surfaces such as coding-agent harnesses built on the runtime; enabled on the built-in `generic` harness |
 

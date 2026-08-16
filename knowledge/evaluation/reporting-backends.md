@@ -9,7 +9,7 @@ tags:
 # Reporting Backends Evaluation
 
 Reference evaluation of future analytical backends for the reporting abstraction
-defined in [`knowledge/evaluation/reporting.md`](reporting.md). Phase 3 only — not part of the
+defined in [`knowledge/evaluation/reporting.md`](reporting.md). Phase 3 only, not part of the
 phase 1 PostgreSQL foundation or phase 2 capability/saved-report layers.
 
 ## Goals

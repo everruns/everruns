@@ -25,12 +25,12 @@ See `crates/core/src/tools.rs` for the `Tool` trait, `ToolExecutionResult`, and 
 Tools should provide a human-readable `display_name` for UI rendering. Propagated through events; UI falls back to technical `name` if absent.
 
 **Error Handling Contract:**
-- `Success(Value)` — Result returned to LLM
-- `SuccessWithImages { result, images }` — Result with native image content blocks
-- `ToolError(String)` — User-visible error as `{"error": "..."}`
-- `InternalError` — System error logged, generic message (security)
+- `Success(Value)`, Result returned to LLM
+- `SuccessWithImages { result, images }`, Result with native image content blocks
+- `ToolError(String)`, User-visible error as `{"error": "..."}`
+- `InternalError`, System error logged, generic message (security)
 
-All error types continue the agent loop — packaged in `result` field, LLM decides how to proceed.
+All error types continue the agent loop, packaged in `result` field, LLM decides how to proceed.
 
 **Image Support in Tool Results:**
 
@@ -53,9 +53,9 @@ Note: OpenAI Responses API (`function_call_output`) does not support images in t
 
 ### Tool Hints
 
-`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>` — `None` means unspecified.
+`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>`, `None` means unspecified.
 
-Alongside them, `metadata: Option<Value>` is an opaque hatch for annotations **core does not interpret**: risk tiers for an approval UI, presentation hints, an embedder's routing keys. The typed hints are the vocabulary core reasons about; the hatch is how a host carries its own without a core patch per field. No driver sends it to a provider, and it must never carry credentials or other sensitive payload — it is persisted and surfaced to clients like the rest of the definition. `Capability::metadata()` is the same hatch one level up.
+Alongside them, `metadata: Option<Value>` is an opaque hatch for annotations **core does not interpret**: risk tiers for an approval UI, presentation hints, an embedder's routing keys. The typed hints are the vocabulary core reasons about; the hatch is how a host carries its own without a core patch per field. No driver sends it to a provider, and it must never carry credentials or other sensitive payload, it is persisted and surfaced to clients like the rest of the definition. `Capability::metadata()` is the same hatch one level up.
 
 Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convention plus everruns-specific hints:
 
@@ -75,7 +75,7 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 
 ### Narration Formatting
 
-Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). Narration is **owned by the tool**, via `Tool::narrate`, and surfaced by its capability — there is no central name-keyed narrator. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`knowledge/execution/tool-narration.md`](tool-narration.md) for the contract, wiring, reusable phrasing helpers, and the truncation/redaction rules.
+Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). Narration is **owned by the tool**, via `Tool::narrate`, and surfaced by its capability, there is no central name-keyed narrator. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`knowledge/execution/tool-narration.md`](tool-narration.md) for the contract, wiring, reusable phrasing helpers, and the truncation/redaction rules.
 
 **Tool-owned narration:** A tool implements `Tool::narrate` (calling the reusable phrasing helpers in `crate::tool_narration`); `Capability::narrate` defaults to dispatching to the matching tool, so a capability narrates its tools for free. A capability overrides `narrate()` only when narration is config-driven, spans tools, or the tools are dynamic (e.g. proxied MCP tools). The framework routes every applied capability's `narrate()` through the act atom. Tools that contribute no narration fall through to the generic `narration_noun`/display-name path below.
 
@@ -99,29 +99,29 @@ Capability hooks involved:
 - `ToolCallHook`: can read a model-produced tool call for narration and transform the execution copy of that call before invoking the tool.
 
 **Design rules:**
-- Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.
+- Hints are informational, they do not enforce policy. Use `ToolPolicy` for execution gating.
 - Tools should set hints via the `Tool::hints()` trait method or directly on `BuiltinTool.hints`.
 - MCP server tools inherit hints from MCP `annotations` when available.
 - External toolkit libraries expose hints via the `Tool::hints()` method in the toolkit library contract.
-- `destructive` is a subset of non-readonly — a tool can write without being destructive.
+- `destructive` is a subset of non-readonly, a tool can write without being destructive.
 
 ### Reading-tool output contract
 
-Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
+Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive, existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
 
 See [`crates/core/src/truncation_info.rs`](../../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
 
-**Scope — the reading-tool class:**
+**Scope, the reading-tool class:**
 
 | Tool | Reason codes | Resume supported? |
 |------|--------------|-------------------|
-| `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
-| `list_directory` (session VFS) | `item_cap` | Yes — `next_offset` = item offset |
+| `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only, `next_offset` = line number |
+| `list_directory` (session VFS) | `item_cap` | Yes, `next_offset` = item offset |
 | `grep_files` (session VFS) | `line_cap`, `size_cap` | Match-cap cuts resume at the next match offset; an oversized individual context block may require narrower context |
-| `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
-| `browserless_content` / interaction DOM content | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
+| `sql_query` | `row_cap` | No, narrow `WHERE`/`LIMIT` |
+| `browserless_content` / interaction DOM content | `size_cap` | No, narrow via `browserless_scrape` selectors or shrink the source page |
 
-`next_offset` units are tool-specific — `read_file` uses a line number, `list_directory` uses an item offset, and `grep_files` uses a match offset. Each tool documents its own unit via `resume_hint`.
+`next_offset` units are tool-specific, `read_file` uses a line number, `list_directory` uses an item offset, and `grep_files` uses a match offset. Each tool documents its own unit via `resume_hint`.
 
 `grep_files` accepts `before_context` and `after_context` from 0 through 20.
 The default zero values retain flat matches. Non-zero values return numbered,
@@ -151,7 +151,7 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
 | Field | Presence | Description |
 |------|----------|-------------|
 | `truncated` | required | `true` if the source exceeded a cap |
-| `bytes_returned` | required | Bytes of the response's primary content (the field a caller consumes: `content`, `rows`, `entries`, `matches`) — not the serialized wrapping object |
+| `bytes_returned` | required | Bytes of the response's primary content (the field a caller consumes: `content`, `rows`, `entries`, `matches`), not the serialized wrapping object |
 | `bytes_total` | optional | Total bytes of untruncated source when known |
 | `next_offset` | optional | Offset to pass back to resume in-place |
 | `resume_hint` | paired with `next_offset` | Human-readable resume instruction |
@@ -164,9 +164,9 @@ Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`out
 Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) sanitize their output before returning results. Each tool calls `sanitize_exec_output()` from `crates/core/src/tool_output_sanitizer.rs`.
 
 The pipeline:
-1. **Strip ANSI** — remove SGR, CSI, OSC escape sequences
-2. **Collapse CR lines** — `\r`-overwritten lines (progress bars) reduced to final content
-3. **Truncate** — apply the budget determined by the `output` verbosity parameter. Failed commands prioritize diagnostic regions; successful commands preserve a predictable head/tail window so source or search output containing words such as `error` does not displace leading evidence.
+1. **Strip ANSI**: remove SGR, CSI, OSC escape sequences
+2. **Collapse CR lines**: `\r`-overwritten lines (progress bars) reduced to final content
+3. **Truncate**: apply the budget determined by the `output` verbosity parameter. Failed commands prioritize diagnostic regions; successful commands preserve a predictable head/tail window so source or search output containing words such as `error` does not displace leading evidence.
 
 ### Output Verbosity (EVE-236, EVE-489)
 
@@ -174,20 +174,20 @@ All exec tools accept an `output` parameter controlling how much output is retur
 
 | Mode | Budget | When to use |
 |------|--------|-------------|
-| `auto` | compact summary on success (~512 B total inline including the `[full output saved to ...]` pointer) / ~8 KiB on failure | Persistence-first — compact summary when the run succeeds and output is persisted, diagnostic window when it fails (**default**) |
-| `silent` | ~200 B | Minimal truncated output — fire-and-forget commands |
-| `concise` | ~2 KiB | Tail ~30 lines — builds, installs, known-good commands |
+| `auto` | compact summary on success (~512 B total inline including the `[full output saved to ...]` pointer) / ~8 KiB on failure | Persistence-first, compact summary when the run succeeds and output is persisted, diagnostic window when it fails (**default**) |
+| `silent` | ~200 B | Minimal truncated output, fire-and-forget commands |
+| `concise` | ~2 KiB | Tail ~30 lines, builds, installs, known-good commands |
 | `normal` | ~8 KiB | General use, debugging |
 | `verbose` | ~16 KiB | Test failures, error investigation |
-| `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
+| `full` | unlimited | Raw output, no truncation, when the LLM needs every line |
 
-Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field — including the `[full output saved to ... — use read_file ...]` pointer that `PersistOutputHook` appends — stays around 512 bytes total. The pointer uses the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
+Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field, including the `[full output saved to ... — use read_file ...]` pointer that `PersistOutputHook` appends, stays around 512 bytes total. The pointer uses the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
 
-Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
+Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence`, stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`, and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
 
 The shared prompt hints (`EXEC_OUTPUT_HINT`, `READ_ECONOMY_HINT` in `tool_output_sanitizer.rs`) also carry a single-read/contextual-search policy for persisted output (EVE-778): pre-filter in the originating command when the filter is known, read a small persisted log (≤200 lines or ≤64 KiB) once with an ample `limit`, search larger ones with one contextual `grep_files` call, never reconstruct a file through sequential or overlapping read windows, and stop once diagnostic evidence suffices. Both constants are appended by every harness surface that exposes output persistence and filesystem tools (bashkit, sandbox integrations, the FileSystem capability).
 
-This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
+This is the tool's responsibility, each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
 ### Structured Exec Result Contract
 
@@ -258,8 +258,8 @@ Artifacts and visibility:
   - `/.background/{run_id}/output.log`
   - `/.background/{run_id}/result.json`
 - On completion or failure, the worker may send a synthetic session message summarizing the result and artifact paths.
-- That message is delivered through `PlatformStore::send_message`. **Without a platform store there is nowhere to deliver it**, and the run finishes invisibly — the agent that spawned it never learns it ended. The tool logs a warning rather than failing, since the run itself succeeded, but a host that wires `spawn_background` and no store has a hole.
-- Embedded hosts wire delivery with `everruns-local`'s `LocalPlatformStore`. A session with a live host loop (a terminal UI, an editor session) must not have a turn run underneath it, so `HostRoutedRunner` + `WakeRoutes` route the completion to the host's channel when one is registered and fall through to the inner runner's synchronous turn when nobody is watching — which is the child/subagent case. What the host does with a delivered wake (coalescing, enrichment, when to run it) stays with the host.
+- That message is delivered through `PlatformStore::send_message`. **Without a platform store there is nowhere to deliver it**, and the run finishes invisibly, the agent that spawned it never learns it ended. The tool logs a warning rather than failing, since the run itself succeeded, but a host that wires `spawn_background` and no store has a hole.
+- Embedded hosts wire delivery with `everruns-local`'s `LocalPlatformStore`. A session with a live host loop (a terminal UI, an editor session) must not have a turn run underneath it, so `HostRoutedRunner` + `WakeRoutes` route the completion to the host's channel when one is registered and fall through to the inner runner's synchronous turn when nobody is watching, which is the child/subagent case. What the host does with a delivered wake (coalescing, enrichment, when to run it) stays with the host.
 
 Scheduled monitors:
 - When `schedule` is provided, `spawn_background` does not start the tool immediately.
@@ -269,7 +269,7 @@ Scheduled monitors:
 Session schedule limits (apply to both `spawn_background` with a `schedule` arg and the `create_schedule` tool, since each schedule fire dispatches a real worker turn):
 - Per session: at most `MAX_ACTIVE_SCHEDULES_PER_SESSION` (5) active schedules.
 - Per org: at most `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG` (default 100) active schedules across all of the org's sessions. Uses the `RESOURCE_LIMIT_*` env family so the SaaS wrapper sets it per plan; carried on `ResourceLimitsConfig.max_session_schedules_per_org` for discoverability. Enforced worker-side because session schedules are created on the worker, not via a server command.
-- Minimum cron interval: recurring crons that fire more often than `SESSION_SCHEDULE_MIN_INTERVAL_SECONDS` (default 300s / 5 min) are rejected — the session-schedule sibling of the app channel's `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`. One-shot (`scheduled_at`) schedules are unaffected.
+- Minimum cron interval: recurring crons that fire more often than `SESSION_SCHEDULE_MIN_INTERVAL_SECONDS` (default 300s / 5 min) are rejected, the session-schedule sibling of the app channel's `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`. One-shot (`scheduled_at`) schedules are unaffected.
 - All three are rejected at create time with a clear tool error.
 
 V1 limitation:
@@ -283,7 +283,7 @@ auto-continues has to tell the difference: a tool-only turn stopped mid-task, a
 turn that asked a question is waiting on the user, a turn whose detached
 background run is still going is neither.
 
-`crates/core/src/turn_completion.rs` holds the cheap half of that judgement — a
+`crates/core/src/turn_completion.rs` holds the cheap half of that judgement, a
 pure function over what the turn already reported (`success`, `stop_reason`,
 response text, tool-call count, whether background work is live). It decides the
 clear-cut cases and answers `Evaluate` on the one genuinely ambiguous case:
@@ -301,13 +301,13 @@ Distinct from the `usage_limit_auto_continue` capability, which resumes after a
 ### Tool-Call Cancellation
 
 Dropping the act future is how a cancelled turn stops tool work, and for a tool
-that only awaits inside its own future that is enough — a dropped future is
+that only awaits inside its own future that is enough, a dropped future is
 never polled again. It says nothing to work the tool *left running*: a child
 process, a detached watcher task, a prompt waiting on an answer.
 
 `ToolContext.cancellation` is the signal that reaches those. The act atom mints
-a token per call and cancels it when the call ends by any means — turn
-cancelled, act future dropped, or the tool simply returned — so the contract a
+a token per call and cancels it when the call ends by any means, turn
+cancelled, act future dropped, or the tool simply returned, so the contract a
 tool sees is "this call is over; stop what you started for it". Cloning the
 token into detached work is what keeps it from outliving the call.
 
@@ -336,8 +336,8 @@ This pattern is intended for tools that must call an external API directly while
 `PreToolUseHook` is an async hook that runs before an individual tool is executed. For sessions that load execution capabilities the same chain runs uniformly for every tool the agent calls (built-in, MCP, or client-side); blueprint sessions resolve their tools directly and do not run these hooks. A hook can mutate the `ToolCall` (returning `Continue`) or block it (returning `Block`, which skips execution and surfaces the hook's reason as the tool error, prefixed with `blocked by pre_tool_use hook:`). Hooks chain sequentially; the first `Block` wins.
 
 Two sources feed the chain, in this order:
-1. **Capability hooks** — from active capabilities via `Capability::pre_tool_use_hooks()`. This is the seam for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
-2. **User-hook specs** — `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
+1. **Capability hooks**: from active capabilities via `Capability::pre_tool_use_hooks()`. This is the boundary for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
+2. **User-hook specs**: `pre_tool_use` hooks dispatched per `knowledge/runtime-resources/user-hooks.md`.
 
 Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/host/src/host.rs` (`load_execution_capabilities`).
 
@@ -349,8 +349,8 @@ Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`; the
 engine owns hook ordering and execution.
 
 Two hook slots run in sequence:
-1. **Capability hooks** (`post_tool_hooks`) — from active capabilities (e.g. `tool_output_persistence`)
-2. **Final hooks** (`final_post_tool_hooks`) — always-on infrastructure (e.g. EVE-225 hard limit)
+1. **Capability hooks** (`post_tool_hooks`), from active capabilities (e.g. `tool_output_persistence`)
+2. **Final hooks** (`final_post_tool_hooks`), always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
 - **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/builtins/src/tool_output_persistence.rs`.
@@ -403,7 +403,7 @@ See `crates/builtins/src/loop_detection.rs`.
 - **CPU offload.** `cpu_bound` tools (e.g. the in-process `bash` interpreter) are executed on their own task (`tokio::spawn`) so a synchronous burst cannot starve the cooperative polling of I/O-bound tools sharing the batch. I/O-bound tools stay cooperative; no extra task is spawned for them.
 - **Override.** `ActInput.parallel_tool_calls == Some(false)` forces a strictly sequential schedule (mirrors the request's `parallel_tool_calls`). Results are always returned in the model's original call order regardless of completion order.
 
-This logic is shared by all execution paths — the in-process runtime/host loop and the durable worker both run the same `ActAtom`. The `parallel_tool_calls` field is additive and `skip_serializing_if = "Option::is_none"`, so serialized `ActInput`s from older durable runs deserialize unchanged.
+This logic is shared by all execution paths, the in-process runtime/host loop and the durable worker both run the same `ActAtom`. The `parallel_tool_calls` field is additive and `skip_serializing_if = "Option::is_none"`, so serialized `ActInput`s from older durable runs deserialize unchanged.
 
 ### Request-level `parallel_tool_calls` (EVE-598)
 

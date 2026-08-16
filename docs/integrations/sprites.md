@@ -54,7 +54,7 @@ Agents with the Sprites capability can use these tools:
 
 ## Checkpoints
 
-Sprites support instant filesystem checkpointing — a unique capability not found in other sandbox providers:
+Sprites support instant filesystem checkpointing, a unique capability not found in other sandbox providers:
 
 1. **Before risky operations**: Call `sprites_checkpoint` to snapshot the current state
 2. **If something goes wrong**: Call `sprites_restore_checkpoint` to roll back

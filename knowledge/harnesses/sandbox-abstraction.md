@@ -676,7 +676,7 @@ and profile validation, not different tools given to the model.
 
 - Experimental `session_sandbox` capability and its `sandbox_*` model tools.
   Its code is useful as a spike, but its filesystem and state ownership are the
-  wrong final seams.
+  wrong final boundaries.
 - `coding-session-sandbox` and `coding-daytona`. Replace them with one coding
   harness whose sandbox profile is configurable.
 - `docker_container`. It duplicates `container_sandbox`, uses the Docker CLI,

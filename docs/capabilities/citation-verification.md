@@ -11,7 +11,7 @@ description: Verify that each cited source actually supports the claim it is att
 | **Guardrail** | Yes |
 | **Dependencies** | None |
 
-Check that each citation is **faithful** — that the source it points to actually supports the sentence it is attached to — and stamp a verdict on it. It is a guardrail capability, decoupled from the feeds: it consumes the citations collected during a turn (from [Retrieval Citations](/capabilities/citation-retrieval/) or any future feed) and verifies them uniformly, so any feed can be paired with any verifier.
+Check that each citation is **faithful**: that the source it points to actually supports the sentence it is attached to, and stamp a verdict on it. It is a guardrail capability, decoupled from the feeds: it consumes the citations collected during a turn (from [Retrieval Citations](/capabilities/citation-retrieval/) or any future feed) and verifies them uniformly, so any feed can be paired with any verifier.
 
 It contributes **no tools** and **no system prompt**. The verdict renders in the UI as a badge on each source.
 
@@ -31,7 +31,7 @@ Each citation gets one of three verdicts, shown as a badge on the chip preview a
 
 | Mode | Cost | Behavior |
 |---|---|---|
-| `heuristic` (default) | Free | Deterministic lexical entailment — token overlap between the claim span and the source snippet. No model call. A weak but honest baseline, strongest on verbatim citations. |
+| `heuristic` (default) | Free | Deterministic lexical entailment, token overlap between the claim span and the source snippet. No model call. A weak but honest baseline, strongest on verbatim citations. |
 | `llm` | One utility-model call per citation | A utility-model judgement per claim/source pair (claim = hypothesis, snippet = premise). More accurate; falls back to the heuristic when no utility model is configured. |
 
 ## Configuration
@@ -39,7 +39,7 @@ Each citation gets one of three verdicts, shown as a badge on the chip preview a
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `mode` | `"heuristic"` \| `"llm"` | `"heuristic"` | Verification strategy (see above). |
-| `threshold` | number (0–1) | `0.5` | Entailment threshold for the heuristic verdict — the fraction of the claim's distinctive tokens the source must cover to be `entailed`. |
+| `threshold` | number (0–1) | `0.5` | Entailment threshold for the heuristic verdict, the fraction of the claim's distinctive tokens the source must cover to be `entailed`. |
 
 ## Notes
 
@@ -50,5 +50,5 @@ Each citation gets one of three verdicts, shown as a badge on the chip preview a
 
 ## See Also
 
-- [Retrieval Citations](/capabilities/citation-retrieval/) — the feed that produces the citations this verifies
+- [Retrieval Citations](/capabilities/citation-retrieval/), the feed that produces the citations this verifies
 - [Capabilities Overview](/capabilities/)

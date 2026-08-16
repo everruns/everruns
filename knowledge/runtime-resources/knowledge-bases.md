@@ -18,10 +18,10 @@ that users manage through a dedicated UI and that agents can search through a
 
 Knowledge Bases sit alongside one adjacent primitive:
 
-* **Memory** (`knowledge/runtime-resources/memory.md`) — org-scoped, named stores mountable into
+* **Memory** (`knowledge/runtime-resources/memory.md`), org-scoped, named stores mountable into
   session workspaces. Files-only today; emphasizes file fidelity and direct
   file edits. Knowledge Bases may fold into Memory as a `structured` surface
-  later — see open questions in `knowledge/runtime-resources/memory.md`.
+  later, see open questions in `knowledge/runtime-resources/memory.md`.
 
 Knowledge Bases fill the curation-first slot: small, structured, human-edited
 entries that an agent should consult **before** generating output, with stable
@@ -30,10 +30,10 @@ citation IDs.
 This spec is the durable design intent for [EVE-423]. Implementation is
 delivered across multiple PRs:
 
-* Foundational PR — entity, ID schema, DB schema, capability registration,
+* Foundational PR, entity, ID schema, DB schema, capability registration,
   CRUD HTTP API. The `data_knowledge` capability remains the runtime
   ground-truth surface and is unaffected.
-* Follow-up PR — agent-facing `search_knowledge` tool, capability config UI,
+* Follow-up PR, agent-facing `search_knowledge` tool, capability config UI,
   KB management UI page, and migration path from `/knowledge/**` starter
   files into a default Knowledge Base.
 
@@ -77,10 +77,10 @@ Boundary with adjacent primitives:
 Knowledge Bases follow the standard building-block lifecycle from
 `knowledge/foundations/models.md`:
 
-* `active` — assignable and editable.
-* `archived` — read-only, hidden from default lists, not assignable to new
+* `active`, assignable and editable.
+* `archived`, read-only, hidden from default lists, not assignable to new
   capability bindings.
-* `deleted` — tombstone; detail/list APIs return 404 except for historical
+* `deleted`, tombstone; detail/list APIs return 404 except for historical
   references.
 
 Knowledge Entries inherit the lifecycle of their parent KB. A KB hard delete
@@ -130,7 +130,7 @@ backs keyword search; a per-KB index on `(kb_id, kind)` backs kind filters.
 * **Icon:** `library`
 * **Dependencies:** none (does not require `session_file_system`)
 * **Features:** `knowledge`
-* **Risk:** `Low` — read-only entry retrieval scoped to org-owned content.
+* **Risk:** `Low`, read-only entry retrieval scoped to org-owned content.
 
 ### Config Schema
 
@@ -141,9 +141,9 @@ backs keyword search; a per-KB index on `(kb_id, kind)` backs kind filters.
 }
 ```
 
-* `bases` — IDs of Knowledge Bases the agent can search. Empty/null = no
+* `bases`, IDs of Knowledge Bases the agent can search. Empty/null = no
   bases bound; the tool returns an empty result set.
-* `kinds` — optional default kind filter applied when the agent does not
+* `kinds`, optional default kind filter applied when the agent does not
   pass `kind` explicitly.
 
 ### Validation Rules
@@ -206,7 +206,7 @@ REST endpoints (see `knowledge/execution/apis.md` for conventions and OpenAPI ex
 * `POST   /v1/knowledge-bases`
 * `GET    /v1/knowledge-bases/{kb_id}`
 * `PATCH  /v1/knowledge-bases/{kb_id}`
-* `DELETE /v1/knowledge-bases/{kb_id}` — archive per lifecycle
+* `DELETE /v1/knowledge-bases/{kb_id}`, archive per lifecycle
 * `GET    /v1/knowledge-bases/{kb_id}/entries`
 * `POST   /v1/knowledge-bases/{kb_id}/entries`
 * `GET    /v1/knowledge-bases/{kb_id}/entries/{entry_id}`
@@ -220,12 +220,12 @@ list supports `?kind=` and `?search=`.
 
 Follow-up PR. Shape:
 
-* Top-level **Knowledge Bases** page — list, search, archive toggle, create
+* Top-level **Knowledge Bases** page, list, search, archive toggle, create
   button. Lives next to **Volumes** in the building-blocks navigation.
-* **Knowledge Base detail** — editable name/description, entry list grouped
+* **Knowledge Base detail**: editable name/description, entry list grouped
   by kind, archive/delete actions.
-* **Entry editor** — title, kind, tags, markdown body editor with preview.
-* **Capability config UI** for `knowledge_base` — multi-select KBs and
+* **Entry editor**: title, kind, tags, markdown body editor with preview.
+* **Capability config UI** for `knowledge_base`, multi-select KBs and
   optional kind filter.
 
 ## Migration from `/knowledge/**` Starter Files
@@ -279,7 +279,7 @@ agent or harness.
   KBs are rejected.
 * API CRUD permissions and org scoping.
 * OpenAPI export updated when API surface changes.
-* Manual test cases (`test_cases/knowledge-bases/`) — added with the UI PR.
+* Manual test cases (`test_cases/knowledge-bases/`), added with the UI PR.
 
 ## Embedding Configuration
 

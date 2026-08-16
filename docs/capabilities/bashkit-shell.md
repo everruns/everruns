@@ -7,8 +7,8 @@ description: Sandboxed Bash command execution in an isolated environment. Agents
 |---|---|
 | **ID** | `bashkit_shell` (legacy alias: `virtual_bash`) |
 | **Category** | Execution |
-| **Risk** | High — assignment requires an org **Admin** |
-| **Features** | `file_system` (unlocks the Workspace tab) |
+| **Risk** | High, assignment requires an org **Admin** |
+| **Features** | `file_system` (enables the Workspace tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 
 Execute bash commands in a sandboxed environment with no access to the host
@@ -17,7 +17,7 @@ write the same files as the [File System](/capabilities/file-system/) tools.
 
 ## Powered by Bashkit
 
-This capability runs on [**bashkit**](https://bashkit.sh) — an embeddable bash
+This capability runs on [**bashkit**](https://bashkit.sh), an embeddable bash
 interpreter that executes shell scripts in-process inside a WASM-like sandbox,
 with no real shell, no subprocess spawning, and no host access. Learn more at
 [bashkit.sh](https://bashkit.sh) or browse the source on
@@ -45,14 +45,14 @@ Returns `stdout`, `stderr`, `exit_code`, and a `success` flag. Output streams
 live to the UI and CLI via `tool.output.delta` events while the command runs.
 On timeout, any partial output captured so far is returned alongside the error.
 
-This tool also supports background execution — long scripts can run detached and
+This tool also supports background execution, long scripts can run detached and
 report progress without blocking the agent loop.
 
 ## Filesystem
 
 The interpreter exposes a single mount:
 
-- **`/workspace`** maps to the session file store. Reads and writes are live —
+- **`/workspace`** maps to the session file store. Reads and writes are live,
   files created by bash are immediately visible to the File System tools and
   vice versa.
 - Paths outside `/workspace` (for example `/etc`, `/home/agent`, `/tmp`) do not
@@ -81,7 +81,7 @@ Every invocation runs under fixed limits to prevent runaway scripts:
 ## Outbound HTTP (optional)
 
 Set the capability config `{"enable_http": true}` to let scripts use `curl` and
-`wget`. Every request — including each redirect hop — is routed through the
+`wget`. Every request, including each redirect hop, is routed through the
 platform egress boundary, where the agent/session network access list and the
 deployment-wide system allowlist are enforced. Policy denials surface as curl's
 native `access denied` failure (exit code 7). Without the flag, the interpreter
@@ -89,9 +89,9 @@ has no network path at all.
 
 ## Security
 
-- **Sandboxed** — no direct network access (outbound HTTP is opt-in and
+- **Sandboxed**: no direct network access (outbound HTTP is opt-in and
   egress-routed), no host filesystem, no subprocess spawning.
-- **High risk** — because it exposes arbitrary scripted code execution, assigning
+- **High risk**: because it exposes arbitrary scripted code execution, assigning
   `bashkit_shell` to an agent requires an org **Admin**. Existing agents that
   already had it keep working; the gate applies to new assignments only.
 - Built-in observability hooks emit structured `tracing` events per builtin and
@@ -110,7 +110,7 @@ has no network path at all.
 
 ## See Also
 
-- [Bashkit project](https://bashkit.sh) — the interpreter powering this capability
-- [File System](/capabilities/file-system/) — file operations on the same workspace
-- [Sub Agents](/capabilities/sub-agents/) — background and parallel execution
+- [Bashkit project](https://bashkit.sh), the interpreter powering this capability
+- [File System](/capabilities/file-system/), file operations on the same workspace
+- [Sub Agents](/capabilities/sub-agents/), background and parallel execution
 - [Capabilities Overview](/capabilities/)

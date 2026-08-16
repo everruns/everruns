@@ -9,7 +9,7 @@ The word "durable" in "durable agentic harness engine" means a specific thing: *
 
 ## The problem
 
-An agent turn looks simple from the outside — send a message, get a streamed response. Internally it's a chain of network calls that each take seconds:
+An agent turn looks simple from the outside, send a message, get a streamed response. Internally it's a chain of network calls that each take seconds:
 
 1. Call the LLM provider.
 2. Parse tool calls, dispatch them.
@@ -28,17 +28,17 @@ Everruns runs every step as a **durable task**. Each task:
 - Has retry and timeout policies.
 - Heartbeats while running, so the control plane can detect a crashed worker.
 
-A turn is a small state machine over those tasks. The state lives in `durable_workflow_events`, an append-only event log just for the workflow engine. To replay a workflow, you load its events and feed them back into the state machine — same input, same decisions, same output.
+A turn is a small state machine over those tasks. The state lives in `durable_workflow_events`, an append-only event log just for the workflow engine. To replay a workflow, you load its events and feed them back into the state machine, same input, same decisions, same output.
 
 When a worker crashes mid-turn, the control plane sees the missed heartbeats, marks the in-flight task as failed, and re-queues it. Another worker picks it up. The application sees a momentary stall in the SSE stream, then it continues.
 
 ## Why a custom engine
 
-The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine — `everruns-durable` — instead. The reasoning:
+The obvious alternative is Temporal (or Cadence, or Restate). Everruns deliberately built its own minimal durable engine, `everruns-durable`, instead. The reasoning:
 
 1. **Single dependency.** PostgreSQL is the only stateful infrastructure. Operators don't need to run a second cluster with its own ops story.
 2. **Co-located with the rest of the platform.** Workflow events and session events live in the same database, in the same transaction when needed. There's no eventual consistency between "what happened" and "what was reported."
-3. **Tight scope.** Everruns runs agentic workflows specifically — limited fan-out, short-to-medium duration, well-understood failure modes. We don't need the full Temporal feature set, and the operational surface area of a tightly-scoped engine is much smaller.
+3. **Tight scope.** Everruns runs agentic workflows specifically, limited fan-out, short-to-medium duration, well-understood failure modes. We don't need the full Temporal feature set, and the operational surface area of a tightly-scoped engine is much smaller.
 
 The trade-off: no multi-region replication beyond what PostgreSQL itself offers, no language-agnostic SDK (the engine is Rust-only inside the platform), no visual workflow designer. For agent execution these are not missed.
 
@@ -59,9 +59,9 @@ What it doesn't give you:
 
 Everruns is designed to run on a single PostgreSQL primary. Read replicas help for reporting; write-heavy session loads are handled by partitioning the durable workflow tables by workflow ID hash and by keeping event payloads compact.
 
-For deployments that outgrow a single primary, the migration path is to a sharded PostgreSQL setup keyed by organization — but in practice, LLM provider rate limits cap throughput long before the database does.
+For deployments that outgrow a single primary, the migration path is to a sharded PostgreSQL setup keyed by organization, but in practice, LLM provider rate limits cap throughput long before the database does.
 
 ## Further reading
 
-- [The agentic loop](/explanation/agentic-loop/) — what each step inside a turn looks like.
-- [Architecture](/explanation/architecture/) — how the control plane and workers interact.
+- [The agentic loop](/explanation/agentic-loop/), what each step inside a turn looks like.
+- [Architecture](/explanation/architecture/), how the control plane and workers interact.

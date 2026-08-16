@@ -16,7 +16,7 @@ Harnesses may also define starter files. Starter files are copied into each new 
 
 Harnesses support single-parent inheritance via `parent_harness_id`. Inheritance is live: the effective harness is resolved from parent to child at runtime and in preview.
 
-The base system prompt is **optional**. A harness may contribute no base prompt of its own — common for a child harness whose only job is to add capabilities or MCP servers — in which case the effective prompt is composed entirely from the parent harness (if any), the agent, the session, and capability contributions. Empty or whitespace-only prompts are treated as "no contribution" by the prompt-composition layer, so the column is nullable and the create/preview APIs accept an absent `system_prompt`.
+The base system prompt is **optional**. A harness may contribute no base prompt of its own, common for a child harness whose only job is to add capabilities or MCP servers, in which case the effective prompt is composed entirely from the parent harness (if any), the agent, the session, and capability contributions. Empty or whitespace-only prompts are treated as "no contribution" by the prompt-composition layer, so the column is nullable and the create/preview APIs accept an absent `system_prompt`.
 
 ## Harness Naming
 
@@ -31,11 +31,11 @@ The `name` field works like a GitHub repository name: lowercase alphanumeric wit
 
 ### Name-based access
 
-- **GET /v1/harnesses/{id_or_name}** — Accepts either a prefixed ID (`harness_...`) or a stable name (`generic`). The server tries parsing as ID first, then falls back to name lookup.
-- **POST /v1/agents / PATCH /v1/agents/{id}** — Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive. Agent create inherits the organization's current default (then the platform built-in fallback) when both are omitted; an explicit selection remains pinned. Update leaves the existing selection unchanged when both are omitted.
-- **POST /v1/sessions** — Accepts `harness_name` as an alternative to `harness_id` (mutually exclusive), and `agent_name` as an alternative to `agent_id` (mutually exclusive). When an agent is supplied and no harness is, the session runs on the agent's harness. Harness precedence: explicit request harness → agent's harness → org default → built-in fallback.
-- **GET /v1/agents** — Includes the effective harness for each agent and whether it is explicit or inherited, so collection views reflect the harness a new agent session will use.
-- **CLI** — `everruns sessions create --harness generic` accepts both IDs and names. `--agent` accepts an id or a name; a bare name resolves server-side, and omitting `--harness` runs the session on the agent's harness. Non-ID harness values are resolved via `GET /v1/harnesses/{name}` before session creation.
+- **GET /v1/harnesses/{id_or_name}**: Accepts either a prefixed ID (`harness_...`) or a stable name (`generic`). The server tries parsing as ID first, then falls back to name lookup.
+- **POST /v1/agents / PATCH /v1/agents/{id}**: Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive. Agent create inherits the organization's current default (then the platform built-in fallback) when both are omitted; an explicit selection remains pinned. Update leaves the existing selection unchanged when both are omitted.
+- **POST /v1/sessions**: Accepts `harness_name` as an alternative to `harness_id` (mutually exclusive), and `agent_name` as an alternative to `agent_id` (mutually exclusive). When an agent is supplied and no harness is, the session runs on the agent's harness. Harness precedence: explicit request harness → agent's harness → org default → built-in fallback.
+- **GET /v1/agents**: Includes the effective harness for each agent and whether it is explicit or inherited, so collection views reflect the harness a new agent session will use.
+- **CLI**: `everruns sessions create --harness generic` accepts both IDs and names. `--agent` accepts an id or a name; a bare name resolves server-side, and omitting `--harness` runs the session on the agent's harness. Non-ID harness values are resolved via `GET /v1/harnesses/{name}` before session creation.
 
 ## Default Built-in Harnesses vs Harness Examples
 
@@ -48,9 +48,9 @@ Two categories of code-defined harnesses exist:
 
 **Default built-ins are the minimum required for the platform to function:**
 
-- `base` — required as a fallback parent for sessions without an explicit harness.
-- `generic` — required as the default parent harness referenced by examples and most user harnesses.
-- `platform-chat` — required by the global chat path (singleton per-user session pattern).
+- `base`, required as a fallback parent for sessions without an explicit harness.
+- `generic`, required as the default parent harness referenced by examples and most user harnesses.
+- `platform-chat`, required by the global chat path (singleton per-user session pattern).
 
 **Harness examples** today: `coding-daytona`, `coding-container`, `data-analyst`. Examples whose required capabilities are not registered for the deployment (for example, `coding-container` when the `container_sandbox` plugin is disabled) are filtered out of `/v1/harness-examples` automatically, mirroring the agent examples behaviour.
 
@@ -58,7 +58,7 @@ Two categories of code-defined harnesses exist:
 
 ### Migration of legacy built-in rows
 
-Existing orgs that already had `data-analyst`, `coding-daytona`, or `coding-container` provisioned as `is_built_in = true` keep those rows during reconciliation. The reconciliation step demotes them to regular org-owned harnesses (`is_built_in = false`) so existing sessions and agents that reference them keep working, while users gain the ability to edit, archive, or delete them like any custom harness. The demotion is idempotent and only flips the `is_built_in` flag — no data is rewritten and no UUIDs change.
+Existing orgs that already had `data-analyst`, `coding-daytona`, or `coding-container` provisioned as `is_built_in = true` keep those rows during reconciliation. The reconciliation step demotes them to regular org-owned harnesses (`is_built_in = false`) so existing sessions and agents that reference them keep working, while users gain the ability to edit, archive, or delete them like any custom harness. The demotion is idempotent and only flips the `is_built_in` flag, no data is rewritten and no UUIDs change.
 
 ## Built-in Harness Types
 
@@ -140,17 +140,17 @@ Conversational harness for the global chat interface. Inherits Generic capabilit
 | Why include `infinity_context` in Generic? | General-purpose sessions often grow long. Including long-context support by default keeps the prompt bounded without permanently hiding earlier conversation state. |
 | Why support harness inheritance? | It lets users build on Generic or other shared harnesses without duplicating long capability lists, prompts, model defaults, or starter files. |
 | How does harness inheritance merge? | System prompt appends parent then child (empty/absent layers contribute nothing; if no layer contributes, the harness has no base prompt). Default model falls back parent then child override. Capabilities merge by capability ID with child config overriding parent. Starter files merge by normalized path with child overriding parent. |
-| Why is the system prompt optional? | A harness bundles capabilities, MCP servers, model defaults, network access, and starter files — not just a prompt. Forcing a base prompt made capability-only or MCP-only child harnesses invent filler or duplicate the parent prompt. The composition layer already treats each layer's prompt as optional, so storage and the create/preview APIs allow it to be absent. |
+| Why is the system prompt optional? | A harness bundles capabilities, MCP servers, model defaults, network access, and starter files, not just a prompt. Forcing a base prompt made capability-only or MCP-only child harnesses invent filler or duplicate the parent prompt. The composition layer already treats each layer's prompt as optional, so storage and the create/preview APIs allow it to be absent. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
 | Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
-| How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |
+| How are built-in harnesses upgraded? | Reconciliation runs at startup, iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |
 | How do starter files interact with capabilities? | Starter files are first-class harness or agent data, not capability config. If starter files exist, `session_file_system` is automatically retained so the session has a visible workspace and file tools. |
 
 ## Built-in Harness Identity
 
 **Built-in harnesses are identified by `name`, not by UUID.** The `harness_id` row is per-org and is generated when the harness is provisioned. Reconciliation, lookups, tests, examples, and migrations must address built-in harnesses (`is_built_in = true`) by `name`.
 
-**Hardcoded UUID literals must not be used to address built-in harnesses.** This rule applies in production code, tests, examples, fixtures, and new migrations. It does not affect literals used for non-built-in harness fixtures (e.g. a test that creates an org-owned custom harness with a fixed ID for setup) — those are unaffected because they do not depend on the built-in identity.
+**Hardcoded UUID literals must not be used to address built-in harnesses.** This rule applies in production code, tests, examples, fixtures, and new migrations. It does not affect literals used for non-built-in harness fixtures (e.g. a test that creates an org-owned custom harness with a fixed ID for setup), those are unaffected because they do not depend on the built-in identity.
 
 The single exception is the historical default-org seed range (see "UUID Allocation" below). Those literals exist purely to keep already-provisioned default-org rows stable and must not grow.
 
@@ -187,10 +187,10 @@ Data analysis harness with SQL databases, persistent memory, interactive charts 
 
 | Capability | What it provides |
 |------------|-----------------|
-| Session SQL Database | `sql_execute`, `sql_query`, `sql_schema` — session-scoped SQLite databases |
-| Memory | `remember`, `recall`, `forget` — cross-session persistent learning (passive recall: 8) |
+| Session SQL Database | `sql_execute`, `sql_query`, `sql_schema`, session-scoped SQLite databases |
+| Memory | `remember`, `recall`, `forget`, cross-session persistent learning (passive recall: 8) |
 | OpenUI | Rich charts, tables, dashboards via OpenUI Lang |
-| Todo List | `write_todos` — multi-step analysis task tracking |
+| Todo List | `write_todos`, multi-step analysis task tracking |
 | Data Knowledge | Mounts `/knowledge/{tables,business,queries}/` scaffold for curated context |
 
 **Use cases:**
@@ -210,5 +210,5 @@ Coding harness backed by self-hosted Docker container sandboxes plus GitHub Scou
 ## Future Harness Types
 
 The harness type system is designed for extension. Planned additions:
-- **Research** — Web fetch, todo list, file system for research workflows
-- **Code** — Docker/sandbox execution with file system for coding tasks
+- **Research**: Web fetch, todo list, file system for research workflows
+- **Code**: Docker/sandbox execution with file system for coding tasks

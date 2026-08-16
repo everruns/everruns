@@ -97,5 +97,5 @@ everruns chat "Process the queue" --session "$SESSION_ID" --no-stream
 
 ## See also
 
-- [CLI reference](/features/cli/) — full command list and flags.
-- [Define agents as files](/how-to/define-agents-as-files/) — the file formats accepted by `-f`.
+- [CLI reference](/features/cli/), full command list and flags.
+- [Define agents as files](/how-to/define-agents-as-files/), the file formats accepted by `-f`.

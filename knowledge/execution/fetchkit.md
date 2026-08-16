@@ -13,7 +13,7 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 ## Integration
 
 - `WebFetchCapability` uses `fetchkit::ToolBuilder` to configure the tool
-- `WebFetchTool` wraps `fetchkit::Tool` — delegates schema, description, llmtxt, and execution
+- `WebFetchTool` wraps `fetchkit::Tool`, delegates schema, description, llmtxt, and execution
 - All metadata (description, system prompt, input schema) comes from `fetchkit::ToolBuilder`, not constants
 - The wrapper deserializes FetchKit's request contract so content focus,
   conditional fetch, bounded crawl, and rendering inputs reach the library
@@ -22,10 +22,10 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
   is present, fetchkit's `HttpTransport` (fetchkit >= 0.4) is injected via
   `ToolBuilder::transport` with `EgressHttpTransport`
   (`integrations/web-fetch/src/egress_transport.rs`). fetchkit keeps the
-  whole pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
+  whole pipeline, specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
   via `DnsPolicy` (resolve-then-check; pinned addresses forwarded to
   `EgressRequest.pinned_addrs`), per-hop redirect validation, bot-auth
-  signing, body caps — while every HTTP hop crosses the egress boundary,
+  signing, body caps, while every HTTP hop crosses the egress boundary,
   which enforces the network access list and system allowlist.
 - **Direct path** (no egress service in context, e.g. embedded hosts):
   fetchkit owns transport; SSRF via `DnsPolicy::block_private_ips()` (blocks
@@ -70,9 +70,9 @@ fetchkit owns the `FileSaver` abstraction; consumers inject implementations:
 - **Everruns**: `SessionFileSaver` adapter → `SessionFileSystem` (per-session virtual filesystem)
 
 Key decisions:
-- **Config-gated**: file download enabled via per-capability config `{"enable_file_download": true}` — harnesses/agents opt in
+- **Config-gated**: file download enabled via per-capability config `{"enable_file_download": true}`, harnesses/agents opt in
 - **ToolBuilder-driven**: `enable_save_to_file` on ToolBuilder controls schema, description, and system prompt content
-- **Binary encoding**: UTF-8 validity check (`std::str::from_utf8`) determines text vs base64 — simpler than content-type heuristics
+- **Binary encoding**: UTF-8 validity check (`std::str::from_utf8`) determines text vs base64, simpler than content-type heuristics
 - **Binary content accepted**: `save_to_file` bypasses binary rejection in `DefaultFetcher`
 
 ## Capability config mechanism

@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-`SessionFileSystem` is the canonical seam through which built-in capabilities
+`SessionFileSystem` is the canonical boundary through which built-in capabilities
 read and write files. Implementations of this trait decide what "the
 workspace" physically is: an in-memory map, a PostgreSQL table, a remote gRPC
 adapter, a real host-filesystem directory, or a future object-store-backed
@@ -21,7 +21,7 @@ discipline new capabilities should follow when they need filesystem access.
 
 ## Status
 
-This is the platform-level session filesystem seam. `HostComposition`
+This is the platform-level session filesystem boundary. `HostComposition`
 carries a `SessionFileSystemFactory`, and runtime/server hosts resolve a live
 `SessionFileSystem` from host dependencies such as in-memory state, a storage
 backend, or a root directory. It is still compatible with the mount-overlay
@@ -31,14 +31,14 @@ workspace root with additional mounted roots in one model-facing namespace.
 ## Background
 
 The first non-server embedder of the in-process host (the `examples/coding-cli`
-TUI in PR #1839) revealed a real seam: `AgentInstructionsCapability` and
+TUI in PR #1839) revealed a real boundary: `AgentInstructionsCapability` and
 `SkillsCapability` read project context (`AGENTS.md`,
 `.agents/skills/...`) from the session VFS via
 `SystemPromptContext.file_store`. That works inside the server (the session
 VFS *is* the workspace) but breaks in an embedded coding-CLI where the
 workspace is a real directory on disk.
 
-The pluggable seam is `HostComposition.session_file_system_factory`, so
+The pluggable boundary is `HostComposition.session_file_system_factory`, so
 embedders choose the session filesystem as part of the deployment surface.
 
 ## Decision Process
@@ -48,7 +48,7 @@ We evaluated four options before landing on the pluggable-store approach:
 | Option | Description | Outcome |
 |--------|-------------|---------|
 | A. Pluggable `SessionFileSystem` at runtime builder | Single trait, embedder picks the impl. | Superseded by platform factories. |
-| B. Mount-point overlay (`MountSource::HostPath`) | Compose mounts on top of a base filesystem via a resolver. | Eventual destination. Strict superset of the factory seam. |
+| B. Mount-point overlay (`MountSource::HostPath`) | Compose mounts on top of a base filesystem via a resolver. | Eventual destination. Strict superset of the factory boundary. |
 | C. Split `SystemPromptContext` into `file_store` + `WorkspaceSource` | Separate sandbox writes from project-context reads. | Rejected. Parallel abstraction that B subsumes naturally via `MountAccess::ReadOnly`. |
 | D. Per-capability factory (`AgentInstructionsCapability::with_loader(...)`) | Each capability re-solves the loader problem itself. | Rejected. Does not compose; doesn't scale to N capabilities. |
 
@@ -62,9 +62,9 @@ day the embedder plugs a real-disk filesystem.
 
 The public surface is split across the execution and host concerns:
 
-- `everruns_core::session_files::SessionFileSystem` — the read/write contract every
+- `everruns_core::session_files::SessionFileSystem`, the read/write contract every
   filesystem-aware capability calls.
-- `everruns_host::SessionFileSystemFactory` — resolves the deployment's
+- `everruns_host::SessionFileSystemFactory`, resolves the deployment's
   chosen filesystem from host-provided dependencies.
 
 See `crates/core/src/session_files.rs` and
@@ -77,14 +77,14 @@ supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
 ### Unified Workspace Path Model (EVE-660)
 
 The agent sees **one** filesystem, resolved by
-`everruns_core::mount_fs::MountFs` — a `SessionFileSystem` decorator the runtime
+`everruns_core::mount_fs::MountFs`, a `SessionFileSystem` decorator the runtime
 wires around the workspace backend wherever a file store enters a `ToolContext`
 or `SystemPromptContext`. `MountFs` owns:
 
-- a **mount table** — named mount points, each backed by a `SessionFileSystem`,
+- a **mount table**: named mount points, each backed by a `SessionFileSystem`,
   with a per-mount root in that backend's keyspace, dispatched by longest-prefix
   match; and
-- a **current working directory** (default `/workspace`) — relative paths
+- a **current working directory** (default `/workspace`), relative paths
   resolve against it, `.`/`..` collapse POSIX-style.
 
 `/workspace` is therefore a **mount point and the default cwd**, not a magic
@@ -93,7 +93,7 @@ so the table holds the root mount (`/` → backend, for legacy backend-native
 paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
 `/workspace` view of the same backend; `/workspace` wins by longest-prefix, so
 `/workspace/foo` ≡ `/foo`. Splitting `/outputs`, `/.agents/skills`, or volumes
-onto *different* backends later is `MountFs::with_mount(...)` — the resolver does
+onto *different* backends later is `MountFs::with_mount(...)`, the resolver does
 not change. Routing and presentation are separate: direct backends retain their
 own display identity for host-side integrations, while `MountFs` owns the stable
 agent-facing identity.
@@ -114,7 +114,7 @@ of copying `/workspace` stripping or containment logic locally.
 `MountFs` is the only path authority. It normalizes input against the cwd,
 collapses `.`/`..`, and dispatches to the longest-matching mount; the chosen
 backend then keys on the resulting **leading-slash session path** (`/src/lib.rs`).
-There is no shared "path model" object that callers reach for — capabilities use
+There is no shared "path model" object that callers reach for, capabilities use
 the `SessionFileSystem` methods (`read_file`, `write_file`, `grep_files`,
 `display_path`, `resolve_path`), and `MountFs` resolves underneath. The
 host-agnostic `/workspace`-alias normalization is `everruns_core::session_path`
@@ -122,12 +122,12 @@ host-agnostic `/workspace`-alias normalization is `everruns_core::session_path`
 directory is a backend detail (see *Host mapping*).
 
 - **The wire form is the leading-slash session path.** `/src/lib.rs`,
-  `/Cargo.toml`, `/` for the root — what `SessionFileSystem` methods and the DB
+  `/Cargo.toml`, `/` for the root, what `SessionFileSystem` methods and the DB
   store key on. VFS backends key on it directly; no separate canonical type is
   shared across crates.
 - **`/workspace` is a mount + the default cwd, not a namespace.** It is one
   accepted spelling on input and the default display prefix on output. The root
-  mount (`/`) means **any** path is addressable — the shell can read and write
+  mount (`/`) means **any** path is addressable, the shell can read and write
   anywhere from `/`, with `/workspace` simply being where it starts.
 
 ### Path Namespace
@@ -183,7 +183,7 @@ Each backend owns its `display_path`/`display_root`:
 - VFS/storage-backed stores display the `/workspace` alias (the
   `session_path::to_display_path` default).
 - `RealDiskFileStore` displays its canonical host root, and accepts host-absolute
-  paths under that root as aliases — so embedders can show
+  paths under that root as aliases, so embedders can show
   `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
   input.
 - `MountFs` is the agent-facing presentation boundary. **By default** it displays
@@ -199,26 +199,26 @@ Each backend owns its `display_path`/`display_root`:
 `/workspace` plays two independent roles in `MountFs`, and they are kept
 separate on purpose:
 
-1. **Routing / cwd** — the model addresses files at `/workspace/...` and relative
+1. **Routing / cwd**: the model addresses files at `/workspace/...` and relative
    paths resolve there. This is a runtime mechanism, identical for every embedder,
    so it stays hardcoded.
-2. **Presentation** — the path string shown to the model, emitted in narration,
+2. **Presentation**: the path string shown to the model, emitted in narration,
    and persisted in output pointers. This is *policy*, selected by
    `everruns_core::DisplayPolicy` on `MountFs`:
-   - `WorkspaceAlias` (**default**) — present primary paths under the
+   - `WorkspaceAlias` (**default**), present primary paths under the
      host-agnostic `/workspace` alias regardless of the backend. Required for
      multi-tenant/server hosts: a mounted real-disk session must not leak the host
      checkout path (`/private/var/.../checkout/...`) into model-visible or
      persisted output (threat model TM-FS). This is what PR #2776 established.
-   - `BackendNative` (`MountFs::with_backend_display()`) — delegate primary-path
+   - `BackendNative` (`MountFs::with_backend_display()`), delegate primary-path
      presentation to the backend's own `display_path`/`display_root`, exposing
      real host paths. For local, single-user embedders (e.g. the `yolop` coding
      CLI, originally PR #258) where the host *is* the user's machine, so real,
      clickable paths that match `bash pwd` are the intended output. Such embedders
      still need `MountFs` for routing (relative resolution, default cwd, extra
-     mounts), so they cannot drop it — hence presentation is a seam, not a fork.
+     mounts), so they cannot drop it, hence presentation is a boundary, not a fork.
 
-Rationale for the seam: #2776 correctly hid host paths for the server but baked
+Rationale for the boundary: #2776 correctly hid host paths for the server but baked
 that policy into the shared `MountFs` mechanism, which reverted #258 for local
 embedders. Keeping `WorkspaceAlias` as the default preserves the server's
 security property with no server changes, while `BackendNative` lets a local
@@ -279,8 +279,8 @@ enumerating field names, so new model-visible fields cannot bypass the check.
 
 File content is round-tripped through two encodings:
 
-- `"text"` — UTF-8 plain text.
-- `"base64"` — standard base64 of arbitrary bytes.
+- `"text"`, UTF-8 plain text.
+- `"base64"`, standard base64 of arbitrary bytes.
 
 Implementations MUST preserve the encoding the caller wrote (a `text` write
 must read back as `text`; a `base64` write must read back as `base64`).
@@ -307,7 +307,7 @@ MUST NOT use it as a path component without an explicit decision (see
 
 `write_file_if_content_matches` is a CAS primitive used by `edit_file` and
 other tools that need to reject stale writes. The default trait impl reads,
-compares, then writes — which has a documented narrow race window.
+compares, then writes, which has a documented narrow race window.
 Implementations backed by transactional storage SHOULD override with an
 atomic update. `RealDiskFileStore` uses the default stat-then-rewrite path
 with the race window called out in its doc comment; tightening to
@@ -442,13 +442,13 @@ upstream.
 > New capabilities that need to read or write files MUST go through
 > `ToolContext.file_store` or `SystemPromptContext.file_store`. They MUST
 > NOT call `std::fs`, `tokio::fs`, or other host-filesystem APIs
-> directly — *except* when the capability's execution model is inherently
+> directly, *except* when the capability's execution model is inherently
 > a host process (e.g. the bash tool spawns a shell, which inherits the
 > host filesystem regardless of which `SessionFileSystem` is plugged in).
 
 > Capabilities that accept `path` arguments MUST resolve them through the
-> `SessionFileSystem` (the `file_store`, a `MountFs` in production) — its
-> `read_file`/`write_file`/`grep_files`/`display_path`/`resolve_path` methods —
+> `SessionFileSystem` (the `file_store`, a `MountFs` in production), its
+> `read_file`/`write_file`/`grep_files`/`display_path`/`resolve_path` methods,
 > and MUST NOT implement their own `/workspace` stripping, alias handling, or
 > containment checks. This includes host-process tools: the shell seeds its
 > working directory from `SessionFileSystem::resolve_path` and hands every path
@@ -456,7 +456,7 @@ upstream.
 > resolver routes both.
 
 This rule keeps all existing and future capabilities aligned with the
-pluggable seam. A capability that follows the rule works against the
+pluggable boundary. A capability that follows the rule works against the
 in-memory VFS, the database-backed server store, and the real-disk store
 without code changes.
 
@@ -513,9 +513,9 @@ endpoints.
 See the runnable examples for the full wiring against a real
 `InProcessRuntime`:
 
-- `crates/host/examples/real_disk_agent_instructions.rs` — proves
+- `crates/host/examples/real_disk_agent_instructions.rs`, proves
   `AgentInstructionsCapability` reads `AGENTS.md` from a real-disk root.
-- `crates/host/examples/real_disk_file_system_tools.rs` — proves the
+- `crates/host/examples/real_disk_file_system_tools.rs`, proves the
   `file_system` capability tools (`read_file`, `write_file`,
   `list_directory`) operate against a real-disk root.
 
@@ -548,7 +548,7 @@ owned by `WorkspacePolicy` rather than a global constant. New applications use
 
 The independent approval decorator remains available:
 
-- `ApprovalGatingFileStore` — gates `write_file`, `delete_file`, and the
+- `ApprovalGatingFileStore`, gates `write_file`, `delete_file`, and the
   inner write inside `write_file_if_content_matches` through an embedder
   supplied `FileApprovalGate`. The trait has two async methods,
   `approve_write(path, before, after)` and
@@ -558,7 +558,7 @@ The independent approval decorator remains available:
   files are embedder-supplied, not LLM-driven). Writes always read the
   inner store's existing content first so the embedder can render a diff.
 
-Enforcement sits at the filesystem seam so every built-in capability that
+Enforcement sits at the filesystem boundary so every built-in capability that
 calls `ToolContext.file_store` / `SystemPromptContext.file_store` (today:
 `file_system`, `agent_instructions`, `skills`, `web_fetch`,
 `tool_output_persistence`) observes one policy rather than reimplementing path
@@ -587,31 +587,31 @@ APIs or the `SessionFileSystem` trait.
 
 ## Source Index
 
-- `crates/core/src/mount_fs.rs` — `MountFs` (the mount + cwd resolver, the only
+- `crates/core/src/mount_fs.rs`, `MountFs` (the mount + cwd resolver, the only
   path authority, EVE-660)
-- `crates/core/src/session_path.rs` — host-agnostic `/workspace`-alias helpers
+- `crates/core/src/session_path.rs`, host-agnostic `/workspace`-alias helpers
   (`to_session_path`, `to_display_path`)
-- `crates/core/src/workspace_roots.rs` — `WorkspaceRootSet` and host-root
+- `crates/core/src/workspace_roots.rs`, `WorkspaceRootSet` and host-root
   resolver for multi-root host sessions
-- `crates/core/src/workspace_policy.rs` — portable `WorkspacePolicy`
-- `crates/host/src/real_disk.rs` — `RealDiskFileStore` + its private
+- `crates/core/src/workspace_policy.rs`, portable `WorkspacePolicy`
+- `crates/host/src/real_disk.rs`, `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
-- `crates/core/src/session_files.rs` — `SessionFileSystem` trait
+- `crates/core/src/session_files.rs`, `SessionFileSystem` trait
   (`display_path`/`display_root`/`resolve_path`)
-- `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
+- `crates/core/src/session_file.rs`, `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
-- `crates/host/src/backends.rs` — `HostBackends`
-- `crates/host/src/file_store_decorators.rs` — `PolicyFileStore`,
+- `crates/host/src/backends.rs`, `HostBackends`
+- `crates/host/src/file_store_decorators.rs`, `PolicyFileStore`,
   `WriteBlocklistFileStore`, its deprecated compatibility constant,
   `ApprovalGatingFileStore`, `FileApprovalGate`
-- `crates/host/src/in_memory.rs` — `InMemorySessionFileStore`
-- `crates/host/src/real_disk.rs` — `RealDiskFileStore`
-- `crates/host/examples/real_disk_agent_instructions.rs` — wiring
+- `crates/host/src/in_memory.rs`, `InMemorySessionFileStore`
+- `crates/host/src/real_disk.rs`, `RealDiskFileStore`
+- `crates/host/examples/real_disk_agent_instructions.rs`, wiring
   example for `AgentInstructionsCapability`
-- `crates/host/examples/real_disk_file_system_tools.rs` — wiring
+- `crates/host/examples/real_disk_file_system_tools.rs`, wiring
   example for `file_system` capability tools
-- `crates/server/src/storage/session_file_store.rs` — `DbSessionFileStore`
-- `knowledge/runtime-resources/workspace.md` — `/workspace` mount and session VFS
+- `crates/server/src/storage/session_file_store.rs`, `DbSessionFileStore`
+- `knowledge/runtime-resources/workspace.md`, `/workspace` mount and session VFS
   semantics
-- `knowledge/foundations/runtime.md` — `HostBackends` and the embedder seam
-- `knowledge/execution/capabilities.md` — `ToolContext` / `SystemPromptContext` wiring
+- `knowledge/foundations/runtime.md`, `HostBackends` and the embedder boundary
+- `knowledge/execution/capabilities.md`, `ToolContext` / `SystemPromptContext` wiring

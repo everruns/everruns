@@ -47,6 +47,6 @@ See [Memory model](/advanced/memory-model/) for the relationship between durable
 
 ## See also
 
-- [Memory model](/advanced/memory-model/) — Workspace and durable Memory architecture.
-- [Session participants](/features/session-participants/) — host and guest agent behavior in shared sessions.
-- [File System capability](/capabilities/file-system/) — tools that access session and mounted files.
+- [Memory model](/advanced/memory-model/), Workspace and durable Memory architecture.
+- [Session participants](/features/session-participants/), host and guest agent behavior in shared sessions.
+- [File System capability](/capabilities/file-system/), tools that access session and mounted files.

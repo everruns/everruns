@@ -30,7 +30,7 @@ it**: the dependency direction is `core ← runtime ← worker ← server`, the 
 MCP client (`call_mcp_tool`, `fetch_mcp_tools`, auth resolution) lived in
 `worker`/`server`, and the runtime hardcoded `mcp_tool_definitions: vec![]`. The
 example coding CLI embeds the runtime with no server, so it originally had no
-MCP at all — even though the runtime builders already accepted
+MCP at all, even though the runtime builders already accepted
 `.mcp_servers(ScopedMcpServers)` and plumbed it into `Harness`/`Agent`/`Session`.
 
 This spec records the decision to **extract the transport-agnostic MCP client
@@ -45,7 +45,7 @@ can authenticate. Acceptance is MCP working in the example coding CLI.
 The end goals for this work, and how the design meets each:
 
 1. **Usable from the runtime.** Runtime embedders get MCP by configuring
-   scoped `mcpServers` — no server, gRPC, or database required.
+   scoped `mcpServers`, no server, gRPC, or database required.
 2. **Non-HTTP transport, hard-off in hosted capabilities.** stdio is supported
    for local runtime/CLI hosts but compiled out of the hosted product so it
    cannot exist there (multi-tenant process-spawn is out of scope for the
@@ -63,7 +63,7 @@ The end goals for this work, and how the design meets each:
 6. **No duplication.** The worker/server stop carrying their own copy of the
    JSON-RPC client; they call `everruns-mcp`.
 7. **`everruns-mcp` crate.** Adopted (goal 7's optional crate is the right
-   seam here).
+   boundary here).
 8. **Acceptance: coding CLI.** `examples/coding-cli` exposes MCP via config and
    a `/mcp` affordance; an integration test drives a tool call end to end.
 9. **Integration tests.** The crate ships transport-level integration tests
@@ -71,7 +71,7 @@ The end goals for this work, and how the design meets each:
 
 ## Decisions
 
-### D1 — New `everruns-mcp` crate
+### D1, New `everruns-mcp` crate
 
 A workspace crate `crates/mcp` (`everruns-mcp`) owns the transport-agnostic MCP
 client and the MCP virtual-capability adapter/ID helpers. It depends on
@@ -88,18 +88,18 @@ What moves into `everruns-mcp` (deleted from `worker`/`server`):
 | `server/.../mcp_servers/service.rs::fetch_mcp_tools` (tools/list) | `everruns-mcp` discovery |
 
 The wire types (`McpToolCallRequest`, `McpToolsListRequest`, `McpContent`, the
-`McpError*` family, transport-independent tool-name helpers) **stay in `everruns-core`** — they are
+`McpError*` family, transport-independent tool-name helpers) **stay in `everruns-core`**: they are
 already shared by API/OpenAPI and moving them would churn many call sites for
 no benefit (goal 6).
 
-### D2 — Transport abstraction; stdio behind a cargo feature
+### D2, Transport abstraction; stdio behind a cargo feature
 
 Introduce a `McpTransport` trait in `everruns-mcp` with two methods
 (`list_tools`, `call_tool`) that take a logical request and return parsed
 JSON-RPC results. Two implementations:
 
 - **`HttpTransport`** (default, always compiled): wraps the existing
-  `EgressService` path — DNS-pinned SSRF validation
+  `EgressService` path, DNS-pinned SSRF validation
   (`validate_url_dns_pinned`), pinned-addr egress request, SSE-or-JSON
   response parsing. This is a straight lift of today's worker/server code, so
   hosted behavior is byte-for-byte unchanged.
@@ -123,7 +123,7 @@ belt-and-suspenders secondary check. See [threat-model.md](../security/threat-mo
 local-server shape. These are ignored by HTTP transport and rejected by hosted
 validation.
 
-### D3 — Pluggable authentication (`McpAuthProvider`)
+### D3, Pluggable authentication (`McpAuthProvider`)
 
 Credential acquisition becomes a trait in `everruns-mcp`:
 
@@ -145,14 +145,14 @@ trait McpAuthProvider {
 
 The OAuth half is shared inside the MCP crate. `everruns_mcp::oauth::protocol`
 (moved out of core in EVE-879) owns the
-protocol steps — RFC 9728 protected-resource discovery, RFC 8414/OpenID
+protocol steps, RFC 9728 protected-resource discovery, RFC 8414/OpenID
 authorization-server metadata, RFC 7591 dynamic registration, PKCE, code
-exchange, refresh, and RFC 9207 issuer validation — with no browser, no
+exchange, refresh, and RFC 9207 issuer validation, with no browser, no
 listener, and no storage. `everruns_mcp::oauth` binds them to MCP: discovery
 starts at the *server* (its metadata names the issuer; absent that, its origin
 is the issuer), the token is bound to the server with a `resource` indicator
 (RFC 8707), and `prepare_login`/`complete_login` split the flow so the host
-supplies only the callback leg — a loopback listener for a CLI, a redirect
+supplies only the callback leg, a loopback listener for a CLI, a redirect
 route for the control plane. Persistence is the `McpTokenStore` trait.
 
 Every OAuth request goes through `EgressService` with DNS pinning. The
@@ -164,15 +164,15 @@ attacker-influenced input and must not bypass the egress boundary.
 
 The existing untrusted-OAuth stripping for explicit scoped servers
 (`scoped_mcp.rs::strip_untrusted_oauth_from_scoped_mcp_servers`) is preserved
-and lives alongside the trait — explicit user config still cannot mint
+and lives alongside the trait, explicit user config still cannot mint
 connection tokens; only capability-contributed servers and the host-injected
 auth provider can.
 
-### D4 — Runtime wiring (discovery + execution)
+### D4, Runtime wiring (discovery + execution)
 
 Two integration points in `crates/host`:
 
-1. **Discovery** — replace `mcp_tool_definitions: vec![]`
+1. **Discovery**: replace `mcp_tool_definitions: vec![]`
    (`runtime.rs:524`). The runtime resolves effective scoped servers from the
    harness→agent→session overlay (reusing `merge_scoped_mcp_servers`, already
    applied in `config_layer.rs`), runs `everruns-mcp` discovery for each server
@@ -182,7 +182,7 @@ Two integration points in `crates/host`:
    `tools/list` per server), matching the control plane's scoped-server
    behavior, which keeps no persisted cache. A per-session TTL cache is a
    listed follow-up.
-2. **Execution** — in `execute_act_activity` (`host.rs`), register the turn's
+2. **Execution**: in `execute_act_activity` (`host.rs`), register the turn's
    MCP tools as first-class `Tool`s in the builtin `ToolRegistry` via
    `everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker)`. Each
    `McpProxyTool` delegates execution to the host's `McpExecutor` (which
@@ -212,7 +212,7 @@ leaves no persistent process to disconnect.
 > registry. That kept MCP tools invisible to registry-introspecting tools and
 > has been replaced by the registry-proxy model above.
 
-### D5 — Reuse in worker/server (no duplication)
+### D5, Reuse in worker/server (no duplication)
 
 `worker`/`server` switch their MCP call sites to `everruns-mcp`:
 
@@ -231,7 +231,7 @@ is retained.
 ## Configuration
 
 Configuration is **only** the existing scoped `mcpServers` overlay from
-[mcp-servers.md](mcp-servers.md) — no new top-level surface (goal 4). Runtime
+[mcp-servers.md](mcp-servers.md), no new top-level surface (goal 4). Runtime
 embedders use the builder API that already exists
 (`HarnessBuilder`/`AgentBuilder`/`SessionBuilder::mcp_servers`,
 `crates/host/src/builders.rs`). Example, HTTP:
@@ -265,14 +265,14 @@ same shape) so users configure MCP the way every other MCP client expects.
 
 ## Testing strategy (goal 9)
 
-- **`everruns-mcp` unit/integration**: against a `wiremock` HTTP MCP server —
+- **`everruns-mcp` unit/integration**: against a `wiremock` HTTP MCP server,
   `tools/list`, `tools/call`, SSE vs plain JSON, image extraction, error
   mapping, and SSRF blocks (localhost/private/metadata/IPv6). With `stdio`
   enabled, a fixture echo MCP process exercises spawn/list/call/teardown.
 - **Auth**: a fake `McpAuthProvider` asserts the resolved header reaches the
   transport; the web-OAuth adapter retains its session-secret/connection tests.
 - **Runtime**: an in-process runtime + mock MCP server asserts a turn discovers
-  an MCP tool, the LLM-sim calls it, and the result returns — closing the
+  an MCP tool, the LLM-sim calls it, and the result returns, closing the
   `vec![]` gap with a regression test.
 - **Coding CLI**: `--print` end-to-end against a mock MCP server (HTTP) and a
   fixture stdio server.

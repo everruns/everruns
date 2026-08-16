@@ -7,11 +7,11 @@ sidebar:
 
 Capabilities are modular units that extend what an agent can do. Each capability can contribute:
 
-- **Tools** — callable functions the agent can invoke during conversations
-- **System prompt additions** — context and instructions prepended to the agent's prompt
-- **Features** — UI elements unlocked when the capability is active (e.g., Workspace tab)
+- **Tools**: callable functions the agent can invoke during conversations
+- **System prompt additions**: context and instructions prepended to the agent's prompt
+- **Features**: UI elements unlocked when the capability is active (e.g., Workspace tab)
 
-Agents compose capabilities — enable only what you need.
+Agents compose capabilities, enable only what you need.
 
 ## Capability Reference
 
@@ -125,15 +125,15 @@ Streaming-output guardrails and runtime safety nets.
 The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
 checks over model output and tool activity, blocking or logging per check.
 Checks can be deterministic (regex, blocklist, tool-call patterns) or
-model-backed — an `llm_judge` policy or a `moderation` classifier — plus
+model-backed, an `llm_judge` policy or a `moderation` classifier, plus
 delegation to an external guardrail over scoped MCP. Each check binds a rule to
 a stage (`output`, `tool_use`, `tool_output`) with an `on_fail` of `block` or
 `log`; model-backed and MCP checks send a bounded excerpt off the sync path and
 fail open. Use advisory mode and the
 `POST /v1/capabilities/guardrails/dry-run` endpoint to tune against false
 positives before enforcing. For ready-made starting points, list the gallery at
-`GET /v1/capabilities/guardrails/examples` — each preset carries a `data_egress`
-signal (`none` vs. `utility_llm`) — and drop a preset's `config` into the
+`GET /v1/capabilities/guardrails/examples`, each preset carries a `data_egress`
+signal (`none` vs. `utility_llm`), and drop a preset's `config` into the
 agent's `guardrails` capability config.
 
 ### Automation
@@ -221,7 +221,7 @@ when it matches a declarative capability:
 
 ### Dependencies
 
-Some capabilities depend on others. Dependencies are resolved automatically at runtime — you don't need to manually add them.
+Some capabilities depend on others. Dependencies are resolved automatically at runtime, you don't need to manually add them.
 
 | Capability | Depends On |
 |---|---|
@@ -251,6 +251,6 @@ Capabilities are applied in the order configured on the agent. Earlier capabilit
 
 ## See Also
 
-- [Concepts](/getting-started/concepts/) — how capabilities fit into the Harness → Agent → Session model
-- [API Reference](/api/) — full API documentation
-- [MCP Servers](/features/mcp/) — external tool servers as virtual capabilities
+- [Concepts](/getting-started/concepts/), how capabilities fit into the Harness → Agent → Session model
+- [API Reference](/api/), full API documentation
+- [MCP Servers](/features/mcp/), external tool servers as virtual capabilities

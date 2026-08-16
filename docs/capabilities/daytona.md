@@ -108,6 +108,6 @@ Daytona API key is resolved automatically from **Settings > Connections > Dayton
 
 ## See Also
 
-- [Storage](/capabilities/session-storage/) — API key and state persistence
-- [Daytona integration guide](/integrations/daytona/) — setup and configuration
+- [Storage](/capabilities/session-storage/), API key and state persistence
+- [Daytona integration guide](/integrations/daytona/), setup and configuration
 - [Capabilities Overview](/capabilities/)

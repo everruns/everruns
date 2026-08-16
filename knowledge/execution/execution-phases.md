@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Execution phases tag assistant messages with their intent — intermediate commentary or final answer. This helps LLMs (especially in multi-step tool-calling flows) distinguish between working commentary and completed responses when conversation history is replayed.
+Execution phases tag assistant messages with their intent, intermediate commentary or final answer. This helps LLMs (especially in multi-step tool-calling flows) distinguish between working commentary and completed responses when conversation history is replayed.
 
 ## Design
 
@@ -45,7 +45,7 @@ Two variants: `Commentary` (intermediate, before/between tool calls) and `FinalA
 
 ## Model Profile Flag
 
-`supports_phases: bool` on `LlmModelProfile` — indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one — the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/provider/src/model_profiles.rs` for the per-model profile data and lookup logic.
+`supports_phases: bool` on `LlmModelProfile`, indicates whether the model accepts phase values in the provider API. Phase support is a model-level capability, not a driver-level one, the same OpenAI Responses API driver serves both phase-capable and non-phase models. See `crates/provider/src/model_profiles.rs` for the per-model profile data and lookup logic.
 
 ## Provider Mapping
 
@@ -68,11 +68,11 @@ Phase is not sent to the provider API. The `ExecutionPhase` value is still set o
 1. ReasonAtom completes LLM streaming, collects text and tool calls
 2. Phase is **preserved from the API response** when available (extracted from `response.completed` output items via `LlmCompletionMetadata.phase`). Falls back to derivation: `ExecutionPhase::from_has_tool_calls(has_tool_calls)`
 3. Phase is stored on the `Message` (persisted via events)
-4. On next iteration, message history is converted to `LlmMessage` — phase is preserved
+4. On next iteration, message history is converted to `LlmMessage`, phase is preserved
 5. Driver converts `LlmMessage` to provider format:
    - OpenAI Responses (GPT-5.4+): maps `ExecutionPhase` → `"commentary"` / `"final_answer"` string
    - Others: phase field is ignored by the driver
 
 ### Why preserve, not derive?
 
-OpenAI docs require that the `phase` value returned in response output items must be preserved and sent back as-is in subsequent requests. While our derivation heuristic (tool calls → commentary, no tool calls → final_answer) likely matches the API's assignment, preserving the API value is the correct behavior — it protects against future divergence and follows the provider contract.
+OpenAI docs require that the `phase` value returned in response output items must be preserved and sent back as-is in subsequent requests. While our derivation heuristic (tool calls → commentary, no tool calls → final_answer) likely matches the API's assignment, preserving the API value is the correct behavior, it protects against future divergence and follows the provider contract.

@@ -42,25 +42,25 @@ generic session task tools to monitor, message, or cancel the subagent.
 
 Use the generic `session_tasks` tools to monitor and steer subagents after spawning. The `task_id` is returned by `spawn_agent`.
 
-- `list_tasks` with `kind: "subagent"` — list all subagent tasks and their status
-- `get_task` with the task ID — get detailed status and result for a specific subagent
-- `message_task` — send a steering message or additional context to a running subagent
-- `cancel_task` — request cooperative cancellation of a subagent
-- `wait_task` — block until a subagent reaches a terminal or interrupted state
+- `list_tasks` with `kind: "subagent"`, list all subagent tasks and their status
+- `get_task` with the task ID, get detailed status and result for a specific subagent
+- `message_task`, send a steering message or additional context to a running subagent
+- `cancel_task`, request cooperative cancellation of a subagent
+- `wait_task`, block until a subagent reaches a terminal or interrupted state
 
 ## Notes
 
-- **Governed spawning** — subagents can spawn nested subagents up to `max_subagent_depth` (default 2); set it to 0 to block subagent spawning. Each root session also has `max_active_descendant_tasks` (default 16) and `max_total_descendant_tasks` (default 200) caps to bound wide fan-out and repeated spawn loops.
-- **Shared budget pool** — nested subagents spend from the root session's session-scoped budget.
-- **Background mode (default)** — spawning returns immediately with a `task_id`. The final result lands on the task record (`summary` via `get_task`), and the parent session is woken when the subagent reaches a terminal state. Background runs are capped at 6 hours.
-- **Foreground mode** — `mode: "foreground"` blocks until the subagent completes and returns its result inline. Foreground execution has a 5-minute timeout.
-- **Inherited configuration** — subagents inherit the parent's harness and agent configuration.
-- **Blueprints** — specialist blueprints can run with their own prompt, model, and private tools while still using the same subagent lifecycle.
+- **Governed spawning**: subagents can spawn nested subagents up to `max_subagent_depth` (default 2); set it to 0 to block subagent spawning. Each root session also has `max_active_descendant_tasks` (default 16) and `max_total_descendant_tasks` (default 200) caps to bound wide fan-out and repeated spawn loops.
+- **Shared budget pool**: nested subagents spend from the root session's session-scoped budget.
+- **Background mode (default)**: spawning returns immediately with a `task_id`. The final result lands on the task record (`summary` via `get_task`), and the parent session is woken when the subagent reaches a terminal state. Background runs are capped at 6 hours.
+- **Foreground mode**: `mode: "foreground"` blocks until the subagent completes and returns its result inline. Foreground execution has a 5-minute timeout.
+- **Inherited configuration**: subagents inherit the parent's harness and agent configuration.
+- **Blueprints**: specialist blueprints can run with their own prompt, model, and private tools while still using the same subagent lifecycle.
 
 ## See Also
 
-- [`knowledge/runtime-resources/session-tasks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/session-tasks.md) — generic task monitoring and control (`list_tasks`, `get_task`, `message_task`, `cancel_task`, `wait_task`)
-- [GitHub Scout](/capabilities/github-scout/) — blueprint-only GitHub repository exploration
-- [Session](/capabilities/session/) — session metadata and lifecycle
-- [Platform](/capabilities/platform/) — agent and platform configuration
-- [Capabilities Overview](/capabilities/) — full list of available capabilities
+- [`knowledge/runtime-resources/session-tasks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/session-tasks.md), generic task monitoring and control (`list_tasks`, `get_task`, `message_task`, `cancel_task`, `wait_task`)
+- [GitHub Scout](/capabilities/github-scout/), blueprint-only GitHub repository exploration
+- [Session](/capabilities/session/), session metadata and lifecycle
+- [Platform](/capabilities/platform/), agent and platform configuration
+- [Capabilities Overview](/capabilities/), full list of available capabilities

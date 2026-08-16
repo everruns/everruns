@@ -6,8 +6,8 @@ contribute.
 
 The primary and advanced-host entrypoints are:
 
-- `everruns` — application-facing Framework entrypoint ([docs.rs](https://docs.rs/everruns))
-- `everruns-host` — low-level host composition for advanced integrators ([docs.rs](https://docs.rs/everruns-host))
+- `everruns`, application-facing Framework entrypoint ([docs.rs](https://docs.rs/everruns))
+- `everruns-host`, low-level host composition for advanced integrators ([docs.rs](https://docs.rs/everruns-host))
 
 ## LLM provider crates (drivers)
 
@@ -20,7 +20,7 @@ driver, then point `default_model.provider_type` at the matching `DriverId`.
 | `everruns-anthropic` | `DriverId::Anthropic` | Supports prompt caching |
 | `everruns-gemini` | `DriverId::Gemini` | Google Gemini |
 | `everruns-openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
-| `everruns-fireworks` | `DriverId::Fireworks` | Fireworks AI — open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
+| `everruns-fireworks` | `DriverId::Fireworks` | Fireworks AI, open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
 | `everruns-mai` | `DriverId::Mai` | Microsoft MAI |
 | `everruns-bedrock` | `DriverId::Bedrock` | AWS Bedrock |
 | built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |
@@ -45,7 +45,7 @@ Integration crates ship optional capabilities. Construct the capability and
 
 | Crate | Capability | Notes |
 |---|---|---|
-| `everruns-integrations-daytona` | `DaytonaCapability` | Daytona cloud sandbox. Connection-aware — see "Connection-aware integrations" below |
+| `everruns-integrations-daytona` | `DaytonaCapability` | Daytona cloud sandbox. Connection-aware, see "Connection-aware integrations" below |
 | `everruns-integrations-e2b` | E2B sandbox capability | E2B cloud sandbox |
 | `everruns-integrations-docker` | Docker capability | Local Docker container sandbox |
 | `everruns-integrations-deno` | Deno capability | Deno sandbox |
@@ -68,7 +68,7 @@ integration).
 
 | Crate | Capability | Notes |
 |---|---|---|
-| `everruns-ard` | `resource_discovery` | Agentic Resource Discovery client — discover + attach external MCP servers / A2A agents at runtime |
+| `everruns-ard` | `resource_discovery` | Agentic Resource Discovery client, discover + attach external MCP servers / A2A agents at runtime |
 
 ### Blueprints
 
@@ -87,7 +87,7 @@ let platform = HostComposition::new(capabilities, drivers);
 
 ## Connection-aware integrations (credentials)
 
-Some integrations — Daytona is the canonical example — need a per-user
+Some integrations, Daytona is the canonical example, need a per-user
 credential resolved at tool-execution time. Advanced hosts supply a credential
 source through `HostBackends`:
 

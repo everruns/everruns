@@ -82,7 +82,7 @@ Modes:
   write-only and stored as Argon2id hashes in channel config.
 - `mtls` validates a configured identity header set by a trusted reverse proxy
   after client certificate verification. Requires `proxy_secret_header` and
-  `proxy_secret` — a shared secret the trusted proxy injects to prove the
+  `proxy_secret`, a shared secret the trusted proxy injects to prove the
   request passed through it. Configs without a proxy secret fail closed
   (misconfigured). The proxy secret is write-only and redacted in GET
   responses.
@@ -152,10 +152,10 @@ token field.
 
 See `knowledge/security/threat-model.md` entries:
 
-- `TM-AUTH-020` — public App endpoint auth bypass.
-- `TM-AUTH-021` — mTLS identity header spoofing.
-- `TM-AUTH-022` — JWKS / OIDC discovery abuse or poisoning.
-- `TM-A2A-014` — Agent Card advertises the wrong or stale auth scheme.
+- `TM-AUTH-020`, public App endpoint auth bypass.
+- `TM-AUTH-021`, mTLS identity header spoofing.
+- `TM-AUTH-022`, JWKS / OIDC discovery abuse or poisoning.
+- `TM-A2A-014`, Agent Card advertises the wrong or stale auth scheme.
 
 ## Testing
 

@@ -3,7 +3,7 @@ title: Migrate to 0.18
 description: Move Rust code off `everruns-core` paths that changed in 0.18, with a symbol-by-symbol table of where each type now lives.
 ---
 
-0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged — only the import paths.
+0.18 narrows `everruns-core` to the neutral execution kernel. Types that were persisted control-plane records, hosted service contracts, product composition or concrete integrations moved to the crate that owns them. The behaviour, the wire formats and the stored schema are unchanged, only the import paths.
 
 ## Retain an Engine for sessions
 
@@ -82,7 +82,7 @@ The single biggest change for embedders. `PlatformDefinition` no longer exists.
 + ServerAppBuilder::new().host_composition(composition)
 ```
 
-The type is otherwise identical — same fields, same builder methods. It moved to the layer that executes a turn, because selecting a deployment's capabilities and drivers is composition rather than kernel configuration.
+The type is otherwise identical, same fields, same builder methods. It moved to the layer that executes a turn, because selecting a deployment's capabilities and drivers is composition rather than kernel configuration.
 
 ### Input/Reason/Act execution kernel
 
@@ -152,15 +152,15 @@ These are database and API records. Execution consumes a portable projection of 
 | `FeatureFlags`, `FeatureFlagMap`, `FeatureFlagDefinition` | `everruns_platform::` |
 | `Budget`, `LedgerEntry` | `everruns_platform::` |
 
-If you were reading a stored record to run a turn, you probably want the portable projection instead — `AgentDefinition`, `HarnessDefinition` and `ExecutionSession` all stay in `everruns_core`, produced at the platform loading seam by `Agent::execution_definition`, `Harness::execution_definition` and `Session::execution_session`.
+If you were reading a stored record to run a turn, you probably want the portable projection instead, `AgentDefinition`, `HarnessDefinition` and `ExecutionSession` all stay in `everruns_core`, produced at the platform loading boundary by `Agent::execution_definition`, `Harness::execution_definition` and `Session::execution_session`.
 
 ## Hosted service contracts
 
 | 0.17 (`everruns_core::`) | 0.18 |
 |---|---|
-| `session_sqldb::*` — `SessionSqlDbStore`, `DatabaseInfo`, `SqlQueryResult`, `SqlExecuteResult`, `TableSchema`, `ColumnSchema`, `SessionSqlDbError` | `everruns_platform::session_sqldb::` |
+| `session_sqldb::*`, `SessionSqlDbStore`, `DatabaseInfo`, `SqlQueryResult`, `SqlExecuteResult`, `TableSchema`, `ColumnSchema`, `SessionSqlDbError` | `everruns_platform::session_sqldb::` |
 | `traits::SessionMutator` | `everruns_session_services::SessionMutator` (also re-exported by platform) |
-| `session_sandbox::*` — config, state, instance, exec/file payloads, `SessionSandboxProvider`, `SessionSandboxProviderPlugin` | `everruns_platform::session_sandbox::` |
+| `session_sandbox::*`, config, state, instance, exec/file payloads, `SessionSandboxProvider`, `SessionSandboxProviderPlugin` | `everruns_platform::session_sandbox::` |
 | `Connector`, `ConnectorRegistry`, `ConnectorPlugin` | `everruns_platform::connector::` |
 | `EmailSender`, `EmailMessage`, `SystemEmailConfig`, `ResendEmailSender` | `everruns_platform::email::` |
 | `OAuthClient`, `TokenSet`, `PkcePair` | `everruns_mcp::oauth::protocol::` |
@@ -194,8 +194,8 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | Knowledge Bases and Indexes, Memories, delegation, subagents, background and scheduled work, user hooks, citations, model scouting, platform management | `everruns_platform::capabilities::` |
 | Session info and session storage | `everruns_session_services::capabilities::` (also re-exported by platform) |
 | Session SQL database and session sandbox | `everruns_platform::capabilities::` |
-| `spawn_background` and its runtime — event sink, admission permits, reattach | `everruns_platform::background_run::` |
-| Portable built-ins — human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
+| `spawn_background` and its runtime, event sink, admission permits, reattach | `everruns_platform::background_run::` |
+| Portable built-ins, human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
 | OpenRouter workspace, model scout, and provider-executed server tools | `everruns_integrations_openrouter_workspace::` |
 | Filesystem, shell, web fetch, Lua | `everruns_integrations_*` |
 | MCP adapter | `everruns_mcp::` |
@@ -227,10 +227,10 @@ application-facing `everruns::Model::simulated` and
 
 | 0.17 | 0.18 |
 |---|---|
-| `everruns-core/sqlx` | removed — use `everruns-provider` with `features = ["sqlx"]` |
-| `everruns-core/embedded-platform-docs` | removed — it gated nothing; use `everruns-platform/embedded-platform-docs` |
-| `everruns-platform/sqlx` | removed — it forwarded to core's and nothing enabled it |
-| `everruns-core/llm-tests` | removed — use the `everruns-llm-tests` package for live provider tests |
+| `everruns-core/sqlx` | removed, use `everruns-provider` with `features = ["sqlx"]` |
+| `everruns-core/embedded-platform-docs` | removed, it gated nothing; use `everruns-platform/embedded-platform-docs` |
+| `everruns-platform/sqlx` | removed, it forwarded to core's and nothing enabled it |
+| `everruns-core/llm-tests` | removed, use the `everruns-llm-tests` package for live provider tests |
 
 `everruns-core` now has an empty default feature set. OpenAPI derives remain
 available only with `features = ["openapi"]`; structural outlines remain
@@ -347,7 +347,7 @@ The public core test/backend conveniences are gone as well:
 
 Worth knowing so you do not go looking:
 
-- **`SessionTask`, `TaskMessage`** and the task registry stay in `everruns_core`. They are turn-execution vocabulary — `wake_queue` decides mid-turn wakes from a task's wake policy — and they appear in the canonical `task.created` / `task.updated` / `task.message.*` event payloads.
+- **`SessionTask`, `TaskMessage`** and the task registry stay in `everruns_core`. They are turn-execution vocabulary, `wake_queue` decides mid-turn wakes from a task's wake policy, and they appear in the canonical `task.created` / `task.updated` / `task.message.*` event payloads.
 - **`SessionSchedule`, `SessionScheduleStore`** stay. A portable built-in (`usage_limit_auto_continue`) schedules an auto-resume after a provider usage limit, and it sits below platform in the dependency graph.
 - Schedule quota and minimum-interval environment variables are no longer read
   by core. Local/server adapters resolve deployment policy and call the
@@ -355,7 +355,7 @@ Worth knowing so you do not go looking:
 - **`SessionResourceRegistry`** stays. `resource_ownership` and the portable skills capabilities consume it.
 - **`SessionFileSystem`, `SessionStorageStore`** and the other neutral store contracts stay. Core owns the contract; hosts own the backend.
 
-The rule these follow: whether something belongs in the kernel is decided by whether a portable execution path consumes it during a turn, not by whether it is persisted. All four above are persisted, and all four are load-bearing for execution.
+The rule these follow: whether something belongs in the kernel is decided by whether a portable execution path consumes it during a turn, not by whether it is persisted. All four above are persisted, and all four are essential for execution.
 
 ## Getting unstuck
 

@@ -32,7 +32,7 @@ behavior belongs under the `com.everruns` extension namespace.
 
 A Marketplace is an org-registered catalog in the `marketplace.json` format.
 A first-party default marketplace ships preconfigured for every organization,
-but it is a regular marketplace row — nothing about it is special-cased in
+but it is a regular marketplace row, nothing about it is special-cased in
 code.
 
 Direction matters relative to existing specs:
@@ -110,7 +110,7 @@ Notes:
 ## OAuth-authenticated MCP servers
 
 A legacy plugin's `.mcp.json` server may declare `"auth": "oauth"` (alias
-`"auth_mode": "oauth"`) to require a user-scoped OAuth connection — the pattern
+`"auth_mode": "oauth"`) to require a user-scoped OAuth connection, the pattern
 used by remote MCP servers like Resend (`https://mcp.resend.com/mcp`). The
 compiler maps this to `auth_mode = oauth` on the compiled scoped server. Two
 fields plugin content can **not** set are enforced at compile time (dropped
@@ -122,7 +122,7 @@ preserved and only ever sent to the plugin's own server URL.
 **Install-time anchoring.** An OAuth MCP server needs a stable per-org provider
 id and somewhere to persist discovered authorization-server metadata plus the
 dynamically registered OAuth client. Rather than a parallel store, install
-creates one linked org `mcp_servers` row per OAuth server — the *anchor* — held
+creates one linked org `mcp_servers` row per OAuth server, the *anchor*, held
 in `status = disabled` so it never becomes a runtime capability and never
 resolves by tool prefix. The compiled definition's `oauth_provider_id` is set
 to the anchor's `mcp_oauth_{uuid}`. This reuses the existing MCP-OAuth
@@ -173,7 +173,7 @@ supported values. Authentication data never enters portable `mcp.json`.
 Org-scoped registry of plugin catalogs (`plugin_marketplaces`):
 
 - `name`: unique per org, used in install references (`my-tool@my-marketplace`).
-- `source`: where `marketplace.json` lives — GitHub repo, git URL, or direct
+- `source`: where `marketplace.json` lives, GitHub repo, git URL, or direct
   HTTPS URL. Fetched through the egress boundary ([egress.md](../operations/egress.md)).
 - Cached catalog: the validated `marketplace.json` content plus sync
   metadata (`last_synced_at`, resolved commit SHA when the source is git).
@@ -190,14 +190,14 @@ The **default marketplace** is seeded for every organization. It is named
 creation via `org_init::seed_default_plugin_marketplace`; existing orgs
 received it via the one-time backfill in `058_backfill_default_marketplace.sql`.
 The marketplace is deletable/disableable like any other marketplace; "default"
-means seeded, not privileged. Deletion is permanent — the marketplace is
+means seeded, not privileged. Deletion is permanent, the marketplace is
 never re-seeded lazily on read.
 
 ## Lifecycle
 
 - **Install**: resolve the plugin entry's source relative to the marketplace,
   fetch the plugin directory at a concrete commit SHA (GitHub tarball / git
-  archive — no server-side clones in v1), validate against the manifest
+  archive, no server-side clones in v1), validate against the manifest
   schema and declarative size/count limits, compile to the declarative
   definition shape, persist with provenance (`marketplace`, `source`,
   `version`, `pinned_sha`, raw manifest, install warnings).
@@ -231,7 +231,7 @@ built-in, MCP, skill, and declarative refs.
 ## UI
 
 Marketplaces and plugins are managed through the UI on top of the same CRUD
-API — full management parity with the API, not a read-only view:
+API, full management parity with the API, not a read-only view:
 
 - **Marketplaces**: list registered marketplaces with sync status; add by
   GitHub repo or URL (admin-gated); manual re-sync; remove/disable.
@@ -248,7 +248,7 @@ API — full management parity with the API, not a read-only view:
 ## Runtime mode
 
 The plugins subsystem must work in the in-process runtime
-([runtime.md](../foundations/runtime.md)) — not only in the server/control-plane deployment:
+([runtime.md](../foundations/runtime.md)), not only in the server/control-plane deployment:
 
 - The **plugin compiler** (directory → dialect-specific manifest validation → declarative
   definition shape) lives in `everruns-core`, not in the server crate, so
@@ -272,14 +272,14 @@ The plugins subsystem must work in the in-process runtime
 `testdata/plugins/` is a local marketplace fixture used by server and runtime
 tests:
 
-- `testdata/plugins/.claude-plugin/marketplace.json` — valid marketplace
+- `testdata/plugins/.claude-plugin/marketplace.json`, valid marketplace
   manifest with relative-path plugin sources.
-- `testdata/plugins/microsoft-docs/` — an Everruns-authored variant of the
+- `testdata/plugins/microsoft-docs/`, an Everruns-authored variant of the
   public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
   public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
   every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
   and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
-- `testdata/plugins/oauth-mail/` — minimal fixture whose `.mcp.json` sets
+- `testdata/plugins/oauth-mail/`, minimal fixture whose `.mcp.json` sets
   `"auth": "oauth"`. It exercises the OAuth-anchor install path: install
   creates a disabled anchor row, assigns a host-owned `mcp_oauth_*` provider,
   and lists it in the connections API; uninstall removes it. The URL is a
@@ -293,7 +293,7 @@ automated tests must not depend on network.
 
 ## Security
 
-Plugins are third-party remote content compiled into agent context — a
+Plugins are third-party remote content compiled into agent context, a
 supply-chain and prompt-injection surface on top of the declarative
 capability threat model:
 
@@ -309,7 +309,7 @@ capability threat model:
   API key) with per-org consent, analogous to Claude Code's connector
   enablement step.
 - Install/update/uninstall and marketplace registration stay admin-gated;
-  the member-level escape hatch is deliberate — a member can manually copy
+  the member-level escape hatch is deliberate, a member can manually copy
   plugin content into a declarative capability or an agent prompt, which is
   self-limiting because there is no automated remote fetch and no upstream
   update channel.

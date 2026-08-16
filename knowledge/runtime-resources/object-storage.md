@@ -43,13 +43,13 @@ Goals:
   enforced by the existing org/workspace authorization layer.
 - **Proxy, not redirect.** Everruns fetches bytes and serves them. No S3
   presigned URLs are handed to browsers or workers; the existing
-  `/v1/images/*` proxy and worker gRPC/internal-presign seams are untouched.
+  `/v1/images/*` proxy and worker gRPC/internal-presign boundaries are untouched.
 - **Optional and reversible.** A deployment can run on PostgreSQL only, or
   enable S3 without reshaping the data model.
 
 ## Design
 
-### Seam: blob-content offload (metadata stays in PostgreSQL)
+### Boundary: blob-content offload (metadata stays in PostgreSQL)
 
 We considered implementing `SessionFileSystem` directly on S3 (keys as paths)
 and rejected it: S3 has no efficient directory listing, no server-side grep, no
@@ -120,35 +120,35 @@ Workers have no object-store credentials. They read and write workspace files
 through the control plane (gRPC), which performs the offload transparently.
 Images keep their existing flow: `GET /v1/images/{id}` streams bytes the server
 fetched from PostgreSQL or the blob store, and workers fetch via the
-HMAC-signed `/internal/images/{id}` endpoint — both proxy through Everruns, so
+HMAC-signed `/internal/images/{id}` endpoint, both proxy through Everruns, so
 no S3 URL ever leaves the control plane.
 
 ## Disaster-recovery metadata
 
 Every stored object carries **object user-metadata** so the bucket is
-self-describing. This is pure redundancy — it is **never read on the hot path**;
+self-describing. This is pure redundancy, it is **never read on the hot path**;
 runtime reads/writes ignore it. Its only purpose is partial recovery if the
 PostgreSQL metadata store is lost or corrupted: a tool can walk the bucket and
 rebuild the `workspace_files` / `images` rows from the objects alone.
 
 Metadata is set through object_store's portable `Attribute::Metadata`, so the
 keys are backend-neutral (`everruns-kind`, `everruns-recovery`). On any
-S3-protocol backend — AWS S3 and every S3-compatible store (SeaweedFS, R2,
-...) — these surface on the wire as `x-amz-meta-<key>`; a native GCS/Azure
+S3-protocol backend, AWS S3 and every S3-compatible store (SeaweedFS, R2,
+...), these surface on the wire as `x-amz-meta-<key>`; a native GCS/Azure
 backend would map them to that provider's convention. Nothing is AWS-specific.
 
 Each object sets:
 
-- `Content-Type` — the object's media type (when known).
-- `everruns-kind` — `workspace_file` | `image` | `image_thumbnail`.
-- `everruns-recovery` — base64(JSON) of the owning-row fields. base64 keeps the
+- `Content-Type`, the object's media type (when known).
+- `everruns-kind`, `workspace_file` | `image` | `image_thumbnail`.
+- `everruns-recovery`, base64(JSON) of the owning-row fields. base64 keeps the
   value header-safe regardless of unicode in paths/filenames.
 
 ### Exposure
 
 This metadata is only visible to callers with bucket credentials (the control
 plane). Everruns never presigns object URLs or forwards object response headers
-to clients — `get()` returns raw bytes only — so these values never reach end
+to clients, `get()` returns raw bytes only, so these values never reach end
 users. Anyone who can read the metadata can already read the object bytes and
 the key (which encodes the tenant ids), so it adds no exposure beyond what
 already exists. `everruns-recovery` carries paths/filenames/hashes at the same
@@ -172,7 +172,7 @@ reconstruct the row and re-link the blob. The record is forward-versioned
 Object stores are not transactional with PostgreSQL, so a blob object can
 outlive its metadata: an interrupted delete (row gone, object left) or a crash
 between `put()` and the best-effort object cleanup leaks an object. Such orphans
-are never *served* — reads always go through the sidecar pointer rows — but they
+are never *served*, reads always go through the sidecar pointer rows, but they
 accumulate as storage cost. A periodic GC sweep reconciles bucket contents
 against the live pointers and reclaims orphans.
 
@@ -182,7 +182,7 @@ against the live pointers and reclaims orphans.
 
 1. Enumerates **all live keys** from `workspace_file_blobs.blob_key` and
    `image_blobs.{data_key, thumbnail_key}` into a set. If this query fails, the
-   whole sweep aborts — it never deletes without a reliable picture of what is
+   whole sweep aborts, it never deletes without a reliable picture of what is
    live (fail-closed).
 2. Lists the bucket under the two tenant-scoped prefixes (`workspaces/`,
    `images/`) via `BlobStore::list_with_prefix`, which returns *relative* keys
@@ -193,7 +193,7 @@ against the live pointers and reclaims orphans.
    last-modified time is at or before `now − grace`
    (`STORAGE_BLOB_GC_GRACE_SECONDS`, default 24h). The grace period is the core
    safety mechanism: a freshly written object may have its row committed
-   slightly after the object lands, and the sweep may race an in-flight create —
+   slightly after the object lands, and the sweep may race an in-flight create,
    so recently-written objects are never touched.
 4. Caps deletions at `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` (default 10000) to
    bound the work a single run performs; remaining orphans are reclaimed on the
@@ -222,13 +222,13 @@ counters; each pass also logs a summary (listed, deleted, bytes, live pointers).
 | Variable | Default | Description |
 |---|---|---|
 | `STORAGE_BLOB_BACKEND` | `db` | `db` keeps bytes inline (current behavior); `s3` offloads to object storage. |
-| `STORAGE_S3_BUCKET` | — | Required for `s3`. Target bucket. |
-| `STORAGE_S3_REGION` | — | Bucket region (or compatible region label). |
-| `STORAGE_S3_ENDPOINT` | — | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS. |
-| `STORAGE_S3_ACCESS_KEY_ID` | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | — | Static secret key. |
+| `STORAGE_S3_BUCKET` |, | Required for `s3`. Target bucket. |
+| `STORAGE_S3_REGION` |, | Bucket region (or compatible region label). |
+| `STORAGE_S3_ENDPOINT` |, | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS. |
+| `STORAGE_S3_ACCESS_KEY_ID` |, | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
+| `STORAGE_S3_SECRET_ACCESS_KEY` |, | Static secret key. |
 | `STORAGE_S3_PREFIX` | (empty) | Key prefix isolating deployments within a bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS over HTTP). |
+| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only, e.g. SeaweedFS over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by SeaweedFS; harmless on AWS). |
 | `STORAGE_BLOB_GC_INTERVAL_SECONDS` | `21600` (6h) | Interval between GC sweeps. `0` disables GC. Only effective with the `s3` backend. |
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | `86400` (24h) | Safety grace period; orphans younger than this are never deleted. |
@@ -257,7 +257,7 @@ export STORAGE_S3_ALLOW_HTTP=true
 ```
 
 Any S3-compatible store (AWS S3, SeaweedFS, Cloudflare R2, ...) works
-unchanged — only the endpoint and credentials differ.
+unchanged, only the endpoint and credentials differ.
 
 ## Testing
 
@@ -287,7 +287,7 @@ The suite selects its blob backend from the environment, so the **same
 assertions** run against both backends:
 
 - **In-memory object_store backend** (default) in the `Integration Tests
-  (PostgreSQL)` CI job — exercises the offload code path on every PostgreSQL PR
+  (PostgreSQL)` CI job, exercises the offload code path on every PostgreSQL PR
   with no S3/SeaweedFS container (it still uses the PostgreSQL service container).
 - **Real S3-compatible store** in the dedicated `Integration Tests (S3 Blob
   Backend)` CI job, which starts SeaweedFS via a `docker run` step alongside the
@@ -315,12 +315,12 @@ available for local smoke testing (see *Local development*).
 
 ## Source Index
 
-- `crates/server/src/storage/blob_store.rs` — `BlobStore`, `ObjectStoreBlobStore`,
+- `crates/server/src/storage/blob_store.rs`, `BlobStore`, `ObjectStoreBlobStore`,
   config, key derivation, content hashing, prefix listing (`list_with_prefix`).
-- `crates/server/src/blob_gc.rs` — orphan reconciliation sweep, grace period,
+- `crates/server/src/blob_gc.rs`, orphan reconciliation sweep, grace period,
   per-run cap, metrics; spawned from `app_builder.rs`.
-- `crates/server/migrations/071_object_storage_blobs.sql` — sidecar tables.
-- `crates/server/src/storage/repositories/session_files.rs` — file offload.
-- `crates/server/src/storage/repositories/skills.rs` — image offload.
-- `knowledge/runtime-resources/workspace.md` — workspace filesystem model and quotas.
-- `knowledge/runtime-resources/file-store.md` — `SessionFileSystem` seam.
+- `crates/server/migrations/071_object_storage_blobs.sql`, sidecar tables.
+- `crates/server/src/storage/repositories/session_files.rs`, file offload.
+- `crates/server/src/storage/repositories/skills.rs`, image offload.
+- `knowledge/runtime-resources/workspace.md`, workspace filesystem model and quotas.
+- `knowledge/runtime-resources/file-store.md`, `SessionFileSystem` boundary.

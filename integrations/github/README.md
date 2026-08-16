@@ -9,10 +9,10 @@
 `everruns-integrations-github` registers the `github_scout` capability through
 the Everruns integration plugin system. The capability is blueprint-only: it does
 not expose GitHub tools to the host agent. Instead, it contributes the
-`github_scout` blueprint — a read-only repository-exploration scout whose private
+`github_scout` blueprint, a read-only repository-exploration scout whose private
 tools run only inside blueprint-backed child sessions.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
 [`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
 integration plugin system.

@@ -104,7 +104,7 @@ Every external task is represented as an `agent_run` session resource:
 This keeps external A2A and local subagent delegation visible through the same session-resource infrastructure.
 
 Each run is additionally tracked as a session task (`kind = external_agent`)
-with the full lifecycle, message thread, and `task.*` events — see
+with the full lifecycle, message thread, and `task.*` events, see
 [`knowledge/runtime-resources/session-tasks.md`](../runtime-resources/session-tasks.md). The generic `list_tasks`,
 `get_task`, `message_task`, `cancel_task`, and `wait_task` tools work on
 agent runs via the `ExternalAgentTaskExecutor`.

@@ -8,7 +8,7 @@ multi-tenant-isolated. It powers the SQL database capability that lets agents
 create tables, run queries, and persist structured data across a session. An
 in-memory backend is provided for local development and tests.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.
 
 ## Quick Example

@@ -3,12 +3,12 @@
 > Execution worker for the Everruns control plane.
 
 `everruns-worker` is the worker binary that executes Everruns agent work. Workers
-connect to the control-plane server over gRPC and run the agent loop —
-reasoning, tool calls, and capability execution — while the server owns
+connect to the control-plane server over gRPC and run the agent loop,
+reasoning, tool calls, and capability execution, while the server owns
 persistence and coordination. It is an internal component of an Everruns
 deployment, composed via the worker app builder.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. The control plane it connects to
 lives in `everruns-server`.
 

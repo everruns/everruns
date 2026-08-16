@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients — Claude Desktop, Cursor, VS Code, etc. — can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses MCP-specific authentication and organization resolution: local anonymous identity is accepted only in `AUTH_MODE=none`, while deployed clients use personal access tokens or OAuth 2.1-issued MCP access tokens with mandatory PKCE and an exact resource audience. Regular browser session tokens are not accepted.
+Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients, Claude Desktop, Cursor, VS Code, etc., can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses MCP-specific authentication and organization resolution: local anonymous identity is accepted only in `AUTH_MODE=none`, while deployed clients use personal access tokens or OAuth 2.1-issued MCP access tokens with mandatory PKCE and an exact resource audience. Regular browser session tokens are not accepted.
 
 The endpoint is always mounted and is not part of the deployment or organization feature-flag
 catalog. `FEATURE_MCP_ENDPOINT` is not a supported configuration variable, and stale
@@ -26,9 +26,9 @@ Routing is intentionally split:
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
 - Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
 
-Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`knowledge/integrations/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`knowledge/integrations/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server — see [`knowledge/integrations/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
+Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`knowledge/integrations/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`knowledge/integrations/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server, see [`knowledge/integrations/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
 
-> **Server-side RC adoption (follow-up).** This document describes Everruns' own `/mcp` *server* endpoint, which today negotiates `2025-06-18`/`2025-03-26`. Adopting the 2026 stateless RC on the server side — accepting session-less `_meta`-bearing requests, emitting `ttlMs`/`cacheScope` cache directives, and honoring the routable headers — is a separate workstream from the client-side multi-era support already shipped. When taken on, mind the `cacheScope` tenant-isolation requirement (per-user vs shared tool caches) given the per-user OAuth model below.
+> **Server-side RC adoption (follow-up).** This document describes Everruns' own `/mcp` *server* endpoint, which today negotiates `2025-06-18`/`2025-03-26`. Adopting the 2026 stateless RC on the server side, accepting session-less `_meta`-bearing requests, emitting `ttlMs`/`cacheScope` cache directives, and honoring the routable headers, is a separate workstream from the client-side multi-era support already shipped. When taken on, mind the `cacheScope` tenant-isolation requirement (per-user vs shared tool caches) given the per-user OAuth model below.
 
 ## Protocol
 
@@ -42,7 +42,7 @@ Everruns supports MCP protocol versions `2026-07-28`, `2025-06-18`, and `2025-03
 
 ### Statelessness (MCP 2026-07-28)
 
-The endpoint is stateless request/response per JSON-RPC call — no `Mcp-Session-Id`, no sticky sessions, no server-side per-connection state. This already satisfies the `2026-07-28` stateless model: any request can hit any instance, with PostgreSQL as the shared source of truth. Adopting `2026-07-28` was protocol conformance, not re-architecture. Concretely:
+The endpoint is stateless request/response per JSON-RPC call, no `Mcp-Session-Id`, no sticky sessions, no server-side per-connection state. This already satisfies the `2026-07-28` stateless model: any request can hit any instance, with PostgreSQL as the shared source of truth. Adopting `2026-07-28` was protocol conformance, not re-architecture. Concretely:
 
 - **`initialize` is optional.** `2026-07-28` removed the `initialize`/`initialized` handshake (SEP-2575). Everruns still accepts `initialize` for older clients because it creates no server state either way, and never requires a prior `initialize` for any method.
 - **Client info rides in `_meta`.** Per-request client identity is read from `params._meta["io.modelcontextprotocol/clientInfo"]` (`{name, version}`) and used for telemetry only; nothing is stored.
@@ -59,9 +59,9 @@ Results are decorated at the dispatch layer, not inside each handler: the policy
 | `tools/list` | `complete` | 5 min | `public` |
 | `resources/list` | `complete` | 5 min | `public` |
 | `resources/read` | `complete` | 30 s | `private` |
-| `tools/call` | `complete` (or `task`) | — | — |
+| `tools/call` | `complete` (or `task`) |, |, |
 
-`public` is only correct where the payload is identical for every caller — both list catalogs are static per protocol version, so a shared cache cannot leak between orgs. `resources/read` returns org-scoped data (agents, capabilities, harnesses, models) and is therefore `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
+`public` is only correct where the payload is identical for every caller, both list catalogs are static per protocol version, so a shared cache cannot leak between orgs. `resources/read` returns org-scoped data (agents, capabilities, harnesses, models) and is therefore `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
 
 Hints are emitted only under the negotiated `2026-07-28` protocol. They would be ignored by 2025-era clients, but gating keeps each era's responses exactly what that era specifies.
 
@@ -81,7 +81,7 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
 | `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
 
-`tasks/list` is intentionally not implemented — SEP-2663 removed it, and Everruns never exposed a server-side task list. The `tasks/*` methods are only routed under the negotiated `2026-07-28` protocol; a `2025-*` client that sends them gets `-32601 Method not found`.
+`tasks/list` is intentionally not implemented, SEP-2663 removed it, and Everruns never exposed a server-side task list. The `tasks/*` methods are only routed under the negotiated `2026-07-28` protocol; a `2025-*` client that sends them gets `-32601 Method not found`.
 
 ### Entity Cards
 
@@ -136,7 +136,7 @@ unchanged.
 - **Client opts in** per request via
   `params._meta["io.modelcontextprotocol/clientCapabilities"].extensions["io.modelcontextprotocol/tasks"]`.
   Per SEP-2663 the server must never return a task to a client that did not
-  declare support — this is what keeps the change back-compatible.
+  declare support, this is what keeps the change back-compatible.
 
 ### Session ↔ task mapping
 
@@ -176,7 +176,7 @@ untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
 
 **Structured result.** When the task's session reported a deterministic,
 schema-bound result (`result.json`, produced by a task declared with a
-`result_schema` — see [`knowledge/runtime-resources/subagents.md`](../runtime-resources/subagents.md) and
+`result_schema`, see [`knowledge/runtime-resources/subagents.md`](../runtime-resources/subagents.md) and
 [`knowledge/runtime-resources/session-tasks.md`](../runtime-resources/session-tasks.md)), `tasks/get` adds that JSON under
 `result.structured_result`, so Tasks clients get the machine result instead of
 re-parsing last-message text. It is additive: the existing status snapshot
@@ -214,14 +214,14 @@ agent-facing platform catalog from drifting from `/mcp`.
 
 ## OAuth 2.1 Authentication
 
-External MCP clients authenticate via OAuth 2.1 with mandatory PKCE (S256). The module is **backend-agnostic** — it works identically with BuiltinAuthBackend (OSS) and external providers like PropelAuth (SaaS). It follows the same pattern as CLI auth: the authorize endpoint requires an authenticated user via the `AuthUser` extractor, delegating identity verification to whatever auth backend is configured.
+External MCP clients authenticate via OAuth 2.1 with mandatory PKCE (S256). The module is **backend-agnostic**: it works identically with BuiltinAuthBackend (OSS) and external providers like PropelAuth (SaaS). It follows the same pattern as CLI auth: the authorize endpoint requires an authenticated user via the `AuthUser` extractor, delegating identity verification to whatever auth backend is configured.
 
 ### Design Decisions
 
 1. **Backend-agnostic**: MCP OAuth sits alongside the auth backend, not inside it. No changes to `AuthBackend` trait.
-2. **Same pattern as CLI auth**: The authorize endpoint requires `AuthUser` — works with any backend.
+2. **Same pattern as CLI auth**: The authorize endpoint requires `AuthUser`, works with any backend.
 3. **OAuth 2.1 + PKCE**: Authorization code grant with mandatory PKCE (S256). No implicit grant.
-4. **Dynamic client registration**: Per RFC 7591 — MCP clients register themselves at runtime.
+4. **Dynamic client registration**: Per RFC 7591, MCP clients register themselves at runtime.
 5. **MCP OAuth tokens are standard JWTs**: Signed with the same `AUTH_JWT_SECRET`, using the standard `token_type: "access"` claim (same as regular access tokens).
 6. **Scoped to org**: Authorization grants are scoped to a specific organization.
 
@@ -271,15 +271,15 @@ The `issuer` is the backend root URL (e.g. `https://app.example.com`). OAuth end
 }
 ```
 
-`authorization_response_iss_parameter_supported` declares RFC 9207 support: every authorization response — success *and* error — carries an `iss` parameter naming the issuer, so a client talking to several authorization servers can detect a mix-up attack before it sends the code to a token endpoint. Advertising the capability obliges the server to always send it; a client that sees the flag and no `iss` must reject the response.
+`authorization_response_iss_parameter_supported` declares RFC 9207 support: every authorization response, success *and* error, carries an `iss` parameter naming the issuer, so a client talking to several authorization servers can detect a mix-up attack before it sends the code to a token endpoint. Advertising the capability obliges the server to always send it; a client that sees the flag and no `iss` must reject the response.
 
-`registration_endpoint` stays advertised: DCR is deprecated as of `2026-07-28` in favor of Client ID Metadata Documents, but it is how every MCP client in the field registers today and the deprecation window is at least 12 months. CIMD (`client_id_metadata_document_supported`) is **not** implemented and deliberately not advertised — see [Not yet adopted](#not-yet-adopted-from-2026-07-28).
+`registration_endpoint` stays advertised: DCR is deprecated as of `2026-07-28` in favor of Client ID Metadata Documents, but it is how every MCP client in the field registers today and the deprecation window is at least 12 months. CIMD (`client_id_metadata_document_supported`) is **not** implemented and deliberately not advertised, see [Not yet adopted](#not-yet-adopted-from-2026-07-28).
 
 #### GET /.well-known/oauth-protected-resource/mcp
 
 Protected Resource Metadata for MCP-aware OAuth clients. No auth required.
 
-The path-specific URL is derived per [RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1) for the `/mcp` resource: `{root}/mcp` → `{root}/.well-known/oauth-protected-resource/mcp`. The root `/.well-known/oauth-protected-resource` URL is intentionally **not** served — it would be the PRM for a resource at `/`, which Everruns does not expose. Real MCP providers (e.g. Atlassian) only serve the path-specific URL, so OSS canonicalises on the same shape.
+The path-specific URL is derived per [RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1) for the `/mcp` resource: `{root}/mcp` → `{root}/.well-known/oauth-protected-resource/mcp`. The root `/.well-known/oauth-protected-resource` URL is intentionally **not** served, it would be the PRM for a resource at `/`, which Everruns does not expose. Real MCP providers (e.g. Atlassian) only serve the path-specific URL, so OSS canonicalises on the same shape.
 
 Everruns advertises `/mcp` as the protected resource and points clients at the same OAuth issuer and token endpoints used by the rest of the MCP flow.
 
@@ -306,7 +306,7 @@ Dynamic Client Registration (RFC 7591). No auth required.
 }
 ```
 
-`application_type` (OIDC, optional) is accepted as `native` or `web`; anything else is rejected. A client that declares `web` may not register an `http://` loopback callback — it has no local process to receive one. Unlike OIDC, an **omitted** `application_type` is treated as unstated rather than defaulting to `web`: every MCP client in the field today omits it and registers a loopback URI, so defaulting would reject all of them.
+`application_type` (OIDC, optional) is accepted as `native` or `web`; anything else is rejected. A client that declares `web` may not register an `http://` loopback callback, it has no local process to receive one. Unlike OIDC, an **omitted** `application_type` is treated as unstated rather than defaulting to `web`: every MCP client in the field today omits it and registers a loopback URI, so defaulting would reject all of them.
 
 **Response:** `201 Created`
 ```json
@@ -323,7 +323,7 @@ Dynamic Client Registration (RFC 7591). No auth required.
 - `https://` to any host.
 - `http://` only when the host is loopback: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`.
 
-All other schemes — including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs — are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth.rs::validate_redirect_uri` for the canonical policy.
+All other schemes, including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs, are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth.rs::validate_redirect_uri` for the canonical policy.
 
 #### GET /oauth/authorize
 
@@ -359,7 +359,7 @@ Authorization codes: random 32-byte hex, 5-minute TTL, one-time use, stored with
 
 #### POST /oauth/token
 
-Token exchange. No cookie/session auth — uses client credentials.
+Token exchange. No cookie/session auth, uses client credentials.
 
 **Request (authorization_code grant):**
 ```
@@ -411,14 +411,14 @@ MCP OAuth access tokens are JWTs signed with `AUTH_JWT_SECRET`, but minted disti
 
 Audience binding (TM-MCP-006 / EVE-596) keeps the `/mcp` and `/api/*` surfaces isolated, preventing an OAuth confused-deputy:
 
-- The general `/api/*` path (`AuthUser` → `AuthBackend::validate_token` → `JwtService::validate_access_token`) **rejects** `mcp_access` tokens — a token authorized only for `/mcp` cannot act as a full user token on the REST API.
+- The general `/api/*` path (`AuthUser` → `AuthBackend::validate_token` → `JwtService::validate_access_token`) **rejects** `mcp_access` tokens, a token authorized only for `/mcp` cannot act as a full user token on the REST API.
 - The `/mcp` endpoint uses a separate `McpAuthUser`/`McpResolvedOrg` extractor (`AuthBackend::validate_mcp_token` → `JwtService::validate_mcp_access_token`) that **accepts only** `mcp_access` tokens bound to the exact `/mcp` resource, and rejects regular session/access tokens and cookie sessions. Personal access tokens (`evr_pat_`) remain accepted on `/mcp` as intentional programmatic credentials.
 
 Acting-as-user is preserved (claims still carry the user's identity and roles); only the unbounded-resource scope is removed. The access-token lifetime is the configured JWT access-token lifetime; MCP refresh tokens are opaque, stored hashed, and rotated by the OAuth flow (rotation re-mints an `mcp_access` token with the same audience).
 
 ### Database Schema
 
-The OAuth tables — `oauth_clients`, `oauth_authorization_codes`, `oauth_refresh_tokens` — are defined
+The OAuth tables, `oauth_clients`, `oauth_authorization_codes`, `oauth_refresh_tokens`, are defined
 in [`crates/server/migrations/009_v0.8.8.sql`](../../crates/server/migrations/009_v0.8.8.sql).
 
 The shapes that carry security intent: secrets and codes are stored **hashed**, never in plaintext;
@@ -439,17 +439,17 @@ fn auth_routes(&self) -> Option<Router> {
 }
 ```
 
-The well-known endpoint is also merged — the API prefix is handled by constructing the full URL in the metadata response.
+The well-known endpoint is also merged, the API prefix is handled by constructing the full URL in the metadata response.
 
 ### External Auth Backend (PropelAuth)
 
 Works automatically because:
-1. `POST /oauth/register` — no auth needed, backend not involved
-2. `GET /oauth/authorize` — resolves user from cookie, redirects to login if needed
-3. `POST /oauth/token` — validates code + PKCE, mints a resource-bound `mcp_access` JWT via `JwtService::generate_mcp_access_token()`. Backend not involved.
-4. Token validation — the `/mcp` endpoint calls `AuthBackend::validate_mcp_token(token, resource)`, NOT the general `validate_token()`. External backends that issue their own MCP tokens must override `validate_mcp_token` to enforce the same audience binding (the OSS default fails closed); the mint + validate split is exposed on `JwtService`/`AuthBackend` for this purpose (TM-MCP-006).
+1. `POST /oauth/register`, no auth needed, backend not involved
+2. `GET /oauth/authorize`, resolves user from cookie, redirects to login if needed
+3. `POST /oauth/token`, validates code + PKCE, mints a resource-bound `mcp_access` JWT via `JwtService::generate_mcp_access_token()`. Backend not involved.
+4. Token validation, the `/mcp` endpoint calls `AuthBackend::validate_mcp_token(token, resource)`, NOT the general `validate_token()`. External backends that issue their own MCP tokens must override `validate_mcp_token` to enforce the same audience binding (the OSS default fails closed); the mint + validate split is exposed on `JwtService`/`AuthBackend` for this purpose (TM-MCP-006).
 
-External backends only need to ensure their login page honors the shared `return_to` query parameter (see [Login Page Contract](../security/authentication.md#login-page-contract) in the authentication spec). `return_to` is the single public auth-resume parameter across app, MCP OAuth, and CLI flows — there is no separate `redirect_to`.
+External backends only need to ensure their login page honors the shared `return_to` query parameter (see [Login Page Contract](../security/authentication.md#login-page-contract) in the authentication spec). `return_to` is the single public auth-resume parameter across app, MCP OAuth, and CLI flows, there is no separate `redirect_to`.
 
 ## Security
 
@@ -491,10 +491,10 @@ When omitted, the default org is used (first org from the user's membership list
 
 ### Design Decisions
 
-1. **Stateless per-call override** — no session state needed. Each tool call independently targets an org.
-2. **DB-validated membership** — JWT org claims may be stale; always check DB for fresh membership.
-3. **`discover` accepts `organization_id` for consistency** — catalog search itself is effectively org-agnostic today, but the argument keeps org-scoped routing uniform across tools and leaves room for future org-specific catalog visibility.
-4. **No `switch_organization` tool** — the MCP transport is stateless, so there is no server-side "current org" to switch. Tool descriptions tell clients to call `list_organizations` and pass `organization_id` directly on org-scoped calls.
+1. **Stateless per-call override**: no session state needed. Each tool call independently targets an org.
+2. **DB-validated membership**: JWT org claims may be stale; always check DB for fresh membership.
+3. **`discover` accepts `organization_id` for consistency**: catalog search itself is effectively org-agnostic today, but the argument keeps org-scoped routing uniform across tools and leaves room for future org-specific catalog visibility.
+4. **No `switch_organization` tool**: the MCP transport is stateless, so there is no server-side "current org" to switch. Tool descriptions tell clients to call `list_organizations` and pass `organization_id` directly on org-scoped calls.
 
 ## Error contract
 
@@ -523,14 +523,14 @@ machine-readable code instead of regexing prose.
 `retry_after_seconds`, `hint`, and `cause_chain` are all optional and
 omitted from the wire shape when the server doesn't have a concrete
 value to set. Today they are populated only on the cases the server
-can reason about — for example, `tool_not_found` ships a fixed `hint`
+can reason about, for example, `tool_not_found` ships a fixed `hint`
 pointing the caller at `tools/list`. As more tool implementations
 construct `McpExecuteError` directly (instead of going through the
 prose-string classifier), more occurrences will populate the
 optional fields with case-specific values.
 
 The legacy `content[0].text` channel is preserved verbatim for MCP
-clients that predate the envelope — `structuredContent` is additive,
+clients that predate the envelope, `structuredContent` is additive,
 not a replacement.
 
 ### `McpErrorCode` (closed vocabulary)
@@ -541,7 +541,7 @@ human-readable meanings live in
 (`pub enum McpErrorCode` near line 477). The defaults there are
 authoritative; this spec captures the contract around them.
 
-`category` and `retryable` are defaults, not invariants — every
+`category` and `retryable` are defaults, not invariants, every
 occurrence may override them when the server has stronger
 information. For example, an `internal` failure whose root cause is
 known to be transient still ships `retryable: true`.
@@ -566,7 +566,7 @@ known to be transient still ships `retryable: true`.
 Deliberate gaps, recorded so the next pass does not have to re-derive them:
 
 - **Client ID Metadata Documents (CIMD).** The replacement for DCR. Implementing it means the authorization server fetches an arbitrary client-supplied HTTPS URL during `/oauth/authorize`, which is a new SSRF surface on an unauthenticated-ish path and needs a decision on whether any HTTPS origin may act as a client or only an allowlisted set. DCR keeps working throughout the deprecation window, so this is a scoped follow-up rather than a blocker.
-- **MRTR on the server side.** Everruns' `/mcp` never answers `tools/call` with `resultType: "input_required"`; long-running work is expressed through the Tasks extension instead, which covers the same need for the tools we expose. (The *client* does handle receiving `input_required` — see [mcp-servers.md](mcp-servers.md).)
+- **MRTR on the server side.** Everruns' `/mcp` never answers `tools/call` with `resultType: "input_required"`; long-running work is expressed through the Tasks extension instead, which covers the same need for the tools we expose. (The *client* does handle receiving `input_required`, see [mcp-servers.md](mcp-servers.md).)
 - **`subscriptions/listen`.** The consolidated notification stream. Task progress is polled through `tasks/get`, so nothing currently needs server push.
 - **Roots, Sampling, Logging.** Deprecated in `2026-07-28` with a 12-month window. Everruns implements none of them, so there is nothing to remove.
 

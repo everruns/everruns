@@ -15,7 +15,7 @@ mainly because of its authentication options.
 ## What you get
 
 - **OpenAI-compatible Chat Completions** streaming through Azure AI Foundry.
-- **Two authentication schemes** — an Azure AI Foundry API key, or Microsoft
+- **Two authentication schemes**: an Azure AI Foundry API key, or Microsoft
   Entra ID (OAuth) service-principal credentials with bearer tokens minted and
   refreshed automatically.
 - **Model discovery** against Foundry's `/models` endpoint where available, with
@@ -28,8 +28,8 @@ mainly because of its authentication options.
 3. Set the **base URL** to your Azure AI Foundry resource
    (e.g. `https://<resource>.services.ai.azure.com`).
 4. Provide credentials for one of the two methods, entered as discrete fields:
-   - **API key** — your Azure AI Foundry resource key.
-   - **Entra ID (OAuth)** — a client-credentials service principal: `tenant_id`,
+   - **API key**: your Azure AI Foundry resource key.
+   - **Entra ID (OAuth)**: a client-credentials service principal: `tenant_id`,
      `client_id`, and `client_secret` (with optional `scope` and `authority`,
      which default to the Azure Cognitive Services scope and public Microsoft
      Entra authority).

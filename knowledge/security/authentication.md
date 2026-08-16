@@ -18,7 +18,7 @@ This document defines the authentication system for Everruns, supporting flexibl
 
 Everruns supports four authentication modes:
 
-1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, personal access tokens, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. **Local development only:** because `none` disables authentication, it is permitted **only in dev deployments** — `AuthConfig::from_env()` panics at startup if `none` is selected (explicitly or by omitting `AUTH_MODE`) when the deployment grade is not `dev`. Set `DEPLOYMENT_GRADE=dev` (or `DEV_MODE=true`) to opt into no-auth dev mode. Unrecognized `AUTH_MODE` values are likewise rejected at startup rather than falling back to `none`, so a typo such as `AUTH_MODE=production` cannot silently disable auth.
+1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, personal access tokens, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. **Local development only:** because `none` disables authentication, it is permitted **only in dev deployments**: `AuthConfig::from_env()` panics at startup if `none` is selected (explicitly or by omitting `AUTH_MODE`) when the deployment grade is not `dev`. Set `DEPLOYMENT_GRADE=dev` (or `DEV_MODE=true`) to opt into no-auth dev mode. Unrecognized `AUTH_MODE` values are likewise rejected at startup rather than falling back to `none`, so a typo such as `AUTH_MODE=production` cannot silently disable auth.
 
 2. **Admin** (`AUTH_MODE=admin`): Single admin user via environment variables. Suitable for local development with basic access control.
 
@@ -47,12 +47,12 @@ Authorization: Bearer <personal_access_token>
 ```
 
 - Personal access tokens are **user-scoped** (tied to a person, never org-scoped). A token inherits access to all organizations the user belongs to. The name (GitHub/GitLab convention) and the `evr_pat_` prefix both make the user-scoped meaning explicit, and disambiguate these from the unrelated LLM-provider / integration / MCP "API key" concepts elsewhere in the product.
-- Organization context is resolved per-request via `X-Org-Id` header, `everruns_org` cookie, or single-org convenience fallback — same mechanism as session (JWT) auth.
-- Personal access tokens are prefixed with `evr_pat_` for identification — the prefix distinguishes them from JWTs within the `Bearer` scheme
+- Organization context is resolved per-request via `X-Org-Id` header, `everruns_org` cookie, or single-org convenience fallback, same mechanism as session (JWT) auth.
+- Personal access tokens are prefixed with `evr_pat_` for identification, the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full token shown only at creation, stored hashed (SHA-256)
 - Expiration is supported and enforced. Scopes are **not yet enforced** on the
-  request path — a validated token authenticates with the owning user's full
+  request path, a validated token authenticates with the owning user's full
   authority regardless of stored scopes. To avoid advertising a control that is
   not honored, token creation only accepts the full-access wildcard (`scopes`
   omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
@@ -69,7 +69,7 @@ There is exactly **one** programmatic credential type, and it represents a
 machine credential.
 
 - A personal access token is owned by a single user via
-  `personal_access_tokens.user_id`. There is no `org_id` on the token —
+  `personal_access_tokens.user_id`. There is no `org_id` on the token,
   the column was deliberately dropped (see migration history) so the token
   cannot be bound to one organization.
 - Authorization is the union of the owning user's memberships: the token can
@@ -83,7 +83,7 @@ machine credential.
 - Implication: treat a personal access token as equivalent to the user's own
   full access (hence the "Full account access" warning in the UI). It is not a
   way to grant narrow, org-scoped, or non-human access. If org-scoped or
-  service credentials are ever needed, they would be a new, separate concept —
+  service credentials are ever needed, they would be a new, separate concept,
   not a variant of this one. The first such concept is the app-scoped,
   execution-only **App API key**; see [`app-api-keys.md`](../integrations/app-api-keys.md).
 
@@ -98,7 +98,7 @@ Interactive CLI authentication via `everruns login`. Flow:
 
 1. CLI calls `POST /v1/auth/cli/start` with `redirect_port`
 2. Server creates a pending `cli_auth_sessions` row (state + exchange_code, 5-min TTL)
-3. Server returns `auth_url` pointing at the login page with `return_to=<api-prefix>/v1/auth/cli/callback?state=...` — the same `return_to` resume parameter used by every other login flow (see [Login Page Contract](#login-page-contract) below)
+3. Server returns `auth_url` pointing at the login page with `return_to=<api-prefix>/v1/auth/cli/callback?state=...`, the same `return_to` resume parameter used by every other login flow (see [Login Page Contract](#login-page-contract) below)
 4. CLI opens browser and starts one-shot localhost HTTP server
 5. User logs in; the login page navigates to the `return_to` path, which hits `/v1/auth/cli/callback` on the server (through the frontend's standard API proxy). The server looks up the session by `state`, associates the authenticated user, and redirects to `localhost:{port}/callback?code=...`
 6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
@@ -122,16 +122,16 @@ See `crates/server/src/auth/cli_auth.rs` for implementation.
 
 The login page accepts exactly one public query parameter for auth resume:
 
-- `return_to` — browser-relative path on the frontend origin that the UI navigates to after the user authenticates.
+- `return_to`, browser-relative path on the frontend origin that the UI navigates to after the user authenticates.
 
 **Rules:**
 
 - `return_to` is always a **relative path** on the frontend origin (starts with `/`, never `//`, never a scheme). Absolute URLs are rejected.
 - No other resume/redirect parameter is accepted. Historic names like `redirect_to` are not part of the contract and MUST NOT be emitted by any caller.
-- Backend-facing paths are valid `return_to` values — the login page triggers a full-page navigation so the reverse proxy / frontend root forwards them to the backend route. Concrete prefixes the UI treats as backend-facing:
-  - `/oauth/...` — MCP OAuth handlers mounted at the server root.
-  - `/api/...` — backend mounted under the standard `/api` API prefix (default deployment layout).
-  - `/v1/...` — backend mounted at the frontend origin root with **no** API prefix (used when `frontend_url == base_url`, so the API prefix derived by `build_cli_callback_path` is empty).
+- Backend-facing paths are valid `return_to` values, the login page triggers a full-page navigation so the reverse proxy / frontend root forwards them to the backend route. Concrete prefixes the UI treats as backend-facing:
+  - `/oauth/...`, MCP OAuth handlers mounted at the server root.
+  - `/api/...`, backend mounted under the standard `/api` API prefix (default deployment layout).
+  - `/v1/...`, backend mounted at the frontend origin root with **no** API prefix (used when `frontend_url == base_url`, so the API prefix derived by `build_cli_callback_path` is empty).
 - Workflow-specific continuations (CLI login, OAuth authorize handshakes) MUST NOT leak raw callback URLs into the login-page contract. Instead, they use an opaque server-issued token (e.g. the CLI auth session `state`) encoded in a backend path, and the server resolves that token to complete the workflow.
 
 **Callers that emit `return_to`:**
@@ -140,7 +140,7 @@ The login page accepts exactly one public query parameter for auth resume:
 - MCP OAuth `GET /oauth/authorize` when the caller has no session.
 - `POST /v1/auth/cli/start` when building the CLI login URL.
 
-**External auth backends:** External login pages only need to honor `return_to` — no other parameter. There is no need for a separate `redirect_to` path.
+**External auth backends:** External login pages only need to honor `return_to`, no other parameter. There is no need for a separate `redirect_to` path.
 
 An operator may set `AUTH_LOGIN_ORIGIN` to delegate the login page to a
 trusted remote HTTP(S) origin. When configured, unauthenticated browser flows
@@ -166,7 +166,7 @@ buttons first, email + password as the secondary path behind an email →
 password two-step). Login vs signup is the same action: the UI authenticates,
 and when the server returns 401, signup is enabled, and the password meets the
 registration minimum, it retries the same credentials against
-`POST /v1/auth/register`. Server contracts are unchanged — the unification is
+`POST /v1/auth/register`. Server contracts are unchanged, the unification is
 purely a UI-flow decision.
 
 Enumeration stance: the door never reveals whether an email has an account.
@@ -184,7 +184,7 @@ To prevent silent 401s for hybrid deployments that accidentally configure both a
 - `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET`
 - `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET`
 
-The error names both the conflicting mode and the specific env vars, and points operators to remove the OAuth env vars or switch `AUTH_MODE=full`. The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is **not** affected — it powers per-user repo connections, not the login flow, so External mode + GitHub App is supported.
+The error names both the conflicting mode and the specific env vars, and points operators to remove the OAuth env vars or switch `AUTH_MODE=full`. The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is **not** affected, it powers per-user repo connections, not the login flow, so External mode + GitHub App is supported.
 
 This is a fail-fast validation: operators see the misconfiguration at deploy time, not during a built-in OAuth login attempt on `/v1/auth/oauth/{provider}` or its callback `/v1/auth/callback/{provider}` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
 
@@ -206,7 +206,7 @@ and the existing Everruns account has already verified that same address.
 Email is the account identity key across register, login, OAuth account
 linking, and password recovery. It is treated **case-insensitively**: the
 stored value is canonicalized (trimmed and lowercased) at the storage trust
-boundary — both storage backends' `create_user*` and `get_user_by_email` — so
+boundary, both storage backends' `create_user*` and `get_user_by_email`, so
 `John@x.com` and `john@x.com` are one account, matching the normalization the
 rate limiters and org-invitation matching already use. A case-insensitive
 unique index on `users(lower(email))` enforces "one account per mailbox" in the
@@ -217,7 +217,7 @@ database even against write paths that bypass the application (EVE-704).
 - Newly set passwords (signup, reset): minimum 12 characters including at
   least one number, maximum 128 characters (the cap bounds Argon2 hashing
   work; login rejects oversized inputs with the generic credential failure
-  before any hashing). Existing passwords are never re-validated — login is
+  before any hashing). Existing passwords are never re-validated, login is
   unaffected by policy changes.
 - Hashed with Argon2id (default parameters)
 
@@ -229,7 +229,7 @@ email/password signup is an explicit, enumeration-safe two-step flow:
 - `POST /v1/auth/register` never creates a session. A fresh address creates
   an unverified account and emails a confirmation link; an already-registered
   address sends a "you already have an account" email instead. Both cases
-  return the same `200 { "ok": true }` — the emailed body is the only place
+  return the same `200 { "ok": true }`, the emailed body is the only place
   the two outcomes diverge.
 - `POST /v1/auth/verify-email` consumes the single-use token and marks the
   email verified. It does not mint a session; after confirmation the user signs
@@ -245,14 +245,14 @@ email/password signup is an explicit, enumeration-safe two-step flow:
 
 Self-service recovery for local (password) accounts. Two endpoints:
 
-- `POST /v1/auth/forgot-password` `{ email }` — always returns `200 { "ok": true }` regardless of whether the email exists (account-enumeration safe). For an existing local account it creates a single-use reset token (1-hour TTL) and emails a `{FRONTEND_URL}/reset-password?token=…` link. OAuth-only accounts are skipped silently. Email delivery is best-effort: a disabled/unconfigured sender or a transport failure is logged, never surfaced.
-- `POST /v1/auth/reset-password` `{ token, password }` — consumes the token (atomic single-use), enforces the same 12-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
+- `POST /v1/auth/forgot-password` `{ email }`, always returns `200 { "ok": true }` regardless of whether the email exists (account-enumeration safe). For an existing local account it creates a single-use reset token (1-hour TTL) and emails a `{FRONTEND_URL}/reset-password?token=…` link. OAuth-only accounts are skipped silently. Email delivery is best-effort: a disabled/unconfigured sender or a transport failure is logged, never surfaced.
+- `POST /v1/auth/reset-password` `{ token, password }`, consumes the token (atomic single-use), enforces the same 12-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
 
 Token model: the raw token is emailed once and never stored; only its SHA-256 hash is persisted (`password_reset_tokens`, migration 089). Single-use is enforced via `used_at` set in one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now()`.
 
 Because reset is skipped silently for OAuth-only accounts, the login-failure
 alert also names the OAuth alternative ("Signed up with Google or GitHub? Go
-back and use that instead"), shown to everyone so it reveals nothing — without
+back and use that instead"), shown to everyone so it reveals nothing, without
 it, an OAuth-only user who tried a password and then reset would dead-end on a
 "Check your inbox" screen for an email that never arrives.
 
@@ -260,8 +260,8 @@ it, an OAuth-only user who tried a password and then reset would dead-end on a
 
 Confirms a user controls the email they registered with. On successful `POST /v1/auth/register`, a verification token is created and a `{FRONTEND_URL}/verify-email?token=…` link is emailed (best-effort; never fails registration). Endpoints:
 
-- `POST /v1/auth/verify-email` `{ token }` — consumes the token and sets `users.email_verified = true`. Invalid/expired/used tokens return a generic `400`.
-- `POST /v1/auth/resend-verification` `{ email }` — account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
+- `POST /v1/auth/verify-email` `{ token }`, consumes the token and sets `users.email_verified = true`. Invalid/expired/used tokens return a generic `400`.
+- `POST /v1/auth/resend-verification` `{ email }`, account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
 
 Token model is identical to password reset (hashed, single-use, short TTL; `email_verification_tokens`, migration 089) but with a 24-hour TTL. Both recovery and verification routes share the registration rate limiter (per client IP).
 
@@ -269,7 +269,7 @@ Login does **not** gate on `email_verified`, so a signed-in user can be
 unverified. To avoid stranding them (the original 24h token may have expired,
 and re-signup sends a "log in" email, not a fresh link), `email_verified` is
 exposed on `GET /v1/auth/me` and drives a persistent in-app **verify-email
-banner** (`components/layout/verify-email-banner.tsx`) with an inline resend —
+banner** (`components/layout/verify-email-banner.tsx`) with an inline resend,
 the surfaced path a signed-in unverified user needs before they hit the
 invite-accept gate (TM-AUTH-023). The `/verify-email` dead-link state (no
 token, no email) likewise accepts an email and resends in place rather than
@@ -279,19 +279,19 @@ directing the user to a screen that does not exist.
 
 Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
 
-- **Per-account login throttle** — login attempts are additionally keyed on
+- **Per-account login throttle**: login attempts are additionally keyed on
   the submitted email (lowercased) across all source IPs, so distributed
   credential stuffing against one account is capped. Over-limit returns a
   generic 429.
-- **Per-address email budget** — forgot-password and resend-verification
+- **Per-address email budget**: forgot-password and resend-verification
   share a per-address send budget (1/minute plus a small daily cap). Over
   budget the endpoints return the normal enumeration-safe success without
   sending (the throttle is not an oracle).
 - **OAuth endpoints** share the login-tier per-IP limiter (the callback
   performs an outbound token exchange per hit).
-- **Logout revokes server-side** — `POST /v1/auth/logout` deletes the
+- **Logout revokes server-side**: `POST /v1/auth/logout` deletes the
   refresh-token row (best-effort) in addition to clearing cookies.
-- **Captcha (optional)** — setting `AUTH_TURNSTILE_SITE_KEY` +
+- **Captcha (optional)**: setting `AUTH_TURNSTILE_SITE_KEY` +
   `AUTH_TURNSTILE_SECRET_KEY` requires a Cloudflare Turnstile token
   (`captcha_token`) on register / forgot-password / resend-verification.
   `/v1/auth/config` advertises `captcha: { provider, site_key }` so the UI
@@ -308,10 +308,10 @@ handled the same way rather than failing query extraction.
 
 | Category | When | Copy intent |
 |----------|------|-------------|
-| `oauth_cancelled` | user declined at the provider | transient — try again |
-| `oauth_not_permitted` | 403 identity gate (Google `email_verified=false`, domain allow-list) | permanent for this account — use a different one |
-| `oauth_account_exists` | 409: the verified email matches an unverified local twin that must not be auto-linked per TM-AUTH-012, or the provider identity conflicts with an existing binding | permanent — **sign in with your original method**, not "try again" |
-| `oauth_failed` | anything else | transient — try again |
+| `oauth_cancelled` | user declined at the provider | transient, try again |
+| `oauth_not_permitted` | 403 identity gate (Google `email_verified=false`, domain allow-list) | permanent for this account, use a different one |
+| `oauth_account_exists` | 409: the verified email matches an unverified local twin that must not be auto-linked per TM-AUTH-012, or the provider identity conflicts with an existing binding | permanent, **sign in with your original method**, not "try again" |
+| `oauth_failed` | anything else | transient, try again |
 
 `oauth_account_exists` is separated from `oauth_failed` deliberately: the
 caller completed the provider handshake and thus owns the mailbox, so naming
@@ -321,21 +321,21 @@ retry loop with no way out (see Flow Reachability below).
 
 ### Flow Reachability (State Machine)
 
-The auth surface is a state machine spanning three layers — **UI** screens,
+The auth surface is a state machine spanning three layers, **UI** screens,
 **backend** outcomes (session vs confirmation, OAuth link-refusal categories),
 and **external** events (a link sitting in an inbox, its TTL, single-use
 consumption). Its contract is one invariant: **from any (goal, account-state)
 situation there is always a path to the goal via an affordance that actually
-works for that account** — no dead ends, no surfaced remediation that silently
+works for that account**: no dead ends, no surfaced remediation that silently
 no-ops.
 
 This is modelled and enforced in code, not just prose:
 
-- `apps/ui/src/lib/auth-flow/machine.ts` — states, account states (`none`,
+- `apps/ui/src/lib/auth-flow/machine.ts`, states, account states (`none`,
   `local_unverified`, `local_verified`, `oauth_only`), layer-tagged nodes, and
   guarded transitions (`worksFor` restricts an edge to the account states it
-  genuinely advances — the absence of a guard is how a trap is encoded).
-- `machine.test.ts` — two invariants with a ratchet: **structural
+  genuinely advances, the absence of a guard is how a trap is encoded).
+- `machine.test.ts`, two invariants with a ratchet: **structural
   reachability** (BFS reaches each goal) and **no misleading remediation** (a
   registry of surfaced-but-broken affordances). Both are asserted empty; any
   new dead end fails CI.
@@ -343,11 +343,11 @@ This is modelled and enforced in code, not just prose:
 The flow map below is derived from the `EDGES` table in `machine.ts`; edge
 labels carry the affordance and, where an edge is guarded, the account states it
 actually advances (`worksFor`). Unlabelled guards mean the edge works for every
-account state — a guard that omits a reachable account state is exactly how a
-trap is encoded, so the omissions are the load-bearing part. Account states:
+account state, a guard that omits a reachable account state is exactly how a
+trap is encoded, so the omissions are the essential part. Account states:
 **S0** `none`, **S1** `local_unverified`, **S2** `local_verified`, **S3**
 `oauth_only`. This is an illustrative snapshot; `machine.ts` + `machine.test.ts`
-remain the source of truth — regenerate it when the transition table changes.
+remain the source of truth, regenerate it when the transition table changes.
 
 ```mermaid
 flowchart TD
@@ -432,7 +432,7 @@ enforced by the Rust tests in `crates/server/src/auth/routes.rs`.
 
 **Enumeration-safety is not traded away to close dead ends.** Every recovery
 affordance is either generic copy shown to *everyone* (e.g. the login-failure
-alert naming OAuth as an alternative — an `oauth_only` account's reset silently
+alert naming OAuth as an alternative, an `oauth_only` account's reset silently
 no-ops, so without it those users dead-ended), an action on the user's *own*
 authenticated account (the in-app verify-email banner), or addressed to a
 caller who has *already proven* mailbox ownership (`oauth_account_exists`).
@@ -477,16 +477,16 @@ For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/s
 
 #### Default-Org Membership (single-tenant only)
 
-`register` and `oauth_callback` add a brand-new user to `DEFAULT_ORG_ID` **only when `AuthConfig.auto_join_default_org` is set** (`AUTH_AUTO_JOIN_DEFAULT_ORG=true`). It is **off by default**, because auto-joining the shared default org is a single-tenant convenience (single-binary / small self-host where everyone shares one org). In any multi-tenant deployment it MUST stay off: a fresh signup must own **no** org so the zero-org onboarding flow creates the user's *own* org — otherwise every tenant lands in `DEFAULT_ORG_ID` together (a tenant-isolation failure). The admin-mode bootstrap owner is unaffected: `login` always seeds the admin into the default org regardless of this flag.
+`register` and `oauth_callback` add a brand-new user to `DEFAULT_ORG_ID` **only when `AuthConfig.auto_join_default_org` is set** (`AUTH_AUTO_JOIN_DEFAULT_ORG=true`). It is **off by default**, because auto-joining the shared default org is a single-tenant convenience (single-binary / small self-host where everyone shares one org). In any multi-tenant deployment it MUST stay off: a fresh signup must own **no** org so the zero-org onboarding flow creates the user's *own* org, otherwise every tenant lands in `DEFAULT_ORG_ID` together (a tenant-isolation failure). The admin-mode bootstrap owner is unaffected: `login` always seeds the admin into the default org regardless of this flag.
 
 #### Default-Org Harness-Seed Guarantee
 
-The server's background seed task (`seed::spawn_seed_task_with_host_composition`) provisions the operator-composed built-in harnesses for every organization — including `DEFAULT_ORG_ID` — using the harness set resolved by `ServerAppBuilder` (EVE-881: built-in templates moved off `HostComposition` into server composition). The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
+The server's background seed task (`seed::spawn_seed_task_with_host_composition`) provisions the operator-composed built-in harnesses for every organization, including `DEFAULT_ORG_ID`, using the harness set resolved by `ServerAppBuilder` (EVE-881: built-in templates moved off `HostComposition` into server composition). The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
 
 When default-org auto-join is enabled (above), both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, state.built_in_harnesses)` as a safety net after adding the user to the default org (the re-run is gated together with the membership). Invariants:
 
 - **Correctness**: every newly-signed-up user lands in an org that has built-in harnesses, even if the async seed task has not completed. The provisioner is idempotent (upsert keyed on harness name), so the second call is a no-op once seeding is done.
-- **No operator override**: the safety net drives from `state.built_in_harnesses` (the operator-configured set carried by `BuiltinAuthBackend`, threaded from `ServerAppBuilder::built_in_harnesses`), **not** from `oss_built_in_harnesses()`. This preserves the fix from PR #1462 — public signup cannot reintroduce OSS harnesses that a custom composition removed. Tracked as threat-model entry `TM-AUTH-016` in `knowledge/security/threat-model.md` and originally surfaced in EVE-390.
+- **No operator override**: the safety net drives from `state.built_in_harnesses` (the operator-configured set carried by `BuiltinAuthBackend`, threaded from `ServerAppBuilder::built_in_harnesses`), **not** from `oss_built_in_harnesses()`. This preserves the fix from PR #1462, public signup cannot reintroduce OSS harnesses that a custom composition removed. Tracked as threat-model entry `TM-AUTH-016` in `knowledge/security/threat-model.md` and originally surfaced in EVE-390.
 - **Non-fatal on failure**: if the provisioner errors, the signup still succeeds (user is already created). The failure is logged at warn level so operators can diagnose seeding issues without blocking onboarding.
 
 The admin-bootstrap path (first-admin login in `login`) uses the same safety net for the same reasons.
@@ -550,8 +550,8 @@ Based on `mode`:
 
 The `POST /v1/auth/refresh` endpoint accepts the refresh token from two sources (checked in order):
 
-1. **JSON body** `{ "refresh_token": "..." }` — for programmatic clients
-2. **HttpOnly cookie** `refresh_token` — primary flow for browser clients (cookie is set at login with `Path=/`)
+1. **JSON body** `{ "refresh_token": "..." }`, for programmatic clients
+2. **HttpOnly cookie** `refresh_token`, primary flow for browser clients (cookie is set at login with `Path=/`)
 
 On success, the old refresh token is deleted (rotation) and a new token pair is returned (both in JSON body and Set-Cookie headers).
 
@@ -602,7 +602,7 @@ See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods
 
 See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + personal access token logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
 
-Token validation is a fresh-state boundary: `auth_user_from_claims` reloads the subject's DB user row (already required to reject deleted subjects) and derives the resolved identity — `name`, `email`, `roles`, and `is_platform_user` — from that row, not from the JWT claim payload. JWT claims still carry these fields for the token's lifetime, but they never drive request-time authorization or the profile shown by `/v1/auth/me`. So a profile rename (or role/email change) surfaces on the next request within the same access-token session, with no re-login and no token reissue (roles: EVE-703; name/email: EVE-715). The personal-access-token path reads the same DB row per request for the same reason.
+Token validation is a fresh-state boundary: `auth_user_from_claims` reloads the subject's DB user row (already required to reject deleted subjects) and derives the resolved identity, `name`, `email`, `roles`, and `is_platform_user`, from that row, not from the JWT claim payload. JWT claims still carry these fields for the token's lifetime, but they never drive request-time authorization or the profile shown by `/v1/auth/me`. So a profile rename (or role/email change) surfaces on the next request within the same access-token session, with no re-login and no token reissue (roles: EVE-703; name/email: EVE-715). The personal-access-token path reads the same DB row per request for the same reason.
 
 ### AuthState
 

@@ -6,7 +6,7 @@
 [![Documentation](https://docs.rs/everruns-session-services/badge.svg)](https://docs.rs/everruns-session-services)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-session-services` owns the small session-service seam shared by the
+`everruns-session-services` owns the small session-service boundary shared by the
 Everruns Framework host and the hosted platform. It deliberately contains no
 organization, payment, connector, audit, email, SQL, or HTTP implementation.
 
@@ -37,4 +37,4 @@ Part of the [Everruns](https://everruns.com) ecosystem.
 
 ## License
 
-MIT — see [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT, see [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).

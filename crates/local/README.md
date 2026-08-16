@@ -11,41 +11,41 @@ session-catalog, task, and schedule state. Framework applications access the hig
 through the `everruns` crate's `local` feature; advanced hosts can compose the
 focused backends directly with `everruns-host`.
 
-The runtime stays generic and owns only the seams — durable local storage
+The runtime stays generic and owns only the boundaries, durable local storage
 choices live here, behind an opt-in crate, so embedders (terminal coding agents,
 personal agents, …) don't each reinvent them.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.
 
 ## What It Provides
 
-- **`LocalSessionTaskRegistry`** — a `SessionTaskRegistry` over SQLite,
+- **`LocalSessionTaskRegistry`**: a `SessionTaskRegistry` over SQLite,
   persisting session tasks and their message channel.
-- **`LocalSessionStore`** — a durable session identity and metadata catalog;
+- **`LocalSessionStore`**: a durable session identity and metadata catalog;
   conversation messages remain an event-derived projection. It also persists
   bounded opaque workspace-head bindings for exact typed resume.
-- **`LocalGitWorkspaceProvider`** — a public `WorkspaceProvider` using one Git
+- **`LocalGitWorkspaceProvider`**: a public `WorkspaceProvider` using one Git
   worktree per head. Head creation, sharing, fork, reopen, archive, and destroy
   are explicit; dropping handles never removes a worktree or branch, and
   explicit destroy retains the branch.
-- **`LocalScheduleStore`** — a `SessionScheduleStore` over SQLite, with an
+- **`LocalScheduleStore`**: a `SessionScheduleStore` over SQLite, with an
   additive JSON `metadata` bag (name/color/kind/…) kept local rather than
   widening the shared core primitive.
-- **`LocalScheduleRunner`** — an explicitly started/stopped in-process runner
+- **`LocalScheduleRunner`**: an explicitly started/stopped in-process runner
   for due one-shot and recurring schedules. It scopes atomic SQLite claims to
   the sessions reported by `LocalSessionRunner::routable_session_ids`, recovers
   interrupted claims, and delivers prompts through
   `LocalSessionRunner::send_message`.
-- **`LocalPlatformStore`** — a `PlatformStore` that implements the
+- **`LocalPlatformStore`**: a `PlatformStore` that implements the
   subagent-critical core honestly and returns explicit unsupported errors for
   platform-management-only operations.
-- **`LocalProfile`** — named local environment config (data dir, workspace, base
+- **`LocalProfile`**: named local environment config (data dir, workspace, base
   URL, org/principal identity defaults).
-- **`LocalBackends`** — composable construction of `HostBackends` plus the
+- **`LocalBackends`**: composable construction of `HostBackends` plus the
   local stores, preserving a caller-supplied event bus and session file-system
   factory.
-- **`LocalRuntimeBuilder`** — optional sugar over `InProcessRuntimeBuilder`;
+- **`LocalRuntimeBuilder`**: optional sugar over `InProcessRuntimeBuilder`;
   its default registry composes neutral core capabilities, the full portable
   `everruns-builtins` policy catalog, and host integrations.
 

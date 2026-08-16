@@ -16,7 +16,7 @@ A task is any asynchronous work owned by a session: a subagent, a delegated
 external agent, a background tool run, a monitor. Tasks have one uniform
 lifecycle, report progress, exchange messages with the session, may pause for
 input, and end with a result. Tasks may hold **resources** (sandboxes, browser
-sessions) — infrastructure that is leased and released, never "completed".
+sessions), infrastructure that is leased and released, never "completed".
 
 ## Motivation
 
@@ -63,13 +63,13 @@ IDs use the `task_` prefix per `knowledge/foundations/id-schema.md`.
 | `spec` | Kind-specific input (instructions, tool args, external agent id) |
 | `state` | See state machine below |
 | `state_detail` | Short free text ("polling remote task", "iteration 4/10") |
-| `progress` | `{current?, total?, unit?, label?}` — today's `BackgroundProgress` |
+| `progress` | `{current?, total?, unit?, label?}`, today's `BackgroundProgress` |
 | `input_request` | Structured ask when `awaiting_input`; cleared on answer |
-| `cancel_requested_at` | Cooperative cancel intent — a flag, not a state |
+| `cancel_requested_at` | Cooperative cancel intent, a flag, not a state |
 | `summary` | Human-readable outcome |
 | `result_path` | Session VFS: `/.tasks/{task_id}/result.json` |
-| `artifacts` | `[{name, type, path\|url}]` — files, PRs, child session links |
-| `error` | `{kind, message}` — timeout/rejection are error kinds, not states |
+| `artifacts` | `[{name, type, path\|url}]`, files, PRs, child session links |
+| `error` | `{kind, message}`, timeout/rejection are error kinds, not states |
 | `attempt`, `worker_id`, `heartbeat_at` | Liveness and stale-attempt fencing |
 | `links` | `{child_session_id?, remote_task_id?, resource_ids: []}` |
 | `wake_policy` | When outbound activity wakes the parent (see Wake-ups) |
@@ -88,7 +88,7 @@ queued ──► running ◄──► awaiting_input      │ active / interrupt
 ```
 
 - **Active**: `queued` (accepted, not started), `running`.
-- **Interrupted**: `awaiting_input` — the task asked the session (agent or
+- **Interrupted**: `awaiting_input`, the task asked the session (agent or
   human) for something and is resumable. First-class, not an error. Subsumes
   human-in-the-loop approvals and A2A `input-required`/`auth-required`.
 - **Terminal**: `succeeded`, `failed`, `canceled`.
@@ -102,7 +102,7 @@ end `succeeded` or `failed`. Remote state machines map onto this one (A2A:
 ### Messages
 
 Tasks and the session communicate through a bidirectional, persisted message
-channel — the generalization of today's `message_subagent`/`message_agent` and
+channel, the generalization of today's `message_subagent`/`message_agent` and
 the A2A/subagent wake-up messages.
 
 ```
@@ -119,7 +119,7 @@ TaskMessage {
   events on the session stream for live UIs.
 - Answering an input request is an inbound message with `in_reply_to` set;
   delivery clears `input_request` and returns the task to `running`.
-- For subagents the channel carries only cross-boundary messages — the child
+- For subagents the channel carries only cross-boundary messages, the child
   transcript is not mirrored; `links.child_session_id` points at the full
   conversation.
 - Schema-bound local delegation children can post structured progress with a child-only
@@ -169,19 +169,19 @@ update); `post` and `output` are content (thread and stream). This keeps
 | `subagent` | create child session, send instructions | `send_message(child)` | child question → `request_input`; final message → `post` + terminal state |
 | `external_agent` | A2A `message/send` | `message/send` with `remote_task_id` | `reconcile` polls `tasks/get`; remote artifacts → `artifact` |
 | `background_tool` | run `execute_background` with the sink | rarely used | direct sink calls (existing `BackgroundEventSink` is a strict subset) |
-| `session` | create a detached peer session | n/a | `cancel` cooperatively cancels the peer session (standard send/cancel path) and settles the tracking task `canceled` — cancel means cancel, not detach-only (EVE-766) |
+| `session` | create a detached peer session | n/a | `cancel` cooperatively cancels the peer session (standard send/cancel path) and settles the tracking task `canceled`, cancel means cancel, not detach-only (EVE-766) |
 | `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → probe runs (or placeholder message); one-shot → `succeeded`; recurring stays `running` |
 
 A monitor is a long-lived task (`running` until canceled or exhausted).
 `spawn_background` with a `schedule` argument creates a `monitor` task linked
 to the backing session schedule via `spec["schedule_id"]`. The monitor spec
-also stores `spec["tool"]` and `spec["arguments"]` — the probe tool to run on
+also stores `spec["tool"]` and `spec["arguments"]`, the probe tool to run on
 each fire.
 
 On each fire the session scheduler executes the probe tool directly (using a
 small built-in registry of context-free probe tools) and records the result as
 an outbound message on the monitor's thread. Because the probe runs autonomously, no agent turn is
-started — the session LLM is not involved.
+started, the session LLM is not involved.
 
 A plain `"Monitor fired at …"` placeholder is recorded and the normal
 scheduled session turn runs instead when any of the following are true:
@@ -244,13 +244,13 @@ bounded batch of tasks in a terminal state (`succeeded`/`failed`/`canceled`)
 whose `finished_at` is older than `now - TTL`, together with their
 `session_task_messages` and their `result_path` artifact subtree
 (`/.tasks/{task_id}`). Live tasks (`queued`/`running`/`awaiting_input`) and
-terminal tasks newer than the TTL are never touched — the prune predicate is
+terminal tasks newer than the TTL are never touched, the prune predicate is
 strictly `state IN (terminal) AND finished_at < cutoff`.
 
 - **Configuration**: a single global TTL via `SESSION_TASK_RETENTION_TTL_SECONDS`
   (default 30 days), seeded into the reaper activity input through the same
   bootstrap path as the reaper interval (`SessionTaskReaperInput::from_env`).
-  `0` disables retention (records live forever — the pre-EVE-580 behavior).
+  `0` disables retention (records live forever, the pre-EVE-580 behavior).
   A per-org override is a follow-up, not this issue; the global TTL is the
   documented extension point.
 - **Bounded work**: each pass prunes at most `retention_limit` tasks (default
@@ -258,10 +258,10 @@ strictly `state IN (terminal) AND finished_at < cutoff`.
   wedge the tick or blow memory (mirrors the orphan-scan and blob-GC bounds).
 - **Artifact cleanup and ordering**: rows (and cascading messages) are deleted
   first; `result_path` artifacts are removed afterwards through the existing
-  session-file deletion seam (`delete_session_file_recursive`, which clears
+  session-file deletion boundary (`delete_session_file_recursive`, which clears
   backing blobs on the object-storage backend). A crash between the two can at
-  worst leak a dangling blob — reclaimed by blob GC (`crates/server/src/blob_gc.rs`)
-  — rather than leave a row pointing at a deleted artifact. Artifact deletion
+  worst leak a dangling blob, reclaimed by blob GC (`crates/server/src/blob_gc.rs`)
+, rather than leave a row pointing at a deleted artifact. Artifact deletion
   is best-effort and never fails the prune.
 - **Tenant scoping**: the query is global/by-age, but every delete is keyed on
   the task's own primary key, so it cannot cross-delete between orgs (TM-TENANT).
@@ -276,8 +276,8 @@ terminal `finished_at` (migration 075).
 Two snapshot-carrying event types on the existing session event stream
 (`knowledge/execution/events.md`), plus the message events above:
 
-- `task.created` — full task snapshot.
-- `task.updated` — full task snapshot on every state, progress, or
+- `task.created`, full task snapshot.
+- `task.updated`, full task snapshot on every state, progress, or
   `state_detail` transition. Consumers never need a follow-up read.
 
 Riding the events table gives persistence, per-session ordering, and
@@ -286,7 +286,7 @@ snapshot-then-delta: fetch `GET /v1/sessions/{id}/tasks`, then reconcile
 `task.updated` by `task_id`. High-frequency `output` deltas stay ephemeral
 (NATS / VFS tail) and render only on the task detail view.
 
-UI shape: a session activity rail — one chip per task (kind icon, name, state
+UI shape: a session activity rail, one chip per task (kind icon, name, state
 badge, progress, live `state_detail`), an inline form when `awaiting_input`,
 cancel, and on completion the summary plus artifact links. Chips render purely
 from the snapshot, so new kinds appear with no frontend work. The current
@@ -342,19 +342,19 @@ There are two delivery paths, selected by whether the parent has an active turn:
   message and starts (or steers) a turn. Unchanged.
 - **Active parent → mid-turn injection.** The wake payload (task snapshot plus
   the outbound message / `report_progress` data) is enqueued and consumed at the
-  parent's next agentic-loop iteration boundary — before the next LLM call —
+  parent's next agentic-loop iteration boundary, before the next LLM call,
   appearing as injected context alongside the reloaded conversation, so the
   parent reacts within the same turn instead of after it idles.
 
-The mid-turn queue lives behind the registry seam (`SessionWakeQueue` in
-`everruns-core`, fed via the `TaskTransitionObserver` seam by an
+The mid-turn queue lives behind the registry boundary (`SessionWakeQueue` in
+`everruns-core`, fed via the `TaskTransitionObserver` boundary by an
 `ObservingTaskRegistry` decorator over any registry, so runtime and server
 share it). The turn loop drains it at each reason iteration boundary.
 
 **Exactly-once.** The queue is the single source of truth for an undelivered
 wake: each real transition enqueues one entry (the registry fires each
 transition once per observer), and `drain` atomically removes a session's
-entries under one lock — that removal *is* the claim. A wake is therefore
+entries under one lock, that removal *is* the claim. A wake is therefore
 delivered mid-turn (drained by a running turn's next iteration) **xor** queued
 for the next turn (drained by that turn's first iteration), never both. Turn
 cancellation, seal, and max-iterations leave undrained wakes in the queue for
@@ -407,7 +407,7 @@ authenticated caller, never from input; scoping is a semijoin on
 `session_tasks (created_at DESC)` index.
 
 The optional `root_session_id` filter (EVE-680) narrows the list to a single
-delegation tree — the root session's own tasks plus every descendant's. A
+delegation tree, the root session's own tasks plus every descendant's. A
 session's tree root is denormalized onto `sessions.root_session_id` (a top-level
 session is its own root; a subagent child inherits its parent's root, set at
 session creation and backfilled by migration 094). A detached `session` task's
@@ -427,7 +427,7 @@ if the ACL cannot be computed the executor call is skipped with a `warn`.
 
 Specifically:
 - `POST …/messages`: rejected with 400 for `subagent`- and `agent_handoff`-kind
-  tasks — both are steered exclusively by the parent agent (via the
+  tasks, both are steered exclusively by the parent agent (via the
   `message_task` tool); `links.child_session_id` exposes the child session for
   direct addressing. For all other kinds the message is recorded durably, the task is re-fetched (it
   may have transitioned to `running` if the message answered an input request),
@@ -435,7 +435,7 @@ Specifically:
   message is still recorded (delivery = no-op).
 - `POST …/cancel`: sets `cancel_requested_at`, then calls `executor.cancel`.
   `MonitorTaskExecutor.cancel` disables the linked schedule and transitions
-  the task to `canceled` — so API cancel of a monitor task now atomically
+  the task to `canceled`, so API cancel of a monitor task now atomically
   cancels the schedule too. The response reflects the task state after the
   executor runs (re-fetched), so a monitor task is returned as `canceled`.
 
@@ -453,7 +453,7 @@ to the create-time resolution to defeat rebinding; EVE-625):
   single task via `{ url, secret?, event_filter? }`, modeled on A2A
   `TaskPushNotificationConfig`. `event_filter` is a subset of `terminal`
   (default), `awaiting_input`, `message`; a config opts into non-terminal
-  delivery by listing those events. The table has no `org_id` — a config is
+  delivery by listing those events. The table has no `org_id`, a config is
   reachable only through its owning session, so the endpoint authorizes by
   verifying the task's session belongs to the caller's org (the notifier resolves
   the same boundary server-internally via `get_session_unscoped`). Responses
@@ -465,16 +465,16 @@ Per-task configs can be created two ways, sharing one delivery path: via the
 the `push_configs` spawn arg (embedded in the task spec under `push_configs`;
 the notifier reads both). The registry fires the notifier on terminal,
 awaiting_input, and outbound-message transitions; per-config `event_filter`
-selects which land. Delivery is best-effort — failures are logged, never fatal,
+selects which land. Delivery is best-effort, failures are logged, never fatal,
 and never block the task update.
 
 ### Transition observers (in-process, EVE-729)
 
-Webhook delivery is one consumer of a lower-level seam: a `SessionTaskRegistry`
+Webhook delivery is one consumer of a lower-level boundary: a `SessionTaskRegistry`
 fires each real transition (terminal / awaiting_input / outbound message) once to
 every registered `TaskTransitionObserver`. The trait and its `TaskTransition`
 enum live in `everruns-core` (`task_observer`) so `everruns-host` embedders
-can observe task transitions in process — with the same filter semantics — without
+can observe task transitions in process, with the same filter semantics, without
 HTTP or a dependency on the control-plane server. The server's webhook dispatcher
 (`DirectTaskWebhookNotifier`) is one implementation registered via
 `with_transition_observer`; embedders register their own. Because both share the
@@ -497,7 +497,7 @@ No backward compatibility is required; data migrates forward once:
   (migration 062); `parent_session_id` stays as delegation tree metadata.
 - `subagent.*` event types are superseded by `task.*` events.
 - `get_subagents`, `get_agent_runs`, `wait_agent`, `message_agent`,
-  `message_subagent`, `cancel_agent` — **retired (done)**. These per-kind tools have
+  `message_subagent`, `cancel_agent`, **retired (done)**. These per-kind tools have
   been removed; all listing, waiting, messaging, and cancellation now routes
   through the generic tools (`list_tasks`, `get_task`, `message_task`,
   `cancel_task`, `wait_task`).
@@ -578,7 +578,7 @@ No backward compatibility is required; data migrates forward once:
   (backward compat for sessions without a registry).
 - Mid-turn delivery (EVE-681, part A): `SessionWakeQueue`
   (`crates/core/src/wake_queue.rs`) is a per-session queue behind the registry
-  seam; `ObservingTaskRegistry` (`crates/core/src/task_observer.rs`) is a
+  boundary; `ObservingTaskRegistry` (`crates/core/src/task_observer.rs`) is a
   storage-agnostic decorator that fans qualifying transitions to observers
   (the reusable form of `DbSessionTaskRegistry`'s inline fan-out). The
   `everruns-host` in-process loop wraps its injected registry with this
@@ -590,7 +590,7 @@ No backward compatibility is required; data migrates forward once:
   server durable-worker path (draining the queue at
   `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
   through the durable signal store, with exactly-once across worker restart) is
-  **not** wired in part A — it needs live Postgres/NATS/gRPC to validate and is
+  **not** wired in part A, it needs live Postgres/NATS/gRPC to validate and is
   deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
   builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
   (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips
@@ -601,17 +601,17 @@ No backward compatibility is required; data migrates forward once:
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
   key (see `crates/llmsim/src/lib.rs`).
 
-## Recurrence and task definitions (decision: defer — EVE-584)
+## Recurrence and task definitions (decision: defer, EVE-584)
 
 **Question:** does the system need a first-class `TaskDefinition` (a reusable
 *template* + *recurrence* primitive that instantiates fresh task instances on a
 cadence), or is the existing schedule + monitor composition sufficient?
 
-**Decision: no dedicated primitive in v1 — recurrence is expressed by
+**Decision: no dedicated primitive in v1, recurrence is expressed by
 composition.** Two existing primitives already cover recurring background work:
 
 - A recurring **session schedule** (`cron_expression`, via the `session_schedule`
-  capability — `docs/capabilities/session-schedules.md`) fires on a cadence.
+  capability, `docs/capabilities/session-schedules.md`) fires on a cadence.
 - A **monitor** task (`spawn_background` with a `schedule` arg) binds that
   schedule to a long-lived task: each fire runs the probe tool and records the
   result on the task thread (recurring monitors stay `running`; one-shot ones go
@@ -635,5 +635,5 @@ stays as `schedule + monitor` composition.
 ## Out of scope (v1)
 
 - Per-org retention TTL overrides (global TTL ships first; see Retention).
-- A dedicated task-definition / recurrence primitive — see the decision above;
+- A dedicated task-definition / recurrence primitive, see the decision above;
   recurrence ships as schedule + monitor composition.

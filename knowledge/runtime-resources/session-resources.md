@@ -9,8 +9,8 @@ tags:
 # Session Resource Registry
 
 A generic, session-scoped registry of infrastructure resources that are active
-alongside the main conversation — sandboxes, browser sessions, voice
-connections — so the agent can query what is held and infrastructure can
+alongside the main conversation, sandboxes, browser sessions, voice
+connections, so the agent can query what is held and infrastructure can
 discover what needs cleanup.
 
 Background **work** (subagents, external agent runs, background tool runs) is
@@ -28,7 +28,7 @@ lifecycle management.
 
 ## Design
 
-### Core trait — `SessionResourceRegistry`
+### Core trait, `SessionResourceRegistry`
 
 Lives in `crates/core/src/session_services.rs`. Available on `ToolContext` as
 `session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>`.
@@ -41,11 +41,11 @@ list(session_id, filter?)             — "what's running?"
 deregister(session_id, id)            — remove from registry
 ```
 
-### Model — `SessionResourceEntry`
+### Model, `SessionResourceEntry`
 
 See `crates/core/src/session_resource.rs` for the full `SessionResourceEntry` struct and `SessionResourceStatus` enum.
 
-`resource_id` is unique per session — repeated calls with the same ID update
+`resource_id` is unique per session, repeated calls with the same ID update
 rather than duplicate.
 
 ### Registration contract
@@ -100,7 +100,7 @@ V1 limitation:
 
 ### API
 
-`GET /v1/sessions/{session_id}/resources` — returns `Vec<SessionResourceEntry>`.
+`GET /v1/sessions/{session_id}/resources`, returns `Vec<SessionResourceEntry>`.
 
 ### Runtime modes
 

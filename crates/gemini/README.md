@@ -13,7 +13,7 @@ provider-neutral `ChatDriver` contract and maps Everruns' messages, tools, and
 reasoning onto the Gemini API. Core has no knowledge of specific providers; hosts
 register whichever drivers they want available.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-openai`](https://crates.io/crates/everruns-openai) and
 [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for other

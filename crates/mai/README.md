@@ -12,9 +12,9 @@ Completions API. `everruns-mai` implements the `ChatDriver` contract from
 
 Two schemes are supported:
 
-- **Azure AI Foundry API key** — the resource key, sent via the `api-key`
+- **Azure AI Foundry API key**: the resource key, sent via the `api-key`
   header.
-- **Microsoft Entra ID (OAuth)** — a client-credentials service principal
+- **Microsoft Entra ID (OAuth)**: a client-credentials service principal
   (`tenant_id`, `client_id`, `client_secret`), supplied through provider
   metadata. Bearer tokens are minted with the client-credentials grant and
   cached, refreshed before expiry.

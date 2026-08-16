@@ -1,4 +1,4 @@
-# ercode — a small coding agent on the public `everruns` API
+# ercode, a small coding agent on the public `everruns` API
 
 `ercode` is a small terminal coding agent built only on the public
 [`everruns`](../../crates/everruns) crate. Agent creation is the center of the
@@ -106,7 +106,7 @@ cargo run -p everruns-coding-cli -- --offline \
 
 `--shared-head` rejects a session recorded on an isolated head; use `--resume`
 for that case. Shared sessions intentionally address the same mutable files, so
-the application—not Framework—must coordinate concurrent edits.
+the application, not Framework, must coordinate concurrent edits.
 
 ## Lifecycle and cleanup
 

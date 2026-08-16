@@ -74,9 +74,9 @@ Use snake_case for variables.
 
 Top to bottom:
 
-1. **Base system prompt** — agent's core behavior prompt
-2. **Capability prompts** — in capability application order (agent caps, then session caps)
-3. **Instruction files** — user-provided project instructions, positioned wherever the `agent_instructions` capability appears in that order
+1. **Base system prompt**: agent's core behavior prompt
+2. **Capability prompts**: in capability application order (agent caps, then session caps)
+3. **Instruction files**: user-provided project instructions, positioned wherever the `agent_instructions` capability appears in that order
 
 The base system prompt is first to maximize provider prefix-cache reuse. Dynamic capability contributions such as `agent_instructions` and environment context should be ordered late by the harness/agent/session configuration when their contents change frequently.
 
@@ -138,9 +138,9 @@ let final_system_prompt = compose_system_prompt(
 
 ### UI Impact
 
-- **Agent Preview** (Full System Prompt card): Shows raw assembled prompt including XML tags. Uses monospace `<pre>` rendering — XML tags display naturally.
-- **Capability Detail** (System Prompt Addition card): Shows the raw `system_prompt_addition()` via `MarkdownDisplay` — no XML tags (wrapping is at collection time, not in the trait).
-- **Prompt Editor**: No change — users edit the base system prompt without XML.
+- **Agent Preview** (Full System Prompt card): Shows raw assembled prompt including XML tags. Uses monospace `<pre>` rendering, XML tags display naturally.
+- **Capability Detail** (System Prompt Addition card): Shows the raw `system_prompt_addition()` via `MarkdownDisplay`, no XML tags (wrapping is at collection time, not in the trait).
+- **Prompt Editor**: No change, users edit the base system prompt without XML.
 
 ### Future Considerations
 

@@ -75,11 +75,11 @@ See source files for full definitions:
 
 A spending cap bound to a **subject** (who) in a **currency** (what unit). Multiple budgets per subject allowed; the most restrictive one wins.
 
-**Subject types**: `session`, `app_channel`, `app`, `agent`, `user`, `org` — budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
+**Subject types**: `session`, `app_channel`, `app`, `agent`, `user`, `org`, budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
 
 `app` and `app_channel` are **gated behind the experimental `app_budgets` feature flag** (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into these levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
-**Currencies**: Strings (not enum) — new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
+**Currencies**: Strings (not enum), new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
 **Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (Postgres: transaction + `SELECT ... FOR UPDATE`; in-memory: lock + update).
 
@@ -170,7 +170,7 @@ Pause is a **soft prevention** mechanism for interactive sessions:
 4. Session status transitions to `paused` (new status in session lifecycle)
 5. User can: (a) increase limit, (b) top up, (c) resume via API
 
-**Headless/API flow**: For headless sessions (no human watching), the `HardLimitStopRule` fires when balance ≤ 0 and terminates the turn. Soft limit pause is also respected — the API caller should poll `GET /v1/sessions/{id}/budget-check` or listen to `budget.paused` SSE events.
+**Headless/API flow**: For headless sessions (no human watching), the `HardLimitStopRule` fires when balance ≤ 0 and terminates the turn. Soft limit pause is also respected, the API caller should poll `GET /v1/sessions/{id}/budget-check` or listen to `budget.paused` SSE events.
 
 ```
 Session states: started → active → idle
@@ -265,7 +265,7 @@ Everruns distinguishes two orthogonal concerns:
 | Concern | Capability | Source of truth | Enforcement |
 |---------|-----------|-----------------|-------------|
 | Platform-enforced limit | `budgeting` | Budgets table / usage ledger | Session paused/stopped automatically at exhaustion |
-| User-requested indicative target ("you have $7") | `self_budget` | Session cumulative usage (`get_session_info`) | None — agent adapts behavior via prompt guidance |
+| User-requested indicative target ("you have $7") | `self_budget` | Session cumulative usage (`get_session_info`) | None, agent adapts behavior via prompt guidance |
 
 The `self_budget` capability contributes prompt-only guidance. It ships no tools (cumulative usage is already exposed by `get_session_info` from the `session` capability, which is present in the Generic harness). The prompt:
 
@@ -307,13 +307,13 @@ Apps own one or more channels. Both layers can hold budgets:
 
 The hierarchy resolver pulls these subjects from session tags (`app:<id>`, `app_channel:<id>`). The flag `FEATURE_APP_BUDGETS` (experimental, auto-on in dev) is required to create or list app/channel budgets via the API; the storage and check pipeline always honours existing rows so the flag can flip without a backfill.
 
-UI: the App detail page surfaces a "Budgets" card (gated by `app_budgets`) that lists every budget attached to the app or any of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload — the in-product DSL — so advanced rules ship without waiting for first-class form fields.
+UI: the App detail page surfaces a "Budgets" card (gated by `app_budgets`) that lists every budget attached to the app or any of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload, the in-product DSL, so advanced rules ship without waiting for first-class form fields.
 
 ## Future Work
 
-- **ToolCallMeter**, **DataProcessedMeter** — additional meters
-- **Externalized rating rules** — replace hardcoded Rust rating with configurable scripts/expressions
-- **Valkey-cached balance** — for high-throughput without DB round-trip per check
-- **Budget analytics dashboard** — spend by model, by agent, over time
-- **Custom meter registration API** — for external integrations
-- **Rule-based DSL** — promote the JSON escape hatch to a typed expression language with a syntax-highlighted editor
+- **ToolCallMeter**, **DataProcessedMeter**: additional meters
+- **Externalized rating rules**: replace hardcoded Rust rating with configurable scripts/expressions
+- **Valkey-cached balance**: for high-throughput without DB round-trip per check
+- **Budget analytics dashboard**: spend by model, by agent, over time
+- **Custom meter registration API**: for external integrations
+- **Rule-based DSL**: promote the JSON escape hatch to a typed expression language with a syntax-highlighted editor

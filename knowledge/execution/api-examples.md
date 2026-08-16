@@ -107,23 +107,23 @@ non-deterministic `examples` map ordering (same caveat as
 ## When to add an example
 
 * **Always for `POST` / `PATCH` / `PUT`** that mutate non-trivial
-  state — the LLM needs to see the realistic payload shape, not
+  state, the LLM needs to see the realistic payload shape, not
   just inferred from the schema.
 * **Always on the canonical success response** (`200` / `201`).
-* **On every `4xx` that the operation can specifically emit** —
+* **On every `4xx` that the operation can specifically emit**,
   e.g. `409 Conflict` for already-archived, `429 Too Many Requests`
   with `retry_after_seconds`. Generic `500` doesn't usually need one.
-* **`GET` is optional** — listing endpoints benefit most when there
+* **`GET` is optional**: listing endpoints benefit most when there
   are nested objects (`messages`, `events`) so the LLM can see the
   envelope shape.
 
 ## Out of scope
 
-* Per-field examples — tracked separately by EVE-491.
-* OpenAPI `examples` (multi-example map) — deferred until utoipa
+* Per-field examples, tracked separately by EVE-491.
+* OpenAPI `examples` (multi-example map), deferred until utoipa
   switches to a deterministic container; the single `example`
   attribute is stable.
-* Coverage ratchet — designable after the rollout reaches enough
+* Coverage ratchet, designable after the rollout reaches enough
   endpoints; otherwise the floor would be premature.
 
 ## First-wave rollout

@@ -21,7 +21,7 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 The Slate design system is documented in [`DESIGN.md`](./DESIGN.md), an agent- and
 human-readable file in the [DESIGN.md format](https://github.com/google-labs-code/design.md).
 Its tokens mirror `src/app/design-system.css`, which remains the runtime source
-of truth — edit both together. Validate the file with:
+of truth, edit both together. Validate the file with:
 
 ```bash
 pnpm run design:lint

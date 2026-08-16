@@ -17,7 +17,7 @@ This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 The API is designed for both humans and LLM agents (hosted, OpenAPI tool
 callers, MCP, A2A). Six guidelines guide every endpoint:
 
-1. **Semantic operations** — business-intent endpoints with a stable
+1. **Semantic operations**: business-intent endpoints with a stable
    `operationId` on every `#[utoipa::path]`. utoipa auto-derives the
    operationId from the handler fn name; the convention is lower_snake_case
    matching the corresponding domain command name (e.g. `create_agent`),
@@ -25,20 +25,20 @@ callers, MCP, A2A). Six guidelines guide every endpoint:
    builtin set. `crates/server/tests/openapi_coverage_test.rs` enforces
    that every annotated handler is registered in `openapi::ApiDoc` and
    that every operationId is snake_case.
-2. **Self-sufficient OpenAPI** — every operation, schema, and field carries
+2. **Self-sufficient OpenAPI**: every operation, schema, and field carries
    a `description` (and ideally an `example` for non-trivial fields) so
    agents can do "preflight thinking" from the spec alone.
    `crates/server/tests/openapi_descriptions_test.rs` enforces ratcheting
-   coverage floors — each merge can only raise the percentage, never lower
+   coverage floors, each merge can only raise the percentage, never lower
    it.
-3. **Domain language** — concepts from [`concepts.md`](../foundations/concepts.md) used
+3. **Domain language**: concepts from [`concepts.md`](../foundations/concepts.md) used
    consistently in field names and descriptions.
-4. **Actionable errors** — [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+4. **Actionable errors**: [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
    *Problem Details* with stable `code`, `allowed_actions`, and
    `retry_after_seconds`.
-5. **Hypermedia** — `self_url` / `view_url` on every entity; `config`
+5. **Hypermedia**: `self_url` / `view_url` on every entity; `config`
    endpoints advertise allowed actions; enums backed by list endpoints.
-6. **Human representations** — system IDs (`agent_…`, `sess_…`, see
+6. **Human representations**: system IDs (`agent_…`, `sess_…`, see
    [`id-schema.md`](../foundations/id-schema.md)) kept distinct from display fields
    (`name`, `title`, `display_name`).
 
@@ -50,10 +50,10 @@ Background and rationale: ["Towards AI-Friendly Web APIs"](https://chaliy.name/b
 
 The backend exposes four top-level route groups:
 
-- `/api/*` — REST API routes, including auth and SSE
-- `/oauth/*` — MCP OAuth 2.1 endpoints (authorize, token, register)
-- `/mcp` — MCP JSON-RPC endpoint
-- `/.well-known/*` — public metadata and discovery endpoints
+- `/api/*`, REST API routes, including auth and SSE
+- `/oauth/*`, MCP OAuth 2.1 endpoints (authorize, token, register)
+- `/mcp`, MCP JSON-RPC endpoint
+- `/.well-known/*`, public metadata and discovery endpoints
 
 Operational endpoints stay at the server root:
 
@@ -217,11 +217,11 @@ For the complete request/response schemas, run `./scripts/export-openapi.sh` or 
 
 Key design decisions for session creation:
 
-- `harness_id` optional — defaults to the organization's `base_harness_id` (built-in `Base` harness for new orgs).
-- `agent_id` optional — specifies which agent works in this session.
-- `locale` / `timezone` — persisted on the session; `locale` for agent responses and regional formatting, `timezone` (IANA) as durable fallback for unattended/scheduled turns.
-- `capabilities` — **additive** to agent capabilities (agent applied first, session applied after). Enables temporarily extending an agent without modifying its configuration.
-- `hints` — session-level client hints (generic key-value pairs). Unknown keys ignored. Per-message `controls.hints` override session hints key-by-key (shallow merge). Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins). See [client-hints.md](../runtime-resources/client-hints.md).
+- `harness_id` optional, defaults to the organization's `base_harness_id` (built-in `Base` harness for new orgs).
+- `agent_id` optional, specifies which agent works in this session.
+- `locale` / `timezone`, persisted on the session; `locale` for agent responses and regional formatting, `timezone` (IANA) as durable fallback for unattended/scheduled turns.
+- `capabilities`, **additive** to agent capabilities (agent applied first, session applied after). Enables temporarily extending an agent without modifying its configuration.
+- `hints`, session-level client hints (generic key-value pairs). Unknown keys ignored. Per-message `controls.hints` override session hints key-by-key (shallow merge). Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins). See [client-hints.md](../runtime-resources/client-hints.md).
 
 #### Session and Turn Limits (EVE-508)
 
@@ -602,9 +602,9 @@ Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health`
 | Scope | Default Limit | Configured By |
 |-------|---------------|---------------|
 | Global API | 1200 req/min per IP | env: `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
-| Login | 10 req/min per IP | — |
-| Register | 5 req/min per IP | — |
-| Token refresh | 30 req/min per IP | — |
+| Login | 10 req/min per IP |, |
+| Register | 5 req/min per IP |, |
+| Token refresh | 30 req/min per IP |, |
 | AG-UI per-app | configurable per app, no default | app config: `AgUiChannelConfig.rate_limit_per_minute` |
 
 Set `RATE_LIMIT_API_REQUESTS_PER_MINUTE=0` to disable global API rate limiting. Auth endpoint limits are not configurable. Returns `429 Too Many Requests` when exceeded.
@@ -627,7 +627,7 @@ Configurable limits on resource creation. See `crates/server/src/server.rs` for 
 Returns `409 Conflict` when a limit is exceeded. Harness, agent, and session
 caps are per org and enforced in the create commands (covering HTTP, MCP, and
 gRPC entry paths); counts exclude soft-deleted rows. The harness cap counts only
-user-created harnesses — built-in (system-seeded) harnesses do not consume the
+user-created harnesses, built-in (system-seeded) harnesses do not consume the
 budget.
 
 ### Error Responses

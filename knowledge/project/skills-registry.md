@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-This document defines the skills registry for Everruns — a system for storing, discovering, validating, and serving [Agent Skills](https://agentskills.io/) to agents. Skills are portable instruction packages (SKILL.md files with optional scripts, references, and assets) that extend agent capabilities with specialized knowledge and workflows. The registry follows the [Agent Skills open specification](https://agentskills.io/specification).
+This document defines the skills registry for Everruns, a system for storing, discovering, validating, and serving [Agent Skills](https://agentskills.io/) to agents. Skills are portable instruction packages (SKILL.md files with optional scripts, references, and assets) that extend agent capabilities with specialized knowledge and workflows. The registry follows the [Agent Skills open specification](https://agentskills.io/specification).
 
 Skills integrate into the existing capability system as "virtual capabilities" (similar to MCP servers), allowing agents to discover and activate skills on demand.
 
@@ -49,8 +49,8 @@ Two independent boolean frontmatter fields control who can invoke a skill:
 | `user-invocable: false` | No | Yes | Description listed |
 | Both set | No | No | **Unreachable** (validation warning) |
 
-- `user-invocable: false` — hides from `/` autocomplete menu (background knowledge only)
-- `disable-model-invocation: true` — prevents the model from seeing the skill in its system prompt, so it cannot auto-invoke it. The skill is still invocable via explicit `/name` slash command.
+- `user-invocable: false`, hides from `/` autocomplete menu (background knowledge only)
+- `disable-model-invocation: true`, prevents the model from seeing the skill in its system prompt, so it cannot auto-invoke it. The skill is still invocable via explicit `/name` slash command.
 
 **Progressive disclosure** is core to the design:
 1. **Discovery** (~100 tokens): Only name + description loaded at startup
@@ -74,7 +74,7 @@ Two independent boolean frontmatter fields control who can invoke a skill:
 ### Model
 
 A registered skill carries the parsed SKILL.md frontmatter plus its body, the org that owns it, a
-status, and — for archive uploads — the original ZIP alongside its extracted files. Archive files are
+status, and, for archive uploads, the original ZIP alongside its extracted files. Archive files are
 stored individually rather than unpacked on demand, so activation and VFS mounting never pay for ZIP
 extraction at runtime.
 
@@ -87,8 +87,8 @@ holding the full skill directory with scripts, references, and assets). Statuses
 
 ### Limits and validation
 
-Names follow the agentskills.io rules exactly — 1–64 characters, `[a-z0-9-]`, no leading, trailing,
-or consecutive hyphens — and are unique per organization, which keeps capability IDs unambiguous
+Names follow the agentskills.io rules exactly, 1–64 characters, `[a-z0-9-]`, no leading, trailing,
+or consecutive hyphens, and are unique per organization, which keeps capability IDs unambiguous
 across tenants.
 
 Every other bound (field lengths, archive size, file count, decompressed size) exists to keep skills
@@ -165,11 +165,11 @@ Skills provide a virtual tool for activation:
 Activation resolves the skill by name and returns its full SKILL.md body as the tool result, which
 the agent then follows. For archive-based skills, the instructions reference companion files by
 relative path and the agent reads them with ordinary filesystem tools. Because registry skills are
-already mounted into the session VFS before the tool runs, activation is a read — not a fetch.
+already mounted into the session VFS before the tool runs, activation is a read, not a fetch.
 
 #### Idempotence
 
-`activate_skill` is idempotent within a session. The first successful activation is recorded in the session resource registry under `resource_id = "skill_activation:{name}"` with the tool result stored as metadata. Subsequent calls for the same skill short-circuit and return the cached result with an extra `already_active: true` flag — no VFS re-read, no re-parse, no re-mount. This keeps the handle contract stable across retries and planner loops that re-emit the same activation.
+`activate_skill` is idempotent within a session. The first successful activation is recorded in the session resource registry under `resource_id = "skill_activation:{name}"` with the tool result stored as metadata. Subsequent calls for the same skill short-circuit and return the cached result with an extra `already_active: true` flag, no VFS re-read, no re-parse, no re-mount. This keeps the handle contract stable across retries and planner loops that re-emit the same activation.
 
 Fallback: when the runtime does not wire a session resource registry into the tool context (embedded callers, unit tests), `activate_skill` skips the cache and re-executes normally. The user-visible semantics are unchanged; only the "already active" signal is suppressed.
 
@@ -189,8 +189,8 @@ Example: A skill named `pdf-processing` with files `scripts/extract.py` and `ref
 
 The agent can then read these files using existing session filesystem tools (`read_file`), no special `read_skill_file` tool needed.
 
-**Mounting strategy**: registry skills become read-only `MountPoint`s carrying each file inline —
-text or base64 for binaries — built by
+**Mounting strategy**: registry skills become read-only `MountPoint`s carrying each file inline,
+text or base64 for binaries, built by
 [`AttachSkillCapability`](../../crates/builtins/src/attach_skill.rs) during capability
 collection, before any tool runs. The `activate_skill` result carries instructions and metadata
 (`skill`, `description`, fork-mode fields where applicable) and deliberately no companion-file
@@ -216,7 +216,7 @@ Contributed skills flow through the **same** discovery/activation path as other 
 
 1. During capability collection, each `SkillContribution` is normalized into a read-only `MountPoint` at `/.agents/skills/{name}/` with a reconstructed `SKILL.md` (frontmatter + body) and every bundled file.
 2. When the built-in `skills` capability is active, its VFS scan finds these mounts alongside `AttachSkillCapability` mounts and filesystem-resident skills.
-3. `list_skills`, `activate_skill`, prompt listing, and `/slash` command visibility all go through the existing path — the frontmatter flags `user-invocable` and `disable-model-invocation` are honored the same way.
+3. `list_skills`, `activate_skill`, prompt listing, and `/slash` command visibility all go through the existing path, the frontmatter flags `user-invocable` and `disable-model-invocation` are honored the same way.
 
 The mount's `capability_id` is set to the contributing capability's ID so the VFS layer attributes the mounted files correctly and so users can see which capability a skill came from. There is no separate database row and no parallel prompt-injection path: if a capability wants a skill, it returns a `SkillContribution` and the rest is shared pipeline.
 
@@ -230,30 +230,30 @@ because every activation mounts them into the session VFS.
 
 ## Activation Substitution Pipeline
 
-When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only — frontmatter is parsed separately and never substituted.
+When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only, frontmatter is parsed separately and never substituted.
 
-1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`) — synchronous, always runs.
-2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`) — synchronous, always runs.
-3. **Command injection** (`` !`cmd` ``) — asynchronous shell execution inside the session sandbox (bashkit shell / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
+1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`), synchronous, always runs.
+2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`), synchronous, always runs.
+3. **Command injection** (`` !`cmd` ``), asynchronous shell execution inside the session sandbox (bashkit shell / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
 
 ### Command-Injection Trust Gate
 
 ``!`cmd` `` placeholders let a skill inline the stdout of a shell command at activation time (e.g. ``!`git rev-parse --show-toplevel` ``, ``!`date` ``). Because this spawns a shell process on the worker host, it is only safe for SKILL.md content that came from a non-user-spoofable source.
 
-**Current status: the gate is forced off.** `SessionFile::is_readonly` is **not** a valid trust signal — both the session-files HTTP API (create/update) and `InitialFile` configuration accept `is_readonly = true` from user input, so a user could mark a SKILL.md readonly and regain RCE.
+**Current status: the gate is forced off.** `SessionFile::is_readonly` is **not** a valid trust signal, both the session-files HTTP API (create/update) and `InitialFile` configuration accept `is_readonly = true` from user input, so a user could mark a SKILL.md readonly and regain RCE.
 
 | Source | Mount mode | Trust gate outcome |
 |---|---|---|
-| Capability-contributed (`contribute_skills`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today** — ``!`cmd` `` stays literal |
-| Registry-attached (`AttachSkillCapability`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today** — ``!`cmd` `` stays literal |
-| User-uploaded via VFS write (e.g. agent `write_file` at runtime) | writable → `is_readonly = false` | **UNTRUSTED** — ``!`cmd` `` stays literal |
-| Agent / session `initial_files` (any `is_readonly` value) | readonly or writable | **UNTRUSTED** — ``!`cmd` `` stays literal |
-| Session-files API create/update with `is_readonly = true` | readonly | **UNTRUSTED** — ``!`cmd` `` stays literal |
+| Capability-contributed (`contribute_skills`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today**: ``!`cmd` `` stays literal |
+| Registry-attached (`AttachSkillCapability`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today**: ``!`cmd` `` stays literal |
+| User-uploaded via VFS write (e.g. agent `write_file` at runtime) | writable → `is_readonly = false` | **UNTRUSTED**: ``!`cmd` `` stays literal |
+| Agent / session `initial_files` (any `is_readonly` value) | readonly or writable | **UNTRUSTED**: ``!`cmd` `` stays literal |
+| Session-files API create/update with `is_readonly = true` | readonly | **UNTRUSTED**: ``!`cmd` `` stays literal |
 
 Re-enabling the feature requires BOTH:
 
 1. A platform-controlled provenance signal (for example, a `mount_capability_id` column on `session_files` that is populated only by mount application code and rejected on all user-facing API paths), AND
-2. Replacing the default `ProcessCommandExecutor` (which spawns worker-host `bash -c`) with a session-sandbox-backed executor so commands run against **the bashkit shell (managed session sandbox) and the session virtual filesystem**, not the worker host. Flipping provenance alone is insufficient — a trusted but misbehaving skill would otherwise be able to reach worker state.
+2. Replacing the default `ProcessCommandExecutor` (which spawns worker-host `bash -c`) with a session-sandbox-backed executor so commands run against **the bashkit shell (managed session sandbox) and the session virtual filesystem**, not the worker host. Flipping provenance alone is insufficient, a trusted but misbehaving skill would otherwise be able to reach worker state.
 
 See threat-model entry [`TM-TOOL-020`](../security/threat-model.md) for the mitigation state and EVE-388 for follow-up.
 
@@ -267,7 +267,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 2. **Script execution stays sandboxed.** Skills may ship scripts; they run through `bashkit_shell`
    under existing session filesystem permissions, and are logged for auditing.
 3. **Content sanitization is a UI concern.** SKILL.md reaches agents as markdown, not a browser, so
-   the agent path needs no HTML sanitization — but anything the UI renders does.
+   the agent path needs no HTML sanitization, but anything the UI renders does.
 4. **Per-organization name uniqueness** prevents capability ID conflicts across tenants.
 
 ## Implementation Details
@@ -279,7 +279,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 | `everruns-core` | Skill types, SKILL.md parser, name validation, stable capability identity and contribution values |
 | `everruns-builtins` | `AttachSkillCapability` + `SkillsCapability` implementations |
 | `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
-| `everruns-worker` | No skill-specific role — the `activate_skill` / `list_skills` tools execute in-process from `everruns-builtins` (`SkillsCapability`) |
+| `everruns-worker` | No skill-specific role, the `activate_skill` / `list_skills` tools execute in-process from `everruns-builtins` (`SkillsCapability`) |
 
 ### Key Components
 
@@ -290,8 +290,8 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 | `skill:{uuid}` mount-only capability for registry skills | [`crates/builtins/src/attach_skill.rs`](../../crates/builtins/src/attach_skill.rs) |
 | CRUD, archive extraction, capability listing | [`crates/server/src/domains/skills/`](../../crates/server/src/domains/skills) |
 
-The division that matters: `AttachSkillCapability` only mounts — it contributes no prompt text and no
-tools — while `SkillsCapability` owns discovery and activation for every source. Activation is
+The division that matters: `AttachSkillCapability` only mounts, it contributes no prompt text and no
+tools, while `SkillsCapability` owns discovery and activation for every source. Activation is
 therefore a VFS read, with no worker-side executor and no gRPC fetch in the path.
 
 ### Error Handling
@@ -364,26 +364,26 @@ Skills can also be discovered from the session filesystem at `/.agents/skills/`.
 | Capability ID | `skill:{uuid}` | `skills` (aggregate) |
 | Best for | Shared/reusable skills | Project-specific skills |
 
-A third source — **capability-contributed skills** — also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `knowledge/execution/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it — e.g., a `gpt_image_gen` capability shipping a "prompt an image" skill alongside its tools.
+A third source, **capability-contributed skills**: also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `knowledge/execution/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it, e.g., a `gpt_image_gen` capability shipping a "prompt an image" skill alongside its tools.
 
 ### Multi-Scope Discovery (`ScopedSkillsCapability`)
 
 The default `SkillsCapability` scans the single `/.agents/skills/` root and exposes
 `list_skills` + `activate_skill`. Embedders that need **multiple labeled skill
-sources** — for example a terminal coding agent with workspace, per-user *global*,
-and binary-bundled *system* scopes — can register `ScopedSkillsCapability` instead.
+sources**: for example a terminal coding agent with workspace, per-user *global*,
+and binary-bundled *system* scopes, can register `ScopedSkillsCapability` instead.
 It takes a `SkillsConfig`:
 
-- **`scopes`** — an ordered list of `SkillScope { label, vfs_root, writable }`, highest
+- **`scopes`**: an ordered list of `SkillScope { label, vfs_root, writable }`, highest
   precedence first. Discovery merges all scopes and de-duplicates by skill directory
   name, so a nearer scope shadows a farther one. Each `list_skills` entry is tagged
   with its scope.
-- **`resolver`** — a `SkillDirResolver` that produces the `${SKILL_DIR}` value and the
+- **`resolver`**: a `SkillDirResolver` that produces the `${SKILL_DIR}` value and the
   agent-facing display path. The default keeps both in the VFS namespace; an embedder
   whose shell runs in a different namespace (e.g. a CLI whose `bash` runs on the host)
-  overrides it to return a path valid there. This is the seam that lets `${SKILL_DIR}`
+  overrides it to return a path valid there. This is the boundary that lets `${SKILL_DIR}`
   and the discovery file store stay namespace-consistent.
-- **`manage_tools`** — when set, additionally exposes `read_skill` and `write_skill`.
+- **`manage_tools`**: when set, additionally exposes `read_skill` and `write_skill`.
   `write_skill` installs/updates a skill in a **writable** scope (system/bundled scopes
   are read-only), validating the name, matching the frontmatter `name`, bounding extra
   files, and rejecting path traversal and `SKILL.md` overrides.
@@ -394,14 +394,14 @@ filesystem path, and every discovery/read/write goes through the injected
 how each VFS root maps to storage (a sandboxed overlay on the server, a real on-disk
 directory in a single-user CLI) is decided by the file store, not by any configuration
 knob on the capability. There is deliberately no API that accepts a host path. The
-command-injection trust gate is unchanged — `` !`cmd` `` is never expanded
+command-injection trust gate is unchanged, `` !`cmd` `` is never expanded
 (EVE-388 / TM-TOOL-020).
 
 ## Example Skills
 
 Example skills are provided in `examples/skills/`:
-- `hello-world/` — Minimal skill demonstrating the SKILL.md format
-- `csv-analyzer/` — Complex skill with scripts and references (archive-based)
+- `hello-world/`, Minimal skill demonstrating the SKILL.md format
+- `csv-analyzer/`, Complex skill with scripts and references (archive-based)
 
 ## Design Decisions
 

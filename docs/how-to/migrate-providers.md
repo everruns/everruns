@@ -9,8 +9,8 @@ Everruns abstracts the LLM behind a uniform interface, so the same agent can run
 
 Two pieces decide which model runs:
 
-- **LLM Provider** — a configured API provider with encrypted credentials (e.g., `openai`, `openrouter`, `anthropic`, `gemini`, `openai_completions`).
-- **LLM Model** — a specific model on a provider (e.g., `gpt-4o`, `claude-sonnet-4`, `gemini-1.5-pro`).
+- **LLM Provider**: a configured API provider with encrypted credentials (e.g., `openai`, `openrouter`, `anthropic`, `gemini`, `openai_completions`).
+- **LLM Model**: a specific model on a provider (e.g., `gpt-4o`, `claude-sonnet-4`, `gemini-1.5-pro`).
 
 Model resolution priority on each turn:
 
@@ -58,7 +58,7 @@ curl -X POST http://localhost:9300/api/v1/sessions \
 
 ## Override per message
 
-The most targeted form — run a single turn on a different model:
+The most targeted form, run a single turn on a different model:
 
 ```python
 await client.messages.create(
@@ -84,10 +84,10 @@ A safe migration sequence:
 1. Add the new provider and verify discovered models.
 2. Create a test agent that mirrors production, with `default_model_id` set to a model on the new provider.
 3. Run an evaluation suite against the test agent.
-4. Once happy, update the production agent's `default_model_id` — new sessions migrate over.
+4. Once happy, update the production agent's `default_model_id`, new sessions migrate over.
 5. Leave old sessions on the old model; they age out naturally.
 
 ## See also
 
-- [Concepts: LLM Provider and Model](/explanation/concepts/) — entity model.
-- [Observability with Braintrust](/observability/braintrust/) — evaluate cross-provider quality.
+- [Concepts: LLM Provider and Model](/explanation/concepts/), entity model.
+- [Observability with Braintrust](/observability/braintrust/), evaluate cross-provider quality.

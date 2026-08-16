@@ -1,7 +1,7 @@
 ---
 type: Specification
 title: "Public Chat (Hosted Chat App)"
-description: "Public Chat (hosted, isolated chat app) — product spec/proposal."
+description: "Public Chat (hosted, isolated chat app), product spec/proposal."
 tags:
   - everruns
   - integrations
@@ -17,7 +17,7 @@ tags:
 ## Abstract
 
 **Public Chat** lets an organization turn one of its Apps into a standalone,
-public-facing chat website that end users — people outside Everruns — can
+public-facing chat website that end users, people outside Everruns, can
 open and talk to. The org owner builds an Agent and a Harness as they do
 today, creates an App, and adds a **Public Chat channel**. Publishing the App
 deploys an isolated chat UI that anonymous or signed-in visitors can use to
@@ -35,8 +35,8 @@ The experience is intentionally **isolated** from the main Everruns product:
 
 The first release runs under Everruns' own endpoints (a path under the
 existing host). A later release moves each Public Chat onto its own
-hostname/custom domain — conceptually like GitHub Pages giving a project its
-own URL — without changing the product model. See
+hostname/custom domain, conceptually like GitHub Pages giving a project its
+own URL, without changing the product model. See
 [Custom domains (future)](#custom-domains-future).
 
 A second, parallel goal is a **reusable chat UI library** so the same chat
@@ -86,7 +86,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
 
 ## Implementation status
 
-- **Phase 1 (backend) — landed.** The `public_chat` channel type and typed
+- **Phase 1 (backend), landed.** The `public_chat` channel type and typed
   config are in `crates/platform/src/app.rs` (`PublicChatChannelConfig`,
   `PublicChatBranding`, `PublicChatCaptchaConfig`, `CaptchaProvider`), with
   create/update validation, secret redaction (`token`, Turnstile `secret_key`),
@@ -97,7 +97,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
   prefix) and the shared endpoint-auth verifier, with Cloudflare Turnstile
   verification in `crates/server/src/api/turnstile.rs`. Public Chat has its own
   rate-limiter namespace (`public_chat`).
-- **Phase 2 (web app) — landed (MVP).** An isolated, chrome-free chat surface
+- **Phase 2 (web app), landed (MVP).** An isolated, chrome-free chat surface
   lives in `apps/ui` under the `(public)` route group at
   `/public-chat/{appId}`. It renders against the public endpoints only
   (`apps/ui/src/lib/public-chat/client.ts`, a minimal AG-UI SSE client),
@@ -108,7 +108,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
   - Known MVP limitation: the server verifies Turnstile on every anonymous
     request, so the widget re-solves after each message (invisible in Turnstile
     managed mode). A future refinement verifies once per session/thread.
-- **Phase 4 (builder config UX) — landed (MVP).** The console channel form
+- **Phase 4 (builder config UX), landed (MVP).** The console channel form
   (`apps/ui/src/components/apps/channel-form.tsx`) supports a `public_chat`
   channel: anonymous toggle, optional shared token, branding (name, logo,
   primary color, welcome message), Cloudflare Turnstile (site + write-only
@@ -117,7 +117,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
   shareable link (`/public-chat/{appId}`), and the apps list/channel rows
   surface the link and access summary. The form also has a Google sign-in
   section (see Phase 3).
-- **Phase 3 (Google sign-in) — landed (MVP).** The public web app renders a
+- **Phase 3 (Google sign-in), landed (MVP).** The public web app renders a
   Google Identity Services sign-in button (`google-signin.tsx`) when the channel
   configures `google_oidc`; the resulting ID token is sent as a bearer token and
   validated by the shared verifier. Sign-in is mandatory whenever a provider is
@@ -132,12 +132,12 @@ All public, app-scoped, and gated on a published App with an enabled
 `public_chat` channel. Errors are sanitized and uniform so callers cannot
 distinguish "no app" / "unpublished" / "channel disabled".
 
-- `GET /v1/apps/{app_id}/public-chat/config` — non-secret bootstrap for the web
+- `GET /v1/apps/{app_id}/public-chat/config`, non-secret bootstrap for the web
   app: display name, branding (logo, primary color, welcome message), whether
   anonymous access is allowed, the sign-in method (e.g. `google_oidc` + public
   Google client ID), and the Turnstile site key when a challenge is enforced.
   Never returns secrets.
-- `POST /v1/apps/{app_id}/public-chat` — AG-UI `RunAgentInput` in, AG-UI SSE
+- `POST /v1/apps/{app_id}/public-chat`, AG-UI `RunAgentInput` in, AG-UI SSE
   out. Order of gates: resolve published channel → authenticate (inline `auth`,
   e.g. Google, marks the visitor signed-in; otherwise anonymous + optional
   shared token) → Turnstile challenge for anonymous visitors when enabled →
@@ -154,7 +154,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
    adding and configuring a Public Chat channel and publishing the App.
 2. A visitor can open the chat URL and converse with that App's agent, with
    streaming responses, on any modern browser including mobile.
-3. The visitor experience is strictly scoped to one App — no path to other
+3. The visitor experience is strictly scoped to one App, no path to other
    apps, agents, orgs, or any Everruns internals.
 4. Support optional **sessions**: a returning, signed-in visitor can resume
    their previous conversation; anonymous visitors get a best-effort
@@ -174,7 +174,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
    color, welcome message). Deep theming and multi-tenant theme management
    come later.
 3. Identity providers beyond anonymous and Google (e.g. GitHub, email magic
-   link, generic OIDC) — the auth framework already supports more modes, but
+   link, generic OIDC), the auth framework already supports more modes, but
    MVP ships and tests anonymous + Google only.
 4. Multi-agent or agent-switching within one chat. One Public Chat = one App.
 5. Human handoff / live-agent takeover, ticketing, CRM, analytics dashboards.
@@ -195,7 +195,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
 
 ## User scenarios
 
-### S1 — Builder publishes a public chat (no code)
+### S1, Builder publishes a public chat (no code)
 
 1. Builder has an App bound to a Harness and an Agent.
 2. On the App's channels page, Builder adds a channel of type **Public Chat**.
@@ -213,7 +213,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
   that does not distinguish "no app" / "unpublished" / "channel disabled".
 - Editing branding/config takes effect on the public site without redeploying.
 
-### S2 — Anonymous visitor chats
+### S2, Anonymous visitor chats
 
 1. Visitor opens the chat URL on the channel configured for anonymous access.
 2. Visitor sees the branded chat (name, logo, color, welcome message) and a
@@ -228,10 +228,10 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
   sanitized message (no provider names, model IDs, stack traces, budget state).
 - The visitor cannot reach any other app/agent/org; there is no navigation
   out of the single-App chat.
-- Tool activity, if shown at all, is generic/narrated only — never raw tool
+- Tool activity, if shown at all, is generic/narrated only, never raw tool
   names, arguments, results, or internal IDs (mirrors AG-UI public behavior).
 
-### S3 — Visitor signs in with Google and resumes
+### S3, Visitor signs in with Google and resumes
 
 1. Channel requires (or offers) Google sign-in.
 2. Visitor signs in with Google; if the channel restricts allowed domains, an
@@ -249,7 +249,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
 - Auth failures are generic (401/403 class) and do not distinguish
   misconfiguration from credential probing.
 
-### S4 — Visitor on mobile / shares a link
+### S4, Visitor on mobile / shares a link
 
 1. Visitor opens the URL on a phone; layout is responsive and usable.
 2. Visitor refreshes or returns on the same browser; an anonymous session is
@@ -261,7 +261,7 @@ token is read from `cf-turnstile-response` or `X-Everruns-Turnstile-Token`.
 - Anonymous session continuity works within the configured expiration window;
   an expired/unknown session starts fresh without error.
 
-### S5 — Operator protects the surface
+### S5, Operator protects the surface
 
 1. Operator relies on per-app, per-IP rate limits and global limits.
 2. Operator unpublishes or disables the channel to take it offline instantly.
@@ -287,7 +287,7 @@ Isolation is the defining property of this feature and is non-negotiable.
    infer the existence of other apps, agents, orgs, sessions, files, or tools.
 4. **End-user isolation.** Distinct visitors (anonymous browser sessions, or
    distinct signed-in identities) never share conversation state.
-5. **No internal-state leaks.** All public responses — success and error —
+5. **No internal-state leaks.** All public responses, success and error,
    pass through the public error-sanitization contract
    ([public-endpoints.md](../execution/public-endpoints.md)). Tool surfacing follows the
    AG-UI generic/narrated rules; raw tool internals never reach the wire.
@@ -299,9 +299,9 @@ Isolation is the defining property of this feature and is non-negotiable.
 
 Per-channel access policy, anonymous by default:
 
-- **Anonymous** — anyone with the link can chat. Continuity via a per-browser
+- **Anonymous**: anyone with the link can chat. Continuity via a per-browser
   session cookie until it expires.
-- **Google sign-in** — visitor must authenticate with Google; optional
+- **Google sign-in**: visitor must authenticate with Google; optional
   allowed-domain restriction. Conversations bind to the verified identity and
   resume on re-auth.
 
@@ -313,9 +313,9 @@ exposed later without new architecture.
 
 Session behavior is configurable per channel:
 
-- **Session continuity window** — how long a session can be resumed
+- **Session continuity window**: how long a session can be resumed
   (analogous to AG-UI/FCP `session_expiration_seconds`).
-- **Session scope** — one conversation thread per visitor (default). All
+- **Session scope**: one conversation thread per visitor (default). All
   sessions adopt the App's owner principal and channel routing tags so
   budgets, reuse, and audit logging stay consistent with other app channels
   ([app-invocation-channels.md](app-invocation-channels.md)).
@@ -332,7 +332,7 @@ Layers, in order of when they fire:
 1. **Operator kill switch (exists).** Unpublishing the App or disabling the
    channel takes the surface offline immediately. This is the always-available
    escape hatch.
-2. **Bot mitigation / CAPTCHA — Cloudflare Turnstile.** Anonymous channels run
+2. **Bot mitigation / CAPTCHA, Cloudflare Turnstile.** Anonymous channels run
    a Turnstile challenge before a visitor can start chatting; the token is
    verified server-side (Turnstile `siteverify`) before any session is created
    or any turn runs. Configurable per channel:
@@ -344,7 +344,7 @@ Layers, in order of when they fire:
      provider-shaped so another challenge provider could be added later
      without reworking the flow.
 3. **Rate limits (exists).** Per-app, per-IP caps (plus the global API limit),
-   surfacing `429` with `Retry-After` and an actionable body — same mechanism
+   surfacing `429` with `Retry-After` and an actionable body, same mechanism
    AG-UI/FCP use.
 4. **Cost guardrails (exists + thin add).** Public traffic runs under the App's
    owner principal, so existing org/app **budgeting** already bounds spend
@@ -355,7 +355,7 @@ Layers, in order of when they fire:
    (never budget state) per the public-endpoints contract.
 
 All challenge/limit/budget failures stay within the public error-sanitization
-contract — generic, actionable, leaking no internal state.
+contract, generic, actionable, leaking no internal state.
 
 ## Reusable chat UI
 
@@ -365,7 +365,7 @@ power these public apps, with branding overrides.
 Current state (informs, does not constrain, the design):
 
 - The console UI lives in `apps/ui` (Next.js + React + Tailwind).
-- Chat components exist under `apps/ui/src/components/chat/` — some are
+- Chat components exist under `apps/ui/src/components/chat/`, some are
   presentational and portable (composer, markdown/message rendering, image
   attachments), while orchestration (session/SSE/tool wiring) is tightly
   coupled to console internals.
@@ -384,7 +384,7 @@ Product direction:
 2. The public app provides its own thin data/transport adapter (talking to the
    Public Chat endpoint) and its own minimal session orchestration.
 3. Branding (name, logo, primary color, welcome message) is applied by
-   overriding design-system CSS variables — no fork of components.
+   overriding design-system CSS variables, no fork of components.
 4. Deep white-labeling (full theming, per-tenant themes) is explicitly future.
 
 This extraction can proceed incrementally and partially; the MVP only needs
@@ -405,9 +405,9 @@ beyond keeping the model relocation-friendly.
 
 ## Feasibility assessment
 
-**Verdict: feasible and well-aligned.** The hard, security-sensitive parts —
+**Verdict: feasible and well-aligned.** The hard, security-sensitive parts,
 public ingress, endpoint auth (incl. Google OIDC), error sanitization,
-session ownership/isolation, multitenancy, streaming — already exist and are
+session ownership/isolation, multitenancy, streaming, already exist and are
 exercised by AG-UI/FCP/A2A channels. Public Chat is mostly composition plus a
 new front-end surface.
 
@@ -431,11 +431,11 @@ isolation invariants and AG-UI's public-stream rules).
 
 Each phase is independently shippable and PR-sized where possible.
 
-**Phase 0 — Spec sign-off & open questions.** Resolve
+**Phase 0, Spec sign-off & open questions.** Resolve
 [open questions](#open-questions); confirm channel-type naming and MVP auth
 scope. Deliverable: this spec accepted.
 
-**Phase 1 — Public Chat channel (backend).** Add the Public Chat channel type
+**Phase 1, Public Chat channel (backend).** Add the Public Chat channel type
 and config (branding, access policy = anonymous | google_oidc + allowed
 domains, session continuity window, rate limits). Wire its public ingress
 through the shared endpoint-auth verifier and the public error-sanitization
@@ -444,7 +444,7 @@ streaming. Deliverable: a published App with this channel answers public,
 streamed chat requests with full isolation; covered by tests mirroring
 AG-UI/FCP (auth accept/reject, sanitization, session reuse, rate limit).
 
-**Phase 2 — Isolated public chat web app (MVP UI).** A standalone, responsive
+**Phase 2, Isolated public chat web app (MVP UI).** A standalone, responsive
 chat web app rendering against the Phase 1 endpoint, with branding applied
 from channel config, anonymous chat, streaming, best-effort per-browser
 session continuity, and the **Cloudflare Turnstile** challenge on anonymous
@@ -452,21 +452,21 @@ channels (verified server-side before a session/turn runs). No console chrome,
 no cross-app navigation. Served under an Everruns endpoint. Deliverable:
 end-to-end anonymous public chat with bot mitigation (S2, S4, S5).
 
-**Phase 3 — Google sign-in & resumable sessions.** Add Google sign-in to the
+**Phase 3, Google sign-in & resumable sessions.** Add Google sign-in to the
 public app, verified via `google_oidc`; bind conversations to the verified
 identity; persist and resume signed-in sessions within the retention window;
 enforce allowed-domain restrictions. Deliverable: S3 end-to-end.
 
-**Phase 4 — Builder configuration UX.** Console UI to add/edit/enable/disable
+**Phase 4, Builder configuration UX.** Console UI to add/edit/enable/disable
 the Public Chat channel, set branding and access policy, and view/copy the
 public URL. Deliverable: S1 end-to-end, no code required.
 
-**Phase 5 — Shared chat UI package.** Extract portable chat components into a
+**Phase 5, Shared chat UI package.** Extract portable chat components into a
 shared workspace package consumed by both the console and the public app;
 refactor the public app onto it; verify the console chat is unchanged.
 Deliverable: one chat UI source feeding both surfaces, branding via CSS vars.
 
-**Phase 6 (future) — Custom domains & deeper white-labeling.** Per-App
+**Phase 6 (future), Custom domains & deeper white-labeling.** Per-App
 hostnames/custom domains via the reverse-proxy contract + cert management +
 domain↦App mapping; richer theming. Deliverable: chat served on its own
 domain. Out of scope for the initial effort.
@@ -487,11 +487,11 @@ domain. Out of scope for the initial effort.
 
 ## Settled decisions
 
-- **Channel type — distinct `public_chat`.** Ships as its own channel type
+- **Channel type, distinct `public_chat`.** Ships as its own channel type
   (the product is "Public Chat"), internally reusing AG-UI streaming and the
   shared endpoint-auth framework. Keeps the public-web product story and
   isolation invariants clean while maximizing backend reuse.
-- **Abuse controls — layered, with Cloudflare Turnstile.** Operator kill
+- **Abuse controls, layered, with Cloudflare Turnstile.** Operator kill
   switch + Turnstile CAPTCHA on anonymous channels (default on, skipped for
   signed-in visitors) + existing per-app/IP rate limits + existing budgeting.
   See [Abuse & cost controls](#abuse--cost-controls).
@@ -512,14 +512,14 @@ domain. Out of scope for the initial effort.
 
 ## Related specs
 
-- [apps.md](apps.md) — App + channel model and lifecycle
-- [app-endpoint-auth.md](app-endpoint-auth.md) — shared inbound auth (Google OIDC, etc.)
-- [app-invocation-channels.md](app-invocation-channels.md) — session ownership, routing tags
-- [public-endpoints.md](../execution/public-endpoints.md) — public error-sanitization contract
-- [fcp-channel.md](fcp-channel.md) — isolation invariants for a public channel
-- [multitenancy.md](../security/multitenancy.md) — organization isolation
-- [budgeting.md](../security/budgeting.md) — spend bounds for public traffic
-- [usage-tracking.md](../security/usage-tracking.md) — LLM token usage tracking
-- [authentication.md](../security/authentication.md) — platform auth modes (contrast: visitor auth is separate)
-- [production-deployment.md](../operations/production-deployment.md) — reverse-proxy contract (custom domains, future)
-- [brand.md](../ui/brand.md) — brand identity, colors, typography
+- [apps.md](apps.md), App + channel model and lifecycle
+- [app-endpoint-auth.md](app-endpoint-auth.md), shared inbound auth (Google OIDC, etc.)
+- [app-invocation-channels.md](app-invocation-channels.md), session ownership, routing tags
+- [public-endpoints.md](../execution/public-endpoints.md), public error-sanitization contract
+- [fcp-channel.md](fcp-channel.md), isolation invariants for a public channel
+- [multitenancy.md](../security/multitenancy.md), organization isolation
+- [budgeting.md](../security/budgeting.md), spend bounds for public traffic
+- [usage-tracking.md](../security/usage-tracking.md), LLM token usage tracking
+- [authentication.md](../security/authentication.md), platform auth modes (contrast: visitor auth is separate)
+- [production-deployment.md](../operations/production-deployment.md), reverse-proxy contract (custom domains, future)
+- [brand.md](../ui/brand.md), brand identity, colors, typography

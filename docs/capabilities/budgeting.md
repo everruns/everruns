@@ -29,12 +29,12 @@ Query the budget status for the current session.
 
 When the `budgeting` capability is enabled:
 
-1. **System prompt injection** — The agent's system prompt includes a "Budget Awareness" section with the current budget status and guidelines for efficient output.
+1. **System prompt injection**: The agent's system prompt includes a "Budget Awareness" section with the current budget status and guidelines for efficient output.
 
-2. **Self-regulation** — When budget is running low, the agent prioritizes completing current tasks efficiently rather than exploring new directions or generating verbose output.
+2. **Self-regulation**: When budget is running low, the agent prioritizes completing current tasks efficiently rather than exploring new directions or generating verbose output.
 
-3. **Proactive checking** — The agent can call `check_budget` before starting expensive operations (large code generation, multi-step tool chains) to decide whether to proceed or ask the user.
+3. **Proactive checking**: The agent can call `check_budget` before starting expensive operations (large code generation, multi-step tool chains) to decide whether to proceed or ask the user.
 
 ## Related
 
-- [Budgets](/advanced/budgets/) — full budgeting system documentation (limits, currencies, API, CLI)
+- [Budgets](/advanced/budgets/), full budgeting system documentation (limits, currencies, API, CLI)

@@ -15,10 +15,10 @@ endpoint** through a custom base URL. For Azure deployments, use the dedicated
 
 ## What you get
 
-- **Responses API** (recommended) — the default driver, with stateful
+- **Responses API** (recommended), the default driver, with stateful
   continuation and server-side context compaction on `api.openai.com` and Azure
   OpenAI hosts.
-- **Chat Completions** — a compatibility driver (`openai_completions`) for legacy
+- **Chat Completions**: a compatibility driver (`openai_completions`) for legacy
   integrations and OpenAI-compatible gateways.
 - **Streaming, tool calls, and reasoning** mapped to provider-neutral Everruns
   types, including extended thinking on reasoning models.

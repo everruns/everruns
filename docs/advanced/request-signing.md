@@ -35,7 +35,7 @@ The [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/h
 - **Algorithm**: Ed25519 (fast, small keys, no parameter choices)
 - **Covered components**: `@authority` (the target domain) at minimum
 - **Key identity**: [JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) (SHA-256 hash of the canonical public key representation)
-- **Signature tag**: `"web-bot-auth"` — distinguishes bot-auth signatures from other uses of RFC 9421
+- **Signature tag**: `"web-bot-auth"`, distinguishes bot-auth signatures from other uses of RFC 9421
 - **Discovery**: optional `Signature-Agent` header points to a FQDN where the bot's public keys can be found
 
 ### Key Discovery
@@ -65,7 +65,7 @@ The signing pipeline is handled by [fetchkit](https://github.com/everruns/fetchk
    - Generates a random nonce
    - Sets `created` and `expires` timestamps
    - Signs with Ed25519, attaches `Signature` and `Signature-Input` headers
-4. If signing fails (clock error, etc.), the request proceeds unsigned with a warning logged — signing never blocks requests
+4. If signing fails (clock error, etc.), the request proceeds unsigned with a warning logged, signing never blocks requests
 5. The request is sent to the target server
 
 ### Key directory (inbound)
@@ -115,11 +115,11 @@ If you operate a server that receives requests from Everruns agents, here's how 
 
 ### Verification steps
 
-1. **Check the tag** — parse `Signature-Input` and confirm `tag="web-bot-auth"`. Ignore signatures with other tags.
-2. **Check timestamps** — reject if `created` is in the future or `expires` is in the past. A 5-minute clock skew tolerance is reasonable.
-3. **Fetch the public key** — extract the `Signature-Agent` FQDN and fetch `https://<fqdn>/.well-known/http-message-signatures-directory`. Find the key matching the `keyid` from `Signature-Input`. Cache the JWKS (keys rotate infrequently).
-4. **Reconstruct the signature base** — build the canonical representation per [RFC 9421 Section 2.5](https://www.rfc-editor.org/rfc/rfc9421#section-2.5) using the covered components listed in `Signature-Input`.
-5. **Verify** — use Ed25519 to verify the signature against the reconstructed base and the fetched public key.
+1. **Check the tag**: parse `Signature-Input` and confirm `tag="web-bot-auth"`. Ignore signatures with other tags.
+2. **Check timestamps**: reject if `created` is in the future or `expires` is in the past. A 5-minute clock skew tolerance is reasonable.
+3. **Fetch the public key**: extract the `Signature-Agent` FQDN and fetch `https://<fqdn>/.well-known/http-message-signatures-directory`. Find the key matching the `keyid` from `Signature-Input`. Cache the JWKS (keys rotate infrequently).
+4. **Reconstruct the signature base**: build the canonical representation per [RFC 9421 Section 2.5](https://www.rfc-editor.org/rfc/rfc9421#section-2.5) using the covered components listed in `Signature-Input`.
+5. **Verify**: use Ed25519 to verify the signature against the reconstructed base and the fetched public key.
 
 ### Python example
 
@@ -216,8 +216,8 @@ Request signing is configured via environment variables. Set them before startin
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `BOT_AUTH_SIGNING_KEY_SEED` | yes | — | Base64url-encoded 32-byte Ed25519 seed |
-| `BOT_AUTH_AGENT_FQDN` | no | — | FQDN for the `Signature-Agent` header |
+| `BOT_AUTH_SIGNING_KEY_SEED` | yes |, | Base64url-encoded 32-byte Ed25519 seed |
+| `BOT_AUTH_AGENT_FQDN` | no |, | FQDN for the `Signature-Agent` header |
 | `BOT_AUTH_VALIDITY_SECS` | no | `300` | Signature validity window in seconds |
 
 When `BOT_AUTH_SIGNING_KEY_SEED` is not set, signing is disabled and no crypto code runs at request time.
@@ -248,14 +248,14 @@ curl -s http://localhost:9301/.well-known/http-message-signatures-directory | jq
 
 | Standard | Role |
 |----------|------|
-| [RFC 9421 — HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421) | Core signing mechanism — how to sign and verify HTTP requests |
-| [RFC 8941 — Structured Field Values](https://www.rfc-editor.org/rfc/rfc8941) | Encoding format for `Signature` and `Signature-Input` headers |
-| [RFC 7638 — JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) | How the `keyid` is computed from the public key |
-| [RFC 7517 — JSON Web Key (JWK)](https://www.rfc-editor.org/rfc/rfc7517) | Format of the keys in the JWKS response |
-| [RFC 8037 — Ed25519 in JOSE](https://www.rfc-editor.org/rfc/rfc8037) | Ed25519 key representation in JWK format |
+| [RFC 9421, HTTP Message Signatures](https://www.rfc-editor.org/rfc/rfc9421) | Core signing mechanism, how to sign and verify HTTP requests |
+| [RFC 8941, Structured Field Values](https://www.rfc-editor.org/rfc/rfc8941) | Encoding format for `Signature` and `Signature-Input` headers |
+| [RFC 7638, JWK Thumbprint](https://www.rfc-editor.org/rfc/rfc7638) | How the `keyid` is computed from the public key |
+| [RFC 7517, JSON Web Key (JWK)](https://www.rfc-editor.org/rfc/rfc7517) | Format of the keys in the JWKS response |
+| [RFC 8037, Ed25519 in JOSE](https://www.rfc-editor.org/rfc/rfc8037) | Ed25519 key representation in JWK format |
 | [draft-meunier-web-bot-auth-architecture](https://datatracker.ietf.org/doc/html/draft-meunier-web-bot-auth-architecture) | Bot-specific profile of RFC 9421 (algorithm, tag, covered components) |
 | [draft-meunier-http-message-signatures-directory](https://datatracker.ietf.org/doc/html/draft-meunier-http-message-signatures-directory) | Well-known endpoint for public key discovery |
 
 ## See Also
 
-- [fetchkit](https://github.com/everruns/fetchkit) — The library implementing the signing client
+- [fetchkit](https://github.com/everruns/fetchkit), The library implementing the signing client

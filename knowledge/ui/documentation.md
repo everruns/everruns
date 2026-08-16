@@ -90,7 +90,7 @@ hero: ../images/section/visual.png  # Optional: hero image for social card
 ```
 
 - `title` and `description` are required
-- `hero` is optional — relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
+- `hero` is optional, relative path to an image that will be composited into the page's OG social card (see [Social Card Images](#social-card-images-og-images))
 
 #### Notebook-Backed Tutorials
 
@@ -114,7 +114,7 @@ Design follows the brand guidelines defined in [knowledge/ui/brand.md](brand.md)
 
 ### Screenshots
 
-Screenshots must be captured from the real running product — never faked,
+Screenshots must be captured from the real running product, never faked,
 mocked, or staged.
 
 - **Do not** hand-author HTML/CSS that imitates the UI, reconstruct a
@@ -132,7 +132,7 @@ mocked, or staged.
 - Prefer representative sample data over real user/org data, and never include
   secrets, tokens, or private content in a captured image.
 
-This rule exists because docs screenshots are load-bearing evidence of how the
+This rule exists because docs screenshots are essential evidence of how the
 product behaves; a fabricated one silently misleads readers.
 
 ### Build & Deployment
@@ -259,7 +259,7 @@ No internal links should produce 404 errors.
 
 - Content pages under `docs/` should link using root-relative paths matching the sidebar structure (e.g. `/event-reference/`, not `/features/event-reference`)
 - Links to internal knowledge (`knowledge/**/*.md`) should use absolute GitHub URLs since the bundle is not published as docs pages
-- The `starlight-openapi` plugin does not generate individual schema pages — do not link to `/api/schemas/{SchemaName}`
+- The `starlight-openapi` plugin does not generate individual schema pages, do not link to `/api/schemas/{SchemaName}`
 
 #### Social Card Images (OG Images)
 
@@ -298,7 +298,7 @@ hero: ./my-feature-screenshot.png
 
 Place new hero images (and any other diagrams or screenshots used by a single page) in the **same directory as the page that embeds them**, and reference them with relative paths (`hero: ./my-feature-screenshot.png`). Existing assets under `docs/images/{section}/` continue to work and are not migrated en masse. See `knowledge/docs/diagrams.md` for the colocation rule applied to diagrams.
 
-**Generated files are gitignored** — `public/og/` and `public/og-image.png` are rebuilt on every `pnpm run build` (via the `prebuild` script). Only the generation script and source images are committed.
+**Generated files are gitignored**: `public/og/` and `public/og-image.png` are rebuilt on every `pnpm run build` (via the `prebuild` script). Only the generation script and source images are committed.
 
 #### Route Middleware (`apps/docs/src/routeData.ts`)
 
@@ -325,5 +325,5 @@ Diagrams are hand-authored SVGs following `knowledge/docs/diagrams.md`. Each SVG
 
 1. New SVGs (and their `.mmd` siblings) **must** live in the same directory as the markdown page that embeds them, and are referenced via `![alt](./<name>.svg)`. See `knowledge/docs/diagrams.md` for the full placement rule.
 2. Legacy diagrams under `docs/images/<category>/` remain in place and continue to work; they are not migrated en masse.
-3. No client-side rendering library is needed — SVGs are static assets processed by Astro's image pipeline
+3. No client-side rendering library is needed, SVGs are static assets processed by Astro's image pipeline
 4. The Mermaid `.mmd` files are source-of-truth for diagram content but are not rendered at build time

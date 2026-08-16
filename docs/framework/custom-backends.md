@@ -8,7 +8,7 @@ surface deliberately hides stored harness records, platform registries, backend
 stores, worker phases, and durable scheduling topology.
 
 Cross into low-level composition only when your application is itself an
-execution host—for example, a server, evaluation harness, research runtime, or
+execution host, for example, a server, evaluation harness, research runtime, or
 specialized embedder that must replace storage or orchestration components.
 
 ## Host-level choices

@@ -20,9 +20,9 @@ through `DurableExecution`, and the in-process runtime through
 stateless host compatibility planner have been removed.
 
 This spec converges them on one **sans-IO** representation: a
-serializable `TurnState` whose transitions are pure functions, with all I/O —
+serializable `TurnState` whose transitions are pure functions, with all I/O,
 loading messages, calling the model, running tools, emitting events, persisting
-— performed by portable engine phases through contracts injected by the host.
+, performed by portable engine phases through contracts injected by the host.
 The intended end state is that a durable host is an in-process host that
 persists between steps, rather than a second implementation of the same loop.
 
@@ -34,8 +34,8 @@ phase effects cross neutral `everruns-core`/`everruns-provider` contracts.
 
 **Two representations drift.** Every change to turn semantics has to be made in
 both places, and nothing detects when it is made in only one. The bug fixed in
-#2937 — a turn that died between the model call and the recording of its result
-left state the host had to reconstruct by hand — is the shape of failure this
+#2937, a turn that died between the model call and the recording of its result
+left state the host had to reconstruct by hand, is the shape of failure this
 produces: the durable path had to re-derive knowledge that the in-process path
 simply held in memory.
 
@@ -80,14 +80,14 @@ point:
   serialized units of work, but they are concrete engine phases rather than a
   generic public `Atom` polymorphism.
 - Replacing the durable engine. Task scheduling, retries, and the DLQ are
-  unaffected — the durable host keeps owning those.
+  unaffected, the durable host keeps owning those.
 
 ## Staged migration
 
 Each stage is independently shippable and independently revertible. A stage that
 cannot be verified against current behavior does not ship.
 
-### Stage 1 — the value (landed)
+### Stage 1, the value (landed)
 
 The migration began with a temporary serializable value in core and a
 conformance test against the former mutable machine. That scaffolding was
@@ -96,7 +96,7 @@ removed once `everruns-engine::TurnExecution` became the only representation.
 Nothing is rewired. The deliverable is a representation both hosts *could*
 share, plus the evidence that it behaves identically.
 
-### Stage 1b — one planner, two hosts (landed)
+### Stage 1b, one planner, two hosts (landed)
 
 `crates/engine`: the planner moved out of the runtime into `everruns-engine`
 (EVE-840), then `InProcessRuntime::run_turn` was rewired onto it (EVE-842). The
@@ -105,7 +105,7 @@ operation each `TurnPlan` names and performs the returned `TurnLifecycleEffect`s
 `crates/host/tests/engine_planned_turn_test.rs` carries the behavior-preserving
 evidence and the restart-between-steps property.
 
-### Stage 1c — one execution kernel, two hosts (landed)
+### Stage 1c, one execution kernel, two hosts (landed)
 
 The concrete Input, Reason, and Act algorithms, phase I/O values, post-act
 helpers, scheduler, and infrastructure hooks live beside the planner in
@@ -114,7 +114,7 @@ per-tool hook contracts, and injected service traits. Both in-process and
 durable paths call the same host composition over these engine executors; core
 has no atom implementation or compatibility module.
 
-### Stage 1d — one execution machine, two drivers (landed)
+### Stage 1d, one execution machine, two drivers (landed)
 
 `everruns-engine::TurnExecution` owns state advancement as well as planning.
 `everruns-host::InProcessExecution` retains it for the turn lifetime;
@@ -122,7 +122,7 @@ has no atom implementation or compatibility module.
 activities. A cross-driver conformance test feeds identical outcomes into both
 implementations and compares the resulting engine state.
 
-### Stage 2 — fold in the durable bookkeeping (landed)
+### Stage 2, fold in the durable bookkeeping (landed)
 
 `TurnState` owns iteration, call counts, cumulative usage,
 `previous_response_id`, first-token timing, and the final-answer preview in
@@ -132,13 +132,13 @@ directly; no prefixed alias remains.
 This is where the two representations actually converge, and it is the stage
 that pays for stage 1.
 
-### Stage 3 — introduce effects (landed)
+### Stage 3, introduce effects (landed)
 
 `TurnLifecycleEffect` carries transition-owned lifecycle recording. Both hosts
 apply it through one host applier. Engine phases still emit phase-local events
 through the injected `EventEmitter`.
 
-### Stage 4 — host-applied phase recording (landed)
+### Stage 4, host-applied phase recording (landed)
 
 Phase-local canonical events are expressed through `PhaseEffectSink` and
 applied by the injected host emitter. They are applied immediately because
@@ -148,7 +148,7 @@ Post-phase lifecycle changes remain ordered `TurnLifecycleEffect` values on the
 transition. Cross-driver tests compare plans, checkpoints, and lifecycle-event
 order while restoring the durable driver after every phase.
 
-### Stage 5 — the durable host becomes a persisting in-process host (landed)
+### Stage 5, the durable host becomes a persisting in-process host (landed)
 
 The durable path restores `DurableExecution`, applies one engine transition,
 checkpoints its `TurnState`, and schedules the returned plan. The immediate
@@ -171,7 +171,7 @@ path retains `InProcessExecution` and applies the same transition directly.
 ## Alternatives considered
 
 **Leave it.** The cost is ongoing: every turn-semantics change is made twice,
-and the failures show up in the durable path under crash and cancellation —
+and the failures show up in the durable path under crash and cancellation,
 the hardest place to notice them and the most expensive place to debug.
 
 **Rewrite the durable path onto the in-memory machine.** Cheaper, and wrong:
@@ -181,25 +181,25 @@ whole requirement.
 **Adopt agentyk's engine wholesale.** Agentyk built this shape from scratch
 (`knowledge/foundations/plan.md`, Phase 2) and has the design worked out, but
 adopting it means adopting its `Agent`/`Session` model along with everything
-core layers on top — identity, catalog, persistence, tenancy. The staged
+core layers on top, identity, catalog, persistence, tenancy. The staged
 migration takes the idea without the rebuild, and leaves the door open to
 converge later.
 
 ## References
 
-- `crates/core/src/turn.rs` — the shared provider-neutral stop reason only
-- `crates/engine/src/machine.rs` — the shared `Execution` contract and serializable
+- `crates/core/src/turn.rs`, the shared provider-neutral stop reason only
+- `crates/engine/src/machine.rs`, the shared `Execution` contract and serializable
   `TurnExecution` state machine
-- `crates/engine/src/turn.rs` — the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
+- `crates/engine/src/turn.rs`, the pure, sans-IO turn planner (`TurnState`, `TurnPlan`,
   `plan_next_turn`, `TurnLifecycleEffect`), extracted from the runtime in EVE-840
-- `crates/engine/src/execution/` — the shared Input/Reason/Act algorithms and
+- `crates/engine/src/execution/`, the shared Input/Reason/Act algorithms and
   engine-owned phase I/O values
-- `crates/engine/src/phase_effects.rs` — live host-applied phase effects
-- `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs` —
+- `crates/engine/src/phase_effects.rs`, live host-applied phase effects
+- `crates/core/src/execution_context.rs` and `crates/core/src/tool_hooks.rs`,
   neutral contracts used by the engine and capability authors
-- `crates/host/src/turn_strategy.rs` — `advance_host_execution`, the runtime
+- `crates/host/src/turn_strategy.rs`, `advance_host_execution`, the runtime
   host's thin I/O wrapper over an explicit engine driver, plus host-fact
   resolvers and the lifecycle-effect applier both drivers share
-- `crates/host/src/runtime.rs` — `InProcessRuntime::run_turn`, the engine-planned
+- `crates/host/src/runtime.rs`, `InProcessRuntime::run_turn`, the engine-planned
   in-process loop (EVE-842)
-- `knowledge/operations/durable-execution-engine.md` — the durable host this converges with
+- `knowledge/operations/durable-execution-engine.md`, the durable host this converges with

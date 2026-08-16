@@ -12,7 +12,7 @@ Everruns is a durable agentic harness engine. This document describes the core e
 
 ## High Level
 
-Harness and Agent are **configuration containers** — they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Harness and Agent are **configuration containers**: they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
 ```mermaid
 graph LR
@@ -41,9 +41,9 @@ graph LR
     class App deploy
 ```
 
-- **Solid arrows** — configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
-- **Dashed arrows** — runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
-- **Purple** — deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
+- **Solid arrows**: configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
+- **Dashed arrows**: runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
+- **Purple**: deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
 
 ### Harness
 
@@ -85,15 +85,15 @@ Working instance of an agentic loop. Configured by its harness and situationally
   participants, ownership, previews, timestamps) lives in `everruns-platform`;
   the execution kernel consumes only the portable
   `everruns_core::ExecutionSession` projection plus the neutral
-  `SessionExecutionState`, produced at the platform loading seam.
+  `SessionExecutionState`, produced at the platform loading boundary.
 
 ### Capability
 
 Modular, reusable configuration unit that extends harness, agent, or session behavior. Contributes:
 
-1. **System prompt additions** — text prepended to the agent's prompt
-2. **Tools** — functions the agent can invoke
-3. **Mount points** — files and directories populated in the session filesystem
+1. **System prompt additions**: text prepended to the agent's prompt
+2. **Tools**: functions the agent can invoke
+3. **Mount points**: files and directories populated in the session filesystem
 
 - Can be attached to a harness, an agent, or a session
 - Session capabilities are additive to agent capabilities
@@ -121,7 +121,7 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session. Since EVE-881 the inheritance chain is resolved behind the platform loading seam: `HarnessStore::get_harness()` returns one effective `HarnessDefinition` (the stored chain is folded root-to-leaf with the same overlay merge semantics inside `everruns-platform`), which becomes the base overlay folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent either stores a pinned leaf harness or resolves the organization's current default leaf for each new session. Since EVE-881 the inheritance chain is resolved behind the platform loading boundary: `HarnessStore::get_harness()` returns one effective `HarnessDefinition` (the stored chain is folded root-to-leaf with the same overlay merge semantics inside `everruns-platform`), which becomes the base overlay folded alongside the optional agent and session overlays.
 
 ```
  harness_root ─► harness_child ─► harness_leaf      agent       session
@@ -141,7 +141,7 @@ Harnesses support single-parent inheritance. An Agent either stores a pinned lea
                                                   RuntimeAgent
 ```
 
-The fold is associative — a pre-merged harness chain (single overlay) produces the same RuntimeAgent as the full chain (N overlays). This lets gRPC-backed stores return a single pre-merged harness while DB-backed stores return the raw chain.
+The fold is associative, a pre-merged harness chain (single overlay) produces the same RuntimeAgent as the full chain (N overlays). This lets gRPC-backed stores return a single pre-merged harness while DB-backed stores return the raw chain.
 
 ### Tool
 
@@ -213,8 +213,8 @@ A per-session isolated virtual filesystem stored in PostgreSQL.
 
 Per-session scoped storage with two tiers:
 
-- **Key/Value** — plain text storage for general data such as state, preferences, or intermediate results
-- **Secrets** — AES-256-GCM encrypted at rest for API keys, tokens, and credentials
+- **Key/Value**: plain text storage for general data such as state, preferences, or intermediate results
+- **Secrets**: AES-256-GCM encrypted at rest for API keys, tokens, and credentials
 - Storage is session-isolated and cannot be accessed across sessions
 
 ---
@@ -283,7 +283,7 @@ A deployable unit that binds a Harness and Agent to one or more channels. Some c
 
 A linked external service account (GitHub, GitLab, etc.) associated with a user. Provides authenticated access to external services from agent sessions.
 
-- User-scoped (not org-scoped) — represents the user's identity on the external service
+- User-scoped (not org-scoped), represents the user's identity on the external service
 - Tokens encrypted at rest via AES-256-GCM envelope encryption
 - Auto-injected into sessions as secrets (e.g., `GITHUB_TOKEN`) when sessions are created
 - Capabilities like `daytona` use injected tokens transparently for private repo access

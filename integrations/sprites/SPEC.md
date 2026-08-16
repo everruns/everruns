@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The Sprites capability integrates [Sprites](https://sprites.dev/) (Fly.io) persistent, hardware-isolated Linux microVMs as an agent execution environment. Agents can create, manage, and interact with multiple Firecracker VMs per session via the Sprites REST API. Sprites differ from ephemeral sandboxes — they persist filesystems across idle periods, support instant checkpoint/restore, and expose public HTTP endpoints.
+The Sprites capability integrates [Sprites](https://sprites.dev/) (Fly.io) persistent, hardware-isolated Linux microVMs as an agent execution environment. Agents can create, manage, and interact with multiple Firecracker VMs per session via the Sprites REST API. Sprites differ from ephemeral sandboxes, they persist filesystems across idle periods, support instant checkpoint/restore, and expose public HTTP endpoints.
 
 **Status**: Available (All environments)
 
@@ -83,7 +83,7 @@ Default working directory inside a sprite is `/home/sprite`.
 |---|---|
 | **Credential storage** | API token stored in user_connections (encrypted). Never in session events. |
 | **Network isolation** | Firecracker VM-level isolation (stronger than containers). L3 network policies. |
-| **Data persistence** | Filesystem persists — users should be aware data outlives sessions. |
+| **Data persistence** | Filesystem persists, users should be aware data outlives sessions. |
 | **Leased resources** | Registered for cleanup; 30-min lease duration. |
 | **Metadata labels** | Sprites tagged with `everruns.*` metadata for audit and orphan cleanup. |
 

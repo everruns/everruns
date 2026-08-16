@@ -80,7 +80,7 @@ These roles are deliberately separate:
 
 - `EventLog` is the host's sole durable conversation write authority. It stores
   complete canonical event envelopes and provides bounded cursor replay.
-- `EventSink` is the host's post-commit, nonblocking live-delivery seam.
+- `EventSink` is the host's post-commit, nonblocking live-delivery boundary.
   `Session::events()` exposes that observation path as an ergonomic
   `EventStream` subscriber. Neither sink nor subscriber is durable or
   authoritative.
@@ -113,7 +113,7 @@ are not part of the event protocol.
 An advanced host can store canonical events itself. `everruns-host` exposes
 `EventReader` and `EventLog` as a public SPI: an external crate implements both
 against its own storage and supplies the result to composition through
-`HostBackends::with_event_log`. No in-crate access is required — cursors and
+`HostBackends::with_event_log`. No in-crate access is required, cursors and
 pages are built with `EventCursor::continuation`, `EventCursor::after`, and
 `EventPage::new`, which validate the shared invariants.
 
@@ -124,8 +124,8 @@ Three request shapes are distinguished by `EventReadRequest::cursor()`:
 - a cursor whose `snapshot_high_watermark()` is `Some` is a continuation pinned
   to that snapshot, so appends committed later stay invisible and paging neither
   skips nor duplicates;
-- a cursor whose `snapshot_high_watermark()` is `None` — built by
-  `EventCursor::after` — is a poll that captures a fresh snapshot and therefore
+- a cursor whose `snapshot_high_watermark()` is `None`, built by
+  `EventCursor::after`, is a poll that captures a fresh snapshot and therefore
   does observe those later appends.
 
 ```rust
@@ -206,7 +206,7 @@ The contract an implementation must uphold:
 - an accepted append owns id and sequence assignment and returns the finalized
   canonical `Event`, visible to the next read of that session;
 - durable sequences are unique and strictly increasing per session, and need not
-  be contiguous — gaps are expected when a reader projects an append-only
+  be contiguous, gaps are expected when a reader projects an append-only
   physical log into a filtered logical event sequence;
 - a continuation stays pinned to the first page's high-watermark and cannot
   observe concurrent appends; a poll cursor can;

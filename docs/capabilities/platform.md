@@ -110,5 +110,5 @@ or connection flow; do not paste credentials into command scripts.
 - [Platform Chat harness](/built-ins/harnesses/platform-chat/)
 - [MCP](/features/mcp/)
 - [Agent Triggers](/features/agent-triggers/)
-- [Platform Management](/capabilities/platform-management/) — legacy
+- [Platform Management](/capabilities/platform-management/), legacy
   handwritten compatibility capability

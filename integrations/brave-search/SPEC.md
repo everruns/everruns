@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The Brave Search capability integrates [Brave Search](https://brave.com/search/api/) web search as an agent tool. Agents can search the web and get relevant results including titles, URLs, and descriptions. Stateless — no per-resource state management needed.
+The Brave Search capability integrates [Brave Search](https://brave.com/search/api/) web search as an agent tool. Agents can search the web and get relevant results including titles, URLs, and descriptions. Stateless, no per-resource state management needed.
 
 **Status**: Experimental (Dev only)
 
@@ -12,7 +12,7 @@ The Brave Search capability integrates [Brave Search](https://brave.com/search/a
 
 Brave Search exposes one API layer:
 
-1. **Web Search API** (`https://api.search.brave.com/res/v1/web/search`) — query the web. Auth: `X-Subscription-Token: <API_KEY>`.
+1. **Web Search API** (`https://api.search.brave.com/res/v1/web/search`), query the web. Auth: `X-Subscription-Token: <API_KEY>`.
 
 ```
 ┌────────────────────────────────────────────┐
@@ -48,10 +48,10 @@ The API key is resolved lazily at tool execution time:
 Search the web using Brave Search API.
 
 - **Parameters**:
-  - `query`: string (required) — search query
-  - `count`: integer (optional, 1-20, default: 10) — number of results
-  - `offset`: integer (optional) — pagination offset
-  - `freshness`: string (optional) — time filter: `pd` (past day), `pw` (past week), `pm` (past month), `py` (past year)
+  - `query`: string (required), search query
+  - `count`: integer (optional, 1-20, default: 10), number of results
+  - `offset`: integer (optional), pagination offset
+  - `freshness`: string (optional), time filter: `pd` (past day), `pw` (past week), `pm` (past month), `py` (past year)
 - **Returns**: `{ query, results: [{title, url, description, age?}], count }`
 
 ## Security
@@ -111,7 +111,7 @@ Unlike Daytona (which depends on `session_storage`), Brave Search has no capabil
 
 ### Unit & mock tests
 
-Run without flags — no API key needed:
+Run without flags, no API key needed:
 
 ```bash
 cargo test -p everruns-integrations-brave-search
@@ -156,7 +156,7 @@ External integration crate, auto-registered via `inventory::submit!` plugin syst
 |------|---------|
 | `src/lib.rs` | Plugin registration (capability + connection provider), constants, `BraveSearchCapability` impl |
 | `src/client.rs` | `BraveSearchClient` HTTP client, API response types |
-| `src/connection.rs` | `BraveSearchConnectionProvider` — form schema, validation |
+| `src/connection.rs` | `BraveSearchConnectionProvider`, form schema, validation |
 | `src/tools.rs` | `BraveWebSearchTool` implementation, API key resolution |
 | `tests/plugin_registration.rs` | Integration tests for inventory registration and dev/prod gating |
 | `tests/smoke_real_api.rs` | Real-API smoke tests (behind `integration` feature) |

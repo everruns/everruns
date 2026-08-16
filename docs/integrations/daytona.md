@@ -9,7 +9,7 @@ sidebar:
 
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 275 287" width="49.8" height="52.0" fill="currentColor" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M14.5584 193.736H114.275V227.925H14.5584V193.736Z"/><path d="M148.464 74.076H262.426V108.265H148.464V74.076Z"/><path d="M88.6338 84.6127L173.246 0L197.422 24.175L112.809 108.788L88.6338 84.6127Z"/><path d="M89.157 170.084L24.175 105.102L0 129.277L64.9819 194.259L89.157 170.084Z"/><path d="M174.629 217.911L106.133 286.407L81.9577 262.232L150.454 193.736L174.629 217.911Z"/><path d="M174.106 132.44L250.66 208.994L274.835 184.819L198.281 108.265L174.106 132.44Z"/><path d="M88.6338 48.434V131.057H54.4451L54.4451 48.434H88.6338Z"/><path d="M208.294 168.094V270.66H174.106V168.094H208.294Z"/></svg>
 
-Everruns integrates with [Daytona](https://www.daytona.io/) to provide cloud-based sandbox environments for secure, isolated code execution. Agents can create, manage, and interact with multiple sandboxes per session — each a fully isolated Linux environment with network access.
+Everruns integrates with [Daytona](https://www.daytona.io/) to provide cloud-based sandbox environments for secure, isolated code execution. Agents can create, manage, and interact with multiple sandboxes per session, each a fully isolated Linux environment with network access.
 
 ## What You Get
 
@@ -62,7 +62,7 @@ Daytona sandboxes integrate with your connected GitHub account:
 
 ## Sandbox Lifecycle
 
-Sandboxes auto-stop after 5 minutes of inactivity as a safety net. Best practice is to explicitly delete sandboxes when done — stopping only pauses them (they remain visible on your Daytona dashboard).
+Sandboxes auto-stop after 5 minutes of inactivity as a safety net. Best practice is to explicitly delete sandboxes when done, stopping only pauses them (they remain visible on your Daytona dashboard).
 
 ## Security
 

@@ -46,8 +46,8 @@ For per-worker LLM rate limiting (TPM/RPM), the control-plane mediates: workers 
 
 ### Infrastructure
 
-- `scripts/lib/infra.sh` — Starts PostgreSQL and Valkey as native processes
-- `scripts/lib/services.sh` — Auto-starts Valkey in `start-all` and `start-production`
+- `scripts/lib/infra.sh`, Starts PostgreSQL and Valkey as native processes
+- `scripts/lib/services.sh`, Auto-starts Valkey in `start-all` and `start-production`
 
 ## In-Process Caching Opportunities
 
@@ -56,7 +56,7 @@ Independent of Valkey. Use `moka` crate (async, TTL + max-size eviction). Tracke
 | Priority | Target | Fix | Linear |
 |----------|--------|-----|--------|
 | Critical | `get_agent_capabilities()` called 4×/turn | Load once, pass through | EVE-47 |
-| High | API key auth — 4 sequential DB queries | Cache `key_hash → AuthUser`, 5-min TTL | EVE-48 |
+| High | API key auth, 4 sequential DB queries | Cache `key_hash → AuthUser`, 5-min TTL | EVE-48 |
 | High | LLM model/provider resolution | Cache `(org_id, model_id) → ResolvedModel`, 1-hour TTL | EVE-49 |
 | Medium | Encryption key lookups | Cache decrypted DEKs by `org_id` | EVE-50 |
 | Medium | Active skills list | Cache `org_id → Vec<Skill>`, 5-min TTL | EVE-51 |
@@ -74,7 +74,7 @@ Already optimized: feature flags (startup), MCP tool cache (1-hour TTL), capabil
 
 ## What NOT to Use Valkey For
 
-- **Primary data storage** — PostgreSQL handles this
-- **Task queue** — `SKIP LOCKED` works; don't add a second queue system
-- **Distributed locks** — PostgreSQL advisory locks are sufficient
-- **Session storage** — Sessions are stateless (resume via `since_id`)
+- **Primary data storage**: PostgreSQL handles this
+- **Task queue**: `SKIP LOCKED` works; don't add a second queue system
+- **Distributed locks**: PostgreSQL advisory locks are sufficient
+- **Session storage**: Sessions are stateless (resume via `since_id`)

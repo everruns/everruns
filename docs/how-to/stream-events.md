@@ -70,10 +70,10 @@ async for event in client.events.stream(session.id, since_id=last_seen_id):
     save_cursor(event.id)  # so the next restart can resume from here
 ```
 
-Inside the loop the SDK already remembers the last ID it yielded and reconnects with it on transient failures — `save_cursor` here is for *application restart* recovery, not per-iteration SDK state.
+Inside the loop the SDK already remembers the last ID it yielded and reconnects with it on transient failures, `save_cursor` here is for *application restart* recovery, not per-iteration SDK state.
 
 ## See also
 
-- [Event Reference](/event-reference/) — all event types.
-- [Events as the primary store](/explanation/events/) — why the protocol is shaped this way.
-- [Consume events via raw SSE](/how-to/consume-events-via-sse/) — non-SDK clients.
+- [Event Reference](/event-reference/), all event types.
+- [Events as the primary store](/explanation/events/), why the protocol is shaped this way.
+- [Consume events via raw SSE](/how-to/consume-events-via-sse/), non-SDK clients.

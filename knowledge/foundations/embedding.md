@@ -10,7 +10,7 @@ tags:
 
 ## Abstract
 
-Everruns is embeddable through a shared `HostComposition`, owned by `everruns-host` — the layer that executes a turn — rather than by the kernel (EVE-887). An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services — built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879) — are composed on `ServerAppBuilder` instead.
+Everruns is embeddable through a shared `HostComposition`, owned by `everruns-host`, the layer that executes a turn, rather than by the kernel (EVE-887). An embedder can assemble a custom runtime surface, then pass the same composition to the control plane and worker so capabilities, LLM drivers, and host services stay aligned. Hosted product services, built-in harness templates (EVE-881), the connector registry, and the system email sender (EVE-879), are composed on `ServerAppBuilder` instead.
 
 This spec defines the contract for embedding. See `crates/host/src/composition.rs` for the public Rust API.
 
@@ -67,7 +67,7 @@ See [knowledge/framework/](../framework/) for application-facing ownership and
 
 Built-in harness templates are data, not code plugins. Each template carries:
 
-- Stable `name` (the durable identifier — see "Harness Identity" below)
+- Stable `name` (the durable identifier, see "Harness Identity" below)
 - Display name, description, system prompt, tags
 - Built-in capability definitions with optional per-capability config
 - Explicit roles
@@ -231,17 +231,17 @@ Wrappers add new routes by publishing additional manifest artifacts with new `ar
 
 ## Error Reporting Contract
 
-Embedders (SaaS wrappers) often want to plug a vendor error-reporting backend — Sentry, Datadog, Rollbar — into OSS. The embedding surface must stay vendor-neutral: OSS depends on no vendor SDK and has no vendor-specific types, env vars, or config names.
+Embedders (SaaS wrappers) often want to plug a vendor error-reporting backend, Sentry, Datadog, Rollbar, into OSS. The embedding surface must stay vendor-neutral: OSS depends on no vendor SDK and has no vendor-specific types, env vars, or config names.
 
 ### Vendor-neutral trait
 
 `everruns-core` defines:
 
-- `ErrorReporter` — async trait with `report(ErrorReport)` (`crates/core/src/error_reporter.rs`)
-- `ErrorReport` — severity + kind + message + `ErrorScope`
-- `ErrorScope` — optional `user_id`, `org_id`, `session_id`, `request_id`, `route`, `component`, `task_id`, `workflow_id`, and freeform `extra` metadata
-- `ErrorSeverity` — `Warning`, `Error`, `Fatal`
-- `NoopErrorReporter` — default when no embedder reporter is installed
+- `ErrorReporter`, async trait with `report(ErrorReport)` (`crates/core/src/error_reporter.rs`)
+- `ErrorReport`, severity + kind + message + `ErrorScope`
+- `ErrorScope`, optional `user_id`, `org_id`, `session_id`, `request_id`, `route`, `component`, `task_id`, `workflow_id`, and freeform `extra` metadata
+- `ErrorSeverity`, `Warning`, `Error`, `Fatal`
+- `NoopErrorReporter`, default when no embedder reporter is installed
 
 Implementations must be best-effort: a slow or failing reporter must never propagate into the request or task path. Spawn background work for heavy reporting if needed.
 
@@ -333,7 +333,7 @@ ServerAppBuilder::new(config)
 
 CLI authentication routes (`/v1/auth/cli/*`) are decoupled from any specific auth backend via `CliAuthState`. Embedders with external auth providers can mount CLI login without duplicating handler code.
 
-Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`. `base_url` must include any API path prefix (e.g. `/api`) — no env-var lookup is performed at runtime:
+Construct `CliAuthState` with your storage backend, `AuthState`, and URLs, then mount via `cli_auth_routes()`. `base_url` must include any API path prefix (e.g. `/api`), no env-var lookup is performed at runtime:
 
 ```rust
 use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
@@ -354,13 +354,13 @@ See `crates/server/src/auth/cli_auth.rs` for the full implementation.
 
 ## Org Creation Policy Extension Point
 
-OSS owns organization creation (`POST /v1/orgs`). Wrappers that must run product policy before a tenant exists — verified-email gates, account/resource limits — supply that policy through OSS instead of forking the route. This keeps OSS as the owning boundary: wrappers provide policy, not a parallel create-org handler or a `/v1/saas/orgs` shadow endpoint.
+OSS owns organization creation (`POST /v1/orgs`). Wrappers that must run product policy before a tenant exists, verified-email gates, account/resource limits, supply that policy through OSS instead of forking the route. This keeps OSS as the owning boundary: wrappers provide policy, not a parallel create-org handler or a `/v1/saas/orgs` shadow endpoint.
 
 `everruns-server` defines:
 
-- `OrgCreatePolicy` — async trait with `check(OrgCreateContext) -> Result<(), OrgCreateRejection>`
-- `OrgCreateContext` — borrows the authenticated `AuthUser` and the requested org name
-- `OrgCreateRejection` — `status` + user-facing `message`, with an `OrgCreateRejection::forbidden(..)` helper for the common `403` case
+- `OrgCreatePolicy`, async trait with `check(OrgCreateContext) -> Result<(), OrgCreateRejection>`
+- `OrgCreateContext`, borrows the authenticated `AuthUser` and the requested org name
+- `OrgCreateRejection`, `status` + user-facing `message`, with an `OrgCreateRejection::forbidden(..)` helper for the common `403` case
 
 `ServerAppBuilder::org_create_policy(Arc<dyn OrgCreatePolicy>)` installs the policy. When present, OSS runs `check` inside the create-org handler **before any org or membership row is written**. A rejection aborts creation with the rejection's status/body and persists nothing; the message is surfaced verbatim to the client, so it must be safe for UI display (e.g. `403 Please verify your email address before continuing.`). When no policy is registered, default OSS create-org behavior is unchanged.
 
@@ -399,17 +399,17 @@ This is the org-creation counterpart to the invitation surface moved into OSS by
 
 ## Org Initialization Extension Point
 
-`OrgCreatePolicy` gates creation *before* an org exists; `OrgInitializer` provisions resources *after* one is created. Per-tenant provisioning is the normal shape of an embedded control plane — a managed provider, a default budget, a tenant row in an external system, a per-org key in a secret store. Without a hook, an embedder must reimplement every org-creation path or ship a background reconciler that repairs new orgs after the fact, leaving a window where the org is missing the resource.
+`OrgCreatePolicy` gates creation *before* an org exists; `OrgInitializer` provisions resources *after* one is created. Per-tenant provisioning is the normal shape of an embedded control plane, a managed provider, a default budget, a tenant row in an external system, a per-org key in a secret store. Without a hook, an embedder must reimplement every org-creation path or ship a background reconciler that repairs new orgs after the fact, leaving a window where the org is missing the resource.
 
 `everruns-server` defines (in `org_init`):
 
-- `OrgInitializer` — async trait with `on_org_created(OrgInitContext) -> anyhow::Result<()>`, plus `required(&self) -> bool` (default `true`) and `name(&self) -> &str` for diagnostics
-- `OrgInitContext` — carries the storage backend (`db`), the new `org_id`, and `created_by: Option<Uuid>` (the requesting user, `None` for system-created orgs)
-- `OrgInitializerError` — names the failed required initializer and wraps its source error
+- `OrgInitializer`, async trait with `on_org_created(OrgInitContext) -> anyhow::Result<()>`, plus `required(&self) -> bool` (default `true`) and `name(&self) -> &str` for diagnostics
+- `OrgInitContext`, carries the storage backend (`db`), the new `org_id`, and `created_by: Option<Uuid>` (the requesting user, `None` for system-created orgs)
+- `OrgInitializerError`, names the failed required initializer and wraps its source error
 
 `ServerAppBuilder::org_initializer(Arc<dyn OrgInitializer>)` registers an initializer; it may be called multiple times and initializers run in registration order. OSS invokes them inside the create-org handler **after built-in harnesses and the default marketplace are provisioned**, so an initializer sees a fully set-up org. Failure policy is per-initializer:
 
-- **Required** (default): a failure aborts creation — OSS rolls the org back best-effort (`delete_organization`) and returns `500`, so a caller never sees a "created" org missing host-mandated resources.
+- **Required** (default): a failure aborts creation, OSS rolls the org back best-effort (`delete_organization`) and returns `500`, so a caller never sees a "created" org missing host-mandated resources.
 - **Optional** (`required() == false`): a failure is logged and creation proceeds.
 
 When no initializer is registered, default OSS create-org behavior is unchanged.
@@ -452,14 +452,14 @@ OSS owns the first screen a user sees after login when they have no organization
 
 OSS provides:
 
-- `ZeroOrgOnboarding` (`apps/ui/src/components/onboarding/zero-org-onboarding.tsx`) — owns the layout, org-name form, current-org selection after create, and the `/orgs/{orgId}/setup` redirect. Default behavior lets any authenticated user create their first org.
-- `useZeroOrgRedirect` (`apps/ui/src/components/onboarding/use-zero-org-redirect.ts`) — redirects authenticated zero-org users to `/onboarding`; consumed by the OSS `(main)` layout and reusable by wrappers so the redirect is not duplicated.
+- `ZeroOrgOnboarding` (`apps/ui/src/components/onboarding/zero-org-onboarding.tsx`), owns the layout, org-name form, current-org selection after create, and the `/orgs/{orgId}/setup` redirect. Default behavior lets any authenticated user create their first org.
+- `useZeroOrgRedirect` (`apps/ui/src/components/onboarding/use-zero-org-redirect.ts`), redirects authenticated zero-org users to `/onboarding`; consumed by the OSS `(main)` layout and reusable by wrappers so the redirect is not duplicated.
 - The `(onboarding)/onboarding` route, which renders `ZeroOrgOnboarding`.
 
 Wrappers configure two extension points on `ZeroOrgOnboarding`:
 
 - `usePolicy: () => ZeroOrgPolicyState` returning `{ status: "loading" }`, `{ status: "ready" }`, or `{ status: "blocked", title, body?, actions? }`. A blocked state renders a gate (e.g. "Verify your email") in place of the form before any org is created. Defaults to always-ready.
-- `useCreateOrg` — overrides the create mutation (e.g. to call a wrapper alias) while keeping the OSS layout and redirect. Defaults to the OSS `useCreateOrganization`.
+- `useCreateOrg`, overrides the create mutation (e.g. to call a wrapper alias) while keeping the OSS layout and redirect. Defaults to the OSS `useCreateOrganization`.
 
 A SaaS wrapper replaces its local onboarding page with an OSS re-export plus a small policy adapter:
 

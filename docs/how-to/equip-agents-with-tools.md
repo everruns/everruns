@@ -59,10 +59,10 @@ for cap in agent.capabilities:
 
 ## Notes on ordering
 
-Capability order matters — capabilities earlier in the list contribute their system prompt fragments first. Put high-priority context (project conventions, AGENTS.md) before tool-specific guidance.
+Capability order matters, capabilities earlier in the list contribute their system prompt fragments first. Put high-priority context (project conventions, AGENTS.md) before tool-specific guidance.
 
 ## See also
 
-- [Capabilities reference](/capabilities/) — all available capabilities.
-- [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class) — the design rationale.
-- [Give an agent web access](/how-to/give-an-agent-web-access/) — narrower task with network policies.
+- [Capabilities reference](/capabilities/), all available capabilities.
+- [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class), the design rationale.
+- [Give an agent web access](/how-to/give-an-agent-web-access/), narrower task with network policies.

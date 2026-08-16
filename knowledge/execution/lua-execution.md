@@ -8,7 +8,7 @@ tags:
 ---
 # Lua Execution Capability (experimental)
 
-> **Status: EXPERIMENTAL — Phase 1 skeleton.** Implemented by the opt-in
+> **Status: EXPERIMENTAL, Phase 1 skeleton.** Implemented by the opt-in
 > `everruns-integrations-lua` crate, selected by the Framework/host `lua`
 > feature, and gated by the `FEATURE_LUA` internal feature flag at registry
 > build time. Not registered in production grades yet.
@@ -24,15 +24,15 @@ fragile, quoting is a footgun, and extending it with typed host functions
 The `lua` capability provides a single sandboxed interpreter we fully own. It
 targets, in order:
 
-1. **Common logic** — control flow, conditionals (native Lua).
-2. **Math** — `math` stdlib (native Lua).
-3. **Virtual filesystem** — read / write / grep / traverse via a host `fs`
+1. **Common logic**: control flow, conditionals (native Lua).
+2. **Math**: `math` stdlib (native Lua).
+3. **Virtual filesystem**: read / write / grep / traverse via a host `fs`
    table backed by the session `SessionFileSystem`.
-4. **Data processing** — `json` host module (serde bridge); later csv/yaml/base64.
-5. **HTTP** *(later)* — a host `http` module behind the egress allow-list.
-6. **Functions** *(later)* — user-defined Lua libraries loaded from the VFS via
+4. **Data processing**: `json` host module (serde bridge); later csv/yaml/base64.
+5. **HTTP** *(later)*, a host `http` module behind the egress allow-list.
+6. **Functions** *(later)*, user-defined Lua libraries loaded from the VFS via
    a controlled loader (not the real `package`/`require`).
-7. **Code mode** *(later)* — the agent's available tools registered as Lua
+7. **Code mode** *(later)*, the agent's available tools registered as Lua
    functions, so one script orchestrates many tool calls per turn.
 
 ### Goal: supersede `bashkit_shell`
@@ -48,19 +48,19 @@ incidents). No bash removal happens before that evidence exists. See
 
 Mirrors `bashkit_shell` so the proven scaffolding is reused:
 
-- `LuaCapability` — `Capability` impl. `risk_level() = High`, admin-gated
+- `LuaCapability`, `Capability` impl. `risk_level() = High`, admin-gated
   exactly like `bashkit_shell` (`check_high_risk_caps` /
   `require_admin_for_high_risk`). Depends on `session_file_system`; contributes
   the `file_system` feature.
-- `LuaTool` — single `lua` tool. `cpu_bound`, `concurrency_class =
+- `LuaTool`, single `lua` tool. `cpu_bound`, `concurrency_class =
   "session_workspace"` (serialize concurrent workspace mutators in a batch),
   `persist_output`, `long_running`.
-- `LuaVfs` — wraps `(SessionId, Arc<dyn SessionFileSystem>)`. Owns the
+- `LuaVfs`, wraps `(SessionId, Arc<dyn SessionFileSystem>)`. Owns the
   `/workspace` ↔ session-store path translation (identical rules to
   `SessionFileSystemAdapter`: absolute, forward-slash, `/workspace` stripped,
   traversal/outside-workspace rejected). This is what makes tenant isolation
-  free — every path resolves through the already session-scoped store.
-- **Engine** — `LuaLimits` (data) + `engine::run(...)` in the opt-in integration
+  free, every path resolves through the already session-scoped store.
+- **Engine**: `LuaLimits` (data) + `engine::run(...)` in the opt-in integration
   crate. Builds that do not select the integration pull in no interpreter.
 
 ### Runtime choice
@@ -68,11 +68,11 @@ Mirrors `bashkit_shell` so the proven scaffolding is reused:
 **Decision: `mlua` (vendored Lua 5.4, never LuaJIT) is the sole engine.** It is
 actively maintained, ships the complete Lua 5.4 stdlib, and exposes the
 memory/instruction controls the sandbox needs. `piccolo` (pure-Rust) was
-prototyped behind the same seam for its no-C appeal, but rejected: effectively
+prototyped behind the same boundary for its no-C appeal, but rejected: effectively
 unmaintained (no release since 2024-06) and a thin stdlib that would force us to
-reimplement ~19 functions plus a Lua-pattern engine on a dead base — and the eval
+reimplement ~19 functions plus a Lua-pattern engine on a dead base, and the eval
 below measured it failing tasks mlua passes. The pure-Rust safety win is moot
-when the dependency gets no security fixes. The engine seam was kept minimal
+when the dependency gets no security fixes. The engine boundary was kept minimal
 (one `engine::run`); there is no longer a second engine.
 
 The mlua trade-off vs piccolo is that the sandbox is **in-process native code**,
@@ -83,7 +83,7 @@ the residual and the out-of-process path if hostile-CPU isolation is needed.
 ## Sandbox model (multitenant safety)
 
 One **fresh VM per invocation**, never shared across sessions or tenants. No VM
-state outlives a single tool call. All controls are on by default — **no
+state outlives a single tool call. All controls are on by default, **no
 configuration knobs**. Because mlua loads the full stdlib, the dangerous surface
 is **scrubbed** rather than absent:
 
@@ -131,7 +131,7 @@ return value             -- serialized back to the model (json-encodable)
 ```
 
 The full Lua 5.4 stdlib (`string.*` incl. `format`/`find`/`match`/`gsub`,
-`table.*` incl. `sort`, `math.*`, `os.time`/`os.date`) is available — no shims
+`table.*` incl. `sort`, `math.*`, `os.time`/`os.date`) is available, no shims
 needed. Open host modules (future): `csv`/`yaml`.
 
 ## Threat model (TM-LUA-\*)
@@ -145,37 +145,37 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
 
 ## Phased roadmap
 
-- **Phase 1 — DONE.** Capability + `lua` tool, `fs.*` + `json.*`, sandbox limits,
-  engine seam, the **`mlua` engine** (vendored Lua 5.4) with the async VFS bridge,
+- **Phase 1, DONE.** Capability + `lua` tool, `fs.*` + `json.*`, sandbox limits,
+  engine boundary, the **`mlua` engine** (vendored Lua 5.4) with the async VFS bridge,
   full e2e tests. Feature-flagged (`FEATURE_LUA` + `lua` cargo feature), admin-gated.
-- **Phase 2 — PARTIAL.** `print` capture+stream and TM-LUA threat-model coverage
+- **Phase 2, PARTIAL.** `print` capture+stream and TM-LUA threat-model coverage
   are done. The full Lua 5.4 stdlib (`table.*`, `string.*`, `math.*`, `os.*`) is
   provided directly by `mlua`, so the piccolo-era stdlib-shim gap (which had failed
   the sort task 3/3) no longer applies. **Open:** `os.*`-subset hardening and
   background-execution parity (`BackgroundExecutableTool`).
-- **Phase 3 — PARTIAL.** `base64` module + bash-vs-lua eval harness
-  (`research/lua-vs-bash`) done — see Evaluation results below. **Open:**
+- **Phase 3, PARTIAL.** `base64` module + bash-vs-lua eval harness
+  (`research/lua-vs-bash`) done, see Evaluation results below. **Open:**
   `csv`/`yaml` modules.
-- **Phase 4 — IMPLEMENTED (http + code mode); user libraries deferred.**
+- **Phase 4, IMPLEMENTED (http + code mode); user libraries deferred.**
 
-  - **`http.*` (target 5) — DONE.** `http.get(url)` / `http.post(url, body)`
+  - **`http.*` (target 5), DONE.** `http.get(url)` / `http.post(url, body)`
     routed **only** through `ToolContext::egress_service` (the host egress
     boundary) and **fail-closed**: a request runs only if `network_access` has a
     non-empty allow-list that permits the URL; otherwise `http.*` is not even
     defined. No raw sockets; response bodies capped at 1 MiB. SSRF/exfil mitigated
     by the allow-list + the central egress boundary (TM-LUA-005).
-  - **Code mode (target 7) — DONE.** The agent's sibling tools are registered as
+  - **Code mode (target 7), DONE.** The agent's sibling tools are registered as
     `tools.<name>(args) -> result`, dispatched over the same channel bridge as
     `fs.*`. Eligibility is decided by the shared `lua::is_code_mode_eligible`
     predicate (`gated_code_mode_tools` filters the live registry through it):
     only `Auto`-policy, non-destructive, non-`cpu_bound` tools; approval/client-side
     and the execution tools (`lua`/`bash`) are excluded. The child `ToolContext`
     drops `tool_registry`, so code mode cannot recurse (TM-LUA-009).
-  - **Code-mode routing capability (`lua_code_mode`) — DONE.** Makes Lua the
+  - **Code-mode routing capability (`lua_code_mode`), DONE.** Makes Lua the
     agent's *primary* action surface by hiding the code-mode-eligible tools from
     the model's direct tool list, so the agent must orchestrate them inside a
     `lua` script. See "Code-mode routing capability" below.
-  - **User libraries (target 6) — deferred.** A controlled `require(path)`-style
+  - **User libraries (target 6), deferred.** A controlled `require(path)`-style
     loader that reads a **text** Lua file from `/workspace` and returns its
     exports. Text-only loading stays within the script's trust level (no bytecode
     → TM-LUA-006 holds), but the loader must cap module count/recursion and
@@ -188,14 +188,14 @@ that turns code mode from an occasional optimization into the agent's default
 action path. It exists to satisfy three constraints:
 
 1. **Capability-extensibility only.** The single mechanism is the existing
-   `ToolDefinitionHook` tool-filtering seam (`knowledge/execution/capabilities.md`). The hook
+   `ToolDefinitionHook` tool-filtering boundary (`knowledge/execution/capabilities.md`). The hook
    runs after the runtime agent has merged its final tool list and drops every
    code-mode-eligible `ToolDefinition` before the schemas reach the model. No
    new agent-loop plumbing.
 2. **Relies on the `lua` capability.** `lua_code_mode` declares `lua` as a hard
    dependency and reuses `lua::is_code_mode_eligible` as the *same* predicate the
    engine uses to expose `tools.<name>`. Because both sides share one predicate,
-   the set hidden from the model is exactly the set Lua re-exposes — a tool can
+   the set hidden from the model is exactly the set Lua re-exposes, a tool can
    never become unreachable.
 3. **Capabilities export their tools to Lua.** The export channel is the
    engine's `tools.<name>(args)` table; this capability is what makes that the
@@ -204,7 +204,7 @@ action path. It exists to satisfy three constraints:
 Key property that makes this safe: the *executable* `ToolRegistry`
 (`ToolContext::tool_registry`) is built from capability `tools()` independently
 of the model-facing `ToolDefinition` list. The hook only edits the latter, so
-hidden tools stay fully executable — the act atom passes the full registry into
+hidden tools stay fully executable, the act atom passes the full registry into
 the Lua child context, and code mode calls them directly (not back through the
 model). Essential tools (the `lua`/`bash` execution tools, destructive,
 approval-gated, client-side, `cpu_bound`) are never eligible and stay direct
@@ -213,7 +213,7 @@ tool calls.
 **Discovery.** Hiding a tool removes its standalone schema, so the hook also
 grafts a catalog of the hidden tools onto the **`lua` tool's description**, built
 from the same `ToolDefinition` list it is filtering (the synthetic
-`human_intent` argument is omitted). By default each entry is a typed signature —
+`human_intent` argument is omitted). By default each entry is a typed signature,
 `- name(a: number, b?: string) — first sentence` (required args first, optional
 suffixed with `?`, types from the JSON Schema). The `full_schemas` config option
 additionally embeds each tool's complete minified JSON Schema (`schema: {…}`) for
@@ -225,7 +225,7 @@ prompt) means it is paid only when `lua` is present.
 
 - **Config:** `{ "keep_visible": ["tool_a", ...] }` force-keeps named tools as
   direct calls even when they would otherwise be routed through Lua. Default empty.
-- **Risk:** `High` — inseparable from `lua` (scripted execution) and admin-gated
+- **Risk:** `High`, inseparable from `lua` (scripted execution) and admin-gated
   like its dependency. Registered only when `FEATURE_LUA` is on, next to `lua`.
 - **Evidence:** runnable end-to-end smoke test
   `crates/host/tests/lua_code_mode_test.rs` and the documented example
@@ -236,7 +236,7 @@ prompt) means it is paid only when `lua` is present.
 ## Migration (supersede `bashkit_shell`)
 
 1. Reach parity for the file-munging workflows bash covers (Phase 2 eval gate).
-2. Land code mode (Phase 4) — the capability bash cannot match.
+2. Land code mode (Phase 4), the capability bash cannot match.
 3. Default new agents to `lua`; mark `bashkit_shell` deprecated in capability
    metadata; keep existing bash-assigned agents running.
 4. Remove `bashkit_shell` only after a deprecation window with no parity gaps.
@@ -269,7 +269,7 @@ superseding bash.
 ### Evaluation harness
 
 Lives in **`research/lua-vs-bash`** (a standalone crate over `everruns-host`,
-excluded from the workspace) — **not** `test_cases/`, which is for manual UI
+excluded from the workspace), **not** `test_cases/`, which is for manual UI
 testing.
 
 - **A/B design.** Identical agent/model/prompt-scaffolding; swap only the
@@ -298,13 +298,13 @@ engines were measured against the same bash baseline:
 | arm | success | tool_calls | tool_errors | avg_iters | avg_ms |
 |---|---|---|---|---|---|
 | bashkit_shell | 12/12 | 18 | 0 | 2.5 | 2597 |
-| lua — **mlua** | **12/12** | **12** | **0** | **2.0** | **2528** |
-| lua — piccolo | 9/12 | 46 | 27 | 4.6 | 7218 |
+| lua, **mlua** | **12/12** | **12** | **0** | **2.0** | **2528** |
+| lua, piccolo | 9/12 | 46 | 27 | 4.6 | 7218 |
 
 Findings:
 
 - **mlua matches bash on success and beats it on efficiency.** 12/12 with zero
-  tool errors, ~33% fewer tool calls (12 vs 18) and fewer iterations — the
+  tool errors, ~33% fewer tool calls (12 vs 18) and fewer iterations, the
   structured-data edge materializes once the full stdlib is present (`json_sum`
   and `math`: one Lua call computes and returns the value; bash needs compute +
   write). This is the "replace bash" thesis confirmed with data.
@@ -316,7 +316,7 @@ Findings:
 - **Decision.** Combined with piccolo being effectively unmaintained (no release
   since 2024-06 vs mlua's monthly cadence) and the ~19-function-plus-pattern-
   engine reimplementation cost, the evidence favors **mlua as the default
-  engine**. piccolo stays behind the seam for anyone wanting a pure-Rust VM and
+  engine**. piccolo stays behind the boundary for anyone wanting a pure-Rust VM and
   willing to own the stdlib. License is a non-issue (both MIT; vendored Lua is
   MIT).
 

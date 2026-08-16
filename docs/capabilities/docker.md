@@ -79,5 +79,5 @@ Configure the Docker container via the capability settings:
 
 ## See Also
 
-- [Container Sandbox integration guide](/integrations/container-sandbox/) — setup and configuration
+- [Container Sandbox integration guide](/integrations/container-sandbox/), setup and configuration
 - [Capabilities Overview](/capabilities/)

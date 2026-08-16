@@ -11,7 +11,7 @@
 REST API. Agents can delegate coding work to Cursor's cloud agents and track
 their progress, authenticated with a user-supplied Cursor API key.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

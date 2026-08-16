@@ -106,5 +106,5 @@ The tool returns the full SKILL.md instructions wrapped in `<skill>` tags. The a
 ## See also
 
 - [Agent Skills feature](/features/skills/)
-- [Skills Registry](/features/skills-registry/) — share skills across the organization.
+- [Skills Registry](/features/skills-registry/), share skills across the organization.
 - [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/)

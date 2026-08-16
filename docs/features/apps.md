@@ -26,8 +26,8 @@ The same agent can back multiple apps (e.g., a Slack deployment and a webhook de
 | AG-UI | Available | AG-UI inbound channel |
 | Schedule | Deprecated | New channels are rejected; use [Agent triggers](/features/agent-triggers/) |
 | Webhook | Available | HTTP-triggered invocation |
-| WhatsApp | Planned | — |
-| Web Widget | Planned | — |
+| WhatsApp | Planned |, |
+| Web Widget | Planned |, |
 
 See [Slack Integration](/integrations/slack/) for the Slack-side setup.
 
@@ -77,11 +77,11 @@ Full request/response schemas in the [API reference](/api/).
 
 ## Do something
 
-- [Publish an agent as a Slack app](/how-to/publish-to-slack/) — end-to-end deployment.
-- [Slack Integration](/integrations/slack/) — Slack-side manifest and OAuth setup.
+- [Publish an agent as a Slack app](/how-to/publish-to-slack/), end-to-end deployment.
+- [Slack Integration](/integrations/slack/), Slack-side manifest and OAuth setup.
 
 ## See also
 
-- [Agent Versions](/features/agent-versions/) — pin an app to a specific agent version.
-- [Agent triggers](/features/agent-triggers/) — run an agent proactively without an App schedule channel.
+- [Agent Versions](/features/agent-versions/), pin an app to a specific agent version.
+- [Agent triggers](/features/agent-triggers/), run an agent proactively without an App schedule channel.
 - [Concepts: Apps](/explanation/concepts/#apps-connect-agents-to-the-outside-world)

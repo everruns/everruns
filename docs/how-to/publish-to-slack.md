@@ -36,9 +36,9 @@ The app starts in `draft` state. It does not accept incoming messages until you 
 
 | Strategy | Behaviour | Use when |
 |---|---|---|
-| `per_thread` (default) | Each Slack thread is its own session | Support bots, Q&A — each thread is a separate conversation |
-| `per_channel` | One session per channel | Persistent channel assistant — context shared across the channel |
-| `per_user` | One session per user | Personal assistant — each user has their own ongoing chat |
+| `per_thread` (default) | Each Slack thread is its own session | Support bots, Q&A, each thread is a separate conversation |
+| `per_channel` | One session per channel | Persistent channel assistant, context shared across the channel |
+| `per_user` | One session per user | Personal assistant, each user has their own ongoing chat |
 
 ## Publish
 
@@ -46,7 +46,7 @@ The app starts in `draft` state. It does not accept incoming messages until you 
 curl -X POST http://localhost:9300/api/v1/apps/$APP_ID/publish
 ```
 
-After publishing, Slack webhooks are accepted at the app's endpoint. Configure your Slack app manifest with `https://your-host/api/v1/apps/{app_id}/slack/events` (verify the current path in the [API reference](/api/) under the Slack events endpoint before updating Slack — if the platform's URL shape changes, the API reference is authoritative).
+After publishing, Slack webhooks are accepted at the app's endpoint. Configure your Slack app manifest with `https://your-host/api/v1/apps/{app_id}/slack/events` (verify the current path in the [API reference](/api/) under the Slack events endpoint before updating Slack, if the platform's URL shape changes, the API reference is authoritative).
 
 ## Unpublish and rollback
 
@@ -62,13 +62,13 @@ Existing sessions remain accessible via the API. The app moves back to `draft` a
 
 If you've enabled [Agent Versions](/features/agent-versions/), pick which version the app uses:
 
-- `default` — follow the agent's default version.
-- `latest` — always use the newest saved version.
-- `pinned` — use a specific version until you change it.
+- `default`, follow the agent's default version.
+- `latest`, always use the newest saved version.
+- `pinned`, use a specific version until you change it.
 
 Set this on the app's `agent_version_mode` field.
 
 ## See also
 
 - [Apps feature](/features/apps/)
-- [Slack Integration](/integrations/slack/) — the prerequisite Slack-side configuration.
+- [Slack Integration](/integrations/slack/), the prerequisite Slack-side configuration.

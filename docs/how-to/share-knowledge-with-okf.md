@@ -1,6 +1,6 @@
 ---
 title: Share knowledge with Open Knowledge Format (OKF)
-description: Import and export Knowledge Bases as Open Knowledge Format bundles — portable markdown-with-frontmatter that any OKF consumer or agent can read, managed like code.
+description: Import and export Knowledge Bases as Open Knowledge Format bundles, portable markdown-with-frontmatter that any OKF consumer or agent can read, managed like code.
 ---
 
 [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) is a vendor-neutral interchange format for the metadata and curated context around your data: a bundle is just a directory of markdown files with YAML frontmatter, shippable as a tarball or git repo. everruns Knowledge Bases speak OKF on both ends, so you can keep curated knowledge as code, ingest bundles produced elsewhere, and hand your agents' working set to any OKF consumer.
@@ -75,7 +75,7 @@ The response summarizes the run:
 
 ### Keeping a Knowledge Base in sync
 
-Re-run the same import whenever the bundle changes — matched entries update in place (keyed on `resource`, or the bundle path when there is no `resource`). To make the Knowledge Base a strict mirror of the bundle, pass `"prune": true`; entries that came from a previous import and are absent from the new bundle are removed.
+Re-run the same import whenever the bundle changes, matched entries update in place (keyed on `resource`, or the bundle path when there is no `resource`). To make the Knowledge Base a strict mirror of the bundle, pass `"prune": true`; entries that came from a previous import and are absent from the new bundle are removed.
 
 ```bash
 curl -s -X POST "http://localhost:9300/api/v1/knowledge-bases/$KB_ID/okf_import" \

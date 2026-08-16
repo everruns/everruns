@@ -14,7 +14,7 @@ OpenAI-compatible Chat Completions API, so the driver wraps the core Chat
 Completions protocol driver and parses Fireworks' richer `/models` metadata
 (chat, tools, image input, context window) into capability profiles.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
 or [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude

@@ -38,27 +38,27 @@ storage or orchestration cross into [custom backends](/framework/custom-backends
 
 ## Start here
 
-- [Quickstart](/framework/quickstart/) — install the crate and run an offline agent.
-- [Architecture](/framework/architecture/) — understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
-- [Agents](/framework/agents/) — instructions, files, workspaces, MCP, plugins, and context inspection.
-- [Workspace security](/framework/workspace-security/) — configure portable read and write scopes with secure defaults.
-- [Workspaces and Environments](/framework/workspaces-and-environments/) — bind sessions to isolated or explicitly shared provider-owned heads.
-- [Models and providers](/framework/models-and-providers/) — simulation, OpenAI, and the open provider boundary.
-- [Tools and macros](/framework/tools-and-macros/) — typed function tools through `everruns::tool`.
-- [Sessions](/framework/sessions/) — independent, multi-turn conversations.
-- [Session work and wakes](/framework/background-work/) — immediate and scheduled work with explicit delivery and restart semantics.
-- [Session History and Resume](/framework/session-history/) — bounded transcript pages and typed continuation.
-- [Events and cancellation](/framework/events-and-cancellation/) — observe a live turn and stop work cooperatively.
-- [Lifecycle hooks](/framework/lifecycle-hooks/) — run awaited application behavior at execution boundaries.
-- [Canonical events](/framework/canonical-events/) — render or record the lossless event protocol.
-- [Persistence](/framework/persistence/) — Engine-lifetime memory and crash-durable local state.
+- [Quickstart](/framework/quickstart/), install the crate and run an offline agent.
+- [Architecture](/framework/architecture/), understand Agent, Engine, Session, and the shared immediate/durable execution kernel.
+- [Agents](/framework/agents/), instructions, files, workspaces, MCP, plugins, and context inspection.
+- [Workspace security](/framework/workspace-security/), configure portable read and write scopes with secure defaults.
+- [Workspaces and Environments](/framework/workspaces-and-environments/), bind sessions to isolated or explicitly shared provider-owned heads.
+- [Models and providers](/framework/models-and-providers/), simulation, OpenAI, and the open provider boundary.
+- [Tools and macros](/framework/tools-and-macros/), typed function tools through `everruns::tool`.
+- [Sessions](/framework/sessions/), independent, multi-turn conversations.
+- [Session work and wakes](/framework/background-work/), immediate and scheduled work with explicit delivery and restart semantics.
+- [Session History and Resume](/framework/session-history/), bounded transcript pages and typed continuation.
+- [Events and cancellation](/framework/events-and-cancellation/), observe a live turn and stop work cooperatively.
+- [Lifecycle hooks](/framework/lifecycle-hooks/), run awaited application behavior at execution boundaries.
+- [Canonical events](/framework/canonical-events/), render or record the lossless event protocol.
+- [Persistence](/framework/persistence/), Engine-lifetime memory and crash-durable local state.
 
 ## Extend and operate
 
-- [Custom providers](/framework/custom-providers/) — attach a custom `ChatDriver` without changing a closed enum.
-- [Capabilities](/framework/advanced-capabilities/) — configure the optional standard policy bundle and open references, or package typed tools with stable metadata and lifecycle context.
-- [Capability integrations](/framework/capability-integrations/) — opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
-- [Portable and hosted capabilities](/framework/capability-boundaries/) — understand the Framework/Platform implementation boundary.
-- [Custom backends](/framework/custom-backends/) — cross into low-level host composition deliberately.
-- [Testing and simulation](/framework/testing-and-simulation/) — deterministic tests without credentials.
-- [Runnable examples](/framework/examples/) — complete programs maintained with the crate.
+- [Custom providers](/framework/custom-providers/), attach a custom `ChatDriver` without changing a closed enum.
+- [Capabilities](/framework/advanced-capabilities/), configure the optional standard policy bundle and open references, or package typed tools with stable metadata and lifecycle context.
+- [Capability integrations](/framework/capability-integrations/), opt into filesystem, shell, web, Lua, and MCP implementation boundaries.
+- [Portable and hosted capabilities](/framework/capability-boundaries/), understand the Framework/Platform implementation boundary.
+- [Custom backends](/framework/custom-backends/), cross into low-level host composition deliberately.
+- [Testing and simulation](/framework/testing-and-simulation/), deterministic tests without credentials.
+- [Runnable examples](/framework/examples/), complete programs maintained with the crate.

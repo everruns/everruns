@@ -123,9 +123,9 @@ they do not route through `EgressService`.
 
 Requests can set:
 
-- `disabled` — send without signatures.
-- `platform_default` — sign when the platform has an egress signer configured.
-- `required` — fail if the platform cannot sign the request.
+- `disabled`, send without signatures.
+- `platform_default`, sign when the platform has an egress signer configured.
+- `required`, fail if the platform cannot sign the request.
 
 V1 keeps the request shape provider-neutral. The concrete signer can implement
 HTTP Message Signatures, vendor-specific signatures, or both. Existing fetchkit
@@ -166,7 +166,7 @@ Deployment properties:
    *Done for bashkit*: curl/wget (opt-in via the `bashkit_shell` capability's
    `enable_http` config) route through
    `integrations/bashkit/src/egress_transport.rs` with no
-   direct-client fallback — without an egress service the shell stays offline
+   direct-client fallback, without an egress service the shell stays offline
    (see `knowledge/operations/network-access.md`).
 3. Move tenant/agent-selected integration clients onto it.
 4. Add the remote Egress Gateway implementation and make worker/CP direct

@@ -20,7 +20,7 @@ work without reusing user-configured model providers or session secrets.
 Server-side system analysis tasks are also sanctioned callers: bounded,
 system-initiated analysis of platform-owned data (e.g., agent configuration
 checks per `knowledge/evaluation/agent-checks.md`). These run inside server domains via the
-`HostComposition` service handle — never as a public ad hoc completion
+`HostComposition` service handle, never as a public ad hoc completion
 endpoint.
 
 ## Core Contract

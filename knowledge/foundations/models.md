@@ -48,7 +48,7 @@ Applies to:
 - Apps
 
 Contract:
-- `archived` means read-only, not assignable, not executable, hidden from lists by default, visible when explicitly filtered in. The filter label is always "Show archived" (no entity suffix) — the page context already communicates what entity type is listed.
+- `archived` means read-only, not assignable, not executable, hidden from lists by default, visible when explicitly filtered in. The filter label is always "Show archived" (no entity suffix), the page context already communicates what entity type is listed.
 - `deleted` is a tombstone state used only to preserve historical references. Normal detail APIs return `404`, normal lists exclude deleted items, and runtime execution must not use them.
 - Existing references are preserved by ID. UI/API reference surfaces render tombstones like `<Deleted Agent>` instead of resolving the deleted entity normally.
 - If a session or app references an archived or deleted dependency, execution must stop gracefully on the next atom with a user-visible explanation instead of crashing.
@@ -80,7 +80,7 @@ Key design points:
   (`org`, `agent`, `user`) and are mounted at session creation under reserved
   `/memory/*` paths. See `knowledge/runtime-resources/memory.md`.
 - Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
-- Sessions work indefinitely — after processing, status returns to `idle`.
+- Sessions work indefinitely, after processing, status returns to `idle`.
 
 ### Principal Ownership
 
@@ -198,9 +198,9 @@ The primary data store for conversation messages and SSE notifications. See `cra
 
 **Storage Guarantees:**
 
-1. **Append-Only** — Events are immutable. UPDATE and DELETE blocked via database triggers.
-2. **Atomic Per-Session Sequence** — Sequence numbers allocated atomically per session via `event_sequences` table (prevents race conditions).
-3. **Event Type Consistency** — `event_type` field must match `data` payload type. Validated at service layer.
+1. **Append-Only**: Events are immutable. UPDATE and DELETE blocked via database triggers.
+2. **Atomic Per-Session Sequence**: Sequence numbers allocated atomically per session via `event_sequences` table (prevents race conditions).
+3. **Event Type Consistency**: `event_type` field must match `data` payload type. Validated at service layer.
 
 **Event Type Naming Convention:** `{entity}.{action}` pattern (e.g., `input.message`, `turn.completed`). See `knowledge/execution/events.md` for the full event type registry and lifecycle details.
 
@@ -299,8 +299,8 @@ Profiles matched by provider_type + model_id with version normalization (e.g., "
 
 Automatic discovery of available models from provider APIs (OpenAI, OpenRouter via the OpenAI-compatible driver, Anthropic).
 
-- **Background Sync** — Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, 0 to disable)
-- **Manual Sync** — `POST /v1/providers/:id/sync-models`
+- **Background Sync**: Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, 0 to disable)
+- **Manual Sync**: `POST /v1/providers/:id/sync-models`
 - Only providers with standard base URLs or driver-recognized model-listing URLs synced (for example OpenRouter's OpenAI-compatible endpoint); unsupported custom URLs are skipped
 - New models added as `discovered`; existing models have `last_seen_at` updated
 

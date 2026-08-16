@@ -9,10 +9,10 @@
 `everruns-integrations-daytona` adds cloud-based sandboxed code execution backed
 by the [Daytona](https://www.daytona.io) REST API. Agents can create sandboxes,
 run commands with streamed output, and read or write files inside an isolated
-environment — managed per session and authenticated with a user-supplied Daytona
+environment, managed per session and authenticated with a user-supplied Daytona
 API key.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
 [`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
 integration plugin system.

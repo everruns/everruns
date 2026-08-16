@@ -3,7 +3,7 @@ title: Give an agent web access
 description: Enable the web_fetch capability, restrict outbound network access with allow/block lists, and verify the agent reaches only intended hosts.
 ---
 
-`web_fetch` gives an agent the `web_fetch` tool — fetch any URL, optionally convert HTML to markdown. By default it can reach any public host, with built-in SSRF protection blocking private IPs. To restrict it further, layer **network access lists** on the harness, agent, or session.
+`web_fetch` gives an agent the `web_fetch` tool, fetch any URL, optionally convert HTML to markdown. By default it can reach any public host, with built-in SSRF protection blocking private IPs. To restrict it further, layer **network access lists** on the harness, agent, or session.
 
 ## Enable the capability
 
@@ -77,7 +77,7 @@ curl -X POST http://localhost:9300/api/v1/sessions \
 
 ## SSRF protection
 
-Even without an explicit policy, `web_fetch` blocks private IP ranges by default — loopback, RFC1918, link-local, and CGNAT — with DNS pinning to prevent rebinding attacks. To explicitly allow a private host, set it in `allowed` and disable SSRF protection at the harness level (see [Network access control](/advanced/network-access/)).
+Even without an explicit policy, `web_fetch` blocks private IP ranges by default, loopback, RFC1918, link-local, and CGNAT, with DNS pinning to prevent rebinding attacks. To explicitly allow a private host, set it in `allowed` and disable SSRF protection at the harness level (see [Network access control](/advanced/network-access/)).
 
 ## Verify
 
@@ -93,6 +93,6 @@ await client.messages.create(session.id, "Fetch https://evil.example.com/")
 
 ## See also
 
-- [Network access control](/advanced/network-access/) — full pattern semantics and layering rules.
-- [Web Fetch capability](/capabilities/web-fetch/) — tool reference.
+- [Network access control](/advanced/network-access/), full pattern semantics and layering rules.
+- [Web Fetch capability](/capabilities/web-fetch/), tool reference.
 - [Equip an agent with tools](/how-to/equip-agents-with-tools/)

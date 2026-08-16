@@ -39,17 +39,17 @@ Each group has an optional `description` and a list of `allowed` host patterns.
 Patterns use the same format and matching rules as `NetworkAccessList` (see
 `knowledge/operations/network-access.md`):
 
-- `example.com` — exact domain
-- `*.example.com` — domain and all subdomains (apex included)
-- `https://example.com/api/` — URL prefix
+- `example.com`, exact domain
+- `*.example.com`, domain and all subdomains (apex included)
+- `https://example.com/api/`, URL prefix
 
 Current groups: `package_registries`, `source_hosting`, `container_registries`,
 `ai_providers`, `cloud_providers`, `os_packages`, `developer_tools`.
 
 `SystemAllowlist` flattens all group patterns into a single non-empty `allowed`
 `NetworkAccessList`, so only URLs matching at least one pattern are permitted.
-An allowlist with no patterns (empty/misconfigured TOML) **fails closed** — it
-denies every URL rather than allowing all — via a sentinel pattern, since an
+An allowlist with no patterns (empty/misconfigured TOML) **fails closed**: it
+denies every URL rather than allowing all, via a sentinel pattern, since an
 empty `NetworkAccessList.allowed` otherwise means "no restriction". See
 `crates/core/src/system_allowlist.rs`.
 
@@ -69,13 +69,13 @@ this toggle.
 The env var is read by every process that builds an egress service, so it
 applies uniformly across the **control plane** and **workers**:
 
-- `crates/server/src/platform.rs` — control-plane / in-process platform.
-- `crates/worker/src/platform.rs` — distributed worker platform.
-- `crates/server/src/domains/mcp_servers/service.rs` — MCP server egress.
+- `crates/server/src/platform.rs`, control-plane / in-process platform.
+- `crates/worker/src/platform.rs`, distributed worker platform.
+- `crates/server/src/domains/mcp_servers/service.rs`, MCP server egress.
 
 Each runtime/agent egress surface must construct egress via
 `DirectEgressService::for_runtime_traffic_from_env()` (not `::default()`) so the
-toggle is honored everywhere. The list contents are *not* env-configurable —
+toggle is honored everywhere. The list contents are *not* env-configurable,
 they are the curated embedded TOML; only the on/off toggle is environmental.
 
 ## Enforcement
@@ -99,7 +99,7 @@ through `EgressService`. They must not require adding provider endpoints such as
 
 ### Maximum priority (hard ceiling)
 
-The system allowlist is a separate, AND-ed gate — it is **never merged into**
+The system allowlist is a separate, AND-ed gate, it is **never merged into**
 the harness/agent/session `NetworkAccessList`. Those layers can only narrow
 within the system allowlist (intersection on `allowed`, union on `blocked`);
 they can **never widen past it or override it**. When the allowlist is enabled,

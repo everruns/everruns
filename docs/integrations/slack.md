@@ -23,7 +23,7 @@ Everruns generates a pre-filled Slack App manifest for each app, making setup fa
 
 1. Go to **Apps** and click **New App**
 2. Enter a name, select a Harness and Agent
-3. Click **Create App** — you'll be redirected to the detail page
+3. Click **Create App**: you'll be redirected to the detail page
 
 ### 2. Create the Slack App
 
@@ -44,7 +44,7 @@ Everruns generates a pre-filled Slack App manifest for each app, making setup fa
 1. **Publish** the app in Everruns first (so the webhook URL is live)
 2. Copy the **Request URL** shown on the app detail page
 3. In your Slack app settings, go to **Event Subscriptions** → Enable Events
-4. Paste the Request URL — Slack will verify it automatically
+4. Paste the Request URL, Slack will verify it automatically
 5. Subscribe to bot events: `message.channels`, `message.groups`, `message.im`, `message.mpim`, `app_mention`
 6. Click **Save Changes**
 
@@ -63,13 +63,13 @@ If you prefer to set up everything manually without the manifest:
 1. Go to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App** > **From scratch**
 2. Name your app and select the workspace
 3. Navigate to **OAuth & Permissions** and add these **Bot Token Scopes**:
-   - `chat:write` — Send messages
-   - `channels:history` — Read messages in public channels
-   - `groups:history` — Read messages in private channels (optional)
-   - `im:history` — Read direct messages (optional)
-   - `mpim:history` — Read group direct messages (optional)
-   - `app_mentions:read` — React to @mentions (optional)
-   - `users:read` — Resolve user display names
+   - `chat:write`, Send messages
+   - `channels:history`, Read messages in public channels
+   - `groups:history`, Read messages in private channels (optional)
+   - `im:history`, Read direct messages (optional)
+   - `mpim:history`, Read group direct messages (optional)
+   - `app_mentions:read`, React to @mentions (optional)
+   - `users:read`, Resolve user display names
 4. Click **Install to Workspace** and authorize
 5. Copy the **Bot User OAuth Token** (`xoxb-...`) from the OAuth page
 
@@ -129,12 +129,12 @@ Or click **Publish** in the UI.
    ```
 2. In your Slack app settings, go to **Event Subscriptions**
 3. Turn on **Enable Events**
-4. Paste the webhook URL as the **Request URL** — Slack will send a verification challenge that Everruns handles automatically
+4. Paste the webhook URL as the **Request URL**: Slack will send a verification challenge that Everruns handles automatically
 5. Under **Subscribe to bot events**, add:
-   - `message.channels` — Messages in public channels
-   - `message.groups` — Messages in private channels (optional)
-   - `message.im` — Direct messages (optional)
-   - `app_mention` — @mentions (optional)
+   - `message.channels`, Messages in public channels
+   - `message.groups`, Messages in private channels (optional)
+   - `message.im`, Direct messages (optional)
+   - `app_mention`, @mentions (optional)
 6. Click **Save Changes**
 
 :::note[Public URL Required]
@@ -161,7 +161,7 @@ The session strategy controls how Slack messages map to Everruns sessions:
 | `per_channel` | One session per Slack channel | `slack:channel:{channel}` |
 | `per_user` | One session per Slack user | `slack:user:{user}` |
 
-**`per_thread`** is recommended for most use cases — it gives each conversation its own context, matching how Slack threads naturally work.
+**`per_thread`** is recommended for most use cases, it gives each conversation its own context, matching how Slack threads naturally work.
 
 ## How It Works
 
@@ -178,7 +178,7 @@ The session strategy controls how Slack messages map to Everruns sessions:
 1. Slack sends a message event to the per-app webhook endpoint
 2. Everruns verifies the request using the HMAC-SHA256 signing secret
 3. Duplicate events are skipped (Slack sends both `app_mention` and `message` for @mentions)
-4. The request is acknowledged immediately — Slack requires a response within 3 seconds
+4. The request is acknowledged immediately, Slack requires a response within 3 seconds
 5. A session is found or created based on session strategy tags (e.g., `slack:thread:{ts}`)
 6. A user message is created, triggering an agent turn
 

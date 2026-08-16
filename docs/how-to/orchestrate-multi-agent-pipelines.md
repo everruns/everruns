@@ -3,7 +3,7 @@ title: Orchestrate multi-agent pipelines
 description: Chain multiple Everruns agents together by passing output from one session into another.
 ---
 
-A common pattern is splitting work across specialised agents — a researcher gathers facts, a writer turns them into prose, an editor polishes the result. Each is a separate agent and session; the application chains them.
+A common pattern is splitting work across specialised agents, a researcher gathers facts, a writer turns them into prose, an editor polishes the result. Each is a separate agent and session; the application chains them.
 
 This is the simplest orchestration pattern: no shared state, no subagent spawning, just sequential calls.
 
@@ -69,7 +69,7 @@ for aid in (researcher.id, writer.id):
     await client.agents.delete(aid)
 ```
 
-For pipelines you'll re-run, *don't* recreate the agents — create them once, store the IDs, and reuse them.
+For pipelines you'll re-run, *don't* recreate the agents, create them once, store the IDs, and reuse them.
 
 ## When to use subagents instead
 

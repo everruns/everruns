@@ -96,11 +96,11 @@ Deleting a skill hides it from capability listings. Agents that reference it via
 ## Security notes
 
 - Archive uploads are validated for path traversal, ZIP bombs, and size limits.
-- Skill instructions are returned as tool results, not injected into the system prompt — they don't bypass capability isolation.
+- Skill instructions are returned as tool results, not injected into the system prompt, they don't bypass capability isolation.
 - Skill names are unique per organization.
 - Disabled skills are hidden from listings.
 
 ## See also
 
 - [Skills Registry feature](/features/skills-registry/)
-- [Package an agent skill](/how-to/package-a-skill/) — author the SKILL.md.
+- [Package an agent skill](/how-to/package-a-skill/), author the SKILL.md.

@@ -1,6 +1,6 @@
 ---
 title: Physical Architecture
-description: The physical components that make up an Everruns deployment — control plane, workers, PostgreSQL, NATS JetStream, Valkey, and the reverse proxy — and how they fit together.
+description: The physical components that make up an Everruns deployment, control plane, workers, PostgreSQL, NATS JetStream, Valkey, and the reverse proxy, and how they fit together.
 sidebar:
   order: 25
 ---
@@ -15,15 +15,15 @@ The [getting-started architecture](/getting-started/architecture/) page describe
 |-----------|------|----------|--------------|
 | Reverse proxy | TLS termination and route fan-out for `/api`, `/mcp`, `/.well-known/*`, UI | Yes (or equivalent ingress) | 443 |
 | Control plane (server) | REST API, SSE event streams, gRPC server for workers, owns all state | Yes | 9301 (HTTP), 9001 (gRPC) |
-| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes | — (outbound only) |
+| Worker pool | Stateless executors of the agentic loop (input → reason → act) | Yes |, (outbound only) |
 | PostgreSQL 17 | Durable storage for agents, sessions, events, durable task queue | Yes | 5432 |
 | NATS JetStream | Push-based ephemeral event delivery and task notifications | Optional | 4222 |
 | Valkey | Distributed sliding-window rate limiting across control-plane instances | Optional | 6379 |
-| Management UI | Operator interface for agent and provider configuration | Optional | — (served by proxy) |
+| Management UI | Operator interface for agent and provider configuration | Optional |, (served by proxy) |
 
 Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write goes through the control plane's gRPC service on port 9001. This is what lets workers run with no database credentials, no encryption keys, and no awareness of the data tier.
 
-## PostgreSQL — the only required stateful component
+## PostgreSQL, the only required stateful component
 
 PostgreSQL is the single source of truth for everything Everruns persists. There is no in-memory cache that needs warming, no secondary store that needs syncing, and no analytics database to keep consistent. If you back up PostgreSQL, you back up the entire system.
 
@@ -43,24 +43,24 @@ Operational requirements:
 
 See [`docs/sre/environment-variables.md`](/sre/environment-variables/) for the full list of database-related variables.
 
-## NATS JetStream — optional push delivery
+## NATS JetStream, optional push delivery
 
 NATS is not required, but turning it on materially reduces PostgreSQL write pressure and SSE tail latency for busy deployments.
 
-Without NATS, Everruns uses PostgreSQL for both storage *and* delivery: ephemeral events persist to PG and SSE clients poll PG with `LISTEN/NOTIFY` wakeups; workers are notified of new tasks the same way. This works, and it is the default. The cost is write amplification — every streaming-token delta lands in PG even though no client will ever re-read it.
+Without NATS, Everruns uses PostgreSQL for both storage *and* delivery: ephemeral events persist to PG and SSE clients poll PG with `LISTEN/NOTIFY` wakeups; workers are notified of new tasks the same way. This works, and it is the default. The cost is write amplification, every streaming-token delta lands in PG even though no client will ever re-read it.
 
 With `NATS_URL` set and JetStream enabled, Everruns rewires two hot paths:
 
-- **Ephemeral event delivery.** Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL entirely and flow only through NATS JetStream. SSE streams subscribe to per-session subjects with short-term retention. Durable events (`output.message.completed`, `turn.started`, `tool.completed`, etc.) still persist to PG so SSE reconnection via `since_id` continues to work — missed deltas are acceptable because the completed event carries the full content.
+- **Ephemeral event delivery.** Delta events (`output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation`) skip PostgreSQL entirely and flow only through NATS JetStream. SSE streams subscribe to per-session subjects with short-term retention. Durable events (`output.message.completed`, `turn.started`, `tool.completed`, etc.) still persist to PG so SSE reconnection via `since_id` continues to work, missed deltas are acceptable because the completed event carries the full content.
 - **Task notifications.** `task.available.{activity_type}` subjects replace PG NOTIFY for worker wakeup, dropping notification latency from ~30 ms to ~1 ms.
 
-NATS is fail-graceful: if the connection fails at startup, the control plane logs a warning and falls back to the PG-backed paths. Only the control plane connects to NATS — workers still talk to the server via gRPC.
+NATS is fail-graceful: if the connection fails at startup, the control plane logs a warning and falls back to the PG-backed paths. Only the control plane connects to NATS, workers still talk to the server via gRPC.
 
-## Valkey — optional distributed rate limiting
+## Valkey, optional distributed rate limiting
 
 Valkey is a Redis-compatible key-value store (a Linux Foundation fork of Redis). Everruns uses it for exactly one thing: sliding-window rate limiting that is coordinated across control-plane instances.
 
-When `VALKEY_URL` is not set, rate limiting falls back to an in-memory governor — accurate per-instance, but with N instances behind a load balancer a single IP can consume up to N× the intended budget. Set `VALKEY_URL` when you run more than one control-plane instance and need a shared budget.
+When `VALKEY_URL` is not set, rate limiting falls back to an in-memory governor, accurate per-instance, but with N instances behind a load balancer a single IP can consume up to N× the intended budget. Set `VALKEY_URL` when you run more than one control-plane instance and need a shared budget.
 
 Connection details:
 
@@ -69,7 +69,7 @@ Connection details:
 - **Fail-open:** if Valkey is unreachable, the rate limiter allows the request rather than rejecting traffic on a side-channel outage
 - Only the control plane connects to Valkey; workers do not need access
 
-## Worker pool — no shared state
+## Worker pool, no shared state
 
 Workers are the most operationally boring component in the deployment. They have:
 
@@ -94,7 +94,7 @@ A reverse proxy (or platform ingress that enforces the same routes) is mandatory
 | `/health` | Control plane | Health check target |
 | Everything else | UI | If UI is deployed; otherwise 404 |
 
-TLS terminates at the proxy. Worker gRPC traffic stays on the private network — never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`examples/docker-compose-full.yaml`](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml) for working configurations.
+TLS terminates at the proxy. Worker gRPC traffic stays on the private network, never expose port 9001 publicly. See [`local/Caddyfile`](https://github.com/everruns/everruns/blob/main/local/Caddyfile) and [`examples/docker-compose-full.yaml`](https://github.com/everruns/everruns/blob/main/examples/docker-compose-full.yaml) for working configurations.
 
 ## Development modes
 
@@ -116,11 +116,11 @@ Multiple control-plane instances can run behind a load balancer with no session 
 | Migrations | PostgreSQL advisory lock prevents concurrent runs |
 | Rate limits | Valkey-backed sliding-window counters are shared; in-memory falls back to per-instance |
 
-Workers do not require coordination — add as many as you need, in as many regions as you need, as long as they can reach the control-plane gRPC port.
+Workers do not require coordination, add as many as you need, in as many regions as you need, as long as they can reach the control-plane gRPC port.
 
 ## Further reading
 
-- [Architecture (Getting Started)](/getting-started/architecture/) — the logical model
-- [Environment Variables](/sre/environment-variables/) — every knob and its default
-- [Docker Compose](/getting-started/docker-compose/) — a production-shaped local setup
-- [Custom backends](/framework/custom-backends/) — low-level execution-host composition
+- [Architecture (Getting Started)](/getting-started/architecture/), the logical model
+- [Environment Variables](/sre/environment-variables/), every knob and its default
+- [Docker Compose](/getting-started/docker-compose/), a production-shaped local setup
+- [Custom backends](/framework/custom-backends/), low-level execution-host composition

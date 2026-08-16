@@ -33,7 +33,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 ## Design Decisions
 
 - **One Slack App per Everruns App**: Each app has its own identity (name, avatar, scopes). This is unlike GitHub (global app) because Slack bots are user-facing with distinct identities per use case.
-- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes and bot user. `event_subscriptions` is omitted (requires live webhook URL — must be configured after publishing).
+- **Per-app manifest generation**: The manifest endpoint generates a YAML with correct scopes and bot user. `event_subscriptions` is omitted (requires live webhook URL, must be configured after publishing).
 - **App-scoped endpoint**: Slack is bound to an App, so the webhook is `POST /v1/apps/{app_id}/slack/events`. The App defines the harness, optional agent, signing secret, and session strategy.
 - **Unauthenticated**: Webhook and manifest requests come from Slack or the browser. Security is via Slack signing secret verification (HMAC-SHA256), not API key auth.
 - **Unscoped app lookup**: `get_app_by_public_id_unscoped()` looks up apps across all orgs since webhooks have no auth context.
@@ -41,7 +41,7 @@ The events endpoint verifies HMAC-SHA256 signing secret, finds/creates session b
 - **Event-driven response delivery**: The webhook acks Slack immediately (<3s), then registers with `SlackDeliveryDispatcher`. The dispatcher subscribes to `EventNotificationBroadcaster` (PostgreSQL NOTIFY) and delivers `output.message.completed` text to Slack as events arrive, with no fixed deadline. Handles arbitrarily long agent turns. Posts are retried with exponential backoff (3 attempts) on transient failures. Non-retryable errors (invalid token, channel not found) fail immediately. The dispatcher unregisters on `turn.completed` or `turn.failed`. Events are filtered by `input_message_id` to avoid cross-turn interference. Falls back to legacy 120s polling in DEV_MODE (no PostgreSQL).
 - **Startup recovery**: On server restart, `SlackDeliveryDispatcher::recover()` queries sessions with `status = 'active'` and `slack:*` tags, looks up the corresponding app for the bot_token, finds the last unfinished turn, and re-registers deliveries.
 - **Slack event dedup**: Slack sends both `app_mention` and `message` events for @mentions. DB-level dedup via `has_event_with_slack_ts()` prevents duplicate processing (uses JSONB `@>` containment on input.message events).
-- **Thread context injection**: When the bot is first mentioned mid-thread (`PerThread` strategy, new session, `thread_ts` present), prior messages are fetched via Slack's `conversations.replies` API and injected as `input.message` events (without triggering agent workflows). This gives the agent full conversational context. Bot messages become assistant-role; human messages get user-role with `ExternalActor` attribution. Failures are non-fatal — the agent proceeds without history. Required scopes (`channels:history`, `groups:history`, `im:history`, `mpim:history`) are already in the manifest.
+- **Thread context injection**: When the bot is first mentioned mid-thread (`PerThread` strategy, new session, `thread_ts` present), prior messages are fetched via Slack's `conversations.replies` API and injected as `input.message` events (without triggering agent workflows). This gives the agent full conversational context. Bot messages become assistant-role; human messages get user-role with `ExternalActor` attribution. Failures are non-fatal, the agent proceeds without history. Required scopes (`channels:history`, `groups:history`, `im:history`, `mpim:history`) are already in the manifest.
 - **Reply modes**: Slack apps can either forward completed assistant messages (`all_messages`) or run in `report_progress_only` handoff mode. In handoff mode the webhook posts an immediate deterministic acknowledgement (`On it.`), the session is tagged with the reply mode, ReasonAtom exposes a `report_progress` tool + prompt instructions, and Slack delivery ignores normal assistant messages in favor of explicit `tool.completed` events from that tool.
 
 ## Channel Config
@@ -94,7 +94,7 @@ Apps page at `/apps` with:
 
 ## Message Attachments
 
-Slack messages can include file uploads (`files[]`) and legacy attachments (`attachments[]` — link unfurls, Canvas, Workflows, etc.). Both are processed into `InputContentPart` items appended after the text content:
+Slack messages can include file uploads (`files[]`) and legacy attachments (`attachments[]`, link unfurls, Canvas, Workflows, etc.). Both are processed into `InputContentPart` items appended after the text content:
 
 - **Image files** (png, jpeg, gif, webp) with a `url_private` → `InputContentPart::Image(url)` (requires `files:read` scope)
 - **Non-image files** (pdf, video, text snippets, etc.) → text description: `[Attached file: name (type)]`
@@ -121,7 +121,7 @@ Display name resolution uses an in-memory cache with:
 
 The API `Message` response includes `external_actor` (optional) so clients can display user identity for externally-originated messages.
 
-This is channel-agnostic — any future channel adapter (Discord, Teams) populates the same `ExternalActor` struct and gets the same LLM prefix behavior.
+This is channel-agnostic, any future channel adapter (Discord, Teams) populates the same `ExternalActor` struct and gets the same LLM prefix behavior.
 
 ## Testing
 
@@ -130,7 +130,7 @@ Integration tests in `crates/server/tests/slack_integration_test.rs`:
 - **Webhook tests** (always run): URL verification, signature rejection, session creation/reuse, bot message filtering, session strategies, manifest endpoint, replay attack prevention
 - **Real Slack API tests** (require credentials): `chat.postMessage`, `users.info`, full webhook→session flow with real signing secret
 
-CI runs all tests via `doppler run` in the `integration-test` job (PostgreSQL required). `real_slack_credentials()` always panics if any `TEST_SLACK_*` env var is missing — real-API tests never silently skip.
+CI runs all tests via `doppler run` in the `integration-test` job (PostgreSQL required). `real_slack_credentials()` always panics if any `TEST_SLACK_*` env var is missing, real-API tests never silently skip.
 
 Doppler vars: `TEST_SLACK_BOT_TOKEN`, `TEST_SLACK_SIGNING_SECRET`, `TEST_SLACK_TEST_CHANNEL`.
 

@@ -18,7 +18,7 @@ durable contract for **hypermedia, link relations, and `allowed_actions`**.
 Top-level resource responses (those wrapped via `UrlBuilder::wrap` in
 `WithUrls<T>`) may carry an `allowed_actions: Vec<AllowedAction>` field.
 The field is omitted from the wire shape when no actions apply. Action
-membership is computed server-side from the current entity state — a
+membership is computed server-side from the current entity state, a
 `completed` session does not get a `cancel` action, an `idle` session
 does.
 
@@ -68,8 +68,8 @@ the agent can iterate over.
 
 ## `AllowedAction` shape
 
-`AllowedAction` is reused across two surfaces — entity hypermedia and
-error recovery — because the shape is identical; only the `rel`
+`AllowedAction` is reused across two surfaces, entity hypermedia and
+error recovery, because the shape is identical; only the `rel`
 vocabulary differs by surface.
 
 | Field          | Type             | When set                                                                                              |
@@ -115,8 +115,8 @@ resource (see e.g. `session_allowed_actions` in
 ## State-aware membership
 
 `allowed_actions` is recomputed per response from the current entity
-state. The mapping rule lives in **one place** per resource — the
-`ResourceUrlable::allowed_actions` impl — so that handlers can never
+state. The mapping rule lives in **one place** per resource, the
+`ResourceUrlable::allowed_actions` impl, so that handlers can never
 disagree about what's offered.
 
 **Sessions** (pilot for this convention):
@@ -155,10 +155,10 @@ unit-tested alongside `session_allowed_actions` in
 
 * Rolling the convention out to Volumes, Schedules, Memory stores,
   Knowledge bases, Payment accounts/policies, API keys, and Saved
-  reports — these don't currently flow through `UrlBuilder::wrap`
+  reports, these don't currently flow through `UrlBuilder::wrap`
   with `WithUrls<T>` (most rely on the `decorate_value_links`
   middleware for `self_url`/`view_url`). Opting them in requires a
   per-handler change to the response wrapper.
 * A ratchet gate for "% of entity responses carrying allowed_actions"
-  — designable after the remaining clusters have opted in so the
+, designable after the remaining clusters have opted in so the
   floor isn't premature.

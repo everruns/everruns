@@ -16,14 +16,14 @@ The agent instructions capability reads configured Markdown instruction files fr
 
 `AGENTS.md` is an emerging open standard (backed by OpenAI, Google, Cursor, Sourcegraph, Linux Foundation) for providing project-level instructions to AI coding agents. There is no formal specification beyond "plain markdown in a file named AGENTS.md." Each tool defines its own discovery and injection semantics.
 
-Everruns implements AGENTS.md as a built-in capability that reads from the session workspace filesystem. This integrates naturally with the existing capability system—users enable/disable it per agent, configure optional additional file names per capability assignment, and the content is picked up dynamically (no restart needed).
+Everruns implements AGENTS.md as a built-in capability that reads from the session workspace filesystem. This integrates naturally with the existing capability system, users enable/disable it per agent, configure optional additional file names per capability assignment, and the content is picked up dynamically (no restart needed).
 
 ## Design Decisions
 
 | Question | Decision |
 |----------|----------|
 | File name | Defaults to `AGENTS.md`; configurable `files` list can include names such as `CLAUDE.md` |
-| Discovery | Configured workspace-root files only — no upward walk |
+| Discovery | Configured workspace-root files only, no upward walk |
 | Injection point | Prepended to system prompt, before capability additions |
 | Dynamic reading | Re-read on every LLM turn (picks up changes immediately) |
 | Size limit | 32 KiB max per instruction file; truncated with warning if exceeded, excluding wrapper/hint text (matching Codex convention) |
@@ -73,9 +73,9 @@ execute_llm_call()
 
 After injection, system prompt order (top to bottom):
 
-1. **Instruction file content** — each file wrapped in `<agent-instructions source="...">` tags
-2. **Capability system prompt additions** — each wrapped in `<capability id="...">` tags
-3. **Agent's base system prompt** — wrapped in `<system-prompt>` tags (only when capabilities are present)
+1. **Instruction file content**: each file wrapped in `<agent-instructions source="...">` tags
+2. **Capability system prompt additions**: each wrapped in `<capability id="...">` tags
+3. **Agent's base system prompt**: wrapped in `<system-prompt>` tags (only when capabilities are present)
 
 XML tags provide clear boundaries between sections. See `knowledge/project/xml-prompt-formatting.md` for rationale.
 
@@ -141,4 +141,4 @@ PATCH /v1/agents/{id}
 2. Write an `AGENTS.md` file to the session workspace (via file tools, bash, or API)
 3. Optionally configure `files` when the agent should also read another instruction file
 4. The agent automatically reads configured files on every turn
-5. Edit a configured file anytime — changes take effect on the next turn
+5. Edit a configured file anytime, changes take effect on the next turn

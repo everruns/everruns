@@ -32,18 +32,18 @@ data: <json>
 
 ```
 
-* `event:` — the **event type discriminator**. Maps directly to the
+* `event:`, the **event type discriminator**. Maps directly to the
   IANA-style dot-notation type strings used throughout Everruns
   (`turn.started`, `tool.completed`, `reason.thinking.delta`, …).
   Lifecycle framing events (`connected`, `disconnecting`) use the
   same field but carry a minimal framing payload rather than an
   `Event`.
-* `id:` — event id cursor (`event_{32-hex}` format). Reconnecting
+* `id:`, event id cursor (`event_{32-hex}` format). Reconnecting
   clients pass it back as the `since_id` query parameter to resume
   without missing events.
-* `retry:` — server-suggested reconnect delay in milliseconds; see
+* `retry:`, server-suggested reconnect delay in milliseconds; see
   the per-endpoint description for the cycling policy.
-* `data:` — the per-event JSON body. The shape depends on the
+* `data:`, the per-event JSON body. The shape depends on the
   `event:` value (see "Event-type catalog" below).
 
 Streams are **automatically cycled** at a per-endpoint interval (5 min
@@ -130,13 +130,13 @@ vocabulary is `{connected, snapshot, disconnecting}`:
 | `event:` value  | `data:` shape                                                  |
 | --------------- | -------------------------------------------------------------- |
 | `connected`     | `{"status": "connected"}`                                      |
-| `snapshot`      | Workflow/queue state snapshot — shape varies; treat as opaque  |
+| `snapshot`      | Workflow/queue state snapshot, shape varies; treat as opaque  |
 |                 | JSON until a typed snapshot schema lands.                      |
 | `disconnecting` | `{"reason": "connection_cycle", "retry_ms": …}`                |
 
 The snapshot endpoints poll the durable store at a fixed interval
 and re-emit whenever the snapshot hash changes. They don't fan out
-domain `Event`s — for the per-workflow domain event stream, use the
+domain `Event`s, for the per-workflow domain event stream, use the
 JSON polling endpoint `GET /v1/durable/workflows/{id}/events`.
 
 ## Adding new SSE endpoints
@@ -150,5 +150,5 @@ When wiring up a new SSE handler:
 3. Document the closed `event:` vocabulary in this file under a new
    subsection.
 4. The on-the-wire framing (`event:`/`id:`/`retry:`/`data:`) is
-   the same for every endpoint and is documented once here — don't
+   the same for every endpoint and is documented once here, don't
    re-explain it per endpoint.

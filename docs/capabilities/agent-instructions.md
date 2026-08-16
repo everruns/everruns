@@ -14,7 +14,7 @@ Reads project instruction files from the session workspace and injects their con
 
 ## Tools
 
-None — this capability only contributes to the system prompt.
+None, this capability only contributes to the system prompt.
 
 ## How It Works
 
@@ -36,13 +36,13 @@ None — this capability only contributes to the system prompt.
 ## Notes
 
 - Default file path: `/workspace/AGENTS.md` (plain Markdown, max 32 KiB per file)
-- Re-read every turn — edits take effect immediately
+- Re-read every turn, edits take effect immediately
 - Missing configured files are ignored (no error)
 - Works with [File System](/capabilities/file-system/) tools to update instructions dynamically
 
 ## See Also
 
-- [AGENTS.md feature guide](/features/agent-instructions/) — detailed documentation
-- [File System](/capabilities/file-system/) — manage the AGENTS.md file
-- [Agent Skills](/capabilities/agent-skills/) — another way to inject specialized instructions
+- [AGENTS.md feature guide](/features/agent-instructions/), detailed documentation
+- [File System](/capabilities/file-system/), manage the AGENTS.md file
+- [Agent Skills](/capabilities/agent-skills/), another way to inject specialized instructions
 - [Capabilities Overview](/capabilities/)

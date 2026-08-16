@@ -1,13 +1,13 @@
 ---
 title: Tool Output Pipeline
-description: How Everruns processes tool results from execution to the model — verbosity budgets, distillation, persistence, hard limits, and where the full output lives
+description: How Everruns processes tool results from execution to the model, verbosity budgets, distillation, persistence, hard limits, and where the full output lives
 sidebar:
   order: 11
 ---
 
 Agents generate most of their context from **tool output**: shell commands, file reads, web fetches, SQL queries, and MCP tool calls. Left unmanaged, a single verbose command (`git diff`, a 10,000-row query, an installer log) can blow past the model's context window, drive up cost, and bury the signal the agent actually needs.
 
-Everruns runs every tool result through a **multi-stage pipeline** that shrinks what the model sees while keeping the full original recoverable. This page explains each stage, the order they run in, and — crucially — *where the full output goes* so the agent can get it back.
+Everruns runs every tool result through a **multi-stage pipeline** that shrinks what the model sees while keeping the full original recoverable. This page explains each stage, the order they run in, and, crucially, *where the full output goes* so the agent can get it back.
 
 ## The big picture
 
@@ -38,16 +38,16 @@ Two ideas run through the whole pipeline:
 1. **Storage stays lossless.** Whatever the model sees inline, the full output is written to the session filesystem (the *destination*). The inline view always carries a pointer back to it.
 2. **Each stage shrinks, none deletes.** Truncation, distillation, and masking only change the *view*. The agent can always `read_file` the persisted original.
 
-## Stage 1 — Verbosity budget (exec tools)
+## Stage 1, Verbosity budget (exec tools)
 
 Exec and sandbox tools (`bash`, `*_exec`, sandboxed shells) clean their output (strip ANSI, collapse carriage returns) and apply a **verbosity budget** before returning. The mode is configurable per call; the default is `auto`:
 
 - **Success (`exit_code == 0`)** → collapse to a compact summary (~512 bytes), because the full log is persisted (Stage 3) and the agent rarely needs it inline.
 - **Failure (non-zero exit)** → keep a larger diagnostic window (~8 KiB) so the error stays debuggable in-loop.
 
-The full pre-truncation output is stashed on the result as `raw_output` for the persistence hook to consume. Non-exec tools (MCP, web fetch, client tools) do **not** have a verbosity budget — that gap is what Stage 2 exists for.
+The full pre-truncation output is stashed on the result as `raw_output` for the persistence hook to consume. Non-exec tools (MCP, web fetch, client tools) do **not** have a verbosity budget, that gap is what Stage 2 exists for.
 
-## Stage 2 — Tool Output Distillation (non-exec tools)
+## Stage 2, Tool Output Distillation (non-exec tools)
 
 [Tool Output Distillation](/capabilities/) targets the tools Stage 1 doesn't: **MCP tools and `web_fetch`**, whose results otherwise enter history verbatim. It runs as a capability hook, so it executes *before* the final hooks.
 
@@ -60,18 +60,18 @@ For a large non-exec result, distillation produces a compact, **content-aware** 
 | Unified diff | A diffstat-style summary: file + hunk headers and `+added / -removed` counts |
 | Nested object | Each oversized field distilled; small fields untouched |
 
-Before it replaces anything, distillation **persists the full original** to the session filesystem (same destination as Stage 3) and injects a recovery pointer. If persistence fails — or the session has no filesystem — it restores the verbatim output rather than leave a lossy result the agent can't recover. **Reversibility is never sacrificed.**
+Before it replaces anything, distillation **persists the full original** to the session filesystem (same destination as Stage 3) and injects a recovery pointer. If persistence fails, or the session has no filesystem, it restores the verbatim output rather than leave a lossy result the agent can't recover. **Reversibility is never sacrificed.**
 
 Distillation is on by default in the **generic harness**. Every transform is deterministic, so identical output distills identically and the model provider's prompt cache keeps hitting across turns.
 
-## Stage 3 — Persistence and the hard limit
+## Stage 3, Persistence and the hard limit
 
 Two infrastructure hooks always run last, in order:
 
-1. **Persist Output** — for tools that declare the `persist_output` hint (exec/sandbox), writes the full `raw_output` to the session VFS and annotates the inline result with a pointer. It **skips** if a result already carries `output_files` (e.g. distillation already persisted it), so the two never double-write.
-2. **Output Hard Limit** — a final, unremovable 64 KiB ceiling. By the time it runs, the result has usually already been budgeted or distilled, so it rarely fires; it's a backstop against pathological cases.
+1. **Persist Output**: for tools that declare the `persist_output` hint (exec/sandbox), writes the full `raw_output` to the session VFS and annotates the inline result with a pointer. It **skips** if a result already carries `output_files` (e.g. distillation already persisted it), so the two never double-write.
+2. **Output Hard Limit**: a final, unremovable 64 KiB ceiling. By the time it runs, the result has usually already been budgeted or distilled, so it rarely fires; it's a backstop against pathological cases.
 
-## The destination — where full output lives
+## The destination, where full output lives
 
 Everything the pipeline elides is recoverable from the **session filesystem**:
 
@@ -86,7 +86,7 @@ This is the key to aggressive shrinking: because the original is one `read_file`
 
 ## How this relates to compaction
 
-The pipeline above operates on **individual tool results at capture time**. [Context Compaction](/advanced/compaction/) operates **later**, across the whole conversation, when it approaches the context window — masking or summarizing older messages at serialization time.
+The pipeline above operates on **individual tool results at capture time**. [Context Compaction](/advanced/compaction/) operates **later**, across the whole conversation, when it approaches the context window, masking or summarizing older messages at serialization time.
 
 They compose cleanly:
 

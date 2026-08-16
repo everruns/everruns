@@ -1,12 +1,12 @@
 ---
 type: Specification
-title: "OpenUI — Generative UI Integration"
+title: "OpenUI, Generative UI Integration"
 description: "OpenUI generative-UI capability."
 tags:
   - everruns
   - ui
 ---
-# OpenUI — Generative UI Integration
+# OpenUI, Generative UI Integration
 
 ## Purpose
 
@@ -58,15 +58,15 @@ This approach:
 
 Path: `crates/openui/`
 
-Static Rust definitions of all OpenUI components and a prompt generator. No runtime parsing — the crate only produces the system prompt text that instructs LLMs to generate OpenUI Lang.
+Static Rust definitions of all OpenUI components and a prompt generator. No runtime parsing, the crate only produces the system prompt text that instructs LLMs to generate OpenUI Lang.
 
 ### Key types
 
-- `ComponentDef` — name, props (ordered), description
-- `PropDef` — name, type annotation, optional flag
-- `ComponentGroup` — logical grouping for prompt organization
-- `Library` — root component, all components, groups
-- `PromptOptions` — custom preamble, additional rules, examples
+- `ComponentDef`, name, props (ordered), description
+- `PropDef`, name, type annotation, optional flag
+- `ComponentGroup`, logical grouping for prompt organization
+- `Library`, root component, all components, groups
+- `PromptOptions`, custom preamble, additional rules, examples
 
 ### Prompt generation
 
@@ -103,20 +103,20 @@ Ref: `packages/react-lang/src/parser/prompt.ts` in the upstream repo.
 ID: `openui`
 Feature: `"openui"`
 
-Registered as a built-in capability. When enabled on an agent, appends the OpenUI system prompt. No tools — the capability only contributes to the system prompt.
+Registered as a built-in capability. When enabled on an agent, appends the OpenUI system prompt. No tools, the capability only contributes to the system prompt.
 
 ## UI Integration
 
 ### npm packages
 
-- `@openuidev/react-lang` — Parser and `<Renderer>` component
-- `@openuidev/react-ui` — Pre-built component library (~50 components)
+- `@openuidev/react-lang`, Parser and `<Renderer>` component
+- `@openuidev/react-ui`, Pre-built component library (~50 components)
 
 ### Key UI files
 
-- `apps/ui/src/lib/openui-utils.ts` — `splitOpenUIBlocks()`, `hasOpenUIBlocks()`
-- `apps/ui/src/components/chat/openui-renderer.tsx` — `<OpenUIBlock>` wrapper
-- `apps/ui/src/components/chat/message-content.tsx` — `<MessageContent>` splits text into markdown + openui segments
+- `apps/ui/src/lib/openui-utils.ts`, `splitOpenUIBlocks()`, `hasOpenUIBlocks()`
+- `apps/ui/src/components/chat/openui-renderer.tsx`, `<OpenUIBlock>` wrapper
+- `apps/ui/src/components/chat/message-content.tsx`, `<MessageContent>` splits text into markdown + openui segments
 
 ### Streaming
 

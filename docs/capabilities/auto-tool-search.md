@@ -12,7 +12,7 @@ sidebar:
 | **Features** | None |
 | **Dependencies** | None |
 
-Enables deferred tool loading and automatically picks the best mechanism for the agent's model. On agents with many tools, full parameter schemas are not sent upfront — only names and descriptions — and schemas are loaded on demand. This reduces prompt token usage for agents with 15+ tools, regardless of provider.
+Enables deferred tool loading and automatically picks the best mechanism for the agent's model. On agents with many tools, full parameter schemas are not sent upfront, only names and descriptions, and schemas are loaded on demand. This reduces prompt token usage for agents with 15+ tools, regardless of provider.
 
 This is the recommended default for harnesses that may run on different models. It is what the [Generic](/built-ins/harnesses/generic/) harness uses.
 
@@ -28,11 +28,11 @@ The choice is made when the agent's capabilities are assembled, once the model i
 
 The dispatch looks at the **model id** (matched against the first-party OpenAI/Anthropic profiles), not the transport. In practice that handles the common gateway cases: a Claude model served via Amazon Bedrock or OpenRouter carries a distinct id (`anthropic.claude-…`, `anthropic/claude-…`) that doesn't match the bare first-party profile, so `auto_tool_search` resolves to the client-side mechanism there.
 
-> **Edge case:** if a masked transport presents a *bare* first-party id that does resolve (e.g. a `gpt-5.4` served through an OpenAI-compatible gateway), `auto_tool_search` picks the hosted capability, but the driver then suppresses the hosted wire format for that transport — so full schemas are sent with **no** client-side fallback (a missed optimization, not a failure). If you run a first-party model id through such a gateway, add the [Tool Search](/capabilities/tool-search/) capability explicitly to force client-side deferral.
+> **Edge case:** if a masked transport presents a *bare* first-party id that does resolve (e.g. a `gpt-5.4` served through an OpenAI-compatible gateway), `auto_tool_search` picks the hosted capability, but the driver then suppresses the hosted wire format for that transport, so full schemas are sent with **no** client-side fallback (a missed optimization, not a failure). If you run a first-party model id through such a gateway, add the [Tool Search](/capabilities/tool-search/) capability explicitly to force client-side deferral.
 
 ## Tools
 
-One — the client-side `tool_search` tool, used only on models without native support. On models with native tool search, no client-side tool is added and the provider's hosted search is used instead.
+One, the client-side `tool_search` tool, used only on models without native support. On models with native tool search, no client-side tool is added and the provider's hosted search is used instead.
 
 ## Configuration
 
@@ -63,15 +63,15 @@ The threshold (minimum tool count before deferral activates) applies to both mec
 
 Prefer the single-mechanism capabilities when you know the model and want explicit behavior:
 
-- [OpenAI Tool Search](/capabilities/openai-tool-search/) (`openai_tool_search`) — hosted, OpenAI only; silently disabled on unsupported models (full schemas sent, no fallback).
-- [Claude Tool Search](/capabilities/claude-tool-search/) (`claude_tool_search`) — hosted, Claude only; silently disabled on unsupported models (full schemas sent, no fallback).
-- [Tool Search](/capabilities/tool-search/) (`tool_search`) — client-side only; works on any model including OpenAI and Claude.
+- [OpenAI Tool Search](/capabilities/openai-tool-search/) (`openai_tool_search`), hosted, OpenAI only; silently disabled on unsupported models (full schemas sent, no fallback).
+- [Claude Tool Search](/capabilities/claude-tool-search/) (`claude_tool_search`), hosted, Claude only; silently disabled on unsupported models (full schemas sent, no fallback).
+- [Tool Search](/capabilities/tool-search/) (`tool_search`), client-side only; works on any model including OpenAI and Claude.
 
-Do not combine `auto_tool_search` with any of the above on the same agent — it already provides all three paths.
+Do not combine `auto_tool_search` with any of the above on the same agent, it already provides all three paths.
 
 ## See Also
 
-- [OpenAI Tool Search](/capabilities/openai-tool-search/) — the hosted mechanism for OpenAI
-- [Claude Tool Search](/capabilities/claude-tool-search/) — the hosted mechanism for Claude
-- [Tool Search](/capabilities/tool-search/) — the client-side mechanism
+- [OpenAI Tool Search](/capabilities/openai-tool-search/), the hosted mechanism for OpenAI
+- [Claude Tool Search](/capabilities/claude-tool-search/), the hosted mechanism for Claude
+- [Tool Search](/capabilities/tool-search/), the client-side mechanism
 - [Capabilities Overview](/capabilities/)

@@ -7,11 +7,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-a2ui` gives an LLM a compact catalog of A2UI JSON components plus the
-rules for emitting `a2ui` fenced blocks — JSON component trees that Everruns
+rules for emitting `a2ui` fenced blocks, JSON component trees that Everruns
 clients can render as generative UI. It ships a default catalog with component
 and prop metadata, and lets you extend the prompt with your own rules.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. See
 [`everruns-openui`](https://crates.io/crates/everruns-openui) for the OpenUI Lang
 variant of generative UI.

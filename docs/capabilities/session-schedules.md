@@ -7,7 +7,7 @@ description: Schedule one-shot and recurring cron-based tasks within a session. 
 |---|---|
 | **ID** | `session_schedule` |
 | **Category** | Core |
-| **Features** | `schedules` (unlocks Schedules tab) |
+| **Features** | `schedules` (enables Schedules tab) |
 | **Dependencies** | None |
 
 Schedule future tasks within the current session. Supports one-shot (run once at a specific time) and recurring (cron expression) schedules.
@@ -40,12 +40,12 @@ List all schedules for the current session.
 
 ## Recurring background tasks
 
-Recurrence is built on schedules — there is no separate "recurring task" object to
+Recurrence is built on schedules, there is no separate "recurring task" object to
 configure. A recurring (`cron_expression`) schedule either delivers a scheduled
 turn to the session, or, when paired with a background **monitor** task, runs a
 probe on each fire and records the result on the task's thread. This composition
 (recurring schedule + monitor) is the supported way to run periodic background
-work — there is no separate recurring-task primitive to configure.
+work, there is no separate recurring-task primitive to configure.
 
 ## Notes
 
@@ -56,6 +56,6 @@ work — there is no separate recurring-task primitive to configure.
 
 ## See Also
 
-- [Current Time](/capabilities/current-time/) — get current time for scheduling context
-- [Session](/capabilities/session/) — session metadata
+- [Current Time](/capabilities/current-time/), get current time for scheduling context
+- [Session](/capabilities/session/), session metadata
 - [Capabilities Overview](/capabilities/)

@@ -31,14 +31,14 @@ import a run everruns did not run.**
 Mira owns execution + scoring end to end. It runs any subject (Anthropic,
 OpenAI, a CLI process, or the everruns runtime), produces a rich `Transcript`
 (tokens, cost, time-to-first-token, tool calls, open-vocab metrics, multimodal
-parts, raw event JSONL, files) and renders good *local* reports — but has **no
+parts, raw event JSONL, files) and renders good *local* reports, but has **no
 external sink.** (`mira-everruns` is consumptive: Mira drives the everruns
 runtime *as a subject*. It is not a publishing channel.)
 
 So three things are true at once:
 
 1. People who want hosted, shareable, comparable eval results have to run inside
-   everruns' session system — friction that is bad for onboarding external
+   everruns' session system, friction that is bad for onboarding external
    parties.
 2. Mira can produce those results but cannot publish them anywhere.
 3. Everruns' eval UI cannot yet *compare* runs even when it has them
@@ -49,21 +49,21 @@ So three things are true at once:
 
 **Everruns becomes a vendor-neutral host and viewer for external eval systems.**
 Mira is the first client, but the import API, scoring model, transcript view,
-and attribution are designed for *any* external eval source — not Mira
+and attribution are designed for *any* external eval source, not Mira
 specifically. Concretely:
 
 - **(a)** Everruns ingests a complete, externally-executed eval run and stores
   it as first-class eval data, with **attribution** to its source.
 - **(b)** Everruns' eval UI compares and visualizes runs (matrix, deltas,
   regressions, trends) and renders a **generic, provider-agnostic transcript
-  view** — source-agnostic throughout.
+  view**: source-agnostic throughout.
 - **(c)** Mira publishes a finished run to everruns with one command / CI step,
   **reusing everruns CLI auth**, after a **permission preflight**.
 
 ### Non-goals
 
 - Re-running or re-scoring external results inside everruns. **External verdicts
-  are trusted and stored as-is** — everruns is a viewer, not a re-grader.
+  are trusted and stored as-is**: everruns is a viewer, not a re-grader.
 - Changing the Mira ⇄ subject protocol. Publishing is a host-side concern.
 - A new standalone "results host" entity. We extend the existing eval model.
   Because evals are **not GA**, we are free to restructure existing shapes
@@ -82,13 +82,13 @@ These were the open questions; here is where they land.
    the same path. Mira is the reference implementation.
 
 3. **Auto-provision is OK**, but **gated behind a permission preflight.**
-   Publishing silently upserts evals/cases by slug — *after* the client
+   Publishing silently upserts evals/cases by slug, *after* the client
    confirms the user has `eval.import` and the `evals` feature is enabled.
    Evals are optional, so the client must degrade gracefully when they are off.
 
 4. **Scoring becomes extensible, not a closed enum.** Everruns' nine-variant
    scorer enum becomes an open model where a score is an attributed,
-   named entry (`{scorer, value, pass, reason, source}`) — the built-in rules
+   named entry (`{scorer, value, pass, reason, source}`), the built-in rules
    are one source; external systems are another. Decouples *scorer-as-rule*
    (something everruns can execute) from *score-as-data* (a result everruns
    stores and displays).
@@ -100,14 +100,14 @@ These were the open questions; here is where they land.
    widget, not a link-out to Mira's HTML.
 
 6. **Stop modeling per-result signal as columns.** cost, cache/reasoning tokens,
-   ttft, tool calls, iterations, latency, even token counts — move to an
+   ttft, tool calls, iterations, latency, even token counts, move to an
    **extensible metrics bag** (open-vocab `metrics`/`metadata`) instead of
    accreting columns that never keep up. New signal is just a new key.
 
 7. **Attribution is first-class.** External evals/runs/results must *look
    natural* in everruns while clearly carrying provenance: which external system
    produced them, version, and a link back. Surfaced as an attribution
-   badge/field on evals, runs, and results — vendor-neutral.
+   badge/field on evals, runs, and results, vendor-neutral.
 
 ## Mapping external run → everruns (Mira as reference)
 
@@ -119,9 +119,9 @@ one `Eval`. So:
   tied by a shared `source_run_id` = the external system's stable run id.
 - Within each `EvalRun`, all targets live across `EvalCaseResult`s via
   per-result `target_snapshot`. Cross-eval matrix = query EvalRuns by
-  `source_run_id`. No new entity — new columns on `eval_runs`.
+  `source_run_id`. No new entity, new columns on `eval_runs`.
 - external **sample/case** → everruns **`EvalCase`** (upsert by key within eval;
-  identity-only — name + key + optional display input; conversation/scorers
+  identity-only, name + key + optional display input; conversation/scorers
   empty, since everruns never re-runs it).
 
 | Mira | Everruns | Notes |
@@ -156,17 +156,17 @@ one `Eval`. So:
   `metrics` structure rather than columns. (See decision 6.)
 - `EvalCaseResult.status`: add `skipped`.
 - **Normalized transcript** stored per result (messages, tool calls, events,
-  multimodal parts, files) — the schema the generic view reads.
+  multimodal parts, files), the schema the generic view reads.
 - **Attribution** fields on `Eval` / `EvalRun` / `EvalCaseResult`.
 
 **API**
 
 - `POST /v1/evals/import` (run-group ingest): one call accepts a whole external
-  run — run meta + attribution, and per eval the cases + results + scores +
+  run, run meta + attribution, and per eval the cases + results + scores +
   normalized transcripts. Server upserts evals/cases by slug, creates the
   `EvalRun`(s) under one `source_run_id`, writes results. **Idempotent** on
   `source_run_id` (re-publish replaces the group).
-- **Preflight**: a capability/permission check the client calls *first* —
+- **Preflight**: a capability/permission check the client calls *first*,
   reports whether `evals` is enabled and whether the caller holds `eval.import`.
   Lets optional-feature clients degrade gracefully. (Can reuse / extend an
   existing capabilities or `GET /v1/auth/me` style endpoint.)
@@ -177,10 +177,10 @@ one `Eval`. So:
   already supported in all auth modes including `external`/PropelAuth (SaaS).
   No new auth subsystem.
 - New policy `eval.import`, gated by `OrgAgentsManage` only (no
-  `OrgSessionsManage` — no sessions created). Org-scoped, fail-closed,
+  `OrgSessionsManage`, no sessions created). Org-scoped, fail-closed,
   feature-flagged under `evals`.
 
-## Workstream (b): everruns eval UI — comparison + generic transcript
+## Workstream (b): everruns eval UI, comparison + generic transcript
 
 The run-detail page is **source-agnostic**: it reads results + summaries + the
 normalized transcript identically whether everruns or an external system
@@ -202,7 +202,7 @@ produced them. External runs carry an attribution badge. New surfaces:
   provider-agnostic, same boundary as `mira-everruns`).
 - CLI: `mira publish <run_dir> --to everruns` and `mira run --publish everruns`.
 - **CLI auth pass-through**: reuse everruns CLI credentials. Resolution order
-  mirrors everruns' own CLI — `--api-key` flag > `EVERRUNS_API_KEY` env >
+  mirrors everruns' own CLI, `--api-key` flag > `EVERRUNS_API_KEY` env >
   everruns credentials file (`~/.config/everruns/credentials.json`, multi-profile,
   `--profile`), `EVERRUNS_API_URL` for the base URL. If you've run
   `everruns login`, `mira publish` just works.
@@ -214,7 +214,7 @@ produced them. External runs carry an attribution badge. New surfaces:
   schema. Idempotent on Mira's `run_id`.
 - **Decoupled from `mira-everruns`**: any provider or CLI subject can publish.
   You do *not* have to run inside the everruns runtime to host results in
-  everruns — this is the onboarding win.
+  everruns, this is the onboarding win.
 
 ## Optional: external-party viewing (SaaS)
 
@@ -239,11 +239,11 @@ bulk of the user-facing value. (4) is additive.
 
 ## Resolved: slug namespacing
 
-Identity of an imported eval is the **eval name within the org** — no
-namespacing for now. The upsert-by-name is load-bearing: re-publishing the same
+Identity of an imported eval is the **eval name within the org**: no
+namespacing for now. The upsert-by-name is essential: re-publishing the same
 eval lands on the same `Eval` row so runs accumulate into history (trends,
 comparison). Collisions (two unrelated suites named the same, or a clash with a
-native eval) merge — treated as a name-hygiene problem, acceptable because
+native eval) merge, treated as a name-hygiene problem, acceptable because
 `eval.import` is gated on `OrgAgentsManage` (few, trusted publishers per org).
 A future optional `project` field can add `(project, name)` identity without
 breaking this (absent project = today's behavior); deferred until it bites.

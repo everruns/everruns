@@ -24,20 +24,20 @@ in-process and exposes no process stdin.) Hooks can run silently (logging
 only), mutate the inputs they observe, or block the action outright.
 
 This is the same pattern you'll recognize from Claude Code hooks, Git
-hooks, and pre/post-tool middleware in agent SDKs — applied as a
+hooks, and pre/post-tool middleware in agent SDKs, applied as a
 first-class capability so any agent can adopt it, any hook bundle can be
 shared across an organization, and every invocation lands in the audit log.
 
 ## When to enable
 
-- **Security gates** — block any `bash` call matching `rm -rf /` before
+- **Security gates**: block any `bash` call matching `rm -rf /` before
   the sandbox sees it.
-- **Format-on-write** — run `cargo fmt` or `prettier` after every
+- **Format-on-write**: run `cargo fmt` or `prettier` after every
   `edit_file`.
-- **Audit / observability** — POST every tool call to your SIEM.
-- **Project bootstrapping** — at `session_start`, clone a repo, install
+- **Audit / observability**: POST every tool call to your SIEM.
+- **Project bootstrapping**: at `session_start`, clone a repo, install
   deps, or seed a workspace.
-- **CI-style validation** — at `turn_end`, run tests and surface
+- **CI-style validation**: at `turn_end`, run tests and surface
   failures back to the model on the next turn.
 
 ## Risk
@@ -45,7 +45,7 @@ shared across an organization, and every invocation lands in the audit log.
 High. The capability accepts arbitrary shell commands from config. Even
 though the commands run inside the session's `bashkit_shell` sandbox
 (no host filesystem, no host network beyond the session's egress policy),
-the assignment gate is admin-only — anyone who can configure this
+the assignment gate is admin-only, anyone who can configure this
 capability can run arbitrary code in the session sandbox on every agent
 action.
 
@@ -115,7 +115,7 @@ Setting it on lifecycle events is rejected at validation time.
 | `tool_name_glob` | Restricted glob: `a\|b\|c` alternation or trailing `*` |
 | `args_jsonpath` | Dot-path into `ToolCall.arguments` (e.g. `$.command`) |
 | `match_regex` | Fires when extracted value matches this regex |
-| `deny_regex` | Inverse — fires when extracted value matches this regex |
+| `deny_regex` | Inverse, fires when extracted value matches this regex |
 
 `match_regex` and `deny_regex` are mutually exclusive. Regex flavor is the
 Rust `regex` crate (no look-around, no backreferences).
@@ -125,10 +125,10 @@ Rust `regex` crate (no look-around, no backreferences).
 What to do when the executor itself fails (timeout, non-JSON output,
 sandbox error):
 
-- `block` — treat as `{"decision": "block", "reason": "hook failed"}`.
+- `block`, treat as `{"decision": "block", "reason": "hook failed"}`.
   Use for security-critical hooks.
-- `allow` — log + continue.
-- `warn` — log + emit `hook.warning` event + continue. **Default.**
+- `allow`, log + continue.
+- `warn`, log + emit `hook.warning` event + continue. **Default.**
 
 ## Bash hook contract
 
@@ -137,7 +137,7 @@ the payload is delivered via env vars (and a session-VFS file) rather than
 stdin, because the bashkit interpreter doesn't expose process-level stdin
 to user scripts.
 
-### Input — env vars + VFS file
+### Input, env vars + VFS file
 
 Every hook invocation sets these env vars:
 
@@ -171,13 +171,13 @@ Payload envelope:
 }
 ```
 
-### Output — stdout
+### Output, stdout
 
 Three accepted shapes, tried in this order:
 
-1. **Empty stdout** — exit 0 = allow; non-zero = block (stderr surfaced
+1. **Empty stdout**: exit 0 = allow; non-zero = block (stderr surfaced
    as the block reason). This is the Git-hook escape hatch.
-2. **JSON decision** — stdout starts with `{`:
+2. **JSON decision**: stdout starts with `{`:
 
    ```json
    {
@@ -192,11 +192,11 @@ Three accepted shapes, tried in this order:
 
 ### Limits
 
-- **Timeout** — configurable per hook; default 5 s, max 30 s.
-- **Output size** — 64 KiB total (stdout + stderr).
-- **Sandbox** — runs through `bashkit_shell` against the session VFS. No
+- **Timeout**: configurable per hook; default 5 s, max 30 s.
+- **Output size**: 64 KiB total (stdout + stderr).
+- **Sandbox**: runs through `bashkit_shell` against the session VFS. No
   host shell. Inherits the session's egress policy.
-- **stderr** — captured into the audit log; never shown to the model
+- **stderr**: captured into the audit log; never shown to the model
   unless `decision == "block"` with no `reason`.
 
 ## Composition
@@ -205,7 +205,7 @@ Hooks chain in capability-declaration order, then array order within each
 capability. The first `block` decision wins; mutations from earlier hooks
 survive even if a later hook blocks.
 
-Capabilities other than `user_hooks` can ship hook bundles — see [Hook
+Capabilities other than `user_hooks` can ship hook bundles, see [Hook
 bundles from other capabilities](#hook-bundles-from-other-capabilities).
 To mute a bundled hook, list its `HookId` under
 `disabled_contributions`:
@@ -380,7 +380,7 @@ a pasted private key, rejects the turn with a message shown to the user.
 }
 ```
 
-`user_prompt_submit` can also **mutate** the prompt instead of blocking —
+`user_prompt_submit` can also **mutate** the prompt instead of blocking,
 emit `{"decision":"mutate","patch":{"message":"<rewritten text>"}}` and the
 turn proceeds with the rewritten text. For example, to prepend a house style
 reminder:
@@ -399,7 +399,7 @@ reminder:
 
 ### Log every completed turn
 
-`turn_end` is advisory — its decision is ignored, so use it for side effects
+`turn_end` is advisory, its decision is ignored, so use it for side effects
 like metrics or audit trails. The payload's `data.success` reports whether the
 turn finished cleanly.
 
@@ -440,30 +440,30 @@ resolved `hook_id` and the `tool_call_id`.
 **Planned (deferred):** structured `hook.invoked` / `hook.completed` /
 `hook.blocked` / `hook.warning` events emitted through the same
 observability pipeline as tool events (Braintrust, OTel). These are not
-emitted yet — see the spec's observability section.
+emitted yet, see the spec's observability section.
 
 ## Event firing
 
 All six events fire:
 
-- **`pre_tool_use`** — before each tool call; can block or mutate the call.
-- **`post_tool_use`** — after each tool call; can mutate the result.
-- **`session_start`** — after a session is created (mounts + initial files in
+- **`pre_tool_use`**: before each tool call; can block or mutate the call.
+- **`post_tool_use`**: after each tool call; can mutate the result.
+- **`session_start`**: after a session is created (mounts + initial files in
   place); advisory.
-- **`session_end`** — when a session is deleted, before VFS eviction; advisory.
-- **`user_prompt_submit`** — on the first reason iteration, before the LLM is
+- **`session_end`**: when a session is deleted, before VFS eviction; advisory.
+- **`user_prompt_submit`**: on the first reason iteration, before the LLM is
   consulted; can block (aborts the turn with a user-facing message) or mutate
   the user message text.
-- **`turn_end`** — when a turn reaches a terminal outcome; advisory.
+- **`turn_end`**: when a turn reaches a terminal outcome; advisory.
 
 Note on `user_prompt_submit` blocking: the API persists the user message and
-runs the turn asynchronously, so a block does not reject the HTTP request —
+runs the turn asynchronously, so a block does not reject the HTTP request,
 it aborts the turn. The session shows a `turn.failed` outcome carrying the
 hook's `user_message`.
 
 ## See also
 
-- [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md) — full contract
-- [`knowledge/execution/capabilities.md`](https://github.com/everruns/everruns/blob/main/knowledge/execution/capabilities.md) — capability framework
-- [`knowledge/security/threat-model.md`](https://github.com/everruns/everruns/blob/main/knowledge/security/threat-model.md) — TM-HOOK entries
-- [Bashkit Shell](/capabilities/bashkit-shell/) — the sandbox that runs hook commands
+- [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md), full contract
+- [`knowledge/execution/capabilities.md`](https://github.com/everruns/everruns/blob/main/knowledge/execution/capabilities.md), capability framework
+- [`knowledge/security/threat-model.md`](https://github.com/everruns/everruns/blob/main/knowledge/security/threat-model.md), TM-HOOK entries
+- [Bashkit Shell](/capabilities/bashkit-shell/), the sandbox that runs hook commands

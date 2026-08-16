@@ -121,19 +121,19 @@ Messages are converted to OpenAI-compatible format using `Message::to_openai_for
 - **Real duration spans** (not point-in-time): Proper span lifecycle (create on started, end on completed) so trace viewers show actual timing in waterfall views.
 - **Native tracing span nesting**: Uses `tracing` crate's native parent-child mechanism rather than manual ID linking. The `tracing-opentelemetry` bridge translates this into proper OTel trace context.
 - **Standard env var for content**: `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` (the OTel standard) with `OTEL_RECORD_CONTENT` as legacy alias.
-- **Cache token attributes**: `gen_ai.usage.cache_read_tokens` and `gen_ai.usage.cache_creation_tokens` included — not in standard yet but essential for cost monitoring.
+- **Cache token attributes**: `gen_ai.usage.cache_read_tokens` and `gen_ai.usage.cache_creation_tokens` included, not in standard yet but essential for cost monitoring.
 - **Phase spans**: reason/act/thinking spans aren't in OTel Gen-AI spec but provide the hierarchy that makes traces useful for debugging agent behavior.
 
 ### Implementation
 
 | File | Purpose |
 |------|---------|
-| `crates/observability/src/otel.rs` | `OtelEventListener` — all span creation/lifecycle |
+| `crates/observability/src/otel.rs` | `OtelEventListener`, all span creation/lifecycle |
 | `crates/observability/src/telemetry.rs` | OTLP exporter wiring, tracing-subscriber layers, config, init |
 | `crates/core/src/telemetry.rs` | Neutral gen-AI semantic conventions and span-name helpers |
 | `crates/server/src/main.rs` | Listener registration |
 
-Ownership boundary (EVE-876): core holds only the neutral observability contracts — the `EventListener` trait, event types, and gen-AI span conventions. `everruns-observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out. The `check-observability-isolation.sh` guard (pre-push + CI) keeps exporter crates out of core and out of Framework/provider dependency trees, so default Framework builds stay offline.
+Ownership boundary (EVE-876): core holds only the neutral observability contracts, the `EventListener` trait, event types, and gen-AI span conventions. `everruns-observability` owns telemetry initialization, exporter dependencies, and the `CompositeEventListener` fan-out. The `check-observability-isolation.sh` guard (pre-push + CI) keeps exporter crates out of core and out of Framework/provider dependency trees, so default Framework builds stay offline.
 
 ---
 
@@ -206,12 +206,12 @@ Consumers should group by `metadata.session_id` and use Braintrust timeline/thre
 
 ### Design Decisions
 
-- **Full agentic loop tracing**: Traces turns, reason/act phases, LLM calls, and tool executions — matches Braintrust's OpenAI Agents integration feature parity.
+- **Full agentic loop tracing**: Traces turns, reason/act phases, LLM calls, and tool executions, matches Braintrust's OpenAI Agents integration feature parity.
 - **Project name as primary config**: `BRAINTRUST_PROJECT_NAME` with default "My Project" matches the JS SDK pattern. Name-to-ID resolution at startup.
 - **Bounded async delivery**: Events enter a bounded in-memory queue, flush in batches to `project_logs.insert`, retry on `429`, `5xx`, and timeout/connect failures, and log dropped/retried/permanent-failure counters.
 - **Conservative defaults**: Raw content, reasoning text, and full tool payloads are off or reduced by default. Local debug logs never include full outbound Braintrust payloads unless `BRAINTRUST_DEBUG_PAYLOADS=true`.
 - **Session-grouped turns, not giant session traces**: Session analysis is a metadata contract, not a single ever-growing trace.
-- **EventListener pattern**: Observability is orthogonal to LLM execution — listens to completed events, consistent with OtelEventListener.
+- **EventListener pattern**: Observability is orthogonal to LLM execution, listens to completed events, consistent with OtelEventListener.
 - **Blocking HTTP at startup**: `tokio::task::block_in_place` for one-time project name resolution. Simpler than async init.
 
 ### Implementation

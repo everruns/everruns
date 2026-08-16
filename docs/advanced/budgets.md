@@ -1,6 +1,6 @@
 ---
 title: Budgets
-description: Control session spending with budget limits — set caps in dollars, tokens, or custom credits, with soft pause thresholds and automatic enforcement
+description: Control session spending with budget limits, set caps in dollars, tokens, or custom credits, with soft pause thresholds and automatic enforcement
 sidebar:
   order: 5
 ---
@@ -13,19 +13,19 @@ Budgets let you cap how much a session (or agent, user, or organization) can spe
 
 After every LLM generation, Everruns computes the cost and debits it from any active budgets for that session. In subagent trees, session-scoped budgets are shared at the root session, so child and grandchild turns spend from the same pool. If the balance reaches zero, the session stops.
 
-1. **LLM call completes** — Everruns extracts token counts (input + output).
-2. **Compute debit** — Converts tokens to the budget's currency:
-   - `usd` — uses per-model pricing (cost per million tokens for input/output)
-   - `tokens` — raw token count
-   - `credits` — 1 credit = 1,000 tokens
+1. **LLM call completes**: Everruns extracts token counts (input + output).
+2. **Compute debit**: Converts tokens to the budget's currency:
+   - `usd`, uses per-model pricing (cost per million tokens for input/output)
+   - `tokens`, raw token count
+   - `credits`, 1 credit = 1,000 tokens
    - Custom currencies fall back to token count
-3. **Debit ledger** — Appends an immutable ledger entry and updates the balance.
-4. **Evaluate rules** — Checks thresholds:
+3. **Debit ledger**: Appends an immutable ledger entry and updates the balance.
+4. **Evaluate rules**: Checks thresholds:
    - Balance at 20% of limit → warning event
    - Spending exceeds soft limit → session pauses
    - Balance reaches zero → session stops
 
-Enforcement is **post-hoc**: the check runs after each LLM call, not before. This avoids blocking the hot path. The last generation may slightly overshoot the limit — this is expected and by design.
+Enforcement is **post-hoc**: the check runs after each LLM call, not before. This avoids blocking the hot path. The last generation may slightly overshoot the limit, this is expected and by design.
 
 ## Currencies
 

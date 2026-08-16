@@ -3,7 +3,7 @@ title: Consume events via raw SSE
 description: Subscribe to the Everruns event stream from any HTTP client using Server-Sent Events, with reconnection via since_id.
 ---
 
-When you can't use the SDK — a non-Python service, a browser client, a Postman test — the SSE protocol is available directly. This guide covers the protocol details you need.
+When you can't use the SDK, a non-Python service, a browser client, a Postman test, the SSE protocol is available directly. This guide covers the protocol details you need.
 
 For the SDK convenience layer, see [Stream events](/how-to/stream-events/).
 
@@ -44,7 +44,7 @@ The server sends a heartbeat every 30 seconds as a comment line:
 : heartbeat
 ```
 
-Comments are invisible to SSE event parsers — they don't appear as events. Their only purpose is to keep the TCP connection alive and let your client distinguish "idle" from "dead."
+Comments are invisible to SSE event parsers, they don't appear as events. Their only purpose is to keep the TCP connection alive and let your client distinguish "idle" from "dead."
 
 **Client requirement:** treat the connection as stale if no data (event or heartbeat) arrives within 45 seconds. Reconnect with the last received event ID.
 
@@ -106,6 +106,6 @@ The same `since_id` resumption works; latency increases by the polling interval.
 
 ## See also
 
-- [Event Reference](/event-reference/) — every event type and payload.
-- [Events as the primary store](/explanation/events/) — why the protocol is shaped this way.
-- [Stream events with the SDK](/how-to/stream-events/) — the convenient path.
+- [Event Reference](/event-reference/), every event type and payload.
+- [Events as the primary store](/explanation/events/), why the protocol is shaped this way.
+- [Stream events with the SDK](/how-to/stream-events/), the convenient path.

@@ -26,7 +26,7 @@ Exposes application metrics in Prometheus exposition format at `GET /metrics`.
 ### Dev (default): main server
 
 When `METRICS_ADDR` is **unset**, `/metrics` is mounted on the main API server.
-Convenient for local development — `curl localhost:9301/metrics` just works.
+Convenient for local development, `curl localhost:9301/metrics` just works.
 
 ### Production: dedicated internal server
 
@@ -86,7 +86,7 @@ All metrics are prefixed `everruns_`. For the complete metric list, see the `Pro
    `metrics` recorder early in `ServerAppBuilder::run()`.
 2. **Gauge bridge:** Background task reads latest `MetricsCollector` snapshot every
    10s and emits Prometheus gauges (aligned with existing sampler). All values are
-   global DB state — safe to duplicate across replicas.
+   global DB state, safe to duplicate across replicas.
 3. **HTTP middleware:** `http_metrics_layer` (Axum `route_layer` middleware) records
    per-request counter + duration histogram. Uses `MatchedPath` for low-cardinality
    path labels; unmatched routes labeled `"unmatched"`.
@@ -94,7 +94,7 @@ All metrics are prefixed `everruns_`. For the complete metric list, see the `Pro
    `llm.generation` and `tool.completed` events, recording per-instance counters
    and duration histograms.
 5. **Render:** `GET /metrics` calls `PrometheusHandle::render()`.
-6. **Command instrumentation:** `Command::run` (in `crates/server/src/domains/common.rs`) records a per-call counter `everruns_commands_total` and duration histogram `everruns_command_duration_seconds` with labels `{name, category, status}`. `status` is one of `ok | bad_request | unprocessable | forbidden | not_found | conflict | internal`. Every caller that funnels through `Command::run` — HTTP adapters, the MCP `execute` dispatch in `api/mcp_endpoint/catalog.rs`, gRPC `ExecuteCommand` and platform RPCs in `grpc_service/worker_service_impl.rs`, and intra-domain command composition — is instrumented automatically. The trait's own SECURITY contract requires every adapter to call `run` (not `execute`); the inventory coverage test enforces that contract for HTTP and MCP, so any new caller that bypasses `run` will skip both policy enforcement and these metrics.
+6. **Command instrumentation:** `Command::run` (in `crates/server/src/domains/common.rs`) records a per-call counter `everruns_commands_total` and duration histogram `everruns_command_duration_seconds` with labels `{name, category, status}`. `status` is one of `ok | bad_request | unprocessable | forbidden | not_found | conflict | internal`. Every caller that funnels through `Command::run`, HTTP adapters, the MCP `execute` dispatch in `api/mcp_endpoint/catalog.rs`, gRPC `ExecuteCommand` and platform RPCs in `grpc_service/worker_service_impl.rs`, and intra-domain command composition, is instrumented automatically. The trait's own SECURITY contract requires every adapter to call `run` (not `execute`); the inventory coverage test enforces that contract for HTTP and MCP, so any new caller that bypasses `run` will skip both policy enforcement and these metrics.
 
 ## Non-Goals
 

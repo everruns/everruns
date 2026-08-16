@@ -126,7 +126,7 @@ receive the same policy checks. Provider authors still own containment,
 symlink-safe I/O, quotas, durability, and atomic update guarantees for their
 storage system.
 
-Directory listings and grep are enforced at the same seam as direct reads.
+Directory listings and grep are enforced at the same boundary as direct reads.
 Denied files are not opened by policy grep, and denied names, match counts, and
 byte totals are not returned. Recursive deletes inspect descendants through the
 provider before deletion, so opting into recursion does not override a deny or

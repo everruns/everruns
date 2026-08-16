@@ -43,15 +43,15 @@ assert!(result.contains("4"));
 
 ## What It Provides
 
-- `InMemoryAgenticLoop` — a complete `input → reason → act` loop over
+- `InMemoryAgenticLoop`, a complete `input → reason → act` loop over
   host-owned in-memory stores and a canonical in-memory event log, for tests
   and prototypes with no database or network (`sim` + `host` features)
-- `InMemoryMessageRetriever` / `InMemoryEventEmitter` — writable deterministic
+- `InMemoryMessageRetriever` / `InMemoryEventEmitter`, writable deterministic
   fixtures for isolated atom and trait tests; hosted loops instead append once
   to an event log and read through `EventHistory`
 - `MockProvider`, `MockToolExecutor`, `EchoToolExecutor`,
-  `FailingToolExecutor` — test doubles for the core execution traits
-- Fake demo capabilities — `FakeAwsCapability`, `FakeCrmCapability`,
+  `FailingToolExecutor`, test doubles for the core execution traits
+- Fake demo capabilities, `FakeAwsCapability`, `FakeCrmCapability`,
   `FakeFinancialCapability`, `FakeWarehouseCapability`, plus
   `TestMathCapability`, `TestWeatherCapability`, `SampleDataCapability`, and
   `NoopCapability` (`fixtures` feature; never registered by production
@@ -69,9 +69,9 @@ assert!(result.contains("4"));
 - [Core concepts and execution model](https://docs.everruns.com/getting-started/concepts/)
 - [Everruns documentation](https://docs.everruns.com)
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.
 
 ## License
 
-MIT — see [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).
+MIT, see [LICENSE](https://github.com/everruns/everruns/blob/main/LICENSE).

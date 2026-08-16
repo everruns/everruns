@@ -10,18 +10,18 @@ tags:
 
 ## Abstract
 
-An **agent trigger** lets an Agent act **proactively** — it wakes itself on a
+An **agent trigger** lets an Agent act **proactively**: it wakes itself on a
 schedule and runs unattended, without an App in front of it. Triggers are owned
 by the agent domain and reuse the existing durable scheduler; they move
 *ownership* of scheduled invocation onto the agent, not the machinery.
 
 This is the concrete payoff of the agent-first foundation: because the agent
 already owns its harness (P1) and supplies the session host (P2 participants), a
-trigger needs no execution decision beyond routing — it renders a message and
+trigger needs no execution decision beyond routing, it renders a message and
 starts (or reuses) a session on the agent's own harness, as the agent's own
 identity.
 
-Field shapes, SQL, and route handlers live in code — see
+Field shapes, SQL, and route handlers live in code, see
 `crates/platform/src/agent_trigger.rs` (`AgentTrigger`, `AgentTriggerType`,
 `ScheduleTriggerConfig`), migration `104_agent_triggers.sql`, the
 `crates/server/src/domains/agent_triggers/` domain, and the
@@ -31,16 +31,16 @@ Field shapes, SQL, and route handlers live in code — see
 
 An agent trigger is an org-scoped row owned by one agent:
 
-- **trigger_type** — `schedule` is the only kind today; the enum leaves room for
+- **trigger_type**: `schedule` is the only kind today; the enum leaves room for
   event/webhook triggers later.
-- **config** (JSONB) — per-type configuration. For `schedule`
+- **config** (JSONB), per-type configuration. For `schedule`
   (`ScheduleTriggerConfig`): `cron_expression`, `timezone` (IANA, default
   `UTC`), `session_mode`, and `message` (also the `{{…}}` template body).
-- **session_mode** — reuses `app::InvocationSessionMode`: `shared_session`
+- **session_mode**: reuses `app::InvocationSessionMode`: `shared_session`
   (one durable session the agent returns to) or `session_per_invocation` (a
   fresh session each fire).
-- **enabled** — whether the trigger's durable schedule is active.
-- **durable_schedule_id** — the backing `durable_schedules` row (nullable;
+- **enabled**: whether the trigger's durable schedule is active.
+- **durable_schedule_id**: the backing `durable_schedules` row (nullable;
   managed by the domain, never exposed in the API).
 - standard `status` lifecycle (`active`/`archived`/`deleted`) + timestamps.
 
@@ -56,7 +56,7 @@ agent can wake itself and how many active triggers an org can accumulate.
 ## Durable binding
 
 Creating, enabling, disabling, or deleting a trigger keeps a backing durable
-schedule in sync — the same lifecycle the App schedule channel uses
+schedule in sync, the same lifecycle the App schedule channel uses
 (`sync_schedule_binding_for_channel`), re-homed on the trigger:
 
 - an enabled schedule trigger creates/updates a `durable_schedules` row with
@@ -67,7 +67,7 @@ schedule in sync — the same lifecycle the App schedule channel uses
   through the API.
 
 The durable scheduler (`crates/durable/src/scheduler`) fires the schedule and
-enqueues the `invoke_agent_trigger` activity — the identical path App schedule
+enqueues the `invoke_agent_trigger` activity, the identical path App schedule
 channels use, so catch-up, concurrency, and reliability behavior are shared.
 
 ## Execution
@@ -79,7 +79,7 @@ When a schedule fires (or a caller hits the manual
 2. renders the `message` template (`{{agent.…}}`, `{{trigger.…}}`,
    `{{invocation.…}}`);
 3. creates or reuses a session per `session_mode`, tagged
-   `agent_trigger:{trigger_id}` — `shared_session` looks up the existing tagged
+   `agent_trigger:{trigger_id}`, `shared_session` looks up the existing tagged
    session for the agent's owner, `session_per_invocation` always starts fresh;
 4. runs the session on the **agent's own harness** (P1), with the agent as the
    session's `agent_id` **host** participant (P2);
@@ -97,8 +97,8 @@ each agent acts as itself on unattended runs. The identity is created lazily on
 the agent's first fire (`ensure_identity_for_agent`): an `agent_identities` row
 is created, its principal is ensured via
 `PrincipalService::default_owner_principal(internal_caller, Some(identity_id))`
-— parented to the org system-owner, so the effective owner/budget stays system,
-as before — and the agent row is linked through `agents.agent_identity_id` with
+, parented to the org system-owner, so the effective owner/budget stays system,
+as before, and the agent row is linked through `agents.agent_identity_id` with
 a guarded write that only sets the link when it is still NULL. An
 explicitly-linked identity is never overridden, and subsequent fires reuse the
 same identity. That identity principal is the stable key the `shared_session`

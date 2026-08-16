@@ -64,7 +64,7 @@ See `crates/server/migrations/` for the audit_logs schema (migration 010 adds do
 
 ### PostgreSQL Implementation
 
-`AuditLogger` implemented on `StorageBackend` — delegates to repo layer. Fire-and-forget via `tokio::spawn` (TM-OBS-007: never blocks caller).
+`AuditLogger` implemented on `StorageBackend`, delegates to repo layer. Fire-and-forget via `tokio::spawn` (TM-OBS-007: never blocks caller).
 
 ### Retention
 
@@ -77,12 +77,12 @@ Configurable auto-purge via `AUDIT_LOG_RETENTION_DAYS` env var (default: 90 days
 Paginated, filterable. Requires `OrgAuditLogsView` permission (Owner/Admin only).
 
 Query parameters:
-- `limit` — max entries (default 50, max 200)
-- `before` — cursor timestamp
-- `domain` — filter by domain (`management` or `agent`)
-- `action` — filter by action string
-- `actor_id` — filter by actor UUID
-- `event_type` — legacy filter (prefix match on `event_type`)
+- `limit`, max entries (default 50, max 200)
+- `before`, cursor timestamp
+- `domain`, filter by domain (`management` or `agent`)
+- `action`, filter by action string
+- `actor_id`, filter by actor UUID
+- `event_type`, legacy filter (prefix match on `event_type`)
 
 Response includes `domain`, `action`, `target_type`, `target_id` fields.
 

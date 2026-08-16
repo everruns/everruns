@@ -4,7 +4,7 @@
 
 The control plane component of Everruns. Provides a REST API and gRPC server for managing AI agents, sessions, and runs. Workers connect to this server via gRPC for all database operations.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic harness engine for building unstoppable agents. The execution workers that connect to this server live in `everruns-worker`.
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic harness engine for building unstoppable agents. The execution workers that connect to this server live in `everruns-worker`.
 
 ## Features
 

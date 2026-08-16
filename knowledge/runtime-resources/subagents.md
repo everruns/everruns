@@ -10,7 +10,7 @@ tags:
 
 Each spawned subagent is also tracked as a session task (`kind = subagent`,
 `links.child_session_id` pointing at the child) with lifecycle `task.*`
-events and a message channel — see
+events and a message channel, see
 [`knowledge/runtime-resources/session-tasks.md`](session-tasks.md). The generic `list_tasks`,
 `get_task`, `message_task`, and `cancel_task` tools work on subagents via
 the `SubagentTaskExecutor`.
@@ -82,9 +82,9 @@ Spawning → Running → Completed
 | `Failed` | Child session encountered an unrecoverable error |
 | `Cancelled` | Parent cancelled via `cancel_task` |
 | `MaxIterationsReached` | Child hit iteration limit |
-| `Sealed` | Durable engine deliberately stopped the child's turn to prevent waste (no forward progress, or budget exhausted; see `SealReason`). Terminal and non-retryable — distinct from `Failed` so the parent can decide what to do next. The seal reason is surfaced in the child's final assistant message / spawn `result`. |
+| `Sealed` | Durable engine deliberately stopped the child's turn to prevent waste (no forward progress, or budget exhausted; see `SealReason`). Terminal and non-retryable, distinct from `Failed` so the parent can decide what to do next. The seal reason is surfaced in the child's final assistant message / spawn `result`. |
 
-Terminal subagent statuses are derived from the child's terminal **turn event** (`turn.completed` / `turn.failed` / `turn.cancelled` / `turn.sealed`), not from the bare `idle` session status — a failed or sealed turn also leaves the session `idle`, so `idle` alone never settles a subagent.
+Terminal subagent statuses are derived from the child's terminal **turn event** (`turn.completed` / `turn.failed` / `turn.cancelled` / `turn.sealed`), not from the bare `idle` session status, a failed or sealed turn also leaves the session `idle`, so `idle` alone never settles a subagent.
 
 ### Database Migration
 
@@ -165,10 +165,10 @@ session creation.
 7. On child failure: returns error, task state → `failed`
 
 **Background:**
-4. Detaches a watcher (same pattern as `spawn_background` runs) and returns immediately; the watcher sends `instructions` as the first user message — deferred so local hosts, where `send_message` runs the child turn synchronously, do not block the spawn call
+4. Detaches a watcher (same pattern as `spawn_background` runs) and returns immediately; the watcher sends `instructions` as the first user message, deferred so local hosts, where `send_message` runs the child turn synchronously, do not block the spawn call
 5. The task is created with `wake_policy: on_terminal`, or `on_activity` when `message_schema` is present; the watcher heartbeats the task registry (attempt-fenced) so the session task reaper can fail an orphaned watcher after worker loss
 6. The watcher waits in slices until the child reaches a terminal turn status (overall cap 6 h), then settles the task and the durable spawn handle; the registry-level wake policy delivers the completion message to the parent (knowledge/runtime-resources/session-tasks.md, Wake-ups)
-7. Local/embedded hosts (everruns-host) may report a bare `idle` after their synchronous turn — the watcher settles it as `completed`; hosted adapters never return bare `idle`
+7. Local/embedded hosts (everruns-host) may report a bare `idle` after their synchronous turn, the watcher settles it as `completed`; hosted adapters never return bare `idle`
 8. `SubagentTaskExecutor::reconcile` (invoked from `wait_task`'s poll loop) probes the child's terminal turn status and settles the task if the watcher died, so `wait_task` converges even after worker loss
 
 **Degradation:** background mode requires a session task registry (it is the only surface for the result). An explicit `mode: "background"` without one is a tool error; an unspecified mode degrades to foreground so embedders without background tracking keep blocking semantics.
@@ -282,7 +282,7 @@ A detached spawn (`lifetime = detached`) resets depth but is admission-capped
 against the **origin** subagent-tree root before the peer session is created.
 The host authority resolves the origin root from the spawning session's stored,
 org-scoped `root_session_id`, then the gate counts detached (`TASK_KIND_SESSION`) tasks
-anywhere under that root — a BFS that follows every task's
+anywhere under that root, a BFS that follows every task's
 `links.child_session_id`, so detached spawns made by subagents deeper in the tree
 or by other detached peers all count against the origin root. A new detached
 spawn is rejected before session creation when it would exceed either:
@@ -325,7 +325,7 @@ The `subagents` feature string is contributed when the subagent tools are availa
 
 ## Phase 1b (Future)
 
-Background mode shipped (default; see `spawn_agent` above) — completion is
+Background mode shipped (default; see `spawn_agent` above), completion is
 delivered through the task registry's `OnTerminal` wake policy rather than a
 subagent-specific mechanism. Remaining candidates:
 

@@ -48,6 +48,6 @@ form. Platform Chat never asks for or reuses plaintext from the conversation.
 
 ## See Also
 
-- [Base Harness](/built-ins/harnesses/base/) — the minimal parent this harness extends
-- [Platform capability](/capabilities/platform/) — the additional capability
-- [Harnesses feature guide](/features/harnesses/) — harness selection and API management
+- [Base Harness](/built-ins/harnesses/base/), the minimal parent this harness extends
+- [Platform capability](/capabilities/platform/), the additional capability
+- [Harnesses feature guide](/features/harnesses/), harness selection and API management

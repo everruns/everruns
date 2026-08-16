@@ -12,7 +12,7 @@ agent loop can run against Claude models through the provider-neutral driver
 trait. It speaks the Claude Messages API with streaming, tool use, and reasoning,
 and maps provider errors onto Everruns runtime errors.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
 [`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
 or run with no key through the offline simulator in the application-facing

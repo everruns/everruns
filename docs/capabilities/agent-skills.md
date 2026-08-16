@@ -32,9 +32,9 @@ Returns: full SKILL.md content and list of bundled files.
 
 Skills use progressive disclosure to keep context efficient:
 
-1. **Discovery** (~100 tokens) — `list_skills` returns only names and descriptions
-2. **Activation** (<5000 tokens) — `activate_skill` loads the full SKILL.md instructions
-3. **Resources** (on-demand) — bundled files accessible via [File System](/capabilities/file-system/) tools
+1. **Discovery** (~100 tokens), `list_skills` returns only names and descriptions
+2. **Activation** (<5000 tokens), `activate_skill` loads the full SKILL.md instructions
+3. **Resources** (on-demand), bundled files accessible via [File System](/capabilities/file-system/) tools
 
 ## Workspace layout
 
@@ -57,8 +57,8 @@ Skills use progressive disclosure to keep context efficient:
 
 ## See Also
 
-- [Agent Skills feature guide](/features/skills/) — detailed skills documentation
-- [Skills Registry](/features/skills-registry/) — API-managed skills
-- [AGENTS.md](/capabilities/agent-instructions/) — simpler alternative for project context
-- [File System](/capabilities/file-system/) — upload skill files
+- [Agent Skills feature guide](/features/skills/), detailed skills documentation
+- [Skills Registry](/features/skills-registry/), API-managed skills
+- [AGENTS.md](/capabilities/agent-instructions/), simpler alternative for project context
+- [File System](/capabilities/file-system/), upload skill files
 - [Capabilities Overview](/capabilities/)

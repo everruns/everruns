@@ -36,7 +36,7 @@ curl -X POST http://localhost:9300/api/v1/budgets \
   }'
 ```
 
-Token budgets are model-agnostic — they cap raw token usage regardless of which provider the session uses.
+Token budgets are model-agnostic, they cap raw token usage regardless of which provider the session uses.
 
 ## Currencies at a glance
 
@@ -53,8 +53,8 @@ USD budgets reflect real costs: $10 lasts much longer on GPT-4o than on Claude O
 
 You can apply multiple budgets to a session at once. The **most restrictive** wins. A common pattern:
 
-- `$10 USD` session budget — caps dollar cost.
-- `2,000,000 tokens` agent budget — caps total tokens regardless of pricing.
+- `$10 USD` session budget, caps dollar cost.
+- `2,000,000 tokens` agent budget, caps total tokens regardless of pricing.
 
 Both apply; whichever runs out first stops the session.
 
@@ -90,9 +90,9 @@ After a `budget.paused` event, you can:
 
 ## A note on enforcement
 
-Budget checks run **after** each LLM call, not before, to avoid latency on the hot path. The last generation can slightly overshoot the limit — this is expected and by design. Treat budgets as cost caps, not hard cutoffs measured in single tokens.
+Budget checks run **after** each LLM call, not before, to avoid latency on the hot path. The last generation can slightly overshoot the limit, this is expected and by design. Treat budgets as cost caps, not hard cutoffs measured in single tokens.
 
 ## See also
 
-- [Budgets](/advanced/budgets/) — full design, ledger semantics, custom currencies.
-- [Self-Budget capability](/capabilities/self-budget/) — let agents inspect their own budget at runtime.
+- [Budgets](/advanced/budgets/), full design, ledger semantics, custom currencies.
+- [Self-Budget capability](/capabilities/self-budget/), let agents inspect their own budget at runtime.

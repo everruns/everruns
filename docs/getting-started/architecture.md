@@ -21,7 +21,7 @@ Everruns is a **headless durable agentic harness engine** built for reliability 
 
 ## Components
 
-For the deployable shape of these components — which run as separate processes, which are required, and which are optional infrastructure like NATS and Valkey — see [Physical Architecture](/advanced/physical-architecture/).
+For the deployable shape of these components, which run as separate processes, which are required, and which are optional infrastructure like NATS and Valkey, see [Physical Architecture](/advanced/physical-architecture/).
 
 ### Control Plane
 

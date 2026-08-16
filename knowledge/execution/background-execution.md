@@ -15,10 +15,10 @@ This document captures the contract. Tool-side behavior of `spawn_background` (a
 ## Goal
 
 Each accepted background run is tracked as a session task
-(`kind = background_tool`) with progress, state, and `task.*` events — see
+(`kind = background_tool`) with progress, state, and `task.*` events, see
 [`knowledge/runtime-resources/session-tasks.md`](../runtime-resources/session-tasks.md).
 
-`spawn_background` is the generic background runner. It wraps any registered built-in tool that opts in via hints. Before EVE-501 the meta-tool was registered into the worker's tool registry by default but was never advertised to the model — sessions had `bash` with `supports_background=true` but no visible `spawn_background`, so models fell back to raw shell detaching. The fix is to expose `spawn_background` through the same capability path that contributes all other model-visible tools.
+`spawn_background` is the generic background runner. It wraps any registered built-in tool that opts in via hints. Before EVE-501 the meta-tool was registered into the worker's tool registry by default but was never advertised to the model, sessions had `bash` with `supports_background=true` but no visible `spawn_background`, so models fell back to raw shell detaching. The fix is to expose `spawn_background` through the same capability path that contributes all other model-visible tools.
 
 ## Contract
 
@@ -28,7 +28,7 @@ Each accepted background run is tracked as a session task
 
 3. **Idempotence.** Explicit selection (id `"background_execution"` in the agent's capabilities) and auto-activation must not produce duplicate `spawn_background` entries. The auto-activator no-ops when the capability is already in `applied_ids`.
 
-4. **Lockstep with the worker registry.** Both `tool_definitions` (model-visible) and `tools` (worker execution registry) gain `spawn_background` from the same activation event. `ToolRegistry::with_defaults()` does **not** include `SpawnBackgroundTool` — if the model cannot see the tool, the worker must not silently dispatch it from a hidden default.
+4. **Lockstep with the worker registry.** Both `tool_definitions` (model-visible) and `tools` (worker execution registry) gain `spawn_background` from the same activation event. `ToolRegistry::with_defaults()` does **not** include `SpawnBackgroundTool`, if the model cannot see the tool, the worker must not silently dispatch it from a hidden default.
 
 5. **No owner capability.** `bashkit_shell` only advertises `supports_background=true` on the `bash` tool and implements `BackgroundExecutableTool`. It does not contribute `spawn_background`. The same rule applies to any future background-capable tool: declare the hint, implement the trait, and the meta-tool surfaces via the generic capability.
 
@@ -41,7 +41,7 @@ Each accepted background run is tracked as a session task
 - Keep the meta-tool out of `ToolRegistry::with_defaults()` to preserve the lockstep invariant.
 - Allow explicit selection by id for tests and overlays; the auto-activator must remain idempotent.
 
-When a new cross-cutting capability is added, extend the auto-activation block rather than introducing a parallel activation phase — keep all rules in one place.
+When a new cross-cutting capability is added, extend the auto-activation block rather than introducing a parallel activation phase, keep all rules in one place.
 
 ## Test policy
 
@@ -55,5 +55,5 @@ End-to-end scripted-session coverage (using `llmsim` scripted mode to drive an a
 
 ## Related specs
 
-- `knowledge/execution/tool-execution.md` — `spawn_background` runtime contract (artifacts, schedules, signal-on-completion).
-- `knowledge/execution/capabilities.md` — Capability system, registration, dependency resolution.
+- `knowledge/execution/tool-execution.md`, `spawn_background` runtime contract (artifacts, schedules, signal-on-completion).
+- `knowledge/execution/capabilities.md`, Capability system, registration, dependency resolution.

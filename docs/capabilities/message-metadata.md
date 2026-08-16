@@ -10,7 +10,7 @@ description: Annotate user and agent messages with metadata such as their timest
 | **Features** | None |
 | **Dependencies** | None |
 
-Annotates user and agent messages with metadata — currently each message's timestamp (UTC) — when building the LLM request. The model sees each message prefixed with an annotation like:
+Annotates user and agent messages with metadata, currently each message's timestamp (UTC), when building the LLM request. The model sees each message prefixed with an annotation like:
 
 ```
 [time 2026-06-11T09:15:42Z] What changed since yesterday?
@@ -38,5 +38,5 @@ User and agent messages are always annotated; system and tool-result messages ne
 
 ## See Also
 
-- [Current Time](/capabilities/current-time/) — tool to get the current wall-clock time
+- [Current Time](/capabilities/current-time/), tool to get the current wall-clock time
 - [Capabilities Overview](/capabilities/)

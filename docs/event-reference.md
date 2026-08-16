@@ -1,6 +1,6 @@
 ---
 title: Event Reference
-description: Complete reference for all Everruns event types — input, output, tool, lifecycle, and error events emitted during execution. Includes schemas and SSE examples.
+description: Complete reference for all Everruns event types, input, output, tool, lifecycle, and error events emitted during execution. Includes schemas and SSE examples.
 ---
 
 This page documents all event types in the Everruns event protocol.
@@ -525,7 +525,7 @@ on the parent session instead. New sessions never emit `subagent.*`.
 
 These event types are no longer produced or part of the supported contract.
 Historical `subagent.*` events recorded in older session logs remain in storage,
-but are filtered out of the events and SSE APIs like any unsupported type — they
+but are filtered out of the events and SSE APIs like any unsupported type, they
 are not returned to consumers (aggregate counters such as `error_count` still
 include them). Consumers should read `task.*` events going forward.
 

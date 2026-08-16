@@ -6,7 +6,7 @@ sidebar:
   order: 0
 ---
 
-A **provider** is an organization-scoped account on an AI model vendor — OpenAI,
+A **provider** is an organization-scoped account on an AI model vendor, OpenAI,
 Anthropic, AWS Bedrock, OpenRouter, and others. You configure a provider once
 with credentials and connection settings, and it powers the models your agents
 run on. Everruns abstracts every vendor behind one uniform driver interface, so
@@ -43,7 +43,7 @@ Providers are managed by organization admins:
 4. Save. Everruns discovers the provider's available models and makes them
    selectable for agents and sessions.
 
-You can configure more than one provider for the same vendor — for example two
+You can configure more than one provider for the same vendor, for example two
 Azure OpenAI regions, or a direct OpenAI key alongside an OpenRouter key.
 
 ## Providers vs. connections
@@ -73,7 +73,7 @@ run an A/B comparison per session.
 ## Credential security
 
 - Credentials are encrypted at rest with AES-256-GCM envelope encryption.
-- Credential values are never returned by the API — only a "configured" flag is
+- Credential values are never returned by the API, only a "configured" flag is
   exposed.
 - Resolution is **fail-closed**: each organization resolves its own configured
   credentials. A turn with no configured provider fails with a clear error

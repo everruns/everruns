@@ -1,6 +1,6 @@
 ---
 title: Use AGENTS.md for project instructions
-description: Inject project-level context — coding style, build commands, architecture notes — into an agent's system prompt by enabling the AGENTS.md capability.
+description: Inject project-level context, coding style, build commands, architecture notes, into an agent's system prompt by enabling the AGENTS.md capability.
 ---
 
 `AGENTS.md` is an emerging open standard for providing project-level instructions to AI agents, backed by OpenAI, Google, Cursor, Sourcegraph, and others. Everruns ships it as the default file for its built-in agent instructions capability, which re-reads configured files on every turn.
@@ -76,16 +76,16 @@ There are no required sections. Write whatever a new contributor would need to k
 
 When the capability is enabled, the system prompt is composed top-to-bottom:
 
-1. **Instruction file content** — project-level instructions.
-2. **Capability system prompt additions** — tool guidance.
-3. **Agent's base system prompt** — the agent's role.
+1. **Instruction file content**: project-level instructions.
+2. **Capability system prompt additions**: tool guidance.
+3. **Agent's base system prompt**: the agent's role.
 
 Project context comes first, so capability and agent prompts can reference it.
 
 ## Limits and dynamics
 
 - Content is capped at **32 KiB** (32,768 bytes) per file. Excess is silently truncated.
-- Configured files are re-read on every turn. Edits during a session apply on the next turn — no restart needed.
+- Configured files are re-read on every turn. Edits during a session apply on the next turn, no restart needed.
 - If a configured file doesn't exist, the agent operates normally without it.
 
 ## Other tools' instruction files
@@ -95,4 +95,4 @@ Everruns reads `AGENTS.md` by default. Add other file names to `files` when an a
 ## See also
 
 - [AGENTS.md capability reference](/capabilities/agent-instructions/)
-- [Equip an agent with tools](/how-to/equip-agents-with-tools/) — adding capabilities in general.
+- [Equip an agent with tools](/how-to/equip-agents-with-tools/), adding capabilities in general.

@@ -10,7 +10,7 @@ description: Session-scoped SQLite databases for structured data storage and que
 | **Features** | `sql_database` |
 | **Dependencies** | None |
 
-Session-scoped SQLite databases for structured data storage. Create tables, insert data, and run queries — all isolated to the current session.
+Session-scoped SQLite databases for structured data storage. Create tables, insert data, and run queries, all isolated to the current session.
 
 ## Tools
 
@@ -32,16 +32,16 @@ Run SELECT queries. Results limited to 1000 rows.
 
 ### `sql_schema`
 
-Introspect the database schema — list tables, columns, and types.
+Introspect the database schema, list tables, columns, and types.
 
 ## Notes
 
-- Database is session-scoped — destroyed when the session ends
+- Database is session-scoped, destroyed when the session ends
 - SELECT queries return at most 1000 rows
 - Standard SQLite SQL syntax
 
 ## See Also
 
-- [Storage](/capabilities/session-storage/) — simpler key/value alternative
-- [File System](/capabilities/file-system/) — file-based data storage
+- [Storage](/capabilities/session-storage/), simpler key/value alternative
+- [File System](/capabilities/file-system/), file-based data storage
 - [Capabilities Overview](/capabilities/)

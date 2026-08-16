@@ -18,7 +18,7 @@ run come from* and *how many runs match what I am looking at*.
 The sessions list filtered by agent and title substring only. That is enough to
 find a session you already know about and nothing else. An operator asking
 "which runs did a schedule start last night", or "show me my chat threads", or
-"how many of these failed", had to fetch every row and reduce client-side —
+"how many of these failed", had to fetch every row and reduce client-side,
 which does not survive the row counts a busy org produces.
 
 Two things were missing, and they are related: a dimension to group by, and
@@ -55,13 +55,13 @@ Making threads findable is a filter, not a surface.
 ## Activity: the status the list shows
 
 `SessionStatus` describes execution state (`started`, `active`, `idle`,
-`waiting_for_tool_results`, `paused`) and has **no notion of failure** — a
+`waiting_for_tool_results`, `paused`) and has **no notion of failure**: a
 session whose last turn errored is simply `idle`. The list and the masthead
 both need failure, so `SessionActivity` derives an outcome-oriented value from
 the execution status plus the outcome of the most recent terminal turn.
 
 `sessions.last_turn_status` carries that outcome, maintained by statement-level
-triggers on `events` — the same incremental-counter pattern
+triggers on `events`, the same incremental-counter pattern
 `turn_count`/`tool_call_count` established, for the same reason: the list must
 not rescan event history per row.
 
@@ -93,8 +93,8 @@ the right source for analytics that tolerate projection lag.
 
 ## Index shape
 
-The list and every aggregate share one predicate shape — org, then some subset
-of source, agent, owner, and a creation window — ordered by `created_at` or
+The list and every aggregate share one predicate shape, org, then some subset
+of source, agent, owner, and a creation window, ordered by `created_at` or
 `updated_at`. Migration 118 extends the existing `(org_id, created_at DESC)`
 index (EVE-697) so each added filter still begins from an org-scoped index
 scan. Org scoping is part of the predicate itself, not a post-filter: a count

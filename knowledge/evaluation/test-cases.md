@@ -52,7 +52,7 @@ Each test case file contains:
 
 `TC###_short_description.md`
 
-Numbering is **per leaf folder** — each feature folder (or target root when flat, e.g. `cli/`) starts at TC001 independently. Do not share numbering across folders or targets.
+Numbering is **per leaf folder**: each feature folder (or target root when flat, e.g. `cli/`) starts at TC001 independently. Do not share numbering across folders or targets.
 
 Examples:
 - `TC001_success_login.md`

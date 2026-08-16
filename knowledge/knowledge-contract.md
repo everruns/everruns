@@ -66,7 +66,7 @@ the pinned upstream `okf-lint` implementation.
 
 ## See also
 
-- [Maintenance](project/maintenance.md) — goal-oriented repository maintenance
-- [Documentation](ui/documentation.md) — the public documentation surface
-- [Integration Specifications](integrations/integrations.md) — specifications owned by
+- [Maintenance](project/maintenance.md), goal-oriented repository maintenance
+- [Documentation](ui/documentation.md), the public documentation surface
+- [Integration Specifications](integrations/integrations.md), specifications owned by
   integration crates

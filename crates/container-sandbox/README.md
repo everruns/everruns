@@ -3,12 +3,12 @@
 > Self-hosted container sandbox capability for Everruns agents.
 
 `everruns-container-sandbox` runs agent code in self-hosted containers via the
-Docker Engine REST API — no external sandbox provider and no `docker` CLI
+Docker Engine REST API, no external sandbox provider and no `docker` CLI
 dependency. It is a core capability rather than an external integration because
 container execution is infrastructure that Everruns operators own, similar to
 session-scoped SQL databases.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 as a capability hosts can enable.
 

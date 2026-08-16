@@ -9,12 +9,12 @@
 `everruns-integrations-duckduckgo` adds a small, no-key capability that lets
 agents pull quick facts, abstracts, definitions, and related topics from the
 DuckDuckGo Instant Answer API. It registers a single stateless
-`duckduckgo_instant_answer` tool — a low-friction way to give an agent quick
+`duckduckgo_instant_answer` tool, a low-friction way to give an agent quick
 fact lookups without configuring any credentials. This is an instant-answer
 lookup, not a full web/SERP search: an empty result does not mean no matching
 web pages exist.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with
 [`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
 integration plugin system.

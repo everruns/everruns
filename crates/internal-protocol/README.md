@@ -8,7 +8,7 @@ protobuf client and server stubs and the conversions between protobuf and
 domain types (for example UUID mapping). It is an internal building block of the
 Everruns workspace and is not a stable public API.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents.
 
 ## Quick Example

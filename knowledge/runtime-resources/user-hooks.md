@@ -14,7 +14,7 @@ User hooks let operators inject shell commands at well-defined points in the
 agent execution lifecycle. The user authors a small JSON config; the runtime
 runs the configured commands at the right moment, delivers a structured JSON
 payload via environment variables plus a session-VFS payload file (the bash
-executor has no process stdin — see "Wire contract" below), and reads a
+executor has no process stdin, see "Wire contract" below), and reads a
 structured decision from stdout. Hooks can mutate the inputs they observe or
 block execution outright.
 
@@ -84,7 +84,7 @@ Block semantics:
   is aborted, and the configured `user_message` (if any) is surfaced.
 - `pre_tool_use` can block: the tool returns immediately with an error
   result containing the hook's reason. The chain stops at the first block.
-- `post_tool_use` cannot block — by the time it runs the tool has already
+- `post_tool_use` cannot block, by the time it runs the tool has already
   executed and the model can't unsee that. It can only mutate the result.
 
 ## Wire contract: bash executor

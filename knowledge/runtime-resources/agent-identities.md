@@ -44,7 +44,7 @@ Agent identities also participate in durable ownership through the principal gra
 
 Agent identities can be created and managed standalone (the CRUD API above), but
 an agent also gets one **lazily, on demand**: the first time an agent acts
-unattended (currently an agent-trigger fire — see `knowledge/runtime-resources/agent-triggers.md`) it
+unattended (currently an agent-trigger fire, see `knowledge/runtime-resources/agent-triggers.md`) it
 is given its own `agent_identity` so it owns that work as itself.
 
 - The link lives on `agents.agent_identity_id` (storage-only; not on the public

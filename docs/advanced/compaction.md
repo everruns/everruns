@@ -1,13 +1,13 @@
 ---
 title: Context Compaction
-description: How Everruns manages LLM context windows through automatic compaction strategies — observation masking, summarization, and hierarchical memory tiers
+description: How Everruns manages LLM context windows through automatic compaction strategies, observation masking, summarization, and hierarchical memory tiers
 sidebar:
   order: 10
 ---
 
 Long-running agent sessions accumulate messages until they exceed the model's context window. When that happens, the LLM rejects the request. **Context compaction** automatically reduces the conversation size so the agent can keep working without losing important information.
 
-Everruns provides multiple compaction strategies that can be combined. The default `auto` strategy cascades through all of them in order — from cheapest (free) to most expensive (LLM call) — stopping as soon as the context fits.
+Everruns provides multiple compaction strategies that can be combined. The default `auto` strategy cascades through all of them in order, from cheapest (free) to most expensive (LLM call), stopping as soon as the context fits.
 
 ![Context Window](../images/advanced/context-window.svg)
 
@@ -15,9 +15,9 @@ Everruns provides multiple compaction strategies that can be combined. The defau
 
 Compaction operates at two points:
 
-1. **Proactively** — before each LLM call, Everruns estimates the token count. If it exceeds a configurable budget threshold (default 85% of the model's context window), compaction runs *before* the call is made. This avoids the latency of a failed request.
+1. **Proactively**: before each LLM call, Everruns estimates the token count. If it exceeds a configurable budget threshold (default 85% of the model's context window), compaction runs *before* the call is made. This avoids the latency of a failed request.
 
-2. **Reactively** — if the LLM still returns a `RequestTooLarge` error (estimation can undercount), the compaction cascade runs and the request is retried automatically.
+2. **Reactively**: if the LLM still returns a `RequestTooLarge` error (estimation can undercount), the compaction cascade runs and the request is retried automatically.
 
 In both cases, the same cascade of strategies executes:
 
@@ -27,7 +27,7 @@ The UI shows a divider between messages whenever compaction happens:
 
 > **Context compacted** · 142 → 38 messages · observation_masking+summarization
 
-Click the divider to see the cascade details — which strategies ran, how many messages each step produced, and the time taken.
+Click the divider to see the cascade details, which strategies ran, how many messages each step produced, and the time taken.
 
 ## Strategies
 
@@ -43,7 +43,7 @@ Two summary formats:
 
 | Format | Example | When to use |
 |---|---|---|
-| `one_line` (default) | `[read_file → 47 lines, 2340 bytes]` | Most cases — minimal footprint |
+| `one_line` (default) | `[read_file → 47 lines, 2340 bytes]` | Most cases, minimal footprint |
 | `head_tail` | First 3 lines + `... (14 lines omitted) ...` + last 3 lines | When partial output context helps |
 
 The most recent N tool outputs are always kept verbatim (default: 5).
@@ -65,7 +65,7 @@ You can configure:
 
 ### Aggressive Trim
 
-Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy — dropped messages cannot be recovered unless Infinity Context is enabled.
+Last resort. Drops the oldest messages to fit within the token budget. The system prompt and the most recent messages are always preserved. This is lossy, dropped messages cannot be recovered unless Infinity Context is enabled.
 
 ## Generic Harness Defaults
 
@@ -74,13 +74,13 @@ The built-in **Generic** harness enables both `compaction` and `infinity_context
 | Capability | Role | Default in Generic |
 |---|---|---|
 | **Infinity Context** | Limits how many messages are loaded from the database into the prompt; provides `query_history` for retrieval | `context_budget_tokens: 100000`, `min_recent_messages: 10` |
-| **Context Compaction** | Reduces the size of messages that *are* in the prompt — masking tool outputs, summarizing, or trimming | `strategy: auto`, `proactive: true`, `budget_percent: 0.85` |
+| **Context Compaction** | Reduces the size of messages that *are* in the prompt, masking tool outputs, summarizing, or trimming | `strategy: auto`, `proactive: true`, `budget_percent: 0.85` |
 
 The flow for a long-running Generic session:
 
 ![Compaction Session Flow](../images/advanced/compaction-session-flow.svg)
 
-No configuration is needed — creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
+No configuration is needed, creating a session with the Generic harness gives you this behavior out of the box. To customize, override either capability's config on the agent or session level.
 
 ## Configuration
 
@@ -233,7 +233,7 @@ proactive and reactive compaction.
 | `hot_messages` | integer | `20` | Recent messages kept verbatim (full content) |
 | `warm_messages` | integer | `100` | Older messages with observation masking applied to tool outputs |
 
-Messages beyond hot + warm are in the **cold tier** — replaced with a conversation summary. If [Infinity Context](/capabilities/infinity-context/) is enabled, cold-tier messages remain queryable via `query_history`.
+Messages beyond hot + warm are in the **cold tier**: replaced with a conversation summary. If [Infinity Context](/capabilities/infinity-context/) is enabled, cold-tier messages remain queryable via `query_history`.
 
 ## Memory Tier Diagram
 
@@ -244,7 +244,7 @@ Messages beyond hot + warm are in the **cold tier** — replaced with a conversa
 Compaction and [Infinity Context](/capabilities/infinity-context/) are complementary:
 
 - **Infinity Context** limits how many messages are loaded from the database into the prompt, and provides `query_history` for retrieval.
-- **Compaction** reduces the size of messages that *are* in the prompt — making tool outputs smaller, summarizing old turns, or trimming when nothing else works.
+- **Compaction** reduces the size of messages that *are* in the prompt, making tool outputs smaller, summarizing old turns, or trimming when nothing else works.
 
 For long-running sessions, enable both:
 
@@ -287,15 +287,15 @@ not emit `context.compacted` because it installs no semantic checkpoint.
 ## Best Practices
 
 - **Start with defaults.** The `auto` strategy with `proactive: true` handles most cases well.
-- **Lower `budget_percent`** (e.g., 0.70) if your agents use large tool outputs frequently — this gives more headroom before the context fills.
+- **Lower `budget_percent`** (e.g., 0.70) if your agents use large tool outputs frequently, this gives more headroom before the context fills.
 - **Increase `keep_recent_tool_outputs`** if your agent often references recent tool results across multiple turns.
 - **Use a cheaper model for summarization** (e.g., Haiku) to reduce cost and latency when the summarization step runs.
 - **Enable Infinity Context** alongside compaction for sessions that run for hours or days.
-- **Customize `preserve`** to match your agent's domain — if your agent tracks database schemas or API contracts, add those to the preserve list.
+- **Customize `preserve`** to match your agent's domain, if your agent tracks database schemas or API contracts, add those to the preserve list.
 
 ## See Also
 
-- [Infinity Context](/capabilities/infinity-context/) — Message history windowing and retrieval
-- [Capabilities Overview](/capabilities/) — How capabilities are configured
-- [Harnesses](/features/harnesses/) — Where capability configs are applied
-- [Events](/features/events/) — SSE event streaming reference
+- [Infinity Context](/capabilities/infinity-context/), Message history windowing and retrieval
+- [Capabilities Overview](/capabilities/), How capabilities are configured
+- [Harnesses](/features/harnesses/), Where capability configs are applied
+- [Events](/features/events/), SSE event streaming reference

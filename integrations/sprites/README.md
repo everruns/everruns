@@ -11,7 +11,7 @@ microVMs through the [Sprites](https://sprites.dev) (Fly.io) REST API. Sprites a
 Firecracker VMs with full ext4 filesystems that persist across sessions, so an
 agent can keep long-lived state between runs.
 
-Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+Part of the [Everruns](https://everruns.com) ecosystem, the durable agentic
 harness engine for building unstoppable agents. It registers with `everruns-core`
 through the Everruns integration plugin system.
 

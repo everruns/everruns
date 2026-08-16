@@ -16,7 +16,7 @@ See `crates/container-sandbox/src/client.rs` for the full API client implementat
 
 ### State Management
 
-Per-sandbox state (container ID, network ID, image, working directory) is stored in session-scoped secrets under `container_sandbox:{name}`. This ensures cross-session isolation — sessions cannot access each other's containers.
+Per-sandbox state (container ID, network ID, image, working directory) is stored in session-scoped secrets under `container_sandbox:{name}`. This ensures cross-session isolation, sessions cannot access each other's containers.
 
 Leased resources track container lifecycle with 20-minute lease duration. The leased resource scheduler handles cleanup of abandoned containers.
 
@@ -80,7 +80,7 @@ Uses Docker Engine REST API via `reqwest` instead of shelling out to the `docker
 
 ### Runtime-agnostic
 
-The container runtime (`runc`, `sysbox-runc`, `kata`, `gvisor`) is a deployment-time config field. Code doesn't assume a specific runtime — isolation guarantees scale with runtime choice.
+The container runtime (`runc`, `sysbox-runc`, `kata`, `gvisor`) is a deployment-time config field. Code doesn't assume a specific runtime, isolation guarantees scale with runtime choice.
 
 ## Capability Registration
 

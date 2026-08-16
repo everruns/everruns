@@ -24,12 +24,12 @@ The **Data Analyst** harness extends the [Generic harness](/built-ins/harnesses/
 
 The system prompt guides the agent through six steps on every data question:
 
-1. **Recall** — Search persistent memory for corrections, column mappings, and business definitions from earlier sessions
-2. **Inspect** — Use `sql_schema` to verify table structure before writing SQL
-3. **Plan** — State the query plan: tables, joins, filters, expected grain, and potential pitfalls
-4. **Execute & Validate** — Run the query, then validate (zero rows? duplicates? NULL aggregations?). Self-correct if results look wrong
-5. **Visualize** — Summarize findings in plain language, then render charts and tables via OpenUI
-6. **Learn** — Use `remember` to save corrections and patterns for future sessions
+1. **Recall**: Search persistent memory for corrections, column mappings, and business definitions from earlier sessions
+2. **Inspect**: Use `sql_schema` to verify table structure before writing SQL
+3. **Plan**: State the query plan: tables, joins, filters, expected grain, and potential pitfalls
+4. **Execute & Validate**: Run the query, then validate (zero rows? duplicates? NULL aggregations?). Self-correct if results look wrong
+5. **Visualize**: Summarize findings in plain language, then render charts and tables via OpenUI
+6. **Learn**: Use `remember` to save corrections and patterns for future sessions
 
 This mirrors the six-layer context pattern described in [OpenAI's data agent blog post](https://openai.com/index/inside-our-in-house-data-agent/) and implemented by [Dash](https://github.com/agno-agi/dash).
 
@@ -39,10 +39,10 @@ All [Generic harness capabilities](/built-ins/harnesses/generic/#bundled-capabil
 
 | Capability | What it provides |
 |------------|-----------------|
-| Session SQL Database | `sql_execute`, `sql_query`, `sql_schema` — session-scoped SQLite databases that auto-create on first write |
-| Persistent Memory | `remember`, `recall`, `forget` — cross-session memory with passive recall (8 memories auto-injected per turn) |
+| Session SQL Database | `sql_execute`, `sql_query`, `sql_schema`, session-scoped SQLite databases that auto-create on first write |
+| Persistent Memory | `remember`, `recall`, `forget`, cross-session memory with passive recall (8 memories auto-injected per turn) |
 | OpenUI | Rich interactive charts, tables, dashboards, and KPI cards rendered inline in chat |
-| Todo List | `write_todos` — track multi-step analysis tasks |
+| Todo List | `write_todos`, track multi-step analysis tasks |
 | Data Knowledge | Mounts `/knowledge/` scaffold with directories for table docs, business rules, and validated SQL patterns |
 
 ## Knowledge Files
@@ -84,6 +84,6 @@ Agent: [recalls relevant memories] [inspects any existing schema]
 
 ## See Also
 
-- [Generic Harness](/built-ins/harnesses/generic/) — the parent harness this extends
-- [Capabilities overview](/features/capabilities/) — full capability catalog including memory and OpenUI
-- [Harnesses feature guide](/features/harnesses/) — harness selection and API management
+- [Generic Harness](/built-ins/harnesses/generic/), the parent harness this extends
+- [Capabilities overview](/features/capabilities/), full capability catalog including memory and OpenUI
+- [Harnesses feature guide](/features/harnesses/), harness selection and API management

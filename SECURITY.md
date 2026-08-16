@@ -48,7 +48,7 @@ boundaries:
 | Authentication | JWT (15 min), personal access tokens (SHA-256), OAuth, Argon2id passwords |
 | Authorization | Permission policy enforced in `Command::run`, role→permission mapping |
 | Encryption at rest | AES-256-GCM envelope encryption for API keys and secrets |
-| Bash sandbox | Bashkit virtual interpreter — no process spawning, VFS adapter, resource limits |
+| Bash sandbox | Bashkit virtual interpreter, no process spawning, VFS adapter, resource limits |
 | SQLite sandbox | Authorizer callback, VFS isolation, query timeouts |
 | Tool execution | Registry-based validation, defensive MCP parsing, session-scoped tools |
 | Network egress | SSRF protection (DNS-pinned resolve-then-check), domain allowlists |

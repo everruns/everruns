@@ -62,7 +62,7 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   returns one ATIF JSON document; `&segmented=true` returns a forward-linked
   chain of byte-bounded segments for sessions over the size cap (see
   `knowledge/runtime-resources/session-export.md` and the Limits section; default JSONL unchanged).
-  The MCP/CLI `export_session_messages` surface is whole-document only —
+  The MCP/CLI `export_session_messages` surface is whole-document only,
   segmentation is an HTTP-route concern and is not exposed to the scripting
   catalog. Reachable from all three consumer surfaces: the API, the UI
   ("Export ATIF"), and the CLI (`everruns sessions export --format atif`,
@@ -79,7 +79,7 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   NDJSON or JSON (array, single object, or `{ "trajectories": [...] }`) and
   upserts eval cases: user steps → the case `conversation` (multi-turn
   preserved), the final agent message → a reference excerpt in the case
-  description. **Import creates unscored cases** — ATIF carries no assertion
+  description. **Import creates unscored cases**: ATIF carries no assertion
   semantics, so no scorer is auto-synthesized from the final message (a
   whole-text `contains` scorer would be brittle); users attach scorers after
   import. Idempotency keys on the case name (derived from `extra.case_name` →
@@ -108,8 +108,8 @@ ContentPart with a `source`, choosing the leanest faithful representation:
 content-bearing `source.path` while keeping the structural `media_type`; the
 always-on secret scrubber still runs over every produced source.
 
-**Omitted images (now rare).** Only an image that cannot be materialized — an
-inline `Image` carrying neither a URL nor base64 bytes — is flattened to an
+**Omitted images (now rare).** Only an image that cannot be materialized, an
+inline `Image` carrying neither a URL nor base64 bytes, is flattened to an
 `"[image]"` marker; its locator (media_type / filename as present, never bytes)
 is recorded in step-level `extra.omitted_images[]` and counted in a root
 `extra.images_omitted` total. Both keys appear only when at least one image was
@@ -122,7 +122,7 @@ sees a `spawn_agent` tool result carrying a `subagent_id` (the child session
 id), it attaches a `subagent_trajectory_ref` (Harbor RFC 0001) to that
 `observation.results[]` entry: `trajectory_path` points at the child's own ATIF
 export (`/v1/sessions/{child}/export?format=atif`, a resolvable location per the
-RFC's ref rules), plus the informational `session_id`. This is **ref-only** —
+RFC's ref rules), plus the informational `session_id`. This is **ref-only**,
 the child trajectory is not embedded as `subagent_trajectories[]`, because this
 fold sees only one session's event log and has no access to child-session
 events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
@@ -146,7 +146,7 @@ events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
   - A segment with more steps remaining carries the RFC's
     **`continued_trajectory_ref`** (a root string, per Harbor RFC 0001): the
     export URL for the next segment, embedding an opaque `cursor`. The
-    final/only segment omits it — that is how a reader detects the end.
+    final/only segment omits it, that is how a reader detects the end.
   - The **cursor** is opaque (`base64url(JSON)` of the session id + next step
     offset). It is validated on every request: malformed, foreign-session, or
     out-of-range cursors are rejected with HTTP 400 (code `atif_cursor_invalid`),
@@ -160,7 +160,7 @@ events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
   - **Byte bounding.** Segments are packed greedily and stop before the
     serialized segment would exceed `ATIF_EXPORT_MAX_BYTES`; each segment holds
     at least one step. **Caveat:** a single step whose own serialization exceeds
-    the cap is returned alone and may exceed the cap — the only way to make
+    the cap is returned alone and may exceed the cap, the only way to make
     progress without dropping data (no 413, no infinite loop).
   - Secret scrubbing is applied to **every** segment, same as the whole-doc
     path. Response headers `X-Atif-Segment-Index`, `X-Atif-Images-Omitted` (when
@@ -187,22 +187,22 @@ events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
 Each item is an independently reviewable change (committed PR-sized). Status
 reflects what has shipped on `main`.
 
-1. ✅ **Serializer + session export** — `crates/server/src/atif.rs` fold,
+1. ✅ **Serializer + session export**: `crates/server/src/atif.rs` fold,
    `?format=atif` on session export, this spec, index/cross-link updates.
-2. ✅ **Dataset export + import** — `format: "atif"` on the eval dataset
+2. ✅ **Dataset export + import**: `format: "atif"` on the eval dataset
    export, `POST /v1/evals/{eval_id}/atif_import`, and the related spec
    updates (`knowledge/evaluation/dataset-export.md`, `knowledge/evaluation/evals.md`).
-3. ✅ **Segmented session export** — `?format=atif&segmented=true` with
+3. ✅ **Segmented session export**: `?format=atif&segmented=true` with
    `continued_trajectory_ref` linking + opaque cursor, for sessions over the
    size cap (see Limits).
-4. ✅ **Fold fidelity** — image content parts exported as ATIF multimodal
+4. ✅ **Fold fidelity**: image content parts exported as ATIF multimodal
    ContentParts (see Image content) and subagent spawns linked via
    `subagent_trajectory_ref` (see Subagent trajectories).
 
 ## Non-goals (v1)
 
 - Embedding subagents as `subagent_trajectories[]` (child sessions are linked
-  by ref only; recursive embedding is a follow-up — see Subagent trajectories).
+  by ref only; recursive embedding is a follow-up, see Subagent trajectories).
 - Importing trajectories as *results* (the existing external-run import in
   `knowledge/evaluation/evals.md` covers scored results; ATIF import produces cases).
 

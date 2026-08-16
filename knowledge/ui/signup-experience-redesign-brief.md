@@ -1,19 +1,19 @@
 ---
 type: Specification
-title: "Sign-up Experience Redesign — Analysis & Design Brief"
+title: "Sign-up Experience Redesign, Analysis & Design Brief"
 description: "Design brief for on-brand sign-up / onboarding screens."
 tags:
   - everruns
   - ui
 ---
-# Sign-up Experience Redesign — Analysis & Design Brief
+# Sign-up Experience Redesign, Analysis & Design Brief
 
 Status: design brief (not yet a spec). Purpose: give a design agent enough context to
 produce on-brand sign-up / onboarding screens for Everruns SaaS. Engineering will
 implement from the resulting designs.
 
 Implementation status: the resulting "Onboarding Arc" design (Frames 1–6) is
-implemented — persistent shell (`OnboardingShell`/`AuthShell` + stepper + navy
+implemented, persistent shell (`OnboardingShell`/`AuthShell` + stepper + navy
 brand panel), unified `/login` door (see `knowledge/security/authentication.md` § Unified
 Entry), verify-email under the shell, org creation (`ZeroOrgOnboarding`), the
 setup wizard as Configure, and the Done/first-action screen. Wrappers extend
@@ -28,22 +28,22 @@ the stepper via `OnboardingArcProvider` (`onboarding-arc-context.tsx`).
 The current SaaS flow, screen by screen:
 
 1. **Auth (PropelAuth hosted pages).** `/login` and `/register` are thin client-side
-   redirects to PropelAuth's hosted login/signup. We do **not** own these screens —
+   redirects to PropelAuth's hosted login/signup. We do **not** own these screens,
    they're PropelAuth's default forms on a PropelAuth domain. Our only styling is the
    `bg-brand-dots` page behind the redirect flash.
    - Files: `apps/saas-ui/src/app/(auth)/login/page.tsx`, `(auth)/register/page.tsx`
 2. **Email verification gate.** New users land on `/onboarding`. If their email isn't
    verified, they see a small centered card: "Verify your email", with Refresh / Resend /
    Use-another-account buttons. (Anti-abuse backstop, enforced server-side too.)
-3. **Org name prompt.** Once verified, the same small centered card asks for one thing —
-   "Organisation name" — with a "Create organisation" button.
+3. **Org name prompt.** Once verified, the same small centered card asks for one thing,
+   "Organisation name", with a "Create organisation" button.
    - File: `apps/saas-ui/src/app/(onboarding)/onboarding/page.tsx`
 4. **Hand-off to OSS setup.** On submit, the org is created and the user is pushed to
    `/orgs/[orgId]/setup`, which is the OSS-owned setup wizard (re-exported, not overridden).
 5. **Dashboard.**
 
 The thing the user finds ugly: steps 2–3 are a **single 512px card floating in the dead
-center of an empty dotted page**. It's functional but feels like an afterthought — no
+center of an empty dotted page**. It's functional but feels like an afterthought, no
 narrative, no brand presence, no sense of progress, no indication of what comes next.
 
 ### 1b. OSS setup wizard (the part that's "quite nice")
@@ -51,21 +51,21 @@ narrative, no brand presence, no sense of progress, no indication of what comes 
 After org creation, `/orgs/[orgId]/setup` runs a genuinely nice flow we should treat as the
 quality bar and the visual anchor:
 
-- **Animated provisioning checklist** — 4 steps reveal/complete ~400ms apart:
+- **Animated provisioning checklist**: 4 steps reveal/complete ~400ms apart:
   1. Organization created
   2. Harnesses initialised
   3. Default settings configured
   4. LLM provider configured
 
   Each row animates pending (hollow) → in-progress (spinner) → complete (green check).
-- **Inline LLM provider picker** — a 2-column card grid (OpenAI / Anthropic) with provider
+- **Inline LLM provider picker**: a 2-column card grid (OpenAI / Anthropic) with provider
   icons and a radio selection state, then a password API-key field with "stored securely
   and encrypted" helper text, plus a "Skip for now" escape hatch.
 - File: `apps/ui/src/app/(main)/orgs/[orgId]/setup/page.tsx`
 
 This wizard already embodies the brand: it has rhythm, real-time feedback, and inline
 configuration so the user never leaves the flow. **The redesign goal is to make the whole
-sign-up arc feel like this — not just the last leg.**
+sign-up arc feel like this, not just the last leg.**
 
 ### 1c. OSS auth (for reference / parity)
 
@@ -76,27 +76,27 @@ directly.
 
 ---
 
-## 2. The design system (Slate) — non-negotiables for the design agent
+## 2. The design system (Slate), non-negotiables for the design agent
 
-Brand personality: **precision instrumentation** — sober, dense, engineered, calm. "We handle
+Brand personality: **precision instrumentation**: sober, dense, engineered, calm. "We handle
 chaos so you don't have to." Logo: three interlocking Borromean rings (durability ×
 scalability × reliability).
 
-- **Sharp corners everywhere — 0px radius.** This is a defining trait. No rounded cards,
+- **Sharp corners everywhere, 0px radius.** This is a defining trait. No rounded cards,
   buttons, or inputs. (Only exception in the whole app is one experimental badge.)
 - **Flat. No drop shadows.** Hierarchy comes from tone + 1px borders, never elevation.
 - **Palette:** Navy `#0A1636` (primary), single Gold accent `#D4A43A` (focus rings, active
   states, CTAs), near-white background `hsl(0 0% 98%)`, pure-white cards, gray borders
-  `hsl(0 0% 88%)`. Gold is reserved — used sparingly for emphasis. Never gold text on gold.
+  `hsl(0 0% 88%)`. Gold is reserved, used sparingly for emphasis. Never gold text on gold.
 - **Typography:** Geist Sans (UI) + Geist Mono (code/logs). Tight tracking (-0.01em global,
   -0.02em on headlines). Headlines 600 weight.
-- **Texture:** `bg-brand-dots` — a 24px navy dot grid at 8% opacity (gold in dark mode).
+- **Texture:** `bg-brand-dots`, a 24px navy dot grid at 8% opacity (gold in dark mode).
 - **Spacing:** 4px base scale. Form rows `space-y-4`; label→input `space-y-2`; card padding
   `p-8`.
 - **Buttons:** navy default, gold `accent` variant for hero CTAs; full-width in single-column
   forms; icon + label (e.g. trailing `ArrowRight`); gold 3px focus ring.
 - **Motion vocabulary already in the system:** 220–260ms ease-out enter animations, a subtle
-  1.8s "progress sheen", step-reveal cadence ~400ms. Lean on these — don't invent a new
+  1.8s "progress sheen", step-reveal cadence ~400ms. Lean on these, don't invent a new
   motion language.
 
 Source of truth: `apps/ui/src/app/design-system.css` + `apps/ui/DESIGN.md` + `knowledge/ui/brand.md`.
@@ -116,7 +116,7 @@ Source of truth: `apps/ui/src/app/design-system.css` + `apps/ui/DESIGN.md` + `kn
    it feel intentional.)
 5. **PropelAuth handoff is abrupt.** The user bounces to an external-looking domain and back.
    We can't redesign PropelAuth's form, but we can frame the entry and return so it feels
-   contained. (PropelAuth hosted-page theming is configurable — flag for the design agent to
+   contained. (PropelAuth hosted-page theming is configurable, flag for the design agent to
    consider, but treat the form itself as out of our direct control.)
 
 ---
@@ -126,31 +126,31 @@ Source of truth: `apps/ui/src/app/design-system.css` + `apps/ui/DESIGN.md` + `kn
 Design the whole arc as **one coherent, progress-aware journey** with a persistent brand frame.
 Proposed steps:
 
-**Step 0 — Landing / entry (optional but recommended).**
+**Step 0, Landing / entry (optional but recommended).**
 A branded "Get started" surface that sets context before bouncing to PropelAuth: logo,
 one-line value prop ("Durable agentic harness. Unstoppable agents."), and a single primary
 CTA. This makes the PropelAuth jump feel like a deliberate step rather than a redirect.
 
-**Step 1 — Authenticate (PropelAuth).**
+**Step 1, Authenticate (PropelAuth).**
 Out of our direct control, but: (a) consider theming PropelAuth hosted pages to match Slate
 (navy/gold, sharp corners, logo); (b) frame the return so the user lands back inside our
 branded shell smoothly.
 
-**Step 2 — Verify email (when needed).**
+**Step 2, Verify email (when needed).**
 Keep, but reframe as a clearly-labelled stop in the journey, not a dead-end card. Show it as
 the current step in the persistent progress frame. Friendly, reassuring copy.
 
-**Step 3 — Create organisation.**
+**Step 3, Create organisation.**
 The single org-name field, but presented inside the branded frame with a sense of "this is
 your workspace". Could pair the field with a short explainer of what an org is (owns your
 agents, sessions, settings) and a reassurance ("invite your team later").
 
-**Step 4 — Provision + configure (existing OSS wizard).**
+**Step 4, Provision + configure (existing OSS wizard).**
 The animated 4-step checklist + inline provider/API-key setup. This is the payoff. The
 redesign should make steps 0–3 visually lead *into* this, so it feels like the climax of one
 flow rather than a separate app.
 
-**Step 5 — Land in dashboard / first action.**
+**Step 5, Land in dashboard / first action.**
 Ideally drop the user somewhere actionable (e.g. straight into creating their first agent),
 not a cold empty dashboard.
 
@@ -164,12 +164,12 @@ The strongest single recommendation: wrap steps 2–4 in **one persistent layout
 - optionally a calm right-hand or background panel reinforcing brand (tagline, the Borromean
   rings motif, or a quiet illustration) so the form isn't alone in the void.
 
-This turns "form floating in space" into "guided setup", and makes the seam between SaaS
+This turns "form floating in space" into "guided setup", and makes the boundary between SaaS
 screens (steps 2–3) and the OSS wizard (step 4) disappear.
 
 ---
 
-## 5. Concrete design ideas to explore (menu — pick/combine)
+## 5. Concrete design ideas to explore (menu, pick/combine)
 
 These are textual prompts for the design agent; not all need to ship.
 
@@ -189,7 +189,7 @@ These are textual prompts for the design agent; not all need to ship.
 5. **Warmer empty/verify states.** Replace the bare "Verify your email" card with an
    illustrated, on-brand state that still shows it as step N of M.
 6. **Themed PropelAuth pages.** If PropelAuth theming allows: navy/gold, sharp corners, logo,
-   Geist font — so the auth jump doesn't look like a different product.
+   Geist font, so the auth jump doesn't look like a different product.
 7. **Actionable finish.** Final screen routes into "create your first agent" rather than a
    cold dashboard, closing the loop from sign-up to first value.
 
@@ -199,7 +199,7 @@ These are textual prompts for the design agent; not all need to ship.
 
 - **Stay in Slate.** 0px radius, flat (no shadows), navy + gold + grayscale, Geist fonts, dot
   grid, tight tracking. Reuse existing motion timings.
-- **Gold is precious.** Use it for the active step, focus, and the single primary CTA — not as
+- **Gold is precious.** Use it for the active step, focus, and the single primary CTA, not as
   a fill.
 - **PropelAuth owns the credential form.** Design around the entry and return, and propose
   PropelAuth theme values, but don't assume we can build a fully custom auth form in-app.
@@ -230,7 +230,7 @@ OSS (reference + the nice wizard; modify only general-purpose):
 
 ---
 
-# Part B — Approved design & implementation plan
+# Part B, Approved design & implementation plan
 
 The design agent delivered a 6-frame "onboarding arc": **entry gateway → themed
 PropelAuth → verify (1/4) → create org (2/4) → provision+configure (3/4) →
@@ -244,18 +244,18 @@ resolve the six review questions and fix the premise of the auth screen.
   PropelAuth's `email_confirmed` JWT claim on *every* login, with backend-API fallback
   and monotonic local state (`crates/saas-server/src/auth/propelauth.rs`,
   `sync_user` / `resolve_email_verified`). Google/GitHub users arrive verified. No
-  backend change needed — only the UI must treat Verify as conditional.
+  backend change needed, only the UI must treat Verify as conditional.
 - **Email infra exists.** OSS `crates/platform/src/email/` (Resend behind `EmailSender`
   trait, `EmailMessage::basic`), already used by org-invite emails
   (`crates/server/src/api/org_invitations.rs`). SaaS `ManagementState` does *not* yet
-  hold an `EmailSender` — wiring required. PropelAuth cannot send custom emails.
+  hold an `EmailSender`, wiring required. PropelAuth cannot send custom emails.
 - **Resume is server-state-driven.** Setup wizard polls org/harness state
   (`apps/ui/src/app/(main)/orgs/[orgId]/setup/page.tsx`); routing keys off `auth/me`.
   Gap: provider setup is skippable, so "has provider" can't mark onboarding done.
-- **OSS extension seams exist.** `apps/ui/src/components/onboarding/zero-org-onboarding.tsx`
+- **OSS extension boundaries exist.** `apps/ui/src/components/onboarding/zero-org-onboarding.tsx`
   takes `usePolicy` + `useCreateOrg` hooks. SaaS currently *duplicates* the onboarding
   page (`apps/saas-ui/src/app/(onboarding)/onboarding/page.tsx`) instead of consuming
-  those seams — close this divergence.
+  those boundaries, close this divergence.
 - **PropelAuth hosted pages are more capable than first assumed.** The Look & Feel editor
   (ui.propelauth.com) supports **split-screen layout, custom image/gradient backgrounds,
   font customization**, plus logo/colors/dark-mode and custom domains. Fully self-built
@@ -276,7 +276,7 @@ Principle: presentation + general-purpose → OSS; PropelAuth/billing/hosted-onl
 | 5 · Provision+configure (step 3) | **OSS** setup wizard | Restyle to render inside the shell; expand provider catalog/chips. SaaS re-exports. |
 | 6 · Done / first action (step 4) | **OSS** | General-purpose post-setup landing; SaaS inherits. Copy must adapt to skipped-vs-configured provider (B5). |
 
-## B-auth. Auth screen decision (Frame 2) — CUSTOM, via OSS-native auth
+## B-auth. Auth screen decision (Frame 2), CUSTOM, via OSS-native auth
 
 **Chosen path (updated): build custom in-app auth by adopting the OSS-native `full` auth
 backend in SaaS and retiring PropelAuth for credentials.** PropelAuth's API cannot back a
@@ -292,25 +292,25 @@ Why it's tractable: OSS already ships, production-hardened, in `crates/server/sr
   rate limiting, and a **trait-based `AuthBackend`** so SaaS mounts OSS `BuiltinAuthBackend`
   instead of the PropelAuth backend.
 - **Org invitations are already local-DB** (`crates/server/src/api/org_invitations.rs`),
-  not PropelAuth — so they are NOT lost by dropping PropelAuth.
+  not PropelAuth, so they are NOT lost by dropping PropelAuth.
 
 Net-new work (all general-purpose → build in OSS, SaaS inherits):
-- **Password reset / forgot-password** — DOES NOT EXIST today. Add `POST /v1/auth/forgot-password`
+- **Password reset / forgot-password**: DOES NOT EXIST today. Add `POST /v1/auth/forgot-password`
   + `POST /v1/auth/reset-password`, a `password_reset_tokens` migration (hashed token, TTL,
   single-use), email via existing `crates/platform/src/email/` `EmailSender`, and UI pages
   under OSS `apps/ui/src/app/(auth)/`.
-- **Email verification flow** — column exists, flow MISSING. Add send-verification +
+- **Email verification flow**: column exists, flow MISSING. Add send-verification +
   verify-token endpoints + email; this becomes our own Frame 3 (we own the email + token),
   replacing reliance on PropelAuth's `email_confirmed`.
 
 Costs / regressions to accept:
 - **User migration** (existing SaaS users are all `auth_provider:"propelauth"`,
-  `password_hash:None`; PropelAuth=bcrypt, OSS=Argon2id) — see B-migration. OPEN DECISION.
-- **MFA/2FA loss** — OSS has none; PropelAuth provided it. Accept or build later.
-- **Spec reversal** — contradicts the SaaS PropelAuth integration and
+  `password_hash:None`; PropelAuth=bcrypt, OSS=Argon2id), see B-migration. OPEN DECISION.
+- **MFA/2FA loss**: OSS has none; PropelAuth provided it. Accept or build later.
+- **Spec reversal**: contradicts the SaaS PropelAuth integration and
   architecture/access-control knowledge; update those concepts as part of the work.
 
-Open decision — **PropelAuth retirement scope**: (a) fully retire (email+password +
+Open decision, **PropelAuth retirement scope**: (a) fully retire (email+password +
 OAuth + remove dep), vs (b) move email+password to OSS now, keep PropelAuth OAuth/MFA
 during a transition. Pending user confirmation.
 
@@ -323,16 +323,16 @@ during a transition. Pending user confirmation.
 > make that the only path, delete the PropelAuth branch/files, and delete the SaaS
 > `(auth)` overrides so login/register fall through to the OSS two-panel pages (PR 5a).
 
-## B-migration. Existing-user migration (DROPPED — no real users)
+## B-migration. Existing-user migration (DROPPED, no real users)
 
 Every current SaaS user lives in PropelAuth with no local password. Options:
 1. **Rehash-on-login (bcrypt→Argon2id):** export PropelAuth hashes, store them, verify
-   bcrypt once on first login then transparently rehash to Argon2id. Seamless; needs OSS
+   bcrypt once on first login then transparently rehash to Argon2id. Smooth; needs OSS
    to support a one-time bcrypt verifier + a PropelAuth export. (Recommended if real users
    exist.) OAuth users re-link by email.
 2. **Force reset for all:** don't import hashes; flag all users for reset, email a reset
    link at cutover. Simpler; every user resets once.
-3. **No real users yet:** dev/early — cut over, handle the few manually.
+3. **No real users yet:** dev/early, cut over, handle the few manually.
 
 Pending user confirmation. This choice gates whether OSS needs a transitional bcrypt
 verifier.
@@ -340,7 +340,7 @@ verifier.
 ## B2. Google/OAuth skips verify (review item 2)
 
 Backend already yields `email_verified=true` for OAuth on first sync. Frontend change
-only: the stepper is **dynamic** — read `GET /v1/saas/users/me.email_verified`; if true,
+only: the stepper is **dynamic**: read `GET /v1/saas/users/me.email_verified`; if true,
 do not render Verify as an actionable step (start at Organisation; show a 3-step stepper or
 a pre-checked Verify). Password signups still see Verify. Do not hardcode "Step 1 of 4".
 
@@ -348,7 +348,7 @@ a pre-checked Verify). Password signups still see Verify. Do not hardcode "Step 
 
 Wire `email_sender: Arc<dyn EmailSender>` into `ManagementState` (mirror the OSS platform
 builder). In `create_organization`, after harness init, send a branded `EmailMessage::basic`
-linking to the new org (`{frontend_url}/orgs/{public_id}`), **best-effort** — log on
+linking to the new org (`{frontend_url}/orgs/{public_id}`), **best-effort**: log on
 failure, never fail org creation (mirror the invite-email pattern). Config dependency:
 `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` in Doppler (dev + prod). Template/copy is SaaS.
 
@@ -365,18 +365,18 @@ into the single resolver so there's one source of truth.
 
 ## B5. Messaging fixes (review item 5)
 
-For the design agent — copy that needs changing before build:
+For the design agent, copy that needs changing before build:
 - **Verify:** drop "…stays enforced on our side." Use "Verifying your email keeps your
   account secure."
 - **Domain auto-suggest:** suppress for free/generic domains (gmail, outlook, yahoo, icloud,
-  proton, hotmail…) — never suggest an org named "Gmail." (B-org.)
+  proton, hotmail…), never suggest an org named "Gmail." (B-org.)
 - **"Encrypted at rest with AES-256":** state AES-256 only if literally true; else
   "encrypted at rest." Verify against provider-credential storage before shipping the claim.
 - **Model names** ("GPT-5.5, o-series"): pull from the real catalog or soften; don't ship
   wrong/placeholder names. ("Claude Opus, Sonnet" is fine.)
-- **Done screen** "…connected to Anthropic": must be **conditional** — false if the user
+- **Done screen** "…connected to Anthropic": must be **conditional**: false if the user
   skipped provider setup. Provide skipped-vs-configured variants.
-- British "organisation" spelling is used consistently — keep it.
+- British "organisation" spelling is used consistently, keep it.
 
 ## B6. Drop & return at any step (review item 6)
 
@@ -404,40 +404,40 @@ when a suggestion was actually derived.
 
 ## B8. Build order (CONFIRMED: fully retire PropelAuth + rehash-on-login)
 
-User decisions: (1) **fully retire PropelAuth** — SaaS uses OSS-native auth for
+User decisions: (1) **fully retire PropelAuth**: SaaS uses OSS-native auth for
 email+password AND Google/GitHub OAuth, remove the dependency; accept MFA loss.
 (2) **rehash-on-login** migration for existing PropelAuth password users.
 
 PR sequence (each PR-sized, tested, green before the next):
 
-1. **OSS auth gaps (backend)** — password reset + email verification flows. **DONE**
+1. **OSS auth gaps (backend)**: password reset + email verification flows. **DONE**
    (commit 13c0b50): endpoints, `088_*` migration, hashed single-use tokens, emails via
    `EmailSender`, enumeration-safe, reset revokes refresh tokens; tests green.
-2. **OSS auth gaps (UI)** — `(auth)/forgot-password`, `reset-password`, `verify-email`
+2. **OSS auth gaps (UI)**: `(auth)/forgot-password`, `reset-password`, `verify-email`
    pages + "Forgot password?" link. **DONE** (commit c25804a); build green.
-3. **OSS onboarding shell** — shell + data-driven stepper + brand panel. **DONE**
+3. **OSS onboarding shell**: shell + data-driven stepper + brand panel. **DONE**
    (commit c9863ff); build green.
-4. **OSS onboarding content** — create-org enhancements (explainer, invite-later,
+4. **OSS onboarding content**: create-org enhancements (explainer, invite-later,
    `suggestedName`), setup wizard restyled into the shell, conditional Done/first-action
    screen, shared step list. **DONE** (commit 437c9a2); build + tests green.
-   NOTE: durable `onboarding_completed_at` was split out — see PR 4b below.
-4b. **OSS onboarding-complete state + resume** — add durable `onboarding_completed_at`
+   NOTE: durable `onboarding_completed_at` was split out, see PR 4b below.
+4b. **OSS onboarding-complete state + resume**: add durable `onboarding_completed_at`
    (migration + org field; setup Done/skip sets it) and the resume state machine (B6).
    Deferred to design together with the SaaS routing resolver (PR 7).
-5. **SaaS cutover to OSS auth** — mount OSS `BuiltinAuthBackend` (`full` mode) in the
+5. **SaaS cutover to OSS auth**: mount OSS `BuiltinAuthBackend` (`full` mode) in the
    SaaS server instead of the PropelAuth backend; build the custom Slate auth screen
    (Frame 2, two-panel) on our domain; retire PropelAuth provider/SDK from the UI;
    update the SaaS PropelAuth integration and architecture/access-control knowledge.
    ⚠️ CHECKPOINT before starting (see B9 gating question).
-6. **User migration (rehash-on-login)** — export PropelAuth bcrypt hashes; add a
+6. **User migration (rehash-on-login)**: export PropelAuth bcrypt hashes; add a
    one-time bcrypt verifier in OSS login that, on success, rehashes to Argon2id and
    clears the legacy hash; OAuth users re-link by email. Backfill `email_verified` from
    PropelAuth `email_confirmed` at export so verified users skip Verify.
-7. **SaaS onboarding + routing** — consume OSS onboarding via `usePolicy`/`useCreateOrg`
+7. **SaaS onboarding + routing**: consume OSS onboarding via `usePolicy`/`useCreateOrg`
    (retire the duplicated page); entry gateway page (redirects authed users); single
    server-state routing resolver (B4/B6); relocate onboarding/setup out of the sidebar
    shell (see follow-up below).
-8. **SaaS welcome email** — wire `EmailSender` into `ManagementState`; send on org
+8. **SaaS welcome email**: wire `EmailSender` into `ManagementState`; send on org
    create, best-effort (B3).
 9. **Verify** end-to-end per the drop/return matrix (B6); smoke on dev.everruns.com.
 
@@ -445,7 +445,7 @@ PR sequence (each PR-sized, tested, green before the next):
 - **Sidebar on Configure/Done.** The setup route is under `(main)`, so the app sidebar
   still shows on the Configure/Done steps; the design is sidebar-less full-screen.
   Relocate the route (or hide the sidebar during onboarding) as part of PR 7's routing
-  work — deferred to avoid a guard/redirect change inside a restyle.
+  work, deferred to avoid a guard/redirect change inside a restyle.
 - **verify-email resend needs the email.** Backend builds `/verify-email?token=…` with no
   `email`, so the UI's "resend verification" affordance falls back to a login link.
   Add `&email=` (or a logged-in resend) when wiring SaaS verification.

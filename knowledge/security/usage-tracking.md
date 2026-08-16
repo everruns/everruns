@@ -32,8 +32,8 @@ Prompt token buckets are **disjoint** (non-overlapping) for every provider:
 tokens count only non-cached prompt tokens; cache reads and cache creations are
 additive on top, never a subset of input.
 
-Drivers normalize provider wire formats at the boundary — the only layer with
-provider wire knowledge — so downstream consumers never special-case providers.
+Drivers normalize provider wire formats at the boundary, the only layer with
+provider wire knowledge, so downstream consumers never special-case providers.
 Inclusive providers (OpenAI Responses/Chat Completions, Gemini) report a prompt
 count that *includes* cached reads, so their drivers subtract the cached subset
 before recording `input_tokens`. Anthropic/Bedrock already report disjoint
@@ -109,8 +109,8 @@ provider's authoritative inline cost when reported (OpenRouter's `usage.cost`),
 and `estimated_cost_usd`, the price-table estimate computed whenever the model
 profile has cost data. The estimate is cache-aware: because buckets are disjoint
 (see [Disjoint bucket convention](#disjoint-bucket-convention)), each bucket is
-billed at its own rate — non-cached input at the input rate, cached reads at the
-model's cheaper `cache_read` rate, cache creations at the input rate — with no
+billed at its own rate, non-cached input at the input rate, cached reads at the
+model's cheaper `cache_read` rate, cache creations at the input rate, with no
 provider-specific compensation. Both are computed when the `llm.generation`
 event's `TokenUsage` is built.
 Keeping them separate avoids information loss: consumers prefer the actual charge

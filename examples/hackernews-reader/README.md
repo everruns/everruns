@@ -1,6 +1,6 @@
 # HackerNews Reader Agent
 
-An autonomous HackerNews browsing agent built on Everruns — equivalent to the
+An autonomous HackerNews browsing agent built on Everruns, equivalent to the
 [GitHub Copilot SDK HackerNews demo](https://x.com/i/status/2019435734365794710)
 but using Everruns capabilities instead of hand-coded tool functions.
 
@@ -8,7 +8,7 @@ but using Everruns capabilities instead of hand-coded tool functions.
 
 | Copilot SDK approach | Everruns approach |
 |---------------------|-------------------|
-| Define 5 tool functions (getTopStories, getItem, getComments, getUser, etc.) | Zero custom code — `web_fetch` capability calls the HN API directly |
+| Define 5 tool functions (getTopStories, getItem, getComments, getUser, etc.) | Zero custom code, `web_fetch` capability calls the HN API directly |
 | Write orchestration logic | Everruns agent loop handles orchestration + tool execution |
 | Build a UI | Everruns UI included (or use the API) |
 | In-memory state | Durable execution with automatic retries |
@@ -41,9 +41,9 @@ python examples/hackernews-reader/run.py "Show me today's top Show HN posts"
 
 ## Capabilities Used
 
-- **web_fetch** — HTTP requests to the HN Firebase API
-- **current_time** — relative time display ("posted 2 hours ago")
-- **session_file_system** — persist notes and summaries
+- **web_fetch**: HTTP requests to the HN Firebase API
+- **current_time**: relative time display ("posted 2 hours ago")
+- **session_file_system**: persist notes and summaries
 
 ## Architecture
 

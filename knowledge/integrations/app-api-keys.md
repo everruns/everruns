@@ -14,19 +14,19 @@ An **App API key** is an app-scoped, execution-only credential that lets an
 external integrator drive an App's agent over native session routes mounted
 under the App, without holding any management access. It is the programmatic
 counterpart to a Personal Access Token (PAT): where a PAT is the **management
-plane** (user-scoped, full account access — see
+plane** (user-scoped, full account access, see
 [`authentication.md`](../security/authentication.md)), an App API key is the **execution
 plane** (one App, run sessions only).
 
 This is the "new, separate concept" that `authentication.md` anticipates: a
-narrow, non-human credential. It is deliberately **not** a PAT variant — PATs
+narrow, non-human credential. It is deliberately **not** a PAT variant, PATs
 stay user-scoped and full-access, and their dormant `scopes` column is not the
 mechanism here.
 
 The App is the boundary. The key inherits exactly what the App can do (its
 Harness + Agent) and nothing else. Execution-only is **structural**: the key
 authenticates only the app-mounted routes below and has no path to any
-management API — there is no permission to widen, because there is no route to
+management API, there is no permission to widen, because there is no route to
 widen onto.
 
 ## Goals
@@ -54,7 +54,7 @@ widen onto.
    app-scoped, execution-only ingress; they differ only in protocol shape and
    may coexist on the same App.
 3. Projecting the global `/v1/sessions/*` management surface onto the key.
-   Considered and rejected as the launch shape — see "Dismissed: project through
+   Considered and rejected as the launch shape, see "Dismissed: project through
    /v1/sessions".
 4. A raw event / SSE stream. Reads return completed assistant messages only.
    Streaming is a follow-up (see "Follow-ups").
@@ -70,14 +70,14 @@ settings.
 Channel config (`ApiEndpointChannelConfig`, see `crates/platform/src/app.rs`)
 carries:
 
-- The generated key material — `api_key_hash` (SHA-256 hex) and non-secret
+- The generated key material, `api_key_hash` (SHA-256 hex) and non-secret
   `api_key_prefix` for display. Plaintext is returned **once** at create / rotate
   and never persisted; the hash is redacted on read. Mirrors A2A key handling.
-- `session_mode: InvocationSessionMode` — `shared_session` vs
+- `session_mode: InvocationSessionMode`, `shared_session` vs
   `session_per_invocation`, reusing app-channel routing semantics.
 - Optional `rate_limit_per_minute`, reusing the shared `ChannelRateLimiter`
   primitive (namespace `apikey`, disjoint from `a2a` / `agui` / `fcp`).
-- Optional inline `auth` — when omitted, the generated per-channel API-key
+- Optional inline `auth`, when omitted, the generated per-channel API-key
   bearer scheme applies; otherwise any shared App-endpoint auth mode
   (OIDC / OAuth2 / HTTP Basic / mTLS).
 
@@ -87,7 +87,7 @@ prefix-scoped so secret scanners target it distinctly from `evr_pat_` and
 
 ## Endpoints (app-mounted, execution-only)
 
-All routes are mounted under the App and authenticated by the `evr_app_` key —
+All routes are mounted under the App and authenticated by the `evr_app_` key,
 the same shape as A2A's `/v1/apps/{app_id}/a2a/{channel_id}`. See
 `crates/server/src/api/app_api.rs`.
 
@@ -119,7 +119,7 @@ otherwise it returns `404` (not `403`, to avoid cross-app existence probing). So
 one App's key cannot read or drive another App's sessions even if a session id
 leaks. This mirrors A2A's `session_belongs_to_a2a_channel` guard
 (`THREAT[TM-APIKEY-002]`). Confinement is an imperative ownership check in the
-execution path — not a `Policy` `Rule` — because policy evaluation sees only the
+execution path, not a `Policy` `Rule`, because policy evaluation sees only the
 `Caller`, not the target resource, and these routes self-authenticate via the
 key rather than going through the `Caller`/permission layer.
 
@@ -135,16 +135,16 @@ event feed.
 ## Management surfaces
 
 Key lifecycle lives under the App, gated by the App-management policy
-(`APP_MANAGE`, i.e. a human / PAT) — a key cannot mint, rotate, or read sibling
+(`APP_MANAGE`, i.e. a human / PAT), a key cannot mint, rotate, or read sibling
 keys:
 
-- `POST /v1/apps/{app_id}/api-endpoint-channels` — create channel, return
+- `POST /v1/apps/{app_id}/api-endpoint-channels`, create channel, return
   plaintext key once.
-- `POST /v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key` —
+- `POST /v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key`,
   rotate; invalidates the previous key.
-- `PATCH /v1/apps/{app_id}/channels/{channel_id}` — update non-secret fields
+- `PATCH /v1/apps/{app_id}/channels/{channel_id}`, update non-secret fields
   (session mode, rate limit, `auth`); the key hash is preserved across edits.
-- `DELETE /v1/apps/{app_id}/channels/{channel_id}` — remove.
+- `DELETE /v1/apps/{app_id}/channels/{channel_id}`, remove.
 
 ## Audit logging
 
@@ -159,12 +159,12 @@ key-holder, not an Everruns user).
 
 See `knowledge/security/threat-model.md` (TM-APIKEY-* category):
 
-- `TM-APIKEY-001` — key storage / verification (hashed at rest, constant-time
+- `TM-APIKEY-001`, key storage / verification (hashed at rest, constant-time
   compare, plaintext once, rotation invalidates prior keys).
-- `TM-APIKEY-002` — cross-App isolation (tag-based confinement; 404 on foreign
+- `TM-APIKEY-002`, cross-App isolation (tag-based confinement; 404 on foreign
   session).
-- `TM-APIKEY-003` — runaway-traffic DoS (per-channel, per-IP rate limit).
-- `TM-APIKEY-004` — exposure leakage (reads return only completed assistant
+- `TM-APIKEY-003`, runaway-traffic DoS (per-channel, per-IP rate limit).
+- `TM-APIKEY-004`, exposure leakage (reads return only completed assistant
   messages).
 
 ## Dismissed: project through /v1/sessions
@@ -188,8 +188,8 @@ keys.
 
 ## References
 
-- [`apps.md`](apps.md) — App entity, channels, lifecycle
-- [`app-endpoint-auth.md`](app-endpoint-auth.md) — shared inbound auth verifier
-- [`a2a-channel.md`](a2a-channel.md) — sibling execution-only channel (A2A protocol)
-- [`authentication.md`](../security/authentication.md) — PATs and the management plane
-- [`apis.md`](../execution/apis.md) — native session API surface
+- [`apps.md`](apps.md), App entity, channels, lifecycle
+- [`app-endpoint-auth.md`](app-endpoint-auth.md), shared inbound auth verifier
+- [`a2a-channel.md`](a2a-channel.md), sibling execution-only channel (A2A protocol)
+- [`authentication.md`](../security/authentication.md), PATs and the management plane
+- [`apis.md`](../execution/apis.md), native session API surface

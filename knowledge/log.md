@@ -33,7 +33,7 @@
 
 * **The host no longer implies the control plane.** The neutral
   `everruns-session-services` crate now owns `SessionMutator` plus the portable
-  session and session-storage capabilities. Platform re-exports that seam for
+  session and session-storage capabilities. Platform re-exports that boundary for
   product consumers, while host and the default Framework graph use it
   directly. Platform composition is an opt-in host feature, and the Resend
   client is an opt-in platform feature; dependency guards reject platform,
@@ -72,7 +72,7 @@
   short-lived `everruns-scale` crate combined a public registered-agent API
   with another execution composition. It was reverted because Everruns needs
   one shared abstract execution/turn kernel in `everruns-engine`, with
-  in-process and durable hosts adapting that kernel—not a third Scale product
+  in-process and durable hosts adapting that kernel, not a third Scale product
   layer or a second embedded Engine path. The subsequent unification work is
   the retained implementation of that intent.
 
@@ -83,7 +83,7 @@
   extensions; the other 17 families stay. The reason is structural rather than
   effortful, and is the durable finding here.
 
-  A capability reads `context.storage_store` today — a field on core's
+  A capability reads `context.storage_store` today, a field on core's
   `ToolContext`. Moving `SessionStorageStore` to platform turns that into
   `context.extensions.get::<SessionStorageStoreExt>()`, and naming that wrapper
   requires depending on `everruns-platform`. But platform already depends on
@@ -94,14 +94,14 @@
 
   Of the 17 remaining families, 16 have a consumer below platform. Four are
   reached from `everruns-builtins`, four from core itself (where the direction
-  is the epic's foundation), and the rest through integration crates — five of
+  is the epic's foundation), and the rest through integration crates, five of
   which platform depends on, making those cycles too. Only the nine
   non-cycle integrations could take a new edge, and that means every
   integration crate pulling all of platform to name a wrapper type.
 
   The issue assumed these optional fields were hosted services leaking into the
   kernel. Most are neutral contracts that portable code legitimately needs
-  during a turn — independently the same conclusion EVE-880 reached about
+  during a turn, independently the same conclusion EVE-880 reached about
   `session_schedule`. `ToolContext`'s width is a symptom of many hosted
   services existing, not of them living in the wrong crate.
 
@@ -109,7 +109,7 @@
   integrations and platform. Worth revisiting only if the bag becomes a
   concrete maintenance problem rather than an aesthetic one.
 
-  Practical test for the next person asking "should this leave core?" — check
+  Practical test for the next person asking "should this leave core?", check
   the crates *below* platform, not just core's own consumers. Core-side
   cleanliness is not evidence a move is possible.
 
@@ -117,7 +117,7 @@
 
 * **Kernel dependency hygiene (EVE-888).** Removed two vestigial features from
   `everruns-core`: `sqlx` (zero usage in the crate; it only forwarded to
-  `everruns-provider/sqlx`, where the typed-ID Postgres impls live — the server
+  `everruns-provider/sqlx`, where the typed-ID Postgres impls live, the server
   now depends on provider directly) and `embedded-platform-docs` (gated nothing;
   `include_dir` was unused and the real embedding moved to platform with
   EVE-839). Core is down to 15 direct dependencies. A manifest-wide sweep
@@ -139,30 +139,30 @@
   each case: a portable, kernel-resident consumer needs the contract during a
   turn.
 
-  - `session_task` — `wake_queue` decides mid-turn wakes from the task's wake
+  - `session_task`, `wake_queue` decides mid-turn wakes from the task's wake
     policy, `task_observer` is the lifecycle SPI, and the record is serialized
     whole into the canonical `task.created` / `task.updated` /
     `task.message.*` payloads.
-  - `session_schedule` — `crates/builtins/src/usage_limit_auto_continue.rs`
+  - `session_schedule`, `crates/builtins/src/usage_limit_auto_continue.rs`
     reads `ctx.services.schedule_store` to schedule an auto-resume after a
     provider usage limit. `everruns-builtins` depends only on
     `everruns-capability` and `everruns-core`; platform depends on *it*, so
     moving the contract to platform would put it out of a portable built-in's
-    reach. A typed extension does not help — the wrapper would live in
+    reach. A typed extension does not help, the wrapper would live in
     platform, equally invisible.
-  - `session_resource` — `resource_ownership.rs` and the skills capabilities
+  - `session_resource`, `resource_ownership.rs` and the skills capabilities
     in `crates/core/src/capabilities/`, which are portable and stay.
 
   Core already owns neutral store contracts of this kind (`SessionFileSystem`,
   `SessionStorageStore`); these belong with them. The generalisable rule, worth
   carrying into EVE-888: whether something is a platform record is answered by
   *who consumes it during a turn*, not by whether it is persisted. All three
-  families that stay are persisted, and all three are load-bearing for
+  families that stay are persisted, and all three are essential for
   portable execution.
 
-* **Background tool runs leave the kernel**: Moved `spawn_background` — the
+* **Background tool runs leave the kernel**: Moved `spawn_background`, the
   tool, its session-task mirroring, the scheduled-monitor path, the background
-  event sink, admission-control permits and the reattach entry point — out of
+  event sink, admission-control permits and the reattach entry point, out of
   `everruns-core` into `everruns-platform` as `background_run` (EVE-888,
   ~1800 lines). Creating session tasks and schedules is hosted behaviour; the
   kernel keeps the neutral `BackgroundExecutableTool`/`BackgroundEventSink`
@@ -173,19 +173,19 @@
 
   This did **not** free the `session_task` record for EVE-880, contrary to the
   expectation recorded against EVE-897. Three consumers remain in core, and one
-  is load-bearing: `SessionTask` and `TaskMessage` are embedded in the
+  is essential: `SessionTask` and `TaskMessage` are embedded in the
   canonical `task.created` / `task.updated` / `task.message.*` event payloads
   (`events.rs`), which EVE-888 explicitly retains as kernel surface while
   putting changes to canonical event semantics out of scope. `wake_queue.rs`
   and `task_observer.rs` also consume the record. Moving the family therefore
   needs a neutral task projection for events, or an accepted event-payload
-  change — a decision, not a mechanical move. `session_schedule` is separately
+  change, a decision, not a mechanical move. `session_schedule` is separately
   pinned by `SessionScheduleStore` in `core::traits`, which is the EVE-897
   pattern.
 
 * **Session SQL store becomes a typed context extension**: Removed
-  `ToolContext::sqldb_store` and moved the whole `session_sqldb` family —
-  store trait, value types and error — from `everruns-core` to
+  `ToolContext::sqldb_store` and moved the whole `session_sqldb` family,
+  store trait, value types and error, from `everruns-core` to
   `everruns-platform` (EVE-897, first family). The field was the only thing
   pinning the family to the kernel: core named the trait, the trait's
   signatures named the value types, and no core execution path touched either.
@@ -197,9 +197,9 @@
   store still surfaces as the same structured tool error.
 
   The remaining ~18 optional service fields (~1250 call sites) follow one
-  family per change. This seam frees `session_sqldb` only. (An earlier version
+  family per change. This boundary frees `session_sqldb` only. (An earlier version
   of this entry expected `session_task`, `session_schedule` and
-  `session_resource` to follow under EVE-888; they do not — see the EVE-880
+  `session_resource` to follow under EVE-888; they do not, see the EVE-880
   closeout below.)
 
 * **Composition root extraction**: Moved `PlatformDefinition` out of
@@ -210,7 +210,7 @@
   service contracts it carries. The fields stay owned by their layers
   (driver registry from `everruns-provider`, capability registry from the
   neutral capability contract, egress and utility LLM from their own
-  contracts) — no central enum and no vendor branching. Product presets keep
+  contracts), no central enum and no vendor branching. Product presets keep
   inventory discovery confined: the server's OSS preset is
   `oss_host_composition`, the worker's is `default_host_composition`, and the
   Framework facade builds its private in-process host from the same focused
@@ -218,9 +218,9 @@
   composition root reappears in the kernel under any name.
 
 * **Session sandbox record extraction**: Moved the managed per-session sandbox
-  — config, persisted state, provider instance and exec/file payloads, the
+, config, persisted state, provider instance and exec/file payloads, the
   `SessionSandboxProvider` SPI with its inventory plugin, and the
-  create/resume/pause/delete/init/checkpoint lifecycle helpers — out of
+  create/resume/pause/delete/init/checkpoint lifecycle helpers, out of
   `everruns-core` into `everruns-platform` (EVE-880), where the sandbox
   capability already lives after EVE-886. One provider-backed sandbox per
   session is control-plane state: a turn reaches it through the capability,
@@ -233,7 +233,7 @@
   signature vocabulary of `SessionSqlDbStore`, and that trait was pinned to
   core by `ToolContext::sqldb_store`; splitting records from trait would have
   made core name platform types. (That family moved under EVE-897, not
-  EVE-887 as this entry first said — see the EVE-897 entry above.) The same
+  EVE-887 as this entry first said, see the EVE-897 entry above.) The same
   reasoning held for the session task, schedule and resource records, which
   still have execution-time consumers inside core.
 
@@ -254,12 +254,12 @@
   with its concrete senders (`EmailSender`, templates, `SystemEmailConfig`,
   `ResendEmailSender`) out of `everruns-core` into `everruns-platform`, and
   the OAuth 2.1 protocol client (`OAuthClient`, `TokenSet`, PKCE, discovery,
-  form-encoded token exchange) into `everruns-mcp` — its only consumer —
+  form-encoded token exchange) into `everruns-mcp`, its only consumer,
   as `everruns_mcp::oauth::protocol` (EVE-879, breaking for direct core
   consumers in 0.18). `PlatformDefinition` no longer carries a connector
   registry or email sender; server composition owns both
   (`ServerAppBuilder::connector_registry` / `::email_sender`, OSS presets in
-  `crates/server/src/platform.rs`). The `CredentialProvider` seam moved to
+  `crates/server/src/platform.rs`). The `CredentialProvider` boundary moved to
   `everruns-provider` (re-exported by core unchanged). Secret-bearing types
   (`TokenSet`, `PkcePair`, `ProviderCredentials`, `ResendEmailConfig`) now
   redact credentials in `Debug`, with tests. Core dropped its
@@ -274,37 +274,37 @@
   management catalog out of `everruns-core` into `everruns-platform`
   (EVE-878, breaking for direct core consumers in 0.18). These are product
   management/reporting aggregates that never participate in a turn. Core
-  keeps only `execution_features` — `InternalFeatureFlags` and the resolved
+  keeps only `execution_features`, `InternalFeatureFlags` and the resolved
   `ExecutionFeatureDecisions` snapshot consulted at capability-registration
-  time — while per-org effective feature decisions are resolved server-side
+  time, while per-org effective feature decisions are resolved server-side
   and applied by filtering the capability list handed to the worker.
   REST/OpenAPI shapes and stored schema are unchanged; the agent-record
   isolation guard now also covers eval/observer/feature-management records.
   Updated evals, online-evals, citations, and feature-flags references.
 
 * **Session aggregate extraction**: Moved the persisted `Session`
-  database/API aggregate — product status/source/activity facets,
+  database/API aggregate, product status/source/activity facets,
   participants, ownership references, previews, timestamps, catalog
-  relationships — out of `everruns-core` into `everruns-platform` (EVE-882,
+  relationships, out of `everruns-core` into `everruns-platform` (EVE-882,
   breaking for direct core consumers in 0.18). Core keeps only the portable
   `ExecutionSession` (correlation values plus the session configuration
   overlay a turn consumes) and the neutral `SessionExecutionState`; the
   stored `SessionStatus` maps to/from it at the adapter boundary, and host
   status mutation acknowledges without returning a record. Server
   repositories and worker adapters project the stored record via
-  `Session::execution_session()` at the loading seam; embedded/local hosts
+  `Session::execution_session()` at the loading boundary; embedded/local hosts
   lift the execution view back into a minimal record with
   `Session::from_execution_session()` only where they implement platform
-  seams. REST/gRPC and stored schema are unchanged (OpenAPI byte-identical);
+  boundaries. REST/gRPC and stored schema are unchanged (OpenAPI byte-identical);
   the agent-record isolation guard now also covers Session records.
 
 * **Harness record extraction**: Moved the stored `Harness` persistence
-  record — lifecycle status, hierarchy identifiers, built-in flags, display
-  metadata, timestamps, chain-merge helpers — and the built-in provisioning
+  record, lifecycle status, hierarchy identifiers, built-in flags, display
+  metadata, timestamps, chain-merge helpers, and the built-in provisioning
   templates (`BuiltInHarnessDefinition`, roles) out of `everruns-core` into
   `everruns-platform` (EVE-881, breaking for direct core consumers in 0.18).
   Core keeps only the portable `HarnessDefinition` (effective environment
-  configuration); the `HarnessStore` loading seam resolves parent-chain
+  configuration); the `HarnessStore` loading boundary resolves parent-chain
   inheritance and enforces archived/deleted validation before host execution,
   so hosts never request or receive a stored Harness. Built-in harness
   composition moved off `PlatformDefinition` onto server composition
@@ -313,7 +313,7 @@
   also covers Harness records.
 
 * **Provider SPI separation completed**: Official wire-protocol provider
-  crates no longer depend on `everruns-core` on any edge kind — the last
+  crates no longer depend on `everruns-core` on any edge kind, the last
   dev-dependencies were removed and their tests now build fixtures in-crate
   (EVE-874). A new architecture guard
   (`scripts/lib/check-provider-isolation.sh`, pre-push + CI) forbids direct
@@ -323,11 +323,11 @@
   Updated code-organization.
 
 * **Agent record extraction**: Moved the stored `Agent` and `AgentVersion`
-  persistence records — lifecycle status, versioning and publication metadata,
-  fork lineage, public-name validation, and persistence helpers — out of
+  persistence records, lifecycle status, versioning and publication metadata,
+  fork lineage, public-name validation, and persistence helpers, out of
   `everruns-core` into `everruns-platform` (EVE-877, breaking for direct core
   consumers in 0.18). Core keeps only the portable `AgentDefinition` (authored
-  execution configuration); the `AgentStore` loading seam projects stored
+  execution configuration); the `AgentStore` loading boundary projects stored
   records into it and enforces archived/deleted validation before host
   execution, which consumes the resolved execution snapshot only. REST/gRPC
   and stored schema are unchanged, and a new architecture guard keeps kernel
@@ -339,8 +339,8 @@
   wiring, tracing-subscriber layers, `TelemetryConfig`/`TelemetryGuard`) and
   the `CompositeEventListener` fan-out out of `everruns-core` into
   `everruns-observability` (EVE-876). Core keeps only the neutral observability
-  contracts — the `EventListener` trait, event types, and gen-AI span
-  conventions — and carries no OpenTelemetry/exporter dependencies; a new
+  contracts, the `EventListener` trait, event types, and gen-AI span
+  conventions, and carries no OpenTelemetry/exporter dependencies; a new
   architecture guard enforces the isolation and keeps Framework/provider
   builds free of the exporter subtree.
 

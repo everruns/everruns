@@ -19,13 +19,13 @@ Every sandbox/execution integration crate must ship with the following artifacts
 | **SPEC.md** | Co-located specification: architecture, tool surface, state management, security review. |
 | **Connection provider** | User connection (OAuth or API-key form) with validation and fallback env vars for operator/test use. |
 | **Unit tests** | Plugin registration, parameter validation, state serialization, tool schemas. |
-| **Integration tests** | `tests/tool_integration.rs` — tool `execute_with_context` flows against mocked storage/connections (wiremock for HTTP APIs, mock storage for websocket APIs). |
-| **Live API tests** | `tests/live_api_test.rs` — feature-gated (`<name>-live-tests`), credentials read from required environment variables. In CI, those env vars are injected via Doppler. Missing-credential behavior is **fail-closed**: when the feature flag is on but the required env var is missing or empty, the test must `panic!` (not `eprintln!` + `return`). CI live jobs must never silently pass. Reference implementations: `integrations/brave-search/tests/smoke_real_api.rs`, `integrations/daytona/tests/live_api_test.rs`. |
+| **Integration tests** | `tests/tool_integration.rs`, tool `execute_with_context` flows against mocked storage/connections (wiremock for HTTP APIs, mock storage for websocket APIs). |
+| **Live API tests** | `tests/live_api_test.rs`, feature-gated (`<name>-live-tests`), credentials read from required environment variables. In CI, those env vars are injected via Doppler. Missing-credential behavior is **fail-closed**: when the feature flag is on but the required env var is missing or empty, the test must `panic!` (not `eprintln!` + `return`). CI live jobs must never silently pass. Reference implementations: `integrations/brave-search/tests/smoke_real_api.rs`, `integrations/daytona/tests/live_api_test.rs`. |
 | **CI: unit tests** | Crate listed in the `unit-test` job: `cargo test -p everruns-integrations-<name>`. |
 | **CI: change detection** | Path filter in `changes` job: `<name>: integrations/<name>/**`. |
 | **CI: live-test job** | Live API or real-API coverage must follow the repo trigger policy: cheap/path-local API smoke may run on `pull_request`; costly or stateful live jobs stay on `push` to `main`; path-filtered workflows must also be covered by the weekly/on-demand backstop in `.github/workflows/integration-live-sweep.yml`. New integrations: dedicated `.github/workflows/<name>-integration.yml` workflow for change-scoped runs plus inclusion in the full sweep. Legacy integrations (Daytona, Browserless, etc.) may still use a job in `ci.yml` for change-scoped runs. |
-| **User docs** | `docs/integrations/<name>.md` — quick start, tool table, lifecycle, security. |
-| **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md` — manual test for connection + sandbox lifecycle. |
+| **User docs** | `docs/integrations/<name>.md`, quick start, tool table, lifecycle, security. |
+| **UI test case** | `test_cases/ui/<name>_connection/TC001_*.md`, manual test for connection + sandbox lifecycle. |
 | **Seed agent** | Entry in `crates/server/src/seed.rs` with capabilities wired. |
 | **Threat model** | Section in `knowledge/security/threat-model.md` covering integration-specific threats. |
 
@@ -68,7 +68,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Parallel | [`integrations/parallel/SPEC.md`](../../integrations/parallel/SPEC.md) | Two capabilities: free `parallel_search` (web search/fetch via Parallel MCP, Dev only) and paid `parallel` (machine-payment search/extract/task, gated by `FEATURE_MACHINE_PAYMENTS`). |
 | DuckDuckGo | [`integrations/duckduckgo/SPEC.md`](../../integrations/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | GitHub | [`integrations/github/SPEC.md`](../../integrations/github/SPEC.md) | GitHub Scout blueprint capability for read-only repository exploration. |
-| Browserless | [`integrations/browserless/SPEC.md`](../../integrations/browserless/SPEC.md) | Cloud browser automation — screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
+| Browserless | [`integrations/browserless/SPEC.md`](../../integrations/browserless/SPEC.md) | Cloud browser automation, screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
 | E2B | [`integrations/e2b/SPEC.md`](../../integrations/e2b/SPEC.md) | Cloud sandbox environments via E2B management API + envd runtime endpoints. BYO API key via connection provider, multiple sandboxes per session. |
 | Daytona | [`integrations/daytona/SPEC.md`](../../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Deno | [`integrations/deno/SPEC.md`](../../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. |
@@ -102,4 +102,4 @@ Embedded in the server crate.
 
 | Integration | Spec | Summary |
 |---|---|---|
-| Braintrust + OpenTelemetry | [`knowledge/operations/observability.md`](../operations/observability.md) | Observability providers — OTel Gen-AI tracing and Braintrust event forwarding. |
+| Braintrust + OpenTelemetry | [`knowledge/operations/observability.md`](../operations/observability.md) | Observability providers, OTel Gen-AI tracing and Braintrust event forwarding. |

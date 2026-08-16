@@ -7,7 +7,7 @@ description: Read, write, search, and manage files in an isolated per-session wo
 |---|---|
 | **ID** | `session_file_system` |
 | **Category** | File Operations |
-| **Features** | `file_system` (unlocks Workspace tab) |
+| **Features** | `file_system` (enables Workspace tab) |
 | **Dependencies** | None |
 
 Provides tools to access and manipulate files in the session workspace. Each session has an isolated filesystem rooted at `/workspace`. Files persist for the session duration. `read_file` and `write_file` return a `content_hash` (`sha256:...`) so agents can make freshness-checked `edit_file` calls.
@@ -41,7 +41,7 @@ Apply one or more exact text replacements to an existing text file. This tool is
 | `expected_hash` | string | yes | Current `content_hash` (`sha256:...`) |
 | `edits` | array | yes | One or more `{ old_text, new_text }` replacements matched against the original file. Use a single-element array for one replacement. |
 
-Legacy top-level `old_text`/`new_text` are still accepted for backward compatibility — they are folded into `edits[]` — but new callers should always use `edits[]`.
+Legacy top-level `old_text`/`new_text` are still accepted for backward compatibility, they are folded into `edits[]`, but new callers should always use `edits[]`.
 
 ### `list_directory`
 
@@ -94,7 +94,7 @@ Get file metadata (size, type, timestamps).
 ## Notes
 
 - All paths must be under `/workspace`
-- Files are session-scoped — no cross-session access
+- Files are session-scoped, no cross-session access
 - Parent directories are auto-created on write
 - `edit_file` only works on text files and rejects binary/base64 content
 - `edit_file` applies all replacements against the original file content and rejects ambiguous or overlapping matches
@@ -104,6 +104,6 @@ Get file metadata (size, type, timestamps).
 
 ## See Also
 
-- [Bashkit Shell](/capabilities/bashkit-shell/) — execute commands against these files
-- [Storage](/capabilities/session-storage/) — key/value and secret storage
+- [Bashkit Shell](/capabilities/bashkit-shell/), execute commands against these files
+- [Storage](/capabilities/session-storage/), key/value and secret storage
 - [Capabilities Overview](/capabilities/)

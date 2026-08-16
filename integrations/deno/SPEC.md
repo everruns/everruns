@@ -12,8 +12,8 @@ The Deno capability integrates [Deno Sandboxes](https://docs.deno.com/sandbox/) 
 
 Deno sandboxes use two APIs:
 
-1. **Console API** (`https://console.deno.com/api/v2`) — list sandboxes and validate tokens.
-2. **Sandbox API** (`wss://<region>.sandbox-api.deno.net/api/v3/...`) — create/connect sandboxes and run JSON-RPC filesystem/process operations over websocket.
+1. **Console API** (`https://console.deno.com/api/v2`), list sandboxes and validate tokens.
+2. **Sandbox API** (`wss://<region>.sandbox-api.deno.net/api/v3/...`), create/connect sandboxes and run JSON-RPC filesystem/process operations over websocket.
 
 Everruns opens a fresh websocket per tool call. This keeps tool execution stateless between calls while preserving sandbox state remotely.
 
@@ -48,11 +48,11 @@ The env fallback exists for operator-managed deployments and live smoke tests.
 Create a new sandbox.
 
 Parameters:
-- `title?` — label shown in Deno metadata
-- `region?` — region like `ord` or `ams`
-- `timeout?` — concrete lifetime like `20m` or `600s`
-- `memory_mb?` — memory in MiB
-- `allow_net?` — outbound allowlist entries
+- `title?`, label shown in Deno metadata
+- `region?`, region like `ord` or `ams`
+- `timeout?`, concrete lifetime like `20m` or `600s`
+- `memory_mb?`, memory in MiB
+- `allow_net?`, outbound allowlist entries
 
 Returns: `{ sandbox_id, region, workspace_path, status, timeout }`
 
@@ -116,9 +116,9 @@ Each created Deno sandbox registers a leased resource with provider `deno` and t
 ## Security
 
 Reviewed categories:
-- `TM-TOOL` — new tool registration and websocket RPC execution path
-- `TM-AGENT-019` / high-risk execution — remote compute with network access
-- `TM-DOS` — fixed timeout prevents unbounded sandbox lifetime from idle sessions
+- `TM-TOOL`, new tool registration and websocket RPC execution path
+- `TM-AGENT-019` / high-risk execution, remote compute with network access
+- `TM-DOS`, fixed timeout prevents unbounded sandbox lifetime from idle sessions
 
 Threat summary:
 - Sandboxes have network access by design; capability is high-risk and Admin-gated.

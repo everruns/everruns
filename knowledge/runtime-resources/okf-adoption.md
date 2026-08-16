@@ -19,7 +19,7 @@ markdown links, and consumers must degrade gracefully on anything missing.
 
 OKF is, for everruns, an **import/export boundary** for the existing
 [Knowledge Bases](knowledge-bases.md) feature and the `data_knowledge`
-capability — not a new storage architecture. Our database-backed model
+capability, not a new storage architecture. Our database-backed model
 (Postgres FTS, stable `kb_`/`kbe_` IDs, org scoping, lifecycle, optional
 embeddings) remains the runtime ground truth and is strictly better for serving
 agents than loose files. OKF lets that knowledge round-trip to and from the
@@ -34,7 +34,7 @@ detail lives in the upstream [SPEC.md][okf-spec] and is not duplicated here.
 OKF and everruns Knowledge Bases independently converged on the same pattern:
 curated, agent-consumable knowledge expressed as small markdown documents with
 a light type taxonomy. The article that prompted this work ([Google Cloud][okf])
-even cites `AGENTS.md`/`CLAUDE.md` — conventions this repo already uses — as
+even cites `AGENTS.md`/`CLAUDE.md`, conventions this repo already uses, as
 inspiration. Adopting OKF gives us:
 
 * **Interop in.** Ingest bundles produced by others, including Google's
@@ -107,7 +107,7 @@ breaking migration):
    in the entry API and re-emitted as markdown links on export. The
    `search_knowledge` tool may later traverse links for one-hop expansion.
 3. **`index.md` / `log.md`.** Reserved files; never imported as entries.
-   Derived on export only — `index.md` from KB structure (grouped by `kind`
+   Derived on export only, `index.md` from KB structure (grouped by `kind`
    with descriptions), `log.md` from the audit log for the KB.
 4. **Citations.** Preserved verbatim inside `body`; no structured model in v1.
 5. **Raw `type` preservation.** Via the `okf:type=` reserved tag (see Type
@@ -120,7 +120,7 @@ falls back to `(kb_id, source_path)` otherwise (see Importer).
 
 ## Importer
 
-**Decision: on-demand, idempotent sync in v1 — not a background watcher.**
+**Decision: on-demand, idempotent sync in v1, not a background watcher.**
 
 The importer parses an OKF bundle (uploaded tarball or a referenced git repo
 URL) and upserts entries into a target KB. It is re-runnable and idempotent, so
@@ -152,7 +152,7 @@ infrastructure (no credential storage, git polling, or webhook plumbing).
 on a cadence. The idempotency-key design above is what makes this a drop-in
 follow-up rather than a rewrite.
 
-Security: bundle parsing runs untrusted input — enforce the 64 KiB body cap per
+Security: bundle parsing runs untrusted input, enforce the 64 KiB body cap per
 entry, per-file and total decompressed caps (gzip-bomb defense), path traversal
 rejection on both inline `files[].path` and tar entries, and the cross-org
 guarantees from `knowledge/security/threat-model.md`. A future git-URL input would obey
@@ -218,25 +218,25 @@ adding the `everruns/landing` repo to the working scope.
 Each item is an independently reviewable change (committed PR-sized). Status
 reflects what has shipped on the OKF-adoption branch.
 
-1. ✅ **This spec + terminology** — `knowledge/runtime-resources/okf-adoption.md`, README index entry,
+1. ✅ **This spec + terminology**: `knowledge/runtime-resources/okf-adoption.md`, README index entry,
    cross-link from `knowledge-bases.md`.
-2. ◑ **Gap closure** — shipped: additive migration `076` adds `resource` to
+2. ◑ **Gap closure**: shipped: additive migration `076` adds `resource` to
    entries (models, storage parity, API, OpenAPI); `index.md`/`log.md` reserved
    semantics handled by importer/exporter. **Deferred:** the
    `knowledge_entry_links` relationship table (export emits a flat bundle; links
    are not yet modeled).
-3. ✅ **Importer** — `POST …/okf_import`: parser, idempotent upsert/prune,
+3. ✅ **Importer**: `POST …/okf_import`: parser, idempotent upsert/prune,
    inline + base64 tarball, hardening, unit + idempotency tests.
-4. ✅ **Exporter** — `GET …/okf_export`: bundle writer + root `index.md`,
+4. ✅ **Exporter**: `GET …/okf_export`: bundle writer + root `index.md`,
    round-trip test.
-5. ◑ **`data_knowledge` consumer** — shipped: OKF-framed static mount
+5. ◑ **`data_knowledge` consumer**: shipped: OKF-framed static mount
    (`index.md` navigation + `okf_version`, prompt framing). **Deferred:**
    rendering the mount from a bound KB (needs session-mount-time DB access).
-6. ◑ **Showcase** — shipped: how-to guide, API round-trip test case, Data
+6. ◑ **Showcase**: shipped: how-to guide, API round-trip test case, Data
    Analyst showcase test case, and the `search_knowledge` runtime tool (below)
    so agents actually consume imported OKF knowledge. **Pending:** a live
    end-to-end run + recording need a running stack.
-7. ⏳ **Landing announcement** — `everruns/landing` PR + example + recording.
+7. ⏳ **Landing announcement**: `everruns/landing` PR + example + recording.
    Requires `everruns/landing` access and a running stack for the recording.
 
 ### `search_knowledge` runtime tool (shipped)
@@ -246,11 +246,11 @@ knowledge. Implemented as a cross-crate slice:
 
 * Platform trait `KnowledgeStore` + `KnowledgeSearchHit` result type
   (`crates/platform/src/knowledge_store.rs`), resolved through the typed
-  `ToolContext` extension seam owned by `everruns-core`.
+  `ToolContext` extension boundary owned by `everruns-core`.
 * Server impl over `StorageBackend`
   (`crates/server/src/knowledge_store.rs`), wired via `DirectWorkerAdapters`. It
   resolves each KB public id within the caller's org (cross-org ids silently
-  skipped — no existence leak) and calls `search_knowledge_entries`. Public
+  skipped, no existence leak) and calls `search_knowledge_entries`. Public
   org-id → internal id uses `org_internal_id_from_public`.
 * The tool on `KnowledgeBaseCapability::tools_with_config`
   (`crates/platform/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
@@ -267,7 +267,7 @@ Inherits `knowledge/security/threat-model.md`. New surface area:
   and tar entries, frontmatter parsing hardened against malformed YAML.
 * **Git URL fetch (future, not implemented):** a future git-URL input would be
   subject to `knowledge/operations/network-access.md` allowlist/blocklist. v1 has no network
-  egress — only inline files and base64 tarballs.
+  egress, only inline files and base64 tarballs.
 * **Cross-org:** import/export are org-scoped like all KB CRUD; errors never
   leak existence of other-org KBs.
 * **Export disclosure:** export reflects only the requesting org's KB content;
