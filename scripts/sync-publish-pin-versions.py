@@ -36,6 +36,7 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/platform/Cargo.toml": [
         "everruns-builtins",
         "everruns-core",
+        "everruns-host",
         "everruns-session-services",
         "everruns-integrations-filesystem",
         "everruns-integrations-bashkit",
@@ -51,7 +52,6 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-engine",
         "everruns-http",
         "everruns-mcp",
-        "everruns-platform",
         "everruns-session-services",
         "everruns-integrations-filesystem",
         "everruns-integrations-bashkit",

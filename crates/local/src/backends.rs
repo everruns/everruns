@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use everruns_core::session_services::SessionScheduleStore;
-use everruns_host::{HostBackends, PlatformStoreFactory, ScheduleStoreFactory};
-use everruns_platform::PlatformStore;
+use everruns_host::{HostBackends, ScheduleStoreFactory};
+use everruns_platform::{PlatformHostBackendsExt, PlatformStore, PlatformStoreFactory};
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{PrincipalId, SessionId};
 

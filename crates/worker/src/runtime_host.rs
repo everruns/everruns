@@ -3,6 +3,7 @@
 // the neutral everruns-host execution contract.
 
 use async_trait::async_trait;
+use everruns_core::tool_context::ToolContextExtensions;
 use everruns_core::{
     CapabilityRegistry, EgressService, ResolvedExecutionSnapshot, SessionExecutionState,
     UtilityLlmService,
@@ -19,6 +20,10 @@ use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
 };
 use everruns_platform::SessionMutator;
+use everruns_platform::{
+    KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt, PlatformStoreSubagentDelegate,
+    PlatformToolAugmentor, SandboxCheckpointStoreExt, SessionSqlDbStoreExt,
+};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{AgentId, SessionId};
@@ -286,26 +291,42 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.storage_store())
     }
 
-    fn knowledge_store(&self) -> Option<Arc<dyn everruns_platform::KnowledgeStore>> {
-        self.adapters.knowledge_store()
-    }
-
     fn connection_resolver(
         &self,
     ) -> Option<Arc<dyn everruns_core::connection_services::UserConnectionResolver>> {
         Some(self.adapters.connection_resolver())
     }
 
-    fn sqldb_store(
-        &self,
-    ) -> Option<std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> {
-        Some(self.adapters.sqldb_store())
+    fn tool_context_extensions(&self, org_id: i64, session_id: SessionId) -> ToolContextExtensions {
+        let mut extensions = ToolContextExtensions::default();
+        extensions.insert(Arc::new(PlatformStoreExt(
+            self.adapters.platform_store(org_id, session_id),
+        )));
+        if let Some(store) = self.adapters.knowledge_store() {
+            extensions.insert(Arc::new(KnowledgeStoreExt(store)));
+        }
+        if let Some(search) = self.adapters.knowledge_index_search(org_id) {
+            extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
+        }
+        extensions.insert(Arc::new(SessionSqlDbStoreExt(self.adapters.sqldb_store())));
+        if let Some(store) = self.adapters.sandbox_checkpoint_store() {
+            extensions.insert(Arc::new(SandboxCheckpointStoreExt(store)));
+        }
+        extensions
     }
 
-    fn sandbox_checkpoint_store(
+    fn subagent_delegate(
         &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
-        self.adapters.sandbox_checkpoint_store()
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>> {
+        Some(Arc::new(PlatformStoreSubagentDelegate(
+            self.adapters.platform_store(org_id, session_id),
+        )))
+    }
+
+    fn tool_augmentor(&self) -> Option<Arc<dyn everruns_host::HostToolAugmentor>> {
+        Some(Arc::new(PlatformToolAugmentor))
     }
 
     fn leased_resource_store(
@@ -331,21 +352,6 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
     ) -> Option<Arc<dyn everruns_core::session_services::SessionScheduleStore>> {
         Some(self.adapters.schedule_store(org_id))
-    }
-
-    fn platform_store(
-        &self,
-        org_id: i64,
-        session_id: SessionId,
-    ) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
-        Some(self.adapters.platform_store(org_id, session_id))
-    }
-
-    fn knowledge_index_search(
-        &self,
-        org_id: i64,
-    ) -> Option<Arc<dyn everruns_platform::vector_store::KnowledgeIndexSearch>> {
-        self.adapters.knowledge_index_search(org_id)
     }
 
     fn budget_checker(

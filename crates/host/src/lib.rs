@@ -39,6 +39,7 @@ mod command_host;
 mod composition;
 pub mod events;
 pub mod execution_snapshot;
+mod extensions;
 mod file_store_decorators;
 mod grep_limits;
 mod host;
@@ -59,8 +60,6 @@ mod turn_strategy;
 mod utility_llm;
 mod workspace;
 
-#[cfg(feature = "platform")]
-pub use backends::PlatformStoreFactory;
 pub use backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore,
     RuntimeSessionStore, ScheduleStoreFactory,
@@ -83,6 +82,7 @@ pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use everruns_core::turn::TurnStopReason;
 pub use everruns_provider::typed_id::WorkspaceId;
 pub use execution_snapshot::{load_execution_snapshot, load_execution_snapshot_for_session};
+pub use extensions::{HostToolAugmentor, SubagentDelegateFactory, ToolContextExtensionsFactory};
 #[allow(deprecated)]
 pub use file_store_decorators::{
     ApprovalGatingFileStore, FileApprovalGate, PolicyFileStore, WriteBlocklistFileStore,

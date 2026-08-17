@@ -44,7 +44,7 @@ use everruns_llmsim::LlmSimRuntimeExt;
 use everruns_llmsim::{LlmSimConfig, ResponseConfig, ToolCallConfig, ToolCallPattern};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::{AgentHandoffCapability, SubagentCapability};
-use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
 use everruns_provider::model_spec::ModelSpec;
@@ -305,11 +305,12 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         "http://localhost",
     ));
 
+    let backends =
+        backends.with_platform_store_factory(Arc::new(move |_org, _session| store.clone()));
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .backends(backends)
         .with_session_task_registry(registry.clone())
-        .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))
         .default_model(llmsim_model())
         .llm_sim_as_default(spawn_agent_sim(HANDOFF_TARGET_ID))
         .harness(parent_harness)

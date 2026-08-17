@@ -183,7 +183,7 @@ graph TD
     host --> core
     host --> provider
     host --> session_services
-    host -.->|platform feature| platform
+    platform -->|host extension ports| host
     platform --> session_services
     framework --> host
     framework --> core

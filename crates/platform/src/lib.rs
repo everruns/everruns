@@ -60,6 +60,7 @@ pub mod agent;
 // after `merge_harness_chain` resolves parent inheritance at the platform
 // loading seam.
 pub mod harness;
+pub mod host_extension;
 
 // Stored Session persistence record and product lifecycle enums carved out of
 // `everruns-core` (EVE-882). Execution consumes only the portable
@@ -132,6 +133,7 @@ pub use harness::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, Harness,
     HarnessStatus, harness_for_role, merge_harness, merge_harness_chain, resolve_execution_harness,
 };
+pub use host_extension::{PlatformHostBackendsExt, PlatformStoreFactory, PlatformToolAugmentor};
 pub use knowledge_store::{
     KnowledgeIndexSearchExt, KnowledgeIndexSearchHit, KnowledgeSearchHit, KnowledgeStore,
     KnowledgeStoreExt,

@@ -19,13 +19,9 @@ use everruns_core::{
     provider_resolution::ProviderStore, session_services::SessionScheduleStore,
     session_services::SessionStorageStore,
 };
-#[cfg(feature = "platform")]
-use everruns_platform::PlatformStore;
 use everruns_provider::error::Result;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::typed_id::HarnessId;
-#[cfg(feature = "platform")]
-use everruns_provider::typed_id::SessionId;
 use everruns_session_services::SessionMutator;
 use std::sync::Arc;
 
@@ -33,12 +29,6 @@ use std::sync::Arc;
 /// single global store can ignore the `org_id` argument and return the same
 /// `Arc` every time.
 pub type ScheduleStoreFactory = Arc<dyn Fn(i64) -> Arc<dyn SessionScheduleStore> + Send + Sync>;
-
-/// Factory producing a per-(org, session) [`PlatformStore`]. The session id is
-/// supplied because platform stores are scoped to the calling session for
-/// subagent spawning and platform-management tools.
-#[cfg(feature = "platform")]
-pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
 
 /// Agent store contract for runtime seeding and lookup.
 ///
@@ -116,10 +106,12 @@ pub struct HostBackends {
     /// Optional per-org schedule store factory. `None` (the default) leaves
     /// `RuntimeHostAdapter::schedule_store` returning `None`.
     pub schedule_store_factory: Option<ScheduleStoreFactory>,
-    /// Optional per-(org, session) platform store factory. `None` (the
-    /// default) leaves `RuntimeHostAdapter::platform_store` returning `None`.
-    #[cfg(feature = "platform")]
-    pub platform_store_factory: Option<PlatformStoreFactory>,
+    /// Optional higher-level typed services supplied to tool contexts.
+    pub tool_context_extensions_factory: Option<crate::ToolContextExtensionsFactory>,
+    /// Optional neutral subagent delegate supplied by a higher-level host.
+    pub subagent_delegate_factory: Option<crate::SubagentDelegateFactory>,
+    /// Optional higher-level tool augmentation policy.
+    pub tool_augmentor: Option<Arc<dyn crate::HostToolAugmentor>>,
 }
 
 impl HostBackends {
@@ -140,8 +132,9 @@ impl HostBackends {
             connection_resolver: None,
             session_task_registry: None,
             schedule_store_factory: None,
-            #[cfg(feature = "platform")]
-            platform_store_factory: None,
+            tool_context_extensions_factory: None,
+            subagent_delegate_factory: None,
+            tool_augmentor: None,
         }
     }
 
@@ -214,11 +207,27 @@ impl HostBackends {
         self
     }
 
-    /// Inject a per-(org, session) platform store factory. The closure is
-    /// invoked with the internal org id and the calling session id.
-    #[cfg(feature = "platform")]
-    pub fn with_platform_store_factory(mut self, factory: PlatformStoreFactory) -> Self {
-        self.platform_store_factory = Some(factory);
+    /// Inject type-erased tool services supplied by a higher-level host.
+    pub fn with_tool_context_extensions_factory(
+        mut self,
+        factory: crate::ToolContextExtensionsFactory,
+    ) -> Self {
+        self.tool_context_extensions_factory = Some(factory);
+        self
+    }
+
+    /// Inject a neutral subagent delegate supplied by a higher-level host.
+    pub fn with_subagent_delegate_factory(
+        mut self,
+        factory: crate::SubagentDelegateFactory,
+    ) -> Self {
+        self.subagent_delegate_factory = Some(factory);
+        self
+    }
+
+    /// Inject higher-level turn-dependent tools.
+    pub fn with_tool_augmentor(mut self, augmentor: Arc<dyn crate::HostToolAugmentor>) -> Self {
+        self.tool_augmentor = Some(augmentor);
         self
     }
 }
