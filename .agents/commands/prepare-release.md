@@ -33,16 +33,9 @@ before editing files.
 
 - `Cargo.toml` → `workspace.package.version`
 - `apps/ui/package.json` → `version`
-- Sibling path-dependency pins (`crates/core/Cargo.toml` pins `everruns-openui`, `everruns-a2ui`, …)
-  must match the workspace version or the `publish-crates` workflow rejects the tag:
 
-  ```bash
-  python3 scripts/sync-publish-pin-versions.py            # rewrite drift
-  python3 scripts/sync-publish-pin-versions.py --check    # CI-style verify
-  ```
-
-  Its pin map mirrors `dependency_versions` in `.github/workflows/publish-crates.yml`; keep both in
-  lockstep when adding path-pinned crates.
+Do not bump published library crate versions. They are released independently
+with `/prepare-crate-release` when their own public contracts change.
 
 ## 4. Add the CHANGELOG entry
 
@@ -89,4 +82,4 @@ git push -u origin <current-branch>
 
 Open the PR with `.github/pull_request_template.md`, and tell the user to review CHANGELOG.md, add
 any highlights or screenshots, and merge once CI is green — the tag, GitHub Release, Docker images,
-and crate publishes follow automatically.
+and product binaries follow automatically. Crates.io publishing is independent.

@@ -1,6 +1,8 @@
 # everruns-ard
 
-Agentic Resource Discovery (ARD) **client** capability for Everruns agents.
+> Agentic Resource Discovery (ARD) client capability for Everruns agents.
+
+Part of the [Everruns](https://everruns.com) ecosystem.
 
 ARD is a platform-level discovery protocol, a sibling of MCP and A2A, not an
 external-service integration, so it lives in `crates/` alongside `everruns-mcp`.
@@ -15,13 +17,19 @@ It is the discovery layer *above* `tool_search`: `tool_search` defers schemas
 for tools already attached to a session; ARD decides *which* MCP server / A2A
 agent to attach in the first place.
 
-## Tools
+## What It Provides
 
 - `discover_resources({ text, filter?, registry_id? })`, semantic `POST /search`
   against a configured registry; returns ranked entries with a `urn`.
 - `attach_resource({ urn })`, verify trust + SSRF, then materialize the entry as
   a session-scoped MCP server or external A2A agent. Idempotent per URN.
 - `list_attached_resources()`, list what's attached this session.
+
+```rust
+use everruns_ard::RESOURCE_DISCOVERY_CAPABILITY_ID;
+
+assert_eq!(RESOURCE_DISCOVERY_CAPABILITY_ID, "resource_discovery");
+```
 
 ## Configuration
 
@@ -34,9 +42,15 @@ Auth is connection-backed: a registry bearer token via the `ard` connection
 provider, falling back to the `ARD_REGISTRY_TOKEN` session secret/env var.
 Anonymous-read registries need no token.
 
-See [`SPEC.md`](SPEC.md) for architecture, attachment lifecycle, and the security
-review, and `docs/integrations/ard.md` for a quick start.
+## Documentation
+
+- [ARD integration guide](https://docs.everruns.com/integrations/ard/)
+- [API reference](https://docs.rs/everruns-ard)
 
 ## Status
 
 Experimental (Dev only).
+
+## License
+
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

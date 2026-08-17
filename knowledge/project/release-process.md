@@ -35,14 +35,33 @@ Release readiness also includes the integration backstops that are intentionally
 
 Release notes should not normally include a dedicated "Migration Notes" section. Migration-specific engineering detail belongs in the migration files and migration spec, which remain the source of truth for upgrade and database-migration behavior. If a release has any operator-visible migration caveat, compatibility limitation, or exceptional upgrade requirement, call it out explicitly in the release PR and release notes.
 
-### Version Updates
+### Product Version Updates
 
-The `/prepare-release` command updates version in:
+The `/prepare-release` command updates the product version in:
 - `Cargo.toml` (workspace.package.version)
 - `apps/ui/package.json` (version field)
 - `CHANGELOG.md` (new version section)
 
-All packages (Rust crates and UI) are released together with the same version number.
+This version identifies the Everruns product: server, worker, CLI binaries, UI,
+Docker images, and the GitHub release. Published Rust libraries own explicit
+versions in their package manifests and are not bumped or published as a side
+effect of a product release.
+
+### Library Crate Releases
+
+Each crates.io package is versioned and released independently:
+
+1. Bump only the package whose public contract changed.
+2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
+   dependants reference the dependency package's current version.
+3. Validate and merge the release change to `main`.
+4. Create `crate/<package>/v<version>` at the reviewed commit.
+5. Run **Publish Crate** with the package, tag, and exact commit SHA.
+
+The workflow validates the selected manifest version, derives internal path
+dependency pins from Cargo metadata, and publishes only that package. If a set
+of related crates needs releases, publish dependencies first and then their
+dependants; do not recreate a lockstep workspace release.
 
 ### Migration Handling
 
@@ -57,7 +76,7 @@ If the release has an operator-visible migration caveat, compatibility limitatio
 ### Lock File Updates
 
 Lock files must be updated when preparing a release:
-- `Cargo.lock` - Run `cargo generate-lockfile` to sync with new workspace version
+- `Cargo.lock` - Run `cargo generate-lockfile` to sync product or crate version changes
 - `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
 - `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate
 
@@ -85,10 +104,15 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
 5. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
-6. crates.io packages published from the trusted release commit (triggered via `repository_dispatch` from Release workflow)
+6. crates.io packages are not published by the product release; each uses its
+   own trusted package tag and **Publish Crate** workflow
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
-> The Release workflow explicitly dispatches Docker Publish, CLI Binaries, and crates.io publishing after creating the release. Crate publishing validates that the tag is a strict semver tag, resolves to the expected release SHA when dispatched internally, and is reachable from `origin/main` before the crates.io token is used.
+> The Release workflow explicitly dispatches Docker Publish and CLI Binaries
+> after creating the product release. Independent crate publishing validates a
+> `crate/<package>/v<semver>` tag, the selected manifest version, the expected
+> commit SHA, and reachability from `origin/main` before the crates.io token is
+> used.
 
 ### CLI Binary Assets
 

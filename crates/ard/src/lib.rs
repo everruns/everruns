@@ -6,13 +6,20 @@
 //! publishing an Everruns catalog + registry endpoint (ARD-as-a-server) is
 //! tracked separately.
 //!
+//! Part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! ```rust
+//! use everruns_ard::RESOURCE_DISCOVERY_CAPABILITY_ID;
+//! assert_eq!(RESOURCE_DISCOVERY_CAPABILITY_ID, "resource_discovery");
+//! ```
+//!
 //! Layering: ARD answers *"which MCP server / A2A agent should even be
 //! attached?"* — the layer above `tool_search` (which defers schemas for tools
 //! already attached). Discovery runs outside the model context; attachment
 //! reuses the existing scoped-`mcpServers` / A2A machinery, so the agent loop
 //! is unchanged (see `everruns_core::ard_attachment`).
 //!
-//! Decision: connection-backed — registry bearer token via the `ard` connection
+//! Authentication is connection-backed: registry bearer tokens use the `ard` connection
 //! provider, falling back to the `ARD_REGISTRY_TOKEN` session secret/env var for
 //! operator/test use. Anonymous-read registries need no token.
 

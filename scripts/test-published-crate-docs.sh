@@ -12,22 +12,20 @@ python3 - <<'PY'
 from __future__ import annotations
 
 import pathlib
+import json
 import re
+import subprocess
 import sys
 import tomllib
 from urllib.parse import urlparse
 
 root = pathlib.Path.cwd()
-workflow = (root / ".github/workflows/publish-crates.yml").read_text()
-match = re.search(r"\n\s*CRATES=\(\n(?P<body>.*?)\n\s*\)\n", workflow, re.S)
-if not match:
-    raise SystemExit("could not find the Publish Crates CRATES list")
-
-published = []
-for line in match.group("body").splitlines():
-    line = line.split("#", 1)[0].strip()
-    if line:
-        published.append(line)
+metadata = json.loads(subprocess.check_output(
+    ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
+))
+published = sorted(
+    package["name"] for package in metadata["packages"] if package.get("publish") != []
+)
 
 manifests: dict[str, tuple[pathlib.Path, dict]] = {}
 for base in (root / "crates", root / "integrations"):
@@ -65,7 +63,7 @@ def route_exists(route: str) -> bool:
 
 for package in published:
     if package not in manifests:
-        errors.append(f"publish list: no workspace manifest found for {package}")
+        errors.append(f"Cargo metadata: no workspace manifest found for {package}")
         continue
 
     manifest, data = manifests[package]
@@ -73,15 +71,15 @@ for package in published:
     package_data = data["package"]
     readme = crate_dir / "README.md"
     lib = crate_dir / "src/lib.rs"
+    has_library = lib.is_file()
 
     require(package_data.get("readme") == "README.md", manifest, 'set readme = "README.md"')
     require(readme.is_file(), readme, "published crate README is missing")
-    require(lib.is_file(), lib, "published library crate root is missing")
-    if not readme.is_file() or not lib.is_file():
+    if not readme.is_file():
         continue
 
     readme_text = readme.read_text()
-    rustdoc = lib.read_text()
+    rustdoc = lib.read_text() if has_library else ""
     crate_doc_lines = []
     for line in rustdoc.splitlines():
         if line.startswith("//!"):
@@ -101,7 +99,11 @@ for package in published:
         "place a one-line blockquote tagline directly below the title",
     )
     require("https://everruns.com" in readme_text, readme, "add the Everruns ecosystem link")
-    require("```rust" in readme_text, readme, "add a Rust quick example")
+    require(
+        "```rust" in readme_text if has_library else "```" in readme_text,
+        readme,
+        "add a quick example",
+    )
     require(
         re.search(r"^## (What It Provides|Features)\s*$", readme_text, re.M | re.I) is not None,
         readme,
@@ -109,23 +111,28 @@ for package in published:
     )
     require(re.search(r"^## Documentation\s*$", readme_text, re.M | re.I) is not None, readme, "add a Documentation section")
     require("https://docs.everruns.com" in readme_text, readme, "link relevant public documentation")
-    require("https://docs.rs" in readme_text, readme, "link the docs.rs API reference")
+    if has_library:
+        require("https://docs.rs" in readme_text, readme, "link the docs.rs API reference")
     require(re.search(r"^## License\s*$", readme_text, re.M | re.I) is not None, readme, "add a License section")
     require("github.com/everruns/everruns/blob/main/LICENSE" in readme_text, readme, "link the repository MIT license")
 
     # Crate-level lint attributes may precede the inner rustdoc. Strip only
     # single-line inner attributes; executable items or ordinary comments must
     # still fail the structural contract.
-    rustdoc_start = re.sub(r"\A(?:#!\[[^\n]*\]\s*)*", "", rustdoc)
-    require(rustdoc_start.startswith("//!"), lib, "start with crate-level rustdoc")
-    require("https://everruns.com" in crate_docs, lib, "mirror the Everruns ecosystem link in rustdoc")
-    require(
-        re.search(r"^//! ```(?:rust|no_run)?\s*$", crate_docs, re.M) is not None,
-        lib,
-        "add a compiled crate-level rustdoc example",
-    )
+    if has_library:
+        rustdoc_start = re.sub(r"\A(?:#!\[[^\n]*\]\s*)*", "", rustdoc)
+        require(rustdoc_start.startswith("//!"), lib, "start with crate-level rustdoc")
+        require("https://everruns.com" in crate_docs, lib, "mirror the Everruns ecosystem link in rustdoc")
+        require(
+            re.search(r"^//! ```(?:rust|no_run)?\s*$", crate_docs, re.M) is not None,
+            lib,
+            "add a compiled crate-level rustdoc example",
+        )
 
-    for location, text in ((readme, readme_text), (lib, crate_docs)):
+    surfaces = [(readme, readme_text)]
+    if has_library:
+        surfaces.append((lib, crate_docs))
+    for location, text in surfaces:
         require("knowledge/" not in text, location, "do not link internal knowledge from published docs")
         require(re.search(r"^//!?\s*Decision:", text, re.M) is None, location, "remove internal Decision: notes from published docs")
         urls = re.findall(r"https://docs\.everruns\.com(?:/[^\s)\]}>`\"]*)?", text)

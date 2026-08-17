@@ -7,7 +7,7 @@
 
 [package]
 name = "everruns-fireworks"
-version.workspace = true
+version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -35,9 +35,7 @@ chrono.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-# No version pin: this crate is not in the publish set, so it follows the
-# unpublished-crate convention (path only).
-everruns-provider = { path = "../provider" }
+everruns-provider = { version = "0.18.0", path = "../provider" }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures discovery requests;

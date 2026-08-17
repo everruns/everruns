@@ -8,7 +8,7 @@
 
 [package]
 name = "everruns"
-version.workspace = true
+version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -98,9 +98,8 @@ everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
 # Optional real-provider edge, activated by the `openai` feature. Referenced via
-# workspace inheritance; the workspace pin is a compatible lower bound, so this
-# is intentionally absent from the publish version-sync lists (unlike
-# everruns-core/everruns-host, which track the workspace version exactly).
+# workspace inheritance; the workspace dependency carries the independently
+# versioned provider package's current release baseline.
 everruns-openai = { workspace = true, optional = true }
 async-trait.workspace = true
 uuid.workspace = true
