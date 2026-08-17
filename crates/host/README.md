@@ -41,6 +41,8 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Session mutation/storage contracts and their portable `session` capabilities
 - Policy-aware `DirectEgressService` behind the opt-in `direct-egress` feature
+- OpenTelemetry and Braintrust exporters behind the opt-in `observability`
+  feature, available as `everruns_host::observability`
 - Host adapter contracts for worker, local, and advanced integrations
 - Neutral extension ports for higher-level typed services, subagent delegates,
   and turn-dependent tools

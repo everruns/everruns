@@ -15,6 +15,10 @@ fail() {
   FAILED=1
 }
 
+if [ -e crates/local/Cargo.toml ] || [ ! -e crates/everruns/src/local/mod.rs ]; then
+  fail "Local embedded persistence must remain owned by the everruns local feature"
+fi
+
 FORBIDDEN_CORE_MODULES=(
   crates/core/src/capabilities/bashkit_shell
   crates/core/src/capabilities/file_system.rs

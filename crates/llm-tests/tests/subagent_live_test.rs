@@ -1,6 +1,6 @@
 // Live end-to-end test for background spawn_agent subagent delegation against a real LLM
 // through the runtime: InProcessRuntime + the local-host PlatformStore
-// (`everruns-local` owns the embeddable PlatformStore implementation the
+// (`everruns::local` owns the embeddable PlatformStore implementation the
 // subagent tools require; `everruns-host` deliberately has none) + the
 // SQLite LocalSessionTaskRegistry.
 //
@@ -20,6 +20,7 @@ use everruns_host::HostComposition;
 use llm_test_matrix::*;
 
 use async_trait::async_trait;
+use everruns::local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_core::session::ExecutionSession;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::{CapabilityRegistry, MessageRole};
@@ -27,7 +28,6 @@ use everruns_host::{
     AgentBuilder, HarnessBuilder, HostBackends, InProcessRuntime, InProcessRuntimeBuilder,
     RuntimeSessionStore, SessionBuilder,
 };
-use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::SubagentCapability;
 use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_provider::error::Result;

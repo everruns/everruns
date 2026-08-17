@@ -29,6 +29,10 @@ fn accepts_platform_values(_organization: &Organization, _principal: &Principal)
 
 ## What It Provides
 
+- Opt-in self-hosted Docker execution under `container_sandbox` with the
+  `container-sandbox` feature; neutral execution contracts remain outside the
+  deployment implementation.
+
 - Organization, membership, and principal domain values
 - App/channel and agent-trigger control-plane records
 - Hosted knowledge, memory, delegation, task, hook, and management capabilities

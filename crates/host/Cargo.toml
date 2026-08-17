@@ -24,8 +24,9 @@ async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 ignore.workspace = true
-reqwest = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true, features = ["json", "stream", "rustls", "blocking"] }
 regex.workspace = true
+rand = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -45,6 +46,11 @@ everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
 everruns-integrations-duckduckgo = { workspace = true, optional = true }
 everruns-integrations-lua = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 
 [features]
 default = []
@@ -59,6 +65,17 @@ duckduckgo = ["dep:everruns-integrations-duckduckgo", "direct-egress"]
 lua = ["dep:everruns-integrations-lua", "direct-egress"]
 process = []
 utility-openai = ["everruns-provider/http"]
+observability = [
+    "direct-egress",
+    "tokio/time",
+    "everruns-provider/tls-ring",
+    "dep:rand",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
+]
 
 [[example]]
 name = "real_disk_file_system_tools"

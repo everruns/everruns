@@ -111,7 +111,7 @@ that examples do not: the offline
 [generic evaluation runner](../../evals/generic/src/subject.rs), the
 [Lua-versus-bash research harness](../../research/lua-vs-bash/src/main.rs), the
 [worker host](../../crates/worker/src/unified_worker.rs), the
-[local host builder](../../crates/local/src/runtime_builder.rs), and the
+[local host builder](../../crates/everruns/src/local/runtime_builder.rs), and the
 [live subagent host test](../../crates/llm-tests/tests/subagent_live_test.rs).
 The classification below is the durable decision for each family; individual
 implementation tests inside `crates/host` remain host coverage, not additional
@@ -251,4 +251,4 @@ dependency while allowing focused host and sibling crates.
 - `crates/host/src/runtime.rs`
 - `crates/host/src/events.rs`
 - `crates/host/src/lib.rs`
-- `crates/local/`
+- `crates/everruns/src/local/`

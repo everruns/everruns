@@ -33,7 +33,7 @@ GUARDED_TREES=(
   crates/core/src
   crates/host/src
   crates/platform/src
-  crates/local/src
+  crates/everruns/src/local
   crates/cli/src
 )
 if matches=$(grep -rnE 'everruns_test_support(::|[^[:alnum:]_]|$)' "${GUARDED_TREES[@]}" --include='*.rs' 2>/dev/null); then

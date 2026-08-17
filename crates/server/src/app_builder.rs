@@ -33,7 +33,7 @@ use everruns_core::{
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
-use everruns_observability::{BraintrustListener, OtelEventListener};
+use everruns_host::observability::{BraintrustListener, OtelEventListener};
 use everruns_worker::{
     AgentRunner, DurableTaskNotifier, RunnerBackend, TaskWorker, TaskWorkerConfig,
     create_runner_with_backend,

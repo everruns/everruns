@@ -14,6 +14,7 @@
 * [Session Resource Registry](session-resources.md) - Session resource registry.
 * [Leased Resources](leased-resources.md) - Generic lease primitive.
 * [Session Sandbox](session-sandbox.md) - Managed session-owned sandbox capability and lifecycle.
+* [Container Sandbox Capability](container-sandbox.md) - Self-hosted Docker execution for agent sessions.
 * [Workspace Specification](workspace.md) - Session workspace (file surface + tables).
 * [Session Filesystem Specification](file-store.md) - Pluggable `SessionFileStore` backends.
 * [Object Storage Specification](object-storage.md) - Optional S3-compatible blob backend for file/image content.

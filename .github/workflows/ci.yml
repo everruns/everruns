@@ -409,8 +409,8 @@ jobs:
       - name: Check test-support isolation
         run: bash scripts/lib/check-test-support-isolation.sh
 
-  # Architecture guard (EVE-876): telemetry init and exporter implementations
-  # live in crates/observability. Core carries only the neutral observability
+  # Architecture guard: telemetry init and exporter implementations live
+  # behind everruns-host/observability. Core carries only neutral observability
   # contracts, and Framework/provider trees ship no OTLP/exporter subtree.
   observability-isolation:
     name: Observability Isolation Guard
@@ -656,7 +656,7 @@ jobs:
           # Core and the local embedder: run the WHOLE suite (lib + integration +
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
-          cargo test -p everruns-core -p everruns-local --all-features
+          cargo test -p everruns-core -p everruns --all-features
           # Production-safe deterministic simulator plus its optional host
           # extension. Pure llmsim; no credentials or network.
           cargo test -p everruns-llmsim --all-features

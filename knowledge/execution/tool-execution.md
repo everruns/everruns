@@ -259,7 +259,7 @@ Artifacts and visibility:
   - `/.background/{run_id}/result.json`
 - On completion or failure, the worker may send a synthetic session message summarizing the result and artifact paths.
 - That message is delivered through `PlatformStore::send_message`. **Without a platform store there is nowhere to deliver it**, and the run finishes invisibly, the agent that spawned it never learns it ended. The tool logs a warning rather than failing, since the run itself succeeded, but a host that wires `spawn_background` and no store has a hole.
-- Embedded hosts wire delivery with `everruns-local`'s `LocalPlatformStore`. A session with a live host loop (a terminal UI, an editor session) must not have a turn run underneath it, so `HostRoutedRunner` + `WakeRoutes` route the completion to the host's channel when one is registered and fall through to the inner runner's synchronous turn when nobody is watching, which is the child/subagent case. What the host does with a delivered wake (coalescing, enrichment, when to run it) stays with the host.
+- Embedded hosts wire delivery with `everruns::local::LocalPlatformStore`. A session with a live host loop (a terminal UI, an editor session) must not have a turn run underneath it, so `HostRoutedRunner` + `WakeRoutes` route the completion to the host's channel when one is registered and fall through to the inner runner's synchronous turn when nobody is watching, which is the child/subagent case. What the host does with a delivered wake (coalescing, enrichment, when to run it) stays with the host.
 
 Scheduled monitors:
 - When `schedule` is provided, `spawn_background` does not start the tool immediately.

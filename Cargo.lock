@@ -2565,6 +2565,10 @@ version = "0.18.0"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
+ "chrono",
+ "chrono-tz",
+ "cron",
+ "dirs",
  "everruns-builtins",
  "everruns-capability",
  "everruns-core",
@@ -2574,17 +2578,23 @@ dependencies = [
  "everruns-integrations-filesystem",
  "everruns-integrations-web-fetch",
  "everruns-llmsim",
- "everruns-local",
  "everruns-macros",
  "everruns-openai",
+ "everruns-platform",
  "everruns-provider",
+ "everruns-test-support",
  "futures",
+ "libc",
+ "parking_lot",
+ "rusqlite",
  "schemars",
  "serde",
  "serde_json",
  "tempfile",
+ "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "tracing",
  "trybuild",
  "uuid 1.24.1",
 ]
@@ -2717,27 +2727,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "everruns-container-sandbox"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-core",
- "everruns-provider",
- "hex",
- "inventory",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tar",
- "tokio",
- "tracing",
- "urlencoding",
 ]
 
 [[package]]
@@ -2874,6 +2863,10 @@ dependencies = [
  "everruns-test-support",
  "futures",
  "ignore",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
+ "rand 0.10.2",
  "regex",
  "reqwest 0.13.4",
  "serde",
@@ -2883,6 +2876,8 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
  "uuid 1.24.1",
  "wiremock",
 ]
@@ -3242,6 +3237,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "everruns",
  "everruns-anthropic",
  "everruns-bedrock",
  "everruns-builtins",
@@ -3252,7 +3248,6 @@ dependencies = [
  "everruns-host",
  "everruns-integrations-bashkit",
  "everruns-integrations-filesystem",
- "everruns-local",
  "everruns-meta",
  "everruns-openai",
  "everruns-openrouter",
@@ -3279,35 +3274,6 @@ dependencies = [
  "llmsim",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "everruns-local"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "chrono",
- "chrono-tz",
- "cron",
- "dirs",
- "everruns-capability",
- "everruns-core",
- "everruns-host",
- "everruns-llmsim",
- "everruns-platform",
- "everruns-provider",
- "everruns-test-support",
- "futures",
- "libc",
- "parking_lot",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid 1.24.1",
 ]
 
 [[package]]
@@ -3374,30 +3340,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-observability"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "everruns-provider",
- "insta",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
- "rand 0.10.2",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-opentelemetry",
- "tracing-subscriber",
- "uuid 1.24.1",
- "wiremock",
-]
-
-[[package]]
 name = "everruns-openai"
 version = "0.18.0"
 dependencies = [
@@ -3437,6 +3379,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "everruns-builtins",
  "everruns-capability",
@@ -3449,16 +3392,20 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-provider",
  "futures",
+ "hex",
  "include_dir",
  "inventory",
  "jsonschema",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
+ "tar",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
  "url",
+ "urlencoding",
  "utoipa",
  "uuid 1.24.1",
  "wiremock",
@@ -3539,7 +3486,6 @@ dependencies = [
  "everruns-ard",
  "everruns-builtins",
  "everruns-capability",
- "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
  "everruns-host",
@@ -3559,7 +3505,6 @@ dependencies = [
  "everruns-integrations-web-fetch",
  "everruns-internal-protocol",
  "everruns-mcp",
- "everruns-observability",
  "everruns-platform",
  "everruns-provider",
  "everruns-sdk",
@@ -3672,7 +3617,6 @@ dependencies = [
  "everruns-ard",
  "everruns-bedrock",
  "everruns-capability",
- "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
  "everruns-engine",
@@ -3696,7 +3640,6 @@ dependencies = [
  "everruns-mai",
  "everruns-mcp",
  "everruns-meta",
- "everruns-observability",
  "everruns-openai",
  "everruns-openrouter",
  "everruns-platform",

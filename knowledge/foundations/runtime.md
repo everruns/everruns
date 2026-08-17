@@ -365,14 +365,13 @@ behavior (the `RuntimeHostAdapter` method returns `None`). The slots are a
 single, repeatable "optional backend slot" pattern so additional local backends
 can be added without further runtime changes.
 
-## Local Backends (`everruns-local`)
+## Local Backends (`everruns::local`)
 
-`everruns-local` is the first-party crate that populates the optional
-host-backend slots with local, file-backed implementations for embedded,
-single-process hosts (where Yolop and miy would otherwise each reinvent them).
-The runtime stays generic and owns only the boundaries; durable local storage choices
-live in this separate opt-in crate. It ships on crates.io alongside
-`everruns-host` so external embedders can depend on it directly.
+The Framework's opt-in `local` feature populates the optional host-backend slots
+with local, file-backed implementations for embedded, single-process hosts.
+The runtime stays generic and owns only the boundaries; durable local storage
+choices live in `everruns::local` so library users do not assemble a second
+runtime crate.
 
 It provides SQLite-backed, restart-survivable stores,
 `LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, plus a
@@ -385,7 +384,8 @@ process can read, continue, and inspect tasks an earlier process started.
 Schedules keep an extensible per-record metadata bag (name/color/kind/etc.) in a
 local `metadata` JSON column rather than by widening the shared core
 `SessionSchedule` primitive; the trait-level store surface is unchanged. See
-`crates/local/` for the implementation and `crates/local/tests/` for the
+`crates/everruns/src/local/` for the implementation and
+`crates/everruns/tests/local_*` for the
 task-lifecycle, restart-survivability, schedule round-trip, composability, and
 embedded-turn coverage.
 
@@ -402,7 +402,7 @@ existing `LocalSessionRunner::send_message` implementation; storage never owns
 session execution. Failed deliveries retain the occurrence and diagnostic
 error, then wait `claim_timeout` before retry so a disappearing route cannot
 cause poll-rate claim churn. Shutdown stops new claims and waits for an active
-delivery; forced abort leaves the lease for stale recovery. See `crates/local/`
+delivery; forced abort leaves the lease for stale recovery. See `crates/everruns/src/local/`
 for the public lifecycle API and tests.
 
 This boundary provides at-least-once delivery across process failure. Atomic
@@ -497,7 +497,7 @@ test binaries in `crates/host/tests/`.
 - `crates/host/src/host.rs`
 - `crates/host/src/in_memory.rs`
 - `crates/host/src/backends.rs`
-- `crates/local/` (`everruns-local`: SQLite-backed local host backends)
+- `crates/everruns/src/local/` (Framework-local SQLite-backed host backends)
 - `crates/host/examples/in_process_runtime.rs`
 - `crates/host/examples/inspect_context.rs`
 - `examples/weekend-concierge-host/src/lib.rs`

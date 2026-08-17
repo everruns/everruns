@@ -94,12 +94,11 @@ application-grade agent, harness, session, and provider stores live in
 `EventLog`, with `EventHistory` providing the read-only message projection.
 
 Telemetry initialization and exporter implementations live in
-`everruns-observability` (EVE-876): OTLP exporter wiring, tracing-subscriber
-layers, `TelemetryConfig`/`init_telemetry`, the `CompositeEventListener`
-fan-out, and the OTel/Braintrust exporter listeners. `everruns-core` keeps only
-the neutral contracts (the `EventListener` trait, event types, and gen-AI span
-conventions) and carries no OpenTelemetry/exporter dependencies; server and
-worker binaries install telemetry explicitly through `everruns-observability`.
+`everruns-host::observability`: opt-in OTLP exporter wiring,
+tracing-subscriber layers, `TelemetryConfig`/`init_telemetry`, the
+`CompositeEventListener` fan-out, and the OTel/Braintrust listeners.
+`everruns-core` keeps only neutral contracts and carries no exporter dependencies;
+server and worker binaries enable the host feature explicitly.
 `scripts/lib/check-observability-isolation.sh` (pre-push + CI) enforces the
 boundary and keeps Framework/provider dependency trees exporter-free.
 
@@ -158,7 +157,7 @@ and imports only the contracts needed by neutral execution. It does not
 re-export provider-owned modules. Low-level consumers declare
 `everruns-provider` directly; the application-facing `everruns` facade may
 selectively expose the coherent Framework API from either owner. Crates that
-pull in the host (for example `everruns-local` → `everruns-host`) still depend
+pull in the host (for example `everruns`'s `local` feature → `everruns-host`) still depend
 on full `everruns-core`.
 
 Two pin conventions follow from package publishability:

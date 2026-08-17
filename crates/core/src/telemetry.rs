@@ -6,7 +6,7 @@
 // - Span-name helpers with proper attribute naming
 //
 // OpenTelemetry initialization (OTLP exporter wiring, tracing-subscriber
-// layers, TelemetryConfig/TelemetryGuard) lives in `everruns-observability`
+// layers, TelemetryConfig/TelemetryGuard) lives behind `everruns-host/observability`
 // (EVE-876) so core carries no OTel SDK, exporter, or subscriber dependencies.
 // Guard: scripts/lib/check-observability-isolation.sh.
 

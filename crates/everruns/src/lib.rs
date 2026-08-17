@@ -98,11 +98,9 @@ pub use session::{
 pub use tool::{FunctionTool, IntoTool, IntoToolResult, Tool, ToolResponse};
 
 #[cfg(feature = "local")]
-mod local;
+pub mod local;
 #[cfg(feature = "local")]
-pub use everruns_local::LocalGitWorkspaceProvider;
-#[cfg(feature = "local")]
-pub use local::LocalConfig;
+pub use local::{LocalConfig, LocalGitWorkspaceProvider};
 
 #[cfg(all(test, feature = "macros"))]
 mod tool_macro_tests;

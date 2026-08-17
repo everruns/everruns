@@ -36,6 +36,7 @@ cargo add everruns --features bashkit,web-fetch
 cargo add everruns --features lua
 cargo add everruns --features mcp        # HTTP MCP
 cargo add everruns --features mcp-stdio  # also permits local processes
+cargo add everruns --features local      # durable local state and Git heads
 ```
 
 See [Capability integrations](https://docs.everruns.com/framework/capability-integrations/)

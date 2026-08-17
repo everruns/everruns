@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'crates/container-sandbox/**'
+      - 'crates/platform/src/container_sandbox/**'
+      - 'crates/platform/tests/container_sandbox_live_api_test.rs'
   pull_request:
     branches: [main]
     paths:
-      - 'crates/container-sandbox/**'
+      - 'crates/platform/src/container_sandbox/**'
+      - 'crates/platform/tests/container_sandbox_live_api_test.rs'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -40,7 +42,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-container-sandbox
+        run: cargo test -p everruns-platform --features container-sandbox --lib container_sandbox::
 
   live-test:
     name: Container Sandbox Live API Tests
@@ -60,7 +62,7 @@ jobs:
 
     env:
       # Steer the DockerClient at the service-mapped daemon. See
-      # `crates/container-sandbox/tests/live_api_test.rs` for the contract.
+      # `crates/platform/tests/container_sandbox_live_api_test.rs` for the contract.
       CONTAINER_SANDBOX_DOCKER_HOST: http://localhost:2375
 
     steps:
@@ -87,4 +89,4 @@ jobs:
           exit 1
 
       - name: Run live integration tests
-        run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1
+        run: cargo test -p everruns-platform --features container-sandbox-live-tests --test container_sandbox_live_api_test -- --test-threads=1

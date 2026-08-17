@@ -850,7 +850,7 @@ impl SessionBackgroundSink {
                 session_id = %self.context.session_id,
                 %status,
                 "background run finished but no platform store is configured; \
-                 the session will not be woken (see everruns-local's wake routing)"
+                 the session will not be woken (see everruns::local wake routing)"
             );
             return Ok(());
         };

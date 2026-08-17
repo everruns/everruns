@@ -61,7 +61,7 @@ cron = "0.17"
 
 # Tracing. Plain `tracing` instrumentation is unconditional. OpenTelemetry
 # initialization (SDK, OTLP exporter, tracing-subscriber layers) lives in
-# `everruns-observability` (EVE-876); core carries no exporter dependencies.
+# `everruns-host/observability`; core carries no exporter dependencies.
 # Guard: scripts/lib/check-observability-isolation.sh.
 tracing.workspace = true
 
@@ -101,7 +101,7 @@ inventory.workspace = true
 [features]
 # Core's default feature set is intentionally empty. Portable structural
 # outlines and OpenAPI derives are explicit opt-ins.
-# Note: OTLP telemetry moved to `everruns-observability` (EVE-876); no core
+# Note: OTLP telemetry lives behind `everruns-host/observability`; no core
 # build — default or otherwise — carries exporter dependencies.
 default = []
 openapi = ["dep:utoipa", "everruns-provider/openapi"]
