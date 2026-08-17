@@ -514,8 +514,24 @@ pub async fn run_session_sandbox_init_if_needed(
     Ok(())
 }
 
+/// Provider-neutral key a provider sets on `SessionSandboxInstance::metadata`
+/// to name the workspace revision its checkpoint produced.
+const CHECKPOINT_REVISION_METADATA_KEY: &str = "checkpoint_revision";
+
 /// Persist the provider checkpoint binding before the mutating tool result is
 /// returned to the runtime.
+///
+/// Writes happen in this order (EVE-870):
+///
+/// 1. the provider uploads the archive and names a revision;
+/// 2. the revision is recorded as an *unattached* checkpoint;
+/// 3. the secret binding is written, which is what makes the revision
+///    recoverable today;
+/// 4. the checkpoint is attached, marking it authoritative.
+///
+/// A crash between 2 and 4 therefore leaves a checkpoint row nothing points at,
+/// which garbage collection may drop, rather than an authoritative pointer to a
+/// revision no committed turn produced.
 pub async fn checkpoint_session_sandbox(
     context: &ToolContext,
     provider: &dyn SessionSandboxProvider,
@@ -526,11 +542,101 @@ pub async fn checkpoint_session_sandbox(
         .checkpoint(context, config, &state.instance)
         .await?;
     if checkpointed != state.instance {
+        let revision = checkpointed
+            .metadata
+            .get(CHECKPOINT_REVISION_METADATA_KEY)
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        let recorded = match revision {
+            Some(revision) => record_sandbox_checkpoint(context, config, &revision).await,
+            None => None,
+        };
+
         state.instance = checkpointed;
         state.updated_at = now_rfc3339();
         save_session_sandbox_state(context, state).await?;
+
+        if let Some((store, sandbox, checkpoint_id)) = recorded {
+            // The secret binding is still what recovery reads, so a failure to
+            // attach must not fail the tool: it leaves a collectable orphan and
+            // the pre-EVE-870 behaviour. This becomes fatal in the slice that
+            // moves recovery onto `sandboxes.current_checkpoint_id`.
+            if let Err(error) = store
+                .attach_checkpoint(sandbox.id, checkpoint_id, sandbox.generation)
+                .await
+            {
+                tracing::warn!(
+                    sandbox_id = %sandbox.id,
+                    %error,
+                    "failed to attach sandbox checkpoint; leaving it collectable"
+                );
+            }
+        }
     }
     Ok(())
+}
+
+/// Record an uploaded revision as an unattached checkpoint.
+///
+/// Returns the store, sandbox and checkpoint id so the caller can attach it
+/// once the pointer write has succeeded. Hosts without the store installed
+/// (remote workers, embedded Framework hosts) get `None` and keep the
+/// secret-only behaviour.
+async fn record_sandbox_checkpoint(
+    context: &ToolContext,
+    config: &SessionSandboxConfig,
+    revision: &str,
+) -> Option<(
+    std::sync::Arc<dyn crate::sandbox_checkpoint::SandboxCheckpointStore>,
+    crate::sandbox_checkpoint::SandboxRef,
+    uuid::Uuid,
+)> {
+    use crate::sandbox_checkpoint::{
+        NewSandboxCheckpoint, SandboxCheckpointKind, SandboxCheckpointStoreExt,
+    };
+
+    let store = context
+        .extensions
+        .get::<SandboxCheckpointStoreExt>()?
+        .0
+        .clone();
+
+    let sandbox = match store
+        .ensure_sandbox(context.session_id, &config.provider)
+        .await
+    {
+        Ok(sandbox) => sandbox,
+        Err(error) => {
+            tracing::warn!(%error, "failed to resolve logical sandbox; skipping checkpoint record");
+            return None;
+        }
+    };
+
+    let checkpoint = match store
+        .record_checkpoint(NewSandboxCheckpoint {
+            sandbox_id: sandbox.id,
+            generation: sandbox.generation,
+            source_turn_id: context
+                .event_context
+                .as_ref()
+                .and_then(|events| events.turn_id.as_ref())
+                .map(ToString::to_string),
+            source_tool_call_id: context.tool_call_id.clone(),
+            kind: SandboxCheckpointKind::PortableWorkspace,
+            provider_ref: None,
+            workspace_revision: revision.to_string(),
+        })
+        .await
+    {
+        Ok(checkpoint) => checkpoint,
+        Err(error) => {
+            tracing::warn!(%error, "failed to record sandbox checkpoint");
+            return None;
+        }
+    };
+
+    Some((store, sandbox, checkpoint.id))
 }
 
 /// Shared hints for stateful remote sandbox tools.
@@ -1023,5 +1129,324 @@ mod tests {
         assert_eq!(provider_state.exec_commands, vec!["echo ready"]);
         assert!(resolved.init_completed_at.is_some());
         assert_eq!(resolved.last_init_error, None);
+    }
+
+    // EVE-870: the checkpoint record/attach ordering around the secret write.
+
+    /// Records every store call in order so tests can assert the sequence, not
+    /// just the end state — the ordering is the property that makes a crash
+    /// leave a collectable orphan instead of an uncommitted pointer.
+    #[derive(Clone, Default)]
+    struct RecordingCheckpointStore {
+        calls: Arc<Mutex<Vec<String>>>,
+        fail_attach: bool,
+    }
+
+    #[async_trait]
+    impl crate::sandbox_checkpoint::SandboxCheckpointStore for RecordingCheckpointStore {
+        async fn ensure_sandbox(
+            &self,
+            _session_id: everruns_provider::typed_id::SessionId,
+            provider: &str,
+        ) -> Result<
+            crate::sandbox_checkpoint::SandboxRef,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("ensure_sandbox:{provider}"));
+            Ok(crate::sandbox_checkpoint::SandboxRef {
+                id: uuid::Uuid::nil(),
+                generation: 7,
+            })
+        }
+
+        async fn record_checkpoint(
+            &self,
+            checkpoint: crate::sandbox_checkpoint::NewSandboxCheckpoint,
+        ) -> Result<
+            crate::sandbox_checkpoint::SandboxCheckpoint,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            self.calls.lock().unwrap().push(format!(
+                "record:{}:gen{}",
+                checkpoint.workspace_revision, checkpoint.generation
+            ));
+            Ok(crate::sandbox_checkpoint::SandboxCheckpoint {
+                id: uuid::Uuid::nil(),
+                sandbox_id: checkpoint.sandbox_id,
+                generation: checkpoint.generation,
+                source_turn_id: checkpoint.source_turn_id,
+                source_tool_call_id: checkpoint.source_tool_call_id,
+                kind: checkpoint.kind,
+                provider_ref: checkpoint.provider_ref,
+                workspace_revision: checkpoint.workspace_revision,
+                attached_at: None,
+                created_at: Utc::now(),
+            })
+        }
+
+        async fn attach_checkpoint(
+            &self,
+            sandbox_id: uuid::Uuid,
+            _checkpoint_id: uuid::Uuid,
+            generation: i64,
+        ) -> Result<(), crate::sandbox_checkpoint::SandboxCheckpointError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("attach:gen{generation}"));
+            if self.fail_attach {
+                return Err(
+                    crate::sandbox_checkpoint::SandboxCheckpointError::StaleGeneration {
+                        sandbox_id,
+                        current: generation + 1,
+                        carried: generation,
+                    },
+                );
+            }
+            Ok(())
+        }
+
+        async fn current_checkpoint(
+            &self,
+            _sandbox_id: uuid::Uuid,
+        ) -> Result<
+            Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            Ok(None)
+        }
+
+        async fn collect_unattached_checkpoints(
+            &self,
+            _sandbox_id: uuid::Uuid,
+            _before: chrono::DateTime<Utc>,
+        ) -> Result<Vec<String>, crate::sandbox_checkpoint::SandboxCheckpointError> {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Provider whose checkpoint names a new revision on the neutral
+    /// `metadata.checkpoint_revision` key, the way the Daytona provider does.
+    struct RevisionCheckpointProvider;
+
+    #[async_trait]
+    impl SessionSandboxProvider for RevisionCheckpointProvider {
+        fn id(&self) -> &str {
+            "revision-test-session-sandbox"
+        }
+
+        async fn create(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn resume(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn pause(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn delete(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<(), ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn checkpoint(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            let mut checkpointed = instance.clone();
+            checkpointed.metadata["checkpoint_revision"] = json!("rev-42");
+            Ok(checkpointed)
+        }
+
+        async fn exec(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _request: &SessionSandboxExecRequest,
+        ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn read_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _path: &str,
+        ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn write_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _path: &str,
+            _content: &str,
+        ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn status(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _state: &SessionSandboxState,
+        ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+    }
+
+    fn revision_test_state() -> SessionSandboxState {
+        SessionSandboxState {
+            provider: "revision-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance("sb_revision"),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        }
+    }
+
+    fn revision_test_config() -> SessionSandboxConfig {
+        SessionSandboxConfig {
+            provider: "revision-test-session-sandbox".to_string(),
+            auto_start: true,
+            idle_pause_after_seconds: 180,
+            provider_config: json!({}),
+            init: SessionSandboxInitConfig { commands: vec![] },
+        }
+    }
+
+    #[tokio::test]
+    async fn checkpoint_records_revision_before_attaching_it() {
+        let storage = Arc::new(MemorySecrets::default());
+        let store = Arc::new(RecordingCheckpointStore::default());
+        let context =
+            ToolContext::with_storage_store(everruns_provider::typed_id::SessionId::new(), storage)
+                .with_extension(Arc::new(
+                    crate::sandbox_checkpoint::SandboxCheckpointStoreExt(store.clone()),
+                ));
+
+        let mut state = revision_test_state();
+        checkpoint_session_sandbox(
+            &context,
+            &RevisionCheckpointProvider,
+            &revision_test_config(),
+            &mut state,
+        )
+        .await
+        .expect("checkpoint succeeds");
+
+        // Recording precedes attaching: a crash in between leaves an orphan
+        // rather than a pointer to an uncommitted revision. The attach carries
+        // the generation the upload was issued against, so a sandbox replaced
+        // mid-flight rejects it.
+        assert_eq!(
+            store.calls.lock().unwrap().as_slice(),
+            [
+                "ensure_sandbox:revision-test-session-sandbox",
+                "record:rev-42:gen7",
+                "attach:gen7",
+            ]
+        );
+        assert_eq!(
+            state.instance.metadata["checkpoint_revision"],
+            json!("rev-42")
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_persists_binding_when_no_checkpoint_store_is_installed() {
+        // Remote workers and embedded Framework hosts have no store; they must
+        // keep the pre-EVE-870 secret-only behaviour rather than fail the tool.
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(
+            everruns_provider::typed_id::SessionId::new(),
+            storage.clone(),
+        );
+
+        let mut state = revision_test_state();
+        checkpoint_session_sandbox(
+            &context,
+            &RevisionCheckpointProvider,
+            &revision_test_config(),
+            &mut state,
+        )
+        .await
+        .expect("checkpoint succeeds without a checkpoint store");
+
+        assert!(
+            storage
+                .secrets
+                .lock()
+                .unwrap()
+                .contains_key(SESSION_SANDBOX_SECRET_NAME)
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_tolerates_a_rejected_attach() {
+        // The secret binding is still what recovery reads in this slice, so a
+        // fenced-out attach must leave a collectable orphan, not fail the tool.
+        let storage = Arc::new(MemorySecrets::default());
+        let store = Arc::new(RecordingCheckpointStore {
+            calls: Arc::new(Mutex::new(Vec::new())),
+            fail_attach: true,
+        });
+        let context = ToolContext::with_storage_store(
+            everruns_provider::typed_id::SessionId::new(),
+            storage.clone(),
+        )
+        .with_extension(Arc::new(
+            crate::sandbox_checkpoint::SandboxCheckpointStoreExt(store.clone()),
+        ));
+
+        let mut state = revision_test_state();
+        checkpoint_session_sandbox(
+            &context,
+            &RevisionCheckpointProvider,
+            &revision_test_config(),
+            &mut state,
+        )
+        .await
+        .expect("a rejected attach does not fail the tool");
+
+        assert!(
+            storage
+                .secrets
+                .lock()
+                .unwrap()
+                .contains_key(SESSION_SANDBOX_SECRET_NAME)
+        );
     }
 }

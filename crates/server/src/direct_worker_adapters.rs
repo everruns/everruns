@@ -1632,6 +1632,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.sqldb_store.clone()
     }
 
+    fn sandbox_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+        self.db.pool().map(|pool| {
+            Arc::new(crate::storage::PgSandboxCheckpointStore::new(pool.clone()))
+                as Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>
+        })
+    }
+
     fn compaction_checkpoint_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
