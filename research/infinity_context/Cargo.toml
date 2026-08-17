@@ -15,8 +15,8 @@ everruns-provider = { path = "../../crates/provider", default-features = false }
 everruns-test-support = { path = "../../crates/test-support" }
 
 # LLM provider drivers
-everruns-anthropic = { path = "../../crates/anthropic" }
-everruns-openai = { path = "../../crates/openai" }
+everruns-anthropic = { path = "../../crates/drivers/anthropic" }
+everruns-openai = { path = "../../crates/drivers/openai" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

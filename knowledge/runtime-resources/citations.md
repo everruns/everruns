@@ -34,7 +34,7 @@ each carrying a stable id (`kchk_…` / `kbe_…`), `source_uri`, `location`, an
 `snippet`. But nothing ties those sources to the *specific sentence* the model
 wrote, nothing renders them as a linkable affordance (there is no citation UI
 component today), and provider-native citations (Anthropic's Citations API,
-the `citations` capability flag is detected at `crates/anthropic/src/driver.rs`
+the `citations` capability flag is detected at `crates/drivers/anthropic/src/driver.rs`
 but unused) are not wired in. The public OpenResponses API already models inline
 citations (`OutputText.annotations: Vec<UrlCitation>` in
 `crates/core/src/openresponses_types.rs`) but the internal chat path never

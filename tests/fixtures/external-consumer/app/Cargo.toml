@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 everruns = { path = "../../../../crates/everruns" }
-everruns-llmsim = { path = "../../../../crates/llmsim" }
+everruns-llmsim = { path = "../../../../crates/drivers/llmsim" }
 external-capability-pack = { path = "../capability-pack" }
 serde_json = "1"
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

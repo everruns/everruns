@@ -28,12 +28,10 @@ published = sorted(
 )
 
 manifests: dict[str, tuple[pathlib.Path, dict]] = {}
-for base in (root / "crates", root / "integrations"):
-    for manifest in base.glob("*/Cargo.toml"):
-        data = tomllib.loads(manifest.read_text())
-        name = data.get("package", {}).get("name")
-        if name:
-            manifests[name] = (manifest, data)
+for package in metadata["packages"]:
+    manifest = pathlib.Path(package["manifest_path"])
+    data = tomllib.loads(manifest.read_text())
+    manifests[package["name"]] = (manifest, data)
 
 errors: list[str] = []
 

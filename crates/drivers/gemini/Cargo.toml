@@ -1,0 +1,48 @@
+# Google Gemini Provider Implementation
+# Decision: Implements the everruns-provider ChatDriver contract for the Google Gemini API
+# Decision: Uses Gemini's generateContent API with streaming support
+
+[package]
+name = "everruns-gemini"
+readme = "README.md"
+keywords = ["agent", "llm", "ai", "gemini", "google"]
+categories = ["api-bindings", "asynchronous"]
+version = "0.18.0"
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Google Gemini provider for Everruns agents"
+documentation = "https://docs.rs/everruns-gemini"
+
+[dependencies]
+# Core dependencies
+async-trait.workspace = true
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+# Provider SPI only (EVE-874): wire-protocol crates never depend on
+# everruns-core. Intentional optional features of everruns-provider (`openapi`
+# schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
+everruns-provider = { path = "../../provider", version = "0.18.0" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+# wiremock serves the golden streaming SSE fixtures; futures drains the stream.
+wiremock = "0.6"
+futures.workspace = true

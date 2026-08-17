@@ -20,9 +20,9 @@ path = "src/main.rs"
 [dependencies]
 mira-eval = "0.4"
 everruns = { path = "../../crates/everruns" }
-everruns-anthropic = { path = "../../crates/anthropic" }
-everruns-openai = { path = "../../crates/openai" }
-everruns-openrouter = { path = "../../crates/openrouter" }
+everruns-anthropic = { path = "../../crates/drivers/anthropic" }
+everruns-openai = { path = "../../crates/drivers/openai" }
+everruns-openrouter = { path = "../../crates/drivers/openrouter" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde_json = "1"
 regex = "1"

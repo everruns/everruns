@@ -14,7 +14,7 @@
 // malformed call that value is either:
 //   * a raw JSON *string* the driver could not parse into an object, or
 //   * an object that does not satisfy the target tool's JSON schema.
-// Individual drivers (`crates/anthropic`, `crates/openai`, ...) are not touched;
+// Individual drivers (`crates/drivers/anthropic`, `crates/drivers/openai`, ...) are not touched;
 // they keep parsing as before. The capability runs only when explicitly enabled,
 // so the default path is byte-for-byte unchanged.
 //

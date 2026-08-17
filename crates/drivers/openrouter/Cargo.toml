@@ -1,9 +1,9 @@
-# OpenAI Provider Implementation
-# Decision: Implements the everruns-provider ChatDriver contract for the OpenAI API
-# Decision: Uses OpenAI's chat completion API with streaming support
+# OpenRouter Provider Implementation
+# Decision: Wraps the shared everruns-provider Open Responses protocol driver with OpenRouter's
+# OpenAI-compatible Responses API and richer `/models` discovery metadata.
 
 [package]
-name = "everruns-openai"
+name = "everruns-openrouter"
 version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -11,38 +11,34 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-documentation = "https://docs.rs/everruns-openai"
-description = "OpenAI (GPT) provider for Everruns agents"
+documentation = "https://docs.rs/everruns-openrouter"
+description = "OpenRouter provider for Everruns agents"
 readme = "README.md"
-keywords = ["agent", "llm", "ai", "openai", "gpt"]
+keywords = ["agent", "llm", "ai", "openrouter"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
-# Core dependencies
 async-trait.workspace = true
 
-# Async runtime
-tokio.workspace = true
-
-# HTTP client
+# HTTP client (model discovery)
 reqwest.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
 
-# Date/time
+# Date/time (model `created` timestamps)
 chrono.workspace = true
-
-# Tracing
-tracing.workspace = true
 
 # Internal dependencies
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../provider", version = "0.18.0" }
+everruns-provider = { path = "../../provider", version = "0.18.0" }
 
 [dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures driver requests; futures
+# drains the live chat stream.
 tokio = { workspace = true, features = ["full", "test-util"] }
+futures.workspace = true
 wiremock = "0.6"

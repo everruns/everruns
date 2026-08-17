@@ -12,5 +12,5 @@ everruns-provider = { path = "../../../../crates/provider", default-features = f
 everruns-host = { path = "../../../../crates/host" }
 
 [dev-dependencies]
-everruns-llmsim = { path = "../../../../crates/llmsim", features = ["host"] }
+everruns-llmsim = { path = "../../../../crates/drivers/llmsim", features = ["host"] }
 tokio = { version = "1.50", features = ["macros", "rt-multi-thread"] }

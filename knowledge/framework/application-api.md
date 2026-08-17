@@ -103,7 +103,7 @@ The inventory covers the public [repository README](../../README.md),
 [embedding guide](../../docs/advanced/embedding-everruns.md). It also includes
 the in-process, inspection, real-disk, plugin, mount, and Lua examples
 under [the host examples](../../crates/host/examples/in_process_runtime.rs)
-and the provider-facing [OpenAI README](../../crates/openai/README.md).
+and the provider-facing [OpenAI README](../../crates/drivers/openai/README.md).
 
 Repository consumers were audited separately because they exercise topologies
 that examples do not: the offline

@@ -43,14 +43,14 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
-everruns-openai = { path = "../openai" }
-everruns-openrouter = { path = "../openrouter" }
-everruns-mai = { path = "../mai" }
-everruns-fireworks = { path = "../fireworks" }
-everruns-meta = { path = "../meta" }
-everruns-anthropic = { path = "../anthropic" }
-everruns-gemini = { path = "../gemini" }
-everruns-bedrock = { path = "../bedrock" }
+everruns-openai = { path = "../drivers/openai" }
+everruns-openrouter = { path = "../drivers/openrouter" }
+everruns-mai = { path = "../drivers/mai" }
+everruns-fireworks = { path = "../drivers/fireworks" }
+everruns-meta = { path = "../drivers/meta" }
+everruns-anthropic = { path = "../drivers/anthropic" }
+everruns-gemini = { path = "../drivers/gemini" }
+everruns-bedrock = { path = "../drivers/bedrock" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
 everruns-ard.workspace = true

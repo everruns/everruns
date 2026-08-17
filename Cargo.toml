@@ -11,20 +11,22 @@ members = [
     "crates/core",
     "crates/engine",
     "crates/host",
-    "crates/llmsim",
     "crates/test-support",
     "crates/platform",
     "crates/provider",
-    "crates/bedrock",
     "crates/mcp",
     "crates/llm-tests",
-    "crates/openai",
-    "crates/openrouter",
-    "crates/mai",
-    "crates/fireworks",
-    "crates/meta",
-    "crates/anthropic",
-    "crates/gemini",
+    # LLM wire-protocol drivers. Package names stay independently versioned;
+    # the directory is only a repository organization boundary.
+    "crates/drivers/anthropic",
+    "crates/drivers/bedrock",
+    "crates/drivers/fireworks",
+    "crates/drivers/gemini",
+    "crates/drivers/llmsim",
+    "crates/drivers/mai",
+    "crates/drivers/meta",
+    "crates/drivers/openai",
+    "crates/drivers/openrouter",
     "crates/turbopuffer",
     "crates/internal-protocol",
     "crates/cli",
@@ -176,13 +178,13 @@ everruns-builtins = { path = "crates/builtins", version = "0.18.0" }
 everruns-core = { path = "crates/core", version = "0.18.0" }
 everruns-engine = { path = "crates/engine", version = "0.18.0" }
 everruns-host = { path = "crates/host", version = "0.18.0" }
-everruns-llmsim = { path = "crates/llmsim", version = "0.18.0", default-features = false }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.0", default-features = false }
 everruns-test-support = { path = "crates/test-support", version = "0.18.0", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.18.0" }
 everruns-provider = { path = "crates/provider", version = "0.18.0", default-features = false }
 everruns-mcp = { path = "crates/mcp", version = "0.18.0" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
-everruns-openai = { path = "crates/openai", version = "0.18.0" }
+everruns-openai = { path = "crates/drivers/openai", version = "0.18.0" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.0" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.0" }
