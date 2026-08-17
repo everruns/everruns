@@ -45,9 +45,9 @@ fi
 # 2. Core: no llmsim / host / test-support on ANY edge (including dev), so
 #    `cargo tree -p everruns-core` stays clean.
 CORE_TREE=$(cargo tree -p everruns-core --edges normal,build,dev --prefix none 2>/dev/null)
-if echo "$CORE_TREE" | grep -qE '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) '; then
+if grep -qE '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) ' <<<"$CORE_TREE"; then
   echo "everruns-core must not depend on llmsim, everruns-llmsim, everruns-host, or everruns-test-support (any edge):"
-  echo "$CORE_TREE" | grep -E '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) '
+  grep -E '^(llmsim|everruns-llmsim|everruns-host|everruns-test-support) ' <<<"$CORE_TREE"
   FAILED=1
 fi
 
@@ -64,9 +64,9 @@ PROVIDER_CRATES=(
 )
 for crate in "${PROVIDER_CRATES[@]}"; do
   tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
-  if echo "$tree" | grep -qE '^(llmsim|everruns-llmsim|everruns-test-support) '; then
+  if grep -qE '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"; then
     echo "$crate must not ship simulator or test-support crates in its normal dependency tree:"
-    echo "$tree" | grep -E '^(llmsim|everruns-llmsim|everruns-test-support) '
+    grep -E '^(llmsim|everruns-llmsim|everruns-test-support) ' <<<"$tree"
     FAILED=1
   fi
 done
@@ -117,12 +117,12 @@ fi
 #    directly and must never ship testing/demo helpers.
 for crate in everruns-server everruns-worker everruns; do
   tree=$(cargo tree -p "$crate" --edges normal --prefix none 2>/dev/null)
-  if echo "$tree" | grep -qE '^everruns-test-support '; then
+  if grep -qE '^everruns-test-support ' <<<"$tree"; then
     echo "$crate must not ship everruns-test-support in its normal dependency tree:"
-    echo "$tree" | grep -E '^everruns-test-support '
+    grep -E '^everruns-test-support ' <<<"$tree"
     FAILED=1
   fi
-  if ! echo "$tree" | grep -qE '^everruns-llmsim '; then
+  if ! grep -qE '^everruns-llmsim ' <<<"$tree"; then
     echo "$crate must depend directly or transitively on everruns-llmsim:"
     FAILED=1
   fi
