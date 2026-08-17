@@ -8,7 +8,9 @@ so the core crate carries no exporter, OpenTelemetry SDK, or
 tracing-subscriber dependencies and a misconfigured exporter can never panic
 core's initialization path.
 
-## Modules
+Part of the [Everruns](https://everruns.com) ecosystem.
+
+## What It Provides
 
 - **`telemetry`**: OpenTelemetry initialization: OTLP exporter wiring,
   tracing-subscriber layers, `TelemetryConfig` / `TelemetryGuard` /
@@ -22,4 +24,17 @@ Listener backends implement `everruns_core::EventListener`. Core keeps only
 the neutral contracts: the `EventListener` trait, event types, and the gen-AI
 span conventions in `everruns_core::telemetry`.
 
-See `knowledge/operations/observability.md` for the full specification.
+```rust
+use everruns_observability::CompositeEventListener;
+
+let _type_name = std::any::type_name::<CompositeEventListener>();
+```
+
+## Documentation
+
+- [Observability guide](https://docs.everruns.com/observability/)
+- [API reference](https://docs.rs/everruns-observability)
+
+## License
+
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

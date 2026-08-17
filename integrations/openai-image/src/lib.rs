@@ -5,9 +5,16 @@
 //! auto-registers through the inventory [`IntegrationPlugin`] system, so
 //! linking this crate into a binary is enough to make it available.
 //!
+//! Part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! ```rust
+//! use everruns_integrations_openai_image::GptImageGenCapability;
+//! let _capability = GptImageGenCapability;
+//! ```
+//!
 //! [`IntegrationPlugin`]: everruns_core::capabilities::IntegrationPlugin
 //!
-//! Decision: This lives outside the `everruns-openai` driver crate so that
+//! This capability lives outside the `everruns-openai` driver crate so that
 //! provider crates stay pure `ChatDriver` implementations with no dependency
 //! on core's capability/tool/session runtime.
 

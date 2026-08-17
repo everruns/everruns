@@ -52,9 +52,8 @@ compiled example, so docs.rs and crates.io tell the same story. Examples in
   rationale as a brief, user-facing "Design notes" subsection or move it to
   inline code comments.
 
-**Badges** (crates.io version, docs.rs, license) belong only on crates that are
-actually published to crates.io, see the publish list in
-`.github/workflows/publish-crates.yml`. A crates.io or docs.rs badge on an
+**Badges** (crates.io version, docs.rs, license) belong only on crates whose
+manifest permits crates.io publishing. A crates.io or docs.rs badge on an
 unpublished crate renders as a broken link, so unpublished crates use a
 badge-free header and omit docs.rs links.
 
@@ -161,15 +160,16 @@ selectively expose the coherent Framework API from either owner. Crates that
 pull in the host (for example `everruns-local` → `everruns-host`) still depend
 on full `everruns-core`.
 
-Two pin conventions follow from the publish set:
+Two pin conventions follow from package publishability:
 
 - **Unpublished** crates reference path deps without a version
   (`{ path = "../provider" }` for provider crates; `{ path = "../core", default-features = false }` for crates that do depend on core), matching `server`/`worker`.
-- **Published** crates that pin a sibling by exact version must be registered in
-  *both* `.github/workflows/publish-crates.yml` (`dependency_versions`) and
-  `scripts/sync-publish-pin-versions.py` (`INNER_PINS`). The release process
-  bumps pins via the latter; the publish workflow rejects releases where a pin
-  drifts. Adding a published crate to only one list breaks releases.
+- **Published** crates own explicit package versions rather than inheriting the
+  product workspace version. Their internal path dependencies carry the target
+  package's current version, including dependencies inherited from
+  `[workspace.dependencies]`. `scripts/sync-publish-pin-versions.py` discovers
+  both packages and edges from Cargo metadata, so there is no release allowlist
+  to update when a crate moves or versions diverge.
 
 ## Formatting
 

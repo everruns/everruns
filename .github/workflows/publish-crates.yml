@@ -1,16 +1,20 @@
-name: Publish Crates
+name: Publish Crate
 
 on:
   repository_dispatch:
-    types: [publish-crates]
+    types: [publish-crate]
   workflow_dispatch:
     inputs:
+      package:
+        description: 'Cargo package to publish (for example everruns-core)'
+        required: true
+        type: string
       tag:
-        description: 'Release tag to publish (e.g. v0.8.33)'
+        description: 'Package release tag (for example crate/everruns-core/v0.18.1)'
         required: true
         type: string
       sha:
-        description: '40-char commit SHA the tag must resolve to'
+        description: '40-character commit SHA the tag must resolve to'
         required: true
         type: string
 
@@ -18,7 +22,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: publish-crates-${{ github.event.client_payload.tag || github.event.inputs.tag || github.ref }}
+  group: publish-crate-${{ github.event.client_payload.package || github.event.inputs.package || 'unknown' }}-${{ github.event.client_payload.tag || github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -26,12 +30,13 @@ env:
 
 jobs:
   publish:
-    name: Publish crates.io packages
+    name: Publish ${{ github.event.client_payload.package || github.event.inputs.package }}
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve release tag
+      - name: Resolve package release
         id: release
         env:
+          DISPATCH_PACKAGE: ${{ github.event.client_payload.package || github.event.inputs.package || '' }}
           DISPATCH_SHA: ${{ github.event.client_payload.sha || github.event.inputs.sha || '' }}
           DISPATCH_TAG: ${{ github.event.client_payload.tag || github.event.inputs.tag || '' }}
           EVENT_NAME: ${{ github.event_name }}
@@ -39,67 +44,61 @@ jobs:
           set -euo pipefail
 
           if [ "$EVENT_NAME" != "repository_dispatch" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
-            echo "::error::Unsupported event for crates publish: $EVENT_NAME"
+            echo "::error::Unsupported event for crate publish: $EVENT_NAME"
             exit 1
           fi
-
-          TAG="$DISPATCH_TAG"
-
-          if [ -z "$TAG" ]; then
-            echo "::error::Release tag is required"
+          if [[ ! "$DISPATCH_PACKAGE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            echo "::error::Invalid Cargo package name: $DISPATCH_PACKAGE"
             exit 1
           fi
-
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
-            echo "::error::Release tag must be a semantic version tag like v1.2.3 or v1.2.3-rc.1: $TAG"
+          if [[ ! "$DISPATCH_TAG" =~ ^crate/[a-z0-9][a-z0-9_-]*/v([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?)$ ]]; then
+            echo "::error::Package tag must look like crate/PACKAGE/v1.2.3: $DISPATCH_TAG"
             exit 1
           fi
-
+          VERSION="${BASH_REMATCH[1]}"
+          if [ "$DISPATCH_TAG" != "crate/$DISPATCH_PACKAGE/v$VERSION" ]; then
+            echo "::error::Tag package does not match requested package: $DISPATCH_TAG"
+            exit 1
+          fi
           if [[ ! "$DISPATCH_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::repository_dispatch must include the 40-character release commit SHA"
+            echo "::error::Dispatch must include the 40-character release commit SHA"
             exit 1
           fi
 
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
-          echo "expected_sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "package=$DISPATCH_PACKAGE"
+            echo "tag=$DISPATCH_TAG"
+            echo "version=$VERSION"
+            echo "expected_sha=$DISPATCH_SHA"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           fetch-depth: 0
 
-      - name: Verify release tag is trusted
+      - name: Verify package tag is trusted
         id: trusted_ref
         env:
           EXPECTED_SHA: ${{ steps.release.outputs.expected_sha }}
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-
-          # The crates.io token may only publish code that was reviewed into main.
           git fetch --force origin \
             "refs/heads/main:refs/remotes/origin/main" \
             "refs/tags/$TAG:refs/tags/$TAG"
-
-          if ! TAG_SHA="$(git rev-list -n 1 "$TAG^{commit}")"; then
-            echo "::error::Could not resolve release tag commit: $TAG"
+          TAG_SHA="$(git rev-list -n 1 "$TAG^{commit}")"
+          if [ "$TAG_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Package tag $TAG resolves to $TAG_SHA, expected $EXPECTED_SHA"
             exit 1
           fi
-
-          if [ -n "$EXPECTED_SHA" ] && [ "$TAG_SHA" != "$EXPECTED_SHA" ]; then
-            echo "::error::Release tag $TAG resolves to $TAG_SHA, expected $EXPECTED_SHA"
-            exit 1
-          fi
-
           if ! git merge-base --is-ancestor "$TAG_SHA" origin/main; then
-            echo "::error::Release tag $TAG ($TAG_SHA) is not reachable from origin/main"
+            echo "::error::Package tag $TAG ($TAG_SHA) is not reachable from origin/main"
             exit 1
           fi
-
           echo "sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout trusted release commit
+      - name: Checkout trusted package release
         env:
           TRUSTED_SHA: ${{ steps.trusted_ref.outputs.sha }}
         run: |
@@ -109,265 +108,64 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@01ba1edad32c6f80dbcce879d3e0fa5a00b2a84e # 1.96.0
 
-      - name: Verify workspace version matches tag
+      - name: Verify package version and dependency pins
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
-          VERSION="${{ steps.release.outputs.version }}"
-          python3 - "$VERSION" <<'PY'
+          set -euo pipefail
+          python3 - "$PACKAGE" "$VERSION" <<'PY'
+          import json
+          import pathlib
+          import subprocess
           import sys
           import tomllib
 
-          expected = sys.argv[1]
-
-          def load(path):
-              with open(path, "rb") as handle:
-                  return tomllib.load(handle)
-
-          workspace = load("Cargo.toml")
-          workspace_version = workspace["workspace"]["package"]["version"]
-          workspace_dependencies = workspace["workspace"].get("dependencies", {})
-          if workspace_version != expected:
+          package_name, expected_version = sys.argv[1:]
+          metadata = json.loads(subprocess.check_output(
+              ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True
+          ))
+          matches = [package for package in metadata["packages"] if package["name"] == package_name]
+          if len(matches) != 1:
+              raise SystemExit(f"Expected one workspace package named {package_name}, found {len(matches)}")
+          package = matches[0]
+          if package.get("publish") == []:
+              raise SystemExit(f"Package {package_name} is not publishable")
+          manifest_path = pathlib.Path(package["manifest_path"])
+          with manifest_path.open("rb") as handle:
+              manifest_version = tomllib.load(handle)["package"].get("version")
+          if manifest_version != expected_version:
               raise SystemExit(
-                  f"Tag version ({expected}) does not match workspace package version ({workspace_version})"
+                  f"Tag version {expected_version} does not match {package_name} manifest version "
+                  f"{manifest_version!r}"
               )
-
-          dependency_versions = {
-              "crates/core/Cargo.toml": [
-                  "everruns-provider",
-                  "everruns-capability",
-              ],
-              "crates/engine/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "crates/builtins/Cargo.toml": [
-                  "everruns-openui",
-                  "everruns-a2ui",
-                  "everruns-capability",
-                  "everruns-core",
-              ],
-              "crates/platform/Cargo.toml": [
-                  "everruns-builtins",
-                  "everruns-core",
-                  "everruns-host",
-                  "everruns-session-services",
-                  "everruns-integrations-filesystem",
-                  "everruns-integrations-bashkit",
-                  "everruns-integrations-web-fetch",
-                  "everruns-integrations-lua",
-                  "everruns-integrations-openrouter-workspace",
-              ],
-              "crates/http/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "crates/mcp/Cargo.toml": [
-                  "everruns-core",
-                  "everruns-http",
-              ],
-              "crates/host/Cargo.toml": [
-                  "everruns-builtins",
-                  "everruns-core",
-                  "everruns-engine",
-                  "everruns-http",
-                  "everruns-mcp",
-                  "everruns-session-services",
-                  "everruns-integrations-filesystem",
-                  "everruns-integrations-bashkit",
-                  "everruns-integrations-web-fetch",
-                  "everruns-integrations-lua",
-              ],
-              "crates/everruns/Cargo.toml": [
-                  "everruns-capability",
-                  "everruns-builtins",
-                  "everruns-core",
-                  "everruns-host",
-                  "everruns-local",
-                  "everruns-macros",
-                  "everruns-llmsim",
-              ],
-              "crates/llmsim/Cargo.toml": [
-                  "everruns-provider",
-                  "everruns-host",
-              ],
-              "crates/test-support/Cargo.toml": [
-                  "everruns-core",
-                  "everruns-host",
-                  "everruns-llmsim",
-              ],
-              "crates/local/Cargo.toml": [
-                  "everruns-core",
-                  "everruns-host",
-                  "everruns-platform",
-              ],
-              "crates/session-services/Cargo.toml": [
-                  "everruns-capability",
-                  "everruns-core",
-                  "everruns-provider",
-              ],
-              "crates/openai/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "crates/anthropic/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "crates/openrouter/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "crates/bedrock/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "crates/gemini/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "crates/meta/Cargo.toml": [
-                  "everruns-provider",
-              ],
-              "integrations/duckduckgo/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/filesystem/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/bashkit/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/web-fetch/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/lua/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/openrouter-workspace/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/github/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/daytona/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/e2b/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/parallel/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/brave-search/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/browserless/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/cursor/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/deno/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/docker/Cargo.toml": [
-                  "everruns-core",
-              ],
-              "integrations/sprites/Cargo.toml": [
-                  "everruns-core",
-              ],
-          }
-
-          for manifest_path, dependency_names in dependency_versions.items():
-              manifest = load(manifest_path)
-              dependencies = manifest.get("dependencies", {})
-              for dependency_name in dependency_names:
-                  dependency = dependencies[dependency_name]
-                  if isinstance(dependency, dict) and dependency.get("workspace"):
-                      workspace_dependency = workspace_dependencies[dependency_name]
-                      version = (
-                          workspace_dependency.get("version")
-                          if isinstance(workspace_dependency, dict)
-                          else workspace_dependency
-                      )
-                  else:
-                      version = dependency.get("version") if isinstance(dependency, dict) else dependency
-                  if version != expected:
-                      raise SystemExit(
-                          f"{manifest_path} dependency {dependency_name} version ({version}) does not match tag ({expected})"
-                      )
-
-          print(f"Version verified: {expected}")
+          print(f"Package version verified: {package_name} {expected_version}")
           PY
+          python3 scripts/sync-publish-pin-versions.py --check
 
-      - name: Publish crates
+      - name: Build package artifact
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+        run: cargo package --locked --package "$PACKAGE"
+
+      - name: Publish package
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+          VERSION: ${{ steps.release.outputs.version }}
         run: |
           set -euo pipefail
 
-          VERSION="${{ steps.release.outputs.version }}"
-          CRATES=(
-            everruns-openui
-            everruns-a2ui
-            everruns-provider
-            everruns-meta
-            # The dependency-light neutral capability contract publishes
-            # before core, which re-exports it.
-            everruns-capability
-            everruns-core
-            # Backend-neutral policy implementations publish after their core
-            # contracts and before the host/platform composers that select them.
-            everruns-builtins
-            # The small session contract publishes before both platform and
-            # host, keeping the default Framework graph platform-free.
-            everruns-session-services
-            # Environment-backed capability implementations publish after
-            # their neutral core contracts and before their host composers.
-            everruns-http
-            everruns-integrations-filesystem
-            everruns-integrations-bashkit
-            everruns-integrations-web-fetch
-            everruns-integrations-duckduckgo
-            everruns-integrations-lua
-            everruns-integrations-openrouter-workspace
-            # The sans-I/O planner publishes before the host implementation.
-            everruns-engine
-            # MCP's HTTP transport depends on everruns-http.
-            everruns-mcp
-            everruns-host
-            # Hosted product policy adapts into the neutral host extension
-            # seams; the host never depends back on platform.
-            everruns-platform
-            everruns-openai
-            everruns-anthropic
-            everruns-openrouter
-            everruns-bedrock
-            everruns-gemini
-            everruns-integrations-github
-            everruns-integrations-daytona
-            everruns-integrations-e2b
-            everruns-integrations-parallel
-            everruns-integrations-brave-search
-            everruns-integrations-browserless
-            everruns-integrations-cursor
-            everruns-integrations-deno
-            everruns-integrations-docker
-            everruns-integrations-sprites
-            everruns-local
-            # Production-safe simulation publishes after host (its optional
-            # runtime extension) and before both the test kit and facade.
-            everruns-llmsim
-            # Testing/demo helpers depend on the simulator and host; their
-            # 0.17 simulator paths remain a 0.18 compatibility bridge.
-            everruns-test-support
-            # `everruns` enables its `macros` feature by default, so the facade
-            # is only installable once everruns-macros is on crates.io.
-            everruns-macros
-            everruns
-          )
-
-          publish_status() {
-            local crate="$1"
-            local version="$2"
-            python3 - "$crate" "$version" <<'PY'
+          status() {
+            python3 - "$PACKAGE" "$VERSION" <<'PY'
           import sys
           import urllib.error
           import urllib.request
 
-          crate, version = sys.argv[1], sys.argv[2]
-          url = f"https://crates.io/api/v1/crates/{crate}/{version}"
-          request = urllib.request.Request(url, headers={"User-Agent": "everruns-ci"})
+          package, version = sys.argv[1:]
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/{package}/{version}",
+              headers={"User-Agent": "everruns-ci"},
+          )
           try:
               with urllib.request.urlopen(request, timeout=20) as response:
                   print("published" if response.status == 200 else "error")
@@ -378,131 +176,51 @@ jobs:
           PY
           }
 
-          initial_publish_status() {
-            local crate="$1"
-            local version="$2"
-            local status
-            for attempt in {1..6}; do
-              status="$(publish_status "$crate" "$version")"
-              if [ "$status" != "error" ]; then
-                echo "$status"
-                return 0
-              fi
-              echo "crates.io lookup for $crate $version failed ($attempt/6); retrying" >&2
-              sleep 10
-            done
-            echo "::error::Could not determine whether $crate $version is already published" >&2
-            return 1
-          }
+          current="$(status)"
+          if [ "$current" = "missing" ]; then
+            CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" \
+              cargo publish --locked --no-verify --package "$PACKAGE"
+          elif [ "$current" != "published" ]; then
+            echo "::error::Could not determine crates.io state for $PACKAGE $VERSION"
+            exit 1
+          fi
 
-          wait_until_published() {
-            local crate="$1"
-            local version="$2"
-            local status
-            for attempt in {1..30}; do
-              status="$(publish_status "$crate" "$version")"
-              if [ "$status" = "published" ]; then
-                echo "$crate $version is visible on crates.io"
-                return 0
-              fi
-              echo "Waiting for $crate $version to appear on crates.io ($attempt/30, status=$status)"
-              sleep 10
-            done
-            echo "::error::$crate $version did not appear on crates.io in time"
-            return 1
-          }
+          visible=false
+          for attempt in {1..30}; do
+            if [ "$(status)" = "published" ]; then
+              echo "$PACKAGE $VERSION is visible on crates.io"
+              visible=true
+              break
+            fi
+            echo "Waiting for $PACKAGE $VERSION to appear on crates.io ($attempt/30)"
+            sleep 10
+          done
+          if [ "$visible" != true ]; then
+            echo "::error::$PACKAGE $VERSION did not appear on crates.io in time"
+            exit 1
+          fi
 
-          verify_published_package() {
-            local crate="$1"
-            local version="$2"
-            local local_package="target/package/${crate}-${version}.crate"
-
-            python3 - "$crate" "$version" "$local_package" <<'PY'
+          # A retry of the same trusted tag may encounter an already-published
+          # version. Fail closed unless crates.io contains the artifact built
+          # from this exact commit.
+          python3 - "$PACKAGE" "$VERSION" <<'PY'
           import hashlib
           import pathlib
           import sys
-          import time
-          import urllib.error
           import urllib.request
 
-          crate, version, local_package = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
-          if not local_package.is_file():
-              raise SystemExit(f"local package not found: {local_package}")
-
-          hasher = hashlib.sha256()
-          with local_package.open("rb") as handle:
-              for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                  hasher.update(chunk)
-          local_digest = hasher.hexdigest()
-
-          url = f"https://crates.io/api/v1/crates/{crate}/{version}/download"
-          request = urllib.request.Request(url, headers={"User-Agent": "everruns-ci"})
-
-          # Retry transient download failures (timeouts, 5xx, connection resets)
-          # with backoff so a flaky crates.io/CDN response does not fail the
-          # release. A digest mismatch below is NOT retried — it is a real,
-          # fail-closed signal.
-          attempts = 5
-          published_digest = None
-          for attempt in range(1, attempts + 1):
-              hasher = hashlib.sha256()
-              try:
-                  with urllib.request.urlopen(request, timeout=60) as response:
-                      for chunk in iter(lambda: response.read(1024 * 1024), b""):
-                          hasher.update(chunk)
-                  published_digest = hasher.hexdigest()
-                  break
-              except urllib.error.HTTPError as exc:
-                  if exc.code < 500 or attempt == attempts:
-                      raise SystemExit(f"failed to download {crate} {version}: {exc}")
-              except (urllib.error.URLError, TimeoutError) as exc:
-                  if attempt == attempts:
-                      raise SystemExit(f"failed to download {crate} {version}: {exc}")
-              time.sleep(2 ** attempt)
-
-          if published_digest != local_digest:
+          package, version = sys.argv[1:]
+          local = pathlib.Path(f"target/package/{package}-{version}.crate")
+          local_digest = hashlib.sha256(local.read_bytes()).hexdigest()
+          request = urllib.request.Request(
+              f"https://crates.io/api/v1/crates/{package}/{version}/download",
+              headers={"User-Agent": "everruns-ci"},
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              published_digest = hashlib.sha256(response.read()).hexdigest()
+          if local_digest != published_digest:
               raise SystemExit(
-                  f"published {crate} {version} sha256 {published_digest} "
-                  f"does not match local package sha256 {local_digest}"
+                  f"Published {package} {version} digest does not match the trusted local artifact"
               )
+          print(f"Verified published artifact digest for {package} {version}")
           PY
-          }
-
-          publish_one() {
-            # Retries on transient crates.io errors (esp. new-crate rate limit:
-            # 5 new crates / 10 min on a default token). Each retry waits
-            # ~11 minutes to clear the window before re-trying.
-            local crate="$1"
-            for attempt in 1 2 3; do
-              # Verification already ran above without registry credentials. Keep
-              # the token-bearing publish step upload-only so build scripts and
-              # build-dependencies cannot inherit the crates.io token.
-              if CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" \
-                cargo publish --locked --no-verify -p "$crate"; then
-                return 0
-              fi
-              if [ "$attempt" -lt 3 ]; then
-                echo "::warning::cargo publish $crate failed (attempt $attempt/3); sleeping 11 min before retry (covers new-crate rate-limit window)"
-                sleep 660
-              fi
-            done
-            echo "::error::cargo publish $crate failed after 3 attempts"
-            return 1
-          }
-
-          for crate in "${CRATES[@]}"; do
-            status="$(initial_publish_status "$crate" "$VERSION")"
-            if [ "$status" = "published" ]; then
-              echo "$crate $VERSION already published; verifying package artifact before skipping"
-              cargo package --locked -p "$crate"
-              verify_published_package "$crate" "$VERSION"
-            elif [ "$status" = "missing" ]; then
-              echo "Publishing $crate $VERSION"
-              cargo package --locked -p "$crate"
-              publish_one "$crate"
-            else
-              echo "::error::Unexpected crates.io lookup status for $crate $VERSION: $status"
-              exit 1
-            fi
-            wait_until_published "$crate" "$VERSION"
-          done

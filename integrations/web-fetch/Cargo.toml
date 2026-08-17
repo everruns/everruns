@@ -1,6 +1,6 @@
 [package]
 name = "everruns-integrations-web-fetch"
-version.workspace = true
+version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

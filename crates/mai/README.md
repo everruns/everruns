@@ -1,6 +1,8 @@
 # everruns-mai
 
-Microsoft MAI provider driver for [Everruns](https://everruns.com).
+> Microsoft MAI provider driver for Everruns agents.
+
+Part of the [Everruns](https://everruns.com) ecosystem.
 
 Microsoft MAI models (e.g. `MAI-Code-1-Flash`) are served via
 [Azure AI Foundry](https://ai.azure.com) behind an OpenAI-compatible Chat
@@ -35,12 +37,19 @@ let provider = provider(
 );
 ```
 
+## What It Provides
+
+- Azure AI Foundry API-key and Microsoft Entra ID authentication
+- An OpenAI-compatible `ChatDriver` for Microsoft MAI models
+- Registration through the open Everruns provider registry
+
 ## Documentation
 
 - [Microsoft MAI provider guide](https://docs.everruns.com/providers/mai/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
+- [API reference](https://docs.rs/everruns-mai)
 
 ## License
 
-MIT
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

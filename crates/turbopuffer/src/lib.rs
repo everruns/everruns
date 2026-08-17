@@ -5,6 +5,13 @@
 //! production backend; the in-memory store stays the default and Turbopuffer is
 //! opt-in via `TURBOPUFFER_API_KEY` (see `crates/server/src/platform.rs`).
 //!
+//! Part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! ```rust
+//! use everruns_turbopuffer::TurbopufferVectorStore;
+//! let _store = TurbopufferVectorStore::new("https://example.turbopuffer.com", "api-key");
+//! ```
+//!
 //! Multitenancy and multi-index isolation are handled by the caller: each
 //! Knowledge Index gets one org-prefixed namespace (see
 //! [`everruns_platform::vector_store::index_namespace`]), and this backend simply

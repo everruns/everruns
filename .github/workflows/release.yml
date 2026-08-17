@@ -152,21 +152,6 @@ jobs:
           gh workflow run cli-binaries.yml --ref "$TAG" -f "tag=$TAG"
           echo "CLI binary builds triggered for $TAG"
 
-      - name: Trigger crates.io publish for release tag
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.version.outputs.tag }}
-          TARGET_SHA: ${{ github.sha }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          echo "Triggering crates.io publish for tag $TAG..."
-          gh api "repos/$REPOSITORY/dispatches" \
-            --method POST \
-            --field event_type=publish-crates \
-            --field "client_payload[tag]=$TAG" \
-            --field "client_payload[sha]=$TARGET_SHA"
-          echo "crates.io publish triggered for $TAG"
-
       - name: Trigger server & worker binary builds for release tag
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

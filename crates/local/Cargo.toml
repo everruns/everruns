@@ -1,6 +1,6 @@
 [package]
 name = "everruns-local"
-version.workspace = true
+version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -60,5 +60,5 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true
 # Deterministic simulator plus testing/demo helpers for local runtime tests.
 # Version-less path dependencies are stripped on publish.
-everruns-llmsim = { path = "../llmsim", features = ["host"] }
-everruns-test-support = { path = "../test-support" }
+everruns-llmsim = { version = "0.18.0", path = "../llmsim", features = ["host"] }
+everruns-test-support = { version = "0.18.0", path = "../test-support" }
