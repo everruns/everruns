@@ -1223,6 +1223,7 @@ mod tests {
             &self,
             _sandbox_id: uuid::Uuid,
             _before: chrono::DateTime<Utc>,
+            _limit: i64,
         ) -> Result<Vec<String>, crate::sandbox_checkpoint::SandboxCheckpointError> {
             Ok(Vec::new())
         }

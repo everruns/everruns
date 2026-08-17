@@ -16,8 +16,8 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_platform::sandbox_checkpoint::{
-    NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind,
-    SandboxCheckpointStore, SandboxRef,
+    MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError,
+    SandboxCheckpointKind, SandboxCheckpointStore, SandboxRef,
 };
 use everruns_provider::typed_id::SessionId;
 use sqlx::PgPool;
@@ -245,7 +245,12 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         &self,
         sandbox_id: Uuid,
         before: DateTime<Utc>,
+        limit: i64,
     ) -> Result<Vec<String>, SandboxCheckpointError> {
+        // THREAT[TM-DOS]: clamp before the delete so caller input can never
+        // request an unbounded destructive batch.
+        let limit = limit.clamp(0, MAX_CHECKPOINT_COLLECT_LIMIT);
+
         // The `attached_at IS NULL` filter is the safety property: an
         // authoritative revision is always attached, so it can never be selected
         // here. The `ON DELETE RESTRICT` foreign key on
@@ -253,14 +258,21 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         let rows: Vec<(String,)> = sqlx::query_as(
             r#"
             DELETE FROM sandbox_checkpoints
-            WHERE sandbox_id = $1
-              AND attached_at IS NULL
-              AND created_at < $2
+            WHERE id IN (
+                SELECT id
+                FROM sandbox_checkpoints
+                WHERE sandbox_id = $1
+                  AND attached_at IS NULL
+                  AND created_at < $2
+                ORDER BY created_at
+                LIMIT $3
+            )
             RETURNING workspace_revision
             "#,
         )
         .bind(sandbox_id)
         .bind(before)
+        .bind(limit)
         .fetch_all(&self.pool)
         .await
         .map_err(storage_error)?;

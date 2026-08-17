@@ -97,6 +97,13 @@ pub enum SandboxCheckpointError {
     },
 }
 
+/// Hard upper bound on one garbage-collection batch (TM-DOS). Caps the
+/// destructive `collect_unattached_checkpoints` regardless of caller input, so a
+/// misconfigured limit cannot request an unbounded delete; large backlogs drain
+/// over successive sweeps. Mirrors `MAX_RETENTION_PRUNE_LIMIT` in the server
+/// storage backend.
+pub const MAX_CHECKPOINT_COLLECT_LIMIT: i64 = 1000;
+
 /// Persistence for logical sandboxes and their checkpoints.
 #[async_trait]
 pub trait SandboxCheckpointStore: Send + Sync {
@@ -121,6 +128,11 @@ pub trait SandboxCheckpointStore: Send + Sync {
     /// Promote a recorded checkpoint to authoritative, fenced on `generation`.
     /// Returns `StaleGeneration` if the sandbox has been replaced since the
     /// upload, leaving the previous committed checkpoint in place.
+    ///
+    /// THREAT[TM-TENANT-012]: takes a bare `sandbox_id` with no org filter.
+    /// Callers MUST obtain it from [`Self::ensure_sandbox`], which scopes to the
+    /// session the tool context is executing for. Never accept a `sandbox_id`
+    /// from request input.
     async fn attach_checkpoint(
         &self,
         sandbox_id: Uuid,
@@ -129,19 +141,30 @@ pub trait SandboxCheckpointStore: Send + Sync {
     ) -> Result<(), SandboxCheckpointError>;
 
     /// The last checkpoint committed as authoritative, if any.
+    ///
+    /// THREAT[TM-TENANT-012]: bare `sandbox_id`, same caller obligation as
+    /// [`Self::attach_checkpoint`].
     async fn current_checkpoint(
         &self,
         sandbox_id: Uuid,
     ) -> Result<Option<SandboxCheckpoint>, SandboxCheckpointError>;
 
-    /// Delete uploads that were never attached and are older than `before`.
-    /// Attached checkpoints are never returned or removed. Returns the
+    /// Delete up to `limit` uploads that were never attached and are older than
+    /// `before`. Attached checkpoints are never returned or removed. Returns the
     /// `workspace_revision` of each collected row so the caller can drop the
     /// matching provider-side artifact.
+    ///
+    /// `limit` bounds one destructive batch so a large backlog drains over
+    /// successive sweeps instead of issuing one unbounded delete; implementations
+    /// clamp it to [`MAX_CHECKPOINT_COLLECT_LIMIT`].
+    ///
+    /// THREAT[TM-TENANT-012]: bare `sandbox_id`, same caller obligation as
+    /// [`Self::attach_checkpoint`].
     async fn collect_unattached_checkpoints(
         &self,
         sandbox_id: Uuid,
         before: DateTime<Utc>,
+        limit: i64,
     ) -> Result<Vec<String>, SandboxCheckpointError>;
 }
 
