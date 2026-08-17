@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/container-sandbox-integration.yml'
       - 'crates/platform/src/container_sandbox/**'
       - 'crates/platform/tests/container_sandbox_live_api_test.rs'
   pull_request:
     branches: [main]
     paths:
+      - '.github/workflows/container-sandbox-integration.yml'
       - 'crates/platform/src/container_sandbox/**'
       - 'crates/platform/tests/container_sandbox_live_api_test.rs'
 
@@ -42,7 +44,8 @@ jobs:
           shared-key: "debug"
 
       - name: Run unit tests
-        run: cargo test -p everruns-platform --features container-sandbox --lib container_sandbox::
+        run: |
+          cargo test -p everruns-platform --features container-sandbox --lib container_sandbox::
 
   live-test:
     name: Container Sandbox Live API Tests
