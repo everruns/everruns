@@ -239,6 +239,9 @@ fn external_backends(log: Arc<ExternalEventLog>) -> HostBackends {
         connection_resolver: defaults.connection_resolver,
         session_task_registry: defaults.session_task_registry,
         schedule_store_factory: defaults.schedule_store_factory,
+        tool_context_extensions_factory: defaults.tool_context_extensions_factory,
+        subagent_delegate_factory: defaults.subagent_delegate_factory,
+        tool_augmentor: defaults.tool_augmentor,
     }
 }
 

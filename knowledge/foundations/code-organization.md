@@ -123,7 +123,11 @@ including `SessionFileSystemFactory`, live in `everruns-host` with the
 composition that consumes them.
 
 Hosted capability implementations live in `everruns-platform` (EVE-885):
-Knowledge Bases and Indexes, Memories, subagent/agent/A2A delegation,
+platform depends on the neutral `everruns-host` extension ports and installs
+typed context services, subagent delegation, and turn-dependent hosted tools.
+The reverse `host -> platform` edge is forbidden so the reusable execution
+host remains product-independent.
+Those implementations include Knowledge Bases and Indexes, Memories, subagent/agent/A2A delegation,
 background and scheduled session work, user hooks, citations, model scouting,
 OpenRouter workspace management, and platform-management tools. Core retains
 the neutral `Capability`/tool/event/task/delegation contracts, generic

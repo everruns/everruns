@@ -14,8 +14,6 @@ use everruns_core::events::{
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::session::SessionExecutionState;
-#[cfg(feature = "platform")]
-use everruns_core::tools::Tool;
 use everruns_core::{
     CapabilityRegistry, CapabilityStatus, DependencyBlocker, EgressService,
     ResolvedExecutionSnapshot, TokenUsage, ToolRegistry, UtilityLlmService,
@@ -35,14 +33,6 @@ use everruns_core::{
 use everruns_engine::{
     ActAtom, ActInput, ActResult, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
-};
-#[cfg(feature = "platform")]
-use everruns_platform::capabilities::{
-    report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
-};
-#[cfg(feature = "platform")]
-use everruns_platform::{
-    KnowledgeIndexSearch, KnowledgeIndexSearchExt, KnowledgeStore, KnowledgeStoreExt, PlatformStore,
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::tool_types::ToolDefinition;
@@ -221,31 +211,30 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    /// Knowledge store backing the `search_knowledge` tool. Default: none.
-    #[cfg(feature = "platform")]
-    fn knowledge_store(&self) -> Option<Arc<dyn KnowledgeStore>> {
-        None
-    }
-
     fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
 
-    /// Session SQL database backend. Installed as a typed context extension
-    /// (EVE-897) — the kernel does not name this service.
-    #[cfg(feature = "platform")]
-    fn sqldb_store(&self) -> Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> {
+    /// Type-erased tool services supplied by layers above the host.
+    fn tool_context_extensions(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> everruns_core::tool_context::ToolContextExtensions {
+        Default::default()
+    }
+
+    /// Neutral subagent delegation supplied by layers above the host.
+    fn subagent_delegate(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>> {
         None
     }
 
-    /// Logical sandbox and checkpoint persistence (EVE-870). Installed as a
-    /// typed context extension for the same reason as `sqldb_store`. Hosts
-    /// without it keep the pre-EVE-870 behaviour: the checkpoint pointer lives
-    /// only in the session sandbox secret.
-    #[cfg(feature = "platform")]
-    fn sandbox_checkpoint_store(
-        &self,
-    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+    /// Turn-dependent tools supplied by layers above the host.
+    fn tool_augmentor(&self) -> Option<Arc<dyn crate::HostToolAugmentor>> {
         None
     }
 
@@ -264,23 +253,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     fn schedule_store(&self, _org_id: i64) -> Option<Arc<dyn SessionScheduleStore>> {
-        None
-    }
-
-    #[cfg(feature = "platform")]
-    fn platform_store(
-        &self,
-        _org_id: i64,
-        _session_id: SessionId,
-    ) -> Option<Arc<dyn PlatformStore>> {
-        None
-    }
-
-    /// Get the Knowledge Index search service for the `search_index` tool.
-    /// Org-scoped; returns None when retrieval is not available (e.g. gRPC
-    /// workers without a search RPC, or in-memory test backends).
-    #[cfg(feature = "platform")]
-    fn knowledge_index_search(&self, _org_id: i64) -> Option<Arc<dyn KnowledgeIndexSearch>> {
         None
     }
 
@@ -453,10 +425,10 @@ fn subagent_nesting_policy_from_configs(
 fn finalize_specs_from_configs(
     resolved_capability_configs: &[everruns_capability::CapabilityRef],
     capability_registry: &CapabilityRegistry,
+    tool_augmentor: Option<&dyn crate::HostToolAugmentor>,
 ) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
     let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
         Vec::new();
-    #[allow(unused_mut)]
     let mut disabled_contributions: Vec<String> = Vec::new();
     for config in resolved_capability_configs {
         let Some(capability) = capability_registry.get(config.capability_id()) else {
@@ -466,12 +438,10 @@ fn finalize_specs_from_configs(
         if !specs.is_empty() {
             hook_contributions.push((config.capability_id().to_string(), specs));
         }
-        #[cfg(feature = "platform")]
-        if config.capability_id() == "user_hooks" {
+        if let Some(augmentor) = tool_augmentor {
             disabled_contributions.extend(
-                everruns_platform::capabilities::user_hooks::disabled_contributions(
-                    config.config_value(),
-                ),
+                augmentor
+                    .disabled_hook_contributions(config.capability_id(), config.config_value()),
             );
         }
     }
@@ -509,8 +479,12 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     };
     let resolved =
         resolve_runtime_capabilities(&harness, agent.as_ref(), &session, &capability_registry);
-    let specs =
-        finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
+    let tool_augmentor = adapter.tool_augmentor();
+    let specs = finalize_specs_from_configs(
+        &resolved.resolved_capability_configs,
+        &capability_registry,
+        tool_augmentor.as_deref(),
+    );
     let dispatcher = bash_hook_dispatcher(adapter.file_store());
     Ok((specs, dispatcher))
 }
@@ -632,8 +606,12 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // `finalize_hook_specs` (namespace stamping, stable ids, `disabled_contributions`
     // muting; TM-HOOK-004). The same helper backs the lifecycle firing points so
     // every event finalizes specs identically.
-    let user_hook_specs =
-        finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
+    let tool_augmentor = adapter.tool_augmentor();
+    let user_hook_specs = finalize_specs_from_configs(
+        &resolved.resolved_capability_configs,
+        &capability_registry,
+        tool_augmentor.as_deref(),
+    );
     // Persisted messages remain the immutable audit record, so they can contain
     // text removed by a provider-bound user_prompt_submit hook. Until there is a
     // durable provider-visible history view, fail closed rather than let
@@ -701,44 +679,9 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
     mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
     subagent_nesting_policy: everruns_core::delegation_services::SubagentNestingPolicy,
 ) -> ToolContextServices {
-    // EVE-839: the adapter still yields a hosted `PlatformStore`, but core no
-    // longer names it. Thread it as the neutral delegation contract and, when
-    // present, as the typed
-    // `PlatformStoreExt` extension the hosted platform capabilities resolve.
-    #[cfg(feature = "platform")]
-    let platform_store = adapter.platform_store(org_id, session_id);
-    #[cfg(feature = "platform")]
-    let subagent_delegate = platform_store.clone().map(|store| {
-        Arc::new(everruns_platform::PlatformStoreSubagentDelegate(store))
-            as Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>
-    });
     let extensions = {
-        let mut extensions = everruns_core::tool_context::ToolContextExtensions::default();
-        #[cfg(feature = "platform")]
-        if let Some(store) = platform_store {
-            extensions.insert(Arc::new(everruns_platform::PlatformStoreExt(store)));
-        }
-        #[cfg(feature = "platform")]
-        if let Some(store) = adapter.knowledge_store() {
-            extensions.insert(Arc::new(KnowledgeStoreExt(store)));
-        }
-        #[cfg(feature = "platform")]
-        if let Some(search) = adapter.knowledge_index_search(org_id) {
-            extensions.insert(Arc::new(KnowledgeIndexSearchExt(search)));
-        }
+        let mut extensions = adapter.tool_context_extensions(org_id, session_id);
         extensions.insert(Arc::new(SessionMutatorExt(adapter.session_mutator(org_id))));
-        #[cfg(feature = "platform")]
-        if let Some(store) = adapter.sqldb_store() {
-            extensions.insert(Arc::new(
-                everruns_platform::session_sqldb::SessionSqlDbStoreExt(store),
-            ));
-        }
-        #[cfg(feature = "platform")]
-        if let Some(store) = adapter.sandbox_checkpoint_store() {
-            extensions.insert(Arc::new(
-                everruns_platform::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
-            ));
-        }
         extensions
     };
     ToolContextServices {
@@ -754,10 +697,7 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         agent_store: Some(adapter.agent_store(org_id)),
         connection_resolver: adapter.connection_resolver(),
         schedule_store: adapter.schedule_store(org_id),
-        #[cfg(feature = "platform")]
-        subagent_delegate,
-        #[cfg(not(feature = "platform"))]
-        subagent_delegate: None,
+        subagent_delegate: adapter.subagent_delegate(org_id, session_id),
         extensions,
         leased_resource_store: adapter.leased_resource_store(),
         session_resource_registry: adapter.session_resource_registry(),
@@ -1394,31 +1334,18 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
         .tool_registry
         .validate_context_services(&validation_services)?;
 
-    #[allow(unused_mut)]
     let mut turn_inputs = adapter
         .load_resolved_turn(org_id, input.context.session_id)
         .await?;
-    #[cfg(feature = "platform")]
-    if let Some(registry) = adapter.session_task_registry() {
-        let session_store = adapter.session_store(org_id);
-        if let Some(tool) = report_result_tool_for_child_session(
-            input.context.session_id,
-            session_store.as_ref(),
-            registry.as_ref(),
-        )
-        .await?
-        {
-            turn_inputs.mcp_tool_definitions.push(tool.to_definition());
-        }
-        if let Some(tool) = report_task_progress_tool_for_child_session(
-            input.context.session_id,
-            session_store.as_ref(),
-            registry.as_ref(),
-        )
-        .await?
-        {
-            turn_inputs.mcp_tool_definitions.push(tool.to_definition());
-        }
+    if let Some(augmentor) = adapter.tool_augmentor() {
+        augmentor
+            .augment_reason_tools(
+                input.context.session_id,
+                adapter.session_store(org_id),
+                adapter.session_task_registry(),
+                &mut turn_inputs.mcp_tool_definitions,
+            )
+            .await?;
     }
 
     let reason_capability_registry = {
@@ -1578,35 +1505,17 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     .await?;
     let mut tool_registry = execution_capabilities.tool_registry;
 
-    #[cfg(feature = "platform")]
-    if input
-        .tool_definitions
-        .iter()
-        .any(|definition| definition.name() == "report_result")
-        && let Some(registry) = adapter.session_task_registry()
-        && let Some(tool) = report_result_tool_for_child_session(
-            input.context.session_id,
-            adapter.session_store(org_id).as_ref(),
-            registry.as_ref(),
-        )
-        .await?
-    {
-        tool_registry.register_boxed(Box::new(tool.with_file_store(adapter.file_store())));
-    }
-    #[cfg(feature = "platform")]
-    if input
-        .tool_definitions
-        .iter()
-        .any(|definition| definition.name() == "report_task_progress")
-        && let Some(registry) = adapter.session_task_registry()
-        && let Some(tool) = report_task_progress_tool_for_child_session(
-            input.context.session_id,
-            adapter.session_store(org_id).as_ref(),
-            registry.as_ref(),
-        )
-        .await?
-    {
-        tool_registry.register_boxed(Box::new(tool));
+    if let Some(augmentor) = adapter.tool_augmentor() {
+        augmentor
+            .augment_act_tools(
+                input.context.session_id,
+                adapter.session_store(org_id),
+                adapter.session_task_registry(),
+                adapter.file_store(),
+                &input.tool_definitions,
+                &mut tool_registry,
+            )
+            .await?;
     }
 
     // Register the session's MCP tools as first-class registry tools, so they

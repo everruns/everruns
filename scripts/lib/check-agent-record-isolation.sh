@@ -110,6 +110,20 @@ for crate in "${KERNEL_CRATES[@]}"; do
   fi
 done
 
+# The reusable execution host is below the hosted product layer. Platform may
+# implement host extension ports; host must never import or ship platform.
+host_tree=$(cargo tree -p everruns-host --edges normal --prefix none 2>/dev/null)
+if echo "$host_tree" | grep -qE '^everruns-platform '; then
+  echo "everruns-host must not depend on everruns-platform in its shipped graph:"
+  echo "$host_tree" | grep -E '^everruns-platform '
+  FAILED=1
+fi
+if matches=$(grep -rnE 'everruns_platform::|use[[:space:]]+everruns_platform' crates/host/src --include='*.rs' 2>/dev/null); then
+  echo "everruns-host source must use neutral extension ports rather than platform types:"
+  echo "$matches"
+  FAILED=1
+fi
+
 # 3. Provider-only crates: shipped dependency tree free of platform records.
 PROVIDER_CRATES=(
   everruns-openai

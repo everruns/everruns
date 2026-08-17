@@ -63,6 +63,7 @@ email-resend = ["dep:reqwest"]
 # (Harness/Agent/Session), plus shared execution identity values live in core; the
 # platform aggregates embed and re-export them. Direction is platform -> core.
 everruns-core = { workspace = true }
+everruns-host.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
 everruns-session-services.workspace = true

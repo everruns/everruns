@@ -507,14 +507,30 @@ impl InProcessRuntimeBuilder {
         self
     }
 
-    /// Inject a per-(org, session) platform store factory (see [`HostBackends`]).
-    #[cfg(feature = "platform")]
-    pub fn with_platform_store_factory(
+    /// Inject higher-level typed services into tool contexts.
+    pub fn with_tool_context_extensions_factory(
         mut self,
-        factory: crate::backends::PlatformStoreFactory,
+        factory: crate::ToolContextExtensionsFactory,
     ) -> Self {
         let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
-        self.backends = Some(backends.with_platform_store_factory(factory));
+        self.backends = Some(backends.with_tool_context_extensions_factory(factory));
+        self
+    }
+
+    /// Inject a neutral subagent delegate factory.
+    pub fn with_subagent_delegate_factory(
+        mut self,
+        factory: crate::SubagentDelegateFactory,
+    ) -> Self {
+        let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
+        self.backends = Some(backends.with_subagent_delegate_factory(factory));
+        self
+    }
+
+    /// Inject higher-level turn-dependent tools.
+    pub fn with_tool_augmentor(mut self, augmentor: Arc<dyn crate::HostToolAugmentor>) -> Self {
+        let backends = self.backends.take().unwrap_or_else(HostBackends::in_memory);
+        self.backends = Some(backends.with_tool_augmentor(augmentor));
         self
     }
 
@@ -800,8 +816,9 @@ impl InProcessRuntimeBuilder {
             session_task_registry,
             session_wake_queue,
             schedule_store_factory: backends.schedule_store_factory,
-            #[cfg(feature = "platform")]
-            platform_store_factory: backends.platform_store_factory,
+            tool_context_extensions_factory: backends.tool_context_extensions_factory,
+            subagent_delegate_factory: backends.subagent_delegate_factory,
+            tool_augmentor: backends.tool_augmentor,
             #[cfg(feature = "mcp")]
             mcp_auth_provider: self
                 .mcp_auth_provider
@@ -860,8 +877,9 @@ pub struct InProcessRuntime {
     /// a task registry was configured.
     session_wake_queue: Option<Arc<everruns_core::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
-    #[cfg(feature = "platform")]
-    platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
+    tool_context_extensions_factory: Option<crate::ToolContextExtensionsFactory>,
+    subagent_delegate_factory: Option<crate::SubagentDelegateFactory>,
+    tool_augmentor: Option<Arc<dyn crate::HostToolAugmentor>>,
     #[cfg(feature = "mcp")]
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
     provider_retry_config: Option<everruns_provider::llm_retry::LlmRetryConfig>,
@@ -1799,15 +1817,29 @@ impl RuntimeHostAdapter for InProcessRuntime {
             .map(|factory| factory(org_id))
     }
 
-    #[cfg(feature = "platform")]
-    fn platform_store(
+    fn tool_context_extensions(
         &self,
         org_id: i64,
         session_id: SessionId,
-    ) -> Option<Arc<dyn everruns_platform::PlatformStore>> {
-        self.platform_store_factory
+    ) -> everruns_core::tool_context::ToolContextExtensions {
+        self.tool_context_extensions_factory
             .as_ref()
             .map(|factory| factory(org_id, session_id))
+            .unwrap_or_default()
+    }
+
+    fn subagent_delegate(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::subagent_delegation::SubagentSessionDelegate>> {
+        self.subagent_delegate_factory
+            .as_ref()
+            .map(|factory| factory(org_id, session_id))
+    }
+
+    fn tool_augmentor(&self) -> Option<Arc<dyn crate::HostToolAugmentor>> {
+        self.tool_augmentor.clone()
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {

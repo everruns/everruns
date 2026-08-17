@@ -28,7 +28,7 @@ libc = "0.2"
 everruns-core.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
-everruns-host = { workspace = true, features = ["platform"] }
+everruns-host.workspace = true
 everruns-platform = { workspace = true, features = ["a2a", "portable-builtins"] }
 
 # Async

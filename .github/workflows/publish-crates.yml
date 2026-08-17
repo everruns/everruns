@@ -147,6 +147,7 @@ jobs:
               "crates/platform/Cargo.toml": [
                   "everruns-builtins",
                   "everruns-core",
+                  "everruns-host",
                   "everruns-session-services",
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
@@ -167,7 +168,6 @@ jobs:
                   "everruns-engine",
                   "everruns-http",
                   "everruns-mcp",
-                  "everruns-platform",
                   "everruns-session-services",
                   "everruns-integrations-filesystem",
                   "everruns-integrations-bashkit",
@@ -321,13 +321,14 @@ jobs:
             everruns-integrations-duckduckgo
             everruns-integrations-lua
             everruns-integrations-openrouter-workspace
-            # The sans-I/O planner and backend entities publish before the host
-            # implementation that composes them.
+            # The sans-I/O planner publishes before the host implementation.
             everruns-engine
-            everruns-platform
             # MCP's HTTP transport depends on everruns-http.
             everruns-mcp
             everruns-host
+            # Hosted product policy adapts into the neutral host extension
+            # seams; the host never depends back on platform.
+            everruns-platform
             everruns-openai
             everruns-anthropic
             everruns-openrouter

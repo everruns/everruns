@@ -40,6 +40,8 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
   resolution, and `StoreCommandHost` completion
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
 - Host adapter contracts for worker, local, and advanced integrations
+- Neutral extension ports for higher-level typed services, subagent delegates,
+  and turn-dependent tools
 
 ## Integration features
 
@@ -53,6 +55,10 @@ integration is selected and a disabled service otherwise. `builtins`,
 `filesystem`, `bashkit`, `web-fetch`, `lua`, and `mcp` are independent host features;
 `mcp-stdio` additionally enables local-process MCP servers. The
 application-facing `everruns` crate selects the ordinary defaults.
+
+Hosted product policy is layered above this crate. `everruns-platform`
+implements these neutral extension ports; `everruns-host` has no dependency on
+or feature for the platform crate.
 
 `utility-openai` owns the concrete, environment-configured utility-model
 client used by the server and worker. The provider-neutral `UtilityLlmService`

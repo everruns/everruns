@@ -13,8 +13,6 @@ use everruns_host::{
 };
 use everruns_llmsim::LlmSimConfig;
 use everruns_llmsim::LlmSimRuntimeExt;
-#[cfg(feature = "platform")]
-use everruns_platform::capabilities::SessionTasksCapability;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
@@ -180,43 +178,6 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
     assert!(
         platform_context.runtime_agent.tools.is_empty(),
         "unresolved platform-only capability should not contribute tools"
-    );
-}
-
-#[tokio::test]
-#[cfg(feature = "platform")]
-async fn runtime_rejects_tools_missing_required_context_services_before_reason() {
-    let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(SessionTasksCapability);
-    let platform = HostComposition::new(capabilities, DriverRegistry::new());
-
-    let runtime = InProcessRuntimeBuilder::new()
-        .host_composition(platform)
-        .llm_sim_as_default(LlmSimConfig::fixed("model must not be reached"))
-        .single_session(|s| {
-            s.harness("tasks", "Manage session tasks.")
-                .with_capability("session_tasks")
-                .agent("tasks-agent", "Inspect tasks.")
-        })
-        .build()
-        .await
-        .unwrap();
-
-    let error = runtime
-        .run_text_turn(
-            runtime.default_session_id().expect("default session id"),
-            "List tasks.",
-        )
-        .await
-        .expect_err("missing required service must fail configuration");
-    let message = error.to_string();
-    assert!(
-        message.contains("cancel_task"),
-        "error must name tool: {message}"
-    );
-    assert!(
-        message.contains("SessionTaskRegistry"),
-        "error must name missing service: {message}",
     );
 }
 

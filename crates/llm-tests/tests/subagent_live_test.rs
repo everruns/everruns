@@ -29,7 +29,7 @@ use everruns_host::{
 };
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_platform::capabilities::SubagentCapability;
-use everruns_platform::{PlatformMessage, PlatformStore};
+use everruns_platform::{PlatformHostBackendsExt, PlatformMessage, PlatformStore};
 use everruns_provider::error::Result;
 use everruns_provider::typed_id::{AgentId, HarnessId, SessionId};
 use std::sync::{Arc, OnceLock};
@@ -180,11 +180,12 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         "http://localhost",
     ));
 
+    let backends =
+        backends.with_platform_store_factory(Arc::new(move |_org, _session| store.clone()));
     let runtime = InProcessRuntimeBuilder::new()
         .host_composition(platform)
         .backends(backends)
         .with_session_task_registry(registry.clone())
-        .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))
         .default_model(model)
         .harness(harness)
         .agent(agent)
