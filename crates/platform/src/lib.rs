@@ -98,6 +98,12 @@ pub mod session_sqldb;
 // beside this module.
 pub mod session_sandbox;
 
+// First-class logical sandbox and checkpoint persistence (EVE-870). Lives here
+// rather than in the kernel for the same reason as `session_sqldb`: the 0.18
+// core boundary is frozen (EVE-906) and the kernel need not name the store.
+// Hosted presets install it as a typed extension.
+pub mod sandbox_checkpoint;
+
 // Management/reporting aggregates carved out of `everruns-core` (EVE-878):
 // persisted eval definitions/runs/results/datasets, observer records with
 // judge configuration and trace-score lifecycle, and the org/product
@@ -156,6 +162,12 @@ pub use everruns_session_services::{SessionMutator, SessionMutatorExt};
 pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SessionSqlDbStoreExt,
     SqlExecuteResult, SqlQueryResult, TableSchema,
+};
+
+// Logical sandbox and checkpoint persistence (EVE-870).
+pub use sandbox_checkpoint::{
+    MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError,
+    SandboxCheckpointKind, SandboxCheckpointStore, SandboxCheckpointStoreExt, SandboxRef,
 };
 
 // Managed per-session sandbox (EVE-880).

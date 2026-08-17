@@ -302,6 +302,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.sqldb_store())
     }
 
+    fn sandbox_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+        self.adapters.sandbox_checkpoint_store()
+    }
+
     fn leased_resource_store(
         &self,
     ) -> Option<Arc<dyn everruns_core::session_services::LeasedResourceStore>> {

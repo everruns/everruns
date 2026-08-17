@@ -142,10 +142,22 @@ replacement.
 
 The persisted revision pointer, rather than the volume's convenience `HEAD`
 file, selects recovery state. This prevents a completely written but
-unpersisted revision from being selected after control-plane failure. State
-persistence and the durable tool-result/event commit are not yet one database
-transaction; closing that crash window requires the first-class Sandbox and
-SandboxCheckpoint records described by the sandbox abstraction proposal.
+unpersisted revision from being selected after control-plane failure.
+
+The first-class `sandboxes` and `sandbox_checkpoints` records the sandbox
+abstraction describes now exist (migration 121, EVE-870). Each upload is
+recorded as an unattached checkpoint before the pointer is written and attached
+after, so a crash mid-sequence leaves a collectable orphan rather than an
+authoritative pointer to a revision no committed turn produced. Attaching is
+fenced on the sandbox generation, so a replaced sandbox cannot have its pointer
+advanced by an in-flight upload.
+
+Recovery still reads the revision from the encrypted `session_sandbox` secret,
+so the checkpoint records are observational for now and state persistence is
+still not in the same database transaction as the durable tool-result/event
+commit. Closing that window is the remaining EVE-870 work: reconcile the head
+checkpoint against `durable_tool_results` at resume, and move recovery onto
+`sandboxes.current_checkpoint_id`.
 
 ### Server lifecycle
 

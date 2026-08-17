@@ -238,6 +238,17 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Logical sandbox and checkpoint persistence (EVE-870). Installed as a
+    /// typed context extension for the same reason as `sqldb_store`. Hosts
+    /// without it keep the pre-EVE-870 behaviour: the checkpoint pointer lives
+    /// only in the session sandbox secret.
+    #[cfg(feature = "platform")]
+    fn sandbox_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_platform::sandbox_checkpoint::SandboxCheckpointStore>> {
+        None
+    }
+
     fn leased_resource_store(&self) -> Option<Arc<dyn LeasedResourceStore>> {
         None
     }
@@ -720,6 +731,12 @@ fn runtime_tool_context_services<A: RuntimeHostAdapter>(
         if let Some(store) = adapter.sqldb_store() {
             extensions.insert(Arc::new(
                 everruns_platform::session_sqldb::SessionSqlDbStoreExt(store),
+            ));
+        }
+        #[cfg(feature = "platform")]
+        if let Some(store) = adapter.sandbox_checkpoint_store() {
+            extensions.insert(Arc::new(
+                everruns_platform::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
             ));
         }
         extensions
