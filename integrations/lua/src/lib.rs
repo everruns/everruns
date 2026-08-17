@@ -1480,10 +1480,10 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn http_denies_allowlisted_loopback_ip_before_egress() {
+        async fn http_fails_closed_when_injected_egress_is_disabled() {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
-            ctx.egress_service = Some(Arc::new(everruns_http::DirectEgressService::new()));
+            ctx.egress_service = Some(Arc::new(everruns_core::DisabledEgressService));
             ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
                 "127.0.0.1",
             ]));
@@ -1494,8 +1494,8 @@ mod tests {
                 )
                 .await;
             assert!(
-                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("private/internal address")),
-                "expected egress boundary denial, got {result:?}"
+                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("outbound egress service is disabled")),
+                "expected disabled egress denial, got {result:?}"
             );
         }
 

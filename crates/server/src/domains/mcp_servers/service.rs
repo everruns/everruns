@@ -21,7 +21,7 @@ use everruns_core::{
     Caller, EgressService, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
     McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
-use everruns_http::DirectEgressService;
+use everruns_host::DirectEgressService;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};

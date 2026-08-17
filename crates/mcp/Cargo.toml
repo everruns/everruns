@@ -25,7 +25,6 @@ stdio = []
 everruns-core.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
-everruns-http.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

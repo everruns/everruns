@@ -2617,7 +2617,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
- "everruns-http",
+ "everruns-host",
  "everruns-platform",
  "everruns-provider",
  "inventory",
@@ -2869,7 +2869,6 @@ dependencies = [
  "everruns-capability",
  "everruns-core",
  "everruns-engine",
- "everruns-http",
  "everruns-integrations-bashkit",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-filesystem",
@@ -2883,6 +2882,7 @@ dependencies = [
  "futures",
  "ignore",
  "regex",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -2891,19 +2891,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid 1.24.1",
-]
-
-[[package]]
-name = "everruns-http"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "everruns-core",
- "everruns-provider",
- "futures",
- "reqwest 0.13.4",
- "serde_json",
- "tokio",
  "wiremock",
 ]
 
@@ -3137,7 +3124,6 @@ dependencies = [
  "base64 0.23.1",
  "chrono",
  "everruns-core",
- "everruns-http",
  "everruns-provider",
  "mlua",
  "regex",
@@ -3366,7 +3352,6 @@ dependencies = [
  "chrono",
  "everruns-capability",
  "everruns-core",
- "everruns-http",
  "everruns-provider",
  "rand 0.10.2",
  "serde",
@@ -3570,7 +3555,6 @@ dependencies = [
  "everruns-core",
  "everruns-durable",
  "everruns-host",
- "everruns-http",
  "everruns-integrations-bashkit",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
@@ -3740,7 +3724,6 @@ dependencies = [
  "everruns-fireworks",
  "everruns-gemini",
  "everruns-host",
- "everruns-http",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-cursor",

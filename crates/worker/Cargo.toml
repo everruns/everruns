@@ -55,7 +55,6 @@ everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
-everruns-http.workspace = true
 everruns-ard.workspace = true
 everruns-host = { workspace = true, features = ["bashkit", "mcp", "utility-openai"] }
 # Note: Workers don't need direct DB access - all DB operations go through gRPC

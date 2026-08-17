@@ -30,7 +30,7 @@
 //! Environment-backed implementations are intentionally separate: filesystem,
 //! Bashkit, web fetch, and Lua live in `everruns-integrations-*`; MCP adaptation
 //! lives in `everruns-mcp`; and concrete runtime HTTP transport lives in
-//! `everruns-http`. Hosts select those edges explicitly instead of inheriting
+//! `everruns-host`. Hosts select those edges explicitly instead of inheriting
 //! them from this contract crate.
 //!
 //! Hosted product capabilities — including Knowledge Bases and Indexes,

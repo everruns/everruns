@@ -67,8 +67,8 @@ Reasoning:
 
 The neutral `HostComposition` default is `DisabledEgressService` and fails
 closed. Hosted server/worker composition explicitly installs
-`everruns_http::DirectEgressService`, which performs outbound HTTP directly;
-advanced embedders can install that implementation or a remote gateway.
+`everruns_host::DirectEgressService` (feature `direct-egress`), which performs outbound HTTP directly;
+advanced embedders can install that host implementation or a remote gateway.
 
 ## Required Usage
 

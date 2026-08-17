@@ -1540,7 +1540,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 vec![]
             } else {
                 let egress = self.egress_service.clone().unwrap_or_else(|| {
-                    Arc::new(everruns_http::DirectEgressService::for_runtime_traffic_from_env())
+                    Arc::new(everruns_host::DirectEgressService::for_runtime_traffic_from_env())
                 });
                 build_scoped_mcp_tool_definitions(
                     &effective,

@@ -27,7 +27,6 @@ tokio = { workspace = true, features = ["rt", "sync", "time"] }
 
 [dev-dependencies]
 chrono.workspace = true
-everruns-http.workspace = true
 regex.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 uuid.workspace = true

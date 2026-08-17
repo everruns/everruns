@@ -97,7 +97,6 @@ everruns-platform = { path = "../platform", features = ["openapi", "environment-
 # init these rely on stays in core's `telemetry` feature (on by default).
 everruns-observability = { workspace = true }
 everruns-mcp = { path = "../mcp" }
-everruns-http.workspace = true
 everruns-integrations-bashkit.workspace = true
 everruns-integrations-web-fetch.workspace = true
 everruns-ard = { path = "../ard" }
@@ -115,7 +114,7 @@ everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-session-sqldb = { path = "../session-sqldb" }
-everruns-host = { path = "../host", features = ["utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
+everruns-host = { path = "../host", features = ["direct-egress", "utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }

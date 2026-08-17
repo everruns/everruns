@@ -25,7 +25,6 @@ use everruns_core::mcp_server::{McpServerTransportType, ScopedMcpServer};
 use everruns_core::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use everruns_core::tool_context::ToolContext;
 use everruns_core::tools::{Tool, ToolExecutionResult};
-use everruns_http::DirectEgressService;
 use everruns_provider::tool_types::ToolHints;
 use everruns_provider::url_validation::{validate_safe_url, validate_url_dns_pinned};
 
@@ -195,7 +194,7 @@ impl Tool for DiscoverResourcesTool {
             let egress = context
                 .egress_service
                 .clone()
-                .unwrap_or_else(|| std::sync::Arc::new(DirectEgressService::from_env()));
+                .unwrap_or_else(|| std::sync::Arc::new(everruns_core::DisabledEgressService));
             client
                 .search_with_egress(
                     &request,
@@ -502,7 +501,7 @@ impl AttachResourceTool {
         let egress = context
             .egress_service
             .clone()
-            .unwrap_or_else(|| std::sync::Arc::new(DirectEgressService::from_env()));
+            .unwrap_or_else(|| std::sync::Arc::new(everruns_core::DisabledEgressService));
         client
             .fetch_artifact_with_egress(url, &addrs, egress, context.network_access.clone())
             .await

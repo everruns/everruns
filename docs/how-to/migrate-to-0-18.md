@@ -199,7 +199,7 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | OpenRouter workspace, model scout, and provider-executed server tools | `everruns_integrations_openrouter_workspace::` |
 | Filesystem, shell, web fetch, Lua | `everruns_integrations_*` |
 | MCP adapter | `everruns_mcp::` |
-| HTTP transports | `everruns_http::` |
+| In-process HTTP egress transport | `everruns_host::DirectEgressService` |
 | Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_observability::` |
 | `llmsim` driver, configs, scripted turns, registry helpers, host-builder extension | `everruns_llmsim::` |
 | in-memory agentic loop, writable test doubles, fixture capabilities | `everruns_test_support::` |

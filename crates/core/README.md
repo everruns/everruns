@@ -74,7 +74,7 @@ or stored records.
 
 Environment implementations live in `everruns-integrations-filesystem`,
 `everruns-integrations-bashkit`, `everruns-integrations-web-fetch`,
-`everruns-integrations-lua`, `everruns-mcp`, and `everruns-http`.
+`everruns-integrations-lua`, and `everruns-mcp`; the host owns concrete egress.
 Application-grade in-memory backends live in `everruns-host`; deterministic
 writable fixtures live in `everruns-test-support`, while the production-safe
 offline simulator driver lives in `everruns-llmsim`.

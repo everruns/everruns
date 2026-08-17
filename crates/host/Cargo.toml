@@ -24,6 +24,7 @@ async-trait.workspace = true
 chrono.workspace = true
 futures.workspace = true
 ignore.workspace = true
+reqwest = { workspace = true, optional = true }
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -37,7 +38,6 @@ everruns-core.workspace = true
 everruns-capability.workspace = true
 everruns-builtins = { workspace = true, optional = true }
 everruns-engine.workspace = true
-everruns-http = { workspace = true, optional = true }
 everruns-mcp = { workspace = true, optional = true }
 everruns-session-services.workspace = true
 everruns-provider.workspace = true
@@ -49,14 +49,15 @@ everruns-integrations-lua = { workspace = true, optional = true }
 
 [features]
 default = []
+direct-egress = ["dep:reqwest"]
 builtins = ["dep:everruns-builtins"]
-mcp = ["dep:everruns-mcp", "dep:everruns-http"]
+mcp = ["dep:everruns-mcp", "direct-egress"]
 mcp-stdio = ["mcp", "everruns-mcp/stdio"]
 filesystem = ["dep:everruns-integrations-filesystem"]
-bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "dep:everruns-http"]
-web-fetch = ["dep:everruns-integrations-web-fetch", "dep:everruns-http"]
-duckduckgo = ["dep:everruns-integrations-duckduckgo", "dep:everruns-http"]
-lua = ["dep:everruns-integrations-lua", "dep:everruns-http"]
+bashkit = ["filesystem", "dep:everruns-integrations-bashkit", "direct-egress"]
+web-fetch = ["dep:everruns-integrations-web-fetch", "direct-egress"]
+duckduckgo = ["dep:everruns-integrations-duckduckgo", "direct-egress"]
+lua = ["dep:everruns-integrations-lua", "direct-egress"]
 process = []
 utility-openai = ["everruns-provider/http"]
 
@@ -82,3 +83,4 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 everruns-llmsim = { version = "0.18.0", path = "../llmsim", features = ["host"] }
 # Test doubles and demo fixtures.
 everruns-test-support = { version = "0.18.0", path = "../test-support" }
+wiremock = "0.6"
