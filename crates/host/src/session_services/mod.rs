@@ -1,6 +1,6 @@
 //! Backend-neutral session service contracts and capability implementations.
 //!
-//! This crate is the dependency-inversion seam between execution hosts and the
+//! This module is the dependency-inversion seam between execution hosts and the
 //! Everruns control plane. It contains only turn-time session services: no
 //! organizations, billing, connectors, audit records, email clients, or HTTP
 //! transport.
@@ -8,7 +8,7 @@
 //! Part of the [Everruns](https://everruns.com) ecosystem.
 //!
 //! ```
-//! use everruns_session_services::SESSION_CAPABILITY_ID;
+//! use everruns_host::session_services::SESSION_CAPABILITY_ID;
 //!
 //! assert_eq!(SESSION_CAPABILITY_ID, "session");
 //! ```

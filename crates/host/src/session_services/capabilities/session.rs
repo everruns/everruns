@@ -4,7 +4,7 @@
 //! - `write_session_title`: update session title
 //! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
-use crate::session_mutator::{SessionMutator, SessionMutatorExt};
+use crate::session_services::session_mutator::{SessionMutator, SessionMutatorExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityLocalization, CapabilityStatus};
 use everruns_core::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};

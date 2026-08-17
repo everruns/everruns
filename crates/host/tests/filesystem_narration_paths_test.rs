@@ -22,6 +22,7 @@ use everruns_core::{
     session_files::SessionFileSystem,
 };
 use everruns_engine::ActInput;
+use everruns_host::SessionMutator;
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
     RealDiskFileStore, ResolvedTurnInputs, RuntimeHostAdapter, execute_act_activity,
@@ -31,7 +32,6 @@ use everruns_integrations_filesystem::FileSystemCapability;
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::tool_types::ToolCall;
 use everruns_provider::typed_id::{HarnessId, MessageId, SessionId, TurnId};
-use everruns_session_services::SessionMutator;
 use everruns_test_support::{InMemoryEventEmitter, InMemoryMessageRetriever};
 use serde_json::{Value, json};
 use std::collections::HashMap;

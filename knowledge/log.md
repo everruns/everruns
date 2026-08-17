@@ -1,5 +1,12 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-17
+
+* **Session services are host-owned.** `SessionMutator` and the portable
+  session/session-storage capabilities are collocated in `everruns-host`;
+  platform re-exports the same types. The former leaf package added release
+  overhead without an independent runtime boundary.
+
 ## 2026-08-15
 
 * **Production simulation has a focused owner.** The deterministic LLM driver,
@@ -31,11 +38,11 @@
   configured for the same local profile share one backend cell, preventing
   independent JSONL indexes or SQLite handles from diverging inside a process.
 
-* **The host no longer implies the control plane.** The neutral
-  `everruns-session-services` crate now owns `SessionMutator` plus the portable
-  session and session-storage capabilities. Platform re-exports that boundary for
-  product consumers, while host and the default Framework graph use it
-  directly. Platform composition is an opt-in host feature, and the Resend
+* **The host no longer implies the control plane.** At this stage, the neutral
+  session-services package owned `SessionMutator` plus the portable session
+  and session-storage capabilities. Platform re-exported that boundary for
+  product consumers, while host and the default Framework graph used it
+  directly. Platform composition was an opt-in host feature, and the Resend
   client is an opt-in platform feature; dependency guards reject platform,
   Reqwest, Rustls, or Hyper in minimal host/Framework graphs.
 

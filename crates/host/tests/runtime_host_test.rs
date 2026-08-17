@@ -21,6 +21,7 @@ use everruns_core::{
 };
 use everruns_engine::{ActInput, InputAtomInput, ReasonResult};
 use everruns_engine::{TurnPlan, TurnState};
+use everruns_host::SessionMutator;
 use everruns_host::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemorySessionFileStore,
     InProcessExecution, ResolvedTurnInputs, RuntimeHostAdapter, RuntimeSessionLifecycle,
@@ -33,7 +34,6 @@ use everruns_provider::provider::DriverId;
 use everruns_provider::tool_types::{ToolCall, ToolResult};
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_provider::user_facing_error::codes as user_facing_error_codes;
-use everruns_session_services::SessionMutator;
 use everruns_test_support::{
     InMemoryEventEmitter, InMemoryMessageRetriever, TestMathCapability,
     llmsim_driver::register_driver,
@@ -420,7 +420,7 @@ impl Tool for ContextParityTool {
             "file_store": context.file_store.is_some(),
             "message_retriever": context.message_retriever.is_some(),
             "session_store": context.session_store.is_some(),
-            "session_mutator": context.extensions.get::<everruns_session_services::SessionMutatorExt>().is_some(),
+            "session_mutator": context.extensions.get::<everruns_host::SessionMutatorExt>().is_some(),
             "agent_store": context.agent_store.is_some(),
             "session_task_registry": context.session_task_registry.is_some(),
             "capability_registry": context.capability_registry.is_some(),

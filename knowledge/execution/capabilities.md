@@ -246,7 +246,7 @@ All participating title mutation paths suppress no-ops and emit the typed
 mutations preserve the current turn correlation. Embedders can reuse the
 title-mutation helpers and project events through the runtime event bus without
 replacing the capability. See
-[`crates/session-services/src/capabilities/session.rs`](../../crates/session-services/src/capabilities/session.rs)
+[`crates/host/src/session_services/capabilities/session.rs`](../../crates/host/src/session_services/capabilities/session.rs)
 for the public config and helper APIs, and [`knowledge/execution/events.md`](events.md) for the
 event contract.
 

@@ -5,6 +5,7 @@
 use crate::HostComposition;
 use crate::InProcessExecution;
 use crate::SessionFileSystemFactoryContext;
+use crate::SessionMutator;
 use crate::backends::{
     HostBackends, RuntimeAgentStore, RuntimeHarnessStore, RuntimeProviderStore, RuntimeSessionStore,
 };
@@ -54,7 +55,6 @@ use everruns_engine::{InputAtomInput, ReasonInput};
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::{AgentLoopError, Result};
 use everruns_provider::typed_id::{AgentId, MessageId, OrgId, SessionId, TurnId};
-use everruns_session_services::SessionMutator;
 use sha2::{Digest, Sha256};
 use std::collections::VecDeque;
 use std::path::Path;
