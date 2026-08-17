@@ -13,7 +13,7 @@ use everruns_core::{
     McpServerAuthMode,
 };
 use everruns_mcp::{
-    McpClient, McpConnection, McpExecutor, McpSecretBinding, StaticAuthProvider,
+    McpClient, McpConnection, McpExecutor, McpSecretBinding, NoAuthProvider, StaticAuthProvider,
     StaticConnectionResolver,
 };
 use everruns_provider::tool_types::ToolCall;
@@ -48,6 +48,13 @@ impl FakeEgress {
             last_body: Arc::new(Mutex::new(Vec::new())),
         })
     }
+}
+
+fn client_with_fake_egress() -> McpClient {
+    McpClient::new(
+        FakeEgress::with_status(Vec::new(), 500),
+        Arc::new(NoAuthProvider),
+    )
 }
 
 #[async_trait]
@@ -216,7 +223,7 @@ async fn missing_bound_credential_returns_structured_safe_setup_result() {
         }],
     );
     let executor = McpExecutor::new(
-        Arc::new(McpClient::direct()),
+        Arc::new(client_with_fake_egress()),
         Arc::new(StaticConnectionResolver::new().with(connection)),
     );
     let result = executor
@@ -252,7 +259,7 @@ async fn model_cannot_override_bound_credential() {
         }],
     );
     let executor = McpExecutor::new(
-        Arc::new(McpClient::direct()),
+        Arc::new(client_with_fake_egress()),
         Arc::new(StaticConnectionResolver::new().with(connection)),
     );
     let result = executor
@@ -363,8 +370,8 @@ async fn executor_routes_and_maps_mcp_tool_call() {
 
 #[tokio::test]
 async fn ssrf_blocks_localhost_discovery() {
-    // Real direct egress; the URL must be rejected before any connect.
-    let client = McpClient::direct();
+    // URL validation must reject this before the injected egress is called.
+    let client = client_with_fake_egress();
     let connection = McpConnection::http("evil", "http://localhost:9999/mcp");
     let error = client.discover(&connection).await.unwrap_err();
     assert!(
@@ -376,7 +383,7 @@ async fn ssrf_blocks_localhost_discovery() {
 #[tokio::test]
 async fn unresolved_server_prefix_errors() {
     let executor = McpExecutor::new(
-        Arc::new(McpClient::direct()),
+        Arc::new(client_with_fake_egress()),
         Arc::new(StaticConnectionResolver::new()),
     );
     let tool_call = ToolCall {

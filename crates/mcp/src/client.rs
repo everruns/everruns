@@ -1,7 +1,7 @@
 //! High-level MCP client: resolves credentials via a [`McpAuthProvider`],
 //! selects the transport for a connection's endpoint, and maps results.
 
-use crate::auth::{McpAuthProvider, McpAuthRequest, McpCredential, NoAuthProvider};
+use crate::auth::{McpAuthProvider, McpAuthRequest, McpCredential};
 use crate::http::HttpTransport;
 use crate::result::map_tool_call_result;
 use crate::transport::{McpConnection, McpEndpoint, McpTransport};
@@ -25,11 +25,6 @@ impl McpClient {
     /// provider.
     pub fn new(egress: Arc<dyn EgressService>, auth: Arc<dyn McpAuthProvider>) -> Self {
         Self::with_http(Arc::new(HttpTransport::new(egress)), auth)
-    }
-
-    /// Build a client backed by direct outbound HTTP and no auth provider.
-    pub fn direct() -> Self {
-        Self::with_http(Arc::new(HttpTransport::direct()), Arc::new(NoAuthProvider))
     }
 
     pub fn with_http(http: Arc<HttpTransport>, auth: Arc<dyn McpAuthProvider>) -> Self {

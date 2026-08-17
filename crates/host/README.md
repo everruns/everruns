@@ -39,6 +39,7 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 - Store-backed snapshot/context loading, lifecycle validation, provider/driver
   resolution, and `StoreCommandHost` completion
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
+- Policy-aware `DirectEgressService` behind the opt-in `direct-egress` feature
 - Host adapter contracts for worker, local, and advanced integrations
 - Neutral extension ports for higher-level typed services, subagent delegates,
   and turn-dependent tools
@@ -51,8 +52,9 @@ starts from an empty core registry, adds the runtime-safe portable catalog when
 `compose_runtime_capability_registry(registry)` applies that same feature-driven
 composition to a caller-selected registry. `runtime_egress_service()`
 returns the matching direct, policy-aware transport when a network-capable
-integration is selected and a disabled service otherwise. `builtins`,
-`filesystem`, `bashkit`, `web-fetch`, `lua`, and `mcp` are independent host features;
+integration is selected and a disabled service otherwise. `direct-egress`
+exposes the transport explicitly; `builtins`, `filesystem`, `bashkit`,
+`web-fetch`, `lua`, and `mcp` are independent host features;
 `mcp-stdio` additionally enables local-process MCP servers. The
 application-facing `everruns` crate selects the ordinary defaults.
 

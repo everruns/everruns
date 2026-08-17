@@ -16,16 +16,14 @@
 //! # Example
 //!
 //! ```
-//! use everruns_mcp::{McpClient, McpConnection};
+//! use everruns_core::DisabledEgressService;
+//! use everruns_mcp::{McpClient, McpConnection, NoAuthProvider};
+//! use std::sync::Arc;
 //!
 //! # async fn run() -> anyhow::Result<()> {
-//! let client = McpClient::direct();
+//! let client = McpClient::new(Arc::new(DisabledEgressService), Arc::new(NoAuthProvider));
 //! let connection = McpConnection::http("docs", "https://example.com/mcp");
-//! let tools = client.discover(&connection).await?;
-//! let result = client
-//!     .call(&connection, &tools[0].name, serde_json::json!({}))
-//!     .await?;
-//! # let _ = result;
+//! # let _ = (client, connection);
 //! # Ok(())
 //! # }
 //! ```

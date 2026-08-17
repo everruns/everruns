@@ -6,8 +6,8 @@
 //! connection providers and harness templates are server-owned by default.
 
 use everruns_core::DeploymentGrade;
+use everruns_host::DirectEgressService;
 use everruns_host::{HostComposition, SystemUtilityLlmConfig};
-use everruns_http::DirectEgressService;
 use std::sync::Arc;
 
 /// Build the default worker-side platform definition for the current deployment grade.

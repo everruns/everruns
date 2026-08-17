@@ -107,8 +107,9 @@ Environment-backed capability implementations live outside `everruns-core`.
 Core owns the capability, tool, filesystem, egress, and MCP-neutral contracts;
 focused integration crates own filesystem, Bashkit, web fetch, Lua, and
 OpenRouter workspace behavior, while `everruns-mcp` owns the MCP capability
-adapter and `everruns-http` owns concrete HTTP transports. `everruns-host`
-composes feature-selected integrations for embedders, and `everruns-platform`
+adapter and `everruns-host` owns its concrete direct HTTP transport alongside
+the other in-process effects it composes. `everruns-host` composes
+feature-selected integrations for embedders, and `everruns-platform`
 composes the complete hosted-product catalog. The
 `scripts/lib/check-environment-capability-isolation.sh` pre-push/CI guard keeps
 the implementation modules and their shell/interpreter/transport dependencies

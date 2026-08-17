@@ -68,7 +68,7 @@ pub fn runtime_egress_service() -> Arc<dyn EgressService> {
         feature = "mcp"
     ))]
     {
-        Arc::new(everruns_http::DirectEgressService::for_runtime_traffic_from_env())
+        Arc::new(crate::DirectEgressService::for_runtime_traffic_from_env())
     }
     #[cfg(not(any(
         feature = "bashkit",

@@ -76,7 +76,7 @@ types. The former core paths move as follows:
 | `everruns_core::WebFetchCapability`, `WebFetchTool`, and bot-auth helpers | `everruns_integrations_web_fetch::*` |
 | `everruns_core::LuaCapability` and `LuaCodeModeCapability` | `everruns_integrations_lua::*` |
 | `everruns_core::McpCapability` and MCP capability-ID helpers | `everruns_mcp::*` |
-| `everruns_core::DirectEgressService` | `everruns_http::DirectEgressService` |
+| `everruns_core::DirectEgressService` | `everruns_host::DirectEgressService` with `direct-egress` |
 | `everruns_core::SystemEmailConfig` and Resend types | `everruns_platform::*` |
 | `everruns_core::ModelScoutCapability` and `OpenRouterWorkspaceCapability` | `everruns_integrations_openrouter_workspace::*` |
 | `everruns_core::OpenRouterServerToolsCapability` | `everruns_integrations_openrouter_workspace::OpenRouterServerToolsCapability` |

@@ -75,9 +75,9 @@ The end goals for this work, and how the design meets each:
 
 A workspace crate `crates/mcp` (`everruns-mcp`) owns the transport-agnostic MCP
 client and the MCP virtual-capability adapter/ID helpers. It depends on
-`everruns-core` for neutral wire, egress, tool, and invoker contracts, and on
-`everruns-http` for the concrete direct HTTP transport. It is depended on by
-host, worker, and server only when MCP is selected.
+`everruns-core` for neutral wire, egress, tool, and invoker contracts. The
+caller injects its `EgressService`; `everruns-host` owns the default direct
+transport. Host, worker, and server depend on MCP only when it is selected.
 
 What moves into `everruns-mcp` (deleted from `worker`/`server`):
 

@@ -22,7 +22,6 @@ use everruns_core::{
     EgressRequest, EgressRequestKind, EgressService, McpProtocolMode, McpToolCallResponse,
     McpToolCallResult, McpToolDefinition, McpToolsListResponse, normalize_mcp_error_code,
 };
-use everruns_http::DirectEgressService;
 use everruns_provider::url_validation::validate_url_dns_pinned;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
@@ -632,12 +631,6 @@ impl HttpTransport {
             negotiations: Mutex::new(HashMap::new()),
             tools: Mutex::new(HashMap::new()),
         }
-    }
-
-    /// Build a transport backed by a [`DirectEgressService`] (real outbound
-    /// HTTP). Used by hosts without a custom egress boundary, e.g. the CLI.
-    pub fn direct() -> Self {
-        Self::new(Arc::new(DirectEgressService::default()))
     }
 
     fn http_parts(connection: &McpConnection) -> Result<(&str, &HashMap<String, String>)> {

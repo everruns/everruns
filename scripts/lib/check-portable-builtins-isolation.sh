@@ -97,7 +97,7 @@ BUILTINS_TREE=$(cargo tree -p everruns-builtins -e normal --depth 1 --prefix non
 assert_tree_excludes \
   "everruns-builtins direct normal dependency tree" \
   "$BUILTINS_TREE" \
-  everruns-host everruns-platform everruns-server everruns-worker everruns-mcp everruns-http \
+  everruns-host everruns-platform everruns-server everruns-worker everruns-mcp \
   everruns-integrations-filesystem everruns-integrations-bashkit \
   everruns-integrations-web-fetch everruns-integrations-lua \
   reqwest sqlx bashkit fetchkit mlua

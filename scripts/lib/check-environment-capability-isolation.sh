@@ -58,8 +58,8 @@ assert_tree_excludes() {
   done
 }
 
-assert_tree_excludes everruns-core bashkit fetchkit mlua everruns-mcp everruns-http
-assert_tree_excludes everruns bashkit fetchkit mlua everruns-mcp everruns-http
+assert_tree_excludes everruns-core bashkit fetchkit mlua everruns-mcp reqwest
+assert_tree_excludes everruns bashkit fetchkit mlua everruns-mcp reqwest
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Environment capability isolation guard failed."

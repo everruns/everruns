@@ -21,6 +21,8 @@
 //! a caller-supplied registry when a broader preset is required.
 //! [`runtime_egress_service`] supplies the matching direct transport only when
 //! a network-capable integration is selected.
+//! Advanced hosts can select `direct-egress` to construct
+//! [`DirectEgressService`] without enabling an integration bundle.
 //!
 //! # Example
 //!
@@ -37,6 +39,8 @@ mod builders;
 mod capabilities;
 mod command_host;
 mod composition;
+#[cfg(feature = "direct-egress")]
+mod egress;
 pub mod events;
 pub mod execution_snapshot;
 mod extensions;
@@ -69,6 +73,8 @@ pub use builders::{
 };
 pub use command_host::StoreCommandHost;
 pub use composition::{HostComposition, HostCompositionBuilder};
+#[cfg(feature = "direct-egress")]
+pub use egress::DirectEgressService;
 pub use events::{
     DEFAULT_EVENT_READ_LIMIT, EventCursor, EventDeliveryStats, EventDurability, EventHistory,
     EventHistoryPage, EventHistoryReadLimit, EventHistoryReadRequest, EventLog, EventLogError,

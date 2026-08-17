@@ -59,3 +59,28 @@ fn host_exposes_no_writable_message_store_contract() {
         "HostBackends must use EventLog, never a writable message store"
     );
 }
+
+#[test]
+fn direct_egress_is_host_owned_without_a_standalone_http_crate() {
+    let host_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let crates_dir = host_dir.parent().expect("crates directory");
+    let repo = crates_dir.parent().expect("repository root");
+
+    assert!(
+        !crates_dir.join("http/Cargo.toml").exists(),
+        "direct egress belongs to everruns-host, not a generic everruns-http package"
+    );
+    for manifest in [
+        repo.join("Cargo.toml"),
+        crates_dir.join("mcp/Cargo.toml"),
+        crates_dir.join("ard/Cargo.toml"),
+    ] {
+        let contents = std::fs::read_to_string(&manifest)
+            .unwrap_or_else(|error| panic!("read {}: {error}", manifest.display()));
+        assert!(
+            !contents.contains("everruns-http"),
+            "{} must not restore the removed HTTP package edge",
+            manifest.display()
+        );
+    }
+}
