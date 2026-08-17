@@ -157,6 +157,28 @@ for manifest_rel, dependency in (
             f"{manifest_rel} dependency {dependency}"
         )
 
+# The reverse direction: every entry in the workflow's dependency_versions map
+# must name a dependency the manifest actually declares. The workflow indexes
+# that map with `dependencies[dependency_name]`, so a stale entry left behind by
+# a refactor raises KeyError and fails the release *after* the tag exists —
+# which is how v0.18.0 broke on `everruns-integrations-duckduckgo` (#3194), and
+# v0.17.x before it. The coverage checks above only assert the map is a superset
+# of the required edges, so they cannot catch drift in this direction.
+for manifest_rel, entry_body in re.findall(
+    r'"([^"]+Cargo\.toml)":\s*\[(.*?)\]', workflow_text, re.DOTALL
+):
+    manifest_path = REPO / manifest_rel
+    if not manifest_path.is_file():
+        fail(f"publish-crates.yml version verification names missing manifest {manifest_rel}")
+        continue
+    declared = load(manifest_path).get("dependencies", {})
+    for dependency in re.findall(r'"([^"]+)"', entry_body):
+        if dependency not in declared:
+            fail(
+                f"publish-crates.yml version verification lists {dependency} for "
+                f"{manifest_rel}, but that manifest does not depend on it"
+            )
+
 # The sync script keeps those pins at the workspace version between releases.
 sync_text = (REPO / "scripts/sync-publish-pin-versions.py").read_text()
 workspace_pins = re.search(r"WORKSPACE_PIN_DEPS:\s*list\[str\]\s*=\s*\[(.*?)\]", sync_text, re.DOTALL)
