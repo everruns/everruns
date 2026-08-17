@@ -1,6 +1,6 @@
-//! A2UI Capability — enables agents to emit Google A2UI JSON component trees
+//! A2UI catalog, prompt generator, and capability.
 //!
-//! When enabled, this capability appends the A2UI system prompt to the agent's
+//! When enabled, the capability appends the generated A2UI system prompt to the agent's
 //! system prompt. The LLM wraps JSON component trees in ```a2ui fenced code
 //! blocks, which the UI detects and renders using native shadcn/ui primitives.
 //!
@@ -9,8 +9,44 @@
 //!
 //! Ref: knowledge/ui/a2ui.md
 //! Ref: https://github.com/google/a2ui
+//!
+//! ```
+//! use everruns_builtins::a2ui::{PromptOptions, default_catalog, generate_prompt};
+//!
+//! let prompt = generate_prompt(default_catalog(), &PromptOptions::default());
+//! assert!(prompt.contains("```a2ui"));
+//! ```
+
+mod catalog;
+mod components;
+mod prompt;
+
+pub use catalog::{Catalog, ComponentCategory};
+pub use components::{ComponentDef, PropDef};
+pub use prompt::{PromptOptions, generate_prompt};
+
+use std::sync::LazyLock;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
+
+/// The default A2UI catalog.
+pub fn default_catalog() -> &'static Catalog {
+    &DEFAULT_CATALOG
+}
+
+static DEFAULT_CATALOG: LazyLock<Catalog> = LazyLock::new(|| Catalog {
+    root_hint: "Card",
+    components: components::all_components(),
+    categories: catalog::default_categories(),
+});
+
+/// Generates the default A2UI system prompt with standard options.
+pub fn default_prompt() -> &'static str {
+    &DEFAULT_PROMPT
+}
+
+static DEFAULT_PROMPT: LazyLock<String> =
+    LazyLock::new(|| generate_prompt(default_catalog(), &PromptOptions::default()));
 
 /// Capability ID constant for external reference.
 pub const A2UI_CAPABILITY_ID: &str = "a2ui";
@@ -52,7 +88,7 @@ impl Capability for A2UiCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(everruns_a2ui::default_prompt())
+        Some(default_prompt())
     }
 
     fn features(&self) -> Vec<&'static str> {
@@ -89,5 +125,48 @@ mod tests {
         for name in ["Card", "Stack", "Button", "Form", "List", "Table"] {
             assert!(p.contains(name), "prompt missing component {name}");
         }
+    }
+}
+
+#[cfg(test)]
+mod catalog_tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn default_catalog_covers_components_and_categories() {
+        let catalog = default_catalog();
+        let names: Vec<&str> = catalog
+            .components
+            .iter()
+            .map(|component| component.name)
+            .collect();
+        for expected in ["Card", "Stack", "Button", "List", "Table", "Form"] {
+            assert!(names.contains(&expected), "missing component: {expected}");
+        }
+
+        let grouped: HashSet<&str> = catalog
+            .categories
+            .iter()
+            .flat_map(|category| category.components.iter().copied())
+            .collect();
+        for component in &catalog.components {
+            assert!(
+                grouped.contains(component.name),
+                "component '{}' is not in any category",
+                component.name
+            );
+        }
+    }
+
+    #[test]
+    fn default_prompt_contains_every_component_and_action_types() {
+        let prompt = default_prompt();
+        for component in &default_catalog().components {
+            assert!(prompt.contains(component.name));
+        }
+        assert!(prompt.contains("\"message\""));
+        assert!(prompt.contains("\"open_url\""));
     }
 }

@@ -7,7 +7,7 @@
 //! Ref: packages/react-ui/src/genui-lib/openuiChatLibrary.tsx (chat library)
 //! Ref: packages/react-ui/src/genui-lib/openuiLibrary.tsx (base library)
 
-use crate::groups::ComponentGroup;
+use super::groups::ComponentGroup;
 
 /// A single prop/argument definition for a component.
 /// Maps to a key in the TypeScript Zod schema's `.shape`.

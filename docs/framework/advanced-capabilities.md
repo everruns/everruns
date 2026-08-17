@@ -101,6 +101,9 @@ features and add the integrations they need. The policy bundle owns no network
 client, process runner, interpreter, database, or hosted service. Output
 persistence and distillation declare `session_file_system` as a host-provided
 dependency; enable them only in a composition that supplies that capability.
+The optional `ui-capabilities` feature also owns the namespaced
+`everruns_builtins::{openui,a2ui}` component catalogs and prompt generators;
+applications do not need separate UI-protocol crates.
 
 ## Choose an authoring level
 

@@ -3,7 +3,7 @@
 //! A Catalog is the agent-facing description of which components are available.
 //! Categories group components for readable prompt output.
 
-use crate::components::ComponentDef;
+use super::components::ComponentDef;
 
 /// One category of components in a catalog (e.g. "Layout", "Forms").
 pub struct ComponentCategory {

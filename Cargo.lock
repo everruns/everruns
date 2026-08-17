@@ -2590,10 +2590,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-a2ui"
-version = "0.18.0"
-
-[[package]]
 name = "everruns-anthropic"
 version = "0.18.0"
 dependencies = [
@@ -2654,10 +2650,8 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
- "everruns-a2ui",
  "everruns-capability",
  "everruns-core",
- "everruns-openui",
  "everruns-provider",
  "serde",
  "serde_json",
@@ -3433,10 +3427,6 @@ dependencies = [
  "tokio",
  "wiremock",
 ]
-
-[[package]]
-name = "everruns-openui"
-version = "0.18.0"
 
 [[package]]
 name = "everruns-platform"

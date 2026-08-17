@@ -5,7 +5,7 @@
 //!
 //! Ref: packages/react-lang/src/parser/prompt.ts
 
-use crate::components::{ComponentDef, Library};
+use super::components::{ComponentDef, Library};
 
 /// Options for customizing the generated prompt.
 ///
@@ -219,8 +219,8 @@ pub fn generate_prompt(library: &Library, options: &PromptOptions) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::components::PropDef;
     use super::*;
-    use crate::components::PropDef;
 
     fn test_library() -> Library {
         Library {
@@ -337,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_grouped_components() {
-        use crate::groups::ComponentGroup;
+        use super::super::groups::ComponentGroup;
 
         let lib = Library {
             root: "Stack",

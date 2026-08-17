@@ -20,8 +20,6 @@ categories = ["development-tools", "asynchronous"]
 everruns-capability.workspace = true
 everruns-core = { path = "../core", version = "0.18.0", default-features = false }
 everruns-provider.workspace = true
-everruns-openui = { path = "../openui", version = "0.18.0", optional = true }
-everruns-a2ui = { path = "../a2ui", version = "0.18.0", optional = true }
 
 async-trait.workspace = true
 chrono.workspace = true
@@ -34,7 +32,7 @@ uuid.workspace = true
 
 [features]
 default = []
-ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
+ui-capabilities = []
 
 [dev-dependencies]
 anyhow.workspace = true
