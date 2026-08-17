@@ -157,8 +157,8 @@ pub use session::{
 };
 
 // Session metadata mutation (EVE-897).
-pub use everruns_session_services::session_mutator;
-pub use everruns_session_services::{SessionMutator, SessionMutatorExt};
+pub use everruns_host::session_services::session_mutator;
+pub use everruns_host::{SessionMutator, SessionMutatorExt};
 
 // Session SQL database (EVE-897).
 pub use session_sqldb::{

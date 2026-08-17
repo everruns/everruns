@@ -124,11 +124,15 @@ assert_tree_excludes \
   "$HOST_MINIMAL_TREE" \
   everruns-platform reqwest rustls hyper
 
-SESSION_SERVICES_TREE=$(cargo tree -p everruns-session-services -e normal --prefix none)
-assert_tree_excludes \
-  "everruns-session-services normal dependency tree" \
-  "$SESSION_SERVICES_TREE" \
-  everruns-host everruns-platform everruns-server everruns-worker reqwest rustls hyper sqlx
+if [ -e crates/session-services/Cargo.toml ]; then
+  fail "session mutation/storage services belong to everruns-host, not a standalone crate"
+fi
+
+for module in session_mutator.rs capabilities/session.rs capabilities/session_storage.rs; do
+  if [ ! -e "crates/host/src/session_services/$module" ]; then
+    fail "everruns-host is missing session service module: $module"
+  fi
+done
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Portable built-ins isolation guard failed."

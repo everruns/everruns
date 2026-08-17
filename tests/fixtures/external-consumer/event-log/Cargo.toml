@@ -10,7 +10,6 @@ everruns-core = { path = "../../../../crates/core" }
 everruns-capability = { path = "../../../../crates/capability" }
 everruns-provider = { path = "../../../../crates/provider", default-features = false }
 everruns-host = { path = "../../../../crates/host" }
-everruns-session-services = { path = "../../../../crates/session-services" }
 
 [dev-dependencies]
 everruns-llmsim = { path = "../../../../crates/llmsim", features = ["host"] }

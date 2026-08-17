@@ -521,7 +521,6 @@ dependencies = [
  "everruns-engine",
  "everruns-integrations-filesystem",
  "everruns-provider",
- "everruns-session-services",
  "futures",
  "ignore",
  "regex",
@@ -601,18 +600,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-session-services"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "everruns-capability",
- "everruns-core",
- "everruns-provider",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "external-builtin-pack"
 version = "0.0.0"
 dependencies = [
@@ -650,7 +637,6 @@ dependencies = [
  "everruns-host",
  "everruns-llmsim",
  "everruns-provider",
- "everruns-session-services",
  "tokio",
 ]
 

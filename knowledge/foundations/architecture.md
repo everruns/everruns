@@ -104,10 +104,9 @@ Production event routing therefore prefers:
    - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
-   - `session-services/` → `everruns-session-services` - Backend-neutral session mutation and storage capability boundary shared by host and platform
    - `platform/` → `everruns-platform` - Hosted product records, services, and capability implementations
    - `everruns/` → `everruns` - The application-facing Everruns Framework crate
-   - `host/` → `everruns-host` - Low-level in-process execution host and reusable host-phase execution shared by the facade, worker, and advanced hosts
+   - `host/` → `everruns-host` - Low-level in-process execution host, reusable host-phase execution, and session mutation/storage services shared by the facade, worker, and advanced hosts
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine

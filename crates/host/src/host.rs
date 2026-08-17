@@ -3,6 +3,7 @@
 // durable/server-backed hosts reuse the same input/reason/act wiring without
 // depending on the application facade.
 
+use crate::{SessionMutator, SessionMutatorExt};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
     Capability, SystemPromptContext, collect_capabilities_with_configs,
@@ -38,7 +39,6 @@ use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::tool_types::ToolDefinition;
 use everruns_provider::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_provider::user_facing_error::{ErrorDisclosure, UserFacingError};
-use everruns_session_services::{SessionMutator, SessionMutatorExt};
 use std::sync::Arc;
 use tracing::warn;
 

@@ -136,9 +136,9 @@ presets compose the hosted registry explicitly; the Framework preset does not
 advertise service-backed product capabilities. The capability-isolation guard
 keeps these implementations and their service contracts out of core.
 
-Session metadata and key/secret storage are shared host contracts, not product
-entities. `everruns-session-services` owns `SessionMutator` plus the portable
-`session` and `session_storage` capabilities below both host and platform. The
+Session metadata and key/secret storage are host services, not product
+entities. `everruns-host` owns `SessionMutator` plus the portable
+`session` and `session_storage` capabilities, and platform re-exports that surface. The
 default Framework host can therefore provide them without compiling the
 control plane. `session_sql_database` and `session_sandbox` stay in
 `everruns-platform` because their implementations are hosted resources.

@@ -54,12 +54,12 @@ pub use delegation_result::{
     ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
     report_task_progress_tool_for_child_session,
 };
-pub use everruns_session_services::capabilities::session::{
+pub use everruns_host::session_services::capabilities::session::{
     GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
     SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
     update_session_title_with_event,
 };
-pub use everruns_session_services::capabilities::session_storage::{
+pub use everruns_host::session_services::capabilities::session_storage::{
     KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
     is_internal_session_kv_key, is_internal_session_secret_name,
 };

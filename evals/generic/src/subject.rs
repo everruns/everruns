@@ -23,8 +23,8 @@ use std::path::{Component, Path, PathBuf};
 use std::time::Instant;
 
 use everruns::{
-    Agent, AgentCapabilityConfig, ContentPart, Controls, ImageContentPart, InMemoryEngine,
-    InputMessage, Provider, ReasoningConfig, Session, SessionEvent, SessionEventKind,
+    Agent, CapabilityRef, ContentPart, Controls, ImageContentPart, InMemoryEngine, InputMessage,
+    Provider, ReasoningConfig, Session, SessionEvent, SessionEventKind,
 };
 
 use mira::subject::summarize_events;
@@ -298,13 +298,13 @@ fn build_session(
         .max_iterations(config.max_iterations);
 
     for capability in harness.capabilities {
-        builder = builder.capability(AgentCapabilityConfig::new(*capability));
+        builder = builder.capability(CapabilityRef::new(*capability));
     }
     if harness.capabilities.contains(&"session_file_system") {
         builder = builder.workspace(workspace.path());
     }
     if let Some(mode) = config.parallel_tool_calls_mode {
-        builder = builder.capability(AgentCapabilityConfig::with_config(
+        builder = builder.capability(CapabilityRef::with_config(
             "parallel_tool_calls",
             serde_json::json!({ "mode": mode }),
         ));

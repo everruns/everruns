@@ -553,7 +553,6 @@ dependencies = [
  "everruns-engine",
  "everruns-integrations-filesystem",
  "everruns-provider",
- "everruns-session-services",
  "futures",
  "ignore",
  "regex",
@@ -655,18 +654,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "everruns-session-services"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "everruns-capability",
- "everruns-core",
- "everruns-provider",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1650,9 +1637,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.16"
+version = "0.11.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4bfc015262b9df63c8845072ce59068853ff5872180c2ce2f13038b970e560"
+checksum = "04759210543be93709136e28212294a659ef5001836ff4eab4d663e4529bba83"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -2211,9 +2198,9 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "similar"
-version = "3.1.2"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85ee016af5d736b69fc89e19254540fa4b5f5492853fb5503920f084011c78b6"
+checksum = "4f66ca1f7aca2474dc10c942eb22feffc897735f54cd1db90138c2fddb490987"
 dependencies = [
  "bstr",
 ]

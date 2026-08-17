@@ -2,6 +2,7 @@
 // Decision: runtime ships batteries-included in-memory stores for public
 // embedding so common capabilities work without depending on server internals.
 
+use crate::SessionMutator;
 use crate::{SessionFileSystemFactory, SessionFileSystemFactoryContext};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -26,7 +27,6 @@ use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::provider::DriverId;
 use everruns_provider::runtime_provider::ProviderKey;
 use everruns_provider::typed_id::{AgentId, HarnessId, ModelId, SessionId};
-use everruns_session_services::SessionMutator;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;

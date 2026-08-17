@@ -3,6 +3,7 @@
 // different: canonical events are the only write path and EventHistory is the
 // rebuildable read projection.
 
+use crate::SessionMutator;
 use crate::events::{EventLog, EventSink, InMemoryEventLog, NoopEventSink};
 use crate::in_memory::{
     InMemoryAgentStore, InMemoryCompactionCheckpointStore, InMemoryHarnessStore,
@@ -22,7 +23,6 @@ use everruns_core::{
 use everruns_provider::error::Result;
 use everruns_provider::model_spec::ModelSpec;
 use everruns_provider::typed_id::HarnessId;
-use everruns_session_services::SessionMutator;
 use std::sync::Arc;
 
 /// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a

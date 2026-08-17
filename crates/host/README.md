@@ -39,6 +39,7 @@ fn accepts_inputs(_: ResolvedTurnInputs) {}
 - Store-backed snapshot/context loading, lifecycle validation, provider/driver
   resolution, and `StoreCommandHost` completion
 - Shared input, reason, act, lifecycle, MCP, filesystem, and scheduling host work
+- Session mutation/storage contracts and their portable `session` capabilities
 - Policy-aware `DirectEgressService` behind the opt-in `direct-egress` feature
 - Host adapter contracts for worker, local, and advanced integrations
 - Neutral extension ports for higher-level typed services, subagent delegates,

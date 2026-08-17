@@ -59,6 +59,7 @@ mod real_disk;
 mod runtime;
 mod runtime_context;
 mod session_file_system_factory;
+pub mod session_services;
 mod turn_strategy;
 #[cfg(feature = "utility-openai")]
 mod utility_llm;
@@ -122,6 +123,13 @@ pub use runtime_context::{
 pub use session_file_system_factory::{
     DisabledSessionFileSystemFactory, FixedSessionFileSystemFactory, SessionFileSystemFactory,
     SessionFileSystemFactoryContext,
+};
+pub use session_services::{
+    GetSessionInfoTool, KvStoreTool, SESSION_CAPABILITY_ID, SESSION_STORAGE_CAPABILITY_ID,
+    SecretStoreTool, SessionCapability, SessionCapabilityConfig, SessionMutator, SessionMutatorExt,
+    SessionStorageCapability, SessionTitleMutation, WriteSessionTitleTool,
+    is_internal_session_kv_key, is_internal_session_secret_name, session_title_updated_event,
+    update_session_title_with_event,
 };
 pub use turn_strategy::advance_host_execution;
 #[cfg(feature = "utility-openai")]

@@ -40,17 +40,11 @@ pub fn compose_runtime_capability_registry(mut registry: CapabilityRegistry) -> 
 /// sandbox capabilities need backends this host does not provide and stay with
 /// product composition.
 fn register_session_service_capabilities(registry: &mut CapabilityRegistry) {
-    if registry
-        .get(everruns_session_services::SESSION_CAPABILITY_ID)
-        .is_none()
-    {
-        registry.register(everruns_session_services::SessionCapability);
+    if registry.get(crate::SESSION_CAPABILITY_ID).is_none() {
+        registry.register(crate::SessionCapability);
     }
-    if registry
-        .get(everruns_session_services::SESSION_STORAGE_CAPABILITY_ID)
-        .is_none()
-    {
-        registry.register(everruns_session_services::SessionStorageCapability);
+    if registry.get(crate::SESSION_STORAGE_CAPABILITY_ID).is_none() {
+        registry.register(crate::SessionStorageCapability);
     }
 }
 

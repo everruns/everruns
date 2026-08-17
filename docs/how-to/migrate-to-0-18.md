@@ -49,10 +49,12 @@ everruns-platform = "0.18"   # persisted records, hosted service contracts
 everruns-host     = "0.18"   # execution composition and host wiring
 everruns-provider = "0.18"   # provider SPI, typed IDs, sqlx impls
 everruns-capability = "0.18" # capability identity/configuration contract
-everruns-session-services = "0.18" # neutral session host contracts
 everruns-mcp      = "0.18"   # MCP adapter and the OAuth protocol client
 everruns-llmsim   = "0.18"   # deterministic production-safe simulator
 ```
+
+The earlier `everruns-session-services` preview package was consolidated into
+`everruns-host`; use `everruns_host::session_services` for its namespaced API.
 
 ## Composition
 
@@ -159,7 +161,7 @@ If you were reading a stored record to run a turn, you probably want the portabl
 | 0.17 (`everruns_core::`) | 0.18 |
 |---|---|
 | `session_sqldb::*`, `SessionSqlDbStore`, `DatabaseInfo`, `SqlQueryResult`, `SqlExecuteResult`, `TableSchema`, `ColumnSchema`, `SessionSqlDbError` | `everruns_platform::session_sqldb::` |
-| `traits::SessionMutator` | `everruns_session_services::SessionMutator` (also re-exported by platform) |
+| `traits::SessionMutator` | `everruns_host::SessionMutator` (also re-exported by platform) |
 | `session_sandbox::*`, config, state, instance, exec/file payloads, `SessionSandboxProvider`, `SessionSandboxProviderPlugin` | `everruns_platform::session_sandbox::` |
 | `Connector`, `ConnectorRegistry`, `ConnectorPlugin` | `everruns_platform::connector::` |
 | `EmailSender`, `EmailMessage`, `SystemEmailConfig`, `ResendEmailSender` | `everruns_platform::email::` |
@@ -192,7 +194,7 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | what | 0.18 home |
 |---|---|
 | Knowledge Bases and Indexes, Memories, delegation, subagents, background and scheduled work, user hooks, citations, model scouting, platform management | `everruns_platform::capabilities::` |
-| Session info and session storage | `everruns_session_services::capabilities::` (also re-exported by platform) |
+| Session info and session storage | `everruns_host::session_services::capabilities::` (also re-exported by platform) |
 | Session SQL database and session sandbox | `everruns_platform::capabilities::` |
 | `spawn_background` and its runtime, event sink, admission permits, reattach | `everruns_platform::background_run::` |
 | Portable built-ins, human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
