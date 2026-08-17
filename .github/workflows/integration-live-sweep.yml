@@ -151,4 +151,4 @@ jobs:
           exit 1
 
       - name: Run live integration tests
-        run: cargo test -p everruns-container-sandbox --features container-sandbox-live-tests --test live_api_test -- --test-threads=1
+        run: cargo test -p everruns-platform --features container-sandbox-live-tests --test container_sandbox_live_api_test -- --test-threads=1

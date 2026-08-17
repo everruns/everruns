@@ -9,7 +9,7 @@ fn host_manifest_has_no_edge_to_facades_or_adapters() {
         .unwrap_or_else(|error| panic!("read {}: {error}", manifest_path.display()));
 
     for forbidden in [
-        "everruns-local",
+        "everruns =",
         "everruns-worker",
         "everruns-server",
         "everruns-durable",

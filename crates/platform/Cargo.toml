@@ -56,6 +56,15 @@ a2a = ["dep:a2a", "dep:a2a-client", "dep:url"]
 # Concrete outbound email transport is product opt-in. Platform record and
 # contract consumers do not compile an HTTP stack by default.
 email-resend = ["dep:reqwest"]
+container-sandbox = [
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:hex",
+    "dep:tar",
+    "dep:urlencoding",
+    "dep:base64",
+]
+container-sandbox-live-tests = ["container-sandbox"]
 
 [dependencies]
 # Cross-cutting value types (OrgRole, PrincipalKind/PrincipalSummary, Caller, the
@@ -100,6 +109,11 @@ inventory.workspace = true
 # runtime egress boundary — it is operator-owned deployment traffic.
 thiserror.workspace = true
 reqwest = { workspace = true, features = ["json", "rustls"], optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+tar = { workspace = true, optional = true }
+urlencoding = { version = "2", optional = true }
+base64 = { workspace = true, optional = true }
 
 # OpenAPI schema generation (optional, enabled by everruns-server).
 utoipa = { workspace = true, optional = true }
@@ -107,6 +121,10 @@ utoipa = { workspace = true, optional = true }
 # Embeds the workspace docs tree for the platform-management docs tools when the
 # `embedded-platform-docs` feature is on (EVE-839; moved with the capability).
 include_dir = { version = "0.7", optional = true }
+
+[[test]]
+name = "container_sandbox_live_api_test"
+required-features = ["container-sandbox-live-tests"]
 
 [dev-dependencies]
 everruns-builtins.workspace = true

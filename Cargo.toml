@@ -27,11 +27,8 @@ members = [
     "crates/gemini",
     "crates/turbopuffer",
     "crates/internal-protocol",
-    "crates/local",
     "crates/cli",
     "crates/durable",
-    "crates/container-sandbox",
-    "crates/observability",
     "crates/ard",
     "integrations/docker",
     "integrations/filesystem",
@@ -122,8 +119,8 @@ dotenvy = "0.15"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
-# OpenTelemetry (exporter deps are declared only by crates/observability —
-# EVE-876; scripts/lib/check-observability-isolation.sh enforces it)
+# OpenTelemetry (exporter deps are activated only by everruns-host's
+# observability feature; scripts/lib/check-observability-isolation.sh enforces it)
 opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["http-proto", "reqwest-client"] }
@@ -183,11 +180,9 @@ everruns-llmsim = { path = "crates/llmsim", version = "0.18.0", default-features
 everruns-test-support = { path = "crates/test-support", version = "0.18.0", default-features = false }
 everruns-platform = { path = "crates/platform", version = "0.18.0" }
 everruns-provider = { path = "crates/provider", version = "0.18.0", default-features = false }
-everruns-observability = { path = "crates/observability", version = "0.18.0" }
 everruns-mcp = { path = "crates/mcp", version = "0.18.0" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
 everruns-openai = { path = "crates/openai", version = "0.18.0" }
-everruns-local = { path = "crates/local", version = "0.18.0" }
 everruns = { path = "crates/everruns", version = "0.18.0" }
 everruns-macros = { path = "crates/macros", version = "0.18.0" }
 everruns-integrations-filesystem = { path = "integrations/filesystem", version = "0.18.0" }

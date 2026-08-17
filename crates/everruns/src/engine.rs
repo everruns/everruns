@@ -313,10 +313,10 @@ async fn initialize_backends(agent: &Agent) -> Result<Arc<EngineBackends>, Backe
                 .await
                 .map_err(BackendInitError::Event)?,
         );
-        let local = everruns_local::LocalBackends::new(profile, backends.with_event_log(event_log))
+        let local = crate::local::LocalBackends::new(profile, backends.with_event_log(event_log))
             .map_err(BackendInitError::Host)?;
         let session_store = Arc::new(
-            everruns_local::LocalSessionStore::new(local.db.clone())
+            crate::local::LocalSessionStore::new(local.db.clone())
                 .map_err(BackendInitError::Host)?,
         );
         return Ok(Arc::new(EngineBackends {

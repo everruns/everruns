@@ -204,7 +204,7 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | Filesystem, shell, web fetch, Lua | `everruns_integrations_*` |
 | MCP adapter | `everruns_mcp::` |
 | In-process HTTP egress transport | `everruns_host::DirectEgressService` |
-| Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_observability::` |
+| Telemetry init, exporter event listeners, `CompositeEventListener` | `everruns_host::observability::` (feature `observability`) |
 | `llmsim` driver, configs, scripted turns, registry helpers, host-builder extension | `everruns_llmsim::` |
 | in-memory agentic loop, writable test doubles, fixture capabilities | `everruns_test_support::` |
 | `everruns_core::in_memory::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` | `everruns_host::{InMemoryAgentStore, InMemoryHarnessStore, InMemorySessionStore, InMemoryProviderStore}` |

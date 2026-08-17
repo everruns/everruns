@@ -5,7 +5,7 @@
 example: it selects a model, adds typed coding capabilities, and binds a safe
 workspace policy. The surrounding CLI demonstrates provider-owned Git workspace
 heads, typed session resume, and direct session/workspace binding without importing
-`everruns-core`, `everruns-host`, or `everruns-local` directly.
+`everruns-core` or `everruns-host` directly.
 
 The deliberately small profile uses typed values for `session_file_system`,
 `bashkit_shell`, live `agent_instructions`, `skills`, `stateless_todo_list`,

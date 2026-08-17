@@ -107,7 +107,7 @@ pub mod event_listeners;
 // Error reporter (vendor-neutral embedder hook)
 pub mod error_reporter;
 
-// Observability implementations live in the `everruns-observability` crate
+// Observability implementations live behind `everruns-host/observability`
 // (EVE-651, EVE-876): exporter listeners (Braintrust, OpenTelemetry), the
 // CompositeEventListener fan-out, and OpenTelemetry/OTLP initialization. They
 // depend on core only for the `EventListener` trait, event types, and the

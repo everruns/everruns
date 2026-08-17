@@ -25,7 +25,7 @@ everruns-test-support = { path = "../test-support" }
 everruns-platform = { path = "../platform" }
 # Host + local wiring for the live subagent end-to-end test.
 everruns-host = { path = "../host" }
-everruns-local = { path = "../local" }
+everruns = { path = "../everruns", features = ["local"] }
 everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }
 everruns-fireworks = { path = "../fireworks" }

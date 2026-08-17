@@ -57,6 +57,11 @@ if [ ! -e crates/server/src/session_sqldb/mod.rs ]; then
   FAILED=1
 fi
 
+if [ -e crates/container-sandbox/Cargo.toml ] || [ ! -e crates/platform/src/container_sandbox/mod.rs ]; then
+  echo "The container sandbox must remain an opt-in everruns-platform module"
+  FAILED=1
+fi
+
 CORE_TREE=$(cargo tree -p everruns-core --edges normal,build --prefix none 2>/dev/null)
 if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
   echo "everruns-core must not ship the outbound A2A implementation subtree:"

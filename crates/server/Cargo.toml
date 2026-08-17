@@ -92,10 +92,9 @@ everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines
 everruns-provider = { path = "../provider", features = ["sqlx"] }
 # Backend identity entities (Organization, Principal) — moved out of core in EVE-837.
 everruns-builtins = { workspace = true, features = ["ui-capabilities"] }
-everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "email-resend"] }
-# Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
-# init these rely on stays in core's `telemetry` feature (on by default).
-everruns-observability = { workspace = true }
+everruns-platform = { path = "../platform", features = ["openapi", "environment-capabilities", "portable-builtins", "a2a", "email-resend", "container-sandbox"] }
+# Observability exporters are enabled through everruns-host below; core retains
+# neutral event-listener contracts only.
 everruns-mcp = { path = "../mcp" }
 everruns-integrations-bashkit.workspace = true
 everruns-integrations-web-fetch.workspace = true
@@ -112,9 +111,8 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
-everruns-container-sandbox = { path = "../container-sandbox" }
 rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
-everruns-host = { path = "../host", features = ["direct-egress", "utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
+everruns-host = { path = "../host", features = ["direct-egress", "utility-openai", "observability"] }  # HostComposition and deployment-owned utility LLM/telemetry wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
 everruns-internal-protocol = { path = "../internal-protocol" }

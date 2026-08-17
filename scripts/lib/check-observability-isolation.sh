@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-876): telemetry initialization and exporter
-# implementations live in crates/observability (`everruns-observability`).
+# implementations live behind `everruns-host/observability`.
 # The neutral kernel owns only the observability contracts — the
 # `EventListener` trait, event types, and the gen-AI span conventions:
 #
@@ -12,8 +12,8 @@
 #    dependency edges, so `cargo tree -p everruns-core` stays clean.
 # 3. Framework builds (the `everruns` facade) and provider-only crates must
 #    ship no OTLP/exporter subtree — default Framework builds stay offline.
-# 4. Only `everruns-observability` may declare the exporter dependencies
-#    among library crates; binaries install telemetry through it.
+# 4. Only `everruns-host` may declare the exporter dependencies among library
+#    crates; the feature stays off in default Framework and provider builds.
 
 set -euo pipefail
 
@@ -22,6 +22,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
 FAILED=0
+
+if [ -e crates/observability/Cargo.toml ] || [ ! -e crates/host/src/observability/mod.rs ]; then
+  echo "Observability must remain an opt-in everruns-host module, not a standalone crate"
+  FAILED=1
+fi
 
 EXPORTER_CRATES_TREE='^(opentelemetry|opentelemetry_sdk|opentelemetry-otlp|opentelemetry-http|opentelemetry-proto|tracing-opentelemetry) '
 
@@ -65,18 +70,18 @@ for crate in "${CLEAN_CRATES[@]}"; do
   fi
 done
 
-# 4. Exporter dependency declarations live in crates/observability only
+# 4. Exporter dependency declarations live in everruns-host only
 #    (binaries get them transitively; app/bin crates may not re-declare them).
 if matches=$(grep -rnE '^(opentelemetry|opentelemetry_sdk|opentelemetry-otlp|tracing-opentelemetry)[[:space:]]*[.=]' \
-  crates/*/Cargo.toml integrations/*/Cargo.toml 2>/dev/null | grep -v '^crates/observability/Cargo.toml'); then
-  echo "Exporter dependencies are owned by crates/observability (EVE-876):"
+  crates/*/Cargo.toml integrations/*/Cargo.toml 2>/dev/null | grep -v '^crates/host/Cargo.toml'); then
+  echo "Exporter dependencies are owned by everruns-host's observability feature:"
   echo "$matches"
   FAILED=1
 fi
 
 if [ "$FAILED" -ne 0 ]; then
-  echo "Observability isolation guard failed. Telemetry init and exporters belong in crates/observability (EVE-876)."
+  echo "Observability isolation guard failed. Telemetry init and exporters belong in everruns-host/observability."
   exit 1
 fi
 
-echo "Observability isolation guard passed: core carries contracts only; exporter deps stay in crates/observability."
+echo "Observability isolation guard passed: core carries contracts only; exporter deps stay behind everruns-host/observability."

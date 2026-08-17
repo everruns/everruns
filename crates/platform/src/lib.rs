@@ -37,6 +37,8 @@ pub mod reporting;
 
 // Hosted management seam and capabilities carved out of `everruns-core` (EVE-839).
 pub mod capabilities;
+#[cfg(feature = "container-sandbox")]
+pub mod container_sandbox;
 pub mod knowledge_store;
 pub mod memory;
 pub mod platform_store;

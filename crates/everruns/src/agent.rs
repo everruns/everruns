@@ -684,7 +684,7 @@ impl Agent {
             let registry = {
                 #[cfg(feature = "local")]
                 if self.local.is_some() {
-                    everruns_local::local_capability_registry()
+                    crate::local::local_capability_registry()
                 } else {
                     framework_capability_registry(false)
                 }
@@ -714,7 +714,7 @@ impl Agent {
                 if self.local.is_some() {
                     // The local profile serves the hosted catalog from SQLite
                     // (EVE-885), so validation and execution see one set.
-                    everruns_local::local_capability_registry()
+                    crate::local::local_capability_registry()
                 } else {
                     framework_capability_registry(false)
                 }
@@ -1196,7 +1196,7 @@ impl AgentBuilder {
         let capability_registry = {
             #[cfg(feature = "local")]
             if self.local.is_some() {
-                everruns_local::local_capability_registry()
+                crate::local::local_capability_registry()
             } else {
                 framework_capability_registry(false)
             }

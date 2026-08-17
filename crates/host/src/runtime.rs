@@ -77,7 +77,7 @@ const HASH_INPUT_CAP_BYTES: usize = 128;
 /// original public id string so runtime namespaces do not fail open to the
 /// shared default org and avoid arithmetic collision gadgets.
 ///
-/// Exposed so embedders (e.g. `everruns-local`) can scope per-org stores to the
+/// Exposed so embedders (for example `everruns::local`) can scope per-org stores to the
 /// same internal id the act path resolves a session's org to.
 pub fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
@@ -633,7 +633,7 @@ impl InProcessRuntimeBuilder {
     ///
     /// When using [`Self::single_session`], call
     /// [`SingleSessionBuilder::agent_plugin`] to add the capability ref to the
-    /// seeded agent, or use [`AgentBuilder::capability`] / `with_capability`
+    /// seeded agent, or use [`crate::AgentBuilder::capability`] / `with_capability`
     /// directly.
     pub fn with_plugin_dir(mut self, path: &Path) -> Result<Self> {
         let file_set = PluginFileSet::from_dir(path)

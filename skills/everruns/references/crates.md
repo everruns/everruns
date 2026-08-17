@@ -104,11 +104,12 @@ owns. When unset, connection-aware tools fall back to their own guidance
 
 ## Durable local backends
 
-| Crate | Provides |
-|---|---|
-| `everruns-local` | SQLite-backed, restart-survivable stores for single-process hosts: `LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, a `LocalProfile`, a composable `LocalBackends`, and an optional `LocalRuntimeBuilder` |
+The `everruns::local` module (feature `local`) provides SQLite-backed,
+restart-survivable stores for single-process hosts: `LocalSessionTaskRegistry`,
+`LocalScheduleStore`, `LocalPlatformStore`, `LocalProfile`, composable
+`LocalBackends`, and `LocalRuntimeBuilder`.
 
-`everruns-local` populates optional `everruns-host` backend slots
+The module populates optional `everruns-host` backend slots
 (`session_task_registry`, `schedule_store_factory`, `platform_store_factory`),
 which otherwise default to in-memory. Use it when background tasks, schedules, or
 session state must survive a process restart.

@@ -2,7 +2,7 @@
 // Decision: Uses WorkerAppBuilder for composable worker setup
 
 use anyhow::Result;
-use everruns_observability::{TelemetryConfig, init_telemetry};
+use everruns_host::observability::{TelemetryConfig, init_telemetry};
 use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
 
 // Use mimalloc as the global allocator. The worker runs heavy concurrent

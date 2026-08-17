@@ -87,7 +87,7 @@ impl EventListener for NoopEventListener {
 }
 
 // Note: `CompositeEventListener` (fan-out with panic isolation) lives in the
-// `everruns-observability` crate (EVE-876). Core keeps only the neutral
+// `everruns-host/observability` feature. Core keeps only the neutral
 // listener contract and the no-op implementation.
 
 // ============================================================================

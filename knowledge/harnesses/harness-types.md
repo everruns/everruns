@@ -205,7 +205,7 @@ Coding harness with Daytona cloud sandboxes (real filesystem, full process execu
 
 ### Coding (Container)
 
-Coding harness backed by self-hosted Docker container sandboxes plus GitHub Scout subagents for repository exploration. Inherits from Generic. Visible only when the `container_sandbox` capability plugin is registered (gated by the `FEATURE_CONTAINER_SANDBOX` flag). See `crates/server/src/harnesses/coding_container.rs` for the harness definition and [`crates/container-sandbox/SPEC.md`](../../crates/container-sandbox/SPEC.md) for the underlying capability spec.
+Coding harness backed by self-hosted Docker container sandboxes plus GitHub Scout subagents for repository exploration. Inherits from Generic. Visible only when the `container_sandbox` capability plugin is registered (gated by the `FEATURE_CONTAINER_SANDBOX` flag). See `crates/server/src/harnesses/coding_container.rs` for the harness definition and the [container sandbox specification](../runtime-resources/container-sandbox.md) for the underlying capability.
 
 ## Future Harness Types
 

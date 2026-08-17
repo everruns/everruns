@@ -4,7 +4,7 @@
 use clap::Parser;
 
 use anyhow::Result;
-use everruns_observability::{TelemetryConfig, init_telemetry};
+use everruns_host::observability::{TelemetryConfig, init_telemetry};
 use everruns_server::ServerAppBuilder;
 use everruns_server::auth;
 use everruns_server::server::ServerConfig;
