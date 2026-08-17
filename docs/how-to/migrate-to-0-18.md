@@ -196,6 +196,8 @@ extensions.insert(Arc::new(SessionMutatorExt(mutator)));
 | Session SQL database and session sandbox | `everruns_platform::capabilities::` |
 | `spawn_background` and its runtime, event sink, admission permits, reattach | `everruns_platform::background_run::` |
 | Portable built-ins, human intent, infinity context, skills, UI prompts, compaction, tool search | `everruns_builtins::` |
+| `everruns_openui::{PromptOptions, default_library, generate_prompt}` | `everruns_builtins::openui::{PromptOptions, default_library, generate_prompt}` |
+| `everruns_a2ui::{PromptOptions, default_catalog, generate_prompt}` | `everruns_builtins::a2ui::{PromptOptions, default_catalog, generate_prompt}` |
 | OpenRouter workspace, model scout, and provider-executed server tools | `everruns_integrations_openrouter_workspace::` |
 | Filesystem, shell, web fetch, Lua | `everruns_integrations_*` |
 | MCP adapter | `everruns_mcp::` |

@@ -99,11 +99,11 @@ Every node is `{ type, props?, children? }`. Props are per-component. Children i
 flat array of nested nodes. Streaming-friendly: partial trees render as soon as
 they parse.
 
-## Crate: `everruns-a2ui`
+## Module: `everruns_builtins::a2ui`
 
-Path: `crates/a2ui/`.
+Path: `crates/builtins/src/a2ui/`.
 
-Mirrors the `everruns-openui` pattern: static Rust catalog definitions plus a
+Mirrors the `everruns_builtins::openui` pattern: static Rust catalog definitions plus a
 prompt generator. No runtime parsing, the LLM receives a prompt and the renderer
 lives in the UI.
 
@@ -126,7 +126,7 @@ lives in the UI.
 5. **Streaming guidance**: emit shell first, fill children progressively
 6. **Important rules**: stay within catalog, omit unknown props, prefer lists over repeats
 
-Ref: `crates/a2ui/src/prompt.rs`.
+Ref: `crates/builtins/src/a2ui/prompt.rs`.
 
 ### Canonical catalog
 

@@ -52,7 +52,7 @@ directly when building a custom capability registry or a minimal host.
 - Atomic capability-ID and alias collision rejection
 
 The `ui-capabilities` feature enables the OpenUI and A2UI implementations and
-their focused protocol crates. It is selected by the hosted product catalog;
+their catalog/prompt modules at `everruns_builtins::{openui,a2ui}`. It is selected by the hosted product catalog;
 the embedded runtime bundle remains UI-protocol neutral.
 
 ## Documentation

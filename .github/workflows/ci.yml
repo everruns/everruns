@@ -347,8 +347,7 @@ jobs:
       - name: Check published crates against MSRV
         run: |
           cargo check --locked --all-features \
-            -p everruns-openui \
-            -p everruns-a2ui \
+            -p everruns-builtins \
             -p everruns-core \
             -p everruns-openai \
             -p everruns-anthropic \

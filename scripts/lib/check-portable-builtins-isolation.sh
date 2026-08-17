@@ -70,8 +70,12 @@ if matches=$(rg -n '(with_builtins|runtime_builtins|with_builtins_for_grade)' cr
   printf '%s\n' "$matches"
 fi
 
-if matches=$(rg -n 'everruns-(openui|a2ui)' crates/core/Cargo.toml); then
-  fail "UI implementation dependencies remain in crates/core/Cargo.toml:"
+if [ -e crates/openui/Cargo.toml ] || [ -e crates/a2ui/Cargo.toml ]; then
+  fail "OpenUI and A2UI catalogs belong to everruns-builtins, not standalone crates"
+fi
+
+if matches=$(rg -n 'everruns-(openui|a2ui)' Cargo.toml crates/{core,builtins}/Cargo.toml); then
+  fail "standalone UI catalog dependencies remain in workspace manifests:"
   printf '%s\n' "$matches"
 fi
 
@@ -106,7 +110,7 @@ CORE_ALL_FEATURES_TREE=$(cargo tree -p everruns-core --all-features -e normal --
 assert_tree_excludes \
   "everruns-core all-feature normal dependency tree" \
   "$CORE_ALL_FEATURES_TREE" \
-  everruns-builtins everruns-openui everruns-a2ui
+  everruns-builtins
 
 FRAMEWORK_MINIMAL_TREE=$(cargo tree -p everruns --no-default-features -e normal --prefix none)
 assert_tree_excludes \

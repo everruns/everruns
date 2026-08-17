@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 
-use crate::catalog::Catalog;
-use crate::components::ComponentDef;
+use super::catalog::Catalog;
+use super::components::ComponentDef;
 
 /// Options for customizing the generated prompt.
 #[derive(Default)]
@@ -190,9 +190,9 @@ pub fn generate_prompt(catalog: &Catalog, options: &PromptOptions) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::catalog::ComponentCategory;
+    use super::super::components::PropDef;
     use super::*;
-    use crate::catalog::ComponentCategory;
-    use crate::components::PropDef;
 
     fn fixture() -> Catalog {
         Catalog {
