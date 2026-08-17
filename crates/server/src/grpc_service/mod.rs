@@ -642,9 +642,9 @@ impl WorkerServiceImpl {
         });
 
         // Create session SQL database store (always available, in-memory backend)
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Option<Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore>> =
-            Some(Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
+            Some(Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(
                 sqldb_backend,
             )));
 

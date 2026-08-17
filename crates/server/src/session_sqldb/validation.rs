@@ -1,6 +1,6 @@
 // Database name validation
 
-use crate::error::SqlDbError;
+use super::error::SqlDbError;
 
 /// Validate a database name.
 ///

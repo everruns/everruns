@@ -113,7 +113,7 @@ everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
-everruns-session-sqldb = { path = "../session-sqldb" }
+rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 everruns-host = { path = "../host", features = ["direct-egress", "utility-openai"] }  # HostComposition and deployment-owned utility LLM wiring
 everruns-worker = { path = "../worker" }  # For AgentRunner trait
 everruns-turbopuffer = { path = "../turbopuffer" }  # Opt-in vector-store backend
