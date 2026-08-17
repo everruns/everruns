@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Architecture guard (EVE-875): deterministic production simulation lives in
-# crates/llmsim (`everruns-llmsim`); testing/demo helpers live in
+# crates/drivers/llmsim (`everruns-llmsim`); testing/demo helpers live in
 # crates/test-support (`everruns-test-support`).
 #
 # 1. Production source trees must not import `everruns-test-support`.
@@ -72,7 +72,7 @@ for crate in "${PROVIDER_CRATES[@]}"; do
 done
 
 # 5/6. Concrete public backend and simulator implementation ownership.
-if [ ! -f crates/llmsim/src/lib.rs ] || ! grep -q 'pub struct LlmSimDriver' crates/llmsim/src/lib.rs; then
+if [ ! -f crates/drivers/llmsim/src/lib.rs ] || ! grep -q 'pub struct LlmSimDriver' crates/drivers/llmsim/src/lib.rs; then
   echo "LlmSimDriver must be owned by everruns-llmsim."
   FAILED=1
 fi

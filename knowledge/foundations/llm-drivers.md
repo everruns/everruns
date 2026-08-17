@@ -21,6 +21,12 @@ drivers to concrete services. Core business logic resolves a credential-free
 model specification and runtime provider independently, then passes the
 provider-owned endpoint into the protocol driver.
 
+Official driver packages are physically grouped under
+[`crates/drivers/`](../../crates/drivers/README.md). The folder is only a
+repository organization boundary: every child remains an independently
+versioned crate, and `everruns-provider` remains the neutral SPI they
+implement.
+
 ## Architecture
 
 ```mermaid
@@ -86,9 +92,9 @@ Drivers MUST use the following error types from `AgentLoopError`:
 ### Error Detection Requirements
 
 Each driver MUST implement provider-specific error detection to classify context-length and token-limit errors as `RequestTooLarge`. See the individual driver crates for the detection logic:
-- `crates/openai/src/`, OpenAI error detection
-- `crates/anthropic/src/`, Anthropic error detection
-- `crates/gemini/src/`, Gemini error detection
+- `crates/drivers/openai/src/`, OpenAI error detection
+- `crates/drivers/anthropic/src/`, Anthropic error detection
+- `crates/drivers/gemini/src/`, Gemini error detection
 
 ### Provider registry and 0.17 compatibility catalog
 
@@ -174,7 +180,7 @@ Agents can override `max_tokens` via agent config. Cost guardrails should be con
 
 Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/provider/src/model_profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/drivers/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/provider/src/model_profiles.rs`.
 
 #### Stream Events
 
@@ -192,8 +198,8 @@ Both providers require preserved thinking context for multi-turn conversations. 
 | `thinking_signature` | Cryptographic signature | `encrypted_content` token |
 
 Provider-specific wire format details live in the driver implementations:
-- `crates/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, signature capture, message ordering
-- `crates/openai/src/driver.rs` -- reasoning config, encrypted content, reasoning item format
+- `crates/drivers/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, signature capture, message ordering
+- `crates/drivers/openai/src/driver.rs` -- reasoning config, encrypted content, reasoning item format
 
 #### Reasoning Guard Logic
 
@@ -331,15 +337,15 @@ re-executes a completed tool.
 |-----------|----------|
 | ChatDriver trait | `crates/provider/src/driver_registry.rs` |
 | AgentLoopError | `crates/provider/src/error.rs` |
-| OpenAI driver | `crates/openai/src/driver.rs` |
+| OpenAI driver | `crates/drivers/openai/src/driver.rs` |
 | Open Responses protocol | `crates/provider/src/openresponses_protocol.rs` |
 | Chat Completions protocol | `crates/provider/src/openai_protocol.rs` |
-| Anthropic driver | `crates/anthropic/src/driver.rs` |
-| Gemini driver | `crates/gemini/src/driver.rs` |
-| Bedrock driver | `crates/bedrock/src/driver.rs` |
-| Microsoft MAI driver | `crates/mai/src/driver.rs` |
-| Fireworks AI driver | `crates/fireworks/src/driver.rs` |
-| Meta Model API driver | `crates/meta/src/driver.rs` |
+| Anthropic driver | `crates/drivers/anthropic/src/driver.rs` |
+| Gemini driver | `crates/drivers/gemini/src/driver.rs` |
+| Bedrock driver | `crates/drivers/bedrock/src/driver.rs` |
+| Microsoft MAI driver | `crates/drivers/mai/src/driver.rs` |
+| Fireworks AI driver | `crates/drivers/fireworks/src/driver.rs` |
+| Meta Model API driver | `crates/drivers/meta/src/driver.rs` |
 | Error handling | `crates/engine/src/execution/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -770,15 +776,15 @@ incident, not a cosmetic bug.
 
 > **Driver code never reads provider *credentials* from the process
 > environment.** No `std::env::var` for an API key, secret, or endpoint base URL
-> in any `crates/openai`, `crates/anthropic`, `crates/gemini`,
-> `crates/openrouter`, `crates/bedrock`, `crates/mai`, or the protocol drivers in
+> in any `crates/drivers/openai`, `crates/drivers/anthropic`, `crates/drivers/gemini`,
+> `crates/drivers/openrouter`, `crates/drivers/bedrock`, `crates/drivers/mai`, or the protocol drivers in
 > `crates/core` (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials
 > only ever arrive through a runtime provider assembly or a `DriverConfig`
 > compatibility/catalog adapter.
 >
 > Scope: this bans reading *credentials* from env, not all environment access. A
 > driver may still read a non-credential tuning knob from env (e.g.
-> `OPENAI_IMAGE_TIMEOUT_SECS` in `crates/openai/src/images.rs`).
+> `OPENAI_IMAGE_TIMEOUT_SECS` in `crates/drivers/openai/src/images.rs`).
 
 There are exactly **two** sanctioned ways credentials reach a driver. Every code
 path must be one of them; there is no third option and no fallback between them.
@@ -941,7 +947,7 @@ env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 ## Testing
 
 1. **Unit Tests**: Each driver MUST have tests for error detection functions
-2. **LlmSim**: Use `ProviderType::LlmSim` for integration tests and offline product demos without real API keys. The production-safe driver lives in `everruns-llmsim` (`crates/llmsim/src/lib.rs`); core carries no simulation code, and product consumers depend on the simulator rather than test-support. `LlmSimConfig::scripted(...)` supports deterministic multi-turn scenarios with assistant text, tool calls, mixed turns, injected errors, and configurable exhaustion behavior. `everruns-test-support` uses the driver for its in-memory loop and keeps 0.17 simulator paths only as a 0.18 migration bridge.
+2. **LlmSim**: Use `ProviderType::LlmSim` for integration tests and offline product demos without real API keys. The production-safe driver lives in `everruns-llmsim` (`crates/drivers/llmsim/src/lib.rs`); core carries no simulation code, and product consumers depend on the simulator rather than test-support. `LlmSimConfig::scripted(...)` supports deterministic multi-turn scenarios with assistant text, tool calls, mixed turns, injected errors, and configurable exhaustion behavior. `everruns-test-support` uses the driver for its in-memory loop and keeps 0.17 simulator paths only as a 0.18 migration bridge.
 3. **Error Detection Tests**: Cover all documented error patterns for each provider
 4. **Parametrized Integration Tests**: Use `rstest` matrix in `crates/core/tests/`:
    - `llm_test_matrix/mod.rs`, shared `ProviderModelConfig` structs and `all_providers_registry()`

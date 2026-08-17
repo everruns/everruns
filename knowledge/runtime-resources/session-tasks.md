@@ -599,7 +599,7 @@ No backward compatibility is required; data migrates forward once:
   heartbeat every ~2s and poll `cancel_requested_at`, winding down to
   `canceled` when set (works across worker processes).
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
-  key (see `crates/llmsim/src/lib.rs`).
+  key (see `crates/drivers/llmsim/src/lib.rs`).
 
 ## Recurrence and task definitions (decision: defer, EVE-584)
 

@@ -263,10 +263,12 @@ mod tests {
                 .create_chat_driver(&ProviderConfig::new(DriverId::Meta).with_api_key("test-key"))
                 .is_ok()
         );
+        // Missing credentials still construct a fail-closed driver so hosts
+        // can inspect and repair configuration before any network operation.
         assert!(
             registry
                 .create_chat_driver(&ProviderConfig::new(DriverId::Meta))
-                .is_err()
+                .is_ok()
         );
     }
 }

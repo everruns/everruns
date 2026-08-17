@@ -635,7 +635,7 @@ impl AnthropicChatDriver {
     /// tool entry. The model sees names + descriptions for deferred tools and
     /// loads their full schemas on demand via a natural-language search query.
     ///
-    /// See `crates/anthropic/src/driver.rs` callers and
+    /// See `crates/drivers/anthropic/src/driver.rs` callers and
     /// docs.claude.com/.../tool-search-tool for the wire format. Mirrors the
     /// OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
     /// defers each tool individually).

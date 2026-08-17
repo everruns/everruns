@@ -8,7 +8,7 @@
 // Like `openai_tool_search`, this capability provides no tools itself — it sets a
 // provider-agnostic `ToolSearchConfig`. The Anthropic driver consumes that config
 // and renders the hosted format (`defer_loading: true` per tool plus a
-// `tool_search_tool_bm25_20251119` entry). See `crates/anthropic/src/driver.rs`.
+// `tool_search_tool_bm25_20251119` entry). See `crates/drivers/anthropic/src/driver.rs`.
 //
 // If the model does not support tool_search (tool_search=false in the Anthropic
 // profile), this capability is silently ignored — no error, no crash. Use

@@ -24,15 +24,26 @@ cd "$PROJECT_ROOT"
 
 FAILED=0
 
+DRIVER_LAYOUT_NAMES=(
+  anthropic
+  bedrock
+  fireworks
+  gemini
+  llmsim
+  mai
+  meta
+  openai
+  openrouter
+)
 PROVIDER_DIRS=(
-  crates/openai
-  crates/anthropic
-  crates/openrouter
-  crates/gemini
-  crates/bedrock
-  crates/mai
-  crates/fireworks
-  crates/meta
+  crates/drivers/openai
+  crates/drivers/anthropic
+  crates/drivers/openrouter
+  crates/drivers/gemini
+  crates/drivers/bedrock
+  crates/drivers/mai
+  crates/drivers/fireworks
+  crates/drivers/meta
 )
 PROVIDER_CRATES=(
   everruns-openai
@@ -46,6 +57,19 @@ PROVIDER_CRATES=(
 )
 FORBIDDEN_TREE='^(everruns-core|everruns-host|everruns-platform|everruns-server) '
 HEAVY_TREE='^(sqlx|utoipa|inventory|axum|tonic) '
+
+# Keep model drivers physically grouped without turning the directory into a
+# package or shared version boundary.
+for driver in "${DRIVER_LAYOUT_NAMES[@]}"; do
+  if [ ! -f "crates/drivers/$driver/Cargo.toml" ]; then
+    echo "Missing driver package: crates/drivers/$driver/Cargo.toml"
+    FAILED=1
+  fi
+  if [ -e "crates/$driver" ]; then
+    echo "Driver packages belong under crates/drivers, not crates/$driver"
+    FAILED=1
+  fi
+done
 
 # 1. No kernel/product imports anywhere in provider crates (tests included —
 #    dev-only coupling is exactly what EVE-874 removed).

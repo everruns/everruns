@@ -1,9 +1,9 @@
-# Anthropic Provider Implementation
-# Decision: Implements the everruns-provider ChatDriver contract for the Claude API
-# Decision: Uses Anthropic's messages API with streaming support
+# OpenAI Provider Implementation
+# Decision: Implements the everruns-provider ChatDriver contract for the OpenAI API
+# Decision: Uses OpenAI's chat completion API with streaming support
 
 [package]
-name = "everruns-anthropic"
+name = "everruns-openai"
 version = "0.18.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -11,10 +11,10 @@ license.workspace = true
 authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
-documentation = "https://docs.rs/everruns-anthropic"
-description = "Anthropic (Claude) provider for Everruns agents"
+documentation = "https://docs.rs/everruns-openai"
+description = "OpenAI (GPT) provider for Everruns agents"
 readme = "README.md"
-keywords = ["agent", "llm", "ai", "anthropic", "claude"]
+keywords = ["agent", "llm", "ai", "openai", "gpt"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
@@ -23,11 +23,9 @@ async-trait.workspace = true
 
 # Async runtime
 tokio.workspace = true
-futures.workspace = true
 
 # HTTP client
 reqwest.workspace = true
-eventsource-stream.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -43,10 +41,8 @@ tracing.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../provider", version = "0.18.0" }
+everruns-provider = { path = "../../provider", version = "0.18.0" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
-# wiremock serves the golden streaming SSE fixtures; futures drains the stream.
 wiremock = "0.6"
-futures.workspace = true

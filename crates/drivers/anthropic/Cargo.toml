@@ -1,21 +1,21 @@
-# Google Gemini Provider Implementation
-# Decision: Implements the everruns-provider ChatDriver contract for the Google Gemini API
-# Decision: Uses Gemini's generateContent API with streaming support
+# Anthropic Provider Implementation
+# Decision: Implements the everruns-provider ChatDriver contract for the Claude API
+# Decision: Uses Anthropic's messages API with streaming support
 
 [package]
-name = "everruns-gemini"
-readme = "README.md"
-keywords = ["agent", "llm", "ai", "gemini", "google"]
-categories = ["api-bindings", "asynchronous"]
+name = "everruns-anthropic"
 version = "0.18.0"
-rust-version.workspace = true
-homepage.workspace = true
-repository.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Google Gemini provider for Everruns agents"
-documentation = "https://docs.rs/everruns-gemini"
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-anthropic"
+description = "Anthropic (Claude) provider for Everruns agents"
+readme = "README.md"
+keywords = ["agent", "llm", "ai", "anthropic", "claude"]
+categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
 # Core dependencies
@@ -27,10 +27,14 @@ futures.workspace = true
 
 # HTTP client
 reqwest.workspace = true
+eventsource-stream.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+
+# Date/time
+chrono.workspace = true
 
 # Tracing
 tracing.workspace = true
@@ -39,7 +43,7 @@ tracing.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { path = "../provider", version = "0.18.0" }
+everruns-provider = { path = "../../provider", version = "0.18.0" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
