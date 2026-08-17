@@ -116,6 +116,9 @@ pub mod seed;
 pub mod leased_resource_scheduler;
 pub mod session_scheduler;
 
+// Server-owned session-scoped SQLite implementation.
+pub mod session_sqldb;
+
 // Session-task orphan reconciler schedule seeder
 pub mod session_task_reaper_scheduler;
 

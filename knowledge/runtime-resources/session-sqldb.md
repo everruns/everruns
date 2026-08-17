@@ -51,12 +51,12 @@ Session-scoped SQLite databases backed by PostgreSQL page-level storage. Each se
 - Application-level mutex: Doesn't work across server instances
 **Rationale:** `pg_advisory_xact_lock(hashtext(database_id))` serializes writers per database. Reads are concurrent. Lock auto-released on transaction commit.
 
-### Decision 6: Own Crate
-**Chosen:** `crates/session-sqldb` isolates all SQLite/VFS logic
+### Decision 6: Server-Owned Module
+**Chosen:** `crates/server/src/session_sqldb` isolates all SQLite/VFS logic inside its only deployment owner
 **Alternatives considered:**
-- Inline in server crate: Mixes concerns
+- Standalone leaf crate: Adds package and release overhead without another consumer
 - In core crate: Core should stay lightweight
-**Rationale:** Clean separation. Crate owns rusqlite dependency, VFS implementation, query execution, and security (authorizer). Server and core depend on it for types and backends.
+**Rationale:** A focused server module keeps the rusqlite dependency, VFS implementation, query execution, and authorizer isolated without presenting a false reusable boundary. Portable contracts remain in platform; core stays lightweight.
 
 ### Decision 7: Auto-Create on Execute
 **Chosen:** `sql_execute` tool auto-creates database if it doesn't exist
@@ -67,7 +67,7 @@ Session-scoped SQLite databases backed by PostgreSQL page-level storage. Each se
 
 ## Data Model
 
-See `crates/session-sqldb/src/types.rs` for `SessionDatabase` and `SessionDatabasePage` struct definitions. See `crates/server/migrations/` for the database schema DDL.
+See `crates/server/src/session_sqldb/types.rs` for the backend result types. See `crates/server/migrations/` for the database schema DDL.
 
 ## Functional Requirements
 
@@ -372,11 +372,11 @@ holds the paged SQLite backing store keyed by `(database_id, page_number)`.
 
 ## Implementation Status
 
-- [x] Core types and async trait (`crates/core/src/session_sqldb.rs`)
-- [x] Capability + 3 tools (`crates/core/src/capabilities/session_sql_database.rs`)
-- [x] In-memory backend (`crates/session-sqldb/src/memory.rs`)
-- [x] Async store wrapper (`crates/session-sqldb/src/store.rs`)
-- [x] Query executor with authorizer and limits (`crates/session-sqldb/src/executor.rs`)
+- [x] Portable types and async trait (`crates/platform/src/session_sqldb.rs`)
+- [x] Capability + 3 tools (`crates/platform/src/capabilities/session_sql_database.rs`)
+- [x] In-memory backend (`crates/server/src/session_sqldb/memory.rs`)
+- [x] Async store wrapper (`crates/server/src/session_sqldb/store.rs`)
+- [x] Query executor with authorizer and limits (`crates/server/src/session_sqldb/executor.rs`)
 - [x] HTTP API routes (`crates/server/src/api/session_databases.rs`)
 - [x] Wired into server main, worker adapters, ActAtom
 - [x] Seed agent: Data Analyst

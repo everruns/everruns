@@ -372,9 +372,9 @@ impl TestServer {
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
         // Session SQL database store (in-memory for all test modes)
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_backend = Arc::new(everruns_server::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> = Arc::new(
-            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+            everruns_server::session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
         let provider_resolver = Arc::new(services::ProviderResolverService::new(
             db.clone(),

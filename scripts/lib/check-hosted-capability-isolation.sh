@@ -47,6 +47,16 @@ if grep -qE '^(a2a|a2a-client)[[:space:]]*=' crates/core/Cargo.toml; then
   FAILED=1
 fi
 
+if [ -e crates/session-sqldb/Cargo.toml ]; then
+  echo "The server-only session SQLite backend must not be a standalone crate"
+  FAILED=1
+fi
+
+if [ ! -e crates/server/src/session_sqldb/mod.rs ]; then
+  echo "The server must own the session SQLite backend module"
+  FAILED=1
+fi
+
 CORE_TREE=$(cargo tree -p everruns-core --edges normal,build --prefix none 2>/dev/null)
 if echo "$CORE_TREE" | grep -qE '^(a2a-lf|a2a-client-lf) '; then
   echo "everruns-core must not ship the outbound A2A implementation subtree:"

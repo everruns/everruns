@@ -1,7 +1,6 @@
 //! Session-scoped SQL databases for Everruns agents.
 //!
-//! `everruns-session-sqldb` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It gives each session its own SQLite-compatible database, backed
+//! This server module gives each session its own SQLite-compatible database, backed
 //! by PostgreSQL page-level storage in production (or an in-memory backend in
 //! dev mode), so agents can create tables, run queries, and persist structured
 //! data with multi-tenant isolation.
@@ -10,7 +9,7 @@
 //!
 //! ```
 //! use everruns_provider::typed_id::SessionId;
-//! use everruns_session_sqldb::InMemorySqlDbBackend;
+//! use everruns_server::session_sqldb::InMemorySqlDbBackend;
 //!
 //! let backend = InMemorySqlDbBackend::new();
 //! let session = SessionId::new();

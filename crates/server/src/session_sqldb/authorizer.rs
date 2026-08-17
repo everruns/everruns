@@ -4,7 +4,7 @@
 // and write-mode PRAGMAs. This is the primary security boundary for
 // session SQL databases.
 
-use crate::error::SqlDbError;
+use super::error::SqlDbError;
 use rusqlite::Connection;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use tracing::warn;

@@ -30,7 +30,6 @@ members = [
     "crates/local",
     "crates/cli",
     "crates/durable",
-    "crates/session-sqldb",
     "crates/container-sandbox",
     "crates/observability",
     "crates/ard",

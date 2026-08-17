@@ -72,7 +72,7 @@ See `knowledge/security/threat-model.md#20-container-sandbox-tm-sandbox` for ful
 
 ### Core crate, not integration
 
-Located at `crates/container-sandbox/`, not `integrations/`. This is core infrastructure (self-hosted Docker), not an external SaaS service. Same pattern as `crates/session-sqldb/`.
+Located at `crates/container-sandbox/`, not `integrations/`. This is deployment infrastructure (self-hosted Docker), not an external SaaS service. Unlike the server-only session SQLite implementation, it is shared by multiple deployment compositions.
 
 ### REST API over CLI
 

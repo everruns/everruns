@@ -4,11 +4,11 @@
 // Each connection is wrapped in a Mutex for thread-safe access.
 // Connection is Send (rusqlite bundled) so Mutex<Connection> is Send + Sync.
 
-use crate::error::SqlDbError;
-use crate::executor::{configure_connection, execute_query, execute_statement, get_schema};
-use crate::limits::{MAX_DATABASES_PER_SESSION, MAX_DB_SIZE_BYTES, MAX_SESSION_TOTAL_SIZE_BYTES};
-use crate::types::{DatabaseInfo, SqlExecuteResult, SqlQueryResult, TableSchema};
-use crate::validation::validate_database_name;
+use super::error::SqlDbError;
+use super::executor::{configure_connection, execute_query, execute_statement, get_schema};
+use super::limits::{MAX_DATABASES_PER_SESSION, MAX_DB_SIZE_BYTES, MAX_SESSION_TOTAL_SIZE_BYTES};
+use super::types::{DatabaseInfo, SqlExecuteResult, SqlQueryResult, TableSchema};
+use super::validation::validate_database_name;
 use chrono::Utc;
 use everruns_provider::typed_id::SessionId;
 use parking_lot::{Mutex, RwLock};

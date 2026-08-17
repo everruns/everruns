@@ -3,12 +3,12 @@
 // Operates on any rusqlite::Connection (VFS-backed or in-memory).
 // Handles authorizer installation, progress handler, result mapping.
 
-use crate::authorizer::install_authorizer;
-use crate::error::SqlDbError;
-use crate::limits::{
+use super::authorizer::install_authorizer;
+use super::error::SqlDbError;
+use super::limits::{
     MAX_RESULT_ROWS, MAX_RESULT_SIZE_BYTES, PROGRESS_HANDLER_INTERVAL, QUERY_TIMEOUT_SECS,
 };
-use crate::types::{ColumnSchema, SqlExecuteResult, SqlQueryResult, TableSchema};
+use super::types::{ColumnSchema, SqlExecuteResult, SqlQueryResult, TableSchema};
 use rusqlite::Connection;
 use serde_json::Value;
 use std::sync::Arc;

@@ -3762,11 +3762,9 @@ mod tests {
         ));
         let cap_registry = CapabilityRegistry::new();
         let driver_registry = everruns_worker::create_driver_registry();
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
-            Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
-                sqldb_backend,
-            ));
+            Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
 
         DirectWorkerAdapters::new(
             db,
@@ -4522,11 +4520,9 @@ mod tests {
         ));
         let cap_registry = CapabilityRegistry::new();
         let driver_registry = everruns_worker::create_driver_registry();
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_backend = Arc::new(crate::session_sqldb::InMemorySqlDbBackend::new());
         let sqldb_store: std::sync::Arc<dyn everruns_platform::session_sqldb::SessionSqlDbStore> =
-            Arc::new(everruns_session_sqldb::InMemorySqlDbStore::new(
-                sqldb_backend,
-            ));
+            Arc::new(crate::session_sqldb::InMemorySqlDbStore::new(sqldb_backend));
 
         DirectWorkerAdapters::new(
             db,

@@ -3563,7 +3563,6 @@ dependencies = [
  "everruns-platform",
  "everruns-provider",
  "everruns-sdk",
- "everruns-session-sqldb",
  "everruns-turbopuffer",
  "everruns-worker",
  "flate2",
@@ -3591,6 +3590,7 @@ dependencies = [
  "rand 0.10.2",
  "regex",
  "reqwest 0.13.4",
+ "rusqlite",
  "serde",
  "serde_html_form 0.4.1",
  "serde_json",
@@ -3617,25 +3617,6 @@ dependencies = [
  "uuid 1.24.1",
  "wiremock",
  "zip",
-]
-
-[[package]]
-name = "everruns-session-sqldb"
-version = "0.18.0"
-dependencies = [
- "async-trait",
- "base64 0.23.1",
- "chrono",
- "everruns-core",
- "everruns-platform",
- "everruns-provider",
- "parking_lot",
- "rusqlite",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tracing",
- "uuid 1.24.1",
 ]
 
 [[package]]

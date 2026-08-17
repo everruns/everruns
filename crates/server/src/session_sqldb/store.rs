@@ -11,7 +11,7 @@ use everruns_platform::session_sqldb::{
 use everruns_provider::typed_id::SessionId;
 use std::sync::Arc;
 
-use crate::memory::InMemorySqlDbBackend;
+use super::memory::InMemorySqlDbBackend;
 
 /// Async wrapper around InMemorySqlDbBackend implementing SessionSqlDbStore.
 #[derive(Clone)]
@@ -122,7 +122,7 @@ impl SessionSqlDbStore for InMemorySqlDbStore {
         let db_name = db_name.to_string();
         let table = table.map(|s| s.to_string());
         tokio::task::spawn_blocking(
-            move || -> Result<Vec<TableSchema>, crate::error::SqlDbError> {
+            move || -> Result<Vec<TableSchema>, super::error::SqlDbError> {
                 let schemas = inner.get_schema(session_id, &db_name)?;
                 match &table {
                     Some(table_name) => Ok(schemas
