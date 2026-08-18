@@ -10,6 +10,10 @@ on:
       - 'integrations/**'
       - 'deny.toml'
       - '.github/workflows/licenses.yml'
+      # Non-workspace lockfiles: separate dependency trees the root cargo-deny
+      # run never resolves. Kept in sync by scripts/test-nonworkspace-advisories.sh.
+      - '**/Cargo.lock'
+      - 'scripts/lib/check-nonworkspace-advisories.sh'
   pull_request:
     branches: [main]
     paths:
@@ -19,12 +23,17 @@ on:
       - 'integrations/**'
       - 'deny.toml'
       - '.github/workflows/licenses.yml'
+      - '**/Cargo.lock'
+      - 'scripts/lib/check-nonworkspace-advisories.sh'
 
 permissions:
   contents: read
 
 env:
-  CARGO_DENY_VERSION: "0.16"
+  # Must be a full version: it pins the install, not just the cache key. cargo-deny
+  # moves options between global and subcommand scope across minor releases, so an
+  # unpinned "latest" can change the CLI under the advisory guards without warning.
+  CARGO_DENY_VERSION: "0.20.2"
 
 jobs:
   check-licenses:
@@ -55,11 +64,17 @@ jobs:
       - name: Install cargo-deny
         run: |
           if [ ! -f ~/.cargo/bin/cargo-deny ]; then
-            cargo install cargo-deny --locked
+            cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked
           fi
+          cargo deny --version
 
       - name: Check licenses
         run: cargo deny check licenses
 
       - name: Check advisories (RustSec)
         run: cargo deny check advisories
+
+      # The step above resolves the workspace Cargo.lock only. Excluded crates
+      # keep their own lockfile, so they need their own pass (EVE-915).
+      - name: Check advisories (non-workspace lockfiles)
+        run: scripts/lib/check-nonworkspace-advisories.sh
