@@ -89,13 +89,25 @@ To release a changed crate:
 2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
    dependants reference the dependency package's current version.
 3. Validate and merge the release change to `main`.
-4. Create `crate/<package>/v<version>` at the reviewed commit.
-5. Run **Publish Crate** with the package, tag, and exact commit SHA.
 
-The workflow validates the selected manifest version, derives internal path
-dependency pins from Cargo metadata, and publishes only that package. If a set
-of related crates needs releases, publish dependencies first and then their
-dependants; do not recreate a lockstep workspace release.
+Tagging and publishing are then automated — the same schema as the product
+release, where tags are created by CI rather than pushed by hand. On merge to
+`main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`)
+compares each published crate's manifest version against crates.io, creates the
+`crate/<package>/v<version>` tag for any version not yet published, and
+dispatches **Publish Crate** for it. When several crates release together it
+orders them by dependency so a dependant never publishes before the dependency it
+pins is on crates.io. Detection is by crates.io presence, so a bump that merged
+before the tag existed is still picked up and re-runs are idempotent (a version
+already published is skipped). `workflow_dispatch` with `dry_run: true` previews
+the set.
+
+**Publish Crate** validates the selected manifest version, derives internal path
+dependency pins from Cargo metadata, and publishes only that package. Manual
+tagging remains a fallback when the workflow is unavailable, publishing
+dependencies before dependants; do not recreate a lockstep workspace release.
+Publishing cannot be completed from a sandbox whose egress policy blocks tag
+pushes — the CI workflow is the supported path.
 
 ### Migration Handling
 

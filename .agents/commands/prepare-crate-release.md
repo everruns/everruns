@@ -43,16 +43,22 @@ Run `just pre-push`, commit with
 `chore(<package>): prepare vX.Y.Z`, and merge the normal PR after its checks are
 green. Do not create the package tag from an unreviewed branch.
 
-## 4. Tag and publish
+## 4. Let CI tag and publish
 
-At the reviewed main commit, create and push:
+Tags are created by CI, not by hand — the same schema as the product release.
+On merge to `main`, the **Crate Release** workflow (`.github/workflows/crate-release.yml`)
+compares every published crate's manifest version against crates.io, creates the
+`crate/<package>/vX.Y.Z` tag for any version not yet published, and dispatches
+**Publish Crate** for it. When several crates are released together it walks them
+in dependency order, waiting for each publish to finish before the dependant that
+pins it. Detection is idempotent: a version already on crates.io is skipped.
 
-```bash
-git tag "crate/<package>/vX.Y.Z" <40-character-main-sha>
-git push origin "crate/<package>/vX.Y.Z"
-```
+Watch the Crate Release run to a green finish and confirm the new version appears
+on crates.io. `workflow_dispatch` with `dry_run: true` lists what would be
+released without tagging or publishing.
 
-Run **Publish Crate** with the exact package name, tag, and commit SHA. The
-workflow verifies the tag, manifest version, dependency pins, packaged
-artifact, and main reachability before using the crates.io token. For multiple
-packages, publish dependencies first and dispatch each package separately.
+Manual tagging is a fallback only if the workflow is unavailable — at the
+reviewed main commit, `git tag "crate/<package>/vX.Y.Z" <sha>` and push it, then
+run **Publish Crate** with the package, tag, and SHA; publish dependencies before
+dependants. Publishing to crates.io is not possible from a sandbox whose egress
+policy blocks tag pushes; rely on the CI workflow there.
