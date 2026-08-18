@@ -11,8 +11,9 @@
 # 4. Product binaries and the Framework facade must depend directly on
 #    `everruns-llmsim` and carry no normal test-support edge.
 # 5. Public in-memory backend ownership stays split: application stores in
-#    host, deterministic message/event fixtures in test-support, and no
-#    conversation dual-write bridge.
+#    host, the in-memory message retriever in `everruns-builtins` (a production
+#    API for event-log-free small agents), the deterministic event fixture in
+#    test-support, and no conversation dual-write bridge.
 # 6. Simulator implementation ownership stays in `everruns-llmsim`; the
 #    test-support crate may only expose its documented 0.18 re-export bridge.
 
@@ -100,12 +101,17 @@ for symbol in InMemoryAgentStore InMemoryHarnessStore InMemorySessionStore InMem
   fi
 done
 
-for symbol in InMemoryMessageRetriever InMemoryEventEmitter; do
-  if ! grep -q "pub struct $symbol" crates/test-support/src/in_memory.rs; then
-    echo "$symbol must be owned by everruns-test-support."
-    FAILED=1
-  fi
-done
+# The writable in-memory message retriever is a production API owned by
+# everruns-builtins (EVE-875 promotion); test-support re-exports it for existing
+# test users. The deterministic event emitter stays a test-support fixture.
+if ! grep -q "pub struct InMemoryMessageRetriever" crates/builtins/src/in_memory_retriever.rs; then
+  echo "InMemoryMessageRetriever must be owned by everruns-builtins."
+  FAILED=1
+fi
+if ! grep -q "pub struct InMemoryEventEmitter" crates/test-support/src/in_memory.rs; then
+  echo "InMemoryEventEmitter must be owned by everruns-test-support."
+  FAILED=1
+fi
 
 if matches=$(grep -rnE 'RuntimeMessageStore|PersistingEventEmitter|BridgingEventEmitter' crates/host/src crates/test-support/src --include='*.rs' 2>/dev/null); then
   echo "Writable message-store facades and conversation dual-write bridges are forbidden:"

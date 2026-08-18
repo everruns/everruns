@@ -68,12 +68,12 @@ mod store_reason_atom;
 pub use doubles::{
     EchoToolExecutor, FailingToolExecutor, MockLlmResponse, MockProvider, MockToolExecutor,
 };
+pub use everruns_builtins::InMemoryMessageRetriever;
 #[cfg(feature = "sim")]
 pub use everruns_llmsim::{
     LlmSimConfig, LlmSimDriver, OnExhausted, ResponseConfig, SimError, SimToolCall, SimTurn,
     ToolCallConfig, ToolCallPattern,
 };
-pub use everruns_builtins::InMemoryMessageRetriever;
 pub use in_memory::InMemoryEventEmitter;
 #[cfg(all(feature = "sim", feature = "host"))]
 pub use in_memory_loop::{InMemoryAgenticLoop, InMemoryAgenticLoopBuilder};

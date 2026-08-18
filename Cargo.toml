@@ -5,7 +5,6 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/everruns",
-    "crates/local",
     "crates/macros",
     "crates/capability",
     "crates/builtins",
