@@ -34,6 +34,7 @@ Release preparation also **audits the independently versioned library crates** (
 3. Each version section contains:
    - **What's Changed** (required) - List of commits: `- <message> ([#PR](url))`
    - **Highlights** (optional) - Significant user-facing features and changes (user-written, with PR links). Include only items that are genuinely noteworthy on their own. Do not pad the list to hit a target count: maintenance releases may have few highlights, or omit the section entirely. Internal refactors, CI changes, dependency bumps, spec/docs updates, and minor fixes belong in **What's Changed**, not here.
+   - **Crate Releases** (required) - Records the [library-crate release audit](#library-crate-releases) outcome in the changelog: the independently versioned crates published this cycle with their `old → new` versions, plus any crate deleted/absorbed this cycle and where its API moved. When the audit found no published crate contract changed, state that explicitly rather than omitting the subsection. This keeps the changelog a self-contained record of which crates.io versions correspond to each product release, and must match the release PR's audit note. When the GitHub Release notes were generated at tag time before crate versions were finalized, refresh the release body so the published notes carry the same list.
 
 Release notes should not normally include a dedicated "Migration Notes" section. Migration-specific engineering detail belongs in the migration files and migration spec, which remain the source of truth for upgrade and database-migration behavior. If a release has any operator-visible migration caveat, compatibility limitation, or exceptional upgrade requirement, call it out explicitly in the release PR and release notes.
 
@@ -68,9 +69,23 @@ ones. Guidance:
 - Record the outcome in the release PR — the crate releases cut, or an explicit "no published
   crate contracts changed" — so the decision is reviewable rather than assumed.
 
+**Prefer the smallest compatible version bump.** Classify each changed crate breaking vs
+non-breaking — run `cargo semver-checks --package <crate> --baseline-version <last-published>`, which
+is authoritative, rather than eyeballing a diff. Then bump the minimum the change requires:
+
+- Non-breaking change (only additions — new items, new modules, new variants added to a
+  `#[non_exhaustive]` enum): bump the **patch** component (`0.18.0 → 0.18.1`).
+- Breaking change (a removed or renamed public item, a changed signature, a tightened bound): bump
+  the **minor** component (`0.18.0 → 0.19.0`) — for `0.x` crates the minor is the breaking slot.
+
+Do not round every changed crate up to the product version for tidiness; a crate that only gained
+API takes a patch bump even in a release where the product minor moved. `cargo-semver-checks` also
+guards against under-bumping (shipping a breaking change as a patch), so run it on every crate you
+release.
+
 To release a changed crate:
 
-1. Bump only the package whose public contract changed.
+1. Bump only the package whose public contract changed, by the smallest compatible increment above.
 2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
    dependants reference the dependency package's current version.
 3. Validate and merge the release change to `main`.
