@@ -25,6 +25,8 @@ This specification defines the release process for Everruns. The process is desi
 
 Release readiness also includes the integration backstops that are intentionally kept off the `pull_request` hot path. Before cutting a release PR or merging it, review the latest push-only live integration workflow runs on `main` and the latest `.github/workflows/integration-live-sweep.yml` result. Do not release through unresolved failures there unless the failure is understood, documented, and explicitly accepted.
 
+Release preparation also **audits the independently versioned library crates** (see [Library Crate Releases](#library-crate-releases)). This audit is a mandatory step of every product release, not an occasional side task: a product bump never carries a library crate's changes to crates.io, so any published crate whose public contract changed since its last release must get its own `/prepare-crate-release` — or the release PR must explicitly record that no published crate contracts changed. The decision must be visible in the PR, never silently skipped.
+
 ### CHANGELOG.md as Source of Truth
 
 1. CHANGELOG.md is the canonical source for release notes
@@ -49,7 +51,24 @@ effect of a product release.
 
 ### Library Crate Releases
 
-Each crates.io package is versioned and released independently:
+Each crates.io package is versioned and released independently.
+
+**Audit obligation (every product release).** Independent versioning does not mean "ignore the
+crates until someone complains." As part of preparing each product release, audit whether any
+published crate's public contract changed since its last crates.io release and release the changed
+ones. Guidance:
+
+- Published crates are the workspace packages **without** `publish = false`. Diff each one's
+  `src/` and manifest since its previous release.
+- Judge *public contract*, not churn. Being git-touched over-counts massively — transitive
+  dependency bumps, internal refactors, and pure directory moves (e.g. grouping providers under
+  `crates/drivers/`) are not contract changes. A release candidate is a crate whose exported API,
+  behavior, feature set, or MSRV changed, or a crate that was **deleted/absorbed** (its crates.io
+  package is now orphaned and consumers must migrate to the new location).
+- Record the outcome in the release PR — the crate releases cut, or an explicit "no published
+  crate contracts changed" — so the decision is reviewable rather than assumed.
+
+To release a changed crate:
 
 1. Bump only the package whose public contract changed.
 2. Run `python3 scripts/sync-publish-pin-versions.py --write` so published
