@@ -1,0 +1,185 @@
+name: Crate Release
+
+# Independent library-crate releases, automated the same way as the product
+# release (release.yml): tags are created by CI on merge to main, never pushed
+# by hand. On every push to main this workflow compares each published crate's
+# manifest version against what is already on crates.io; for any crate whose
+# version is not yet published it creates the crate/<package>/v<version> tag and
+# dispatches Publish Crate. Crates are released in dependency order so a
+# dependant never publishes before the dependency it pins is on crates.io.
+#
+# Detection is by crates.io presence, not by diffing the push, so a version bump
+# that merged before this workflow existed is still picked up, and re-runs are
+# idempotent (a version already on crates.io is skipped). The product release and
+# its version bump are unaffected: this only ever touches independently versioned
+# library crates (packages without `publish = false`).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/Cargo.toml'
+      - '.github/workflows/crate-release.yml'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List crates that would be released without tagging or publishing'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crate-release
+  cancel-in-progress: false
+
+jobs:
+  release-crates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create crate/<package>/v<version> tags
+      actions: write # dispatch the Publish Crate workflow
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve crates that need a release
+        id: plan
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' > release-plan.json
+          import json, subprocess, sys, urllib.request, urllib.error
+
+          def index_path(name: str) -> str:
+              n = name.lower()
+              if len(n) == 1:
+                  return f"1/{n}"
+              if len(n) == 2:
+                  return f"2/{n}"
+              if len(n) == 3:
+                  return f"3/{n[0]}/{n}"
+              return f"{n[0:2]}/{n[2:4]}/{n}"
+
+          def published_versions(name: str) -> set[str]:
+              url = f"https://index.crates.io/{index_path(name)}"
+              try:
+                  with urllib.request.urlopen(url, timeout=30) as resp:
+                      body = resp.read().decode()
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return set()  # never published
+                  raise
+              return {json.loads(line)["vers"] for line in body.splitlines() if line.strip()}
+
+          meta = json.loads(subprocess.check_output(
+              ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True))
+          # Published packages are those whose manifest does not set publish = false
+          # (cargo reports publish = [] for those).
+          published = {p["name"]: p for p in meta["packages"] if p.get("publish") != []}
+
+          to_release = {
+              name: pkg["version"]
+              for name, pkg in published.items()
+              if pkg["version"] not in published_versions(name)
+          }
+
+          # Topologically sort the release set so dependencies publish first.
+          deps = {
+              name: {
+                  d["name"]
+                  for d in published[name]["dependencies"]
+                  if d["name"] in to_release and (d.get("kind") in (None, "normal", "build"))
+              }
+              for name in to_release
+          }
+          ordered: list[str] = []
+          done: set[str] = set()
+          while len(ordered) < len(to_release):
+              ready = sorted(n for n in to_release if n not in done and deps[n] <= done)
+              if not ready:
+                  print("::error::dependency cycle among crates to release", file=sys.stderr)
+                  sys.exit(1)
+              ordered.extend(ready)
+              done.update(ready)
+
+          print(json.dumps([
+              {"package": n, "version": to_release[n], "tag": f"crate/{n}/v{to_release[n]}"}
+              for n in ordered
+          ]))
+          PY
+
+          COUNT=$(jq 'length' release-plan.json)
+          echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Release plan ($COUNT crate(s), dependency order):"
+          jq -r '.[] | "  \(.package) \(.version)  (\(.tag))"' release-plan.json
+
+      - name: Tag and publish in dependency order
+        if: steps.plan.outputs.count != '0' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          count=$(jq 'length' release-plan.json)
+          for i in $(seq 0 $((count - 1))); do
+            PKG=$(jq -r ".[$i].package" release-plan.json)
+            VER=$(jq -r ".[$i].version" release-plan.json)
+            TAG=$(jq -r ".[$i].tag" release-plan.json)
+            echo "::group::Release $PKG $VER ($TAG)"
+
+            # Create the tag on GitHub's infrastructure (the Actions token can push
+            # tags; a hand push cannot). Idempotent if a prior run already tagged.
+            if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+              echo "Tag $TAG already exists locally"
+            elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists on origin"
+            else
+              git tag "$TAG" "$SHA"
+              git push origin "refs/tags/$TAG:refs/tags/$TAG"
+              echo "Created and pushed $TAG"
+            fi
+
+            # Record the newest existing Publish Crate run so we can detect the one
+            # this dispatch creates (gh workflow run does not return a run id).
+            BEFORE=$(gh run list --workflow=publish-crates.yml --limit=1 \
+              --json databaseId --jq '.[0].databaseId // 0')
+            gh workflow run publish-crates.yml \
+              -f package="$PKG" -f tag="$TAG" -f sha="$SHA"
+
+            # Wait for the new run to appear, then follow it to a terminal state.
+            RUN_ID=""
+            for _ in $(seq 1 30); do
+              sleep 6
+              CAND=$(gh run list --workflow=publish-crates.yml --limit=1 \
+                --json databaseId --jq '.[0].databaseId // 0')
+              if [ "$CAND" != "$BEFORE" ] && [ "$CAND" != "0" ]; then RUN_ID="$CAND"; break; fi
+            done
+            if [ -z "$RUN_ID" ]; then
+              echo "::error::Publish Crate run for $PKG did not start"; exit 1
+            fi
+            echo "Watching Publish Crate run $RUN_ID for $PKG..."
+            gh run watch "$RUN_ID" --exit-status --interval 15
+
+            # Let the crates.io sparse index publish the new version before a
+            # dependant crate that pins it is published next.
+            sleep 25
+            echo "::endgroup::"
+          done
+          echo "All crate releases dispatched and confirmed."
+
+      - name: Dry-run summary
+        if: steps.plan.outputs.count != '0' && github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: |
+          echo "Dry run — the following crates would be released:"
+          jq -r '.[] | "  \(.package) \(.version)  (\(.tag))"' release-plan.json
+
+      - name: Nothing to release
+        if: steps.plan.outputs.count == '0'
+        run: echo "No published crate has a version missing from crates.io; nothing to release."

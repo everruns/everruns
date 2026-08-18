@@ -49,9 +49,12 @@ crates.io package silently drifts behind its source.
    not an eyeballed diff), then bump the **patch** component for a non-breaking (additive-only) change
    (`0.18.0 → 0.18.1`) and the **minor** component only for a breaking change (`0.18.0 → 0.19.0`; the
    minor is the breaking slot for `0.x` crates). Do not round crates up to the product version for
-   tidiness. Then run `/prepare-crate-release` (bump the package, run
-   `python3 scripts/sync-publish-pin-versions.py --write`, tag `crate/<pkg>/v<ver>`, Publish Crate).
-   Release dependencies before dependants. For an absorbed/deleted crate, record where its API moved.
+   tidiness. Then run `/prepare-crate-release` to bump the package and run
+   `python3 scripts/sync-publish-pin-versions.py --write`. Tagging and publishing are automated: on
+   merge to `main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`) creates
+   `crate/<pkg>/v<ver>` and dispatches Publish Crate for any version not yet on crates.io, in
+   dependency order — you never push crate tags by hand. For an absorbed/deleted crate, record where
+   its API moved.
 4. **Record the audit in the release PR**: either the list of crate releases cut this cycle, or an
    explicit "no published crate contracts changed" line. A reviewer must be able to see the decision
    was made, not assumed.
