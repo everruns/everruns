@@ -12,7 +12,7 @@
 
 [package]
 name = "everruns-test-support"
-version = "0.18.1"
+version = "0.18.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -48,6 +48,8 @@ everruns-core = { path = "../core", version = "0.18.0", default-features = false
 everruns-engine.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
+# InMemoryMessageRetriever is re-exported from here (moved to production in builtins).
+everruns-builtins.workspace = true
 everruns-llmsim = { workspace = true, optional = true }
 everruns-host = { workspace = true, optional = true }
 everruns-platform = { workspace = true, optional = true }
@@ -63,5 +65,4 @@ tokio = { workspace = true, features = ["sync", "time", "rt"] }
 uuid.workspace = true
 
 [dev-dependencies]
-everruns-builtins.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

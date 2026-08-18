@@ -2655,7 +2655,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-builtins"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3277,6 +3277,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-local"
+version = "0.19.0"
+dependencies = [
+ "everruns",
+]
+
+[[package]]
 name = "everruns-macros"
 version = "0.18.0"
 dependencies = [
@@ -3566,7 +3573,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.18.1"
+version = "0.18.2"
 dependencies = [
  "anyhow",
  "async-trait",

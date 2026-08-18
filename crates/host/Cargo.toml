@@ -98,5 +98,5 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # not create a published cycle.
 everruns-llmsim = { version = "0.18.1", path = "../drivers/llmsim", features = ["host"] }
 # Test doubles and demo fixtures.
-everruns-test-support = { version = "0.18.1", path = "../test-support" }
+everruns-test-support = { version = "0.18.2", path = "../test-support" }
 wiremock = "0.6"

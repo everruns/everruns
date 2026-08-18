@@ -42,6 +42,8 @@ mod framework_config;
 pub mod guardrails;
 pub mod human_intent;
 pub mod infinity_context;
+pub mod in_memory_retriever;
+pub use in_memory_retriever::InMemoryMessageRetriever;
 pub mod loop_detection;
 pub mod message_metadata;
 pub mod openai_tool_search;
