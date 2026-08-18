@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-18
+
+### Highlights
+
+- **First-class sandbox and checkpoint records** - Sandboxes and checkpoints are now first-class records, giving durable runs an explicit, addressable execution substrate ([#3197](https://github.com/everruns/everruns/pull/3197)).
+
+### What's Changed
+
+- docs(knowledge): align current architecture decisions ([#3208](https://github.com/everruns/everruns/pull/3208)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): group provider crates ([#3207](https://github.com/everruns/everruns/pull/3207)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): quote container sandbox test filter ([#3206](https://github.com/everruns/everruns/pull/3206)) by [@chaliy](https://github.com/chaliy)
+- refactor(architecture): consolidate runtime implementation crates ([#3205](https://github.com/everruns/everruns/pull/3205)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): absorb session SQLite backend ([#3204](https://github.com/everruns/everruns/pull/3204)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): absorb session services ([#3203](https://github.com/everruns/everruns/pull/3203)) by [@chaliy](https://github.com/chaliy)
+- refactor(builtins): absorb UI prompt catalogs ([#3202](https://github.com/everruns/everruns/pull/3202)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): absorb direct HTTP egress ([#3201](https://github.com/everruns/everruns/pull/3201)) by [@chaliy](https://github.com/chaliy)
+- build(release): version crates independently ([#3200](https://github.com/everruns/everruns/pull/3200)) by [@chaliy](https://github.com/chaliy)
+- refactor(host): invert platform extension dependency ([#3199](https://github.com/everruns/everruns/pull/3199)) by [@chaliy](https://github.com/chaliy)
+- test(release): catch stale entries in the publish-crates version map ([#3198](https://github.com/everruns/everruns/pull/3198)) by [@chaliy](https://github.com/chaliy)
+- feat(sandbox): add first-class sandbox and checkpoint records ([#3197](https://github.com/everruns/everruns/pull/3197)) by [@chaliy](https://github.com/chaliy)
+- chore(security): drop the stale quick-xml advisory ignores ([#3196](https://github.com/everruns/everruns/pull/3196)) by [@chaliy](https://github.com/chaliy)
+- chore(knowledge): record the coding CLI MCP trust boundary as TM-TOOL-031 ([#3195](https://github.com/everruns/everruns/pull/3195)) by [@chaliy](https://github.com/chaliy)
+- chore(docs): remove em-dashes and AI-tell wording from prose ([#3191](https://github.com/everruns/everruns/pull/3191)) by [@chaliy](https://github.com/chaliy)
+- fix(release): drop stale publish-map entries (duckduckgo/platform, builtins/local) ([#3194](https://github.com/everruns/everruns/pull/3194)) by [@chaliy](https://github.com/chaliy)
+- fix(release): move openui/a2ui publish pins from core to builtins ([#3193](https://github.com/everruns/everruns/pull/3193)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.18.0] - 2026-08-16
 
 ### Highlights
