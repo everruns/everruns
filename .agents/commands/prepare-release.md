@@ -54,7 +54,10 @@ crates.io package silently drifts behind its source.
    merge to `main` the **Crate Release** workflow (`.github/workflows/crate-release.yml`) creates
    `crate/<pkg>/v<ver>` and dispatches Publish Crate for any version not yet on crates.io, in
    dependency order — you never push crate tags by hand. For an absorbed/deleted crate, record where
-   its API moved.
+   its API moved. **After a breaking bump, close the whole cone**: cascade a patch bump onto every
+   published dependant that still pins the old requirement (so it republishes compatibly), and **yank**
+   any absorbed dependant via the **Yank Crate** workflow. The Crate Release `strand-check` job fails
+   the run until this is done — a red `strand-check` means the release is still partial.
 4. **Record the audit in the release PR**: either the list of crate releases cut this cycle, or an
    explicit "no published crate contracts changed" line. A reviewer must be able to see the decision
    was made, not assumed.

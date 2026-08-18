@@ -3264,7 +3264,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llmsim"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3566,7 +3566,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-test-support"
-version = "0.18.0"
+version = "0.18.1"
 dependencies = [
  "anyhow",
  "async-trait",
