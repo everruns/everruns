@@ -14,6 +14,14 @@ confirm its manifest does not set `publish = false`. Review changes since its
 latest `crate/<package>/v*` tag. A crate release does not bump the product
 workspace, UI, or unrelated packages.
 
+Choose the **smallest compatible version**. Run
+`cargo semver-checks --package <package> --baseline-version <last-published>` to classify the change,
+and take the minimum bump it allows: **patch** (`0.18.0 → 0.18.1`) for a non-breaking, additive-only
+change, **minor** (`0.18.0 → 0.19.0`) only when there is a breaking change — the minor is the
+breaking slot for `0.x` crates. Do not round up to the product version for tidiness; `cargo-semver-checks`
+also fails a too-small bump, so it protects both directions. If `$ARGUMENTS` names a version that
+disagrees with the tool, resolve the mismatch before continuing.
+
 ## 2. Update the package graph
 
 Set the selected manifest's explicit `package.version`, then update published

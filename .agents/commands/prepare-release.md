@@ -44,7 +44,12 @@ crates.io package silently drifts behind its source.
    `crates/drivers/`) is **not** a contract change. A release candidate is a crate whose exported
    API, behavior, feature flags, or MSRV changed — or a crate that was **deleted/absorbed**, whose
    crates.io package is now orphaned and whose consumers must migrate.
-3. For each crate whose contract changed, run `/prepare-crate-release` (bump that package, run
+3. For each crate whose contract changed, pick the **smallest compatible version bump**: classify it
+   with `cargo semver-checks --package <crate> --baseline-version <last-published>` (authoritative,
+   not an eyeballed diff), then bump the **patch** component for a non-breaking (additive-only) change
+   (`0.18.0 → 0.18.1`) and the **minor** component only for a breaking change (`0.18.0 → 0.19.0`; the
+   minor is the breaking slot for `0.x` crates). Do not round crates up to the product version for
+   tidiness. Then run `/prepare-crate-release` (bump the package, run
    `python3 scripts/sync-publish-pin-versions.py --write`, tag `crate/<pkg>/v<ver>`, Publish Crate).
    Release dependencies before dependants. For an absorbed/deleted crate, record where its API moved.
 4. **Record the audit in the release PR**: either the list of crate releases cut this cycle, or an
@@ -73,11 +78,26 @@ Insert after `## [Unreleased]`, preserving the file header and versioning policy
 ### What's Changed
 
 - feat: commit message ([#123](https://github.com/everruns/everruns/pull/123)) by [@username](https://github.com/username)
+
+### Crate Releases
+
+Independently versioned crates published this cycle:
+- `everruns-<name>` A.B.C → X.Y.Z
+
+Retired (absorbed — consumers migrate):
+- `everruns-<gone>` → `everruns-<new-home>`
 ```
 
 Link PRs and usernames. Add a **Migration Notes** section only when operators need upgrade guidance;
 engineering-only migration detail belongs in `crates/server/migrations/` and `knowledge/operations/migrations.md`.
 Include screenshot links for UI changes.
+
+The **Crate Releases** subsection is required and records the step 3 audit outcome in the changelog
+itself — the crates published this cycle with their `old → new` versions, plus any crate that was
+deleted/absorbed and where its API now lives. When the audit found no published crate contract
+changed, state that explicitly (`No published crate contracts changed this cycle.`) rather than
+dropping the subsection. Keep it consistent with the release PR's audit note and, if the GitHub
+Release notes were already generated at tag time, refresh that release body to match.
 
 ## 6. Verify migrations without rewriting them
 

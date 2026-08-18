@@ -33,6 +33,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(release): drop stale publish-map entries (duckduckgo/platform, builtins/local) ([#3194](https://github.com/everruns/everruns/pull/3194)) by [@chaliy](https://github.com/chaliy)
 - fix(release): move openui/a2ui publish pins from core to builtins ([#3193](https://github.com/everruns/everruns/pull/3193)) by [@chaliy](https://github.com/chaliy)
 
+### Crate Releases
+
+Independently versioned crates published this cycle (smallest compatible bump, verified with `cargo-semver-checks`):
+
+- `everruns-host` 0.18.0 → 0.19.0 (breaking: removed `PlatformStoreFactory` and other public items during the consolidation)
+- `everruns-mcp` 0.18.0 → 0.19.0 (breaking: removed a public inherent method)
+- `everruns` 0.18.0 → 0.18.1 (additive: absorbed `everruns-local` as `pub mod local`)
+- `everruns-builtins` 0.18.0 → 0.18.1 (additive: absorbed the UI prompt catalogs)
+- `everruns-platform` 0.18.0 → 0.18.1 (additive: sandbox/checkpoint records and `container-sandbox` feature)
+
+Retired (absorbed — consumers migrate):
+
+- `everruns-observability` → `everruns-host::observability`
+- `everruns-session-services`, `everruns-http` → `everruns-host`
+- `everruns-local` → `everruns` (`pub mod local`)
+- `everruns-openui`, `everruns-a2ui` → `everruns-builtins`
+
 ## [0.18.0] - 2026-08-16
 
 ### Highlights
