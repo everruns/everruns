@@ -29,15 +29,37 @@ have one highlight or none, in which case recommend dropping the section.
 Present the commit list and your proposed highlights, and let the user confirm or replace them
 before editing files.
 
-## 3. Update versions
+## 3. Audit published library crates for independent releases
+
+Mandatory every release — never skip it, and never leave the outcome implicit. Published library
+crates are versioned independently of the product, so a product bump does **not** carry their
+changes to crates.io. If a crate's public contract changed and you don't cut its own release, the
+crates.io package silently drifts behind its source.
+
+1. Diff each published crate's source and manifest since its last release, e.g.
+   `git diff "$PREV"..HEAD -- <crate-dir>/src <crate-dir>/Cargo.toml`. Published crates are the
+   workspace packages **without** `publish = false`.
+2. Judge *public contract*, not churn. "Touched" over-counts wildly: a transitive dependency
+   bump, an internal refactor, or a pure directory move (like grouping the drivers under
+   `crates/drivers/`) is **not** a contract change. A release candidate is a crate whose exported
+   API, behavior, feature flags, or MSRV changed — or a crate that was **deleted/absorbed**, whose
+   crates.io package is now orphaned and whose consumers must migrate.
+3. For each crate whose contract changed, run `/prepare-crate-release` (bump that package, run
+   `python3 scripts/sync-publish-pin-versions.py --write`, tag `crate/<pkg>/v<ver>`, Publish Crate).
+   Release dependencies before dependants. For an absorbed/deleted crate, record where its API moved.
+4. **Record the audit in the release PR**: either the list of crate releases cut this cycle, or an
+   explicit "no published crate contracts changed" line. A reviewer must be able to see the decision
+   was made, not assumed.
+
+## 4. Update versions
 
 - `Cargo.toml` → `workspace.package.version`
 - `apps/ui/package.json` → `version`
 
-Do not bump published library crate versions. They are released independently
-with `/prepare-crate-release` when their own public contracts change.
+Do not bump published library crate versions here. They are released independently with
+`/prepare-crate-release` when their own public contracts change — that call is step 3, not this one.
 
-## 4. Add the CHANGELOG entry
+## 5. Add the CHANGELOG entry
 
 Insert after `## [Unreleased]`, preserving the file header and versioning policy:
 
@@ -57,13 +79,13 @@ Link PRs and usernames. Add a **Migration Notes** section only when operators ne
 engineering-only migration detail belongs in `crates/server/migrations/` and `knowledge/operations/migrations.md`.
 Include screenshot links for UI changes.
 
-## 5. Verify migrations without rewriting them
+## 6. Verify migrations without rewriting them
 
 Never squash, rename, or delete existing migrations for a release. Confirm the sorted basenames in
 `crates/server/migrations/` still start at `001_` and stay strictly sequential
 (`bash scripts/lib/check-migration-ordering.sh`).
 
-## 6. Refresh lockfiles
+## 7. Refresh lockfiles
 
 ```bash
 cargo generate-lockfile
@@ -71,7 +93,7 @@ cargo generate-lockfile
 (cd apps/docs && pnpm install --lockfile-only)
 ```
 
-## 7. Commit and open the PR
+## 8. Commit and open the PR
 
 Stage the files you touched by name, then:
 
@@ -82,4 +104,6 @@ git push -u origin <current-branch>
 
 Open the PR with `.github/pull_request_template.md`, and tell the user to review CHANGELOG.md, add
 any highlights or screenshots, and merge once CI is green — the tag, GitHub Release, Docker images,
-and product binaries follow automatically. Crates.io publishing is independent.
+and product binaries follow automatically. Crates.io publishing is independent: include the step 3
+crate-release audit outcome in the PR body (the crate releases cut, or "no published crate contracts
+changed"), so the decision is on the record rather than assumed.
