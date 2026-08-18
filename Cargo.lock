@@ -504,9 +504,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-bedrockruntime"
-version = "1.139.0"
+version = "1.140.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dffe4bd3da45048fa0d30b50febaedf093e93a25d832cc21f2845a6e0c72616"
+checksum = "5bca4d762965c0b7f5fb88ec0a4b48cfa1a22502e1a0283e5fd5d9498dae52b6"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
@@ -2721,7 +2721,7 @@ dependencies = [
  "ratatui",
  "ratatui-textarea",
  "serde_json",
- "similar 3.1.2",
+ "similar 3.2.0",
  "tempfile",
  "textwrap",
  "tokio",
@@ -2768,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3081,7 +3081,7 @@ dependencies = [
  "regex",
  "serde_json",
  "sha2 0.11.0",
- "similar 3.1.2",
+ "similar 3.2.0",
  "tokio",
  "uuid 1.24.1",
 ]
@@ -3211,7 +3211,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "chrono",
  "everruns-capability",
@@ -3232,7 +3232,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3463,7 +3463,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3607,7 +3607,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4271,9 +4271,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.15"
+version = "0.4.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
+checksum = "a9f37a958b41b3b19ee2707c06439c0e9e547e847223eb791ecb0cb821c65e27"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -7363,9 +7363,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.16"
+version = "0.11.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f4bfc015262b9df63c8845072ce59068853ff5872180c2ce2f13038b970e560"
+checksum = "04759210543be93709136e28212294a659ef5001836ff4eab4d663e4529bba83"
 dependencies = [
  "aws-lc-rs",
  "bytes",
@@ -8766,9 +8766,9 @@ checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "similar"
-version = "3.1.2"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85ee016af5d736b69fc89e19254540fa4b5f5492853fb5503920f084011c78b6"
+checksum = "4f66ca1f7aca2474dc10c942eb22feffc897735f54cd1db90138c2fddb490987"
 dependencies = [
  "bstr",
 ]
@@ -11212,9 +11212,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.4"
+version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47402523226a02bfe5230160dc3ccc089aa6f6f19e7fcbb4e6f824bbb1b4aa62"
+checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
 dependencies = [
  "proc-macro2 1.0.107",
  "quote 1.0.47",
