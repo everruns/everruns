@@ -47,7 +47,11 @@ they protect.
 
 ## Compatibility posture
 
-Improving the Framework must not break the supported 0.17.x runtime path or
-silently fork turn/provider semantics. Compatibility duration, host-only
-allowances, and removal exclusions are specified in [Application API
+The Framework follows the semantic version of the `everruns` package rather
+than a workspace-wide product version. Within a compatible release line,
+improving the Framework must preserve its public application contract and must
+never fork turn or provider semantics from the shared execution path. Removed
+pre-0.18 runtime entrypoints are not a parallel compatibility target.
+
+Application versus host ownership is specified in [Application API
 Boundaries](application-api.md).

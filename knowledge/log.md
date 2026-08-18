@@ -2,6 +2,12 @@
 
 ## 2026-08-17
 
+* **Crate boundaries follow ownership rather than package count.** Public,
+  kernel, deployment, and selectable integration boundaries remain focused
+  crates; forwarding-only leaves should fold into their owner. Official model
+  drivers are grouped physically under `crates/drivers/` while retaining
+  independent package identities and versions over `everruns-provider`.
+
 * **Session services are host-owned.** `SessionMutator` and the portable
   session/session-storage capabilities are collocated in `everruns-host`;
   platform re-exports the same types. The former leaf package added release

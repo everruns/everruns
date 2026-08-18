@@ -101,7 +101,7 @@ Production event routing therefore prefers:
 2. **Crate Separation** (folder → package name):
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
-   - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, portable projections, and current atom interfaces. Depends privately on the contract-only provider surface and does not re-export it.
+   - `core/` → `everruns-core` - Transport- and persistence-neutral execution contracts, tools, events, and portable projections. Depends privately on the contract-only provider surface and does not re-export it.
    - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `engine/` → `everruns-engine` - Pure turn state machine plus shared Input/Reason/Act execution
    - `platform/` → `everruns-platform` - Hosted product records, services, and capability implementations
@@ -110,8 +110,7 @@ Production event routing therefore prefers:
    - `macros/` → `everruns-macros` - Framework tool-macro implementation re-exported through `everruns::tool`
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
-   - `openai/` → `everruns-openai` - OpenAI LLM provider implementation
-   - `anthropic/` → `everruns-anthropic` - Anthropic LLM provider implementation
+   - `drivers/*` - independently versioned official LLM driver packages over `everruns-provider`
    - `integrations/docker/` → `everruns-integrations-docker` - Docker container integration (auto-registered via `inventory` plugin system)
    - `integrations/daytona/` → `everruns-integrations-daytona` - Daytona cloud sandbox integration (auto-registered via `inventory` plugin system)
    - `integrations/e2b/` → `everruns-integrations-e2b` - E2B cloud sandbox integration (auto-registered via `inventory` plugin system)
@@ -134,15 +133,13 @@ everruns/
 │   ├── core/             # Neutral execution contracts and portable projections
 │   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
 │   ├── engine/           # Shared turn planning and execution coordination
-│   ├── session-services/ # Neutral session host contracts/capabilities
 │   ├── platform/         # Hosted product records and services
 │   ├── everruns/         # Application-facing Framework crate
 │   ├── host/             # Low-level in-process host and reusable host phases
 │   ├── macros/           # everruns-macros implementation crate
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
-│   ├── openai/           # OpenAI provider
-│   └── anthropic/        # Anthropic provider
+│   └── drivers/          # Independently versioned official LLM drivers
 ├── integrations/
 │   ├── docker/           # Docker container (inventory plugin)
 │   ├── daytona/          # Daytona cloud sandbox (inventory plugin)
@@ -155,19 +152,17 @@ everruns/
 └── scripts/              # Dev scripts
 ```
 
-### Crate Dependency Graph
+### Major Crate Dependency Direction
 
 ```mermaid
 graph TD
     provider[provider]
     core[core]
     engine[engine]
-    session_services[session-services]
     platform[platform]
     host[host]
     framework[everruns]
-    openai[openai]
-    anthropic[anthropic]
+    drivers[drivers/*]
     protocol[internal-protocol]
     durable[durable]
     worker[worker]
@@ -176,25 +171,26 @@ graph TD
     core --> provider
     engine --> core
     engine --> provider
-    session_services --> core
-    session_services --> provider
     host --> engine
     host --> core
     host --> provider
-    host --> session_services
     platform -->|host extension ports| host
-    platform --> session_services
+    platform --> core
     framework --> host
     framework --> core
     framework --> provider
-    openai --> provider
-    anthropic --> provider
+    framework -.->|opt-in hosted composition| platform
+    drivers --> provider
+    durable --> engine
+    durable --> provider
     worker --> host
     worker --> durable
     worker --> protocol
+    worker --> platform
     server --> host
     server --> durable
     server --> protocol
+    server --> platform
     worker -.->|gRPC| server
 ```
 
@@ -229,7 +225,7 @@ process should use `everruns-host`.
 `everruns-host` provides:
 
 - `InProcessRuntimeBuilder`
-- in-memory session/filesystem/storage/message backends
+- in-memory session/filesystem/storage/event backends
 - turn execution via `everruns-engine::TurnExecution` and
   `everruns-host::InProcessExecution`
 - direct seeding of harnesses, agents, sessions, and files
