@@ -183,3 +183,83 @@ jobs:
       - name: Nothing to release
         if: steps.plan.outputs.count == '0'
         run: echo "No published crate has a version missing from crates.io; nothing to release."
+
+  # Guard against partial releases: a breaking bump of a foundational crate
+  # (e.g. everruns-host 0.18 -> 0.19) strands any published dependant whose
+  # latest crates.io version still pins the old, now-incompatible requirement.
+  # Such a dependant must be cascade-bumped and republished, or (if absorbed)
+  # yanked — otherwise a downstream consumer resolves two copies of the crate.
+  # Runs after publishing so freshly cascaded versions count as fixed.
+  strand-check:
+    needs: release-crates
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Detect stranded published dependants
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, subprocess, sys, urllib.request, urllib.error
+
+          def index_path(name: str) -> str:
+              n = name.lower()
+              if len(n) == 1: return f"1/{n}"
+              if len(n) == 2: return f"2/{n}"
+              if len(n) == 3: return f"3/{n[0]}/{n}"
+              return f"{n[0:2]}/{n[2:4]}/{n}"
+
+          def latest_published(name: str):
+              try:
+                  body = urllib.request.urlopen(
+                      f"https://index.crates.io/{index_path(name)}", timeout=30).read().decode()
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404: return None
+                  raise
+              rows = [json.loads(l) for l in body.splitlines() if l.strip() and not json.loads(l).get("yanked")]
+              return rows[-1] if rows else None
+
+          def caret_allows(req: str, ver: str) -> bool:
+              # Cargo default (caret) semantics, sufficient for this all-caret graph.
+              r = req.lstrip("^").strip()
+              try:
+                  rp = [int(x) for x in r.split("-")[0].split(".")]
+                  vp = [int(x) for x in ver.split("-")[0].split(".")]
+              except ValueError:
+                  return True  # non-caret / complex req: don't flag, avoid false positives
+              while len(rp) < 3: rp.append(0)
+              while len(vp) < 3: vp.append(0)
+              # lower bound
+              if vp < rp: return False
+              # upper bound: first non-zero component of the requirement fixes the compatible range
+              if rp[0] != 0:   return vp[0] == rp[0]
+              if rp[1] != 0:   return vp[0] == 0 and vp[1] == rp[1]
+              return vp[0] == 0 and vp[1] == 0 and vp[2] == rp[2]
+
+          meta = json.loads(subprocess.check_output(
+              ["cargo", "metadata", "--no-deps", "--format-version", "1"], text=True))
+          current = {p["name"]: p["version"] for p in meta["packages"] if p.get("publish") != []}
+
+          stranded = []
+          for name in sorted(current):
+              latest = latest_published(name)
+              if not latest:
+                  continue
+              for dep in latest.get("deps", []):
+                  dname = dep["name"]
+                  if dname in current and dep.get("kind") != "dev":
+                      if not caret_allows(dep["req"], current[dname]):
+                          stranded.append(
+                              f"{name} {latest['vers']} pins {dname} {dep['req']}, "
+                              f"but the workspace now ships {dname} {current[dname]}")
+
+          if stranded:
+              print("::error::Partial release: published crates stranded by an incompatible dependency:")
+              for s in stranded:
+                  print(f"  - {s}")
+              print("Cascade-bump and republish each stranded crate (patch is enough), or yank it "
+                    "via the Yank Crate workflow if it was absorbed/removed.")
+              sys.exit(1)
+          print(f"No stranded published dependants across {len(current)} crates.")
+          PY

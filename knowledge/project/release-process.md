@@ -83,6 +83,24 @@ API takes a patch bump even in a release where the product minor moved. `cargo-s
 guards against under-bumping (shipping a breaking change as a patch), so run it on every crate you
 release.
 
+**A breaking bump is not done until its dependants are handled — the whole cone, not just the
+crate.** A crates.io package is immutable, so a published dependant that pins the old, now-incompatible
+requirement (`everruns-host = "^0.18.0"` when host is now `0.19.0`) will forever resolve the old
+version, and a downstream consumer that also pulls the new one ends up compiling **two copies** — the
+error surfaces inside the stranded upstream crate, not the consumer's code. This is the classic
+partial release. For every crate that takes a **breaking** bump, close the cone:
+
+- **Live dependants** whose own contract did not change still need a **patch bump and republish** so
+  their new crates.io version pins the compatible requirement. (Optional/`dev`-only dependencies are
+  lower urgency but should still be cascaded for a clean graph.)
+- **Absorbed/deleted dependants** cannot be republished — **yank** their orphaned version with the
+  **Yank Crate** workflow so new resolutions stop selecting them.
+
+The **Crate Release** workflow's `strand-check` job enforces this: it fails the run when any
+published crate's latest version pins a workspace crate at a requirement the current workspace
+version no longer satisfies. A red `strand-check` means finish the cone (cascade-bump or yank) before
+calling the release complete.
+
 To release a changed crate:
 
 1. Bump only the package whose public contract changed, by the smallest compatible increment above.

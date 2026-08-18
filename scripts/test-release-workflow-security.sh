@@ -14,6 +14,7 @@ workflows = [
     Path(".github/workflows/publish-crates.yml"),
     Path(".github/workflows/release.yml"),
     Path(".github/workflows/crate-release.yml"),
+    Path(".github/workflows/crate-yank.yml"),
 ]
 untrusted = re.compile(r"\$\{\{[^\n]*(?:inputs\.|client_payload\.tag|ref_name)")
 sha_ref = re.compile(r"uses:\s+([^./\s][^@\s]*)@([0-9a-f]{40})(?:\s+#\s+\S+)?$")

@@ -1,0 +1,87 @@
+name: Yank Crate
+
+# Yank (or un-yank) a single published crates.io version. Used to retire a
+# version that should no longer be selected by new dependency resolution —
+# most importantly an absorbed/deleted crate whose lingering copy still pins an
+# old, now-incompatible dependency and causes downstream version duplication.
+#
+# Yank does not delete: existing Cargo.lock files that already resolved the
+# version keep working; only NEW resolutions stop selecting it. Reversible with
+# undo: true. Authenticates with the same crates.io token as Publish Crate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Cargo package to yank (for example everruns-local)'
+        required: true
+        type: string
+      version:
+        description: 'Exact version to yank (for example 0.18.0)'
+        required: true
+        type: string
+      undo:
+        description: 'Un-yank instead of yank'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: yank-crate-${{ github.event.inputs.package }}-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  yank:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate inputs
+        id: v
+        env:
+          PACKAGE: ${{ github.event.inputs.package }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$PACKAGE" =~ ^[a-z0-9][a-z0-9_-]*$ ]]; then
+            echo "::error::Invalid Cargo package name: $PACKAGE"; exit 1
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$ ]]; then
+            echo "::error::Version must be semver X.Y.Z: $VERSION"; exit 1
+          fi
+          echo "package=$PACKAGE" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm the version exists on crates.io
+        env:
+          PACKAGE: ${{ steps.v.outputs.package }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Sparse-index path: length-based prefix (1/2/3/aa-bb).
+          n=${#PACKAGE}
+          if   [ "$n" -eq 1 ]; then path="1/$PACKAGE"
+          elif [ "$n" -eq 2 ]; then path="2/$PACKAGE"
+          elif [ "$n" -eq 3 ]; then path="3/${PACKAGE:0:1}/$PACKAGE"
+          else path="${PACKAGE:0:2}/${PACKAGE:2:2}/$PACKAGE"; fi
+          if ! curl -fsS "https://index.crates.io/$path" | grep -q "\"vers\":\"$VERSION\""; then
+            echo "::error::$PACKAGE $VERSION is not published on crates.io"; exit 1
+          fi
+          echo "Found $PACKAGE $VERSION on the index."
+
+      - name: Yank / un-yank
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          PACKAGE: ${{ steps.v.outputs.package }}
+          VERSION: ${{ steps.v.outputs.version }}
+          UNDO: ${{ github.event.inputs.undo }}
+        run: |
+          set -euo pipefail
+          if [ "$UNDO" = "true" ]; then
+            echo "Un-yanking $PACKAGE $VERSION"
+            cargo yank --undo --version "$VERSION" "$PACKAGE"
+          else
+            echo "Yanking $PACKAGE $VERSION"
+            cargo yank --version "$VERSION" "$PACKAGE"
+          fi
