@@ -200,8 +200,9 @@ and multi-host lifecycle management remain host concerns.
   backend stores, or host lifecycle entities.
 - Resume authority is engine-scoped. An in-memory engine must reject an id from
   another engine, retain the exact Agent snapshot chosen at creation, and reopen
-  the exact persisted WorkspaceHead and typed Environment extensions. Scale
-  portability and Agent serialization are intentionally outside this slice.
+  the exact persisted WorkspaceHead and typed Environment extensions. Agent
+  serialization is not part of the Framework contract; distributed Platform
+  composition reconstructs trusted behavior at its host boundary.
 - Capability values converge through one builder entrypoint. New built-ins do
   not add builder methods, and third-party values must not require a core or
   host dependency. Dynamic references validate their open ID and JSON object
@@ -223,11 +224,11 @@ Every application surface promoted in an atomic unit has a downstream-style
 compile/run fixture that imports only `everruns`, uses offline simulation and
 temporary files, and does not require credentials or network access. The same
 bar applies when the event/history, hooks, task/wake, workspace-policy, and
-capability-SPI units land. Compatibility tests continue to exercise the old
-runtime path. Product worker/server and local host behavior must remain
-unchanged. Facade-only dependency guards apply to ordinary application
-fixtures; advanced host fixtures instead forbid the transitional runtime
-dependency while allowing focused host and sibling crates.
+capability-SPI units land. Product worker/server and local host behavior must
+remain aligned through the shared engine kernel. Facade-only dependency guards
+apply to ordinary application fixtures; advanced host fixtures may depend on
+focused host and sibling crates without turning those crates into Framework
+entrypoints.
 
 ## Source index
 

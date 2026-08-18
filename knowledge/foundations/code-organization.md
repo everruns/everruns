@@ -59,6 +59,18 @@ badge-free header and omit docs.rs links.
 
 ### Crate dependency conventions
 
+A crate boundary exists for ownership, not for source-file count. Retain or
+introduce a crate when it provides at least one independently useful boundary:
+an application/public contract, a kernel dependency firewall, a deployment or
+process boundary, or a selectable integration/driver. A leaf package that only
+forwards or re-exports another owner's implementation adds release overhead and
+should be folded into that owner. Conversely, mechanical consolidation must not
+erase one of those boundaries merely to reduce the workspace package count.
+
+Repository folders may group related packages without merging their package
+identity. `crates/drivers/` is such a grouping: its children remain separate,
+independently versioned integrations over the common provider SPI.
+
 Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 `fireworks`, `openrouter`) depend on `everruns-provider`, **not**
 `everruns-core`. `everruns-provider` is the lean provider/LLM abstraction crate
@@ -163,7 +175,8 @@ on full `everruns-core`.
 Two pin conventions follow from package publishability:
 
 - **Unpublished** crates reference path deps without a version
-  (`{ path = "../provider" }` for provider crates; `{ path = "../core", default-features = false }` for crates that do depend on core), matching `server`/`worker`.
+  (`{ path = "../../provider" }` for crates nested under `crates/drivers/`;
+  top-level workspace crates use their corresponding sibling path).
 - **Published** crates own explicit package versions rather than inheriting the
   product workspace version. Their internal path dependencies carry the target
   package's current version, including dependencies inherited from
