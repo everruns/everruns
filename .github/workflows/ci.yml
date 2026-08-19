@@ -70,6 +70,7 @@ jobs:
       skip_docs_notebooks: ${{ steps.ci_opt_outs.outputs.skip_docs_notebooks }}
       skip_docker: ${{ steps.ci_opt_outs.outputs.skip_docker }}
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -168,6 +169,10 @@ jobs:
               # scripts/test-publish-crates-order.sh reads the publish workflow
               # and the workspace member manifests it publishes.
               - '.github/workflows/publish-crates.yml'
+              # scripts/test-ci-job-timeouts.sh reads this workflow, so a PR that
+              # drops a timeout-minutes must run the guard even when it touches
+              # nothing under scripts/.
+              - '.github/workflows/ci.yml'
               - 'Cargo.toml'
               - 'crates/*/Cargo.toml'
               - 'integrations/*/Cargo.toml'
@@ -299,6 +304,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -315,6 +321,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -332,6 +339,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -364,6 +372,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.knowledge == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -384,6 +393,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -399,6 +409,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -417,6 +428,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -436,6 +448,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -454,6 +467,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -474,6 +488,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -493,6 +508,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -511,6 +527,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -529,6 +546,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -551,6 +569,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -566,6 +585,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -584,6 +604,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true'
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v7
@@ -596,6 +617,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -624,6 +646,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -716,6 +739,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -738,11 +762,17 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.shell == 'true'
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v7
 
       - name: Install shell test dependencies
+        # Step-level ceiling so a stalled package mirror names the install in the
+        # failure instead of burning the whole job budget silently (EVE-921).
+        # 12m against an observed max of 2.45m across 400 runs: the step also pulls
+        # Caddy from GitHub releases, so leave room for a slow-but-working mirror.
+        timeout-minutes: 12
         run: |
           # `apt-get update` exits non-zero when *any* configured repo fails, and
           # the runner image ships third-party lists we never install from
@@ -889,6 +919,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    timeout-minutes: 40
     services:
       postgres:
         image: postgres:17-alpine
@@ -1072,6 +1103,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
@@ -1193,6 +1225,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v7
@@ -1251,6 +1284,7 @@ jobs:
       - changes
       - build-binaries
     if: github.event_name == 'push' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
@@ -1406,6 +1440,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Ensure jq is available
+        # Same apt stall mode as the shell-test install, but the runner image ships
+        # jq so this short-circuits before apt is reached (measured at 0.00m across
+        # 400 runs). Kept well under the job's own 10m ceiling (EVE-921).
+        timeout-minutes: 5
         run: |
           # jq ships with the GitHub-hosted runner image, so the apt path is only
           # a fallback. See the shell-test job for why the refresh is tolerated.
@@ -1463,6 +1501,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_sdk_compat != 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -1558,6 +1597,7 @@ jobs:
       - changes
       - build-binaries
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@v7
@@ -1593,6 +1633,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -1648,6 +1689,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true' && needs.changes.outputs.skip_ui_e2e != 'true'
+    timeout-minutes: 35
 
     defaults:
       run:
@@ -1680,6 +1722,13 @@ jobs:
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
+        # `--with-deps` shells out to apt for the Chromium system libraries, so
+        # this step has the same stall mode as the shell-test install (EVE-921).
+        # Sized off the cold-cache path, not the 0.27m median. A run of this branch
+        # missed the browser cache entirely and this step took 14.0m and still
+        # succeeded — more than double the 6.6m max seen across 400 mostly-warm
+        # runs. 25m keeps roughly 1.8x over that cold path.
+        timeout-minutes: 25
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright smoke tests
@@ -1698,6 +1747,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docs == 'true'
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -1797,6 +1847,7 @@ jobs:
       - changes
       - build-binaries
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_docker != 'true'
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -1841,6 +1892,7 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
     needs: changes
+    timeout-minutes: 10
     steps:
       - name: Require affected CI before merge
         run: |
@@ -1924,6 +1976,7 @@ jobs:
       - daytona-live-test
       - e2b-live-test
       - deno-live-test
+    timeout-minutes: 10
     steps:
       - name: Verify all jobs passed
         run: |
