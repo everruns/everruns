@@ -44,6 +44,17 @@ V1 does not support:
 - Durable push webhook callbacks from remote A2A agents.
 - Encrypted org-level external-agent credentials.
 
+## Packaging
+
+The capability is opt-in at build time. `everruns-platform`'s `a2a` feature gates the
+[`a2a_delegation`](../../crates/platform/src/capabilities/a2a_delegation.rs) module and the
+`A2aAgentDelegationCapability` registration; the `everruns` facade re-exposes it as its own `a2a`
+feature. Both stay off by default because the A2A client crate carries an independent HTTP/TLS
+stack, which an embedder that only runs local agents would otherwise duplicate against its own.
+The product build (`everruns-server`, `everruns-worker`) enables the platform feature directly, so
+hosted behavior is unchanged; embedders that delegate to external agents opt in with
+`everruns/a2a`.
+
 ## Model
 
 ### Configured External Agents
