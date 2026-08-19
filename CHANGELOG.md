@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-19
+
+### Highlights
+
+- **Register capabilities on a running runtime** - A host holding `Arc<InProcessRuntime>` can now make a capability discovered after composition resolvable without rebuilding the runtime, via `register_capability`/`is_capability_registered`. Registration stays separate from activation, and readers always see a consistent registry snapshot ([#3224](https://github.com/everruns/everruns/pull/3224)).
+- **A2A delegation is now opt-in** - Outbound A2A delegation moved behind a new `a2a` Cargo feature, off by default, so the standard build no longer drags a second HTTP/TLS stack into consumers that only run the local runtime. Hosts that delegate to remote A2A agents enable the `a2a` feature explicitly ([#3221](https://github.com/everruns/everruns/pull/3221)).
+
+### What's Changed
+
+- feat(host): register capabilities on a running runtime ([#3224](https://github.com/everruns/everruns/pull/3224)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): let session deletion pass the append-only guards ([#3222](https://github.com/everruns/everruns/pull/3222)) by [@chaliy](https://github.com/chaliy)
+- feat(everruns): gate a2a delegation behind an opt-in feature ([#3221](https://github.com/everruns/everruns/pull/3221)) by [@chaliy](https://github.com/chaliy)
+- ci(security): run the advisory gate on a schedule ([#3223](https://github.com/everruns/everruns/pull/3223)) by [@chaliy](https://github.com/chaliy)
+- ci(security): advisory-scan non-workspace lockfiles ([#3213](https://github.com/everruns/everruns/pull/3213)) by [@chaliy](https://github.com/chaliy)
+- ci(release): auto-tag and publish library crates on merge ([#3212](https://github.com/everruns/everruns/pull/3212)) by [@chaliy](https://github.com/chaliy)
+- fix(release): close the crate-release cone after the host 0.19 breaking bump ([#3214](https://github.com/everruns/everruns/pull/3214)) by [@chaliy](https://github.com/chaliy)
+- chore(release): release library crates for the 0.19.0 cycle ([#3211](https://github.com/everruns/everruns/pull/3211)) by [@chaliy](https://github.com/chaliy)
+- chore(release): make library-crate release audit a mandatory release step ([#3210](https://github.com/everruns/everruns/pull/3210)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump react, react-dom and @types/react in /apps/ui ([#3219](https://github.com/everruns/everruns/pull/3219)) by [@dependabot](https://github.com/dependabot)
+- chore(deps-dev): bump @typescript/native-preview to 7.0.0-dev.20260707.2 in /apps/ui ([#3220](https://github.com/everruns/everruns/pull/3220)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @tanstack/react-query from 5.101.2 to 5.101.4 in /apps/ui ([#3218](https://github.com/everruns/everruns/pull/3218)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @astrojs/starlight from 0.41.3 to 0.41.7 in /apps/docs ([#3217](https://github.com/everruns/everruns/pull/3217)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump shiki from 4.3.1 to 4.4.3 in /apps/docs ([#3216](https://github.com/everruns/everruns/pull/3216)) by [@dependabot](https://github.com/dependabot)
+
+### Crate Releases
+
+Independently versioned crates published this cycle (smallest compatible bump, breaking classification from the public-API diff):
+
+- `everruns-host` 0.19.0 → 0.20.0 (breaking: `capability_registry()` now returns `Arc<CapabilityRegistry>` and `capability_registry_mut()` was removed; adds `register_capability`/`is_capability_registered`)
+- `everruns` 0.18.1 → 0.18.2 (additive: new opt-in `a2a` feature; host dependency baseline cascade)
+- `everruns-platform` 0.18.1 → 0.18.2 (host dependency baseline cascade)
+- `everruns-test-support` 0.18.1 → 0.18.2 (host dependency baseline cascade)
+- `everruns-llmsim` 0.18.1 → 0.18.2 (host dependency baseline cascade)
+
+No crates were deleted or absorbed this cycle. `everruns-mcp` and the remaining published crates had no public-contract change and are not re-released.
+
+### Migration Notes
+
+- Embedders that use outbound A2A delegation must enable the `everruns` crate's new `a2a` feature; it is off by default and the standard build no longer includes the A2A client.
+- Consumers of `everruns-host` that called `HostComposition::capability_registry()` now receive an `Arc<CapabilityRegistry>` snapshot instead of a `&CapabilityRegistry`, and `capability_registry_mut()` is gone — register capabilities through `register_capability`/`register_capability_overriding` instead.
+
 ## [0.19.0] - 2026-08-18
 
 ### Highlights

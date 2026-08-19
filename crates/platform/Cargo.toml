@@ -16,7 +16,7 @@
 
 [package]
 name = "everruns-platform"
-version = "0.18.1"
+version = "0.18.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

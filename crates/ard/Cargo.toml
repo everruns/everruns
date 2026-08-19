@@ -49,6 +49,6 @@ url = "2"
 ard-live-tests = []
 
 [dev-dependencies]
-everruns-host = { version = "0.19.0", path = "../host", features = ["direct-egress"] }
+everruns-host = { version = "0.20.0", path = "../host", features = ["direct-egress"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"

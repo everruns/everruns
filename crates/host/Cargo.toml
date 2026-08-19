@@ -6,7 +6,7 @@
 
 [package]
 name = "everruns-host"
-version = "0.19.0"
+version = "0.20.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -96,7 +96,7 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 # Deterministic simulator for host tests/examples. Version-less path
 # dependency: stripped on publish, so the optional llmsim -> host edge does
 # not create a published cycle.
-everruns-llmsim = { version = "0.18.1", path = "../drivers/llmsim", features = ["host"] }
+everruns-llmsim = { version = "0.18.2", path = "../drivers/llmsim", features = ["host"] }
 # Test doubles and demo fixtures.
-everruns-test-support = { version = "0.18.1", path = "../test-support" }
+everruns-test-support = { version = "0.18.2", path = "../test-support" }
 wiremock = "0.6"
