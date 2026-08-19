@@ -24,6 +24,7 @@ Maintenance work should optimize for these outcomes:
 4. Keep release claims honest: do not call the repo ready unless the relevant surfaces were checked.
 5. Detect half-built features whose visible surfaces do not match their implementation status, especially gaps between UI, backend APIs, MCP, CLI, docs, and tests.
 6. Keep shipped plugin surfaces current, mutually consistent, and aligned with upstream platform behavior.
+7. Keep the size of shipped artifacts a maintained property rather than an accident, so release binaries and container images do not grow silently.
 
 ## Ownership Boundary
 
@@ -94,6 +95,7 @@ Before a release, maintenance should cover:
   - pnpm-managed packages enforce the seven-day release-age floor with `minimumReleaseAge: 10080`; do not bypass that gate for routine dependency maintenance
   - major pnpm upgrades (TypeScript, lucide-react, marked, openui packages) ship as separate PRs per framework family so each can be validated by the matching UI or docs build
   - bump pnpm packages that have transitive runtime dependencies (e.g. `@ag-ui/core`) together with the packages that pin them (e.g. `@openuidev/*`), otherwise pnpm installs duplicate copies in the lockfile
+- shipped artifact size for the release binaries and container images, compared against the previous release. Growth without a named cause is a finding, not a rounding error; attribution tooling and its caveats live in [`.agents/skills/maintenance/references/surfaces.md`](../../.agents/skills/maintenance/references/surfaces.md)
 - feature completeness across product surfaces: changed or recently shipped features should have their intended UI, backend, MCP, CLI, docs, tests, and manual-test coverage checked for disconnected, stubbed, or contradictory behavior
 - crate documentation for every crate whose public surface changed: its `README.md` and crate-level rustdoc must still meet the crate documentation standard in `knowledge/foundations/code-organization.md` (abstract, ecosystem line, example, docs links, license; no publishing mechanics or internal `knowledge/` links; badges only on published crates)
 - the Codex and Claude Code plugin surfaces reviewed against recent upstream plugin-platform changes: inspect the latest relevant platform references, then compare them to `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, shipped plugin behavior, skills, docs, and marketplace entries; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation to prove registration, version parity, compatibility, and non-contradiction before claiming release readiness

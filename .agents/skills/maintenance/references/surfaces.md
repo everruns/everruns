@@ -68,6 +68,43 @@ rather than an arbitrary full matrix.
 Recent changes introduce no obvious scale or latency regression: query shape, pagination, indexes,
 batching, and background job cost reviewed where relevant; no unbounded list paths or easy N+1s.
 
+## Binary and artifact size
+
+Shipped artifacts stay proportionate to what they do: release binaries and container images do not
+grow silently across releases, and growth that did happen has a named cause.
+
+Check this when the pass covers release readiness, a dependency change that pulls a new transitive
+tree, or a suspicion that a binary jumped. Compare against the previous release's published tarball
+before calling growth acceptable.
+
+```bash
+cargo build --release -p everruns-cli   # or -p everruns-server -p everruns-worker
+ls -l target/release/everruns
+```
+
+For attribution, [`cargo-bsize`](https://github.com/Boshen/cargo-bsize) ranks a binary by crate,
+generic family, duplicate dependency version, and duplicated constant:
+
+```bash
+cargo install cargo-bsize --locked
+cargo bsize --bin everruns      # add --baseline <path> to diff against an earlier build
+```
+
+Know its limits before trusting the report:
+
+- it builds `release` plus debuginfo into its own `target/bsize` rather than reusing
+  `target/release`, costing several minutes and ~2 GB of disk
+- `--mono`, `--macros`, and `--remarks` need nightly `-Z` flags, which the pinned stable toolchain in
+  `rust-toolchain.toml` cannot provide
+- its "reached by no reference the graph can see" figure covers most of the binary and is a limit of
+  its call-graph analysis, not dead code — do not report it as recoverable
+- it is pre-1.0 and used ad hoc, deliberately not wired into `just` or CI, and its report asks the
+  reader for source-level changes only, so profile and link-level wins are its blind spot
+
+Findings that repay the run: duplicate crate versions shipping two copies of a tree, two backends
+linked for one job, and generic families instantiated per caller where one concrete function would
+do. Anything too large to fix in the pass becomes a Linear issue.
+
 ## Technical debt
 
 Structural debt is named and tracked before it compounds: god objects, duplicated logic, and
