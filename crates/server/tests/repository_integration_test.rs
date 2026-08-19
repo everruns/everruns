@@ -3857,3 +3857,312 @@ async fn test_llm_generation_without_session_is_org_attributed() {
     assert_eq!(output_tokens, 0, "embeddings produce vectors, not tokens");
     assert_eq!(actual_cost_usd, Some(0.000_82));
 }
+
+/// A session that has taken a turn fans out into append-only tables when it is
+/// deleted: its `events` cascade away, and its `usage_journal` / `usage_ledger`
+/// rows are detached by `ON DELETE SET NULL`. Before migration 122 every one of
+/// those guards aborted the delete, so `DELETE /v1/sessions/{id}` answered 500
+/// for any real session (EVE-919).
+#[tokio::test]
+async fn delete_session_purges_events_and_detaches_usage_records() {
+    let backend = create_test_backend().await;
+    let pool = create_test_pool().await;
+
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            source: everruns_platform::SessionSource::Api,
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("Failed to create session");
+
+    let event = backend
+        .create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: json!({"turn_id": Uuid::now_v7().to_string(), "role": "user"}),
+            data: json!({"message": {"role": "user", "content": []}}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("Failed to create event");
+
+    let journal_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO usage_journal (id, org_id, kind, session_id, event_id)
+        VALUES ($1, $2, 'llm.generation', $3, $4)
+        "#,
+    )
+    .bind(journal_id)
+    .bind(TEST_ORG_ID)
+    .bind(session.id.uuid())
+    .bind(event.id)
+    .execute(&pool)
+    .await
+    .expect("Failed to record usage journal entry");
+
+    let ledger_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO usage_ledger (id, journal_id, org_id, session_id, currency, amount, meter_source)
+        VALUES ($1, $2, $3, $4, 'usd', 1.25, 'llm')
+        "#,
+    )
+    .bind(ledger_id)
+    .bind(journal_id)
+    .bind(TEST_ORG_ID)
+    .bind(session.id.uuid())
+    .execute(&pool)
+    .await
+    .expect("Failed to record usage ledger entry");
+
+    let deleted = backend
+        .delete_session(TEST_ORG_ID, session.id)
+        .await
+        .expect("Deleting a session that has taken a turn must not error");
+    assert!(deleted, "the session row was removed");
+
+    let sessions_left: i64 = sqlx::query_scalar("SELECT count(*) FROM sessions WHERE id = $1")
+        .bind(session.id.uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(sessions_left, 0, "session is gone");
+
+    let events_left: i64 = sqlx::query_scalar("SELECT count(*) FROM events WHERE session_id = $1")
+        .bind(session.id.uuid())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(events_left, 0, "the session's events went with it");
+
+    // The financial record outlives the session it came from — detached, not deleted.
+    let (journal_session, journal_event): (Option<Uuid>, Option<Uuid>) =
+        sqlx::query_as("SELECT session_id, event_id FROM usage_journal WHERE id = $1")
+            .bind(journal_id)
+            .fetch_one(&pool)
+            .await
+            .expect("usage journal entry survives session deletion");
+    assert_eq!(journal_session, None, "journal detached from the session");
+    assert_eq!(journal_event, None, "journal detached from the event");
+
+    let (ledger_session, amount): (Option<Uuid>, f64) =
+        sqlx::query_as("SELECT session_id, amount FROM usage_ledger WHERE id = $1")
+            .bind(ledger_id)
+            .fetch_one(&pool)
+            .await
+            .expect("usage ledger entry survives session deletion");
+    assert_eq!(ledger_session, None, "ledger detached from the session");
+    assert_eq!(amount, 1.25, "the amount charged is untouched");
+}
+
+/// The purge path is the *only* way rows leave these tables. Nothing about
+/// migration 122 may weaken the append-only guarantees themselves.
+#[tokio::test]
+async fn append_only_guards_still_reject_ordinary_mutations() {
+    let backend = create_test_backend().await;
+    let pool = create_test_pool().await;
+
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            source: everruns_platform::SessionSource::Api,
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("Failed to create session");
+
+    let event = backend
+        .create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: json!({"turn_id": Uuid::now_v7().to_string(), "role": "user"}),
+            data: json!({"message": {"role": "user", "content": []}}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("Failed to create event");
+
+    let journal_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO usage_journal (id, org_id, kind, session_id)
+        VALUES ($1, $2, 'llm.generation', $3)
+        "#,
+    )
+    .bind(journal_id)
+    .bind(TEST_ORG_ID)
+    .bind(session.id.uuid())
+    .execute(&pool)
+    .await
+    .expect("Failed to record usage journal entry");
+
+    // Events: no rewriting, and no removing one outside a purge or archival run.
+    let rewrite = sqlx::query("UPDATE events SET event_type = 'tampered' WHERE id = $1")
+        .bind(event.id)
+        .execute(&pool)
+        .await;
+    assert!(rewrite.is_err(), "events cannot be rewritten");
+
+    let remove = sqlx::query("DELETE FROM events WHERE id = $1")
+        .bind(event.id)
+        .execute(&pool)
+        .await;
+    assert!(remove.is_err(), "events cannot be deleted one by one");
+
+    // Usage records: only the FK-driven detachment is allowed, nothing else.
+    let rewrite_journal = sqlx::query("UPDATE usage_journal SET kind = 'tampered' WHERE id = $1")
+        .bind(journal_id)
+        .execute(&pool)
+        .await;
+    assert!(
+        rewrite_journal.is_err(),
+        "usage records cannot be rewritten"
+    );
+
+    let hand_detach =
+        sqlx::query("UPDATE usage_journal SET kind = 'tampered', session_id = NULL WHERE id = $1")
+            .bind(journal_id)
+            .execute(&pool)
+            .await;
+    assert!(
+        hand_detach.is_err(),
+        "detaching is not a licence to edit the rest of the row"
+    );
+
+    let remove_journal = sqlx::query("DELETE FROM usage_journal WHERE id = $1")
+        .bind(journal_id)
+        .execute(&pool)
+        .await;
+    assert!(remove_journal.is_err(), "usage records cannot be deleted");
+
+    // budget_ledger shares the events guard and stays strictly append-only:
+    // the purge bypass is scoped to `events`, so setting the flag buys nothing.
+    let budget_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO budgets (id, org_id, subject_type, subject_id, currency, "limit", balance)
+        VALUES ($1, $2, 'org', $3, 'usd', 100.0, 0.0)
+        "#,
+    )
+    .bind(budget_id)
+    .bind(TEST_ORG_ID)
+    .bind(TEST_ORG_ID.to_string())
+    .execute(&pool)
+    .await
+    .expect("Failed to create budget");
+
+    let budget_entry_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO budget_ledger (id, budget_id, amount, meter_source)
+        VALUES ($1, $2, 1.0, 'llm')
+        "#,
+    )
+    .bind(budget_entry_id)
+    .bind(budget_id)
+    .execute(&pool)
+    .await
+    .expect("Failed to record budget ledger entry");
+
+    let mut purge_tx = pool.begin().await.expect("begin purge transaction");
+    sqlx::query("SET LOCAL app.session_purge = 'true'")
+        .execute(&mut *purge_tx)
+        .await
+        .expect("set purge flag");
+    let budget_ledger_delete = sqlx::query("DELETE FROM budget_ledger WHERE id = $1")
+        .bind(budget_entry_id)
+        .execute(&mut *purge_tx)
+        .await;
+    assert!(
+        budget_ledger_delete.is_err(),
+        "the session-purge bypass must not reach budget_ledger"
+    );
+    let _ = purge_tx.rollback().await;
+
+    backend
+        .delete_session(TEST_ORG_ID, session.id)
+        .await
+        .expect("cleanup");
+}
+
+/// Eval results outlive the session they ran in: the FK detaches rather than
+/// blocking the delete (EVE-919).
+#[tokio::test]
+async fn eval_case_results_detach_from_deleted_sessions() {
+    let pool = create_test_pool().await;
+
+    let delete_action: String = sqlx::query_scalar(
+        r#"
+        SELECT confdeltype::text
+          FROM pg_constraint
+         WHERE conname = 'eval_case_results_session_id_fk'
+        "#,
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("the eval_case_results session FK exists");
+
+    assert_eq!(
+        delete_action, "n",
+        "eval_case_results.session_id must be ON DELETE SET NULL, not restricting"
+    );
+}

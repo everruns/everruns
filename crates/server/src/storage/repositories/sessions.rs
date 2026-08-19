@@ -1063,7 +1063,19 @@ impl Database {
     }
 
     /// Delete session by org and session id
+    ///
+    /// Runs in a transaction that sets `app.session_purge`, the flag the
+    /// append-only guard on `events` recognises (migration 122). Without it the
+    /// FK cascade into `events` trips the guard and the whole delete aborts —
+    /// which is what made this endpoint answer 500 for any session that had
+    /// taken a turn (EVE-919).
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
+        let mut tx = self.pool.begin().await?;
+
+        sqlx::query("SET LOCAL app.session_purge = 'true'")
+            .execute(&mut *tx)
+            .await?;
+
         let result = sqlx::query(
             r#"
             DELETE FROM sessions
@@ -1072,8 +1084,10 @@ impl Database {
         )
         .bind(org_id)
         .bind(id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(result.rows_affected() > 0)
     }

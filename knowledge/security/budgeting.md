@@ -97,6 +97,19 @@ The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `ag
 
 Immutable, append-only rated posting derived from a journal row. Positive = debit, negative = credit (top-up/refund). Each ledger row links back to `journal_id`; budget-scoped postings also carry `budget_id`. Protected by append-only triggers in Postgres.
 
+### Detachment is the one permitted write
+
+Spend outlives whatever produced it. When a session, event, or other referenced
+row is deleted, the journal and ledger rows stay and their reference column is
+nulled by `ON DELETE SET NULL` — the amount, currency, org, and measures are
+never touched. The append-only trigger permits exactly that shape of update and
+rejects everything else, including a hand-written update that nulls a reference
+while editing another column. Deleting a journal or ledger row is never allowed.
+
+This is why deleting a session no longer fails: before migration 122 the trigger
+rejected the cascade itself, so `DELETE /v1/sessions/{id}` returned 500 for any
+session that had spent anything.
+
 ## Evaluation Pipeline
 
 On every `llm.generation` event:
