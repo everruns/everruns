@@ -61,9 +61,17 @@ Serde derives account for 41% of core's `.text` (1.57 MB of 3.83 MB), from 232
   32.7 MB and `lib.rmeta` from 13.74 MB to 13.71 MB. Metadata is encoded for the crate's
   own use regardless of visibility, so `pub(crate)` buys API hygiene, not bytes. Do not
   fund a visibility audit as a size measure.
-- Demotion does expose dead code that `pub` masks: the same experiment produced 95
-  `never used` warnings inside core. Deleting genuinely dead code is the one lever that
-  removes both metadata and object bytes, and it is worth doing on its own merits.
+- The 95 `never used` warnings that demotion exposes are not a cleanup backlog, and were
+  triaged item by item before being dismissed. They fall into four groups, none of them
+  deletable: the OTel GenAI semantic-convention vocabulary in `telemetry.rs` (51, a
+  deliberately complete constant table that `everruns-host` uses selectively); in-flight
+  feature scaffolding whose design intent is already specified
+  ([model router](../integrations/model-router.md), 14, and turn-completion gating, 10);
+  embedder-facing convenience and extension surface that core exists to publish, such as
+  the locale-aware `narrate_*` phrasing helpers capabilities call and the `Collected*`
+  result types; and warnings the experiment manufactured, where demoting a producer makes
+  its product look unused. In a crate published for out-of-tree embedders, "unreferenced
+  in this workspace" is not evidence of dead code. Do not delete on that signal alone.
 
 ## Success Bar
 
