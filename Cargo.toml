@@ -61,7 +61,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.19.0"
+version = "0.20.0"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -177,10 +177,10 @@ everruns-capability = { path = "crates/capability", version = "0.18.0", default-
 everruns-builtins = { path = "crates/builtins", version = "0.18.1" }
 everruns-core = { path = "crates/core", version = "0.18.0" }
 everruns-engine = { path = "crates/engine", version = "0.18.0" }
-everruns-host = { path = "crates/host", version = "0.19.0" }
-everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.1", default-features = false }
-everruns-test-support = { path = "crates/test-support", version = "0.18.1", default-features = false }
-everruns-platform = { path = "crates/platform", version = "0.18.1" }
+everruns-host = { path = "crates/host", version = "0.20.0" }
+everruns-llmsim = { path = "crates/drivers/llmsim", version = "0.18.2", default-features = false }
+everruns-test-support = { path = "crates/test-support", version = "0.18.2", default-features = false }
+everruns-platform = { path = "crates/platform", version = "0.18.2" }
 everruns-provider = { path = "crates/provider", version = "0.18.0", default-features = false }
 everruns-mcp = { path = "crates/mcp", version = "0.19.0" }
 everruns-ard = { path = "crates/ard", version = "0.18.0" }
