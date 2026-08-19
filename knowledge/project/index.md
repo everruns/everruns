@@ -7,4 +7,5 @@
 * [Skills Registry Specification](skills-registry.md) - Agent Skills registry.
 * [Commands System](commands.md) - Slash commands system.
 * [XML Prompt Formatting](xml-prompt-formatting.md) - XML tags for system prompt structure.
+* [Build Artifact Size](build-artifact-size.md) - Why the library crates compile large, and which levers move it.
 * [Dismissed Options](dismissed-options.md) - Technical options considered but dismissed.

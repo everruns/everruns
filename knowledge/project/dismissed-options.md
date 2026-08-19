@@ -156,3 +156,24 @@ execution keys.
 - Worker affinity routing is implemented for other reasons
 - WebSocket transport supports multiple concurrent responses
 - Benchmarks show HTTP connection overhead is a meaningful bottleneck
+
+## Lowering `codegen-units` for smaller rlibs
+
+**Status**: Dismissed
+
+**What it was**: Reducing `codegen-units` on `[profile.dev]` from the default 256 to
+shrink the workspace's large debug rlibs, on the theory that fewer codegen units means
+less duplicated monomorphization and fewer ELF sections.
+
+**Why considered**: `everruns-core`, `everruns-platform`, and `everruns-provider` produce
+debug rlibs of 20-33 MB, and per-CGU symbol and relocation tables are a measured majority
+of the object bytes (see [Build Artifact Size](build-artifact-size.md)).
+
+**Why dismissed**: Measured on `everruns-core` at default features, the effect is small
+and the cost is not: 33.6 MB at 256 units, 33.0 MB at 32, 32.8 MB at 16, 30.7 MB at 1.
+A 9% reduction at the extreme setting serializes codegen for every crate in the
+workspace. The dominant term is crate metadata and API surface, which `codegen-units`
+does not touch.
+
+**Revisit if**: the public API surface shrinks enough that per-CGU bookkeeping becomes
+the dominant term, or a profile is added whose builds are not latency-sensitive.
