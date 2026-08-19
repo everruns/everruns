@@ -150,8 +150,11 @@ thiserror = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
-everruns-llmsim = { workspace = true, features = ["host"] }
-everruns-test-support = { workspace = true, features = ["fixtures"] }
+# Version-less path dev-dependencies: stripped on publish, so these test-only
+# edges do not force the facade to package before same-cycle sibling releases
+# (e.g. everruns-test-support) reach crates.io.
+everruns-llmsim = { path = "../drivers/llmsim", features = ["host"] }
+everruns-test-support = { path = "../test-support", features = ["fixtures"] }
 tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "time"] }
 serde = { workspace = true }
 trybuild = { workspace = true }

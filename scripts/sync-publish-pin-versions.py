@@ -38,15 +38,24 @@ def metadata() -> dict[str, Any]:
     return json.loads(output)
 
 
+# Dev-dependencies are deliberately excluded. They never reach downstream
+# consumers (`cargo publish` drops a version-less path dev-dependency entirely),
+# and crate-release.yml already ignores dev edges in both its publish ordering
+# and its strand check. Pinning a dev-dependency to a workspace version that is
+# not yet on crates.io only creates a publish-order deadlock: a crate that
+# dev-depends on a sibling bumped in the same cycle cannot package before that
+# sibling publishes, while the sibling may in turn depend on it (host <-> llmsim).
+# Leaving such dev edges version-less keeps them stripped on publish and the
+# cycle unbroken.
 def dependency_tables(manifest: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    for name in ("dependencies", "build-dependencies", "dev-dependencies"):
+    for name in ("dependencies", "build-dependencies"):
         table = manifest.get(name)
         if isinstance(table, dict):
             yield table
     for target in manifest.get("target", {}).values():
         if not isinstance(target, dict):
             continue
-        for name in ("dependencies", "build-dependencies", "dev-dependencies"):
+        for name in ("dependencies", "build-dependencies"):
             table = target.get(name)
             if isinstance(table, dict):
                 yield table
