@@ -961,7 +961,7 @@ impl ServerAppBuilder {
         );
         let mut session_service = crate::domains::sessions::SessionService::with_registry(
             db.clone(),
-            host_composition.capability_registry().clone(),
+            (*host_composition.capability_registry()).clone(),
         )
         .with_virtual_registry(virtual_registry.clone());
         if let Some(service) = &session_sandbox_service {
@@ -1013,7 +1013,7 @@ impl ServerAppBuilder {
             session_service: Arc::new(
                 crate::domains::sessions::SessionService::with_registry(
                     db.clone(),
-                    host_composition.capability_registry().clone(),
+                    (*host_composition.capability_registry()).clone(),
                 )
                 .with_virtual_registry(virtual_registry.clone()),
             ),
@@ -1089,7 +1089,7 @@ impl ServerAppBuilder {
             services::CapabilityService::with_registry(
                 db.clone(),
                 encryption.clone(),
-                host_composition.capability_registry().clone(),
+                (*host_composition.capability_registry()).clone(),
             )
             .with_mcp_egress_service(host_composition.egress_service()),
         );
@@ -1106,7 +1106,7 @@ impl ServerAppBuilder {
                 event_service.clone(),
                 provider_resolver.clone(),
                 mcp_server_service.clone(),
-                host_composition.capability_registry().clone(),
+                (*host_composition.capability_registry()).clone(),
                 driver_registry.as_ref().clone(),
                 sqldb_store.clone(),
             )
@@ -2258,7 +2258,7 @@ impl ServerAppBuilder {
                     event_service.clone(),
                     provider_resolver.clone(),
                     mcp_server_service,
-                    host_composition.capability_registry().clone(),
+                    (*host_composition.capability_registry()).clone(),
                     host_composition.driver_registry().clone(),
                     sqldb_store.clone(),
                 )

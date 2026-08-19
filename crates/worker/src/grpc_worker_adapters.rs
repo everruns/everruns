@@ -401,7 +401,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // =========================================================================
 
     fn capability_registry(&self) -> CapabilityRegistry {
-        self.host_composition.capability_registry().clone()
+        (*self.host_composition.capability_registry()).clone()
     }
 
     fn driver_registry(&self) -> DriverRegistry {

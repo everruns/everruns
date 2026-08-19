@@ -343,7 +343,7 @@ impl TestServer {
             session_service: Arc::new(
                 everruns_server::domains::sessions::SessionService::with_registry(
                     db.clone(),
-                    host_composition.capability_registry().clone(),
+                    (*host_composition.capability_registry()).clone(),
                 ),
             ),
             event_service: event_service.clone(),
@@ -383,7 +383,7 @@ impl TestServer {
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
-            host_composition.capability_registry().clone(),
+            (*host_composition.capability_registry()).clone(),
         ));
         let mcp_service = Arc::new(
             everruns_server::domains::mcp_servers::McpServerService::new(
@@ -417,7 +417,7 @@ impl TestServer {
                     event_service.clone(),
                     provider_resolver,
                     mcp_service.clone(),
-                    host_composition.capability_registry().clone(),
+                    (*host_composition.capability_registry()).clone(),
                     driver_registry.as_ref().clone(),
                     sqldb_store.clone(),
                 )

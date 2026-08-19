@@ -227,6 +227,32 @@ without rebuilding the runtime or replacing the session:
 host-storage boundary. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
 
+### Live registration
+
+Activation can only reach a capability the registry already knows. A host that
+discovers one after composition — an extension installed mid-conversation, say —
+registers it on the running runtime rather than rebuilding it:
+
+- `InProcessRuntime::register_capability(capability)` takes `&self`, so a host
+  holding `Arc<InProcessRuntime>` can call it. `is_capability_registered(id)`
+  answers whether a registration is needed without matching on error strings.
+- Registration is not activation. It makes the id resolvable; the session
+  overlay above still decides per-session enablement, so sessions that never
+  activate the id are unaffected and no surface is invalidated by registering
+  alone.
+- Validation matches composition time: a duplicate canonical id or an alias
+  colliding with a registered id is rejected and the incumbent capability is
+  left untouched. Composition-time registration keeps its override semantics,
+  where re-registering an id deliberately replaces the previous implementation.
+- `HostComposition` holds its registry copy-on-write behind a lock. A reader
+  takes a snapshot, so a turn assembled while a registration lands either sees
+  the capability or does not, never a partially built registry. Clones of a
+  composition stay independent registries, as they were before.
+
+Unregistering is deliberately absent: removal raises lifetime questions —
+in-flight tool calls, spawned processes — that the motivating case does not
+need.
+
 ### Automatic session titles
 
 The built-in `session` capability may opt into automatic title maintenance.

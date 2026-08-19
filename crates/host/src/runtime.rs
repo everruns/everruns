@@ -408,10 +408,9 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Register an additional capability on the runtime platform.
-    pub fn capability<C: Capability + 'static>(mut self, capability: C) -> Self {
+    pub fn capability<C: Capability + 'static>(self, capability: C) -> Self {
         self.host_composition
-            .capability_registry_mut()
-            .register(capability);
+            .register_capability_overriding(Arc::new(capability));
         self
     }
 
@@ -956,11 +955,11 @@ impl InProcessRuntime {
             &harness,
             agent,
             session,
-            self.host_composition.capability_registry(),
+            &self.host_composition.capability_registry(),
         );
         let contributed = collect_capability_mcp_servers(
             &resolved.resolved_capability_configs,
-            self.host_composition.capability_registry(),
+            &self.host_composition.capability_registry(),
         );
         let explicit = crate::mcp::merge_session_scoped_servers(&harness, agent, session);
         everruns_core::merge_scoped_mcp_servers(&contributed, &explicit)
@@ -982,6 +981,34 @@ impl InProcessRuntime {
     /// [`InProcessRuntimeBuilder::with_plugin_dir`] is called.
     pub fn plugin_warnings(&self) -> &[String] {
         &self.plugin_warnings
+    }
+
+    /// Register a capability on a running runtime (EVE-917).
+    ///
+    /// Takes `&self`, so a host holding `Arc<InProcessRuntime>` can make a
+    /// capability discovered after composition — an extension installed
+    /// mid-conversation, say — resolvable without rebuilding the runtime.
+    ///
+    /// Registration is not activation. Afterwards the id resolves and
+    /// [`InProcessRuntime::activate_capability`] behaves exactly as it does for
+    /// a capability present at startup, including per-session enablement and
+    /// the surface invalidation that follows it. Sessions that never activate
+    /// the id are unaffected.
+    ///
+    /// A duplicate canonical id or an alias that collides with a registered id
+    /// is rejected, and the existing capability is left untouched. Use
+    /// [`InProcessRuntime::is_capability_registered`] to skip registration for
+    /// something already present.
+    pub fn register_capability(&self, capability: Arc<dyn Capability>) -> Result<()> {
+        self.host_composition
+            .register_capability(capability)
+            .map_err(|error| AgentLoopError::config(format!("cannot register capability: {error}")))
+    }
+
+    /// Whether a canonical id or alias already resolves on this runtime.
+    pub fn is_capability_registered(&self, capability_id: &str) -> bool {
+        self.host_composition
+            .is_capability_registered(capability_id)
     }
 
     /// Activate a registered capability on a running session.
@@ -1032,7 +1059,7 @@ impl InProcessRuntime {
 
         let mut candidate = context.snapshot.capabilities;
         candidate.push(capability.clone());
-        resolve_capability_configs(&candidate, registry)
+        resolve_capability_configs(&candidate, &registry)
             .map_err(|error| AgentLoopError::config(error.to_string()))?;
 
         self.session_store
@@ -1558,7 +1585,7 @@ impl InProcessRuntime {
             self.session_store.clone(),
             self.event_history.clone(),
             self.provider_store.clone(),
-            registry.clone(),
+            (*registry).clone(),
             self.host_composition.driver_registry().clone(),
         )
         .with_file_store(self.file_store.clone())
@@ -1655,7 +1682,7 @@ impl InProcessRuntime {
             self.session_store.as_ref(),
             self.event_history.as_ref(),
             self.provider_store.as_ref(),
-            self.host_composition.capability_registry(),
+            &self.host_composition.capability_registry(),
             self.host_composition.driver_registry(),
             session_id,
             harness_id,
@@ -1749,7 +1776,9 @@ impl RuntimeHostAdapter for InProcessRuntime {
     }
 
     fn capability_registry(&self) -> CapabilityRegistry {
-        self.host_composition.capability_registry().clone()
+        // Snapshot per call, so a capability registered after composition
+        // (EVE-917) reaches the next caller rather than a stale copy.
+        (*self.host_composition.capability_registry()).clone()
     }
 
     fn driver_registry(&self) -> DriverRegistry {
