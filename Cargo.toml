@@ -259,10 +259,13 @@ opt-level = 3
 # Drop the symbol table from shipped artifacts: ~19% off every binary (CLI
 # 18.1MB -> 14.6MB, server 200.5MB -> 163.9MB, worker 94.9MB -> 76.9MB), which
 # is user-visible in the CLI release tarballs and the distroless image layers.
-# Nothing consumes symbolized backtraces from a release build: production sets
-# no RUST_BACKTRACE, and the server's only panic boundary (supervised_task.rs)
+# No deployment consumes symbolized backtraces: production sets no
+# RUST_BACKTRACE, and the server's only panic boundary (supervised_task.rs)
 # discards the payload and reports a metric. CI keeps its symbols because
 # release-ci overrides this back to false for RUST_BACKTRACE=1 jobs.
+# Accepted cost: a user running the CLI with RUST_BACKTRACE=1 now gets
+# `<unknown>` frames. Bug reports should quote the anyhow error message, which
+# is unaffected; reproduce with a release-ci build when frames are needed.
 strip = true
 # Use thin LTO for faster builds while retaining most optimization benefits
 # Full LTO (`lto = true`) provides ~5-10% smaller binaries but 2-5x slower link times
