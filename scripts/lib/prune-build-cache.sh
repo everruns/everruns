@@ -41,6 +41,15 @@ prune_target() {
 
   [ -d "$target_dir" ] || return 0
 
+  # Only recurse into a directory cargo owns. CARGO_TARGET_DIR is inherited from
+  # the caller's environment, and this function deletes what it finds, so a
+  # stray or misspelled value must not turn into `rm -rf` against an unrelated
+  # tree. Cargo writes CACHEDIR.TAG into every target dir it creates.
+  if [ ! -f "$target_dir/CACHEDIR.TAG" ]; then
+    echo "   skipped $label $target_dir (not a cargo target directory)"
+    return 0
+  fi
+
   # Incremental state lives at <target>/<profile>/incremental.
   while IFS= read -r incremental; do
     before="$(dir_size "$incremental")"

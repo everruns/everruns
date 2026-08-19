@@ -25,6 +25,7 @@ echo incremental-state >"$target/release/incremental/everruns_core-def/dep-graph
 echo artifact >"$target/debug/deps/libeverruns_core-abc.rlib"
 echo artifact >"$target/debug/deps/libeverruns_core-abc.rmeta"
 echo artifact >"$target/debug/build/everruns-core-123/output"
+printf 'Signature: 8a477f597d28d172789f06886806bc55\n' >"$target/CACHEDIR.TAG"
 
 output="$(TMPDIR="$workdir" CARGO_TARGET_DIR="$target" bash "$PROJECT_ROOT/scripts/lib/prune-build-cache.sh")"
 
@@ -52,6 +53,19 @@ output="$(TMPDIR="$workdir" CARGO_TARGET_DIR="$target" bash "$PROJECT_ROOT/scrip
 case "$output" in
 *"nothing to prune"*) ;;
 *) fail "re-running prune on a clean target did not report 'nothing to prune'" ;;
+esac
+
+# CARGO_TARGET_DIR comes from the caller's environment, so a directory cargo
+# does not own must be left alone rather than walked and deleted from.
+foreign="$workdir/not-a-target"
+mkdir -p "$foreign/debug/incremental/everruns_core-abc"
+echo state >"$foreign/debug/incremental/everruns_core-abc/dep-graph.bin"
+output="$(TMPDIR="$workdir" CARGO_TARGET_DIR="$foreign" bash "$PROJECT_ROOT/scripts/lib/prune-build-cache.sh")"
+[ -d "$foreign/debug/incremental" ] ||
+  fail "prune walked a directory without CACHEDIR.TAG"
+case "$output" in
+*"not a cargo target directory"*) ;;
+*) fail "prune did not say why it skipped a non-target directory" ;;
 esac
 
 echo "PASS: prune-build-cache removes incremental state and keeps artifacts"
