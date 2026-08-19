@@ -55,16 +55,22 @@ Serde derives account for 41% of core's `.text` (1.57 MB of 3.83 MB), from 232
 - Incremental compilation stays on for local development: a warm edit rebuild of
   `everruns-core` measured ~4 s against ~10 s with `CARGO_INCREMENTAL=0`. The 2.5x
   inner-loop cost is not worth the disk outside CI and pre-push.
-- The remaining real lever is public API surface. Core's 14 MB of `lib.rmeta` is
-  serialized type information and MIR for everything reachable from outside the crate,
-  and it is re-read by every downstream crate. Narrowing visibility to `pub(crate)` and
-  dropping serde derives from types that never cross a wire shrinks metadata, object
-  bookkeeping, and downstream compile time together.
+- Narrowing public API surface does not shrink artifacts, and was measured rather than
+  assumed. 222 of core's 989 named public items are referenced nowhere outside the crate;
+  demoting the 158 of them that are not root re-exports moved the rlib from 32.9 MB to
+  32.7 MB and `lib.rmeta` from 13.74 MB to 13.71 MB. Metadata is encoded for the crate's
+  own use regardless of visibility, so `pub(crate)` buys API hygiene, not bytes. Do not
+  fund a visibility audit as a size measure.
+- Demotion does expose dead code that `pub` masks: the same experiment produced 95
+  `never used` warnings inside core. Deleting genuinely dead code is the one lever that
+  removes both metadata and object bytes, and it is worth doing on its own merits.
 
 ## Success Bar
 
 - A claim that a crate is "too big" cites a measured breakdown, not the rlib size alone.
-- Changes made for size report before/after numbers from the same profile and features.
+- Changes made for size report before/after numbers from the same profile and features,
+  built the same way: incremental and non-incremental builds of identical sources produce
+  rlibs that differ by enough (32.9 MB against 33.5 MB for core) to invent a result.
 
 Relevant references:
 - [`knowledge/project/maintenance.md`](maintenance.md) - artifact size as a maintained property.
