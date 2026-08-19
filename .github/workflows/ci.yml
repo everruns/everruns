@@ -770,7 +770,9 @@ jobs:
       - name: Install shell test dependencies
         # Step-level ceiling so a stalled package mirror names the install in the
         # failure instead of burning the whole job budget silently (EVE-921).
-        timeout-minutes: 8
+        # 12m against a ~2m warm-cache observation: the step also pulls Caddy from
+        # GitHub releases, so leave room for a slow-but-working mirror.
+        timeout-minutes: 12
         run: |
           # `apt-get update` exits non-zero when *any* configured repo fails, and
           # the runner image ships third-party lists we never install from
@@ -1440,7 +1442,7 @@ jobs:
       - name: Ensure jq is available
         # Same apt stall mode as the shell-test install; the runner image usually
         # short-circuits this before apt is reached (EVE-921).
-        timeout-minutes: 8
+        timeout-minutes: 12
         run: |
           # jq ships with the GitHub-hosted runner image, so the apt path is only
           # a fallback. See the shell-test job for why the refresh is tolerated.
@@ -1721,7 +1723,9 @@ jobs:
       - name: Install Playwright browsers
         # `--with-deps` shells out to apt for the Chromium system libraries, so
         # this step has the same stall mode as the shell-test install (EVE-921).
-        timeout-minutes: 8
+        # 12m rather than 8m: the ~2.5m observation is a cache hit, and a cold
+        # browser cache adds the Chromium download on top of the apt work.
+        timeout-minutes: 12
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright smoke tests
