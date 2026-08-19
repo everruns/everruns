@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Independently versioned crates published this cycle (smallest compatible bump, breaking classification from the public-API diff):
 
-- `everruns-host` 0.19.0 → 0.20.0 (breaking: `capability_registry()` now returns `Arc<CapabilityRegistry>` and `capability_registry_mut()` was removed; adds `register_capability`/`is_capability_registered`)
+- `everruns-host` 0.19.0 → 0.20.1 (breaking: `capability_registry()` now returns `Arc<CapabilityRegistry>` and `capability_registry_mut()` was removed; adds `register_capability`/`is_capability_registered`. Published as 0.20.1: the 0.20.0 crate publish was blocked by a dev-dependency publish-order deadlock, fixed in the same cycle, and 0.20.1 is the identical code republished under a fresh tag.)
 - `everruns` 0.18.1 → 0.18.2 (additive: new opt-in `a2a` feature; host dependency baseline cascade)
 - `everruns-platform` 0.18.1 → 0.18.2 (host dependency baseline cascade)
 - `everruns-test-support` 0.18.1 → 0.18.2 (host dependency baseline cascade)
