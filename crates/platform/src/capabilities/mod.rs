@@ -215,6 +215,26 @@ mod tests {
         assert!(registry.has(PLATFORM_MANAGEMENT_CAPABILITY_ID));
     }
 
+    // The `a2a` Cargo feature is the only thing that puts outbound A2A delegation
+    // in the registry; without it the build carries no A2A client at all.
+    #[test]
+    fn a2a_delegation_registration_follows_the_a2a_feature() {
+        if std::env::var("FEATURE_AGENT_DELEGATION").is_ok() {
+            // A deployment override decides delegation registration here, not the
+            // Cargo feature under test.
+            return;
+        }
+        let registry = hosted_capability_registry_for_grade(everruns_core::DeploymentGrade::Dev);
+        assert!(
+            registry.has(AGENT_HANDOFF_CAPABILITY_ID),
+            "dev grade should register agent delegation, otherwise this test is vacuous"
+        );
+        assert_eq!(
+            registry.has(everruns_core::capabilities::A2A_AGENT_DELEGATION_CAPABILITY_ID),
+            cfg!(feature = "a2a"),
+        );
+    }
+
     #[cfg(feature = "portable-builtins")]
     #[test]
     fn hosted_registry_contains_full_portable_policy_catalog() {

@@ -89,6 +89,11 @@ local = [
     "tokio/process",
     "tokio/time",
 ]
+# Outbound A2A delegation. Off by default: `a2a-client` drags a full second
+# HTTP/TLS stack (its own reqwest major) into any consumer that only wants the
+# local runtime, so hosts that delegate to remote A2A agents opt in explicitly.
+# Requires `local`, since the delegation capability ships in `everruns-platform`.
+a2a = ["local", "everruns-platform/a2a"]
 # Configure real OpenAI-backed models via `everruns::providers::openai`. Off by
 # default so the standard facade build pulls in no provider or Reqwest edge; the
 # `OpenAI` config type and its driver wiring compile only with this feature.
@@ -107,7 +112,7 @@ everruns-host.workspace = true
 # Production-safe deterministic in-process simulator backing
 # `Model::simulated`; no dependency on testing/demo helpers.
 everruns-llmsim.workspace = true
-everruns-platform = { workspace = true, optional = true, features = ["a2a", "portable-builtins"] }
+everruns-platform = { workspace = true, optional = true, features = ["portable-builtins"] }
 everruns-integrations-filesystem = { workspace = true, optional = true }
 everruns-integrations-bashkit = { workspace = true, optional = true }
 everruns-integrations-web-fetch = { workspace = true, optional = true }
