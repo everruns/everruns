@@ -177,7 +177,12 @@ async fn main() -> anyhow::Result<()> {
     // Commands that don't need authentication
     match &cli.command {
         Commands::Login { token } => {
-            return commands::login::run(cli.api_url.as_deref(), *token, &cli.profile).await;
+            return Box::pin(commands::login::run(
+                cli.api_url.as_deref(),
+                *token,
+                &cli.profile,
+            ))
+            .await;
         }
         Commands::Logout => {
             return commands::logout::run(&cli.profile);
@@ -187,8 +192,10 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Orgs { command } => {
             return match command {
-                Some(OrgsCommand::Select) => commands::orgs::run_select(&cli.profile).await,
-                None => commands::orgs::run_list(output_format, &cli.profile).await,
+                Some(OrgsCommand::Select) => {
+                    Box::pin(commands::orgs::run_select(&cli.profile)).await
+                }
+                None => Box::pin(commands::orgs::run_list(output_format, &cli.profile)).await,
             };
         }
         _ => {}
@@ -211,9 +218,14 @@ async fn main() -> anyhow::Result<()> {
         Everruns::with_base_url(&api_key, &api_url)?
     };
 
+    // Each arm's future is boxed rather than awaited inline. Without it every
+    // command's state machine is inlined into main's, which the optimizer then
+    // duplicates across codegen units — main::{{closure}} and its drop glue cost
+    // ~200 KiB of the release binary. One allocation per process is free here:
+    // the CLI runs exactly one command and exits.
     match cli.command {
         Commands::Agents { command } => {
-            commands::agents::run(
+            Box::pin(commands::agents::run(
                 command,
                 &client,
                 &api_url,
@@ -221,18 +233,18 @@ async fn main() -> anyhow::Result<()> {
                 org_id.as_deref(),
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Connections { command } => {
-            commands::connections::run(
+            Box::pin(commands::connections::run(
                 command,
                 &client,
                 &api_url,
                 &api_key,
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Capabilities { status, command } => {
@@ -240,40 +252,40 @@ async fn main() -> anyhow::Result<()> {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
                 None => status,
             };
-            commands::capabilities::run(&client, output_format, &status).await
+            Box::pin(commands::capabilities::run(&client, output_format, &status)).await
         }
         Commands::Plugins { command } => {
-            commands::plugins::run(
+            Box::pin(commands::plugins::run(
                 command,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
                 output_format,
-            )
+            ))
             .await
         }
         Commands::Skills { command } => {
-            commands::skills::run(
+            Box::pin(commands::skills::run(
                 command,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
                 output_format,
-            )
+            ))
             .await
         }
         Commands::KnowledgeBases { command } => {
-            commands::knowledge_bases::run(
+            Box::pin(commands::knowledge_bases::run(
                 command,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
                 output_format,
-            )
+            ))
             .await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(
+            Box::pin(commands::sessions::run(
                 command,
                 &client,
                 &api_url,
@@ -281,11 +293,11 @@ async fn main() -> anyhow::Result<()> {
                 org_id.as_deref(),
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Triggers { agent, command } => {
-            commands::triggers::run(
+            Box::pin(commands::triggers::run(
                 command,
                 agent,
                 &api_url,
@@ -293,11 +305,11 @@ async fn main() -> anyhow::Result<()> {
                 org_id.as_deref(),
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Participants { session, command } => {
-            commands::participants::run(
+            Box::pin(commands::participants::run(
                 command,
                 session,
                 &api_url,
@@ -305,18 +317,18 @@ async fn main() -> anyhow::Result<()> {
                 org_id.as_deref(),
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Files { command } => {
-            commands::files::run(
+            Box::pin(commands::files::run(
                 command,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
                 output_format,
                 cli.quiet,
-            )
+            ))
             .await
         }
         Commands::Chat {
@@ -325,7 +337,7 @@ async fn main() -> anyhow::Result<()> {
             timeout,
             no_stream,
         } => {
-            commands::chat::run(
+            Box::pin(commands::chat::run(
                 &client,
                 output_format,
                 cli.quiet,
@@ -333,7 +345,7 @@ async fn main() -> anyhow::Result<()> {
                 session,
                 timeout,
                 no_stream,
-            )
+            ))
             .await
         }
         // Already handled above
