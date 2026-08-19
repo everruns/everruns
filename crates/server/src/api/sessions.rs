@@ -460,7 +460,7 @@ impl AppState {
         Self {
             session_service: Arc::new(SessionService::with_registry(
                 db.clone(),
-                host_composition.capability_registry().clone(),
+                (*host_composition.capability_registry()).clone(),
             )),
             event_service: EventService::new(db.clone(), event_delivery.clone()),
             db,

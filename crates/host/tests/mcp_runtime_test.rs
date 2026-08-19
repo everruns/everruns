@@ -474,3 +474,444 @@ async fn live_capability_activation_and_deactivation_refresh_every_surface() {
         .expect_err("unknown capability must fail");
     assert!(unknown.to_string().contains("unknown capability"));
 }
+
+/// A different implementation claiming an id that is already registered.
+struct RivalCapability;
+
+impl Capability for RivalCapability {
+    fn id(&self) -> &str {
+        "live_test"
+    }
+
+    fn name(&self) -> &str {
+        "Rival"
+    }
+
+    fn description(&self) -> &str {
+        "Claims an id that is already taken."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some("RIVAL_CAPABILITY_PROMPT")
+    }
+}
+
+/// A distinct id whose alias collides with a registered capability.
+struct AliasCollisionCapability;
+
+impl Capability for AliasCollisionCapability {
+    fn id(&self) -> &str {
+        "alias_collision"
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        vec!["live_test"]
+    }
+
+    fn name(&self) -> &str {
+        "Alias Collision"
+    }
+
+    fn description(&self) -> &str {
+        "Aliases an id that is already taken."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+}
+
+/// A capability that did not exist when the runtime was composed becomes usable
+/// without a restart: register it on the live runtime, activate it, and every
+/// surface behaves exactly as it would have at startup (EVE-917).
+#[tokio::test]
+async fn capability_registered_after_startup_behaves_like_one_composed_at_startup() {
+    let traffic = Arc::new(Mutex::new(McpTraffic::default()));
+    let hooks = Arc::new(HookCounts::default());
+
+    // Composed with an empty capability registry — `live_test` arrives later.
+    let platform = HostComposition::builder()
+        .capability_registry(CapabilityRegistry::new())
+        .driver_registry(DriverRegistry::new())
+        .egress_service(Arc::new(FakeMcpEgress {
+            traffic: traffic.clone(),
+        }))
+        .build();
+
+    let harness_id = everruns_provider::typed_id::HarnessId::from_seed(917);
+    let agent_id = everruns_provider::typed_id::AgentId::from_seed(917);
+    let active_session_id = everruns_provider::typed_id::SessionId::from_seed(917);
+    let bystander_session_id = everruns_provider::typed_id::SessionId::from_seed(918);
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .host_composition(platform)
+        .llm_sim_as_default(LlmSimConfig::scripted(vec![
+            SimTurn::ToolCalls(vec![
+                SimToolCall {
+                    name: "live_echo".to_string(),
+                    arguments: json!({ "value": "hello" }),
+                    id: None,
+                },
+                SimToolCall {
+                    name: "mcp_docs__echo".to_string(),
+                    arguments: json!({ "message": "hi" }),
+                    id: None,
+                },
+            ]),
+            SimTurn::Assistant("used the late-registered tools".to_string()),
+        ]))
+        .harness(
+            HarnessBuilder::new("live", "Base prompt")
+                .id(harness_id)
+                .build(),
+        )
+        .agent(
+            AgentBuilder::new("live-agent", "Base agent prompt")
+                .id(agent_id)
+                .max_iterations(8)
+                .build(),
+        )
+        .session(
+            SessionBuilder::new(harness_id)
+                .id(active_session_id)
+                .agent(agent_id)
+                .build(),
+        )
+        .session(
+            SessionBuilder::new(harness_id)
+                .id(bystander_session_id)
+                .agent(agent_id)
+                .build(),
+        )
+        .build()
+        .await
+        .expect("runtime builds");
+
+    // Before registration the id does not resolve at all.
+    assert!(!runtime.is_capability_registered("live_test"));
+    let unknown = runtime
+        .activate_capability(
+            active_session_id,
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
+        )
+        .await
+        .expect_err("an unregistered capability cannot be activated");
+    assert!(unknown.to_string().contains("unknown capability"));
+
+    // Register on the running runtime through a shared handle.
+    runtime
+        .register_capability(Arc::new(LiveCapability {
+            hooks: hooks.clone(),
+        }))
+        .expect("registration succeeds on a running runtime");
+    assert!(runtime.is_capability_registered("live_test"));
+
+    // Registration is not activation: nothing has reached the session yet.
+    let registered_only = runtime.load_context(active_session_id).await.unwrap();
+    assert!(
+        !registered_only
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT"),
+        "registering must not change a session that has not activated the capability"
+    );
+    assert!(
+        !registered_only
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+
+    // Config validation runs against the freshly registered instance.
+    let invalid = runtime
+        .activate_capability(
+            active_session_id,
+            everruns_capability::CapabilityRef::new("live_test"),
+        )
+        .await
+        .expect_err("invalid config must fail before mutation");
+    assert!(invalid.to_string().contains("enabled must be true"));
+
+    let delta = runtime
+        .activate_capability(
+            active_session_id,
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
+        )
+        .await
+        .expect("activation succeeds for a late-registered capability");
+    assert!(delta.changed && delta.active && delta.surfaces_dirty);
+
+    // Every surface is assembled: prompt, tools, commands.
+    let active = runtime.load_context(active_session_id).await.unwrap();
+    assert!(
+        active
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+    assert!(
+        active
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+    assert_eq!(
+        runtime
+            .list_commands(active_session_id)
+            .await
+            .unwrap()
+            .first()
+            .map(|command| command.name.clone()),
+        Some("live".to_string())
+    );
+
+    // The contributed MCP server is discovered and its tool routes out; hooks fire.
+    let turn = runtime
+        .run_text_turn(active_session_id, "Use the late-registered tools")
+        .await
+        .expect("turn runs");
+    assert!(turn.success);
+    assert_eq!(traffic.lock().unwrap().tools_call_names, vec!["echo"]);
+    assert_eq!(hooks.pre.load(Ordering::SeqCst), 2);
+    assert_eq!(hooks.post.load(Ordering::SeqCst), 2);
+
+    // A session on the same runtime that never activated it sees nothing.
+    let bystander = runtime.load_context(bystander_session_id).await.unwrap();
+    assert!(
+        !bystander
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+    assert!(
+        !bystander
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+    assert!(
+        runtime
+            .list_commands(bystander_session_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Deactivate / re-activate behaves as it does for a composed capability.
+    let off = runtime
+        .deactivate_capability(active_session_id, "live_test")
+        .await
+        .expect("deactivation succeeds");
+    assert!(off.changed && !off.active && off.surfaces_dirty);
+    let inactive = runtime.load_context(active_session_id).await.unwrap();
+    assert!(
+        !inactive
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+
+    let back_on = runtime
+        .activate_capability(
+            active_session_id,
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
+        )
+        .await
+        .expect("re-activation succeeds");
+    assert!(back_on.changed && back_on.active && back_on.surfaces_dirty);
+    assert!(
+        runtime
+            .load_context(active_session_id)
+            .await
+            .unwrap()
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+}
+
+/// Live registration validates exactly as composition-time registration does:
+/// a duplicate id or a colliding alias is rejected and the incumbent survives
+/// untouched (EVE-917).
+#[tokio::test]
+async fn live_registration_rejects_duplicate_ids_and_alias_collisions() {
+    let hooks = Arc::new(HookCounts::default());
+    let runtime = InProcessRuntimeBuilder::new()
+        .host_composition(
+            HostComposition::builder()
+                .capability_registry(CapabilityRegistry::new())
+                .driver_registry(DriverRegistry::new())
+                .build(),
+        )
+        .llm_sim_as_default(LlmSimConfig::fixed("ok"))
+        .single_session(|session| {
+            session
+                .harness("live", "Base prompt")
+                .agent("live-agent", "Base agent prompt")
+        })
+        .build()
+        .await
+        .expect("runtime builds");
+    let session_id = runtime.default_session_id().expect("session id");
+
+    runtime
+        .register_capability(Arc::new(LiveCapability {
+            hooks: hooks.clone(),
+        }))
+        .expect("first registration succeeds");
+
+    let duplicate = runtime
+        .register_capability(Arc::new(RivalCapability))
+        .expect_err("a duplicate canonical id is rejected");
+    assert!(
+        duplicate.to_string().contains("live_test"),
+        "the error names the conflicting id, got: {duplicate}"
+    );
+
+    let collision = runtime
+        .register_capability(Arc::new(AliasCollisionCapability))
+        .expect_err("an alias colliding with a registered id is rejected");
+    assert!(
+        collision.to_string().contains("live_test"),
+        "the error names the conflicting id, got: {collision}"
+    );
+    assert!(!runtime.is_capability_registered("alias_collision"));
+
+    // The incumbent is untouched: activating still yields the original surfaces.
+    runtime
+        .activate_capability(
+            session_id,
+            everruns_capability::CapabilityRef::with_config(
+                "live_test",
+                json!({ "enabled": true }),
+            ),
+        )
+        .await
+        .expect("the originally registered capability still activates");
+    let prompt = runtime
+        .load_context(session_id)
+        .await
+        .unwrap()
+        .runtime_agent
+        .system_prompt;
+    assert!(prompt.contains("LIVE_CAPABILITY_PROMPT"));
+    assert!(
+        !prompt.contains("RIVAL_CAPABILITY_PROMPT"),
+        "a rejected registration must not replace the incumbent"
+    );
+}
+
+/// A capability registered under an id derived from an index, so a test can
+/// register many distinct ones concurrently.
+struct NumberedCapability {
+    id: String,
+}
+
+impl Capability for NumberedCapability {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn name(&self) -> &str {
+        "Numbered"
+    }
+
+    fn description(&self) -> &str {
+        "Registered concurrently with a running turn."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+}
+
+/// Registration races with turn assembly and with reads from background tasks.
+/// Concurrent registrations must not panic, deadlock, or let a reader observe a
+/// half-built registry — every id registered is present, and a turn running
+/// through the same registry still completes (EVE-917).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_registration_during_a_turn_is_safe() {
+    const REGISTRATIONS: usize = 32;
+
+    let runtime = Arc::new(
+        InProcessRuntimeBuilder::new()
+            .host_composition(
+                HostComposition::builder()
+                    .capability_registry(CapabilityRegistry::new())
+                    .driver_registry(DriverRegistry::new())
+                    .build(),
+            )
+            .llm_sim_as_default(LlmSimConfig::fixed("done"))
+            .single_session(|session| {
+                session
+                    .harness("live", "Base prompt")
+                    .agent("live-agent", "Base agent prompt")
+            })
+            .build()
+            .await
+            .expect("runtime builds"),
+    );
+    let session_id = runtime.default_session_id().expect("session id");
+
+    // A turn assembling its surfaces from the registry, while writers swap it.
+    let turn_runtime = runtime.clone();
+    let turn = tokio::spawn(async move {
+        turn_runtime
+            .run_text_turn(session_id, "Run while capabilities are registered")
+            .await
+    });
+
+    let writers: Vec<_> = (0..REGISTRATIONS)
+        .map(|index| {
+            let runtime = runtime.clone();
+            tokio::spawn(async move {
+                runtime.register_capability(Arc::new(NumberedCapability {
+                    id: format!("numbered_{index}"),
+                }))
+            })
+        })
+        .collect();
+
+    // Readers racing the writers must always see a coherent registry.
+    let reader_runtime = runtime.clone();
+    let reader = tokio::spawn(async move {
+        for _ in 0..200 {
+            let _ = reader_runtime.is_capability_registered("numbered_0");
+            let _ = reader_runtime.load_context(session_id).await;
+            tokio::task::yield_now().await;
+        }
+    });
+
+    for writer in writers {
+        writer
+            .await
+            .expect("no writer panicked")
+            .expect("each distinct id registers");
+    }
+    reader.await.expect("no reader panicked");
+    let result = turn.await.expect("the turn task did not panic");
+    assert!(result.expect("the turn completed").success);
+
+    for index in 0..REGISTRATIONS {
+        assert!(
+            runtime.is_capability_registered(&format!("numbered_{index}")),
+            "every concurrently registered id survives the copy-on-write swaps"
+        );
+    }
+}

@@ -569,7 +569,7 @@ impl WorkerServiceImpl {
         >,
         provider_resolver_service: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let capability_registry = host_composition.capability_registry().clone();
+        let capability_registry = (*host_composition.capability_registry()).clone();
         let session_service = {
             let svc = SessionService::with_registry(db.clone(), capability_registry.clone());
             if let Some(ref reg) = virtual_registry {
