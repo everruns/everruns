@@ -339,7 +339,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -546,7 +546,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v7
@@ -617,7 +617,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -739,7 +739,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v7
@@ -1440,9 +1440,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Ensure jq is available
-        # Same apt stall mode as the shell-test install; the runner image usually
-        # short-circuits this before apt is reached (EVE-921).
-        timeout-minutes: 12
+        # Same apt stall mode as the shell-test install, but the runner image ships
+        # jq so this short-circuits before apt is reached (measured at 0.00m across
+        # 400 runs). Kept well under the job's own 10m ceiling (EVE-921).
+        timeout-minutes: 5
         run: |
           # jq ships with the GitHub-hosted runner image, so the apt path is only
           # a fallback. See the shell-test job for why the refresh is tolerated.
@@ -1632,7 +1633,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -1688,7 +1689,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true' && needs.changes.outputs.skip_ui_e2e != 'true'
-    timeout-minutes: 25
+    timeout-minutes: 35
 
     defaults:
       run:
@@ -1723,10 +1724,11 @@ jobs:
       - name: Install Playwright browsers
         # `--with-deps` shells out to apt for the Chromium system libraries, so
         # this step has the same stall mode as the shell-test install (EVE-921).
-        # Sized off the observed max of 6.6m across 400 runs, not the 0.27m median:
-        # the median is a browser-cache hit, the max is a cold cache paying for the
-        # Chromium download on top of the apt work.
-        timeout-minutes: 15
+        # Sized off the cold-cache path, not the 0.27m median. A run of this branch
+        # missed the browser cache entirely and this step took 14.0m and still
+        # succeeded — more than double the 6.6m max seen across 400 mostly-warm
+        # runs. 25m keeps roughly 1.8x over that cold path.
+        timeout-minutes: 25
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright smoke tests
@@ -1745,7 +1747,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docs == 'true'
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     defaults:
       run:

@@ -19,8 +19,10 @@ from pathlib import Path
 
 import yaml
 
-# Generous relative to observed runtimes (the slowest job sampled over ~120 recent
-# runs finishes in under 7 minutes). A job that trips this is wedged, not slow.
+# Generous relative to observed runtimes. Most jobs finish in under 7 minutes, but
+# the ones that compile Rust or download browsers have a cache-miss cliff — ui-e2e
+# has been measured at 16m on a cold Playwright cache — so their ceilings are sized
+# off the cold path. A job that trips this ceiling is wedged, not slow.
 CEILING_MINUTES = 45
 
 # Commands that reach a package mirror and can hang rather than fail.
@@ -62,6 +64,24 @@ if unbounded_installs:
     errors.append(
         f"{path}: package-install steps without a step-level timeout-minutes: "
         + ", ".join(sorted(unbounded_installs))
+    )
+
+# A step ceiling at or above its job's ceiling can never fire — the job dies first,
+# which is the six-hour-shaped failure this guard exists to prevent, just smaller.
+inverted = []
+for name, job in jobs.items():
+    job_timeout = job.get("timeout-minutes")
+    if not isinstance(job_timeout, int):
+        continue
+    for step in job.get("steps") or []:
+        step_timeout = step.get("timeout-minutes")
+        if isinstance(step_timeout, int) and step_timeout >= job_timeout:
+            label = step.get("name") or "<unnamed step>"
+            inverted.append(f"{name}: '{label}' {step_timeout}m >= job {job_timeout}m")
+if inverted:
+    errors.append(
+        f"{path}: step timeout-minutes at or above the job's own ceiling: "
+        + ", ".join(sorted(inverted))
     )
 
 if errors:
