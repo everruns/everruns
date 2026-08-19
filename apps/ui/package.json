@@ -46,7 +46,7 @@
     "lucide-react": "^1.23.0",
     "next": "^16.2.11",
     "react": "^19.2.8",
-    "react-dom": "^19.2.7",
+    "react-dom": "^19.2.8",
     "recharts": "^3.9.1",
     "remark-gfm": "^4.0.1",
     "remark-github-blockquote-alert": "^2.1.0",
