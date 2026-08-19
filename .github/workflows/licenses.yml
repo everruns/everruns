@@ -25,6 +25,14 @@ on:
       - '.github/workflows/licenses.yml'
       - '**/Cargo.lock'
       - 'scripts/lib/check-nonworkspace-advisories.sh'
+  schedule:
+    # Advisories are published against a dependency tree that is not changing,
+    # so the path filters above answer "were there advisories the last time Rust
+    # code moved" rather than "are there advisories today" (EVE-920). Weekly,
+    # Mondays 16:00 UTC — after examples-check at 15:00 so the scheduled sweeps
+    # do not pile onto the same runners.
+    - cron: '0 16 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read
