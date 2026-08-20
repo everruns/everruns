@@ -41,9 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       run_ci: ${{ steps.ci_event.outputs.run_ci }}
-      # Temporary architecture-work switch. Change the step output below to
-      # true to restore the full Rust/integration matrix.
-      slow_ci_enabled: ${{ steps.slow_ci_mode.outputs.enabled }}
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
       deno: ${{ steps.live_filter.outputs.deno }}
@@ -76,10 +73,6 @@ jobs:
 
       - name: Check release workflow security
         run: bash scripts/test-release-workflow-security.sh
-
-      - name: Resolve temporary slow CI mode
-        id: slow_ci_mode
-        run: echo "enabled=false" >> "$GITHUB_OUTPUT"
 
       - name: Resolve CI event gate
         id: ci_event
@@ -645,7 +638,7 @@ jobs:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     timeout-minutes: 30
 
     steps:
@@ -918,7 +911,7 @@ jobs:
     name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 40
     services:
       postgres:
@@ -1102,7 +1095,7 @@ jobs:
     name: Integration Tests (S3 Blob Backend)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     timeout-minutes: 30
     services:
       postgres:
@@ -1224,7 +1217,7 @@ jobs:
     name: Build Release Binaries
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.slow_ci_enabled == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 40
 
     steps:

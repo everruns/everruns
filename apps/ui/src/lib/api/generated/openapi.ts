@@ -4931,10 +4931,7 @@ export interface components {
       /** @description Number of secrets stored */
       count: number;
     };
-    /**
-     * @description Budget — a spending cap for a subject in a currency.
-     *     API response DTO.
-     */
+    /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
       /**
        * Format: double
@@ -8789,7 +8786,7 @@ export interface components {
      * @enum {string}
      */
     LeasedResourceStatus: "active" | "cleaning" | "released" | "cleanup_failed";
-    /** @description Immutable ledger entry recording resource consumption or credit against a budget. */
+    /** @description Immutable platform ledger record for resource consumption or credit. */
     LedgerEntry: {
       /**
        * Format: double
