@@ -17493,7 +17493,7 @@
       },
       "Budget": {
         "type": "object",
-        "description": "Budget — a spending cap for a subject in a currency.\nAPI response DTO.",
+        "description": "Budget — a stored spending cap for a platform subject.",
         "required": [
           "id",
           "organization_id",
@@ -24271,7 +24271,7 @@
       },
       "LedgerEntry": {
         "type": "object",
-        "description": "Immutable ledger entry recording resource consumption or credit against a budget.",
+        "description": "Immutable platform ledger record for resource consumption or credit.",
         "required": [
           "id",
           "budget_id",
