@@ -2378,6 +2378,7 @@ impl WorkerService for WorkerServiceImpl {
                             req.provider_type.clone(),
                             Some(credentials.api_key),
                             credentials.base_url,
+                            Default::default(),
                         )
                     })
                 })
@@ -2387,7 +2388,12 @@ impl WorkerService for WorkerServiceImpl {
                 .await
                 .map(|value| {
                     value.map(|provider| {
-                        (provider.provider_type, provider.api_key, provider.base_url)
+                        (
+                            provider.provider_type,
+                            provider.api_key,
+                            provider.base_url,
+                            provider.request_options,
+                        )
                     })
                 })
         }
@@ -2401,17 +2407,28 @@ impl WorkerService for WorkerServiceImpl {
         })?;
 
         Ok(Response::new(match resolved {
-            Some((provider_type, api_key, base_url)) => GetDefaultProviderCredentialsResponse {
-                found: true,
-                api_key: api_key.unwrap_or_default(),
-                base_url: base_url.unwrap_or_default(),
-                provider_type,
-            },
+            Some((provider_type, api_key, base_url, request_options)) => {
+                // Empty when the connection configures nothing, so the worker
+                // applies no options rather than an empty JSON object.
+                let request_options_json = if request_options.is_empty() {
+                    String::new()
+                } else {
+                    serde_json::to_string(&request_options).unwrap_or_default()
+                };
+                GetDefaultProviderCredentialsResponse {
+                    found: true,
+                    api_key: api_key.unwrap_or_default(),
+                    base_url: base_url.unwrap_or_default(),
+                    provider_type,
+                    request_options_json,
+                }
+            }
             None => GetDefaultProviderCredentialsResponse {
                 found: false,
                 api_key: String::new(),
                 base_url: String::new(),
                 provider_type: String::new(),
+                request_options_json: String::new(),
             },
         }))
     }

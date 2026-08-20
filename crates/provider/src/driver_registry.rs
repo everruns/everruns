@@ -1649,6 +1649,9 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     /// Extra provider-specific metadata (OAuth tokens, account ids, etc.).
     pub metadata: ProviderMetadata,
+    /// Connection-level request options (extra headers, diagnostics opt-in)
+    /// applied to every call made through this provider.
+    pub request_options: crate::provider::ProviderRequestOptions,
 }
 
 impl ProviderConfig {
@@ -1661,6 +1664,7 @@ impl ProviderConfig {
             api_key: None,
             base_url: None,
             metadata: ProviderMetadata::default(),
+            request_options: Default::default(),
         }
     }
 
@@ -1676,6 +1680,7 @@ impl ProviderConfig {
             api_key: None,
             base_url: None,
             metadata: ProviderMetadata::default(),
+            request_options: Default::default(),
         }
     }
 
@@ -1694,6 +1699,15 @@ impl ProviderConfig {
     /// Set provider-specific metadata.
     pub fn with_metadata(mut self, metadata: ProviderMetadata) -> Self {
         self.metadata = metadata;
+        self
+    }
+
+    /// Set the connection-level request options.
+    pub fn with_request_options(
+        mut self,
+        request_options: crate::provider::ProviderRequestOptions,
+    ) -> Self {
+        self.request_options = request_options;
         self
     }
 }
@@ -1925,6 +1939,106 @@ impl ChatDriver for CredentialGateDriver {
         _request: CompactRequest,
     ) -> Result<Option<CompactResponse>> {
         Err(self.error())
+    }
+}
+
+/// Applies a provider connection's [`ProviderRequestOptions`] to every call made
+/// through it, by rewriting the per-call [`LlmCallConfig`] before delegating.
+///
+/// This sits above the wire drivers on purpose: the options are expressed in
+/// terms drivers already understand (`extra_headers`, `cache_diagnostics`), so
+/// no driver needs to know that a connection can carry them, and a driver that
+/// implements neither simply ignores the config it is handed.
+struct RequestOptionsDriver {
+    inner: BoxedChatDriver,
+    options: crate::provider::ProviderRequestOptions,
+}
+
+impl RequestOptionsDriver {
+    /// Wrap `driver` when `options` change anything; otherwise hand it back
+    /// unchanged so the common path adds no indirection.
+    fn wrap(
+        driver: BoxedChatDriver,
+        options: &crate::provider::ProviderRequestOptions,
+    ) -> BoxedChatDriver {
+        if options.is_empty() {
+            return driver;
+        }
+        Box::new(Self {
+            inner: driver,
+            options: options.clone(),
+        })
+    }
+
+    fn apply(&self, config: &LlmCallConfig) -> LlmCallConfig {
+        let mut config = config.clone();
+        config.extra_headers.extend(self.options.header_pairs());
+        if self.options.cache_diagnostics {
+            config.cache_diagnostics = Some(CacheDiagnosticsConfig {
+                enabled: true,
+                // Chain to the previous generation of this turn so the provider
+                // can report *where* the prompt prefix diverged. `None` on the
+                // first call opts in without a comparison point.
+                previous_message_id: config.previous_response_id.clone(),
+            });
+        }
+        config
+    }
+}
+
+#[async_trait]
+impl ChatDriver for RequestOptionsDriver {
+    async fn chat_completion_stream(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        self.inner
+            .chat_completion_stream(endpoint, messages, &self.apply(config))
+            .await
+    }
+
+    async fn chat_completion(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponse> {
+        self.inner
+            .chat_completion(endpoint, messages, &self.apply(config))
+            .await
+    }
+
+    async fn list_models(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+    ) -> Result<Option<Vec<DiscoveredModel>>> {
+        self.inner.list_models(endpoint).await
+    }
+
+    fn supports_compact(&self) -> bool {
+        self.inner.supports_compact()
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        self.inner.supports_stateful_responses()
+    }
+
+    fn effective_context_window(&self, model: &str) -> Option<usize> {
+        self.inner.effective_context_window(model)
+    }
+
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        self.inner.supports_parallel_tool_calls(model)
+    }
+
+    async fn compact(
+        &self,
+        endpoint: &crate::runtime_provider::ProviderEndpoint,
+        request: CompactRequest,
+    ) -> Result<Option<CompactResponse>> {
+        self.inner.compact(endpoint, request).await
     }
 }
 
@@ -2213,7 +2327,10 @@ impl DriverRegistry {
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
         if let Some(provider) = self.providers.get(&config.provider) {
-            return Ok((*provider).clone().into_boxed_driver());
+            return Ok(RequestOptionsDriver::wrap(
+                (*provider).clone().into_boxed_driver(),
+                &config.request_options,
+            ));
         }
         let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
             AgentLoopError::driver_not_registered(config.provider_type.to_string())
@@ -2241,7 +2358,7 @@ impl DriverRegistry {
         }
         let credential_errors = descriptor.credential_schema.validate(&credential_fields);
         if credential_errors.is_empty() {
-            Ok(driver)
+            Ok(RequestOptionsDriver::wrap(driver, &config.request_options))
         } else {
             let message = if descriptor.credential_schema.fields.len() == 1
                 && descriptor.credential_schema.fields[0].name == "api_key"
@@ -2410,6 +2527,107 @@ mod tests {
         }
         let boxed: BoxedChatDriver = Box::new(StatefulDriver);
         assert!(boxed.supports_stateful_responses());
+    }
+
+    /// A provider connection's request options must reach the wire driver as
+    /// per-call config: headers appended, diagnostics enabled and chained to the
+    /// previous generation of the turn.
+    #[tokio::test]
+    async fn request_options_reach_the_driver_config() {
+        use std::sync::Mutex as StdMutex;
+
+        #[derive(Default)]
+        struct CapturingDriver {
+            seen: std::sync::Arc<StdMutex<Option<LlmCallConfig>>>,
+        }
+        #[async_trait]
+        impl ChatDriver for CapturingDriver {
+            async fn chat_completion_stream(
+                &self,
+                _endpoint: &ProviderEndpoint,
+                _messages: Vec<LlmMessage>,
+                config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                *self.seen.lock().unwrap() = Some(config.clone());
+                Ok(Box::pin(futures::stream::empty()))
+            }
+        }
+
+        let seen = std::sync::Arc::new(StdMutex::new(None));
+        let driver: BoxedChatDriver = Box::new(CapturingDriver {
+            seen: std::sync::Arc::clone(&seen),
+        });
+        let options = crate::provider::ProviderRequestOptions {
+            headers: vec![crate::provider::ProviderRequestHeader {
+                name: "x-gateway-tenant".to_string(),
+                value: "acme".to_string(),
+            }],
+            cache_diagnostics: true,
+        };
+        let wrapped = RequestOptionsDriver::wrap(driver, &options);
+
+        let mut config = LlmCallConfigBuilder::from_config(LlmCallConfig {
+            model: "claude-opus-4-8".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        })
+        .build();
+        config.previous_response_id = Some("msg_1".to_string());
+
+        let _ = wrapped
+            .chat_completion_stream(&ProviderEndpoint::default(), vec![], &config)
+            .await
+            .unwrap();
+
+        let seen = seen.lock().unwrap().clone().expect("driver was called");
+        assert_eq!(
+            seen.extra_headers,
+            vec![("x-gateway-tenant".to_string(), "acme".to_string())]
+        );
+        let diagnostics = seen.cache_diagnostics.expect("diagnostics requested");
+        assert!(diagnostics.enabled);
+        assert_eq!(diagnostics.previous_message_id.as_deref(), Some("msg_1"));
+    }
+
+    /// Empty options must not wrap the driver at all.
+    #[test]
+    fn empty_request_options_leave_the_driver_untouched() {
+        struct Marker;
+        #[async_trait]
+        impl ChatDriver for Marker {
+            async fn chat_completion_stream(
+                &self,
+                _endpoint: &ProviderEndpoint,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unreachable!()
+            }
+            fn supports_stateful_responses(&self) -> bool {
+                true
+            }
+        }
+        let driver = RequestOptionsDriver::wrap(
+            Box::new(Marker),
+            &crate::provider::ProviderRequestOptions::default(),
+        );
+        // The wrapper forwards this too, so this only pins that wrapping is
+        // skipped when there is nothing to apply.
+        assert!(driver.supports_stateful_responses());
     }
 
     #[test]

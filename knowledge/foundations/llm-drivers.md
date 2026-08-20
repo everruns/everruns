@@ -174,6 +174,12 @@ connection at another virtual host.
 Applied by the Anthropic driver, the Gemini driver, and the shared Chat
 Completions / Open Responses protocols (so every driver built on them).
 
+Callers do not set this by hand in the product: a provider connection stores its
+headers and diagnostics opt-in in `settings.request_options`, and
+`DriverRegistry::create_chat_driver` wraps the constructed driver so those
+options are stamped onto every call's `LlmCallConfig`. See the request-options
+section in [providers.md](providers.md#provider).
+
 ### Prompt Cache Diagnostics
 
 `LlmCallConfig.cache_diagnostics` asks the provider to explain an unexpected
@@ -188,6 +194,11 @@ against), and returns the provider's `diagnostics` payload verbatim on
 The payload shape is provider-owned, so the runtime carries it without
 interpreting it. Drivers without a diagnostics protocol ignore the config
 rather than failing the call.
+
+When the opt-in comes from a provider connection, `previous_message_id` is
+chained automatically from the call's `previous_response_id`, which is the
+previous generation of the same turn (tool loops), so the comparison the
+provider reports is against the request that immediately preceded it.
 
 ### Default `max_tokens` Policy
 

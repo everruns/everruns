@@ -209,6 +209,52 @@ pub struct ProviderTraceConfig {
     pub session_url_template: Option<String>,
 }
 
+/// One extra HTTP header sent with every request to a provider connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ProviderRequestHeader {
+    /// Header name, e.g. `x-gateway-tenant`.
+    pub name: String,
+    /// Header value, sent verbatim.
+    pub value: String,
+}
+
+/// Per-connection request options: what an org wants added to every outbound
+/// request to this provider, beyond endpoint and credentials.
+///
+/// These are connection-level on purpose. A gateway header or a diagnostics
+/// opt-in describes the *service* an org talks to, not one agent's behavior, so
+/// it belongs next to the base URL and credentials rather than on every agent.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ProviderRequestOptions {
+    /// Extra HTTP headers added to every request to this provider. They
+    /// override the driver's and the connection's own headers by name, but
+    /// connection-level headers (`host`, `content-length`, ...) are ignored.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub headers: Vec<ProviderRequestHeader>,
+    /// Ask the provider to explain unexpected prompt-cache misses. Honored by
+    /// drivers with a diagnostics protocol (today: Anthropic's
+    /// `cache-diagnosis` beta); ignored elsewhere.
+    #[serde(default)]
+    pub cache_diagnostics: bool,
+}
+
+impl ProviderRequestOptions {
+    /// Whether these options change anything about an outbound request.
+    pub fn is_empty(&self) -> bool {
+        self.headers.is_empty() && !self.cache_diagnostics
+    }
+
+    /// The headers as the `(name, value)` pairs drivers merge onto a request.
+    pub fn header_pairs(&self) -> Vec<(String, String)> {
+        self.headers
+            .iter()
+            .map(|header| (header.name.clone(), header.value.clone()))
+            .collect()
+    }
+}
+
 /// LLM Provider entity (API keys never exposed)
 /// Note: This is the entity struct, separate from the Provider trait in llm.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -244,4 +290,8 @@ pub struct Provider {
     /// driver exposes no dashboard and the org configured nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<ProviderTraceConfig>,
+    /// Extra headers and diagnostics options applied to every request sent to
+    /// this provider. `None` when the org configured nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_options: Option<ProviderRequestOptions>,
 }

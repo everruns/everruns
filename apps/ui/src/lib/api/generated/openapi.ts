@@ -4933,40 +4933,23 @@ export interface components {
     };
     /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
-      /**
-       * Format: double
-       * @description Current remaining balance (limit minus consumed).
-       */
+      /** Format: double */
       balance: number;
       /** Format: date-time */
       created_at: string;
-      /** @description Currency: "usd", "tokens", "credits", or custom. */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
-      /**
-       * Format: double
-       * @description Hard limit — budget ceiling.
-       */
+      /** Format: double */
       limit: number;
-      /** @description Arbitrary metadata. */
       metadata?: unknown;
       organization_id: string;
       period?: null | components["schemas"]["BudgetPeriod"];
-      /**
-       * Format: date-time
-       * @description When the current period started (used to detect period rollover for
-       *     `Duration` / `Rolling` periods, and to display "resets at" in the UI).
-       *     `None` for budgets without a period.
-       */
+      /** Format: date-time */
       period_started_at?: string | null;
-      /**
-       * Format: double
-       * @description Soft limit — triggers pause/warn when balance drops below this.
-       */
+      /** Format: double */
       soft_limit?: number | null;
       status: components["schemas"]["BudgetStatus"];
-      /** @description Public ID of the subject entity. */
       subject_id: string;
       subject_type: components["schemas"]["BudgetSubjectType"];
       /** Format: date-time */
@@ -6427,6 +6410,7 @@ export interface components {
       name: string;
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
     };
     /** @description Request body for creating a per-task push config. */
@@ -8788,23 +8772,16 @@ export interface components {
     LeasedResourceStatus: "active" | "cleaning" | "released" | "cleanup_failed";
     /** @description Immutable platform ledger record for resource consumption or credit. */
     LedgerEntry: {
-      /**
-       * Format: double
-       * @description Positive = debit (consumption), negative = credit (top-up/refund).
-       */
+      /** Format: double */
       amount: number;
       budget_id: string;
       /** Format: date-time */
       created_at: string;
       description?: string | null;
       id: string;
-      /** @description Which meter produced this: "llm_tokens", "tool_calls", etc. */
       meter_source: string;
-      /** @description Reference entity ID. */
       ref_id?: string | null;
-      /** @description Reference entity type: "llm_generation", "tool_execution", "manual". */
       ref_type?: string | null;
-      /** @description Session context for this entry. */
       session_id?: string | null;
     };
     /**
@@ -10557,6 +10534,7 @@ export interface components {
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
         provider_type: components["schemas"]["DriverId"];
+        request_options?: null | components["schemas"]["ProviderRequestOptions"];
         /** @description Current lifecycle status of this provider. */
         status: components["schemas"]["ProviderStatus"];
         trace?: null | components["schemas"]["ProviderTraceConfig"];
@@ -13132,6 +13110,7 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
@@ -13140,6 +13119,35 @@ export interface components {
        * @description Timestamp when this provider was last updated (RFC 3339).
        */
       updated_at: string;
+    };
+    /** @description One extra HTTP header sent with every request to a provider connection. */
+    ProviderRequestHeader: {
+      /** @description Header name, e.g. `x-gateway-tenant`. */
+      name: string;
+      /** @description Header value, sent verbatim. */
+      value: string;
+    };
+    /**
+     * @description Per-connection request options: what an org wants added to every outbound
+     *     request to this provider, beyond endpoint and credentials.
+     *
+     *     These are connection-level on purpose. A gateway header or a diagnostics
+     *     opt-in describes the *service* an org talks to, not one agent's behavior, so
+     *     it belongs next to the base URL and credentials rather than on every agent.
+     */
+    ProviderRequestOptions: {
+      /**
+       * @description Ask the provider to explain unexpected prompt-cache misses. Honored by
+       *     drivers with a diagnostics protocol (today: Anthropic's
+       *     `cache-diagnosis` beta); ignored elsewhere.
+       */
+      cache_diagnostics?: boolean;
+      /**
+       * @description Extra HTTP headers added to every request to this provider. They
+       *     override the driver's and the connection's own headers by name, but
+       *     connection-level headers (`host`, `content-length`, ...) are ignored.
+       */
+      headers?: components["schemas"]["ProviderRequestHeader"][];
     };
     /**
      * @description LLM provider status
@@ -16393,6 +16401,7 @@ export interface components {
        */
       name?: string | null;
       provider_type?: null | components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       status?: null | components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
     };
@@ -17733,6 +17742,7 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];

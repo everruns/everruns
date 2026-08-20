@@ -33,6 +33,7 @@ pub struct CreateProvider {
     /// when omitted).
     #[serde(default)]
     pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
+    pub request_options: Option<everruns_provider::provider::ProviderRequestOptions>,
 }
 
 impl Command for CreateProvider {
@@ -65,6 +66,7 @@ impl Command for CreateProvider {
                     // boundary; the command carries the assembled document.
                     credentials: None,
                     trace: self.trace,
+                    request_options: self.request_options,
                 },
             )
             .await
@@ -161,6 +163,7 @@ pub struct UpdateProvider {
     /// settings, preserving other keys).
     #[serde(default)]
     pub trace: Option<everruns_provider::provider::ProviderTraceConfig>,
+    pub request_options: Option<everruns_provider::provider::ProviderRequestOptions>,
 }
 
 impl Command for UpdateProvider {
@@ -196,6 +199,7 @@ impl Command for UpdateProvider {
                     credentials: None,
                     status: self.status,
                     trace: self.trace,
+                    request_options: self.request_options,
                 },
             )
             .await

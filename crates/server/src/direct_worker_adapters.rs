@@ -828,6 +828,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 api_key: value.api_key,
                 base_url: value.base_url,
                 metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
+                request_options: value.request_options,
             }),
         )
     }

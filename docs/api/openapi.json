@@ -17509,16 +17509,14 @@
         "properties": {
           "balance": {
             "type": "number",
-            "format": "double",
-            "description": "Current remaining balance (limit minus consumed)."
+            "format": "double"
           },
           "created_at": {
             "type": "string",
             "format": "date-time"
           },
           "currency": {
-            "type": "string",
-            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+            "type": "string"
           },
           "id": {
             "type": "string",
@@ -17526,12 +17524,9 @@
           },
           "limit": {
             "type": "number",
-            "format": "double",
-            "description": "Hard limit — budget ceiling."
+            "format": "double"
           },
-          "metadata": {
-            "description": "Arbitrary metadata."
-          },
+          "metadata": {},
           "organization_id": {
             "type": "string"
           },
@@ -17541,8 +17536,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/BudgetPeriod",
-                "description": "Optional period for recurring budgets."
+                "$ref": "#/components/schemas/BudgetPeriod"
               }
             ]
           },
@@ -17551,23 +17545,20 @@
               "string",
               "null"
             ],
-            "format": "date-time",
-            "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+            "format": "date-time"
           },
           "soft_limit": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double",
-            "description": "Soft limit — triggers pause/warn when balance drops below this."
+            "format": "double"
           },
           "status": {
             "$ref": "#/components/schemas/BudgetStatus"
           },
           "subject_id": {
-            "type": "string",
-            "description": "Public ID of the subject entity."
+            "type": "string"
           },
           "subject_type": {
             "$ref": "#/components/schemas/BudgetSubjectType"
@@ -20111,6 +20102,17 @@
           "provider_type": {
             "$ref": "#/components/schemas/DriverId",
             "description": "The type of LLM provider (e.g., openai, anthropic)."
+          },
+          "request_options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderRequestOptions",
+                "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. Omit to configure none."
+              }
+            ]
           },
           "trace": {
             "oneOf": [
@@ -24282,8 +24284,7 @@
         "properties": {
           "amount": {
             "type": "number",
-            "format": "double",
-            "description": "Positive = debit (consumption), negative = credit (top-up/refund)."
+            "format": "double"
           },
           "budget_id": {
             "type": "string"
@@ -24302,29 +24303,25 @@
             "type": "string"
           },
           "meter_source": {
-            "type": "string",
-            "description": "Which meter produced this: \"llm_tokens\", \"tool_calls\", etc."
+            "type": "string"
           },
           "ref_id": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Reference entity ID."
+            ]
           },
           "ref_type": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Reference entity type: \"llm_generation\", \"tool_execution\", \"manual\"."
+            ]
           },
           "session_id": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Session context for this entry."
+            ]
           }
         }
       },
@@ -27409,6 +27406,17 @@
                     "provider_type": {
                       "$ref": "#/components/schemas/DriverId",
                       "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
+                    },
+                    "request_options": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ProviderRequestOptions",
+                          "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+                        }
+                      ]
                     },
                     "status": {
                       "$ref": "#/components/schemas/ProviderStatus",
@@ -31944,6 +31952,17 @@
             "$ref": "#/components/schemas/DriverId",
             "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
           },
+          "request_options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderRequestOptions",
+                "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+              }
+            ]
+          },
           "status": {
             "$ref": "#/components/schemas/ProviderStatus",
             "description": "Current lifecycle status of this provider."
@@ -31963,6 +31982,41 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this provider was last updated (RFC 3339)."
+          }
+        }
+      },
+      "ProviderRequestHeader": {
+        "type": "object",
+        "description": "One extra HTTP header sent with every request to a provider connection.",
+        "required": [
+          "name",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Header name, e.g. `x-gateway-tenant`."
+          },
+          "value": {
+            "type": "string",
+            "description": "Header value, sent verbatim."
+          }
+        }
+      },
+      "ProviderRequestOptions": {
+        "type": "object",
+        "description": "Per-connection request options: what an org wants added to every outbound\nrequest to this provider, beyond endpoint and credentials.\n\nThese are connection-level on purpose. A gateway header or a diagnostics\nopt-in describes the *service* an org talks to, not one agent's behavior, so\nit belongs next to the base URL and credentials rather than on every agent.",
+        "properties": {
+          "cache_diagnostics": {
+            "type": "boolean",
+            "description": "Ask the provider to explain unexpected prompt-cache misses. Honored by\ndrivers with a diagnostics protocol (today: Anthropic's\n`cache-diagnosis` beta); ignored elsewhere."
+          },
+          "headers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderRequestHeader"
+            },
+            "description": "Extra HTTP headers added to every request to this provider. They\noverride the driver's and the connection's own headers by name, but\nconnection-level headers (`host`, `content-length`, ...) are ignored."
           }
         }
       },
@@ -37753,6 +37807,17 @@
               }
             ]
           },
+          "request_options": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderRequestOptions",
+                "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. Replaces the stored options wholesale; omit to leave them\nunchanged."
+              }
+            ]
+          },
           "status": {
             "oneOf": [
               {
@@ -40074,6 +40139,17 @@
               "provider_type": {
                 "$ref": "#/components/schemas/DriverId",
                 "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
+              },
+              "request_options": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ProviderRequestOptions",
+                    "description": "Extra headers and diagnostics options applied to every request sent to\nthis provider. `None` when the org configured nothing."
+                  }
+                ]
               },
               "status": {
                 "$ref": "#/components/schemas/ProviderStatus",

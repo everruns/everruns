@@ -102,6 +102,9 @@ impl ModelSyncService {
             api_key: Some(api_key),
             base_url: provider_row.base_url.clone(),
             metadata: Default::default(),
+            request_options: crate::services::provider_resolver::provider_request_options(
+                &provider_row.settings,
+            ),
         };
 
         let driver = self

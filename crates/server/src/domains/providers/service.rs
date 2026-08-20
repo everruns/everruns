@@ -14,7 +14,7 @@ use crate::storage::{
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_provider::provider::{Provider, ProviderTraceConfig};
+use everruns_provider::provider::{Provider, ProviderRequestOptions, ProviderTraceConfig};
 use everruns_provider::url_validation::validate_safe_url;
 use reqwest::Url;
 use std::sync::Arc;
@@ -70,6 +70,7 @@ impl ProviderService {
         validate_provider_type(&req.provider_type)?;
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
         validate_trace_config(req.trace.as_ref())?;
+        validate_request_options(req.request_options.as_ref())?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -82,11 +83,20 @@ impl ProviderService {
             None
         };
 
-        // Persist only the trace override; driver defaults are applied on read.
-        let settings = req
-            .trace
-            .as_ref()
-            .map(|trace| serde_json::json!({ "trace": trace }));
+        // Persist only the explicit overrides; driver defaults are applied on
+        // read.
+        let mut settings_map = serde_json::Map::new();
+        if let Some(trace) = req.trace.as_ref() {
+            settings_map.insert("trace".to_string(), serde_json::to_value(trace)?);
+        }
+        if let Some(request_options) = req.request_options.as_ref() {
+            settings_map.insert(
+                "request_options".to_string(),
+                serde_json::to_value(request_options)?,
+            );
+        }
+        let settings =
+            (!settings_map.is_empty()).then_some(serde_json::Value::Object(settings_map));
 
         let input = CreateProviderRow {
             name: req.name,
@@ -169,6 +179,7 @@ impl ProviderService {
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
         validate_trace_config(req.trace.as_ref())?;
+        validate_request_options(req.request_options.as_ref())?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -181,14 +192,21 @@ impl ProviderService {
             None
         };
 
-        // Merge the trace override into existing settings, preserving any other
-        // settings keys. `None` leaves settings untouched (COALESCE in storage).
-        let settings = req.trace.as_ref().map(|trace| {
+        // Merge the supplied overrides into existing settings, preserving any
+        // other settings keys. `None` on both leaves settings untouched
+        // (COALESCE in storage).
+        let settings = (req.trace.is_some() || req.request_options.is_some()).then(|| {
             let mut merged = existing.settings.clone();
             if !merged.is_object() {
                 merged = serde_json::json!({});
             }
-            merged["trace"] = serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
+            if let Some(trace) = req.trace.as_ref() {
+                merged["trace"] = serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
+            }
+            if let Some(request_options) = req.request_options.as_ref() {
+                merged["request_options"] =
+                    serde_json::to_value(request_options).unwrap_or(serde_json::Value::Null);
+            }
             merged
         });
 
@@ -244,6 +262,11 @@ impl ProviderService {
         // `row.api_key_set` through the normal path.
         let api_key_set = row.api_key_set;
         let trace = resolve_trace_config(&provider_type, &row.settings);
+        // Absent or malformed options read back as "nothing configured"; the
+        // runtime resolver applies the same fallback.
+        let request_options =
+            crate::services::provider_resolver::provider_request_options(&row.settings);
+        let request_options = (!request_options.is_empty()).then_some(request_options);
 
         Provider {
             id: row.id,
@@ -260,6 +283,7 @@ impl ProviderService {
             created_at: row.created_at,
             updated_at: row.updated_at,
             trace,
+            request_options,
         }
     }
 }
@@ -299,6 +323,66 @@ fn resolve_trace_config(
         session_url_template,
     })
 }
+
+/// Reject request options a connection must not carry: too many headers, an
+/// empty or syntactically invalid header name, an oversized value, or a
+/// connection-level header whose meaning belongs to the transport rather than
+/// the caller. Drivers drop the last group anyway; failing here tells the
+/// operator instead of silently ignoring what they typed.
+fn validate_request_options(options: Option<&ProviderRequestOptions>) -> Result<()> {
+    let Some(options) = options else {
+        return Ok(());
+    };
+    if options.headers.len() > MAX_PROVIDER_REQUEST_HEADERS {
+        return Err(BadRequestError::new(format!(
+            "At most {MAX_PROVIDER_REQUEST_HEADERS} custom headers are allowed"
+        ))
+        .into());
+    }
+    for header in &options.headers {
+        let name = header.name.trim();
+        if name.is_empty() {
+            return Err(BadRequestError::new("Header name cannot be empty").into());
+        }
+        if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err() {
+            return Err(BadRequestError::new(format!("Invalid header name: {name}")).into());
+        }
+        if PROTECTED_PROVIDER_HEADERS
+            .iter()
+            .any(|protected| name.eq_ignore_ascii_case(protected))
+        {
+            return Err(BadRequestError::new(format!(
+                "Header '{name}' is controlled by the transport and cannot be set"
+            ))
+            .into());
+        }
+        if reqwest::header::HeaderValue::from_str(&header.value).is_err() {
+            return Err(BadRequestError::new(format!("Invalid value for header '{name}'")).into());
+        }
+        if header.value.len() > MAX_PROVIDER_REQUEST_HEADER_VALUE_LEN {
+            return Err(BadRequestError::new(format!(
+                "Value for header '{name}' exceeds {MAX_PROVIDER_REQUEST_HEADER_VALUE_LEN} characters"
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+/// Bounds on stored custom headers. These are sent on every request to the
+/// provider, so a runaway list is a per-call cost, not just a storage one.
+const MAX_PROVIDER_REQUEST_HEADERS: usize = 16;
+const MAX_PROVIDER_REQUEST_HEADER_VALUE_LEN: usize = 2048;
+
+/// Connection-level headers the transport owns. Mirrors the driver-side list in
+/// `everruns_provider::driver_helpers::merge_request_headers`.
+const PROTECTED_PROVIDER_HEADERS: &[&str] = &[
+    "host",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "upgrade",
+];
 
 fn validate_trace_config(trace: Option<&ProviderTraceConfig>) -> Result<()> {
     let Some(trace) = trace else {
@@ -429,7 +513,8 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_trace_config, validate_provider_base_url, validate_provider_type,
+        MAX_PROVIDER_REQUEST_HEADERS, ProviderRequestOptions, resolve_trace_config,
+        validate_provider_base_url, validate_provider_type, validate_request_options,
         validate_trace_config,
     };
     use crate::errors::BadRequestError;
@@ -535,6 +620,74 @@ mod tests {
                 "expected {template} to be rejected"
             );
         }
+    }
+
+    // ---- Request options (custom headers, diagnostics) ----
+
+    fn header(name: &str, value: &str) -> everruns_provider::provider::ProviderRequestHeader {
+        everruns_provider::provider::ProviderRequestHeader {
+            name: name.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    #[test]
+    fn request_options_validation_accepts_ordinary_headers() {
+        let options = ProviderRequestOptions {
+            headers: vec![header("x-gateway-tenant", "acme")],
+            cache_diagnostics: true,
+        };
+        assert!(validate_request_options(Some(&options)).is_ok());
+    }
+
+    #[test]
+    fn request_options_validation_rejects_transport_owned_and_malformed_headers() {
+        for bad in [
+            header("Host", "evil.example"),
+            header("bad name", "v"),
+            header("", "v"),
+        ] {
+            let options = ProviderRequestOptions {
+                headers: vec![bad.clone()],
+                cache_diagnostics: false,
+            };
+            assert!(
+                validate_request_options(Some(&options)).is_err(),
+                "expected header {:?} to be rejected",
+                bad.name
+            );
+        }
+    }
+
+    #[test]
+    fn request_options_validation_rejects_too_many_headers() {
+        let options = ProviderRequestOptions {
+            headers: (0..MAX_PROVIDER_REQUEST_HEADERS + 1)
+                .map(|i| header(&format!("x-h{i}"), "v"))
+                .collect(),
+            cache_diagnostics: false,
+        };
+        assert!(validate_request_options(Some(&options)).is_err());
+    }
+
+    #[test]
+    fn stored_request_options_read_back_and_absent_ones_stay_none() {
+        let settings = serde_json::json!({
+            "request_options": {
+                "headers": [{"name": "x-gateway-tenant", "value": "acme"}],
+                "cache_diagnostics": true
+            }
+        });
+        let options = crate::services::provider_resolver::provider_request_options(&settings);
+        assert!(options.cache_diagnostics);
+        assert_eq!(
+            options.header_pairs(),
+            vec![("x-gateway-tenant".to_string(), "acme".to_string())]
+        );
+
+        // A malformed blob must not take the provider offline.
+        let broken = serde_json::json!({ "request_options": "nonsense" });
+        assert!(crate::services::provider_resolver::provider_request_options(&broken).is_empty());
     }
 
     #[test]
@@ -681,6 +834,7 @@ mod tests {
                 credentials: None,
                 status: None,
                 trace: None,
+                request_options: None,
             }
         }
 

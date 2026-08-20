@@ -210,6 +210,7 @@ impl JudgeClient for LlmJudgeClient {
             api_key: Some(runtime_provider.credentials.api_key),
             base_url: runtime_provider.credentials.base_url,
             metadata: Default::default(),
+            request_options: runtime_provider.request_options,
         };
         let driver = self.driver_registry.create_chat_driver(&provider_config)?;
 
