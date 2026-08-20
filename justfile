@@ -163,6 +163,10 @@ pre-pr:
 clean:
     cargo clean
 
+# Reclaim disk by dropping incremental caches, keeping compiled artifacts
+prune:
+    ./scripts/lib/prune-build-cache.sh
+
 # === Services ===
 
 # Start in DEV MODE (in-memory storage, no PostgreSQL required)
