@@ -324,6 +324,9 @@ fn resolve_trace_config(
     })
 }
 
+// THREAT[TM-LLM-032]: bounds and validates connection-level request options so
+// a custom header cannot repoint, unframe, or unboundedly grow every outbound
+// request to this provider.
 /// Reject request options a connection must not carry: too many headers, an
 /// empty or syntactically invalid header name, an oversized value, or a
 /// connection-level header whose meaning belongs to the transport rather than

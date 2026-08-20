@@ -2529,6 +2529,30 @@ mod tests {
         assert!(boxed.supports_stateful_responses());
     }
 
+    /// A call config with nothing set beyond the model, so a test can assert on
+    /// exactly what a wrapper adds.
+    fn bare_call_config() -> LlmCallConfig {
+        LlmCallConfig {
+            model: "claude-opus-4-8".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            metadata: HashMap::new(),
+            previous_response_id: None,
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
+        }
+    }
+
     /// A provider connection's request options must reach the wire driver as
     /// per-call config: headers appended, diagnostics enabled and chained to the
     /// previous generation of the turn.
@@ -2566,26 +2590,7 @@ mod tests {
         };
         let wrapped = RequestOptionsDriver::wrap(driver, &options);
 
-        let mut config = LlmCallConfigBuilder::from_config(LlmCallConfig {
-            model: "claude-opus-4-8".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            speed: None,
-            verbosity: None,
-            metadata: HashMap::new(),
-            previous_response_id: None,
-            provider_opaque_context: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: None,
-            parallel_tool_calls: None,
-            volatile_suffix_len: 0,
-            extra_headers: Vec::new(),
-            cache_diagnostics: None,
-        })
-        .build();
+        let mut config = bare_call_config();
         config.previous_response_id = Some("msg_1".to_string());
 
         let _ = wrapped
@@ -2603,31 +2608,45 @@ mod tests {
         assert_eq!(diagnostics.previous_message_id.as_deref(), Some("msg_1"));
     }
 
-    /// Empty options must not wrap the driver at all.
-    #[test]
-    fn empty_request_options_leave_the_driver_untouched() {
-        struct Marker;
+    /// A connection with no options must leave every call's config exactly as
+    /// the caller built it: no headers appended, no diagnostics opt-in.
+    #[tokio::test]
+    async fn empty_request_options_leave_the_call_config_untouched() {
+        use std::sync::Mutex as StdMutex;
+
+        struct CapturingDriver {
+            seen: std::sync::Arc<StdMutex<Option<LlmCallConfig>>>,
+        }
         #[async_trait]
-        impl ChatDriver for Marker {
+        impl ChatDriver for CapturingDriver {
             async fn chat_completion_stream(
                 &self,
                 _endpoint: &ProviderEndpoint,
                 _messages: Vec<LlmMessage>,
-                _config: &LlmCallConfig,
+                config: &LlmCallConfig,
             ) -> Result<LlmResponseStream> {
-                unreachable!()
-            }
-            fn supports_stateful_responses(&self) -> bool {
-                true
+                *self.seen.lock().unwrap() = Some(config.clone());
+                Ok(Box::pin(futures::stream::empty()))
             }
         }
+
+        let seen = std::sync::Arc::new(StdMutex::new(None));
         let driver = RequestOptionsDriver::wrap(
-            Box::new(Marker),
+            Box::new(CapturingDriver {
+                seen: std::sync::Arc::clone(&seen),
+            }),
             &crate::provider::ProviderRequestOptions::default(),
         );
-        // The wrapper forwards this too, so this only pins that wrapping is
-        // skipped when there is nothing to apply.
-        assert!(driver.supports_stateful_responses());
+
+        let config = bare_call_config();
+        let _ = driver
+            .chat_completion_stream(&ProviderEndpoint::default(), vec![], &config)
+            .await
+            .unwrap();
+
+        let seen = seen.lock().unwrap().clone().expect("driver was called");
+        assert!(seen.extra_headers.is_empty());
+        assert!(seen.cache_diagnostics.is_none());
     }
 
     #[test]

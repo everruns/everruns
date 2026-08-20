@@ -2,11 +2,7 @@
 
 // Enums that stay generated (closed sets the server owns) while the entity they
 // annotate is still hand-maintained here.
-import type {
-  LlmRetryInfo,
-  SessionActivity,
-  SessionSource,
-} from "./schema-types";
+import type { LlmRetryInfo, SessionActivity, SessionSource } from "./schema-types";
 
 // Agent Identity types
 export type AgentIdentityStatus = "active" | "archived" | "deleted";
@@ -240,12 +236,7 @@ export interface PreviewAgentRequest {
 
 export type FindingSeverity = "warning" | "info" | "suggestion";
 
-export type FindingCategory =
-  | "structure"
-  | "completeness"
-  | "effectiveness"
-  | "safety"
-  | "cost";
+export type FindingCategory = "structure" | "completeness" | "effectiveness" | "safety" | "cost";
 
 export type FindingSource = "builtin" | "llm" | "health_check";
 
@@ -1076,13 +1067,7 @@ export interface VerifyConnectionResponse {
 // From legacy budget-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Budget API types — mirrors `crates/core/src/budget.rs`.
 // Behind the `app_budgets` feature flag for app/channel subjects.
-export type BudgetSubjectType =
-  | "session"
-  | "agent"
-  | "user"
-  | "org"
-  | "app"
-  | "app_channel";
+export type BudgetSubjectType = "session" | "agent" | "user" | "org" | "app" | "app_channel";
 
 export type BudgetStatus = "active" | "paused" | "exhausted" | "disabled";
 
@@ -1481,21 +1466,10 @@ export interface HealthResponse {
 export type WorkerStatus = "active" | "draining" | "stopped" | "stale";
 
 /** Workflow status */
-export type WorkflowStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type WorkflowStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 /** Task status in the queue */
-export type TaskStatus =
-  | "pending"
-  | "claimed"
-  | "completed"
-  | "failed"
-  | "dead"
-  | "cancelled";
+export type TaskStatus = "pending" | "claimed" | "completed" | "failed" | "dead" | "cancelled";
 
 /** Circuit breaker state */
 export type CircuitBreakerState = "closed" | "open" | "half_open";
@@ -1722,12 +1696,7 @@ export interface MetricsTimeSeriesResponse {
 export type ScheduleTargetType = "workflow" | "activity";
 
 /** Schedule execution status */
-export type ScheduleExecutionStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "skipped";
+export type ScheduleExecutionStatus = "pending" | "running" | "completed" | "failed" | "skipped";
 
 /** Schedule target configuration */
 export interface ScheduleTarget {
@@ -1883,12 +1852,7 @@ export interface EvalRunSummaryView {
   created_at: string;
 }
 
-export type EvalRunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "cancelled";
+export type EvalRunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 export interface RunSummary {
   total: number;
@@ -2043,19 +2007,10 @@ export interface EvalCaseResult {
   session_id?: string;
   target?: EvalTarget;
   target_snapshot?: EvalTarget;
-  status:
-    | "pending"
-    | "running"
-    | "passed"
-    | "failed"
-    | "errored"
-    | "timeout"
-    | "skipped";
+  status: "pending" | "running" | "passed" | "failed" | "errored" | "timeout" | "skipped";
   // Array form (named/attributed) is canonical; the legacy keyed-object form is
   // still accepted for older rows.
-  scores?:
-    | EvalScore[]
-    | Record<string, { pass: boolean; value: number; reason: string }>;
+  scores?: EvalScore[] | Record<string, { pass: boolean; value: number; reason: string }>;
   metadata?: EvalResultMetadata;
   turns?: number;
   latency_ms?: number;
@@ -2103,9 +2058,7 @@ export interface PublicEvalCaseResult {
   // Only label-only (external) targets are exposed publicly.
   target?: EvalTarget;
   status: EvalCaseResult["status"];
-  scores?:
-    | EvalScore[]
-    | Record<string, { pass: boolean; value: number; reason: string }>;
+  scores?: EvalScore[] | Record<string, { pass: boolean; value: number; reason: string }>;
   transcript?: EvalTranscript;
   metrics?: Record<string, number>;
   turns?: number;
@@ -2234,12 +2187,7 @@ export interface UpdateObserverRequest {
   status?: ObserverStatus;
 }
 
-export type TraceScoreStatus =
-  | "pending"
-  | "scoring"
-  | "completed"
-  | "errored"
-  | "skipped";
+export type TraceScoreStatus = "pending" | "scoring" | "completed" | "errored" | "skipped";
 
 /** A single scored production turn produced by an observer. */
 export interface TraceScore {
@@ -2813,12 +2761,7 @@ export interface ImageUploadResponse {
 }
 
 /** Allowed image content types */
-export const ALLOWED_IMAGE_TYPES = [
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-] as const;
+export const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"] as const;
 
 export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number];
 
@@ -2834,12 +2777,7 @@ export type KnowledgeIndexStatus = "active" | "archived" | "deleted";
 
 export type KnowledgeIndexSourceType = "github" | "git";
 
-export type KnowledgeIndexSyncStatus =
-  | "idle"
-  | "pending"
-  | "syncing"
-  | "synced"
-  | "failed";
+export type KnowledgeIndexSyncStatus = "idle" | "pending" | "syncing" | "synced" | "failed";
 
 export interface KnowledgeIndex {
   id: string;
@@ -2917,11 +2855,7 @@ export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
  * - `2025-06-18`: stateful handshake + session id.
  * - `2026-07-28`: stateless (no handshake).
  */
-export type McpProtocolMode =
-  | "auto"
-  | "2025-03-26"
-  | "2025-06-18"
-  | "2026-07-28";
+export type McpProtocolMode = "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
 
 /** MCP Server configuration */
 export interface McpServer {
@@ -2991,12 +2925,7 @@ export interface Memory {
 
 export type MemorySourceType = "manual" | "github" | "git";
 
-export type MemorySyncStatus =
-  | "idle"
-  | "pending"
-  | "syncing"
-  | "synced"
-  | "failed";
+export type MemorySyncStatus = "idle" | "pending" | "syncing" | "synced" | "failed";
 
 export type MemorySource =
   | {
@@ -3229,10 +3158,7 @@ export interface CreateMessageRequest {
 }
 
 // Helper function to create a simple text message request
-export function createTextMessageRequest(
-  text: string,
-  controls?: Controls,
-): CreateMessageRequest {
+export function createTextMessageRequest(text: string, controls?: Controls): CreateMessageRequest {
   return {
     message: {
       role: "user",
@@ -3268,13 +3194,7 @@ export type PaymentRail = "mpp_tempo" | "x402_base";
 
 export type PaymentOwnerType = "user" | "agent_identity" | "organization";
 
-export type PaymentStatus =
-  | "active"
-  | "disabled"
-  | "pending"
-  | "succeeded"
-  | "failed"
-  | "released";
+export type PaymentStatus = "active" | "disabled" | "pending" | "succeeded" | "failed" | "released";
 
 export interface PaymentAccount {
   id: string;
@@ -3640,13 +3560,7 @@ export interface ModelModalities {
 }
 
 /** Reasoning effort level for models that support it */
-export type ReasoningEffort =
-  | "none"
-  | "minimal"
-  | "low"
-  | "medium"
-  | "high"
-  | "xhigh";
+export type ReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 /** Named reasoning effort value for UI display */
 export interface ReasoningEffortValue {
@@ -3960,11 +3874,7 @@ export interface ReportingBackfillResult {
 // - "active": A turn is currently running
 // - "idle": Turn completed, session waiting for next input
 // - "waiting_for_tool_results": Session paused, waiting for client-side tool results
-export type SessionStatus =
-  | "started"
-  | "active"
-  | "idle"
-  | "waiting_for_tool_results";
+export type SessionStatus = "started" | "active" | "idle" | "waiting_for_tool_results";
 
 export interface Session {
   id: string;
@@ -4137,11 +4047,7 @@ export interface UpdateSessionScheduleRequest {
 // ============================================
 // Session Resource Registry types
 // ============================================
-export type SessionResourceStatus =
-  | "active"
-  | "completed"
-  | "failed"
-  | "released";
+export type SessionResourceStatus = "active" | "completed" | "failed" | "released";
 
 /** A resource registered in the session resource registry. */
 export interface SessionResourceEntry {
