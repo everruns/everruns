@@ -36,6 +36,8 @@ fn config(model: &str) -> LlmCallConfig {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     }
 }
 
@@ -258,5 +260,51 @@ async fn empty_content_with_tool_calls_finish_golden_events() {
                 finish: Some("tool_calls".into()),
             },
         ]
+    );
+}
+
+/// Caller-supplied headers reach the wire on the shared Chat Completions
+/// protocol, override the driver's own value in place, and never carry a
+/// connection-level header from config.
+#[tokio::test]
+async fn extra_headers_reach_the_wire() {
+    let server = MockServer::start().await;
+    mount_sse(&server, "data: [DONE]\n\n".to_string()).await;
+
+    let mut call_config = config("gpt-5.2");
+    call_config.extra_headers = vec![
+        ("x-trace-id".to_string(), "trace-42".to_string()),
+        (
+            "Content-Type".to_string(),
+            "application/vnd+json".to_string(),
+        ),
+        ("Host".to_string(), "elsewhere.example".to_string()),
+    ];
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    let request = requests.first().expect("one request");
+    assert_eq!(
+        request.headers.get("x-trace-id").unwrap().to_str().unwrap(),
+        "trace-42"
+    );
+    let content_types: Vec<_> = request
+        .headers
+        .get_all("content-type")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(content_types, vec!["application/vnd+json"]);
+    assert_ne!(
+        request.headers.get("host").unwrap().to_str().unwrap(),
+        "elsewhere.example"
     );
 }

@@ -249,6 +249,14 @@ pub struct LlmCompletionMetadata {
     /// When present, this value should be preserved on the assistant message and sent
     /// back as-is in subsequent requests. Only set by providers with native phase support.
     pub phase: Option<String>,
+    /// Provider-reported prompt-cache diagnostics, verbatim.
+    ///
+    /// Present only when the request opted in via
+    /// [`LlmCallConfig::cache_diagnostics`] and the provider answered with a
+    /// diagnostics payload (today: Anthropic's `cache-diagnosis` beta). The
+    /// shape is provider-owned, so the runtime carries it without interpreting
+    /// it.
+    pub cache_diagnostics: Option<serde_json::Value>,
 }
 
 /// Normalize an inclusive provider's reported prompt-token count to the disjoint
@@ -741,6 +749,26 @@ pub struct PromptCacheConfig {
     /// models).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gemini_cached_content: Option<String>,
+}
+
+/// Per-request prompt-cache diagnostics controls.
+///
+/// Anthropic's `cache-diagnosis` beta fingerprints each request and, on the
+/// next one, reports where the prompt prefix diverged (model, system prompt,
+/// tools, or message history) instead of leaving a silent cache miss. Drivers
+/// that have no diagnostics protocol ignore this without failing the call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct CacheDiagnosticsConfig {
+    /// Opt this request into diagnostics.
+    pub enabled: bool,
+    /// Provider response id of the request to compare this one against.
+    ///
+    /// `None` opts in without a prior request: Anthropic requires the field to
+    /// be present and explicitly `null` on the first turn, so drivers must
+    /// serialize it rather than skip it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_message_id: Option<String>,
 }
 
 /// High-level intent presets that compile into OpenRouter provider-routing
@@ -1383,6 +1411,17 @@ pub struct LlmCallConfig {
     /// changes each turn would evict the conversation-history cache. `0` (the
     /// default) preserves the previous behavior exactly.
     pub volatile_suffix_len: usize,
+    /// Extra HTTP headers to attach to every provider request made for this
+    /// call.
+    ///
+    /// Merged case-insensitively over the driver's protocol headers and the
+    /// provider's configured/auth headers, so a caller value replaces an
+    /// existing header instead of appending a second copy. Connection-level
+    /// headers are dropped (see
+    /// [`merge_request_headers`](crate::driver_helpers::merge_request_headers)).
+    pub extra_headers: Vec<(String, String)>,
+    /// Prompt-cache diagnostics requested for this call.
+    pub cache_diagnostics: Option<CacheDiagnosticsConfig>,
 }
 
 impl LlmCallConfig {
@@ -1532,6 +1571,24 @@ impl LlmCallConfigBuilder {
     /// [`LlmCallConfig::volatile_suffix_len`]).
     pub fn volatile_suffix_len(mut self, len: usize) -> Self {
         self.config.volatile_suffix_len = len;
+        self
+    }
+
+    /// Replace the extra HTTP headers sent with this call.
+    pub fn extra_headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.config.extra_headers = headers;
+        self
+    }
+
+    /// Add one extra HTTP header to send with this call.
+    pub fn extra_header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.config.extra_headers.push((name.into(), value.into()));
+        self
+    }
+
+    /// Request provider prompt-cache diagnostics for this call.
+    pub fn cache_diagnostics(mut self, config: CacheDiagnosticsConfig) -> Self {
+        self.config.cache_diagnostics = Some(config);
         self
     }
 

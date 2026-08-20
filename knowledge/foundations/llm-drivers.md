@@ -157,6 +157,38 @@ Current provider mappings:
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
 
+### Per-Request Headers
+
+`LlmCallConfig.extra_headers` carries caller-supplied HTTP headers for a single
+call, distinct from the provider-owned service headers on `ProviderEndpoint`
+(which describe the service, not the call). Drivers apply them through
+[`merge_request_headers`](../../crates/provider/src/driver_helpers.rs): matching
+is case-insensitive and a caller header **replaces** the driver's or provider's
+value instead of appending a second copy, so a call can override a protocol
+header (for example `anthropic-version`) without producing a duplicate. Headers
+that describe the connection rather than the call (`host`, `content-length`,
+`transfer-encoding`, `connection`, `upgrade`) are dropped: taking them from
+config would corrupt the request, and `host` would repoint an SSRF-guarded
+connection at another virtual host.
+
+Applied by the Anthropic driver, the Gemini driver, and the shared Chat
+Completions / Open Responses protocols (so every driver built on them).
+
+### Prompt Cache Diagnostics
+
+`LlmCallConfig.cache_diagnostics` asks the provider to explain an unexpected
+cache miss instead of leaving `cache_read_tokens` silently at zero. Today only
+Anthropic implements it (`cache-diagnosis` beta): the driver sends the beta
+flag, serializes `diagnostics.previous_message_id` (explicitly `null` on the
+first turn, which is how a request opts in without a prior message to compare
+against), and returns the provider's `diagnostics` payload verbatim on
+`LlmCompletionMetadata.cache_diagnostics` plus the message id on
+`response_id` — the id the next request passes as `previous_message_id`.
+
+The payload shape is provider-owned, so the runtime carries it without
+interpreting it. Drivers without a diagnostics protocol ignore the config
+rather than failing the call.
+
 ### Default `max_tokens` Policy
 
 When `config.max_tokens` is `None`, drivers resolve the default from model profile metadata rather than hardcoding a value:
@@ -244,6 +276,8 @@ disjoint (drivers normalize inclusive providers at the boundary; see
 - `cache_creation_tokens`: Tokens written to cache (Anthropic)
 - `model`: Actual model used
 - `finish_reason`: Why generation stopped
+- `response_id`: Provider generation id (Anthropic message id, OpenAI response id)
+- `cache_diagnostics`: Provider prompt-cache diagnostics, verbatim, when requested
 
 ### Realtime Voice Driver
 

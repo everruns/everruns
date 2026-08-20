@@ -2870,6 +2870,8 @@ async fn test_driver_registry_integration() {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     };
 
     let response = driver

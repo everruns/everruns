@@ -643,6 +643,8 @@ pub(super) async fn apply_reactive_compaction(
                 openrouter_routing: None,
                 parallel_tool_calls: None,
                 volatile_suffix_len: 0,
+                extra_headers: Vec::new(),
+                cache_diagnostics: None,
             };
 
             match context

@@ -296,6 +296,7 @@ impl GeminiChatDriver {
         request: &GeminiRequest,
         url: &str,
         model: &str,
+        extra_headers: &[(String, String)],
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
@@ -312,11 +313,12 @@ impl GeminiChatDriver {
                     .resolve("POST", url, &body)
                     .await
                     .map_err(SendOutcome::Fatal)?;
-                let mut builder = self
-                    .client
-                    .post(&resolved.url)
-                    .header("Content-Type", "application/json");
-                for (name, value) in resolved.headers {
+                let mut builder = self.client.post(&resolved.url);
+                let mut headers = resolved.headers;
+                headers.push(("Content-Type".to_string(), "application/json".to_string()));
+                for (name, value) in
+                    everruns_provider::driver_helpers::merge_request_headers(headers, extra_headers)
+                {
                     builder = builder.header(name, value);
                 }
                 builder.body(body).send().await.map_err(SendOutcome::Send)
@@ -443,7 +445,13 @@ impl ChatDriver for GeminiChatDriver {
             .ok_or_else(|| AgentLoopError::config("Gemini provider has no base URL"))?;
         let (byte_stream, retry_metadata) =
             connect_bytes_with_reconnect(&self.retry_config, "GeminiDriver", |_attempt| {
-                self.send_generate_content_request(endpoint, &request, &url, &config.model)
+                self.send_generate_content_request(
+                    endpoint,
+                    &request,
+                    &url,
+                    &config.model,
+                    &config.extra_headers,
+                )
             })
             .await?;
 
@@ -515,6 +523,7 @@ impl ChatDriver for GeminiChatDriver {
                                         .map(|arc| (**arc).clone()),
                                     response_id: None,
                                     phase: None,
+                                    cache_diagnostics: None,
                                 })));
                             return Some((
                                 result,
@@ -652,6 +661,7 @@ impl ChatDriver for GeminiChatDriver {
                                                         .map(|arc| (**arc).clone()),
                                                     response_id: None,
                                                     phase: None,
+                                                    cache_diagnostics: None,
                                                 },
                                             )));
                                             return Some((
@@ -755,6 +765,7 @@ impl ChatDriver for GeminiChatDriver {
                                         .map(|arc| (**arc).clone()),
                                     response_id: None,
                                     phase: None,
+                                    cache_diagnostics: None,
                                 })));
                             return Some((
                                 result,
