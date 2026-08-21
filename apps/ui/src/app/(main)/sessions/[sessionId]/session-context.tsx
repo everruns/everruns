@@ -346,10 +346,9 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           throw new TypeError("message must be a non-empty string");
         }
         const message = input.message.trim().slice(0, 8_000);
-        const preview = message.length > 200 ? `${message.slice(0, 199)}…` : message;
         await webmcp.requestApproval({
           title: "Send this agent message?",
-          description: `Send to ${session.title || "this session"}: “${preview}” This starts a potentially billable agent turn.`,
+          description: `Send to ${session.title || "this session"}: “${message}” This starts a potentially billable agent turn.`,
           confirmLabel: "Send message",
         });
         webmcp.assertBinding(webmcp.bindingToken);
