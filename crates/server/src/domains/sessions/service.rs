@@ -1333,8 +1333,7 @@ impl SessionService {
 
     /// Resolve the model used by turns without a per-message override.
     ///
-    /// Session creation materializes agent and harness defaults into `model_id`,
-    /// so only an unbound session continues to follow the organization default.
+    /// Follows the runtime precedence: session, agent, harness, organization.
     pub async fn resolved_model_id(
         &self,
         org_id: i64,
@@ -1346,6 +1345,28 @@ impl SessionService {
                 .get_model(org_id, model_id.uuid())
                 .await?
                 .map(|model| model.id));
+        }
+
+        if let Some(agent_id) = session.agent_id {
+            let agent = match self
+                .db
+                .get_agent_by_public_id(org_id, &agent_id.to_string())
+                .await?
+            {
+                Some(agent) => Some(agent),
+                None => self.db.get_agent(org_id, agent_id).await?,
+            };
+            if let Some(model_id) = agent.and_then(|agent| agent.default_model_id) {
+                return Ok(Some(model_id));
+            }
+        }
+
+        if let Some(harness) = self
+            .resolve_effective_harness(org_id, session.harness_id)
+            .await?
+            && let Some(model_id) = harness.default_model_id
+        {
+            return Ok(Some(model_id));
         }
 
         Ok(self
@@ -3542,6 +3563,43 @@ mod tests {
         assert_eq!(
             service
                 .resolved_model_id(caller.org_id, &explicit)
+                .await
+                .unwrap(),
+            Some(first_default)
+        );
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "resolved-model-harness".to_string(),
+            display_name: Some("Resolved Model Harness".to_string()),
+            description: None,
+            system_prompt: None,
+            parent_harness_id: None,
+            default_model_id: Some(first_default),
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&_ctx)
+        .await
+        .unwrap();
+        let blueprint_session = service
+            .create_blueprint_session(
+                &caller,
+                harness.id.uuid(),
+                "test-blueprint".to_string(),
+                None,
+                SessionSource::Api,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+        assert_eq!(blueprint_session.model_id, None);
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &blueprint_session)
                 .await
                 .unwrap(),
             Some(first_default)
