@@ -922,7 +922,7 @@ Following the agentskills.io specification:
 - **Tools**: None (contributes a `PreToolUseHook`)
 - **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
 - **Source**: `crates/builtins/src/tool_approval.rs`
-- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`, `readonly` is never gated, `destructive`/`open_world` always can be, and an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which allows the call, a client with no permission UI keeps working autonomously instead of deadlocking on every mutating tool. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
+- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints`. `destructive`/`open_world` decide first, so a tool cannot escape the gate by also declaring itself `readonly`; only a tool that declares `readonly` and neither risky hint counts as read-only; an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which blocks the call: the gate is only registered by hosts that can service a prompt, so an unreachable approver is a transport failure, and a gate that fails open is not a gate. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
 
 #### ProgressGuard
 
