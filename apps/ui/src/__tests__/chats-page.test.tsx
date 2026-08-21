@@ -169,6 +169,20 @@ describe("Thread surface", () => {
     expect(screen.getByText("chat-panel:Scout")).toBeInTheDocument();
   });
 
+  it("does not mount mutable chat controls for a recording", async () => {
+    mockSessionContext.mockReturnValue({
+      session: thread({ id: "sess_1", tags: ["recording"] }),
+      agent: { id: "agent_1", name: "scout", display_name: "Scout" },
+      agentId: "agent_1",
+      sessionLoading: false,
+    });
+
+    await renderThread();
+
+    expect(screen.queryByText("chat-panel:Scout")).not.toBeInTheDocument();
+    expect(screen.getByText("Thread not found")).toBeInTheDocument();
+  });
+
   it("shows the bound agent in the header and names it in the composer", async () => {
     await renderThread();
 

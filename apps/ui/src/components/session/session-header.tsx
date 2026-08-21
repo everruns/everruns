@@ -26,6 +26,7 @@ import {
   getEntityReferenceLabel,
 } from "@/lib/entity-lifecycle";
 import { formatTokens } from "@/lib/formatting";
+import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { cn, shortenId } from "@/lib/utils";
 import {
   Activity,
@@ -216,10 +217,12 @@ function SessionRecordingActions({
   sessionId,
   agentId,
   sessionTitle,
+  sessionTags,
 }: {
   sessionId: string;
   agentId?: string;
   sessionTitle: string | null;
+  sessionTags: string[];
 }) {
   const router = useRouter();
   const { locale } = useLocale();
@@ -232,9 +235,13 @@ function SessionRecordingActions({
     forkSession.mutate(
       {
         sessionId,
-        // Title is the only override worth setting: agent, model, locale, goal
-        // and tags should all inherit so the fork is the same run continued.
-        request: { title: sessionTitle ? `${sessionTitle} (chat)` : undefined },
+        // Preserve the recording's tags and mark the fork as a chat thread;
+        // the thread route rejects unmarked sessions to prevent direct URL
+        // navigation from making a recording mutable.
+        request: {
+          title: sessionTitle ? `${sessionTitle} (chat)` : undefined,
+          tags: Array.from(new Set([...sessionTags, CHAT_THREAD_TAG])),
+        },
       },
       {
         onSuccess: (session) => router.push(`/chats/${session.id}`),
@@ -420,6 +427,7 @@ export function SessionHeader({
             sessionId={sessionId}
             agentId={agent && agentId ? agentId : undefined}
             sessionTitle={session.title ?? null}
+            sessionTags={session.tags ?? []}
           />
         </div>
       </div>
