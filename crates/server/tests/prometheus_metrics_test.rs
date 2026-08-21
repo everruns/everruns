@@ -102,14 +102,10 @@ fn assert_exposition_is_well_formed(body: &str) {
         }
 
         let (series, value) = line.rsplit_once(' ').expect("sample has a value");
-        value
-            .parse::<f64>()
-            .map(|_| ())
-            .or_else(|_| match value {
-                "+Inf" | "-Inf" | "NaN" => Ok(()),
-                other => Err(other),
-            })
-            .unwrap_or_else(|other| panic!("unparseable sample value {other} in {line}"));
+        assert!(
+            value.parse::<f64>().is_ok() || matches!(value, "+Inf" | "-Inf" | "NaN"),
+            "unparseable sample value {value} in {line}"
+        );
 
         let name = series.split_once('{').map(|(n, _)| n).unwrap_or(series);
         let base = name

@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn control_and_pack_ceilings_are_ordered_and_overridable() {
-        assert!(MAX_CONTROL_BYTES < DEFAULT_MAX_PACK_BYTES);
+        const { assert!(MAX_CONTROL_BYTES < DEFAULT_MAX_PACK_BYTES) };
         // Unset in tests, so the default applies.
         assert_eq!(max_pack_bytes(), DEFAULT_MAX_PACK_BYTES);
     }
