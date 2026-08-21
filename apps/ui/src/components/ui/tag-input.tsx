@@ -6,11 +6,38 @@ import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+const MAX_RENDERED_TAGS = 100;
+
 function parseTags(value: string): string[] {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter((tag, index, tags) => tag.length > 0 && tags.indexOf(tag) === index);
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  let start = 0;
+
+  while (tags.length < MAX_RENDERED_TAGS - 1) {
+    const comma = value.indexOf(",", start);
+    if (comma === -1) break;
+
+    const tag = value.slice(start, comma).trim();
+    if (tag.length > 0 && !seen.has(tag)) {
+      tags.push(tag);
+      seen.add(tag);
+    }
+    start = comma + 1;
+  }
+
+  // Keep excess input intact in one chip so persisted comma-heavy values cannot
+  // create unbounded DOM nodes and editing does not silently discard their data.
+  const remainder = value.slice(start).trim();
+  if (remainder.length > 0 && !seen.has(remainder)) tags.push(remainder);
+
+  return tags;
+}
+
+// The last chip can hold every tag past the cap, so neither its rendered text
+// nor its accessible name may grow with the stored value. The chip truncates
+// visually; this keeps the screen-reader label finite too.
+function shortLabel(tag: string): string {
+  return tag.length > 40 ? `${tag.slice(0, 39)}…` : tag;
 }
 
 interface TagInputProps {
@@ -78,8 +105,10 @@ export function TagInput({
       )}
     >
       {tags.map((tag) => (
-        <Badge key={tag} variant="secondary" className="gap-1 pl-2 text-xs">
-          {tag}
+        <Badge key={tag} variant="secondary" className="max-w-64 gap-1 pl-2 text-xs">
+          <span className="truncate" title={tag}>
+            {tag}
+          </span>
           <button
             type="button"
             className="-mr-1 inline-flex size-4 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -88,7 +117,7 @@ export function TagInput({
               removeTag(tag);
             }}
             disabled={disabled}
-            aria-label={`Remove ${tag}`}
+            aria-label={`Remove ${shortLabel(tag)}`}
           >
             <X className="size-3" />
           </button>
