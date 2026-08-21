@@ -80,6 +80,11 @@ setup and `.deepsec/AGENTS.md` for agent usage.
 - **Dependency updates**: handled by Dependabot (`.github/dependabot.yml`),
   which covers the `cargo`, `docker`, and `npm` ecosystems, with security alerts
   reviewed in the GitHub Security tab.
+- **Alert visibility**: `.github/workflows/security-alerts.yml` publishes open
+  code-scanning and Dependabot alerts into a job log daily. The alert APIs are
+  unreadable from a scheduled agent session, so this is how such a session sees
+  them; a workflow token reaches code scanning but not Dependabot alerts, which
+  still need the token scope EVE-923 tracks.
 - **Secret scanning**: GitHub push-protection and open-alert review.
 - **CI secret scoping**: fork-PR jobs never receive repository secrets
   (TM-CI-001..005); see `knowledge/security/threat-model.md`.
