@@ -59,4 +59,19 @@ describe("TagInput", () => {
     expect(screen.getByTestId("value")).toHaveTextContent("ops");
     expect(screen.queryByText("alerts")).not.toBeInTheDocument();
   });
+
+  it("bounds the number of chips created from comma-heavy stored values", () => {
+    const value = Array.from({ length: 1_000 }, (_, index) => `tag-${index}`).join(",");
+
+    render(<ControlledTagInput initialValue={value} />);
+
+    const removeButtons = screen.getAllByRole("button", { name: /^Remove / });
+    expect(removeButtons).toHaveLength(100);
+    expect(screen.getByTestId("value")).toHaveTextContent(value);
+    // The overflow chip carries every remaining tag, so its accessible name
+    // must stay bounded rather than growing with the stored value.
+    for (const button of removeButtons) {
+      expect(button.getAttribute("aria-label")!.length).toBeLessThanOrEqual(48);
+    }
+  });
 });
