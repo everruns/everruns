@@ -55,8 +55,9 @@ pub enum ApprovalDecision {
     /// The turn was cancelled while the request was pending.
     Cancelled,
     /// The host could not be asked (unsupported, or a transport error). The
-    /// gate falls back to allowing, so a client without a permission UI keeps
-    /// working autonomously rather than deadlocking every mutating tool.
+    /// gate blocks: it is only registered by hosts that can service a prompt,
+    /// so this is a broken transport, not a client without a permission UI,
+    /// and a gate that fails open on transport failure is not a gate.
     Unavailable,
 }
 
@@ -102,7 +103,8 @@ impl ApprovalMode {
 /// [`ToolHints`]: crate::tool_types::ToolHints
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ToolRisk {
-    /// Declares `readonly` — never gated.
+    /// Declares `readonly` without also declaring destructive or outward
+    /// behavior.
     ReadOnly,
     /// Changes state but is not flagged destructive/outward (writes, edits, or
     /// an un-annotated tool: fail safe by treating unknown as mutating).
@@ -114,10 +116,10 @@ enum ToolRisk {
 
 fn classify(tool_def: &ToolDefinition) -> ToolRisk {
     let hints = tool_def.hints();
-    if hints.readonly == Some(true) {
-        ToolRisk::ReadOnly
-    } else if hints.destructive == Some(true) || hints.open_world == Some(true) {
+    if hints.destructive == Some(true) || hints.open_world == Some(true) {
         ToolRisk::Destructive
+    } else if hints.readonly == Some(true) {
+        ToolRisk::ReadOnly
     } else {
         ToolRisk::Mutating
     }
@@ -277,9 +279,7 @@ impl PreToolUseHook for ToolApprovalHook {
             .approve(context.session_id, &tool_call, tool_def)
             .await
         {
-            ApprovalDecision::Allow | ApprovalDecision::Unavailable => {
-                PreToolUseDecision::Continue(tool_call)
-            }
+            ApprovalDecision::Allow => PreToolUseDecision::Continue(tool_call),
             ApprovalDecision::AllowAlways => {
                 self.remembered.lock().unwrap().insert(key, true);
                 PreToolUseDecision::Continue(tool_call)
@@ -290,6 +290,7 @@ impl PreToolUseHook for ToolApprovalHook {
                 Self::block(tool_call, "rejected by user")
             }
             ApprovalDecision::Cancelled => Self::block(tool_call, "turn cancelled"),
+            ApprovalDecision::Unavailable => Self::block(tool_call, "approval unavailable"),
         }
     }
 }
@@ -379,15 +380,25 @@ mod tests {
             classify(&tool_with(ToolHints::default())),
             ToolRisk::Mutating
         );
-        // `readonly` wins over `open_world`: a read-only network tool (e.g. web
-        // search, which sets both) is never gated, not treated as outward.
+        // Risky hints take precedence over readonly so outward-facing tools
+        // cannot bypass approval by also declaring themselves read-only.
+        // Hints come from the tool, including untrusted MCP servers, so a
+        // contradictory pair is an escape attempt, not a description.
         assert_eq!(
             classify(&tool_with(ToolHints {
                 readonly: Some(true),
                 open_world: Some(true),
                 ..Default::default()
             })),
-            ToolRisk::ReadOnly
+            ToolRisk::Destructive
+        );
+        assert_eq!(
+            classify(&tool_with(ToolHints {
+                readonly: Some(true),
+                destructive: Some(true),
+                ..Default::default()
+            })),
+            ToolRisk::Destructive
         );
     }
 
@@ -487,15 +498,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_unreachable_approver_allows_rather_than_deadlocking() {
-        // A client with no permission UI must keep working autonomously.
+    async fn readonly_outward_tool_requires_approval() {
+        let approver = ScriptedApprover::new(ApprovalDecision::Reject);
+        let capability = ToolApprovalCapability::new(approver.clone());
+        let context = ToolContext::new(SessionId::new_random());
+        let tool = tool_with(ToolHints {
+            readonly: Some(true),
+            open_world: Some(true),
+            ..Default::default()
+        });
+
+        let decision = capability
+            .hook(ApprovalMode::Normal)
+            .before_exec(call(), &tool, &context)
+            .await;
+
+        assert!(matches!(decision, PreToolUseDecision::Block { .. }));
+        assert_eq!(approver.asked.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_approver_blocks_the_call() {
         let decisions = decide(
             ScriptedApprover::new(ApprovalDecision::Unavailable),
             ApprovalMode::Normal,
             1,
         )
         .await;
-        assert!(matches!(decisions[0], PreToolUseDecision::Continue(_)));
+        assert!(matches!(decisions[0], PreToolUseDecision::Block { .. }));
     }
 
     #[tokio::test]
