@@ -124,6 +124,12 @@ async fn normalize_capability_refs(
         &ctx.feature_flags,
         &caps,
     )?;
+    crate::domains::capabilities::validation::validate_hydrated_capability_size_for_org(
+        &ctx.db,
+        ctx.org_id(),
+        &caps,
+    )
+    .await?;
     Ok(caps)
 }
 
