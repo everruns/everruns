@@ -26,8 +26,10 @@ export interface SessionsCsvResult {
 
 function csvCell(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "";
-  const text = String(value);
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+  const rawText = String(value);
+  // THREAT[TM-API-019]: Neutralize spreadsheet formulas before RFC 4180 escaping.
+  const text = /^[=+@\t\r\n-]/.test(rawText) ? `'${rawText}` : rawText;
+  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 const HEADER = [
