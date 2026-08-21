@@ -220,7 +220,6 @@ impl Capability for WebFetchCapability {
         Some(
             fetchkit::Tool::builder()
                 .enable_save_to_file(true)
-                .enable_render_rakers(true)
                 .build()
                 .llmtxt(),
         )
@@ -453,12 +452,11 @@ pub struct WebFetchTool {
 impl WebFetchTool {
     /// Create a new WebFetchTool with file download and optional bot-auth signing.
     pub fn new(enable_save_to_file: bool, bot_auth: Option<BotAuthConfig>) -> Self {
-        // THREAT[TM-TOOL-024]: Rendering stays request-opt-in; FetchKit runs
-        // inline scripts with a timeout, denies renderer subresource traffic,
-        // and caps rendered output before conversion.
-        let mut builder = fetchkit::Tool::builder()
-            .enable_save_to_file(enable_save_to_file)
-            .enable_render_rakers(true);
+        // Decision: in-process JavaScript rendering (fetchkit's `render-rakers`)
+        // is not enabled. It linked a JS engine and an HTML/CSS selector stack
+        // into every binary for an opt-in fetch mode; JS-rendered pages are
+        // served by the browserless and deno integrations instead.
+        let mut builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
         if let Some(config) = bot_auth {
             builder = builder.bot_auth(config);
         }
@@ -815,7 +813,6 @@ mod tests {
     fn tool_for_wiremock() -> WebFetchTool {
         let builder = fetchkit::Tool::builder()
             .enable_save_to_file(true)
-            .enable_render_rakers(true)
             .block_private_ips(false);
         let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
@@ -924,7 +921,8 @@ mod tests {
         assert!(schema["properties"]["content_focus"].is_object());
         assert!(schema["properties"]["crawl"].is_object());
         assert!(schema["properties"]["max_pages"].is_object());
-        assert!(schema["properties"]["render"].is_object());
+        // Rendering is not compiled in, so the tool must not advertise it.
+        assert!(schema["properties"]["render"].is_null());
         assert_eq!(schema["required"], serde_json::json!(["url"]));
     }
 
@@ -1317,41 +1315,6 @@ mod tests {
             assert!(format == "markdown" || format == "raw");
         } else {
             panic!("Expected successful response");
-        }
-    }
-
-    #[tokio::test]
-    async fn test_web_fetch_renders_inline_javascript_when_requested() {
-        let mock_server = MockServer::start().await;
-        let html = r#"<!doctype html>
-            <html><body>
-                <div id="app">Loading</div>
-                <script>
-                    document.body.innerHTML = '<main><h1>Rendered Inline</h1><p>Ready</p></main>';
-                </script>
-            </body></html>"#;
-
-        Mock::given(method("GET"))
-            .and(path("/spa"))
-            .respond_with(ResponseTemplate::new(200).set_body_raw(html, "text/html"))
-            .mount(&mock_server)
-            .await;
-
-        let result = tool_for_wiremock()
-            .execute(serde_json::json!({
-                "url": format!("{}/spa", mock_server.uri()),
-                "render": "rakers"
-            }))
-            .await;
-
-        if let ToolExecutionResult::Success(value) = result {
-            assert_eq!(value["rendered_by"], "rakers");
-            let content = value["content"].as_str().unwrap();
-            assert!(content.contains("Rendered Inline"));
-            assert!(content.contains("Ready"));
-            assert!(!content.contains("Loading"));
-        } else {
-            panic!("Expected rendered response, got: {result:?}");
         }
     }
 
@@ -2122,8 +2085,7 @@ mod tests {
             "crawl": true,
             "max_pages": 3,
             "if_none_match": "\"abc123\"",
-            "if_modified_since": "Wed, 15 Jul 2026 12:00:00 GMT",
-            "render": "rakers"
+            "if_modified_since": "Wed, 15 Jul 2026 12:00:00 GMT"
         }))
         .unwrap();
 
@@ -2135,7 +2097,6 @@ mod tests {
             request.if_modified_since.as_deref(),
             Some("Wed, 15 Jul 2026 12:00:00 GMT")
         );
-        assert_eq!(serde_json::to_value(request).unwrap()["render"], "rakers");
     }
 
     #[tokio::test]
