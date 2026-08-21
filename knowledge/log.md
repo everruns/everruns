@@ -2,11 +2,26 @@
 
 ## 2026-08-21
 
-* **Dependency removal is ranked by exclusive transitive cost, not tree size.**
-  `knowledge/project/dependency-surface.md` records the measured graph (827
-  third-party crates from 129 direct dependencies), the ranked candidates —
-  retired `ethers-*` first, then `fetchkit`'s bundled JS renderer and `git2`'s
-  vendored OpenSSL — and the correctness-critical crates that stay regardless.
+* **Dependency removal is measured, not estimated, and two traps produce wrong
+  answers.** Sibling dependencies mask each other's cost — `ethers-signers`
+  alone measured 11 crates, the ethers stack together measured 64 — and
+  dev-dependency edges are not shipped, which is why OpenSSL appeared to be a
+  runtime dependency when it only entered through a bench. See
+  `knowledge/project/dependency-surface.md`.
+
+* **Owning a small, fully specified contract can beat both libraries.** x402
+  EIP-712 signing moved in-tree on `k256` after `alloy-signer-local` measured
+  worse than the retired `ethers-rs` it would replace (103 exclusive crates
+  against 64). The override of the "do not own crypto" default is licensed by a
+  known-answer vector proving byte-equivalence, not by preference.
+
+* **Prometheus durations are histograms, not summaries.** The in-tree recorder
+  renders `_bucket`/`_sum`/`_count`. Summary quantiles cannot be aggregated
+  across replicas, which contradicted the documented horizontal-scaling model.
+
+* **Web fetch no longer renders JavaScript in-process.** `render=rakers` is
+  gone; browserless and deno serve rendered pages. TM-TOOL-024 is mitigated by
+  removal.
 
 ## 2026-08-17
 
