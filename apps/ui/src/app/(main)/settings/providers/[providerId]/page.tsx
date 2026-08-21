@@ -350,6 +350,13 @@ function ProviderAdvancedCard({
     }
   }, [provider, seededId]);
 
+  // Header values come back redacted, so an empty box on a name the server
+  // already knows means "hidden", not "unset". Blank rows for these names are
+  // preserved server-side; a freshly added row is genuinely empty.
+  const savedHeaderNames = new Set(
+    (provider.request_options?.headers ?? []).map((header) => header.name),
+  );
+
   const updateHeader = (index: number, patch: Partial<{ name: string; value: string }>) =>
     setHeaders((current) =>
       current.map((header, i) => (i === index ? { ...header, ...patch } : header)),
@@ -413,8 +420,8 @@ function ProviderAdvancedCard({
             <p className="text-sm text-muted-foreground">
               Sent with every request to this provider — useful for gateways and proxies that
               require their own headers. A header set here replaces the one the driver would send
-              under the same name. Values are stored with the connection and readable by anyone who
-              can view it, so keep provider credentials in the API key field instead.
+              under the same name. Saved values are never read back; leave one blank to keep it, or
+              type a new value to replace it.
             </p>
             {headers.length === 0 && (
               <p className="text-sm text-muted-foreground">No custom headers.</p>
@@ -429,7 +436,7 @@ function ProviderAdvancedCard({
                 />
                 <Input
                   aria-label={`Header ${index + 1} value`}
-                  placeholder="value"
+                  placeholder={savedHeaderNames.has(header.name) ? "Unchanged (hidden)" : "value"}
                   value={header.value}
                   onChange={(event) => updateHeader(index, { value: event.target.value })}
                 />

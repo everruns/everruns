@@ -14,7 +14,9 @@ use crate::storage::{
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_provider::provider::{Provider, ProviderRequestOptions, ProviderTraceConfig};
+use everruns_provider::provider::{
+    Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
+};
 use everruns_provider::url_validation::validate_safe_url;
 use reqwest::Url;
 use std::sync::Arc;
@@ -204,8 +206,12 @@ impl ProviderService {
                 merged["trace"] = serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
             }
             if let Some(request_options) = req.request_options.as_ref() {
+                let stored = crate::services::provider_resolver::provider_request_options(
+                    &existing.settings,
+                );
+                let options = merge_request_options(&stored, request_options);
                 merged["request_options"] =
-                    serde_json::to_value(request_options).unwrap_or(serde_json::Value::Null);
+                    serde_json::to_value(&options).unwrap_or(serde_json::Value::Null);
             }
             merged
         });
@@ -262,10 +268,17 @@ impl ProviderService {
         // `row.api_key_set` through the normal path.
         let api_key_set = row.api_key_set;
         let trace = resolve_trace_config(&provider_type, &row.settings);
-        // Absent or malformed options read back as "nothing configured"; the
-        // runtime resolver applies the same fallback.
-        let request_options =
+        // Header values can contain gateway credentials, and `provider.view` is
+        // a member-level permission while `provider.manage` is not: without
+        // this, every org member could read a value only an admin could set.
+        // Runtime resolution reads the stored values directly; API responses
+        // carry the configured names with an empty value, which reads back as
+        // "set, hidden" and is preserved on write (see `merge_request_options`).
+        let mut request_options =
             crate::services::provider_resolver::provider_request_options(&row.settings);
+        for header in &mut request_options.headers {
+            header.value.clear();
+        }
         let request_options = (!request_options.is_empty()).then_some(request_options);
 
         Provider {
@@ -332,6 +345,42 @@ fn resolve_trace_config(
 /// connection-level header whose meaning belongs to the transport rather than
 /// the caller. Drivers drop the last group anyway; failing here tells the
 /// operator instead of silently ignoring what they typed.
+/// Fold a submitted set of request options onto the stored one.
+///
+/// Reads redact header values, so a client that edits a provider round-trips
+/// empty values back. Treat a blank value as "leave this header alone" and
+/// carry the stored one forward: otherwise saving any unrelated field on the
+/// same form silently erases every gateway credential. A header is removed by
+/// dropping its name from the list, which is what the UI's blank-row delete
+/// already does.
+fn merge_request_options(
+    stored: &ProviderRequestOptions,
+    submitted: &ProviderRequestOptions,
+) -> ProviderRequestOptions {
+    ProviderRequestOptions {
+        headers: submitted
+            .headers
+            .iter()
+            .map(|header| {
+                if !header.value.is_empty() {
+                    return header.clone();
+                }
+                let kept = stored
+                    .headers
+                    .iter()
+                    .find(|candidate| candidate.name.eq_ignore_ascii_case(&header.name))
+                    .map(|candidate| candidate.value.clone())
+                    .unwrap_or_default();
+                ProviderRequestHeader {
+                    name: header.name.clone(),
+                    value: kept,
+                }
+            })
+            .collect(),
+        cache_diagnostics: submitted.cache_diagnostics,
+    }
+}
+
 fn validate_request_options(options: Option<&ProviderRequestOptions>) -> Result<()> {
     let Some(options) = options else {
         return Ok(());
@@ -516,9 +565,9 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_PROVIDER_REQUEST_HEADERS, ProviderRequestOptions, resolve_trace_config,
-        validate_provider_base_url, validate_provider_type, validate_request_options,
-        validate_trace_config,
+        MAX_PROVIDER_REQUEST_HEADERS, ProviderRequestOptions, merge_request_options,
+        resolve_trace_config, validate_provider_base_url, validate_provider_type,
+        validate_request_options, validate_trace_config,
     };
     use crate::errors::BadRequestError;
     use crate::kernel_imports::{DriverId, ProviderTraceConfig};
@@ -632,6 +681,61 @@ mod tests {
             name: name.to_string(),
             value: value.to_string(),
         }
+    }
+
+    #[test]
+    fn blank_submitted_header_values_keep_the_stored_secret() {
+        let stored = ProviderRequestOptions {
+            headers: vec![
+                header("x-gateway-key", "s3cret"),
+                header("x-tenant", "acme"),
+            ],
+            cache_diagnostics: false,
+        };
+        // What a client sends back after reading redacted values and toggling
+        // an unrelated field on the same form.
+        let submitted = ProviderRequestOptions {
+            headers: vec![header("X-Gateway-Key", ""), header("x-tenant", "")],
+            cache_diagnostics: true,
+        };
+
+        let merged = merge_request_options(&stored, &submitted);
+
+        assert_eq!(
+            merged.header_pairs(),
+            vec![
+                ("X-Gateway-Key".to_string(), "s3cret".to_string()),
+                ("x-tenant".to_string(), "acme".to_string()),
+            ]
+        );
+        assert!(merged.cache_diagnostics);
+    }
+
+    #[test]
+    fn submitted_header_values_replace_and_dropped_names_are_removed() {
+        let stored = ProviderRequestOptions {
+            headers: vec![
+                header("x-gateway-key", "s3cret"),
+                header("x-tenant", "acme"),
+            ],
+            cache_diagnostics: false,
+        };
+        let submitted = ProviderRequestOptions {
+            headers: vec![header("x-gateway-key", "rotated"), header("x-new", "")],
+            cache_diagnostics: false,
+        };
+
+        let merged = merge_request_options(&stored, &submitted);
+
+        // A typed value rotates the secret, a name absent from the submission
+        // is deleted, and a new name with no value stores nothing to carry.
+        assert_eq!(
+            merged.header_pairs(),
+            vec![
+                ("x-gateway-key".to_string(), "rotated".to_string()),
+                ("x-new".to_string(), String::new()),
+            ]
+        );
     }
 
     #[test]
