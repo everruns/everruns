@@ -28,12 +28,12 @@ on:
     # same reasoning that moved the RustSec gate off path filters (EVE-920).
     - cron: '43 5 * * *'
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/security-alerts.yml'
-      - 'scripts/report_security_alerts.py'
-      - 'scripts/test-security-alerts-report.sh'
+  # Deliberately no `pull_request` trigger. A fork PR's GITHUB_TOKEN is never
+  # granted `security-events`, so this job would fail for outside contributors
+  # on a permission they cannot be given; and running PR-controlled script code
+  # under an elevated token is the pattern TM-CI-001..005 keeps off PR events.
+  # scripts/test-security-alerts-report.sh covers the formatting on every PR
+  # through the `Shell Tests (Repo Scripts)` job, which needs no token.
 
 permissions:
   contents: read
