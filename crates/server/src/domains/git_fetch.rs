@@ -245,6 +245,17 @@ fn endpoint(url: &str, path: &str) -> String {
     format!("{}/{path}", url.trim_end_matches('/'))
 }
 
+/// Strips the URL from a reqwest error before it can reach a log.
+///
+/// THREAT[TM-API-018]: memory git sources accept an arbitrary URL, which may
+/// embed credentials (`https://user:token@host/repo.git`). reqwest's error
+/// Display includes the request URL, and `source_sync` logs these errors for
+/// operators, so the URL is removed at the boundary rather than trusted to be
+/// credential-free.
+fn redact_url(error: reqwest::Error) -> reqwest::Error {
+    error.without_url()
+}
+
 fn client() -> Result<reqwest::blocking::Client> {
     reqwest::blocking::Client::builder()
         .redirect(reqwest::redirect::Policy::limited(5))
@@ -283,6 +294,7 @@ pub fn shallow_checkout(
         request.auth_token,
     )
     .send()
+    .map_err(redact_url)
     .context("failed to reach the git remote")
     .map_err(unreachable)?;
 
@@ -342,6 +354,7 @@ fn post_upload_pack(
         request.auth_token,
     )
     .send()
+    .map_err(redact_url)
     .with_context(|| format!("failed to {what}"))
     .map_err(|error| FetchError::new(FetchFailure::Unreachable, error))?;
 
@@ -635,6 +648,21 @@ mod tests {
         assert!(error.contains("over the 16 byte limit"), "{error}");
 
         handle.join().expect("server thread");
+    }
+
+    #[test]
+    fn transport_errors_do_not_carry_the_request_url() {
+        // A URL can embed credentials on memory git sources, and these errors
+        // are logged for operators.
+        let error = reqwest::blocking::Client::new()
+            .get("http://127.0.0.1:1/secret-repo.git")
+            .send()
+            .expect_err("connection refused");
+        assert!(error.to_string().contains("127.0.0.1:1"));
+
+        let redacted = redact_url(error).to_string();
+        assert!(!redacted.contains("127.0.0.1:1"), "{redacted}");
+        assert!(!redacted.contains("secret-repo"), "{redacted}");
     }
 
     /// End-to-end against a real remote. Ignored by default because it needs
