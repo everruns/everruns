@@ -920,7 +920,7 @@ pub struct SessionFacetsRow {
     pub total: i64,
     pub by_activity: Vec<SessionFacetBucket>,
     pub by_source: Vec<SessionFacetBucket>,
-    /// `value` holds the agent's internal UUID as text; `NULL` agents are omitted.
+    /// `value` holds the agent's public id; `NULL` agents are omitted.
     pub by_agent: Vec<SessionFacetBucket>,
     pub active_now: i64,
     pub failed_today: i64,

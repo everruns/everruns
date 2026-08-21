@@ -517,8 +517,9 @@ impl Database {
             SELECT 'source', source, COUNT(*)::bigint
               FROM base WHERE TRUE{activity_pred}{agent_pred} GROUP BY source
             UNION ALL
-            SELECT 'agent', agent_id::text, COUNT(*)::bigint
-              FROM base WHERE agent_id IS NOT NULL{activity_pred}{source_pred} GROUP BY agent_id
+            SELECT 'agent', agents.public_id, COUNT(*)::bigint
+              FROM base JOIN agents ON agents.id = base.agent_id
+              WHERE TRUE{activity_pred}{source_pred} GROUP BY agents.public_id
             UNION ALL
             SELECT 'total', '', COUNT(*)::bigint
               FROM base WHERE TRUE{activity_pred}{source_pred}{agent_pred}

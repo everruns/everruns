@@ -6,11 +6,11 @@
 
 use super::{GetSessionFacets, ListSessions, SessionFilterArgs, SessionService};
 use crate::domains::common::{Command, Ctx};
-use crate::storage::{CreateEventRow, CreateSessionRow, StorageBackend};
+use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
 use everruns_platform::SessionSource;
 use everruns_provider::typed_id::AgentId;
-use everruns_provider::typed_id::{PrincipalId, SessionId};
+use everruns_provider::typed_id::{HarnessId, PrincipalId, SessionId};
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -39,6 +39,7 @@ struct Seed {
     source: SessionSource,
     title: &'static str,
     owner_user_id: Option<Uuid>,
+    agent_id: Option<AgentId>,
     /// Terminal turn to record, e.g. `turn.completed`.
     last_turn: Option<&'static str>,
 }
@@ -62,7 +63,7 @@ async fn seed(db: &Arc<StorageBackend>, spec: Seed) -> SessionId {
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: None,
-            agent_id: None,
+            agent_id: spec.agent_id,
             agent_version_id: None,
             agent_config_hash: None,
             agent_identity_id: None,
@@ -146,6 +147,7 @@ async fn seeded_db() -> Arc<StorageBackend> {
             source: SessionSource::Chat,
             title: "chat thread",
             owner_user_id: None,
+            agent_id: None,
             last_turn: Some("turn.completed"),
         },
     )
@@ -156,6 +158,7 @@ async fn seeded_db() -> Arc<StorageBackend> {
             source: SessionSource::Schedule,
             title: "nightly report",
             owner_user_id: None,
+            agent_id: None,
             last_turn: Some("turn.failed"),
         },
     )
@@ -166,6 +169,7 @@ async fn seeded_db() -> Arc<StorageBackend> {
             source: SessionSource::Schedule,
             title: "hourly sync",
             owner_user_id: None,
+            agent_id: None,
             last_turn: None,
         },
     )
@@ -241,6 +245,7 @@ async fn mine_restricts_to_the_callers_sessions() {
             source: SessionSource::Chat,
             title: "my thread",
             owner_user_id: Some(user),
+            agent_id: None,
             last_turn: None,
         },
     )
@@ -251,6 +256,7 @@ async fn mine_restricts_to_the_callers_sessions() {
             source: SessionSource::Chat,
             title: "someone else's thread",
             owner_user_id: Some(Uuid::now_v7()),
+            agent_id: None,
             last_turn: None,
         },
     )
@@ -291,6 +297,66 @@ async fn facets_count_every_dimension_over_the_applied_filters() {
 }
 
 #[tokio::test]
+async fn agent_facets_return_public_ids_that_can_be_used_as_filters() {
+    let db = new_db(&[DEFAULT_ORG_ID]).await;
+    let public_id = AgentId::new();
+    let agent = db
+        .create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: public_id.to_string(),
+                name: "facet-agent".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                harness_id: HarnessId::from_uuid(Uuid::nil()),
+                tags: vec![],
+                initial_files: json!([]),
+                tools: json!([]),
+                mcp_servers: json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .expect("create agent");
+    seed(
+        &db,
+        Seed {
+            source: SessionSource::Api,
+            title: "agent session",
+            owner_user_id: None,
+            agent_id: Some(agent.id),
+            last_turn: None,
+        },
+    )
+    .await;
+
+    let ctx = ctx_for(db, None);
+    let facets = GetSessionFacets {
+        filters: SessionFilterArgs::default(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("facets");
+    assert_eq!(bucket(&facets.by_agent, &public_id.to_string()), 1);
+    assert_eq!(bucket(&facets.by_agent, &agent.id.to_string()), 0);
+
+    let found = titles(
+        &ctx,
+        SessionFilterArgs {
+            agent_id: Some(public_id),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(found, vec!["agent session"]);
+}
+
+#[tokio::test]
 async fn a_facet_dimension_excludes_its_own_selection() {
     let ctx = ctx_for(seeded_db().await, None);
     let facets = GetSessionFacets {
@@ -320,6 +386,7 @@ async fn facets_never_count_across_organizations() {
             source: SessionSource::Chat,
             title: "ours",
             owner_user_id: None,
+            agent_id: None,
             last_turn: None,
         },
     )

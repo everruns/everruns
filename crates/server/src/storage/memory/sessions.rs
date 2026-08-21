@@ -333,11 +333,18 @@ impl InMemoryDatabase {
                     .iter()
                     .map(|s| s.source.clone()),
             ),
-            by_agent: count_by(
-                self.filtered_sessions(org_id, filters, FacetDimension::Agent)
-                    .iter()
-                    .filter_map(|s| s.agent_id.map(|a| a.uuid().to_string())),
-            ),
+            by_agent: {
+                let agents = self.agents.read();
+                count_by(
+                    self.filtered_sessions(org_id, filters, FacetDimension::Agent)
+                        .iter()
+                        .filter_map(|s| {
+                            s.agent_id
+                                .and_then(|agent_id| agents.get(&agent_id))
+                                .map(|agent| agent.public_id.clone())
+                        }),
+                )
+            },
             active_now: matched
                 .iter()
                 .filter(|s| matches!(s.status.as_str(), "active" | "waiting_for_tool_results"))
