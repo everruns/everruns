@@ -39,8 +39,8 @@ turn, and the feed is not a durable replay API.
 Use [lifecycle hooks](/framework/lifecycle-hooks/) instead when application work
 must be awaited at an execution boundary or its failure must affect the run.
 
-See [Canonical Framework events](/framework/canonical-events/) for lossless
-envelopes, explicit lag handling, ordering, and the durability boundary.
+See [Canonical Framework events](/framework/canonical-events/) for canonical
+envelopes, live-delta memory bounds, explicit lag handling, ordering, and the durability boundary.
 Use [Session History and Resume](/framework/session-history/) to rebuild a
 bounded persisted transcript after live lag or a process restart.
 
