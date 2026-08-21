@@ -804,6 +804,10 @@ impl AgentRunner for DurableRunner {
     async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
         let workflow_id = session_id.uuid();
         let mut store = self.store.lock().await;
+        store
+            .cancel_pending_tasks(workflow_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to cancel pending workflow tasks: {e}"))?;
         let message = "User requested cancellation".to_string();
         let output = DurableTurnOutput {
             session_id,
@@ -1158,6 +1162,16 @@ mod tests {
             )
             .await
             .expect("create workflow");
+        shared
+            .enqueue_task(everruns_durable::TaskDefinition {
+                workflow_id: Some(session_id.uuid()),
+                activity_id: "reason-1".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({}),
+                options: Default::default(),
+            })
+            .await
+            .expect("enqueue pending task");
 
         DurableRunner::new_with_shared_store(shared.clone())
             .cancel_run(session_id)
@@ -1173,5 +1187,11 @@ mod tests {
         assert_eq!(output["success"], false);
         assert_eq!(output["stop_reason"], "cancelled");
         assert_eq!(output["error"], "User requested cancellation");
+
+        let claimed = shared
+            .claim_task("worker-1", &["reason".to_string()], 10)
+            .await
+            .expect("claim tasks after cancellation");
+        assert!(claimed.is_empty(), "cancelled tasks must not be claimable");
     }
 }
