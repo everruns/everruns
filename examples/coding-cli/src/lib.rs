@@ -332,4 +332,3 @@ fn user_data_local_dir() -> Option<PathBuf> {
         }
     }
 }
-

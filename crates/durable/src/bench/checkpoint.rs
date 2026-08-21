@@ -7,8 +7,8 @@ use std::fs;
 use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
 use crate::sysstat;
+use chrono::{DateTime, Utc};
 
 use super::metrics::MetricsSnapshot;
 

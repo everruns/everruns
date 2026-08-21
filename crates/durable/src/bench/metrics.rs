@@ -6,8 +6,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use parking_lot::Mutex;
 use crate::sysstat::ProcessSampler;
+use parking_lot::Mutex;
 
 /// Histogram for latency measurements with configurable buckets
 #[derive(Debug)]

@@ -7,8 +7,8 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
-use serde::{Deserialize, Serialize};
 use crate::sysstat::{self, CpuSampler};
+use serde::{Deserialize, Serialize};
 
 /// Backpressure configuration
 ///

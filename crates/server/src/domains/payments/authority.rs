@@ -4,6 +4,7 @@
 // requests; this service resolves a wallet/policy, runs the selected native
 // payment rail adapter, and records an auditable attempt.
 
+use super::eip712::{self, Domain, LocalWallet, TransferWithAuthorization};
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::{
@@ -12,7 +13,6 @@ use crate::storage::models::{
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use super::eip712::{self, Domain, LocalWallet, TransferWithAuthorization};
 use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };

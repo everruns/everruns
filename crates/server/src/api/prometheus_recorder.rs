@@ -86,12 +86,10 @@ impl GaugeState {
         let mut current = self.0.load(Ordering::Relaxed);
         loop {
             let next = op(f64::from_bits(current)).to_bits();
-            match self.0.compare_exchange_weak(
-                current,
-                next,
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-            ) {
+            match self
+                .0
+                .compare_exchange_weak(current, next, Ordering::Relaxed, Ordering::Relaxed)
+            {
                 Ok(_) => return,
                 Err(actual) => current = actual,
             }
@@ -125,7 +123,10 @@ struct HistogramState {
 impl Default for HistogramState {
     fn default() -> Self {
         Self {
-            buckets: BUCKET_BOUNDS_SECONDS.iter().map(|_| AtomicU64::new(0)).collect(),
+            buckets: BUCKET_BOUNDS_SECONDS
+                .iter()
+                .map(|_| AtomicU64::new(0))
+                .collect(),
             count: AtomicU64::new(0),
             sum: AtomicU64::new(0),
         }
@@ -277,9 +278,11 @@ impl PrometheusHandle {
             .counters
             .read()
             .expect("metrics registry poisoned");
-        for (name, series) in group_by_name(counters.iter().map(|(id, state)| {
-            (id, state.0.load(Ordering::Relaxed) as f64)
-        })) {
+        for (name, series) in group_by_name(
+            counters
+                .iter()
+                .map(|(id, state)| (id, state.0.load(Ordering::Relaxed) as f64)),
+        ) {
             write_metric_header(&mut out, &name, "counter", descriptions.get(&name));
             for (id, value) in series {
                 write_sample(&mut out, &name, &id.labels, None, value);
@@ -307,7 +310,10 @@ impl PrometheusHandle {
             .expect("metrics registry poisoned");
         let mut by_name: HashMap<String, Vec<(&SeriesId, &Arc<HistogramState>)>> = HashMap::new();
         for (id, state) in histograms.iter() {
-            by_name.entry(id.name.clone()).or_default().push((id, state));
+            by_name
+                .entry(id.name.clone())
+                .or_default()
+                .push((id, state));
         }
         let mut names: Vec<&String> = by_name.keys().collect();
         names.sort();
@@ -362,7 +368,10 @@ fn group_by_name<'a>(
 ) -> Vec<(String, Vec<(&'a SeriesId, f64)>)> {
     let mut grouped: HashMap<String, Vec<(&SeriesId, f64)>> = HashMap::new();
     for (id, value) in entries {
-        grouped.entry(id.name.clone()).or_default().push((id, value));
+        grouped
+            .entry(id.name.clone())
+            .or_default()
+            .push((id, value));
     }
     let mut out: Vec<(String, Vec<(&SeriesId, f64)>)> = grouped.into_iter().collect();
     out.sort_by(|(a, _), (b, _)| a.cmp(b));
@@ -372,7 +381,12 @@ fn group_by_name<'a>(
     out
 }
 
-fn write_metric_header(out: &mut String, name: &str, kind: &str, description: Option<&Description>) {
+fn write_metric_header(
+    out: &mut String,
+    name: &str,
+    kind: &str,
+    description: Option<&Description>,
+) {
     if let Some(description) = description {
         let mut help = description.text.clone();
         if let Some(unit) = description.unit {
@@ -412,7 +426,11 @@ fn write_sample(
 /// point, infinities as `+Inf`/`-Inf`.
 fn format_float(value: f64) -> String {
     if value.is_infinite() {
-        return if value.is_sign_positive() { "+Inf".into() } else { "-Inf".into() };
+        return if value.is_sign_positive() {
+            "+Inf".into()
+        } else {
+            "-Inf".into()
+        };
     }
     if value.is_nan() {
         return "NaN".into();
@@ -559,9 +577,7 @@ mod tests {
             .increment(1);
 
         assert!(
-            handle
-                .render()
-                .contains("c{path=\"a\\\"b\\\\c\\nd\"} 1"),
+            handle.render().contains("c{path=\"a\\\"b\\\\c\\nd\"} 1"),
             "{}",
             handle.render()
         );
@@ -576,10 +592,15 @@ mod tests {
             Some(Unit::Seconds),
             SharedString::from("how many"),
         );
-        recorder.register_counter(&key("c", &[]), &META).increment(1);
+        recorder
+            .register_counter(&key("c", &[]), &META)
+            .increment(1);
 
         let rendered = handle.render();
-        assert!(rendered.contains("# HELP c how many (unit: seconds)"), "{rendered}");
+        assert!(
+            rendered.contains("# HELP c how many (unit: seconds)"),
+            "{rendered}"
+        );
     }
 
     #[test]
@@ -587,8 +608,12 @@ mod tests {
         let recorder = PrometheusRecorder::new();
         let handle = recorder.handle();
 
-        recorder.register_counter(&key("c", &[("a", "1")]), &META).increment(1);
-        recorder.register_counter(&key("c", &[("a", "1")]), &META).increment(1);
+        recorder
+            .register_counter(&key("c", &[("a", "1")]), &META)
+            .increment(1);
+        recorder
+            .register_counter(&key("c", &[("a", "1")]), &META)
+            .increment(1);
 
         let rendered = handle.render();
         assert!(rendered.contains("c{a=\"1\"} 2"));

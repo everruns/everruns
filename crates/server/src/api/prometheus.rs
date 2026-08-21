@@ -19,11 +19,11 @@
 //     double-counting across replicas; use `sum without(instance)` for totals)
 //   - Histograms from local observations (naturally partitioned per instance)
 
+use super::prometheus_recorder::{self, PrometheusHandle};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
 use everruns_core::config::{env_bool, env_opt_string};
-use super::prometheus_recorder::{self, PrometheusHandle};
 use tokio::task::JoinHandle;
 
 /// Configuration for the Prometheus metrics endpoint.

@@ -109,7 +109,10 @@ fn next_pkt_line(input: &[u8]) -> Result<(PktLine<'_>, &[u8])> {
         3 => bail!("reserved pkt-line length 0003"),
         _ => {
             if length > input.len() {
-                bail!("pkt-line claims {length} bytes but only {} remain", input.len());
+                bail!(
+                    "pkt-line claims {length} bytes but only {} remain",
+                    input.len()
+                );
             }
             Ok((PktLine::Data(&input[4..length]), &input[length..]))
         }
@@ -245,8 +248,7 @@ pub fn shallow_checkout(
     request: &FetchRequest<'_>,
     checkout_dir: &Path,
 ) -> std::result::Result<(), FetchError> {
-    let unreachable =
-        |error: anyhow::Error| FetchError::new(FetchFailure::Unreachable, error);
+    let unreachable = |error: anyhow::Error| FetchError::new(FetchFailure::Unreachable, error);
 
     let client = client().map_err(unreachable)?;
 
@@ -254,10 +256,7 @@ pub fn shallow_checkout(
     // v1 advertisement, which ensure_protocol_v2 rejects.
     let advertisement = authenticated(
         client
-            .get(endpoint(
-                request.url,
-                "info/refs?service=git-upload-pack",
-            ))
+            .get(endpoint(request.url, "info/refs?service=git-upload-pack"))
             .header("Git-Protocol", "version=2"),
         request.auth_token,
     )
@@ -349,7 +348,9 @@ fn checkout_packfile(packfile: &[u8], oid: &str, checkout_dir: &Path) -> Result<
         .context("failed to initialize the checkout repository")?;
 
     {
-        let odb = repository.odb().context("failed to open the object store")?;
+        let odb = repository
+            .odb()
+            .context("failed to open the object store")?;
         let mut writer = odb
             .packwriter()
             .context("failed to open a packfile writer")?;
@@ -429,7 +430,9 @@ mod tests {
     #[test]
     fn finds_the_requested_branch_in_an_ls_refs_response() {
         let mut body = data("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa refs/heads/other\n");
-        body.extend(data("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/main\n"));
+        body.extend(data(
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb refs/heads/main\n",
+        ));
         body.extend_from_slice(b"0000");
 
         assert_eq!(
@@ -440,7 +443,8 @@ mod tests {
 
     #[test]
     fn ignores_trailing_ref_attributes() {
-        let mut body = data("cccccccccccccccccccccccccccccccccccccccc refs/heads/main symref-target:HEAD\n");
+        let mut body =
+            data("cccccccccccccccccccccccccccccccccccccccc refs/heads/main symref-target:HEAD\n");
         body.extend_from_slice(b"0000");
         assert_eq!(
             parse_ls_refs(&body, "main").unwrap(),
@@ -523,9 +527,15 @@ mod tests {
     #[test]
     fn classifies_http_statuses() {
         use reqwest::StatusCode;
-        assert_eq!(classify_status(StatusCode::UNAUTHORIZED), FetchFailure::Auth);
+        assert_eq!(
+            classify_status(StatusCode::UNAUTHORIZED),
+            FetchFailure::Auth
+        );
         assert_eq!(classify_status(StatusCode::FORBIDDEN), FetchFailure::Auth);
-        assert_eq!(classify_status(StatusCode::NOT_FOUND), FetchFailure::NotFound);
+        assert_eq!(
+            classify_status(StatusCode::NOT_FOUND),
+            FetchFailure::NotFound
+        );
         assert_eq!(
             classify_status(StatusCode::INTERNAL_SERVER_ERROR),
             FetchFailure::Unreachable

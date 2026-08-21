@@ -129,7 +129,10 @@ pub fn transfer_with_authorization_digest(
     domain_encoded.extend_from_slice(&keccak(domain.name.as_bytes()));
     domain_encoded.extend_from_slice(&keccak(domain.version.as_bytes()));
     domain_encoded.extend_from_slice(&u256_from_u128(u128::from(domain.chain_id)));
-    domain_encoded.extend_from_slice(&address_word(domain.verifying_contract, "verifyingContract")?);
+    domain_encoded.extend_from_slice(&address_word(
+        domain.verifying_contract,
+        "verifyingContract",
+    )?);
     let domain_separator = keccak(&domain_encoded);
 
     let mut struct_encoded = Vec::with_capacity(7 * 32);
@@ -391,7 +394,10 @@ mod tests {
         assert!(
             transfer_with_authorization_digest(
                 &domain,
-                &TransferWithAuthorization { to: "0xdead", ..valid },
+                &TransferWithAuthorization {
+                    to: "0xdead",
+                    ..valid
+                },
             )
             .is_err()
         );

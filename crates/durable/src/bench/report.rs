@@ -100,8 +100,14 @@ impl BenchmarkReport {
         );
 
         // Headline stat cards render one decimal; the detail table renders two.
-        set("end_to_end_p50_ms_1f", format!("{:.1}", millis(end_to_end.p50)));
-        set("end_to_end_p99_ms_1f", format!("{:.1}", millis(end_to_end.p99)));
+        set(
+            "end_to_end_p50_ms_1f",
+            format!("{:.1}", millis(end_to_end.p50)),
+        );
+        set(
+            "end_to_end_p99_ms_1f",
+            format!("{:.1}", millis(end_to_end.p99)),
+        );
 
         // Resource usage
         set(
@@ -119,7 +125,10 @@ impl BenchmarkReport {
             serde_json::to_string(&throughput_series).unwrap(),
         );
         set("latency_chart_data", format_latency_chart_data(metrics));
-        set("resource_chart_data", format_resource_chart_data(&resource_data));
+        set(
+            "resource_chart_data",
+            format_resource_chart_data(&resource_data),
+        );
 
         // Latency distribution for histogram
         set("latency_histogram_data", format_latency_histogram(metrics));
@@ -903,7 +912,10 @@ mod tests {
     #[test]
     fn render_template_leaves_unknown_placeholders_visible() {
         let vars = HashMap::new();
-        assert_eq!(render_template("a {{ missing }} b", &vars), "a {{ missing }} b");
+        assert_eq!(
+            render_template("a {{ missing }} b", &vars),
+            "a {{ missing }} b"
+        );
     }
 
     #[test]

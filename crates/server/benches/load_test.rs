@@ -29,13 +29,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
+use everruns_durable::sysstat;
 use everruns_sdk::sse::StreamOptions;
 use everruns_sdk::{CreateAgentRequest, Everruns};
 use futures::stream::{self, StreamExt};
 use parking_lot::Mutex;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use everruns_durable::sysstat;
 use tokio::sync::Semaphore;
 
 /// Built-in harness selected by name. Harnesses are created per-org by
