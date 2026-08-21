@@ -1,5 +1,13 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-21
+
+* **Dependency removal is ranked by exclusive transitive cost, not tree size.**
+  `knowledge/project/dependency-surface.md` records the measured graph (827
+  third-party crates from 129 direct dependencies), the ranked candidates —
+  retired `ethers-*` first, then `fetchkit`'s bundled JS renderer and `git2`'s
+  vendored OpenSSL — and the correctness-critical crates that stay regardless.
+
 ## 2026-08-17
 
 * **Crate boundaries follow ownership rather than package count.** Public,
