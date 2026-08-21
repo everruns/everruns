@@ -132,7 +132,6 @@ a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }
 futures.workspace = true
 http-body-util = "0.1"
-sysinfo = "0.39"
 serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
 wiremock = "0.6"

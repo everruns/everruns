@@ -2,13 +2,13 @@
 //!
 //! Provides load-aware task acceptance to prevent worker overload.
 //! Supports task-count watermarks and optional system resource thresholds
-//! (CPU/memory) via sysinfo. Resource checks use a 20% resume margin
-//! to prevent oscillation.
+//! (CPU/memory) read from `/proc` via [`crate::sysstat`]. Resource checks use a
+//! 20% resume margin to prevent oscillation.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use crate::sysstat::{self, CpuSampler};
 
 /// Backpressure configuration
 ///
@@ -111,40 +111,33 @@ pub struct ResourceMetrics {
     pub cpu_usage: f64,
 }
 
-/// Polls system CPU and memory via sysinfo.
+/// Polls system CPU and memory from `/proc`.
 ///
 /// Call `sample()` periodically (e.g. every 2s) and feed results into
-/// `BackpressureState::update_resources()`.
+/// `BackpressureState::update_resources()`. Returns `None` when the platform
+/// does not expose these readings, in which case resource-threshold
+/// backpressure stays inactive and task-count watermarks still apply.
+#[derive(Debug, Default)]
 pub struct ResourceMonitor {
-    system: System,
-}
-
-impl Default for ResourceMonitor {
-    fn default() -> Self {
-        Self::new()
-    }
+    cpu: CpuSampler,
 }
 
 impl ResourceMonitor {
     pub fn new() -> Self {
-        let system = System::new_with_specifics(
-            RefreshKind::nothing()
-                .with_cpu(CpuRefreshKind::everything())
-                .with_memory(MemoryRefreshKind::everything()),
-        );
-        Self { system }
+        Self::default()
     }
 
-    /// Sample current system resources. Must be called at >=200ms intervals
-    /// for CPU readings to be meaningful (sysinfo requirement).
-    pub fn sample(&mut self) -> ResourceMetrics {
-        self.system.refresh_cpu_all();
-        self.system.refresh_memory();
-        ResourceMetrics {
-            memory_used_bytes: self.system.used_memory(),
-            memory_total_bytes: self.system.total_memory(),
-            cpu_usage: (self.system.global_cpu_usage() / 100.0) as f64,
-        }
+    /// Sample current system resources. CPU usage is a delta against the
+    /// previous sample, so the first call reports 0.0 and callers should sample
+    /// at >=200ms intervals for the reading to be meaningful.
+    pub fn sample(&mut self) -> Option<ResourceMetrics> {
+        let memory = sysstat::memory()?;
+        let cpu_usage = self.cpu.sample()?;
+        Some(ResourceMetrics {
+            memory_used_bytes: memory.used_bytes,
+            memory_total_bytes: memory.total_bytes,
+            cpu_usage,
+        })
     }
 }
 
@@ -627,13 +620,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn test_resource_monitor_creates() {
         let mut monitor = ResourceMonitor::new();
-        let metrics = monitor.sample();
-        // Should return valid metrics on any system
+        let metrics = monitor.sample().expect("/proc is readable on Linux");
         assert!(metrics.cpu_usage >= 0.0);
         // memory_used_bytes should be > 0 on any running system
         assert!(metrics.memory_used_bytes > 0);
+        assert!(metrics.memory_total_bytes >= metrics.memory_used_bytes);
     }
 
     #[test]

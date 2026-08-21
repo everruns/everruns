@@ -8,7 +8,7 @@ use std::io::{self, BufReader, BufWriter};
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use crate::sysstat;
 
 use super::metrics::MetricsSnapshot;
 
@@ -32,27 +32,18 @@ pub struct EnvironmentInfo {
 impl EnvironmentInfo {
     /// Detect environment information automatically
     pub fn detect() -> Self {
-        let system = System::new_with_specifics(
-            RefreshKind::nothing()
-                .with_cpu(CpuRefreshKind::nothing())
-                .with_memory(MemoryRefreshKind::everything()),
-        );
-
-        let cpu_name = system
-            .cpus()
-            .first()
-            .map(|cpu| cpu.brand().to_string())
-            .unwrap_or_else(|| "Unknown CPU".to_string());
-
-        let cpu_cores = system.cpus().len();
-        let memory_gb = system.total_memory() as f64 / (1024.0 * 1024.0 * 1024.0);
+        let cpu_name = sysstat::cpu_brand().unwrap_or_else(|| "Unknown CPU".to_string());
+        let cpu_cores = sysstat::cpu_cores();
+        let memory_gb = sysstat::memory()
+            .map(|memory| memory.total_bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+            .unwrap_or(0.0);
 
         let os = format!(
             "{} {}",
-            System::name().unwrap_or_default(),
-            System::os_version().unwrap_or_default()
+            sysstat::os_name().unwrap_or_default(),
+            sysstat::os_version().unwrap_or_default()
         );
-        let hostname = System::host_name();
+        let hostname = sysstat::host_name();
 
         // Generate default moniker from environment
         let moniker = Self::generate_moniker(&cpu_name, cpu_cores, memory_gb);

@@ -598,19 +598,21 @@ impl WorkerPool {
             let mut ticker = tokio::time::interval(interval);
 
             // Take an initial sample so metrics are available immediately
-            let metrics = monitor.sample();
-            backpressure.update_resources(metrics);
+            if let Some(metrics) = monitor.sample() {
+                backpressure.update_resources(metrics);
+            }
 
             loop {
                 tokio::select! {
                     _ = ticker.tick() => {
-                        let metrics = monitor.sample();
-                        backpressure.update_resources(metrics);
-                        debug!(
-                            cpu = format!("{:.1}%", metrics.cpu_usage * 100.0),
-                            memory_mb = format!("{:.0}", metrics.memory_used_bytes as f64 / 1_048_576.0),
-                            "Resource sample"
-                        );
+                        if let Some(metrics) = monitor.sample() {
+                            backpressure.update_resources(metrics);
+                            debug!(
+                                cpu = format!("{:.1}%", metrics.cpu_usage * 100.0),
+                                memory_mb = format!("{:.0}", metrics.memory_used_bytes as f64 / 1_048_576.0),
+                                "Resource sample"
+                            );
+                        }
                     }
                     _ = shutdown_rx.changed() => {
                         debug!("Resource monitor loop: shutdown requested");

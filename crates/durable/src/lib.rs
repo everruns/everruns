@@ -69,6 +69,7 @@ pub mod execution;
 pub mod persistence;
 pub mod reliability;
 pub mod scheduler;
+pub mod sysstat;
 pub mod task_events;
 pub mod update_field;
 pub mod worker;

@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
-use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
+use crate::sysstat::ProcessSampler;
 
 /// Histogram for latency measurements with configurable buckets
 #[derive(Debug)]
@@ -352,46 +352,34 @@ pub struct ResourceSnapshot {
 /// Collects resource usage over time
 pub struct ResourceMonitor {
     start: Instant,
-    pid: Pid,
-    system: Mutex<System>,
+    sampler: Mutex<ProcessSampler>,
     snapshots: Mutex<Vec<ResourceSnapshot>>,
 }
 
 impl ResourceMonitor {
     pub fn new() -> Self {
-        let pid = Pid::from_u32(std::process::id());
-        let system = System::new_with_specifics(
-            RefreshKind::nothing().with_processes(ProcessRefreshKind::everything()),
-        );
-
         Self {
             start: Instant::now(),
-            pid,
-            system: Mutex::new(system),
+            sampler: Mutex::new(ProcessSampler::new()),
             snapshots: Mutex::new(Vec::new()),
         }
     }
 
     /// Sample current resource usage
     pub fn sample(&self) {
-        let mut system = self.system.lock();
-        system.refresh_processes_specifics(
-            sysinfo::ProcessesToUpdate::Some(&[self.pid]),
-            true,
-            ProcessRefreshKind::everything(),
-        );
-
-        let snapshot = if let Some(process) = system.process(self.pid) {
-            ResourceSnapshot {
-                timestamp_ms: self.start.elapsed().as_millis() as u64,
-                memory_rss_mb: process.memory() as f64 / (1024.0 * 1024.0),
-                cpu_percent: process.cpu_usage(),
-            }
-        } else {
-            ResourceSnapshot {
-                timestamp_ms: self.start.elapsed().as_millis() as u64,
+        let timestamp_ms = self.start.elapsed().as_millis() as u64;
+        let snapshot = match self.sampler.lock().sample() {
+            Some(stats) => ResourceSnapshot {
+                timestamp_ms,
+                memory_rss_mb: stats.rss_bytes as f64 / (1024.0 * 1024.0),
+                cpu_percent: stats.cpu_percent,
+            },
+            // Readings are unavailable off Linux; record the tick so the report
+            // still has a continuous timeline.
+            None => ResourceSnapshot {
+                timestamp_ms,
                 ..Default::default()
-            }
+            },
         };
 
         self.snapshots.lock().push(snapshot);
