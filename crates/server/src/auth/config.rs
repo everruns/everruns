@@ -475,11 +475,20 @@ impl AuthConfig {
     /// channel without further translation.
     ///
     /// Currently enforces:
+    /// - `mode == Admin` requires configured admin credentials. Without them,
+    ///   no user can log in.
     /// - `mode == External` is incompatible with any built-in OAuth provider
     ///   (`google` or `github`). External mode delegates identity to a
     ///   third-party provider; configuring both at once is ambiguous and
     ///   was the source of the silent 401s in #1492.
     pub fn validate(&self) -> Result<(), String> {
+        if self.mode == AuthMode::Admin && self.admin.is_none() {
+            return Err(
+                "AUTH_ADMIN_EMAIL and AUTH_ADMIN_PASSWORD must both be set when AUTH_MODE=admin"
+                    .to_string(),
+            );
+        }
+
         if self.mode == AuthMode::External {
             let mut configured: Vec<&str> = Vec::new();
             if self.google.is_some() {
@@ -891,15 +900,17 @@ mod tests {
 
     #[test]
     fn test_admin_mode_requires_admin_config() {
-        // Admin mode without admin config
         let config_no_admin = AuthConfig {
             mode: AuthMode::Admin,
             admin: None,
             ..Default::default()
         };
-        assert!(config_no_admin.admin.is_none(), "Admin config can be None");
+        let err = config_no_admin
+            .validate()
+            .expect_err("admin mode without credentials must be rejected");
+        assert!(err.contains("AUTH_ADMIN_EMAIL"), "got: {err}");
+        assert!(err.contains("AUTH_ADMIN_PASSWORD"), "got: {err}");
 
-        // Admin mode with admin config
         let config_with_admin = AuthConfig {
             mode: AuthMode::Admin,
             admin: Some(AdminConfig {
@@ -912,6 +923,9 @@ mod tests {
             config_with_admin.admin.is_some(),
             "Admin config should be set"
         );
+        config_with_admin
+            .validate()
+            .expect("admin mode with credentials should pass validation");
         let admin = config_with_admin.admin.unwrap();
         assert_eq!(admin.email, "admin@example.com");
         assert_eq!(admin.password, "changeme");
@@ -1037,11 +1051,14 @@ mod tests {
 
     #[test]
     fn test_validate_admin_mode_with_oauth_passes() {
-        // Admin mode doesn't surface OAuth either, but the validator only
-        // catches the External-mode conflict — Admin + configured OAuth is
-        // unusual but harmless (login goes through admin credentials).
+        // Admin mode doesn't surface OAuth. Configuring it is unusual but
+        // harmless because login still goes through the admin credentials.
         let config = AuthConfig {
             mode: AuthMode::Admin,
+            admin: Some(AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "secret".to_string(),
+            }),
             google: Some(make_google_config()),
             ..Default::default()
         };
