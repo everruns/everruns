@@ -154,7 +154,10 @@ jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
-git2 = { version = "0.21", features = ["https", "vendored-openssl"] }
+# No TLS backend: network access goes through domains/git_fetch.rs on the
+# workspace rustls client, so libgit2 is only an object store and pack indexer.
+# This is what keeps OpenSSL (and the builder image's perl/make) out of the tree.
+git2 = { version = "0.21", default-features = false }
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
 clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"

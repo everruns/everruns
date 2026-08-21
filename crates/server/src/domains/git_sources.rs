@@ -1,4 +1,4 @@
-use git2::{Error, ErrorCode};
+use super::git_fetch::FetchFailure;
 
 pub const INVALID_GITHUB_REPOSITORY: &str = "GitHub repository must be owner/repo or https://github.com/owner/repo (optionally ending in .git)";
 
@@ -44,30 +44,34 @@ pub fn github_clone_url(repository: &str) -> Result<(String, String), &'static s
     Ok((format!("https://github.com/{repository}.git"), repository))
 }
 
-/// Convert libgit2 failures into credential-safe guidance stored for users.
+/// Convert fetch failures into credential-safe guidance stored for users.
+///
+/// The classification deliberately never carries the remote's own message:
+/// that can echo an internal hostname or a token-bearing URL back to the user.
 pub fn safe_git_clone_error(
-    error: &Error,
+    failure: FetchFailure,
     github_source: bool,
     authenticated: bool,
 ) -> &'static str {
-    let message = error.message();
-    if error.code() == ErrorCode::Auth || message.contains("401") || message.contains("403") {
-        return if github_source {
-            "Repository authentication failed. Reconnect GitHub and retry"
-        } else {
-            "Repository authentication failed. Check repository access and retry"
-        };
+    match failure {
+        FetchFailure::Auth => {
+            if github_source {
+                "Repository authentication failed. Reconnect GitHub and retry"
+            } else {
+                "Repository authentication failed. Check repository access and retry"
+            }
+        }
+        FetchFailure::NotFound => {
+            if !github_source {
+                "Repository or branch was not found. Check the repository URL and branch"
+            } else if authenticated {
+                "Repository or branch was not found, or access was denied. Check the repository and GitHub connection"
+            } else {
+                "Repository or branch was not found, or the repository is private. Check the repository or connect GitHub for private access"
+            }
+        }
+        FetchFailure::Unreachable => "Could not reach the repository. Check the network and retry",
     }
-    if error.code() == ErrorCode::NotFound || message.contains("404") {
-        return if !github_source {
-            "Repository or branch was not found. Check the repository URL and branch"
-        } else if authenticated {
-            "Repository or branch was not found, or access was denied. Check the repository and GitHub connection"
-        } else {
-            "Repository or branch was not found, or the repository is private. Check the repository or connect GitHub for private access"
-        };
-    }
-    "Could not reach the repository. Check the network and retry"
 }
 
 fn valid_github_component(part: &str) -> bool {
@@ -81,7 +85,6 @@ fn valid_github_component(part: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use git2::ErrorClass;
 
     #[test]
     fn normalizes_common_github_inputs() {
@@ -124,20 +127,19 @@ mod tests {
 
     #[test]
     fn clone_errors_are_actionable_without_provider_details() {
-        let not_found = Error::new(ErrorCode::NotFound, ErrorClass::Net, "HTTP 404");
-        assert!(safe_git_clone_error(&not_found, true, false).contains("connect GitHub"));
-        let auth = Error::new(ErrorCode::Auth, ErrorClass::Net, "HTTP 401");
+        assert!(
+            safe_git_clone_error(FetchFailure::NotFound, true, false).contains("connect GitHub")
+        );
         assert_eq!(
-            safe_git_clone_error(&auth, true, true),
+            safe_git_clone_error(FetchFailure::Auth, true, true),
             "Repository authentication failed. Reconnect GitHub and retry"
         );
-        let network = Error::new(ErrorCode::Timeout, ErrorClass::Net, "internal hostname");
         assert_eq!(
-            safe_git_clone_error(&network, true, false),
+            safe_git_clone_error(FetchFailure::Unreachable, true, false),
             "Could not reach the repository. Check the network and retry"
         );
         assert_eq!(
-            safe_git_clone_error(&not_found, false, false),
+            safe_git_clone_error(FetchFailure::NotFound, false, false),
             "Repository or branch was not found. Check the repository URL and branch"
         );
     }

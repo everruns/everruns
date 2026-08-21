@@ -19,7 +19,6 @@ use everruns_core::connection_services::UserConnectionResolver;
 use everruns_platform::vector_store::{VectorRecord, VectorStore};
 use everruns_provider::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_provider::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
-use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
@@ -27,6 +26,7 @@ use tokio::task;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
@@ -580,37 +580,28 @@ impl ResolvedGitSource {
 }
 
 fn clone_repository(source: &ResolvedGitSource, checkout_dir: &Path) -> Result<()> {
-    let mut builder = RepoBuilder::new();
-    let mut fetch_options = FetchOptions::new();
-    fetch_options.download_tags(AutotagOption::None);
-    fetch_options.depth(1);
-    if let Some(token) = source.auth_token.clone() {
-        let mut callbacks = RemoteCallbacks::new();
-        callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
-            Cred::userpass_plaintext("x-access-token", &token)
-        });
-        fetch_options.remote_callbacks(callbacks);
-    }
-    builder.fetch_options(fetch_options);
-    builder
-        .branch(&source.branch)
-        .clone(&source.url, checkout_dir)
-        .map(|_| ())
-        .map_err(|error| {
-            // Keep provider details in operator logs while returning only the
-            // stable, credential-safe message stored on the index.
-            tracing::warn!(
-                git_error_code = ?error.code(),
-                git_error_class = ?error.class(),
-                git_error = %error.message(),
-                "Git clone failed during knowledge index sync"
-            );
-            anyhow!(safe_git_clone_error(
-                &error,
-                true,
-                source.auth_token.is_some()
-            ))
-        })
+    git_fetch::shallow_checkout(
+        &FetchRequest {
+            url: &source.url,
+            branch: &source.branch,
+            auth_token: source.auth_token.as_deref(),
+        },
+        checkout_dir,
+    )
+    .map_err(|error| {
+        // Keep provider details in operator logs while returning only the
+        // stable, credential-safe message stored on the index.
+        tracing::warn!(
+            failure = ?error.failure,
+            git_error = %error,
+            "Git clone failed during knowledge index sync"
+        );
+        anyhow!(safe_git_clone_error(
+            error.failure,
+            true,
+            source.auth_token.is_some()
+        ))
+    })
 }
 
 fn resolve_root_folder(checkout_dir: &Path, root_folder: Option<&str>) -> Result<PathBuf> {

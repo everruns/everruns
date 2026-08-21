@@ -4,13 +4,13 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
 use everruns_core::connection_services::UserConnectionResolver;
-use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilder};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::task;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::domains::git_fetch::{self, FetchRequest};
 use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::domains::memory::types::{
     GitHubMemorySourceResponse, GitMemorySourceResponse, MemorySourceResponse,
@@ -223,30 +223,21 @@ fn snapshot_git_source(
 }
 
 fn clone_repository(source: &ResolvedGitSource, checkout_dir: &Path) -> Result<()> {
-    let mut builder = RepoBuilder::new();
-    let mut fetch_options = FetchOptions::new();
-    fetch_options.download_tags(AutotagOption::None);
-    fetch_options.depth(1);
-    if let Some(token) = source.auth_token.clone() {
-        let mut callbacks = RemoteCallbacks::new();
-        callbacks.credentials(move |_url, _username_from_url, _allowed_types| {
-            Cred::userpass_plaintext("x-access-token", &token)
-        });
-        fetch_options.remote_callbacks(callbacks);
-    }
-    builder.fetch_options(fetch_options);
-
-    builder
-        .branch(&source.branch)
-        .clone(&source.url, checkout_dir)
-        .map(|_| ())
-        .map_err(|error| {
-            anyhow!(safe_git_clone_error(
-                &error,
-                source.github_source,
-                source.auth_token.is_some()
-            ))
-        })
+    git_fetch::shallow_checkout(
+        &FetchRequest {
+            url: &source.url,
+            branch: &source.branch,
+            auth_token: source.auth_token.as_deref(),
+        },
+        checkout_dir,
+    )
+    .map_err(|error| {
+        anyhow!(safe_git_clone_error(
+            error.failure,
+            source.github_source,
+            source.auth_token.is_some()
+        ))
+    })
 }
 
 fn resolve_root_folder(checkout_dir: &Path, root_folder: Option<&str>) -> Result<PathBuf> {

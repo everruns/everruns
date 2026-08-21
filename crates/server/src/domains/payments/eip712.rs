@@ -15,7 +15,7 @@
 // that vector was captured from the previous ethers-backed implementation and is
 // the equivalence proof for this module.
 
-use k256::ecdsa::{RecoveryId, Signature, SigningKey};
+use k256::ecdsa::SigningKey;
 use sha3::{Digest, Keccak256};
 
 /// A locally held secp256k1 signing key and its Ethereum address.
@@ -240,7 +240,7 @@ fn encode_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use k256::ecdsa::VerifyingKey;
+    use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 
     /// Anvil development key #0. A public test vector, never a real key.
     const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
