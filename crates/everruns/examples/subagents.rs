@@ -7,7 +7,7 @@
 //! cargo run -p everruns --features openai --example subagents
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -18,6 +18,16 @@ use tokio::task::JoinHandle;
 
 type ChildResult = Result<String, String>;
 const MODEL_ID: &str = "gpt-5.6-terra";
+
+fn validate_wait_task_ids(task_ids: &[String]) -> Result<(), &'static str> {
+    if task_ids.len() != 5 {
+        return Err("wait_for_subagents expects five task IDs");
+    }
+    if task_ids.iter().collect::<HashSet<_>>().len() != task_ids.len() {
+        return Err("wait_for_subagents expects five unique task IDs");
+    }
+    Ok(())
+}
 
 #[derive(Default)]
 struct ChildTasks {
@@ -117,6 +127,9 @@ fn wait_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
             "properties": {
                 "task_ids": {
                     "type": "array",
+                    "minItems": 5,
+                    "maxItems": 5,
+                    "uniqueItems": true,
                     "items": {"type": "string"}
                 }
             },
@@ -136,10 +149,8 @@ fn wait_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
-                if task_ids.len() != 5 {
-                    return Ok::<_, String>(ToolResponse::error(
-                        "wait_for_subagents expects five task IDs",
-                    ));
+                if let Err(error) = validate_wait_task_ids(&task_ids) {
+                    return Ok::<_, String>(ToolResponse::error(error));
                 }
 
                 let handles = {
@@ -155,15 +166,16 @@ fn wait_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
                             "unknown or already-waited task: {unknown}"
                         )));
                     }
-                    task_ids
-                        .iter()
-                        .map(|task_id| {
-                            (
-                                task_id.clone(),
-                                running.remove(task_id).expect("presence checked above"),
-                            )
-                        })
-                        .collect::<Vec<_>>()
+                    let mut handles = Vec::with_capacity(task_ids.len());
+                    for task_id in &task_ids {
+                        let Some(handle) = running.remove(task_id) else {
+                            return Ok(ToolResponse::error(format!(
+                                "unknown or already-waited task: {task_id}"
+                            )));
+                        };
+                        handles.push((task_id.clone(), handle));
+                    }
+                    handles
                 };
 
                 let mut results = Vec::with_capacity(handles.len());
@@ -187,6 +199,21 @@ fn wait_tool(tasks: Arc<ChildTasks>) -> FunctionTool {
             }
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_wait_task_ids;
+
+    #[test]
+    fn wait_task_ids_must_be_unique() {
+        let task_ids = ["one", "two", "three", "four", "one"].map(str::to_owned);
+
+        assert_eq!(
+            validate_wait_task_ids(&task_ids),
+            Err("wait_for_subagents expects five unique task IDs")
+        );
+    }
 }
 
 #[tokio::main]
