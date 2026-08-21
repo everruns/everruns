@@ -287,7 +287,14 @@ export function WebMcpProvider({ children }: { children: ReactNode }) {
         <DialogContent showCloseButton={false} data-testid="webmcp-approval-dialog">
           <DialogHeader>
             <DialogTitle>{pending?.request.title}</DialogTitle>
-            <DialogDescription>{pending?.request.description}</DialogDescription>
+            {/* THREAT[TM-WEB-013]: the description carries agent-supplied text
+                of unbounded length. Bound and scroll it here rather than
+                truncating at the call site: a truncated preview approves
+                something other than what is sent, and an unbounded one pushes
+                Reject/Approve out of a viewport the dialog has locked. */}
+            <DialogDescription className="max-h-[40svh] overflow-y-auto break-words whitespace-pre-wrap">
+              {pending?.request.description}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => settle(false)}>

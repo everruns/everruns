@@ -1,5 +1,6 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { WebMcpProvider, getEverrunsPageContext } from "@/providers/webmcp-provider";
+import { useWebMcp } from "@/providers/webmcp-context";
 import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 const mockPush = jest.fn();
@@ -84,6 +85,46 @@ describe("WebMcpProvider", () => {
 
     view.unmount();
     expect(tools.size).toBe(0);
+  });
+
+  it("shows the whole approval description in a bounded, scrollable region", async () => {
+    const description = `Send to this session: “${"x".repeat(8_000)}”`;
+
+    function RequestApproval() {
+      const webmcp = useWebMcp();
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            void webmcp
+              .requestApproval({
+                title: "Send this agent message?",
+                description,
+                confirmLabel: "Send message",
+              })
+              .catch(() => {});
+          }}
+        >
+          ask
+        </button>
+      );
+    }
+
+    render(
+      <WebMcpProvider>
+        <RequestApproval />
+      </WebMcpProvider>,
+    );
+    act(() => screen.getByRole("button", { name: "ask" }).click());
+
+    const rendered = await screen.findByText(description);
+    // Nothing is elided: the user approves exactly the text that gets sent.
+    expect(rendered).toHaveTextContent(description, { normalizeWhitespace: false });
+    // And the dialog stays usable: the description scrolls inside a bounded
+    // box instead of pushing the decision buttons out of the viewport.
+    expect(rendered).toHaveClass("max-h-[40svh]", "overflow-y-auto");
+    expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument();
   });
 
   it("does not register tools when the feature is disabled", async () => {
