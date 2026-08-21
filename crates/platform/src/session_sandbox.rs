@@ -678,6 +678,18 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, LazyLock, Mutex};
 
+    // `everruns-host` reserves this name from the user-facing secret_store, but
+    // it cannot name the constant: host is a dependency of this crate, not the
+    // other way round. Pin the two together here, where the constant is
+    // defined, so a rename cannot quietly reopen the write path that lets a
+    // session point Daytona recovery at another session's state.
+    #[test]
+    fn the_sandbox_secret_name_is_reserved_from_session_storage() {
+        assert!(crate::capabilities::is_internal_session_secret_name(
+            SESSION_SANDBOX_SECRET_NAME
+        ));
+    }
+
     #[derive(Clone, Default)]
     struct MemorySecrets {
         secrets: Arc<Mutex<HashMap<String, String>>>,

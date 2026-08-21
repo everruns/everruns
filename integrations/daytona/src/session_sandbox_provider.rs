@@ -9,6 +9,7 @@ use everruns_platform::session_sandbox::{
     SessionSandboxState, SessionSandboxStatus, SessionSandboxStatusResponse,
     SessionSandboxWriteFileResponse,
 };
+use everruns_provider::typed_id::SessionId;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
@@ -146,6 +147,7 @@ fn recovery_settings(
 }
 
 fn recovery_binding(
+    session_id: &SessionId,
     instance: &SessionSandboxInstance,
 ) -> Result<Option<DaytonaRecoveryBinding>, ToolExecutionResult> {
     let Some(value) = instance.provider_state.get("recovery") else {
@@ -168,6 +170,7 @@ fn recovery_binding(
         || binding.subpath.starts_with('/')
         || binding.subpath.contains("..")
         || binding.subpath.contains("//")
+        || binding.subpath != format!("sessions/{session_id}")
         || !(2..=100).contains(&binding.retained_revisions)
         || binding
             .head_revision
@@ -659,7 +662,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
-        let Some(recovery) = recovery_binding(instance)? else {
+        let Some(recovery) = recovery_binding(&context.session_id, instance)? else {
             let info = ensure_sandbox_started(&client, &instance.external_id).await?;
             let workspace_path = instance
                 .workspace_path
@@ -745,7 +748,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                 return Ok(SessionSandboxInstance {
                     metadata: json!({
                         "remote_state": "lost",
-                        "recoverable": recovery_binding(instance)?.is_some(),
+                        "recoverable": recovery_binding(&context.session_id, instance)?.is_some(),
                     }),
                     ..instance.clone()
                 });
@@ -768,7 +771,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<(), ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
-        let recovery = recovery_binding(instance)?;
+        let recovery = recovery_binding(&context.session_id, instance)?;
         let delete_instance = if let Some(recovery) = &recovery {
             match client.get_sandbox(&instance.external_id).await {
                 Ok(_) => {
@@ -949,7 +952,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         config: &SessionSandboxConfig,
         instance: &SessionSandboxInstance,
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
-        let Some(mut recovery) = recovery_binding(instance)? else {
+        let Some(mut recovery) = recovery_binding(&context.session_id, instance)? else {
             return Ok(instance.clone());
         };
         let api_key = get_api_key(context).await?;
@@ -1012,7 +1015,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
                     workspace_path: state.instance.workspace_path.clone(),
                     metadata: json!({
                         "remote_state": "lost",
-                        "recoverable": recovery_binding(&state.instance)?.is_some(),
+                        "recoverable": recovery_binding(&context.session_id, &state.instance)?.is_some(),
                     }),
                 });
             }
@@ -1131,7 +1134,11 @@ fn shell_escape(s: &str) -> String {
 mod tests {
     use super::*;
 
-    fn recovery_instance(mount_path: &str, head_revision: Option<&str>) -> SessionSandboxInstance {
+    fn recovery_instance(
+        session_id: &SessionId,
+        mount_path: &str,
+        head_revision: Option<&str>,
+    ) -> SessionSandboxInstance {
         SessionSandboxInstance {
             external_id: "sb_test".to_string(),
             display_name: None,
@@ -1141,7 +1148,7 @@ mod tests {
                     "volume_id": "vol_test",
                     "volume_name": "everruns-recovery",
                     "mount_path": mount_path,
-                    "subpath": "sessions/session_123",
+                    "subpath": format!("sessions/{session_id}"),
                     "retained_revisions": 10,
                     "head_revision": head_revision,
                 }
@@ -1152,23 +1159,40 @@ mod tests {
 
     #[test]
     fn recovery_binding_rejects_non_normalized_mount_path() {
-        let instance = recovery_instance("/mnt/recovery/../workspace", Some("rev-1"));
+        let session_id = SessionId::new();
+        let instance = recovery_instance(&session_id, "/mnt/recovery/../workspace", Some("rev-1"));
 
-        assert!(recovery_binding(&instance).is_err());
+        assert!(recovery_binding(&session_id, &instance).is_err());
     }
 
     #[test]
     fn recovery_binding_rejects_revision_path_traversal() {
-        let instance = recovery_instance("/mnt/recovery", Some("rev-1/../../workspace"));
+        let session_id = SessionId::new();
+        let instance =
+            recovery_instance(&session_id, "/mnt/recovery", Some("rev-1/../../workspace"));
 
-        assert!(recovery_binding(&instance).is_err());
+        assert!(recovery_binding(&session_id, &instance).is_err());
+    }
+
+    #[test]
+    fn recovery_binding_rejects_another_sessions_subpath() {
+        let owner_session_id = SessionId::new();
+        let attacker_session_id = SessionId::new();
+        let instance = recovery_instance(&owner_session_id, "/mnt/recovery", Some("rev-1"));
+
+        assert!(recovery_binding(&attacker_session_id, &instance).is_err());
     }
 
     #[test]
     fn recovery_binding_accepts_generated_revision() {
-        let instance = recovery_instance("/mnt/recovery", Some("rev-1723223212345678900"));
+        let session_id = SessionId::new();
+        let instance = recovery_instance(
+            &session_id,
+            "/mnt/recovery",
+            Some("rev-1723223212345678900"),
+        );
 
-        assert!(recovery_binding(&instance).is_ok());
+        assert!(recovery_binding(&session_id, &instance).is_ok());
     }
 
     #[test]

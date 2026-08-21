@@ -25,6 +25,12 @@ const INTERNAL_KV_PREFIXES: &[&str] = &[
     everruns_core::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
 ];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:", "mcp_oauth:"];
+// Exact reserved secret names. Unlike the prefixes above, this one cannot
+// reference its canonical constant: SESSION_SANDBOX_SECRET_NAME is defined in
+// the platform crate, which depends on this one and which host source must not
+// reference (check-agent-record-isolation.sh). The name is repeated here and
+// pinned to the constant by a test beside that definition.
+const INTERNAL_SECRET_NAMES: &[&str] = &["session_sandbox"];
 
 pub fn is_internal_session_kv_key(key: &str) -> bool {
     INTERNAL_KV_PREFIXES
@@ -37,9 +43,10 @@ fn reserved_kv_key_error() -> ToolExecutionResult {
 }
 
 pub fn is_internal_session_secret_name(name: &str) -> bool {
-    INTERNAL_SECRET_PREFIXES
-        .iter()
-        .any(|prefix| name.starts_with(prefix))
+    INTERNAL_SECRET_NAMES.contains(&name)
+        || INTERNAL_SECRET_PREFIXES
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
 }
 
 pub const SESSION_STORAGE_CAPABILITY_ID: &str = "session_storage";
@@ -650,6 +657,7 @@ mod tests {
         assert!(is_internal_session_secret_name(
             "mcp_oauth:server:access_token"
         ));
+        assert!(is_internal_session_secret_name("session_sandbox"));
         assert!(!is_internal_session_secret_name("api_key"));
     }
 
