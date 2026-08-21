@@ -76,7 +76,6 @@ mcp-stdio = ["mcp", "everruns-host/mcp-stdio"]
 local = [
     "dep:everruns-platform",
     "dep:rusqlite",
-    "dep:dirs",
     "dep:libc",
     "dep:chrono",
     "dep:chrono-tz",
@@ -139,7 +138,6 @@ everruns-macros = { workspace = true, optional = true }
 schemars = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 rusqlite = { version = "0.39", features = ["bundled"], optional = true }
-dirs = { workspace = true, optional = true }
 libc = { version = "0.2", optional = true }
 chrono = { workspace = true, optional = true }
 chrono-tz = { version = "0.10", optional = true }

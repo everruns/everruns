@@ -122,8 +122,8 @@ impl Cli {
         if let Some(path) = &self.state_dir {
             return Ok(path.clone());
         }
-        dirs::state_dir()
-            .or_else(dirs::data_local_dir)
+        user_state_dir()
+            .or_else(user_data_local_dir)
             .map(|root| root.join("everruns").join("ercode"))
             .ok_or_else(|| anyhow!("cannot resolve an OS user state directory; pass --state-dir"))
     }
@@ -293,3 +293,43 @@ pub fn coding_agent(model: Model) -> AgentBuilder {
         .capability(WebFetch::new())
         .capability(DuckDuckGo)
 }
+
+/// Reads an environment variable, treating an empty value as unset.
+fn env_path(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+/// `$XDG_STATE_HOME`, else `~/.local/state`. `None` off XDG platforms, matching
+/// the `dirs` crate this replaces; callers fall back to the data directory.
+fn user_state_dir() -> Option<PathBuf> {
+    if cfg!(any(target_os = "macos", windows)) {
+        return None;
+    }
+    match env_path("XDG_STATE_HOME") {
+        Some(path) if path.is_absolute() => Some(path),
+        _ => env_path("HOME").map(|home| home.join(".local/state")),
+    }
+}
+
+/// `$XDG_DATA_HOME`, else `~/.local/share`; `~/Library/Application Support` on
+/// macOS and `%LOCALAPPDATA%` on Windows.
+fn user_data_local_dir() -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        env_path("HOME").map(|home| home.join("Library").join("Application Support"))
+    }
+    #[cfg(windows)]
+    {
+        env_path("LOCALAPPDATA")
+    }
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    {
+        match env_path("XDG_DATA_HOME") {
+            Some(path) if path.is_absolute() => Some(path),
+            _ => env_path("HOME").map(|home| home.join(".local/share")),
+        }
+    }
+}
+

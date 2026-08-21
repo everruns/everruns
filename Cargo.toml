@@ -165,7 +165,6 @@ time = "0.3"
 parking_lot = "0.12"
 dialoguer = "0.12"
 webbrowser = "1"
-dirs = "6"
 
 # WebSocket (CDP sessions)
 tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }

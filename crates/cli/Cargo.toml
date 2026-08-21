@@ -53,10 +53,8 @@ ignore.workspace = true
 dialoguer.workspace = true
 
 # Browser launch
-webbrowser.workspace = true
 
 # XDG config directory
-dirs.workspace = true
 
 # Hostname resolution
 hostname = "0.4"

@@ -42,7 +42,7 @@ pub fn run(profile: &str) -> Result<()> {
     } else {
         let path_hint = credentials_path()
             .map(|p| {
-                let display = if let Some(home) = dirs::home_dir() {
+                let display = if let Some(home) = crate::user_dirs::home_dir() {
                     if let Ok(rel) = p.strip_prefix(&home) {
                         format!("~/{}", rel.display())
                     } else {
