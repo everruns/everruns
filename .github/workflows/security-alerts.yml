@@ -13,6 +13,13 @@ name: Security Alerts
 # GITHUB_TOKEN, which needs no org or app administration — unlike either option
 # in EVE-923's exit criteria. The Actions API that exposes this run's logs and
 # artifacts is already readable from a scheduled session.
+#
+# That recovers code scanning, not everything. Measured on run 32458309940: the
+# same job that read code-scanning alerts was still refused Dependabot alerts
+# with 403, and no `permissions:` key changes that — Dependabot alert reads need
+# the PAT or App scope EVE-923 asks for. So the job reports the Dependabot half
+# as blocked rather than failing on it, and stays red-on-regression only for the
+# half a workflow can actually read.
 
 on:
   schedule:

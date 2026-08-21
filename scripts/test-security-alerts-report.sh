@@ -111,14 +111,54 @@ rows = r.format_code_scanning(
 )
 check("code-scanning falls back to rule severity", "warning" in "\n".join(rows))
 
-# The regression this script exists to catch: a 403 must not read as "clean".
-lines = r.unreadable(403, "Dependabot alerts")
-check("403 names the missing permission", "security-events: read" in lines[0], lines[0])
-check("403 references the tracking issue", "EVE-923" in lines[0], lines[0])
+# A 403 must never read as "clean" — but the two endpoints mean different
+# things by it, and collapsing them is the mistake this guards against.
+# Measured on run 32458309940: a workflow token with `security-events: read`
+# reads code-scanning alerts and is still refused Dependabot alerts.
+check(
+    "blocked Dependabot text points at the tracking issue",
+    "EVE-923" in r.DEPENDABOT_BLOCKED,
+)
+check(
+    "blocked Dependabot text does not blame a missing workflow permission",
+    "lacks `security-events: read`" not in r.DEPENDABOT_BLOCKED,
+    r.DEPENDABOT_BLOCKED,
+)
 check(
     "unexpected status is reported verbatim",
-    "500" in r.unreadable(500, "Dependabot alerts")[0],
+    "500" in r.unexpected(500, "Dependabot alerts")[0],
 )
+
+
+# The fatal/non-fatal split, driven through the section functions with the
+# network stubbed, since that split is the whole contract of this script.
+def with_stub(status, body, fn):
+    original = r.get
+    r.get = lambda repo, path, token: (status, body)
+    try:
+        return fn("everruns/everruns", "token")
+    finally:
+        r.get = original
+
+
+lines, ok = with_stub(403, None, r.dependabot_section)
+check("Dependabot 403 is reported but not fatal", ok is True and "EVE-923" in lines[0])
+
+lines, ok = with_stub(403, None, r.code_scanning_section)
+check("code-scanning 403 is fatal", ok is False, f"ok={ok}")
+check("code-scanning 403 calls out the regression", "regressed" in lines[0], lines[0])
+
+lines, ok = with_stub(200, [], r.dependabot_section)
+check("readable-and-empty Dependabot is not fatal", ok is True and "No open" in lines[0])
+
+lines, ok = with_stub(404, None, r.dependabot_section)
+check("Dependabot 404 is not fatal", ok is True and "not enabled" in lines[0])
+
+lines, ok = with_stub(500, None, r.code_scanning_section)
+check("unexpected code-scanning status is fatal", ok is False and "500" in lines[0])
+
+lines, ok = with_stub(500, None, r.dependabot_section)
+check("unexpected Dependabot status is fatal", ok is False and "500" in lines[0])
 
 if failures:
     print(f"\n{len(failures)} check(s) failed")

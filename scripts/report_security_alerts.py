@@ -15,10 +15,20 @@ GITHUB_TOKEN with no org or app administration. Running this there and printing
 to the job log turns the alerts into something a later session can read back
 over the Actions API, which it already has access to.
 
-Exits non-zero only when an endpoint is unreadable, never because alerts exist:
-unresolvable-but-accepted advisories are normal here (EVE-890, EVE-896,
-EVE-913), and failing on them would train the team to ignore this job. The
-guard that matters is the permission itself silently regressing.
+That covers code scanning but not all of it. Measured on run 32458309940: with
+`security-events: read` the job read code-scanning alerts fine and was still
+refused Dependabot alerts with 403. So the two halves have different meanings
+and must not be collapsed:
+
+* code scanning unreadable -> a real regression, fail the job.
+* Dependabot unreadable -> the standing EVE-923 gap, which no permission
+  available to a workflow closes. Report it and carry on; failing here would
+  make the job permanently red and therefore ignored.
+
+Exits non-zero only when an endpoint that should be readable is not, never
+because alerts exist: unresolvable-but-accepted advisories are normal here
+(EVE-890, EVE-896, EVE-913), and failing on them would train the team to
+ignore this job.
 """
 
 from __future__ import annotations
@@ -67,20 +77,28 @@ def summarize(counts: Counter) -> str:
     return ", ".join(f"{count} {name}" for name, count in ranked)
 
 
-def unreadable(status: int, kind: str) -> list[str]:
-    if status == 403:
-        return [
-            f"**Unreadable (403).** The job token lacks `security-events: read`. See EVE-923.",
-        ]
+def unexpected(status: int, kind: str) -> list[str]:
     return [f"**Unexpected HTTP {status}** reading {kind}."]
+
+
+# No `permissions:` key grants a workflow token Dependabot alert reads — only a
+# PAT or App installation carrying `security_events` can, which is EVE-923's ask.
+DEPENDABOT_BLOCKED = (
+    "**Unreadable (403).** No permission available to a workflow token grants "
+    "this; it needs the PAT or App scope tracked in EVE-923. Code-scanning "
+    "alerts above/below are unaffected."
+)
 
 
 def dependabot_section(repo: str, token: str) -> tuple[list[str], bool]:
     status, alerts = get(repo, "dependabot/alerts?state=open&per_page=100", token)
     if status == 404:
         return [f"_Dependabot alerts are not enabled for `{repo}`._"], True
+    if status == 403:
+        # Expected in Actions today. Reported, not fatal — see module docstring.
+        return [DEPENDABOT_BLOCKED], True
     if status != 200:
-        return unreadable(status, "Dependabot alerts"), False
+        return unexpected(status, "Dependabot alerts"), False
     return format_dependabot(alerts), True
 
 
@@ -116,8 +134,14 @@ def code_scanning_section(repo: str, token: str) -> tuple[list[str], bool]:
     if status == 404:
         # Also what GitHub returns when code scanning has never produced results.
         return [f"_No code-scanning results for `{repo}`._"], True
+    if status == 403:
+        # A workflow token *can* read these, so 403 means the grant went away.
+        return [
+            "**Unreadable (403).** The job token lacks `security-events: read` — "
+            "this is readable from a workflow, so the permission regressed."
+        ], False
     if status != 200:
-        return unreadable(status, "code-scanning alerts"), False
+        return unexpected(status, "code-scanning alerts"), False
     return format_code_scanning(alerts), True
 
 
@@ -175,7 +199,10 @@ def main() -> int:
     print("\n".join(code_scanning))
 
     if not (dependabot_ok and code_scanning_ok):
-        print("\nOne or more alert endpoints were unreadable.", file=sys.stderr)
+        print(
+            "\nAn endpoint that should be readable was not; see the report above.",
+            file=sys.stderr,
+        )
         return 1
     return 0
 
