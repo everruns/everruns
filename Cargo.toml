@@ -217,9 +217,10 @@ prost-types = "0.14"
 # Image processing (for thumbnail generation)
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
 
-# Prometheus metrics
+# Prometheus metrics. The exposition renderer is in-tree
+# (crates/server/src/api/prometheus_recorder.rs); see
+# knowledge/project/dependency-surface.md.
 metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.18", default-features = false }
 
 # In-process caching
 moka = { version = "0.12", features = ["future", "sync"] }

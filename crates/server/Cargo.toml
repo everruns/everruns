@@ -69,7 +69,6 @@ fred.workspace = true
 async-nats.workspace = true
 parking_lot.workspace = true
 metrics.workspace = true
-metrics-exporter-prometheus.workspace = true
 cron = "0.17"
 inventory.workspace = true
 moka.workspace = true

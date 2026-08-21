@@ -68,7 +68,7 @@ Metrics are designed for correct behavior with multiple API server replicas:
 |----------|--------|----------------------|
 | **Gauges** | DB via MetricsCollector | All replicas emit identical values (same DB). Prometheus keeps separate series per `instance`. Use `max without(instance)` in queries for cluster-level values. |
 | **Counters** | Local events (EventListener, HTTP middleware) | Each replica counts only its own work. `sum()` across instances gives true total. |
-| **Histograms** | Local observations | Each replica records its own latencies. Prometheus merges across instances. |
+| **Histograms** | Local observations | Each replica records its own latencies into shared bucket boundaries, so `sum without(instance)` over `_bucket` merges them and `histogram_quantile` stays valid across replicas. |
 
 Task/workflow DB totals are emitted as **gauges** (not counters) because they
 represent global state from the shared database. For rate-like queries on these
@@ -82,8 +82,16 @@ All metrics are prefixed `everruns_`. For the complete metric list, see the `Pro
 
 ## Architecture
 
-1. **Recorder:** `PrometheusBuilder::new().install_recorder()` installs the global
-   `metrics` recorder early in `ServerAppBuilder::run()`.
+1. **Recorder:** the in-tree recorder in
+   [`crates/server/src/api/prometheus_recorder.rs`](../../crates/server/src/api/prometheus_recorder.rs)
+   installs the global `metrics` recorder early in `ServerAppBuilder::run()`.
+   Decision: it replaced `metrics-exporter-prometheus`, whose default rendered
+   histograms as **summaries** with rolling-window quantiles. Summary quantiles
+   cannot be aggregated across replicas, which contradicted the scaling model
+   above. Durations now render as Prometheus histograms — `_bucket`, `_sum`,
+   `_count` — over one shared set of second-valued boundaries covering 5ms to
+   60s. Dashboards that read `{quantile=...}` must move to
+   `histogram_quantile(q, sum without(instance) (rate(..._bucket[5m])))`.
 2. **Gauge bridge:** Background task reads latest `MetricsCollector` snapshot every
    10s and emits Prometheus gauges (aligned with existing sampler). All values are
    global DB state, safe to duplicate across replicas.

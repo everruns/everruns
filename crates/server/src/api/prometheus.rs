@@ -1,6 +1,7 @@
 // Prometheus /metrics endpoint
 //
-// Decision: Uses `metrics` + `metrics-exporter-prometheus` (lighter than OTel bridge).
+// Decision: Uses `metrics` with an in-tree recorder (see `prometheus_recorder`),
+// which is lighter than both the OTel bridge and `metrics-exporter-prometheus`.
 // Decision: Metrics collection is enabled by default (METRICS_ENABLED=true),
 // but public serving on the main API port is disabled by default.
 // Decision: Two serving modes to keep metrics internal in production:
@@ -22,7 +23,7 @@ use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
 use everruns_core::config::{env_bool, env_opt_string};
-use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use super::prometheus_recorder::{self, PrometheusHandle};
 use tokio::task::JoinHandle;
 
 /// Configuration for the Prometheus metrics endpoint.
@@ -56,13 +57,12 @@ impl PrometheusConfig {
     }
 }
 
-/// Install the `metrics-exporter-prometheus` recorder and return the render handle.
+/// Install the in-tree Prometheus recorder and return the render handle.
 ///
 /// Must be called exactly once before any `metrics::*!` macros are used.
 /// Returns `None` if installation fails (e.g. another recorder is already set).
 pub fn install_prometheus_recorder() -> Option<PrometheusHandle> {
-    PrometheusBuilder::new()
-        .install_recorder()
+    prometheus_recorder::install_recorder()
         .map_err(|e| {
             tracing::warn!(error = %e, "Failed to install Prometheus recorder — metrics endpoint disabled");
         })
