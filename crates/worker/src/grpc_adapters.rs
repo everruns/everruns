@@ -381,12 +381,18 @@ impl GrpcClient {
             .provider_type
             .parse()
             .unwrap_or_else(|_| unreachable!());
+        // A connection with no options (or an older server that does not send
+        // the field) yields the empty options, which changes nothing.
+        let request_options = non_empty_string(response.request_options_json)
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default();
         Ok(Some(everruns_provider::driver_registry::ProviderConfig {
             provider: everruns_provider::runtime_provider::ProviderKey::new(provider_id),
             provider_type,
             api_key: non_empty_string(response.api_key),
             base_url: non_empty_string(response.base_url),
             metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
+            request_options,
         }))
     }
 

@@ -181,7 +181,7 @@ impl OpenResponsesProtocolChatDriver {
         api_url: &str,
         request_body: &Value,
         extension_headers: &HeaderMap,
-        model: &str,
+        config: &LlmCallConfig,
         retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -230,6 +230,26 @@ impl OpenResponsesProtocolChatDriver {
                     headers.insert(name, value);
                 }
 
+                // Caller-supplied per-request headers are applied last so they
+                // override provider decoration and configured headers, matching
+                // the `LlmCallConfig::extra_headers` contract.
+                for (name, value) in
+                    crate::driver_helpers::merge_request_headers(Vec::new(), &config.extra_headers)
+                {
+                    let name =
+                        reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                            SendOutcome::Fatal(AgentLoopError::llm(format!(
+                                "invalid header name: {e}"
+                            )))
+                        })?;
+                    let value = reqwest::header::HeaderValue::from_str(&value).map_err(|e| {
+                        SendOutcome::Fatal(AgentLoopError::llm(format!(
+                            "invalid header value: {e}"
+                        )))
+                    })?;
+                    headers.insert(name, value);
+                }
+
                 self.client
                     .post(&resolved.url)
                     .headers(headers)
@@ -241,7 +261,7 @@ impl OpenResponsesProtocolChatDriver {
             },
             |response, attempts, can_retry| {
                 let last_error = Arc::clone(&last_error);
-                let model = model.to_string();
+                let model = config.model.clone();
                 async move {
                     let status = response.status();
 
@@ -1109,7 +1129,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     &api_url,
                     &request_body,
                     &extension_headers,
-                    &config.model,
+                    config,
                     attempts,
                 )
             },
@@ -1154,7 +1174,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                             &api_url,
                             &request_body,
                             &extension_headers,
-                            &config.model,
+                            config,
                             attempts,
                         )
                     },
@@ -1463,6 +1483,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .map(|arc| (*arc).clone()),
                                             response_id: None,
                                             phase,
+                                            cache_diagnostics: None,
                                         })))
                                     }
 
@@ -1767,6 +1788,7 @@ fn handle_streaming_event(
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),
                 response_id: Some(response.id),
                 phase,
+                cache_diagnostics: None,
             }))
         }
 
@@ -2255,6 +2277,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2298,6 +2322,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
         let first_input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2354,6 +2380,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2400,6 +2428,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -3257,6 +3287,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -3387,6 +3419,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let mut stream = driver
@@ -3462,6 +3496,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3534,6 +3570,8 @@ mod tests {
             }),
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3604,6 +3642,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let stream = driver
@@ -3697,6 +3737,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let stream = driver
@@ -4431,6 +4473,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         // Simulate the driver's filter logic
@@ -4468,6 +4512,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         };
 
         let reasoning = config
@@ -5116,6 +5162,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         }
     }
 

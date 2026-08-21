@@ -3449,6 +3449,22 @@ export interface ProviderTraceConfig {
   session_url_template?: string;
 }
 
+/** One extra HTTP header sent with every request to a provider connection. */
+export interface ProviderRequestHeader {
+  name: string;
+  value: string;
+}
+
+/**
+ * Per-connection request options: extra headers sent with every request to the
+ * provider, and the prompt-cache diagnostics opt-in (honored by drivers with a
+ * diagnostics protocol, today Anthropic).
+ */
+export interface ProviderRequestOptions {
+  headers?: ProviderRequestHeader[];
+  cache_diagnostics?: boolean;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -3462,6 +3478,8 @@ export interface Provider {
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */
   trace?: ProviderTraceConfig;
+  /** Extra headers and diagnostics options applied to every request to this provider. */
+  request_options?: ProviderRequestOptions;
 }
 
 export interface Model {
@@ -3633,6 +3651,7 @@ export interface CreateProviderRequest {
   /** Typed credential fields keyed by the driver's credential-schema field names. */
   credentials?: Record<string, string>;
   trace?: ProviderTraceConfig;
+  request_options?: ProviderRequestOptions;
 }
 
 export interface UpdateProviderRequest {
@@ -3644,6 +3663,7 @@ export interface UpdateProviderRequest {
   credentials?: Record<string, string>;
   status?: ProviderStatus;
   trace?: ProviderTraceConfig;
+  request_options?: ProviderRequestOptions;
 }
 
 /** A single declared credential field (mirrors core `FormField`). */

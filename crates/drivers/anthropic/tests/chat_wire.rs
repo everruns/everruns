@@ -12,8 +12,8 @@
 
 use everruns_anthropic::AnthropicChatDriver;
 use everruns_provider::driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent,
+    CacheDiagnosticsConfig, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent,
 };
 use everruns_provider::{Provider, StaticHeaderAuth};
 use futures::StreamExt;
@@ -37,6 +37,8 @@ fn config(model: &str) -> LlmCallConfig {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     }
 }
 
@@ -325,5 +327,161 @@ async fn fragmented_tool_use_golden_events() {
                 finish: Some("tool_calls".into()),
             },
         ]
+    );
+}
+
+/// Cache diagnostics (`cache-diagnosis` beta) and caller-supplied headers.
+///
+/// The request must carry the beta flag, an explicit `diagnostics` object with
+/// the previous message id, and the caller's extra headers — with an extra
+/// header replacing (not duplicating) a header the driver already set. The
+/// response's `diagnostics` payload and message id must land on the completion
+/// metadata so the next turn can chain `previous_message_id`.
+#[tokio::test]
+async fn cache_diagnostics_and_extra_headers_round_trip() {
+    let server = MockServer::start().await;
+    let body = [
+        sse_event(
+            "message_start",
+            r#"{"type":"message_start","message":{"id":"msg_2","model":"claude","usage":{"input_tokens":10},"diagnostics":{"divergence":{"location":"tools"}}}}"#,
+        ),
+        sse_event(
+            "message_delta",
+            r#"{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#,
+        ),
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    ]
+    .concat();
+    mount_sse(&server, body).await;
+
+    let mut call_config = config("claude-sonnet-4-5");
+    call_config.cache_diagnostics = Some(CacheDiagnosticsConfig {
+        enabled: true,
+        previous_message_id: Some("msg_1".to_string()),
+    });
+    call_config.extra_headers = vec![
+        ("x-trace-id".to_string(), "trace-42".to_string()),
+        ("anthropic-version".to_string(), "2099-01-01".to_string()),
+        ("Host".to_string(), "elsewhere.example".to_string()),
+    ];
+
+    let mut stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+
+    let mut metadata = None;
+    while let Some(item) = stream.next().await {
+        if let LlmStreamEvent::Done(meta) = item.expect("no transport error") {
+            metadata = Some(*meta);
+        }
+    }
+    let metadata = metadata.expect("stream should finish with Done");
+    assert_eq!(metadata.response_id.as_deref(), Some("msg_2"));
+    assert_eq!(
+        metadata.cache_diagnostics,
+        Some(serde_json::json!({"divergence": {"location": "tools"}}))
+    );
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    let request = requests.first().expect("one request");
+
+    let beta = request
+        .headers
+        .get("anthropic-beta")
+        .expect("beta header")
+        .to_str()
+        .unwrap();
+    assert!(
+        beta.contains("cache-diagnosis-2026-04-07"),
+        "beta header should opt into diagnostics, got {beta}"
+    );
+    assert_eq!(
+        request.headers.get("x-trace-id").unwrap().to_str().unwrap(),
+        "trace-42"
+    );
+    // An extra header overrides the driver's own value exactly once.
+    let versions: Vec<_> = request
+        .headers
+        .get_all("anthropic-version")
+        .iter()
+        .map(|value| value.to_str().unwrap())
+        .collect();
+    assert_eq!(versions, vec!["2099-01-01"]);
+    // Connection-level headers are never taken from the caller.
+    assert_ne!(
+        request.headers.get("host").unwrap().to_str().unwrap(),
+        "elsewhere.example"
+    );
+
+    let sent: serde_json::Value = serde_json::from_slice(&request.body).expect("json body");
+    assert_eq!(sent["diagnostics"]["previous_message_id"], "msg_1");
+}
+
+/// Opting in without a prior message must send `previous_message_id: null`
+/// rather than omitting the field — that is how a first turn opts in.
+#[tokio::test]
+async fn cache_diagnostics_first_turn_sends_explicit_null() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    )
+    .await;
+
+    let mut call_config = config("claude-sonnet-4-5");
+    call_config.cache_diagnostics = Some(CacheDiagnosticsConfig {
+        enabled: true,
+        previous_message_id: None,
+    });
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    let sent: serde_json::Value =
+        serde_json::from_slice(&requests.first().expect("one request").body).expect("json body");
+    assert!(sent["diagnostics"].is_object());
+    assert!(sent["diagnostics"]["previous_message_id"].is_null());
+}
+
+/// A request that does not opt in sends no `diagnostics` object and no
+/// diagnostics beta flag.
+#[tokio::test]
+async fn cache_diagnostics_absent_when_not_requested() {
+    let server = MockServer::start().await;
+    mount_sse(
+        &server,
+        sse_event("message_stop", r#"{"type":"message_stop"}"#),
+    )
+    .await;
+
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![LlmMessage::text(LlmMessageRole::User, "hi")],
+            &config("claude-sonnet-4-5"),
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.expect("recorded requests");
+    let request = requests.first().expect("one request");
+    let sent: serde_json::Value = serde_json::from_slice(&request.body).expect("json body");
+    assert!(sent.get("diagnostics").is_none());
+    assert!(
+        request
+            .headers
+            .get("anthropic-beta")
+            .is_none_or(|value| !value.to_str().unwrap().contains("cache-diagnosis"))
     );
 }

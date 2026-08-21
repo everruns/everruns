@@ -52,7 +52,9 @@ impl StreamReplayState {
 /// flags.
 pub(super) enum StreamTermination {
     Exhausted,
-    Completed(LlmCompletionMetadata),
+    /// Boxed like `LlmStreamEvent::Done`: the metadata dwarfs every other
+    /// variant, so carrying it inline would size the whole enum after it.
+    Completed(Box<LlmCompletionMetadata>),
     PartialSuccess,
     GuardrailBlocked(TrippedGuardrail),
 }
@@ -60,7 +62,7 @@ pub(super) enum StreamTermination {
 impl StreamTermination {
     pub(super) fn into_parts(self) -> (Option<LlmCompletionMetadata>, Option<TrippedGuardrail>) {
         match self {
-            Self::Completed(metadata) => (Some(metadata), None),
+            Self::Completed(metadata) => (Some(*metadata), None),
             Self::GuardrailBlocked(guardrail) => (None, Some(guardrail)),
             Self::Exhausted | Self::PartialSuccess => (None, None),
         }

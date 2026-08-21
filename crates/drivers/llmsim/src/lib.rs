@@ -804,6 +804,7 @@ impl ChatDriver for LlmSimDriver {
                 retry_metadata: None,
                 response_id: response_id_for_done,
                 phase: None,
+                cache_diagnostics: None,
             }))));
             tail
         };
@@ -1145,6 +1146,8 @@ mod tests {
             openrouter_routing: None,
             parallel_tool_calls: None,
             volatile_suffix_len: 0,
+            extra_headers: Vec::new(),
+            cache_diagnostics: None,
         }
     }
 

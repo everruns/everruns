@@ -1790,6 +1790,72 @@ async fn test_provider_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
+/// Connection-level request options must survive the API round trip, and the
+/// API must reject a header the transport owns rather than storing something
+/// the drivers would silently drop later.
+#[tokio::test]
+async fn test_provider_request_options_round_trip_and_validation() {
+    let server = TestServer::in_memory().await;
+
+    let provider: Provider = server
+        .post(
+            "/v1/providers",
+            json!({
+                "name": "Gateway Anthropic",
+                "provider_type": "anthropic",
+                "request_options": {
+                    "headers": [{"name": "x-gateway-tenant", "value": "acme"}],
+                    "cache_diagnostics": true
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let options = provider
+        .request_options
+        .as_ref()
+        .expect("request options returned on create");
+    assert!(options.cache_diagnostics);
+    assert_eq!(
+        options.header_pairs(),
+        vec![("x-gateway-tenant".to_string(), "acme".to_string())]
+    );
+
+    // Read back through GET: the options are stored, not just echoed.
+    let fetched: Provider = server
+        .get(&format!("/v1/providers/{}", provider.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(fetched.request_options, provider.request_options);
+
+    // A transport-owned header is refused with a message naming it.
+    let rejected = server
+        .patch(
+            &format!("/v1/providers/{}", provider.id),
+            json!({
+                "request_options": {
+                    "headers": [{"name": "Host", "value": "evil.example"}]
+                }
+            }),
+        )
+        .await;
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+
+    // Update replaces the options wholesale, including clearing them.
+    let cleared: Provider = server
+        .patch(
+            &format!("/v1/providers/{}", provider.id),
+            json!({ "request_options": { "headers": [], "cache_diagnostics": false } }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(cleared.request_options.is_none());
+}
+
 #[tokio::test]
 async fn test_model_crud() {
     let server = TestServer::new().await;

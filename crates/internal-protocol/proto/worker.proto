@@ -1159,6 +1159,10 @@ message GetDefaultProviderCredentialsResponse {
     string api_key = 2;
     string base_url = 3;
     string provider_type = 4;
+    // Connection-level request options (extra headers, diagnostics opt-in) as
+    // the JSON of ProviderRequestOptions. Empty when the connection configures
+    // none, so an older worker simply sends no options.
+    string request_options_json = 5;
 }
 
 

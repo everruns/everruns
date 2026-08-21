@@ -380,6 +380,62 @@ pub mod thinking_budget {
     }
 }
 
+// ============================================================================
+// Per-request headers
+// ============================================================================
+
+/// Header names a caller may never set on an outbound provider request: they
+/// describe the connection, not the call, and letting a config value override
+/// them corrupts the request (`host` also repoints an SSRF-guarded connection
+/// at another virtual host).
+const PROTECTED_REQUEST_HEADERS: &[&str] = &[
+    "host",
+    "content-length",
+    "transfer-encoding",
+    "connection",
+    "upgrade",
+];
+
+/// Merge caller-supplied per-request headers over the headers a driver has
+/// already resolved (its own protocol headers plus the provider's configured
+/// and auth headers).
+///
+/// Matching is case-insensitive and an extra header *replaces* the existing
+/// value in place rather than appending a second copy, so
+/// `LlmCallConfig::extra_headers` is an override channel, not an append-only
+/// one. Connection-level headers ([`PROTECTED_REQUEST_HEADERS`]) and entries
+/// with an empty name are dropped with a warning.
+pub fn merge_request_headers(
+    base: Vec<(String, String)>,
+    extra: &[(String, String)],
+) -> Vec<(String, String)> {
+    let mut merged = base;
+    for (name, value) in extra {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        if PROTECTED_REQUEST_HEADERS
+            .iter()
+            .any(|protected| name.eq_ignore_ascii_case(protected))
+        {
+            tracing::warn!(
+                header = %name,
+                "Ignoring connection-level header in extra_headers"
+            );
+            continue;
+        }
+        match merged
+            .iter_mut()
+            .find(|(existing, _)| existing.eq_ignore_ascii_case(name))
+        {
+            Some(slot) => slot.1 = value.clone(),
+            None => merged.push((name.to_string(), value.clone())),
+        }
+    }
+    merged
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -532,5 +588,43 @@ mod tests {
         assert_eq!(thinking_budget::from_effort("HIGH"), Some(16384));
         assert_eq!(thinking_budget::from_effort("xhigh"), Some(32768));
         assert_eq!(thinking_budget::from_effort("unknown"), None);
+    }
+
+    #[test]
+    fn merge_request_headers_overrides_case_insensitively() {
+        let merged = merge_request_headers(
+            vec![
+                ("anthropic-version".to_string(), "2023-06-01".to_string()),
+                ("x-api-key".to_string(), "secret".to_string()),
+            ],
+            &[
+                ("Anthropic-Version".to_string(), "2024-01-01".to_string()),
+                ("x-trace".to_string(), "abc".to_string()),
+            ],
+        );
+        assert_eq!(
+            merged,
+            vec![
+                ("anthropic-version".to_string(), "2024-01-01".to_string()),
+                ("x-api-key".to_string(), "secret".to_string()),
+                ("x-trace".to_string(), "abc".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_request_headers_drops_connection_level_and_empty_names() {
+        let merged = merge_request_headers(
+            vec![("content-type".to_string(), "application/json".to_string())],
+            &[
+                ("Host".to_string(), "evil.example".to_string()),
+                ("content-length".to_string(), "0".to_string()),
+                ("  ".to_string(), "ignored".to_string()),
+            ],
+        );
+        assert_eq!(
+            merged,
+            vec![("content-type".to_string(), "application/json".to_string())]
+        );
     }
 }

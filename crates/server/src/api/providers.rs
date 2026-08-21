@@ -23,7 +23,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use everruns_provider::provider::{Provider, ProviderTraceConfig};
+use everruns_provider::provider::{Provider, ProviderRequestOptions, ProviderTraceConfig};
 use everruns_provider::typed_id::ProviderId;
 use everruns_provider::url_validation::validate_safe_url;
 use hmac::{Hmac, KeyInit, Mac};
@@ -123,6 +123,10 @@ pub struct CreateProviderRequest {
     /// of the driver's default templates; omit to keep driver defaults.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<ProviderTraceConfig>,
+    /// Extra headers and diagnostics options applied to every request sent to
+    /// this provider. Omit to configure none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_options: Option<ProviderRequestOptions>,
 }
 
 /// Response from syncing models from a provider
@@ -175,6 +179,11 @@ pub struct UpdateProviderRequest {
     /// provider's stored settings, preserving other settings keys.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trace: Option<ProviderTraceConfig>,
+    /// Extra headers and diagnostics options applied to every request sent to
+    /// this provider. Replaces the stored options wholesale; omit to leave them
+    /// unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_options: Option<ProviderRequestOptions>,
 }
 
 /// Create a new LLM provider
@@ -208,6 +217,7 @@ pub async fn create_provider(
             base_url: req.base_url,
             api_key,
             trace: req.trace,
+            request_options: req.request_options,
         })
         .await
 }
@@ -345,6 +355,7 @@ pub async fn update_provider(
             api_key,
             status: req.status,
             trace: req.trace,
+            request_options: req.request_options,
         })
         .await
 }
@@ -636,6 +647,7 @@ pub async fn oauth_callback(
                 credentials: None,
                 status: None,
                 trace: None,
+                request_options: None,
             },
         )
         .await

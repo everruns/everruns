@@ -6427,6 +6427,7 @@ export interface components {
       name: string;
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
     };
     /** @description Request body for creating a per-task push config. */
@@ -10557,6 +10558,7 @@ export interface components {
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
         provider_type: components["schemas"]["DriverId"];
+        request_options?: null | components["schemas"]["ProviderRequestOptions"];
         /** @description Current lifecycle status of this provider. */
         status: components["schemas"]["ProviderStatus"];
         trace?: null | components["schemas"]["ProviderTraceConfig"];
@@ -13132,6 +13134,7 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
@@ -13140,6 +13143,35 @@ export interface components {
        * @description Timestamp when this provider was last updated (RFC 3339).
        */
       updated_at: string;
+    };
+    /** @description One extra HTTP header sent with every request to a provider connection. */
+    ProviderRequestHeader: {
+      /** @description Header name, e.g. `x-gateway-tenant`. */
+      name: string;
+      /** @description Header value, sent verbatim. */
+      value: string;
+    };
+    /**
+     * @description Per-connection request options: what an org wants added to every outbound
+     *     request to this provider, beyond endpoint and credentials.
+     *
+     *     These are connection-level on purpose. A gateway header or a diagnostics
+     *     opt-in describes the *service* an org talks to, not one agent's behavior, so
+     *     it belongs next to the base URL and credentials rather than on every agent.
+     */
+    ProviderRequestOptions: {
+      /**
+       * @description Ask the provider to explain unexpected prompt-cache misses. Honored by
+       *     drivers with a diagnostics protocol (today: Anthropic's
+       *     `cache-diagnosis` beta); ignored elsewhere.
+       */
+      cache_diagnostics?: boolean;
+      /**
+       * @description Extra HTTP headers added to every request to this provider. They
+       *     override the driver's and the connection's own headers by name, but
+       *     connection-level headers (`host`, `content-length`, ...) are ignored.
+       */
+      headers?: components["schemas"]["ProviderRequestHeader"][];
     };
     /**
      * @description LLM provider status
@@ -16393,6 +16425,7 @@ export interface components {
        */
       name?: string | null;
       provider_type?: null | components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       status?: null | components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
     };
@@ -17733,6 +17766,7 @@ export interface components {
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
       provider_type: components["schemas"]["DriverId"];
+      request_options?: null | components["schemas"]["ProviderRequestOptions"];
       /** @description Current lifecycle status of this provider. */
       status: components["schemas"]["ProviderStatus"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];

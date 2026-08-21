@@ -1192,6 +1192,7 @@ mod tests {
                     retry_metadata: None,
                     response_id: None,
                     phase: None,
+                    cache_diagnostics: None,
                 },
             })
         }

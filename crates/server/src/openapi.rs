@@ -27,7 +27,9 @@ use crate::kernel_imports::{
 };
 use everruns_platform::{Agent, AgentStatus};
 use everruns_platform::{Session, SessionStatus};
-use everruns_provider::provider::{Provider, ProviderTraceConfig};
+use everruns_provider::provider::{
+    Provider, ProviderRequestHeader, ProviderRequestOptions, ProviderTraceConfig,
+};
 use serde_json::json;
 use utoipa::openapi::extensions::Extensions;
 use utoipa::openapi::{RefOr, Schema};
@@ -513,7 +515,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             ListResponse<api::messages::Message>,
             ListResponse<Event>,
             domains::events::EventsSummaryResult, domains::events::EventTypeCountOut,
-            Provider, ProviderTraceConfig, DriverId, ProviderStatus,
+            Provider, ProviderTraceConfig, ProviderRequestOptions, ProviderRequestHeader, DriverId, ProviderStatus,
             Model, ModelWithProvider,
             api::providers::CreateProviderRequest,
             api::providers::UpdateProviderRequest,

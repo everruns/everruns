@@ -604,6 +604,8 @@ fn test_build_request_options_for_openai_prompt_cache() {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     };
 
     let request_options = build_request_options(&config, "openai").unwrap();
@@ -641,6 +643,8 @@ fn test_build_request_options_for_gemini_explicit_cache() {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     };
 
     let request_options = build_request_options(&config, "gemini").unwrap();
@@ -678,6 +682,8 @@ fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         openrouter_routing: None,
         parallel_tool_calls: None,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     };
 
     assert!(build_request_options(&config, "gemini").is_none());

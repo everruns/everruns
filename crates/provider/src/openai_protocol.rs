@@ -174,6 +174,7 @@ impl OpenAIProtocolChatDriver {
         api_url: &str,
         request: &OpenAiRequest,
         model: &str,
+        extra_headers: &[(String, String)],
         retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -191,11 +192,14 @@ impl OpenAIProtocolChatDriver {
                     .await
                     .map_err(SendOutcome::Fatal)?;
                 let mut request_builder = self.client.post(&resolved.url);
-                for (name, value) in resolved.headers {
+                let mut headers = resolved.headers;
+                headers.push(("Content-Type".to_string(), "application/json".to_string()));
+                for (name, value) in
+                    crate::driver_helpers::merge_request_headers(headers, extra_headers)
+                {
                     request_builder = request_builder.header(name, value);
                 }
                 request_builder
-                    .header("Content-Type", "application/json")
                     .body(body.clone())
                     .send()
                     .await
@@ -476,6 +480,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     &api_url,
                     &request,
                     &config.model,
+                    &config.extra_headers,
                     attempts,
                 )
             })
@@ -573,6 +578,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                         .map(|arc| (*arc).clone()),
                                     response_id: resp_id,
                                     phase: None,
+                                    cache_diagnostics: None,
                                 },
                             ))));
 

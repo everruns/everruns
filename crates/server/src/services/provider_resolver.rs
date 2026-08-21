@@ -124,6 +124,21 @@ pub fn resolve_provider_api_key(
     Ok(None)
 }
 
+/// Read a provider row's connection-level request options from its stored
+/// settings.
+///
+/// A malformed or absent `request_options` blob yields the empty options rather
+/// than failing resolution: a bad settings value must not take a provider
+/// offline.
+pub fn provider_request_options(
+    settings: &serde_json::Value,
+) -> everruns_provider::provider::ProviderRequestOptions {
+    settings
+        .get("request_options")
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .unwrap_or_default()
+}
+
 /// Credential-free resolved model identity.
 #[derive(Debug, Clone)]
 pub struct ResolvedModel {
@@ -151,6 +166,8 @@ pub struct ResolvedServiceProvider {
     pub provider_id: String,
     /// Decrypted credentials for the provider connection.
     pub credentials: ResolvedProviderCredentials,
+    /// Connection-level request options stored on the provider row.
+    pub request_options: everruns_provider::provider::ProviderRequestOptions,
 }
 
 /// Exact provider construction state for chat/runtime drivers.
@@ -162,6 +179,8 @@ pub(crate) struct ResolvedRuntimeProviderConfig {
     pub provider_type: String,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
+    /// Connection-level request options stored on the provider row.
+    pub request_options: everruns_provider::provider::ProviderRequestOptions,
 }
 
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
@@ -323,6 +342,7 @@ impl ProviderResolverService {
                     api_key,
                     base_url: provider.base_url.clone(),
                 },
+                request_options: provider_request_options(&provider.settings),
             });
         }
 
@@ -366,6 +386,7 @@ impl ProviderResolverService {
                     api_key,
                     base_url: provider.base_url.clone(),
                 },
+                request_options: provider_request_options(&provider.settings),
             });
         }
 
@@ -383,6 +404,7 @@ impl ProviderResolverService {
                         api_key,
                         base_url: provider.base_url.clone(),
                     },
+                    request_options: provider_request_options(&provider.settings),
                 });
             }
         }
@@ -493,6 +515,7 @@ impl ProviderResolverService {
                 api_key,
                 base_url: provider.base_url,
             },
+            request_options: provider_request_options(&provider.settings),
         }))
     }
 
@@ -513,10 +536,12 @@ impl ProviderResolverService {
             return Ok(None);
         };
         let api_key = self.resolve_api_key(&provider)?;
+        let request_options = provider_request_options(&provider.settings);
         Ok(Some(ResolvedRuntimeProviderConfig {
             provider_type: provider.provider_type,
             api_key,
             base_url: provider.base_url,
+            request_options,
         }))
     }
 

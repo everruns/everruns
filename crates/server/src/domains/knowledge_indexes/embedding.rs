@@ -62,6 +62,7 @@ pub async fn build_embeddings_driver(
         api_key: Some(resolved.credentials.api_key),
         base_url: resolved.credentials.base_url,
         metadata: Default::default(),
+        request_options: resolved.request_options,
     };
     let driver = driver_registry
         .create_embeddings_driver(&provider_config)

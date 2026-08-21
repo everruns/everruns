@@ -131,6 +131,9 @@ impl ProviderStore for DbProviderStore {
             api_key: with_key.api_key,
             base_url: with_key.base_url,
             metadata: everruns_provider::driver_registry::ProviderMetadata::default(),
+            request_options: crate::services::provider_resolver::provider_request_options(
+                &row.settings,
+            ),
         }))
     }
 }

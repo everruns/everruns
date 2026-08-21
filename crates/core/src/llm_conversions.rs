@@ -187,6 +187,8 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
         openrouter_routing: runtime_agent.openrouter_routing.clone(),
         parallel_tool_calls: runtime_agent.parallel_tool_calls,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     }
 }
 

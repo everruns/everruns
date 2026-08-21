@@ -54,6 +54,8 @@ fn config(tools: Vec<ToolDefinition>, parallel_tool_calls: Option<bool>) -> LlmC
         openrouter_routing: None,
         parallel_tool_calls,
         volatile_suffix_len: 0,
+        extra_headers: Vec::new(),
+        cache_diagnostics: None,
     }
 }
 

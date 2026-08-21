@@ -2,7 +2,7 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Boxes, Key, Save } from "lucide-react";
+import { ArrowLeft, Boxes, Key, Plus, Save, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,7 @@ import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers
 import { usePageTitle } from "@/hooks";
 import { formatCountLabel } from "@/lib/formatting";
 import type { Provider } from "@/lib/api/types";
+import { ApiError } from "@/lib/api/client";
 
 export default function ProviderDetailPage({
   params,
@@ -186,6 +187,9 @@ export default function ProviderDetailPage({
         {/* Trace links are part of the host-managed config for managed providers. */}
         {!provider.managed && <ProviderTraceCard provider={provider} providerId={providerId} />}
 
+        {/* Same rule as trace: a managed connection's request options belong to the host. */}
+        {!provider.managed && <ProviderAdvancedCard provider={provider} providerId={providerId} />}
+
         <Card>
           <CardHeader>
             <CardTitle>Models</CardTitle>
@@ -306,6 +310,158 @@ function ProviderTraceCard({ provider, providerId }: { provider: Provider; provi
           <Button type="submit" disabled={updateProvider.isPending}>
             <Save className="h-4 w-4 mr-2" />
             {updateProvider.isPending ? "Saving..." : "Save Trace Settings"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Advanced per-connection request options: extra HTTP headers sent with every
+ * request to this provider, and the prompt-cache diagnostics opt-in. Both apply
+ * to every agent that uses the connection, which is why they live here rather
+ * than on an agent.
+ */
+function ProviderAdvancedCard({
+  provider,
+  providerId,
+}: {
+  provider: Provider;
+  providerId: string;
+}) {
+  const updateProvider = useUpdateProvider(providerId);
+  const [cacheDiagnostics, setCacheDiagnostics] = useState(
+    provider.request_options?.cache_diagnostics ?? false,
+  );
+  const [headers, setHeaders] = useState<{ name: string; value: string }[]>(
+    provider.request_options?.headers ?? [],
+  );
+  const [seededId, setSeededId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // Re-seed the form once the loaded provider (or a different one) arrives.
+  useEffect(() => {
+    if (seededId !== provider.id) {
+      setCacheDiagnostics(provider.request_options?.cache_diagnostics ?? false);
+      setHeaders(provider.request_options?.headers ?? []);
+      setSeededId(provider.id);
+    }
+  }, [provider, seededId]);
+
+  const updateHeader = (index: number, patch: Partial<{ name: string; value: string }>) =>
+    setHeaders((current) =>
+      current.map((header, i) => (i === index ? { ...header, ...patch } : header)),
+    );
+
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setErrorMessage(null);
+    setSaved(false);
+    // Blank rows are how a user clears one; drop them instead of sending an
+    // empty header the API would reject.
+    const cleaned = headers
+      .map((header) => ({
+        name: header.name.trim(),
+        value: header.value.trim(),
+      }))
+      .filter((header) => header.name.length > 0);
+    try {
+      await updateProvider.mutateAsync({
+        request_options: {
+          headers: cleaned,
+          cache_diagnostics: cacheDiagnostics,
+        },
+      });
+      setHeaders(cleaned);
+      setSaved(true);
+    } catch (error) {
+      // The API rejects specific headers by name (transport-owned, malformed,
+      // too many), so its message is the actionable one here.
+      setErrorMessage(
+        error instanceof ApiError ? error.message : "Failed to save advanced settings.",
+      );
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Advanced</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSave} className="space-y-6 max-w-xl">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <Label htmlFor="cache-diagnostics">Prompt cache diagnostics</Label>
+              <Switch
+                id="cache-diagnostics"
+                checked={cacheDiagnostics}
+                onCheckedChange={setCacheDiagnostics}
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Ask the provider to report where the prompt prefix diverged when a cache read is
+              unexpectedly missing, instead of leaving a silent miss. Supported by Anthropic
+              connections today; other providers ignore it.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Custom headers</Label>
+            <p className="text-sm text-muted-foreground">
+              Sent with every request to this provider — useful for gateways and proxies that
+              require their own headers. A header set here replaces the one the driver would send
+              under the same name. Values are stored with the connection and readable by anyone who
+              can view it, so keep provider credentials in the API key field instead.
+            </p>
+            {headers.length === 0 && (
+              <p className="text-sm text-muted-foreground">No custom headers.</p>
+            )}
+            {headers.map((header, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  aria-label={`Header ${index + 1} name`}
+                  placeholder="x-gateway-tenant"
+                  value={header.name}
+                  onChange={(event) => updateHeader(index, { name: event.target.value })}
+                />
+                <Input
+                  aria-label={`Header ${index + 1} value`}
+                  placeholder="value"
+                  value={header.value}
+                  onChange={(event) => updateHeader(index, { value: event.target.value })}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Remove header ${index + 1}`}
+                  onClick={() => setHeaders((current) => current.filter((_, i) => i !== index))}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setHeaders((current) => [...current, { name: "", value: "" }])}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add header
+            </Button>
+          </div>
+
+          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+          {saved && !errorMessage && (
+            <p className="text-sm text-muted-foreground">Advanced settings saved.</p>
+          )}
+          <Button type="submit" disabled={updateProvider.isPending}>
+            <Save className="h-4 w-4 mr-2" />
+            {updateProvider.isPending ? "Saving..." : "Save Advanced Settings"}
           </Button>
         </form>
       </CardContent>

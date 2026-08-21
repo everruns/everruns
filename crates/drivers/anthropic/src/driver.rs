@@ -41,6 +41,10 @@ use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+/// Beta flag that turns on Anthropic's prompt-cache diagnostics: the API
+/// fingerprints each request and, on the next one, reports where the prompt
+/// prefix diverged instead of leaving a silent cache miss.
+const CACHE_DIAGNOSTICS_BETA: &str = "cache-diagnosis-2026-04-07";
 
 /// Ready-to-use Anthropic Messages provider assembly.
 pub fn provider(
@@ -89,8 +93,12 @@ pub struct AnthropicChatDriver {
 struct SendMessagesOptions<'a> {
     needs_interleaved_thinking: bool,
     wants_million_context: bool,
+    wants_cache_diagnostics: bool,
     max_tokens_from_profile: bool,
     model: &'a str,
+    /// Caller-supplied per-request headers, applied over everything the driver
+    /// and the provider endpoint resolve.
+    extra_headers: &'a [(String, String)],
 }
 
 impl AnthropicChatDriver {
@@ -128,8 +136,10 @@ impl AnthropicChatDriver {
         let SendMessagesOptions {
             needs_interleaved_thinking,
             wants_million_context,
+            wants_cache_diagnostics,
             max_tokens_from_profile,
             model,
+            extra_headers,
         } = options;
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
@@ -148,11 +158,10 @@ impl AnthropicChatDriver {
                     let url = endpoint.url("messages").ok_or_else(|| {
                         SendOutcome::Fatal(AgentLoopError::config("Anthropic provider has no base URL"))
                     })?;
-                    let mut request_builder = self
-                        .client
-                        .post(&url)
-                        .header("anthropic-version", ANTHROPIC_VERSION)
-                        .header("Content-Type", "application/json");
+                    let mut driver_headers: Vec<(String, String)> = vec![
+                        ("anthropic-version".to_string(), ANTHROPIC_VERSION.to_string()),
+                        ("Content-Type".to_string(), "application/json".to_string()),
+                    ];
 
                     // Anthropic beta features, combined into a single
                     // comma-separated `anthropic-beta` header:
@@ -163,12 +172,18 @@ impl AnthropicChatDriver {
                     //    context window. It is GA / silently ignored on Opus 4.6+
                     //    and Fable 5 (the only ids we attach it to), so always
                     //    sending it is safe.
+                    //  - cache-diagnosis: required for the request-level
+                    //    `diagnostics` object and the diagnostics payload on
+                    //    the response.
                     let mut beta_features: Vec<&str> = Vec::new();
                     if needs_interleaved_thinking {
                         beta_features.push("interleaved-thinking-2025-05-14");
                     }
                     if wants_million_context {
                         beta_features.push("context-1m-2025-08-07");
+                    }
+                    if wants_cache_diagnostics {
+                        beta_features.push(CACHE_DIAGNOSTICS_BETA);
                     }
                     if !beta_features.is_empty() {
                         let beta = beta_features.join(",");
@@ -178,7 +193,7 @@ impl AnthropicChatDriver {
                             *logged = true;
                         }
                         drop(logged);
-                        request_builder = request_builder.header("anthropic-beta", beta);
+                        driver_headers.push(("anthropic-beta".to_string(), beta));
                     }
 
                     // Snapshot the (possibly fallback-mutated) request as JSON
@@ -191,7 +206,11 @@ impl AnthropicChatDriver {
                             )))
                         })?;
                     let resolved = endpoint.resolve("POST", url, &body).await.map_err(SendOutcome::Fatal)?;
-                    for (name, value) in resolved.headers {
+                    driver_headers.extend(resolved.headers);
+                    let mut request_builder = self.client.post(&resolved.url);
+                    for (name, value) in
+                        driver_helpers::merge_request_headers(driver_headers, extra_headers)
+                    {
                         request_builder = request_builder.header(name, value);
                     }
                     request_builder
@@ -689,6 +708,19 @@ impl AnthropicChatDriver {
     }
 }
 
+/// Store a `diagnostics` payload from the stream and log its headline.
+///
+/// The payload shape is Anthropic's, so it is carried verbatim on the
+/// completion metadata; the log line exists because a cache divergence is the
+/// kind of thing an operator wants to see without reading stored metadata.
+fn record_cache_diagnostics(slot: &Arc<Mutex<Option<serde_json::Value>>>, diagnostics: Value) {
+    tracing::info!(
+        diagnostics = %diagnostics,
+        "AnthropicDriver: received prompt cache diagnostics"
+    );
+    *slot.lock().unwrap() = Some(diagnostics);
+}
+
 #[async_trait]
 impl ChatDriver for AnthropicChatDriver {
     async fn chat_completion_stream(
@@ -829,6 +861,18 @@ impl ChatDriver for AnthropicChatDriver {
             None
         };
 
+        // Prompt-cache diagnostics (`cache-diagnosis` beta): opt in per request
+        // and, from the second turn on, name the response the API should
+        // compare this request against.
+        let cache_diagnostics = config
+            .cache_diagnostics
+            .as_ref()
+            .filter(|diagnostics| diagnostics.enabled);
+        let diagnostics = cache_diagnostics.map(|diagnostics| AnthropicDiagnosticsRequest {
+            previous_message_id: diagnostics.previous_message_id.clone(),
+        });
+        let wants_cache_diagnostics = diagnostics.is_some();
+
         let request = AnthropicRequest {
             model: wire_model.to_string(),
             messages: anthropic_messages,
@@ -840,6 +884,7 @@ impl ChatDriver for AnthropicChatDriver {
             tool_choice,
             thinking,
             output_config,
+            diagnostics,
         };
 
         // Share the (possibly fallback-mutated) request across reconnect
@@ -861,8 +906,10 @@ impl ChatDriver for AnthropicChatDriver {
                     SendMessagesOptions {
                         needs_interleaved_thinking,
                         wants_million_context,
+                        wants_cache_diagnostics,
                         max_tokens_from_profile,
                         model: &config.model,
+                        extra_headers: &config.extra_headers,
                     },
                     attempts,
                 )
@@ -877,6 +924,8 @@ impl ChatDriver for AnthropicChatDriver {
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        let response_id = Arc::new(Mutex::new(Option::<String>::None));
+        let diagnostics_payload = Arc::new(Mutex::new(Option::<serde_json::Value>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -893,6 +942,8 @@ impl ChatDriver for AnthropicChatDriver {
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
             let finish_reason = Arc::clone(&finish_reason);
+            let response_id = Arc::clone(&response_id);
+            let diagnostics_payload = Arc::clone(&diagnostics_payload);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
@@ -901,19 +952,37 @@ impl ChatDriver for AnthropicChatDriver {
                         // Anthropic uses different event types
                         match event.event.as_str() {
                             "message_start" => {
-                                // Parse message_start for input token count and cache tokens
+                                // Parse message_start for the message id, input
+                                // token count, cache tokens, and prompt-cache
+                                // diagnostics.
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageStart>(&event.data)
-                                    && let Some(usage) = data.message.usage
                                 {
-                                    *input_tokens.lock().unwrap() = usage.input_tokens;
-                                    if let Some(cache_read) = usage.cache_read_input_tokens {
-                                        *cache_read_tokens.lock().unwrap() = Some(cache_read);
+                                    if let Some(id) = data.message.id {
+                                        // The message id is what a following
+                                        // request passes as
+                                        // `diagnostics.previous_message_id`.
+                                        *response_id.lock().unwrap() = Some(id);
                                     }
-                                    if let Some(cache_creation) = usage.cache_creation_input_tokens
+                                    if let Some(diagnostics) =
+                                        data.message.diagnostics.or(data.diagnostics)
                                     {
-                                        *cache_creation_tokens.lock().unwrap() =
-                                            Some(cache_creation);
+                                        record_cache_diagnostics(
+                                            &diagnostics_payload,
+                                            diagnostics,
+                                        );
+                                    }
+                                    if let Some(usage) = data.message.usage {
+                                        *input_tokens.lock().unwrap() = usage.input_tokens;
+                                        if let Some(cache_read) = usage.cache_read_input_tokens {
+                                            *cache_read_tokens.lock().unwrap() = Some(cache_read);
+                                        }
+                                        if let Some(cache_creation) =
+                                            usage.cache_creation_input_tokens
+                                        {
+                                            *cache_creation_tokens.lock().unwrap() =
+                                                Some(cache_creation);
+                                        }
                                     }
                                 }
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1028,6 +1097,9 @@ impl ChatDriver for AnthropicChatDriver {
                                 if let Ok(data) =
                                     serde_json::from_str::<AnthropicMessageDelta>(&event.data)
                                 {
+                                    if let Some(diagnostics) = data.diagnostics {
+                                        record_cache_diagnostics(&diagnostics_payload, diagnostics);
+                                    }
                                     if let Some(usage) = data.usage {
                                         *output_tokens.lock().unwrap() = usage.output_tokens;
                                         // Cache tokens may also appear in delta
@@ -1083,8 +1155,12 @@ impl ChatDriver for AnthropicChatDriver {
                                         .or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
-                                    response_id: None,
+                                    response_id: response_id.lock().unwrap().clone(),
                                     phase: None,
+                                    cache_diagnostics: diagnostics_payload
+                                        .lock()
+                                        .unwrap()
+                                        .clone(),
                                 })))
                             }
                             "error" => Ok(LlmStreamEvent::Error(
@@ -1306,6 +1382,19 @@ struct AnthropicRequest {
     /// Output configuration — carries `effort` for adaptive thinking
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<AnthropicOutputConfig>,
+    /// Prompt-cache diagnostics opt-in (`cache-diagnosis` beta).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    diagnostics: Option<AnthropicDiagnosticsRequest>,
+}
+
+/// Request-level `diagnostics` object.
+///
+/// `previous_message_id` must be serialized even when it is `null`: sending it
+/// as an explicit null is how a first turn opts in without a prior message to
+/// compare against.
+#[derive(Debug, Serialize)]
+struct AnthropicDiagnosticsRequest {
+    previous_message_id: Option<String>,
 }
 
 /// Anthropic `tool_choice` object.
@@ -1591,10 +1680,14 @@ struct AnthropicTool {
 #[derive(Debug, Deserialize)]
 struct AnthropicMessageStart {
     message: AnthropicMessageInfo,
+    /// Some beta payloads carry `diagnostics` beside `message` rather than
+    /// inside it; accept both placements.
+    #[serde(default)]
+    diagnostics: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)] // id and model are deserialized but used by event listeners, not directly
+#[allow(dead_code)] // model is deserialized but used by event listeners, not directly
 struct AnthropicMessageInfo {
     /// Unique identifier for this message
     #[serde(default)]
@@ -1604,6 +1697,10 @@ struct AnthropicMessageInfo {
     model: Option<String>,
     #[serde(default)]
     usage: Option<AnthropicUsage>,
+    /// Prompt-cache diagnostics for this request, returned verbatim when the
+    /// request opted into the `cache-diagnosis` beta.
+    #[serde(default)]
+    diagnostics: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1691,6 +1788,10 @@ struct AnthropicMessageDelta {
     delta: AnthropicMessageDeltaData,
     #[serde(default)]
     usage: Option<AnthropicUsage>,
+    /// Diagnostics may also arrive on the terminal `message_delta`; the last
+    /// payload seen wins.
+    #[serde(default)]
+    diagnostics: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2108,6 +2209,7 @@ mod tests {
             tool_choice,
             thinking: None,
             output_config: None,
+            diagnostics: None,
         };
 
         // No preference → tool_choice omitted.

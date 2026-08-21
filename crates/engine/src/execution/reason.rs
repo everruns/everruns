@@ -1794,7 +1794,7 @@ impl ReasonAtom {
                                 "ReasonAtom: failed to emit reason.thinking.completed event"
                             );
                         }
-                        termination = StreamTermination::Completed(*metadata);
+                        termination = StreamTermination::Completed(metadata);
                         break;
                     }
                     LlmStreamEvent::Error(err) => {

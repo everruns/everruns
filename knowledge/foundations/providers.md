@@ -185,6 +185,35 @@ config is keyed by driver id (the resolved model carries the driver, not the
 provider instance id), so when an org runs multiple providers on one driver the
 first trace-enabled provider for that driver supplies the templates.
 
+#### Request options (custom headers, cache diagnostics)
+
+A connection may add to every request it carries, beyond endpoint and
+credentials. The org stores this in `settings.request_options`
+(`ProviderRequestOptions`: `headers`, `cache_diagnostics`) and edits it under
+Advanced in Settings → Providers.
+
+This is connection-level, not agent-level, on purpose: a gateway header or a
+diagnostics opt-in describes the *service* an org talks to, not one agent's
+behavior, so it belongs beside `base_url` and credentials rather than on every
+agent that happens to use the provider.
+
+- **Headers** are merged over the driver's protocol headers and the connection's
+  own headers by name, so a configured header replaces rather than duplicates
+  one the driver sends. Headers the transport owns (`host`, `content-length`,
+  `transfer-encoding`, `connection`, `upgrade`) are rejected at the API instead
+  of being silently dropped later.
+- **`cache_diagnostics`** asks the provider to report where a prompt prefix
+  diverged when a cache read is unexpectedly missing. Honored today by Anthropic
+  (`cache-diagnosis` beta); other drivers ignore it.
+
+The options reach the wire generically: `create_chat_driver` wraps the
+constructed driver in a decorator that stamps them onto each call's
+`LlmCallConfig` (`extra_headers`, `cache_diagnostics`), so no driver has to know
+that a connection can carry them, and diagnostics chain to the turn's previous
+generation via `previous_response_id`. See
+[llm-drivers.md](llm-drivers.md#per-request-headers). A malformed stored blob
+resolves to "no options" rather than taking the provider offline.
+
 ### Model
 
 Org-scoped row in the `models` table (renamed from `llm_models`). A model means **a specific model via a specific provider**: the concrete, callable unit:
