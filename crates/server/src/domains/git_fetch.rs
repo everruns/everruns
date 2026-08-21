@@ -13,10 +13,32 @@
 // negotiation, no push, and no incremental fetch. libgit2 still does the hard
 // part — indexing the received packfile and materializing the tree.
 
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
+
+/// Ceiling on a packfile response, overridable with `GIT_FETCH_MAX_PACK_BYTES`.
+///
+/// THREAT[TM-DOS-037]: the remote controls the response length, and a
+/// source URL can point anywhere (memory sources accept arbitrary git URLs).
+/// libgit2 used to stream the pack into its own object store; reading it here
+/// means an unbounded body would be an unbounded allocation in the worker. The
+/// default is generous against real repositories but far below the memory a
+/// sync task may claim — and the snapshot the checkout feeds is itself capped
+/// at 100 MB downstream, so a pack near this ceiling fails there anyway.
+const DEFAULT_MAX_PACK_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Ceiling on the capability advertisement and ref listing, which are text and
+/// orders of magnitude smaller than a pack.
+const MAX_CONTROL_BYTES: u64 = 32 * 1024 * 1024;
+
+fn max_pack_bytes() -> u64 {
+    std::env::var("GIT_FETCH_MAX_PACK_BYTES")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MAX_PACK_BYTES)
+}
 
 /// How a fetch failed, at the granularity the user-facing guidance in
 /// [`crate::domains::git_sources::safe_git_clone_error`] distinguishes.
@@ -271,10 +293,12 @@ pub fn shallow_checkout(
             anyhow!("git remote returned status {status}"),
         ));
     }
-    let advertisement = advertisement
-        .bytes()
-        .context("failed to read the git remote's capability advertisement")
-        .map_err(unreachable)?;
+    let advertisement = read_capped(
+        advertisement,
+        MAX_CONTROL_BYTES,
+        "the git remote's capability advertisement",
+    )
+    .map_err(unreachable)?;
     ensure_protocol_v2(&advertisement).map_err(unreachable)?;
 
     let refs = post_upload_pack(
@@ -282,13 +306,20 @@ pub fn shallow_checkout(
         request,
         ls_refs_body(request.branch),
         "list remote refs",
+        MAX_CONTROL_BYTES,
     )?;
     // A branch the remote does not advertise is indistinguishable, for the
     // user, from a repository they cannot see.
     let oid = parse_ls_refs(&refs, request.branch)
         .map_err(|error| FetchError::new(FetchFailure::NotFound, error))?;
 
-    let response = post_upload_pack(&client, request, fetch_body(&oid), "fetch objects")?;
+    let response = post_upload_pack(
+        &client,
+        request,
+        fetch_body(&oid),
+        "fetch objects",
+        max_pack_bytes(),
+    )?;
     let packfile = extract_packfile(&response).map_err(unreachable)?;
 
     checkout_packfile(&packfile, &oid, checkout_dir).map_err(unreachable)
@@ -300,6 +331,7 @@ fn post_upload_pack(
     request: &FetchRequest<'_>,
     body: Vec<u8>,
     what: &str,
+    max_bytes: u64,
 ) -> std::result::Result<Vec<u8>, FetchError> {
     let response = authenticated(
         client
@@ -321,11 +353,36 @@ fn post_upload_pack(
         ));
     }
 
-    response
-        .bytes()
-        .map(|body| body.to_vec())
-        .with_context(|| format!("failed to read the response to {what}"))
+    read_capped(response, max_bytes, what)
         .map_err(|error| FetchError::new(FetchFailure::Unreachable, error))
+}
+
+/// Reads a response body, refusing to allocate more than `max_bytes`.
+///
+/// Reads one byte past the ceiling so an over-long body is detected rather than
+/// silently truncated into a malformed pkt-line stream. A declared
+/// `Content-Length` over the ceiling is rejected before any body is read.
+fn read_capped(
+    response: reqwest::blocking::Response,
+    max_bytes: u64,
+    what: &str,
+) -> Result<Vec<u8>> {
+    if let Some(declared) = response.content_length()
+        && declared > max_bytes
+    {
+        bail!("{what} is {declared} bytes, over the {max_bytes} byte limit");
+    }
+
+    let mut body = Vec::new();
+    response
+        .take(max_bytes + 1)
+        .read_to_end(&mut body)
+        .with_context(|| format!("failed to read {what}"))?;
+
+    if body.len() as u64 > max_bytes {
+        bail!("{what} exceeded the {max_bytes} byte limit");
+    }
+    Ok(body)
 }
 
 /// Rejects anything that is not a protocol v2 advertisement, so a v1 fallback
@@ -540,6 +597,44 @@ mod tests {
             classify_status(StatusCode::INTERNAL_SERVER_ERROR),
             FetchFailure::Unreachable
         );
+    }
+
+    #[test]
+    fn control_and_pack_ceilings_are_ordered_and_overridable() {
+        assert!(MAX_CONTROL_BYTES < DEFAULT_MAX_PACK_BYTES);
+        // Unset in tests, so the default applies.
+        assert_eq!(max_pack_bytes(), DEFAULT_MAX_PACK_BYTES);
+    }
+
+    #[test]
+    fn over_long_bodies_are_refused_rather_than_truncated() {
+        // A body one byte past the ceiling must be an error, not a silently
+        // truncated pkt-line stream that would then fail to parse.
+        let server = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = server.local_addr().expect("addr");
+        let handle = std::thread::spawn(move || {
+            let (mut socket, _) = server.accept().expect("accept");
+            let mut discard = [0u8; 1024];
+            let _ = std::io::Read::read(&mut socket, &mut discard);
+            let body = vec![b'x'; 64];
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = std::io::Write::write_all(&mut socket, response.as_bytes());
+            let _ = std::io::Write::write_all(&mut socket, &body);
+        });
+
+        let response = reqwest::blocking::Client::new()
+            .get(format!("http://{address}/"))
+            .send()
+            .expect("response");
+        let error = read_capped(response, 16, "test body")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("over the 16 byte limit"), "{error}");
+
+        handle.join().expect("server thread");
     }
 
     /// End-to-end against a real remote. Ignored by default because it needs
