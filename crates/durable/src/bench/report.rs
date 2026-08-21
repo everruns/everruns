@@ -82,58 +82,52 @@ impl BenchmarkReport {
         // Calculate throughput over time (ops/sec in sliding windows)
         let throughput_series = calculate_throughput_series(&throughput_data);
 
-        let mut vars: HashMap<String, String> = HashMap::new();
-        let mut set = |name: &str, value: String| {
-            vars.insert(name.to_string(), value);
-        };
+        let pair = |name: &str, value: String| (name.to_string(), value);
 
-        set("title", self.config.title.clone());
-        set("benchmark_name", metrics.name.clone());
-        set(
-            "duration_secs_2f",
-            format!("{:.2}", metrics.elapsed().as_secs_f64()),
-        );
-        set("total_tasks", metrics.tasks_completed.total().to_string());
-        set(
-            "throughput_1f",
-            format!("{:.1}", metrics.tasks_completed.throughput()),
-        );
+        let mut vars: Vec<(String, String)> = vec![
+            pair("title", self.config.title.clone()),
+            pair("benchmark_name", metrics.name.clone()),
+            pair(
+                "duration_secs_2f",
+                format!("{:.2}", metrics.elapsed().as_secs_f64()),
+            ),
+            pair("total_tasks", metrics.tasks_completed.total().to_string()),
+            pair(
+                "throughput_1f",
+                format!("{:.1}", metrics.tasks_completed.throughput()),
+            ),
+            // Headline stat cards render one decimal; the detail table renders two.
+            pair(
+                "end_to_end_p50_ms_1f",
+                format!("{:.1}", millis(end_to_end.p50)),
+            ),
+            pair(
+                "end_to_end_p99_ms_1f",
+                format!("{:.1}", millis(end_to_end.p99)),
+            ),
+            // Resource usage
+            pair(
+                "peak_memory_mb_1f",
+                format!("{:.1}", metrics.resources.peak_memory_mb()),
+            ),
+            pair(
+                "avg_cpu_percent_1f",
+                format!("{:.1}", metrics.resources.avg_cpu_percent()),
+            ),
+            // Chart data (JSON)
+            pair(
+                "throughput_chart_data",
+                serde_json::to_string(&throughput_series).unwrap(),
+            ),
+            pair("latency_chart_data", format_latency_chart_data(metrics)),
+            pair(
+                "resource_chart_data",
+                format_resource_chart_data(&resource_data),
+            ),
+            // Latency distribution for histogram
+            pair("latency_histogram_data", format_latency_histogram(metrics)),
+        ];
 
-        // Headline stat cards render one decimal; the detail table renders two.
-        set(
-            "end_to_end_p50_ms_1f",
-            format!("{:.1}", millis(end_to_end.p50)),
-        );
-        set(
-            "end_to_end_p99_ms_1f",
-            format!("{:.1}", millis(end_to_end.p99)),
-        );
-
-        // Resource usage
-        set(
-            "peak_memory_mb_1f",
-            format!("{:.1}", metrics.resources.peak_memory_mb()),
-        );
-        set(
-            "avg_cpu_percent_1f",
-            format!("{:.1}", metrics.resources.avg_cpu_percent()),
-        );
-
-        // Chart data (JSON)
-        set(
-            "throughput_chart_data",
-            serde_json::to_string(&throughput_series).unwrap(),
-        );
-        set("latency_chart_data", format_latency_chart_data(metrics));
-        set(
-            "resource_chart_data",
-            format_resource_chart_data(&resource_data),
-        );
-
-        // Latency distribution for histogram
-        set("latency_histogram_data", format_latency_histogram(metrics));
-
-        drop(set);
         for (prefix, summary) in [
             ("schedule_to_start", &schedule_to_start),
             ("execution", &execution),
@@ -141,6 +135,8 @@ impl BenchmarkReport {
         ] {
             vars.extend(latency_summary_vars(prefix, summary));
         }
+
+        let vars: HashMap<String, String> = vars.into_iter().collect();
 
         render_template(REPORT_TEMPLATE, &vars)
     }
