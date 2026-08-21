@@ -283,28 +283,18 @@ impl Database {
         if let (Some(blob), Some(content)) = (self.blob_store(), input.content.as_ref()) {
             let size_bytes = content.len() as i64;
 
-            // Serialize pointer changes so the superseded unique revision can
-            // be reclaimed safely after the transaction commits.
-            let mut tx = self.pool.begin().await?;
             let Some((file_id,)) = sqlx::query_as::<_, (Uuid,)>(
-                "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE FOR UPDATE",
+                "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE",
             )
             .bind(session_id)
             .bind(path)
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&self.pool)
             .await?
             else {
                 return Ok(None);
             };
 
             let sha = content_sha256(content);
-            let old_key = sqlx::query_as::<_, (String,)>(
-                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
-            )
-            .bind(file_id)
-            .fetch_optional(&mut *tx)
-            .await?
-            .map(|(key,)| key);
             let key = workspace_file_key(session_id, file_id, &sha, Uuid::now_v7());
             blob.put(
                 &key,
@@ -312,6 +302,33 @@ impl Database {
                 &file_blob_metadata(session_id, file_id, path, size_bytes, &sha),
             )
             .await?;
+
+            // Only hold the database connection while changing the pointer.
+            // Locking the same file ID also prevents a delete/recreate race
+            // from attaching the uploaded object to a different file.
+            let mut tx = self.pool.begin().await?;
+            let exists = sqlx::query_scalar::<_, bool>(
+                "SELECT TRUE FROM workspace_files WHERE id = $1 AND workspace_id = $2 AND path = $3 AND is_directory = FALSE FOR UPDATE",
+            )
+            .bind(file_id)
+            .bind(session_id)
+            .bind(path)
+            .fetch_optional(&mut *tx)
+            .await?
+            .is_some();
+            if !exists {
+                drop(tx);
+                blob.delete(&key).await?;
+                return Ok(None);
+            }
+
+            let old_key = sqlx::query_as::<_, (String,)>(
+                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(file_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|(key,)| key);
 
             sqlx::query(
                 r#"
