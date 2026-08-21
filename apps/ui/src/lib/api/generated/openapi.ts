@@ -4933,23 +4933,40 @@ export interface components {
     };
     /** @description Budget — a stored spending cap for a platform subject. */
     Budget: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Current remaining balance (limit minus consumed).
+       */
       balance: number;
       /** Format: date-time */
       created_at: string;
+      /** @description Currency: "usd", "tokens", "credits", or custom. */
       currency: string;
       /** @example bdgt_01933b5a00007000800000000000001 */
       id: string;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Hard limit — budget ceiling.
+       */
       limit: number;
+      /** @description Arbitrary metadata. */
       metadata?: unknown;
       organization_id: string;
       period?: null | components["schemas"]["BudgetPeriod"];
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the current period started (used to detect period rollover for
+       *     `Duration` / `Rolling` periods, and to display "resets at" in the UI).
+       *     `None` for budgets without a period.
+       */
       period_started_at?: string | null;
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Soft limit — triggers pause/warn when balance drops below this.
+       */
       soft_limit?: number | null;
       status: components["schemas"]["BudgetStatus"];
+      /** @description Public ID of the subject entity. */
       subject_id: string;
       subject_type: components["schemas"]["BudgetSubjectType"];
       /** Format: date-time */
@@ -8772,16 +8789,23 @@ export interface components {
     LeasedResourceStatus: "active" | "cleaning" | "released" | "cleanup_failed";
     /** @description Immutable platform ledger record for resource consumption or credit. */
     LedgerEntry: {
-      /** Format: double */
+      /**
+       * Format: double
+       * @description Positive = debit (consumption), negative = credit (top-up/refund).
+       */
       amount: number;
       budget_id: string;
       /** Format: date-time */
       created_at: string;
       description?: string | null;
       id: string;
+      /** @description Which meter produced this: "llm_tokens", "tool_calls", etc. */
       meter_source: string;
+      /** @description Reference entity ID. */
       ref_id?: string | null;
+      /** @description Reference entity type: "llm_generation", "tool_execution", "manual". */
       ref_type?: string | null;
+      /** @description Session context for this entry. */
       session_id?: string | null;
     };
     /**

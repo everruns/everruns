@@ -17509,14 +17509,16 @@
         "properties": {
           "balance": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Current remaining balance (limit minus consumed)."
           },
           "created_at": {
             "type": "string",
             "format": "date-time"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
           },
           "id": {
             "type": "string",
@@ -17524,9 +17526,12 @@
           },
           "limit": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Hard limit — budget ceiling."
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Arbitrary metadata."
+          },
           "organization_id": {
             "type": "string"
           },
@@ -17536,7 +17541,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/BudgetPeriod"
+                "$ref": "#/components/schemas/BudgetPeriod",
+                "description": "Optional period for recurring budgets."
               }
             ]
           },
@@ -17545,20 +17551,23 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
           },
           "soft_limit": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Soft limit — triggers pause/warn when balance drops below this."
           },
           "status": {
             "$ref": "#/components/schemas/BudgetStatus"
           },
           "subject_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Public ID of the subject entity."
           },
           "subject_type": {
             "$ref": "#/components/schemas/BudgetSubjectType"
@@ -24284,7 +24293,8 @@
         "properties": {
           "amount": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Positive = debit (consumption), negative = credit (top-up/refund)."
           },
           "budget_id": {
             "type": "string"
@@ -24303,25 +24313,29 @@
             "type": "string"
           },
           "meter_source": {
-            "type": "string"
+            "type": "string",
+            "description": "Which meter produced this: \"llm_tokens\", \"tool_calls\", etc."
           },
           "ref_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Reference entity ID."
           },
           "ref_type": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Reference entity type: \"llm_generation\", \"tool_execution\", \"manual\"."
           },
           "session_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Session context for this entry."
           }
         }
       },
