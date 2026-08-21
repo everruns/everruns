@@ -12,9 +12,7 @@ use crate::storage::models::{
 use async_trait::async_trait;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use ethers_core::types::transaction::eip712::TypedData;
-use ethers_core::utils::to_checksum;
-use ethers_signers::{LocalWallet, Signer};
+use super::eip712::{self, Domain, LocalWallet, TransferWithAuthorization};
 use everruns_core::payment::{
     MachinePaymentRequest, MachinePaymentResponse, PaymentMethod, PaymentRail,
 };
@@ -24,7 +22,6 @@ use everruns_provider::typed_id::{AgentId, PaymentAttemptId, SessionId};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use url::Url;
@@ -338,7 +335,7 @@ impl ServerPaymentAuthority {
         account: &PaymentAccountRow,
     ) -> Result<RailResponse> {
         let private_key = self.decrypt_wallet_private_key(account)?;
-        let wallet = LocalWallet::from_str(private_key.trim())
+        let wallet = LocalWallet::from_private_key_hex(private_key.trim())
             .map_err(|error| AgentLoopError::config(format!("Invalid x402 wallet key: {error}")))?;
         let first = self.send_http_request(request, None).await?;
         if first.status != reqwest::StatusCode::PAYMENT_REQUIRED {
@@ -627,7 +624,7 @@ async fn create_x402_payment_signature(
     let timeout = selected.max_timeout_seconds.max(1) as u64;
     let valid_before = (now + timeout.min(3600)).to_string();
     let nonce = random_bytes32_hex();
-    let from = to_checksum(&wallet.address(), None);
+    let from = wallet.address_checksummed();
 
     let authorization = json!({
         "from": from,
@@ -637,7 +634,7 @@ async fn create_x402_payment_signature(
         "validBefore": valid_before,
         "nonce": nonce,
     });
-    let signature = sign_eip3009_authorization(wallet, selected, &authorization).await?;
+    let signature = sign_eip3009_authorization(wallet, selected, &authorization)?;
 
     let mut payload = json!({
         "x402Version": 2,
@@ -660,7 +657,7 @@ async fn create_x402_payment_signature(
     Ok(BASE64_STANDARD.encode(bytes))
 }
 
-async fn sign_eip3009_authorization(
+fn sign_eip3009_authorization(
     wallet: &LocalWallet,
     selected: &X402PaymentRequirements,
     authorization: &serde_json::Value,
@@ -681,40 +678,36 @@ async fn sign_eip3009_authorization(
         .get("version")
         .and_then(serde_json::Value::as_str)
         .unwrap_or("2");
-    let typed_data = json!({
-        "types": {
-            "EIP712Domain": [
-                { "name": "name", "type": "string" },
-                { "name": "version", "type": "string" },
-                { "name": "chainId", "type": "uint256" },
-                { "name": "verifyingContract", "type": "address" }
-            ],
-            "TransferWithAuthorization": [
-                { "name": "from", "type": "address" },
-                { "name": "to", "type": "address" },
-                { "name": "value", "type": "uint256" },
-                { "name": "validAfter", "type": "uint256" },
-                { "name": "validBefore", "type": "uint256" },
-                { "name": "nonce", "type": "bytes32" }
-            ]
+    let digest = eip712::transfer_with_authorization_digest(
+        &Domain {
+            name,
+            version,
+            chain_id,
+            verifying_contract: &selected.asset,
         },
-        "primaryType": "TransferWithAuthorization",
-        "domain": {
-            "name": name,
-            "version": version,
-            "chainId": chain_id,
-            "verifyingContract": selected.asset,
+        &TransferWithAuthorization {
+            from: field(authorization, "from")?,
+            to: field(authorization, "to")?,
+            value: field(authorization, "value")?,
+            valid_after: field(authorization, "validAfter")?,
+            valid_before: field(authorization, "validBefore")?,
+            nonce: field(authorization, "nonce")?,
         },
-        "message": authorization,
-    });
-    let typed_data: TypedData = serde_json::from_value(typed_data).map_err(|error| {
+    )
+    .map_err(|error| {
         AgentLoopError::tool(format!("Failed to build x402 EIP-712 payload: {error}"))
     })?;
-    let signature = wallet
-        .sign_typed_data(&typed_data)
-        .await
-        .map_err(|error| AgentLoopError::tool(format!("Failed to sign x402 payment: {error}")))?;
-    Ok(format!("0x{}", hex::encode(signature.to_vec())))
+
+    Ok(format!("0x{}", hex::encode(wallet.sign_prehash(&digest))))
+}
+
+/// Reads a required string field out of the authorization object built by
+/// `create_x402_payment_signature`.
+fn field<'a>(authorization: &'a serde_json::Value, name: &'static str) -> Result<&'a str> {
+    authorization
+        .get(name)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| AgentLoopError::tool(format!("x402 authorization is missing {name}")))
 }
 
 fn random_bytes32_hex() -> String {
@@ -747,12 +740,17 @@ fn request_hash(request: &MachinePaymentRequest) -> String {
 mod tests {
     use super::*;
 
+    /// Anvil development key #0. Public test vector, never a real key.
+    const TEST_PRIVATE_KEY: &str =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    fn test_wallet() -> LocalWallet {
+        LocalWallet::from_private_key_hex(TEST_PRIVATE_KEY).expect("test wallet")
+    }
+
     #[tokio::test]
     async fn x402_signature_header_contains_eip3009_authorization() {
-        let wallet = LocalWallet::from_str(
-            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
-        )
-        .expect("test wallet");
+        let wallet = test_wallet();
         let required = X402PaymentRequired {
             x402_version: 2,
             resource: Some(X402ResourceInfo {
@@ -796,6 +794,50 @@ mod tests {
             payload["payload"]["signature"]
                 .as_str()
                 .is_some_and(|signature| signature.starts_with("0x") && signature.len() == 132)
+        );
+    }
+
+    /// Fixed EIP-712 vector for `TransferWithAuthorization` on Base mainnet
+    /// USDC, signed with Anvil key #0.
+    ///
+    /// Every input is pinned, so the signature is a constant. It is the
+    /// equivalence check for the signing stack: a change that alters domain
+    /// separation, struct hashing, or the v-byte encoding will move this value
+    /// and break payments against every x402 facilitator.
+    #[test]
+    fn eip3009_signature_matches_known_vector() {
+        let wallet = test_wallet();
+        let selected = X402PaymentRequirements {
+            scheme: "exact".to_string(),
+            network: "eip155:8453".to_string(),
+            asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913".to_string(),
+            amount: "10000".to_string(),
+            pay_to: "0x0000000000000000000000000000000000000001".to_string(),
+            max_timeout_seconds: 60,
+            extra: json!({
+                "assetTransferMethod": "eip3009",
+                "name": "USD Coin",
+                "version": "2",
+            }),
+        };
+        let authorization = json!({
+            "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "to": "0x0000000000000000000000000000000000000001",
+            "value": "10000",
+            "validAfter": "1700000000",
+            "validBefore": "1700003600",
+            "nonce": "0x0000000000000000000000000000000000000000000000000000000000000001",
+        });
+
+        let signature =
+            sign_eip3009_authorization(&wallet, &selected, &authorization).expect("signature");
+
+        assert_eq!(
+            signature,
+            concat!(
+                "0x6105f86ea8e1a854017dcc6189ddcb261a3d52653bb8663ba1aa476f24db3d5e",
+                "6e6aea771913b82d1c2bc3bc3712913fae996768d063075d00cb26dea5742b2f1c",
+            )
         );
     }
 
