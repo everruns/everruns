@@ -1,8 +1,8 @@
 //! Application-facing MCP server configuration.
 
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
-use everruns_core::{McpServerTransportType, ScopedMcpServer};
+use everruns_core::{McpServerTransportType, ScopedMcpServer, sanitize_mcp_server_name};
 
 /// A scoped MCP server available to an agent.
 ///
@@ -108,10 +108,20 @@ pub(crate) fn into_scoped(
     servers: Vec<McpServer>,
 ) -> Result<everruns_core::ScopedMcpServers, String> {
     let mut scoped = everruns_core::ScopedMcpServers::new();
+    let mut sanitized_names = HashSet::new();
     for server in servers {
         let name = server.name.trim();
         if name.is_empty() {
             return Err("MCP server name must not be blank".to_string());
+        }
+        let sanitized_name = sanitize_mcp_server_name(name);
+        if sanitized_name.contains("__") {
+            return Err(format!(
+                "MCP server name {name:?} is invalid after sanitization: consecutive underscores are reserved"
+            ));
+        }
+        if !sanitized_names.insert(sanitized_name) {
+            return Err("MCP server names must be unique after sanitization".to_string());
         }
         match server.inner.transport_type {
             McpServerTransportType::Http if server.inner.url.trim().is_empty() => {

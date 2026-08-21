@@ -56,3 +56,30 @@ fn duplicate_mcp_names_are_a_typed_error() {
         .unwrap_err();
     assert!(matches!(err, BuildError::InvalidMcpServer { .. }));
 }
+
+#[test]
+fn colliding_sanitized_mcp_names_are_a_typed_error() {
+    use everruns::{BuildError, McpServer};
+
+    let err = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("ok"))
+        .mcp_server(McpServer::http("github-prod", "https://one.invalid/mcp"))
+        .mcp_server(McpServer::http("github_prod", "https://two.invalid/mcp"))
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, BuildError::InvalidMcpServer { .. }));
+}
+
+#[test]
+fn reserved_mcp_name_delimiter_is_a_typed_error() {
+    use everruns::{BuildError, McpServer};
+
+    let err = Agent::builder()
+        .instructions("You are concise.")
+        .model(Model::simulated("ok"))
+        .mcp_server(McpServer::http("a__b", "https://one.invalid/mcp"))
+        .build()
+        .unwrap_err();
+    assert!(matches!(err, BuildError::InvalidMcpServer { .. }));
+}
