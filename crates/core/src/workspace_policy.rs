@@ -341,7 +341,10 @@ impl WorkspacePolicyBuilder {
 impl PolicyLayer {
     fn permits_read(&self, path: &PolicyPath) -> bool {
         self.read.iter().any(|scope| scope.contains(path))
-            && !self.deny_read.iter().any(|scope| scope.contains(path))
+            && !self
+                .deny_read
+                .iter()
+                .any(|scope| scope.contains_ignoring_ascii_case(path))
             && self.permits_protected_components(path)
     }
 
@@ -350,13 +353,19 @@ impl PolicyLayer {
             .read
             .iter()
             .any(|scope| scope.contains(path) || path.contains(scope)))
-            && !self.deny_read.iter().any(|scope| scope.contains(path))
+            && !self
+                .deny_read
+                .iter()
+                .any(|scope| scope.contains_ignoring_ascii_case(path))
             && self.permits_protected_traversal(path)
     }
 
     fn permits_write(&self, path: &PolicyPath) -> bool {
         self.write.iter().any(|scope| scope.contains(path))
-            && !self.deny_write.iter().any(|scope| scope.contains(path))
+            && !self
+                .deny_write
+                .iter()
+                .any(|scope| scope.contains_ignoring_ascii_case(path))
             && !path.has_any_component(&self.deny_write_components)
             && self.permits_protected_components(path)
     }
@@ -416,18 +425,25 @@ impl PolicyPath {
                         "workspace path traversal is not allowed: {input:?}"
                     )));
                 }
-                // Match conservatively across case-sensitive and
-                // case-insensitive providers. This can over-restrict two
-                // distinct Unix paths, but cannot turn a deny into an allow
-                // when the same storage object has multiple case spellings.
-                value => components.push(value.to_ascii_lowercase()),
+                value => components.push(value.to_string()),
             }
         }
         Ok(Self(components))
     }
 
     fn contains(&self, candidate: &Self) -> bool {
+        // Allows stay case-exact so a scope cannot cover a distinct Unix path.
         candidate.0.starts_with(&self.0)
+    }
+
+    fn contains_ignoring_ascii_case(&self, candidate: &Self) -> bool {
+        // Denies fail closed for providers where case variants alias one object.
+        self.0.len() <= candidate.0.len()
+            && self
+                .0
+                .iter()
+                .zip(&candidate.0)
+                .all(|(scope, component)| scope.eq_ignore_ascii_case(component))
     }
 
     fn has_hidden_component(&self) -> bool {
@@ -435,11 +451,16 @@ impl PolicyPath {
     }
 
     fn has_any_component(&self, denied: &[String]) -> bool {
-        self.0.iter().any(|component| denied.contains(component))
+        self.0.iter().any(|component| {
+            denied
+                .iter()
+                .any(|denied| denied.eq_ignore_ascii_case(component))
+        })
     }
 
     fn has_sensitive_component(&self) -> bool {
         self.0.iter().any(|component| {
+            let component = component.to_ascii_lowercase();
             component == ".env"
                 || component.starts_with(".env.")
                 || SENSITIVE_COMPONENTS.contains(&component.as_str())
@@ -654,6 +675,21 @@ mod tests {
         assert!(!policy.permits_read("/private/secret.txt"));
         assert!(!policy.permits_read("/.ENV"));
         assert!(!policy.permits_read("/.Git/config"));
+    }
+
+    #[test]
+    fn alternate_ascii_case_cannot_broaden_an_allow_scope() {
+        let policy = WorkspacePolicy::builder()
+            .allow_read("public")
+            .allow_write("generated")
+            .build()
+            .unwrap();
+
+        assert!(policy.permits_read("public/index.html"));
+        assert!(!policy.permits_read("Public/secret.txt"));
+        assert!(!policy.permits_read_traversal("Public"));
+        assert!(policy.permits_write("generated/report.md"));
+        assert!(!policy.permits_write("Generated/secret.txt"));
     }
 
     #[test]
