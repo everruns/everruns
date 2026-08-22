@@ -1,7 +1,7 @@
 [package]
 name = "everruns-cli"
 readme = "README.md"
-version = "0.18.0"
+version = "0.18.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

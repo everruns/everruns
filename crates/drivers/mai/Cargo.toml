@@ -7,7 +7,7 @@
 
 [package]
 name = "everruns-mai"
-version = "0.18.0"
+version = "0.18.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -41,7 +41,7 @@ tracing.workspace = true
 # Provider SPI only (EVE-874): wire-protocol crates never depend on
 # everruns-core. Intentional optional features of everruns-provider (`openapi`
 # schema derives, `sqlx` TypedId codecs) stay off; default features are empty.
-everruns-provider = { version = "0.18.0", path = "../../provider" }
+everruns-provider = { version = "0.19.0", path = "../../provider" }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures driver/token requests;

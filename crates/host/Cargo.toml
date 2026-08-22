@@ -6,7 +6,7 @@
 
 [package]
 name = "everruns-host"
-version = "0.20.1"
+version = "0.20.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

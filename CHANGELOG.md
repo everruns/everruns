@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-08-22
+
+### Highlights
+
+- **Chat with harnesses, archive chats, and generated run summaries** - Sessions gained interactive chats against harnesses, the ability to archive chats and toggle showing all of them, and automatically generated run summaries, with count badges on session detail tabs ([#3262](https://github.com/everruns/everruns/pull/3262), [#3265](https://github.com/everruns/everruns/pull/3265), [#3260](https://github.com/everruns/everruns/pull/3260), [#3266](https://github.com/everruns/everruns/pull/3266)).
+- **Connection-level custom provider headers** - Providers can now carry custom headers at the connection level, with cache diagnostics to see how they resolve; header values are redacted in diagnostics ([#3232](https://github.com/everruns/everruns/pull/3232), [#3240](https://github.com/everruns/everruns/pull/3240)).
+- **Leaner supply chain and smaller binaries** - Owning 114 small third-party contracts in-tree removed those dependencies from the build, and stripping plus CLI dispatch boxing shrank shipped binaries by ~22% ([#3245](https://github.com/everruns/everruns/pull/3245), [#3227](https://github.com/everruns/everruns/pull/3227)).
+
+### What's Changed
+
+- chore(deps): bump bashkit to 0.17.0 ([#3268](https://github.com/everruns/everruns/pull/3268)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): count badges on session detail tabs ([#3266](https://github.com/everruns/everruns/pull/3266)) by [@chaliy](https://github.com/chaliy)
+- chore(security): record why a scheduled session cannot read Dependabot alerts ([#3267](https://github.com/everruns/everruns/pull/3267)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): terminalize model-less chat turns ([#3264](https://github.com/everruns/everruns/pull/3264)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): archive chats and switch to show all ([#3265](https://github.com/everruns/everruns/pull/3265)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): rejoin users when they send messages ([#3263](https://github.com/everruns/everruns/pull/3263)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): allow chats with harnesses ([#3262](https://github.com/everruns/everruns/pull/3262)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): generated run summary ([#3260](https://github.com/everruns/everruns/pull/3260)) by [@chaliy](https://github.com/chaliy)
+- chore(skills): note that exporting OpenAPI requires regenerating UI types ([#3261](https://github.com/everruns/everruns/pull/3261)) by [@chaliy](https://github.com/chaliy)
+- fix(llm-tests): require live tool execution ([#3255](https://github.com/everruns/everruns/pull/3255)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bound hydrated capability transport ([#3258](https://github.com/everruns/everruns/pull/3258)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): return public IDs in agent facets ([#3257](https://github.com/everruns/everruns/pull/3257)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): release database connection during blob upload ([#3256](https://github.com/everruns/everruns/pull/3256)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): cancel queued durable tasks ([#3254](https://github.com/everruns/everruns/pull/3254)) by [@chaliy](https://github.com/chaliy)
+- fix(platform): saturate discovery scores ([#3252](https://github.com/everruns/everruns/pull/3252)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): match runtime model resolution ([#3251](https://github.com/everruns/everruns/pull/3251)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): reject duplicate subagent task ids ([#3250](https://github.com/everruns/everruns/pull/3250)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve case in workspace allow scopes ([#3249](https://github.com/everruns/everruns/pull/3249)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): reject ambiguous MCP server names ([#3248](https://github.com/everruns/everruns/pull/3248)) by [@chaliy](https://github.com/chaliy)
+- fix(build): secure shared pre-push cache ([#3246](https://github.com/everruns/everruns/pull/3246)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): bound live delta memory ([#3244](https://github.com/everruns/everruns/pull/3244)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): restrict chat routes to mutable threads ([#3243](https://github.com/everruns/everruns/pull/3243)) by [@chaliy](https://github.com/chaliy)
+- fix(everruns): redact function tool handler errors ([#3242](https://github.com/everruns/everruns/pull/3242)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): neutralize formulas in session CSV exports ([#3241](https://github.com/everruns/everruns/pull/3241)) by [@chaliy](https://github.com/chaliy)
+- fix(sandbox): reconcile uncommitted checkpoints on resume ([#3259](https://github.com/everruns/everruns/pull/3259)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): redact custom header values ([#3240](https://github.com/everruns/everruns/pull/3240)) by [@chaliy](https://github.com/chaliy)
+- fix(sandbox): bind recovery state to session ([#3235](https://github.com/everruns/everruns/pull/3235)) by [@chaliy](https://github.com/chaliy)
+- refactor: remove 114 third-party crates by owning small contracts in-tree ([#3245](https://github.com/everruns/everruns/pull/3245)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): reject admin mode without credentials ([#3239](https://github.com/everruns/everruns/pull/3239)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): bound tag chip rendering ([#3238](https://github.com/everruns/everruns/pull/3238)) by [@chaliy](https://github.com/chaliy)
+- fix(core): fail closed in tool approval gate ([#3237](https://github.com/everruns/everruns/pull/3237)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): show full WebMCP message for approval ([#3236](https://github.com/everruns/everruns/pull/3236)) by [@chaliy](https://github.com/chaliy)
+- docs(everruns): rewrite framework readme by [@chaliy](https://github.com/chaliy)
+- feat(ci): publish open security alerts into a readable job log ([#3233](https://github.com/everruns/everruns/pull/3233)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): connection-level custom headers and cache diagnostics ([#3232](https://github.com/everruns/everruns/pull/3232)) by [@chaliy](https://github.com/chaliy)
+- ci: restore the full Rust and integration matrix ([#3231](https://github.com/everruns/everruns/pull/3231)) by [@chaliy](https://github.com/chaliy)
+- chore(build): add just prune and settle why the library crates are large ([#3230](https://github.com/everruns/everruns/pull/3230)) by [@chaliy](https://github.com/chaliy)
+- chore(release): republish everruns-host as 0.20.1 by [@chaliy](https://github.com/chaliy)
+- perf: shrink shipped binaries by ~22% (strip + CLI dispatch boxing) ([#3227](https://github.com/everruns/everruns/pull/3227)) by [@chaliy](https://github.com/chaliy)
+- fix(release): break the crate-publish dev-dependency deadlock for 0.20.0 by [@chaliy](https://github.com/chaliy)
+
+### Crate Releases
+
+Independently versioned crates published this cycle (smallest compatible bump, breaking classification from the public-API diff):
+
+- `everruns-provider` 0.18.0 → 0.19.0 (breaking: new public fields `extra_headers`/`cache_diagnostics` on the constructible, non-`#[non_exhaustive]` structs `LlmCallConfig`, `ProviderConfig`, and `LlmCompletionMetadata`; new public `ProviderRequestOptions`/`ProviderRequestHeader`/`CacheDiagnosticsConfig`, `merge_request_headers`, and `AgentLoopError::model_not_configured`)
+- `everruns-platform` 0.18.2 → 0.19.0 (breaking: `SandboxCheckpointStore` gained a new required method `rollback_current_checkpoint`; new public fields on the constructible `Session` struct and new public `DurableToolResultStoreExt`)
+- `everruns-host` 0.20.1 → 0.20.2 (public `is_internal_session_secret_name` now reserves `session_sandbox`; typed model-not-configured error)
+- `everruns-core` 0.18.0 → 0.18.1 (`WorkspacePolicy` deny-matching is now case-insensitive)
+- `everruns-builtins` 0.18.1 → 0.18.2 (tool approval hook now fails closed and gates readonly + destructive/open-world tools)
+- `everruns-macros` 0.18.0 → 0.18.1 (`#[tool]` generated code returns a tool error instead of `Err` on bad arguments)
+- `everruns-anthropic` 0.18.0 → 0.18.1 (prompt-cache diagnostics; forwards connection `extra_headers`)
+- `everruns-gemini` 0.18.0 → 0.18.1 (forwards connection `extra_headers`)
+- `everruns` 0.18.2 → 0.18.3 (function-tool errors redacted as internal; session delta events omit accumulated data; MCP server-name validation)
+
+Cone cascade — patch republish to re-pin `everruns-provider`/`everruns-platform` at `0.19` (own contract unchanged): `everruns-engine` 0.18.1, `everruns-mcp` 0.19.1, `everruns-cli` 0.18.1, `everruns-ard` 0.18.1, `everruns-test-support` 0.18.3, `everruns-turbopuffer` 0.18.1, `everruns-llmsim` 0.18.3, and the remaining wire-protocol drivers (`everruns-bedrock`, `everruns-fireworks`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter`) 0.18.1.
+
+No crates were deleted or absorbed this cycle. `everruns-capability` had no public-contract change and is outside the cone, so it is not re-released.
+
 ## [0.20.0] - 2026-08-19
 
 ### Highlights

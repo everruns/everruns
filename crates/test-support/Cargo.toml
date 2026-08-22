@@ -12,7 +12,7 @@
 
 [package]
 name = "everruns-test-support"
-version = "0.18.2"
+version = "0.18.3"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -44,7 +44,7 @@ fixtures = ["dep:everruns-platform"]
 host = ["dep:everruns-host", "sim", "everruns-llmsim/host"]
 
 [dependencies]
-everruns-core = { path = "../core", version = "0.18.0", default-features = false }
+everruns-core = { path = "../core", version = "0.18.1", default-features = false }
 everruns-engine.workspace = true
 everruns-capability.workspace = true
 everruns-provider.workspace = true
