@@ -3934,6 +3934,13 @@ export interface Session {
   usage?: TokenUsage;
   /** Whether this session is pinned by the current user */
   is_pinned?: boolean;
+  /**
+   * When this session was archived; absent means active. Archived sessions are
+   * hidden from default list results and shown by passing
+   * `include_archived=true`. Unlike `is_pinned`, archive is a property of the
+   * session itself rather than of the viewer.
+   */
+  archived_at?: string | null;
   /** Number of active schedules for this session */
   active_schedule_count?: number;
   /** Aggregated UI features from all active capabilities (harness + agent + session) */

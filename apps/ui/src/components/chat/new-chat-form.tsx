@@ -1,16 +1,12 @@
 /**
- * New chat: pick who you are talking to, then talk. The counterpart is chosen up
- * front because a thread is bound to it for its lifetime — afterwards the
+ * New chat: pick a counterpart, then talk. The counterpart is chosen up front
+ * because a thread is bound to it for its lifetime — afterwards the
  * binding is shown as a fact, not an editable control
  * (knowledge/ui/information-architecture.md).
  *
- * A thread is an ordinary session: this posts `POST /v1/sessions` and lets the
- * harness be derived from the agent.
- *
- * Platform Chat stays available as a counterpart even though it is a harness
- * rather than an agent. It is the built-in operator chat, and it is how an org
- * with no agents yet creates its first one — dropping it would make the landing
- * surface a dead end on a fresh org.
+ * A thread is an ordinary session: this posts `POST /v1/sessions` with either
+ * an agent or a harness binding. Direct harness chats let users start from a
+ * configured runtime without creating an otherwise-empty agent first.
  */
 "use client";
 
@@ -21,19 +17,21 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { useAgents, useHarnesses } from "@/hooks";
 import { useCreateSession } from "@/hooks/use-sessions";
-import { CHAT_THREAD_TAG, PLATFORM_CHAT_HARNESS_NAME } from "@/lib/chat-threads";
+import { CHAT_THREAD_TAG } from "@/lib/chat-threads";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { CreateSessionRequest } from "@/lib/api/types";
 
-/** Sentinel select value for the harness-bound Platform Chat thread. */
-const PLATFORM_CHAT_VALUE = "__platform_chat__";
+const AGENT_VALUE_PREFIX = "agent:";
+const HARNESS_VALUE_PREFIX = "harness:";
 
 export function NewChatForm({
   onStartingChange,
@@ -48,23 +46,19 @@ export function NewChatForm({
 } = {}) {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
-  const { data: harnesses = [] } = useHarnesses();
+  const { data: harnesses = [], isLoading: harnessesLoading } = useHarnesses();
   const createSession = useCreateSession();
   const [selection, setSelection] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const platformChatAvailable = harnesses.some(
-    (harness) => harness.name === PLATFORM_CHAT_HARNESS_NAME,
-  );
+  const optionsLoading = agentsLoading || harnessesLoading;
 
   const start = async () => {
     if (!selection) return;
     setError(null);
     onStartingChange?.(true);
-    const binding: Partial<CreateSessionRequest> =
-      selection === PLATFORM_CHAT_VALUE
-        ? { harness_name: PLATFORM_CHAT_HARNESS_NAME }
-        : { agent_id: selection };
+    const binding: Partial<CreateSessionRequest> = selection.startsWith(HARNESS_VALUE_PREFIX)
+      ? { harness_name: selection.slice(HARNESS_VALUE_PREFIX.length) }
+      : { agent_id: selection.slice(AGENT_VALUE_PREFIX.length) };
 
     try {
       const session = await createSession.mutateAsync({
@@ -77,11 +71,11 @@ export function NewChatForm({
     }
   };
 
-  if (!agentsLoading && agents.length === 0 && !platformChatAvailable) {
+  if (!optionsLoading && agents.length === 0 && harnesses.length === 0) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          A chat is a conversation with an agent, so there is nothing to talk to yet.
+          There are no agents or harnesses available for a chat yet.
         </p>
         <Button onClick={() => router.push("/agents/new")}>Create an agent</Button>
       </div>
@@ -91,19 +85,33 @@ export function NewChatForm({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-center gap-2">
-        <Select value={selection} onValueChange={setSelection} disabled={agentsLoading}>
-          <SelectTrigger className="w-64" aria-label="Agent for this chat">
-            <SelectValue placeholder={agentsLoading ? "Loading agents..." : "Pick an agent"} />
+        <Select value={selection} onValueChange={setSelection} disabled={optionsLoading}>
+          <SelectTrigger className="w-64" aria-label="Chat counterpart">
+            <SelectValue
+              placeholder={optionsLoading ? "Loading options..." : "Pick an agent or harness"}
+            />
           </SelectTrigger>
           <SelectContent>
-            {platformChatAvailable && (
-              <SelectItem value={PLATFORM_CHAT_VALUE}>Platform Chat</SelectItem>
+            {harnesses.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Harnesses</SelectLabel>
+                {harnesses.map((harness) => (
+                  <SelectItem key={harness.id} value={`${HARNESS_VALUE_PREFIX}${harness.name}`}>
+                    {getDisplayName(harness)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
             )}
-            {agents.map((agent) => (
-              <SelectItem key={agent.id} value={agent.id}>
-                {getDisplayName(agent)}
-              </SelectItem>
-            ))}
+            {agents.length > 0 && (
+              <SelectGroup>
+                <SelectLabel>Agents</SelectLabel>
+                {agents.map((agent) => (
+                  <SelectItem key={agent.id} value={`${AGENT_VALUE_PREFIX}${agent.id}`}>
+                    {getDisplayName(agent)}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            )}
           </SelectContent>
         </Select>
         <Button onClick={start} disabled={!selection || createSession.isPending}>

@@ -11158,6 +11158,19 @@
             "example": true
           },
           {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived sessions. Defaults to false.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "example": true
+          },
+          {
             "name": "created_after",
             "in": "query",
             "description": "Inclusive lower bound on creation time (RFC 3339).",
@@ -11447,6 +11460,14 @@
             }
           },
           {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "created_after",
             "in": "query",
             "required": false,
@@ -11625,6 +11646,72 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/archive": {
+      "put": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "PUT /v1/sessions/{session_id}/archive - Archive session",
+        "operationId": "archive_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session archived successfully"
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/archive - Restore an archived session",
+        "operationId": "unarchive_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session unarchived successfully"
           },
           "400": {
             "description": "Invalid session ID"
@@ -30216,6 +30303,15 @@
                   "description": "Immutable agent version captured when the session was created or rebound.",
                   "example": "agentver_01933b5a00007000800000000000001"
                 },
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When this session was archived; `None` means active. Archived sessions\nare hidden from default list results and shown by opting in\n(`include_archived=true`). Unlike `is_pinned`, archive is a property of\nthe session itself rather than of the viewer.",
+                  "example": "2026-05-25T10:14:32Z"
+                },
                 "blueprint_config": {
                   "type": [
                     "object",
@@ -30981,6 +31077,15 @@
                       ],
                       "description": "Immutable agent version captured when the session was created or rebound.",
                       "example": "agentver_01933b5a00007000800000000000001"
+                    },
+                    "archived_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "When this session was archived; `None` means active. Archived sessions\nare hidden from default list results and shown by opting in\n(`include_archived=true`). Unlike `is_pinned`, archive is a property of\nthe session itself rather than of the viewer.",
+                      "example": "2026-05-25T10:14:32Z"
                     },
                     "blueprint_config": {
                       "type": [
@@ -33674,6 +33779,15 @@
             ],
             "description": "Immutable agent version captured when the session was created or rebound.",
             "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When this session was archived; `None` means active. Archived sessions\nare hidden from default list results and shown by opting in\n(`include_archived=true`). Unlike `is_pinned`, archive is a property of\nthe session itself rather than of the viewer.",
+            "example": "2026-05-25T10:14:32Z"
           },
           "blueprint_config": {
             "type": [
@@ -40520,6 +40634,15 @@
                 ],
                 "description": "Immutable agent version captured when the session was created or rebound.",
                 "example": "agentver_01933b5a00007000800000000000001"
+              },
+              "archived_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "When this session was archived; `None` means active. Archived sessions\nare hidden from default list results and shown by opting in\n(`include_archived=true`). Unlike `is_pinned`, archive is a property of\nthe session itself rather than of the viewer.",
+                "example": "2026-05-25T10:14:32Z"
               },
               "blueprint_config": {
                 "type": [

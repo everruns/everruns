@@ -32,8 +32,9 @@ function ThreadContent({ threadId }: { threadId: string }) {
   const { data: harnesses } = useHarnesses();
   // `GET /v1/sessions/{id}` carries no message preview — only the list does — so
   // an untitled thread takes its display title from the same list the sidebar
-  // reads. Both surfaces then name the thread identically.
-  const { threads } = useChatThreads();
+  // reads. Both surfaces then name the thread identically. Archived threads are
+  // included: opening one by URL must still name it properly.
+  const { threads } = useChatThreads({ includeArchived: true });
   const listEntry = threads.find((candidate) => candidate.id === threadId);
   const title = threadTitle({
     title: session?.title ?? null,

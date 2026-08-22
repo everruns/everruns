@@ -31,6 +31,9 @@ Verify that the session participant rail identifies the host and members, suppor
 6. Wait for the response and verify the reply is attributed to `Participant Specialist`, not the host.
 7. Use the leave/remove control for `Participant Specialist`.
 8. Verify the participant rail no longer shows the guest as active and the transcript renders a system line recording that it left.
+9. Use the leave/remove control for the current user.
+10. Verify the current user moves to **Left**, then send `I am back`.
+11. Verify the current user returns to the active members and the new message appears after a fresh join marker.
 
 ## Expected Result
 
@@ -40,3 +43,5 @@ Verify that the session participant rail identifies the host and members, suppor
 - Inviting an agent adds it as a member while preserving the original host.
 - An addressed turn routes to the selected active agent and attributes its reply to that participant.
 - Removing the guest retains membership history and renders a leave system line in the transcript.
+- A user who sends after leaving automatically rejoins with a new participation interval; the
+  participant rail and transcript show the renewed active membership without a page reload.

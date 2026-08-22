@@ -27,7 +27,7 @@ To add an agent:
 2. Select **Invite agent**.
 3. Choose an agent that is not already active in the session.
 
-The agent joins as a member. The rail also shows participants who have left. Use the remove action on an active member to make it leave; the host cannot leave through the ordinary participant action.
+The agent joins as a member. The rail also shows participants who have left. Use the remove action on an active member to make it leave; the host cannot leave through the ordinary participant action. If a user who left sends another message, that user rejoins automatically with a new participation interval.
 
 Agents can perform the same operation with invite-mode handoff. An agent with the `agent_handoff` capability calls `spawn_agent` with `mode = invite`. Unlike foreground or background handoff, invite mode joins the target agent to the current session instead of creating a child session.
 

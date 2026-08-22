@@ -10,6 +10,7 @@ const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
 const mockModelEffortMenu = jest.fn((_props: Record<string, unknown>): React.ReactNode => null);
+const mockRefetchParticipants = jest.fn();
 const mockParticipants: Array<Record<string, unknown>> = [];
 const mockAgents: Array<Record<string, unknown>> = [];
 const mockModels: ModelWithProvider[] = [];
@@ -97,7 +98,10 @@ jest.mock("@/hooks", () => ({
   useModels: () => ({ data: mockModels, isLoading: false }),
   useProviders: () => ({ data: [] }),
   useAgents: () => ({ data: mockAgents }),
-  useSessionParticipants: () => ({ data: mockParticipants }),
+  useSessionParticipants: () => ({
+    data: mockParticipants,
+    refetch: mockRefetchParticipants,
+  }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,
@@ -272,6 +276,7 @@ beforeEach(() => {
   mockUseFeatureFlag.mockReturnValue(false);
   mockStartSessionVoice.mockReset();
   mockEndSessionVoice.mockReset();
+  mockRefetchParticipants.mockReset();
   mockParticipants.length = 0;
   mockAgents.length = 0;
   mockModels.length = 0;
@@ -558,6 +563,7 @@ describe("ChatPanel placeholder", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("participant-mention-token")).not.toBeInTheDocument(),
     );
+    expect(mockRefetchParticipants).toHaveBeenCalledTimes(1);
   });
 
   it("disambiguates duplicate participant display names and supports mention removal", () => {

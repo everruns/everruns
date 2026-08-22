@@ -984,6 +984,64 @@ async fn test_session_crud() {
     assert!(total >= 1);
     assert!(sessions.iter().any(|s| s.id == session.id));
 
+    // Archive round-trip: hidden by default, restored by include_archived, and
+    // idempotent on the timestamp. Mirrors `archived_sessions_are_hidden_unless_requested`
+    // in the in-memory backend's list-filter tests.
+    let archived_row = backend
+        .set_session_archived(TEST_ORG_ID, session.id, true)
+        .await
+        .expect("Failed to archive session")
+        .expect("Session not found");
+    let archived_at = archived_row.archived_at.expect("archived_at set");
+
+    async fn list_for(
+        backend: &StorageBackend,
+        agent_id: everruns_provider::typed_id::AgentId,
+        include_archived: bool,
+    ) -> Vec<everruns_server::storage::SessionRow> {
+        backend
+            .list_sessions(
+                TEST_ORG_ID,
+                &SessionListFilters {
+                    agent_id: Some(agent_id),
+                    include_archived,
+                    ..Default::default()
+                },
+                Pagination {
+                    limit: 10,
+                    offset: 0,
+                },
+            )
+            .await
+            .expect("Failed to list sessions")
+            .0
+    }
+
+    let default_rows = list_for(&backend, agent.id, false).await;
+    assert!(
+        !default_rows.iter().any(|s| s.id == session.id),
+        "archived session must drop out of the default list"
+    );
+    let widened_rows = list_for(&backend, agent.id, true).await;
+    assert!(
+        widened_rows.iter().any(|s| s.id == session.id),
+        "include_archived must bring the archived session back"
+    );
+
+    let rearchived = backend
+        .set_session_archived(TEST_ORG_ID, session.id, true)
+        .await
+        .expect("Failed to re-archive session")
+        .expect("Session not found");
+    assert_eq!(rearchived.archived_at, Some(archived_at));
+
+    let restored = backend
+        .set_session_archived(TEST_ORG_ID, session.id, false)
+        .await
+        .expect("Failed to unarchive session")
+        .expect("Session not found");
+    assert!(restored.archived_at.is_none());
+
     // Delete session
     let deleted = backend
         .delete_session(TEST_ORG_ID, session.id)

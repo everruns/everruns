@@ -1270,6 +1270,15 @@ impl StorageBackend {
         )
     }
 
+    pub async fn set_session_archived(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        archived: bool,
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(self, set_session_archived, org_id, id, archived)
+    }
+
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         dispatch!(self, delete_session, org_id, id)
     }

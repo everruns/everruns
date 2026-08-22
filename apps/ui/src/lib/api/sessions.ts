@@ -23,10 +23,7 @@ export { listEvents } from "./events";
 // Session CRUD
 // ============================================
 
-/**
- * Create a new session for an agent.
- * Sessions are direct children of organizations, with agent_id specifying which agent works in the session.
- */
+/** Create a new organization session bound to an agent or directly to a harness. */
 export async function createSession(request: CreateSessionRequest): Promise<Session> {
   const response = await api.post<Session>("/v1/sessions", request);
   return response.data;
@@ -48,6 +45,8 @@ export interface SessionListFilters {
   status?: string;
   /** Restrict to sessions owned by the calling user. */
   mine?: boolean;
+  /** Include archived sessions. Defaults to false server-side. */
+  includeArchived?: boolean;
   /** Inclusive lower bound on creation time (RFC 3339). */
   createdAfter?: string;
   /** Exclusive upper bound on creation time (RFC 3339). */
@@ -63,6 +62,7 @@ function sessionFilterParams(filters?: SessionListFilters): URLSearchParams {
   if (filters?.source) searchParams.set("source", filters.source);
   if (filters?.status) searchParams.set("status", filters.status);
   if (filters?.mine) searchParams.set("mine", "true");
+  if (filters?.includeArchived) searchParams.set("include_archived", "true");
   if (filters?.createdAfter) searchParams.set("created_after", filters.createdAfter);
   if (filters?.createdBefore) searchParams.set("created_before", filters.createdBefore);
   if (filters?.order) searchParams.set("order", filters.order);
@@ -184,6 +184,20 @@ export async function pinSession(sessionId: string): Promise<void> {
 /** Unpin a session for the current user */
 export async function unpinSession(sessionId: string): Promise<void> {
   await api.delete(`/v1/sessions/${sessionId}/pin`);
+}
+
+// ============================================
+// Session Archiving
+// ============================================
+
+/** Archive a session so it drops out of default list results. */
+export async function archiveSession(sessionId: string): Promise<void> {
+  await api.put(`/v1/sessions/${sessionId}/archive`);
+}
+
+/** Restore an archived session to default list results. */
+export async function unarchiveSession(sessionId: string): Promise<void> {
+  await api.delete(`/v1/sessions/${sessionId}/archive`);
 }
 
 // ============================================

@@ -158,6 +158,7 @@ impl DbSessionStore {
                     finished_at: row.finished_at,
                     usage,
                     is_pinned: None,
+                    archived_at: None,
                     active_schedule_count: None,
                     features: vec![],
                     parent_session_id: row.parent_session_id,

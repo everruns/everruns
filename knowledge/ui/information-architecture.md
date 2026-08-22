@@ -69,13 +69,21 @@ policy and dev-mode gating and stay out of the five groups for the same reason.
 * **Chats is the unconditional landing route.** It is core functionality, requires no feature
   opt-in, is the first thing in the sidebar, and is the default destination for every user with no
   other intent. A fresh organization can open Chats and start a thread without configuration.
-* **A thread is bound to exactly one agent.** Switching agents starts a new thread rather
-  than re-pointing an existing one; the thread's transcript is only meaningful against
-  the agent that produced it.
+* **A thread is bound to exactly one counterpart.** The counterpart may be an Agent or a Harness,
+  so users can talk to a configured runtime without creating an otherwise-empty Agent. Switching
+  counterparts starts a new thread rather than re-pointing an existing one; the transcript is only
+  meaningful against the counterpart that produced it.
 * **The nav's thread list is bounded.** Live threads in the nav mean the nav is never the
   same twice, so the Chats entry lists only the few most recently active threads and hands
   the rest to the all-threads page. It also holds its order steady while the pointer is
   inside it, so an arriving turn cannot re-sort a row out from under a click.
+* **Archiving is how a thread leaves the list without leaving existence.** Threads accumulate,
+  and the bounded nav list makes that cost visible first. Archiving drops a thread out of the
+  nav and out of the all-threads page while keeping its transcript and its URL; the all-threads
+  page always offers the filter that brings archived threads back, because it is the only route
+  to one short of its URL. Deletion stays a separate, destructive action. Unlike pinning, which
+  is a personal shortcut, archiving is a statement about the thread and applies to everyone who
+  can see it.
 * **A session is a read-only recording.** Session detail inspects, it does not edit. Its default
   Transcript preserves the human-readable conversation; Timeline curates how the run executed;
   Events remains the exact emitted ledger. Work, Workspace, and Cost appear when applicable to the

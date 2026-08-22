@@ -4,7 +4,10 @@
 //! predicate as the Postgres repository. The Postgres side is covered by
 //! `crates/server/tests/repository_integration_test.rs`.
 
-use super::{GetSessionFacets, ListSessions, SessionFilterArgs, SessionService};
+use super::{
+    ArchiveSession, GetSessionFacets, ListSessions, SessionFilterArgs, SessionService,
+    UnarchiveSession,
+};
 use crate::domains::common::{Command, Ctx};
 use crate::storage::{CreateAgentRow, CreateEventRow, CreateSessionRow, StorageBackend};
 use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, OrgRole};
@@ -463,6 +466,7 @@ fn filter_args_deserialize_through_the_generic_command_runner() {
         "source": "chat",
         "status": "running,failed",
         "mine": "true",
+        "include_archived": "true",
         "order": "last_activity",
         "created_after": "2026-08-01T00:00:00Z",
         "limit": "50"
@@ -472,6 +476,119 @@ fn filter_args_deserialize_through_the_generic_command_runner() {
     assert_eq!(cmd.filters.source.as_deref(), Some("chat"));
     assert_eq!(cmd.filters.status.as_deref(), Some("running,failed"));
     assert_eq!(cmd.filters.mine, Some(true));
+    assert_eq!(cmd.filters.include_archived, Some(true));
     assert_eq!(cmd.filters.order.as_deref(), Some("last_activity"));
     assert_eq!(cmd.limit, Some(50));
+}
+
+/// Archiving is the "put it away" bit the chat thread list reads: hidden by
+/// default, and brought back by asking for it explicitly.
+#[tokio::test]
+async fn archived_sessions_are_hidden_unless_requested() {
+    let db = seeded_db().await;
+    let ctx = ctx_for(db.clone(), None);
+    let target = ListSessions {
+        filters: args(Some("chat"), None),
+        offset: None,
+        limit: Some(1),
+    }
+    .execute(&ctx)
+    .await
+    .expect("list sessions")
+    .data
+    .into_iter()
+    .next()
+    .expect("chat thread");
+
+    ArchiveSession {
+        session_id: target.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("archive");
+
+    assert!(
+        !titles(&ctx, SessionFilterArgs::default())
+            .await
+            .contains(&"chat thread".to_string()),
+        "archived thread must drop out of the default list"
+    );
+    assert!(
+        titles(
+            &ctx,
+            SessionFilterArgs {
+                include_archived: Some(true),
+                ..Default::default()
+            }
+        )
+        .await
+        .contains(&"chat thread".to_string()),
+        "include_archived must bring it back"
+    );
+
+    // Facets count the same population the page shows, so the archived row is
+    // out of the totals too until it is asked for.
+    let facets = GetSessionFacets {
+        filters: SessionFilterArgs::default(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("facets");
+    assert_eq!(facets.total, 2);
+    assert_eq!(bucket(&facets.by_source, "chat"), 0);
+
+    UnarchiveSession {
+        session_id: target.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("unarchive");
+
+    assert!(
+        titles(&ctx, SessionFilterArgs::default())
+            .await
+            .contains(&"chat thread".to_string()),
+        "unarchiving must restore the thread to the default list"
+    );
+}
+
+/// Archiving twice must not move the timestamp: it records when the session was
+/// first put away.
+#[tokio::test]
+async fn archiving_is_idempotent() {
+    let db = new_db(&[DEFAULT_ORG_ID]).await;
+    let id = seed(
+        &db,
+        Seed {
+            source: SessionSource::Chat,
+            title: "thread",
+            owner_user_id: None,
+            agent_id: None,
+            last_turn: None,
+        },
+    )
+    .await;
+
+    let first = db
+        .set_session_archived(DEFAULT_ORG_ID, id, true)
+        .await
+        .expect("archive")
+        .expect("row")
+        .archived_at
+        .expect("archived_at set");
+    let second = db
+        .set_session_archived(DEFAULT_ORG_ID, id, true)
+        .await
+        .expect("archive again")
+        .expect("row")
+        .archived_at
+        .expect("archived_at still set");
+    assert_eq!(first, second);
+
+    let cleared = db
+        .set_session_archived(DEFAULT_ORG_ID, id, false)
+        .await
+        .expect("unarchive")
+        .expect("row");
+    assert!(cleared.archived_at.is_none());
 }
