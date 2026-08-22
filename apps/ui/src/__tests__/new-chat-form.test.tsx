@@ -50,11 +50,11 @@ jest.mock("@/components/ui/select", () => {
   }) {
     return (
       <select
-        aria-label="Agent for this chat"
+        aria-label="Chat counterpart"
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
       >
-        <option value="">Pick an agent</option>
+        <option value="">Pick an agent or harness</option>
         {collectOptions(children)}
       </select>
     );
@@ -68,7 +68,9 @@ jest.mock("@/components/ui/select", () => {
   return {
     Select,
     SelectContent: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
+    SelectGroup: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
     SelectItem,
+    SelectLabel: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
     SelectTrigger: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
     SelectValue: () => null,
   };
@@ -99,8 +101,8 @@ describe("NewChatForm", () => {
   it("creates an agent-bound thread and opens it", async () => {
     render(<NewChatForm />);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Agent for this chat" }), {
-      target: { value: "agent_1" },
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "agent:agent_1" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
 
@@ -115,14 +117,40 @@ describe("NewChatForm", () => {
   it("binds a Platform Chat thread to the harness instead", async () => {
     render(<NewChatForm />);
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Agent for this chat" }), {
-      target: { value: "__platform_chat__" },
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "harness:platform-chat" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
 
     await waitFor(() =>
       expect(mutateAsync).toHaveBeenCalledWith({
         request: { harness_name: "platform-chat", tags: ["chat"] },
+      }),
+    );
+  });
+
+  it("creates a harness-bound thread without an agent", async () => {
+    setup({
+      harnesses: [
+        {
+          id: "harness_generic",
+          name: "generic",
+          display_name: "Generic",
+        },
+      ],
+    });
+
+    render(<NewChatForm />);
+
+    expect(screen.getByRole("option", { name: "Generic" })).toHaveValue("harness:generic");
+    fireEvent.change(screen.getByRole("combobox", { name: "Chat counterpart" }), {
+      target: { value: "harness:generic" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Start chat/ }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        request: { harness_name: "generic", tags: ["chat"] },
       }),
     );
   });

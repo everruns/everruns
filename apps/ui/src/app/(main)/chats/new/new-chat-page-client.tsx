@@ -12,7 +12,7 @@ export default function NewChatPageClient() {
         className="mt-6"
         icon={<MessageCircle />}
         title="New chat"
-        description="A thread is bound to one agent for its lifetime. Pick the agent you want to talk to."
+        description="A thread is bound to one agent or harness for its lifetime. Pick the counterpart you want to talk to."
         action={<NewChatForm />}
       />
     </PageContainer>
