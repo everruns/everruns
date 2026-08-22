@@ -266,11 +266,17 @@ fn expand(args: ToolArgs, func: ItemFn) -> syn::Result<TokenStream2> {
                     let __parsed: __Args = match ::everruns::__macro_support::from_value(__args) {
                         ::core::result::Result::Ok(__v) => __v,
                         ::core::result::Result::Err(__e) => {
-                            return ::core::result::Result::Err(::std::format!(
-                                "invalid arguments for tool `{}`: {}",
-                                #tool_name,
-                                __e,
-                            ));
+                            // Model-visible on purpose, unlike the `Err` channel
+                            // below: the model wrote these arguments, so naming
+                            // the bad field is what lets it fix its own call.
+                            // It describes the call, never the host.
+                            return ::core::result::Result::Ok(
+                                ::everruns::ToolResponse::error(::std::format!(
+                                    "invalid arguments for tool `{}`: {}",
+                                    #tool_name,
+                                    __e,
+                                )),
+                            );
                         }
                     };
                     let __out = #impl_ident(#(__parsed.#field_idents),*).await;

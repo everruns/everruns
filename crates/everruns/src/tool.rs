@@ -16,8 +16,8 @@
 //! contract ([`everruns_core::tools::Tool`]) and registered as a single-tool,
 //! closure-backed [`Capability`](everruns_core::capabilities::Capability) on the
 //! in-process runtime, so the model can call it and the result flows back like
-//! any built-in tool. Handler errors become model-visible tool errors; a handler
-//! never panics the turn.
+//! any built-in tool. Handler errors are treated as internal errors and redacted
+//! before reaching the model; a handler never panics the turn.
 //!
 //! # Example
 //!
@@ -128,8 +128,18 @@ type HandlerFn =
 /// Construct one with [`FunctionTool::new`] and hand it to
 /// [`AgentBuilder::tool`](crate::AgentBuilder::tool). The handler is invoked
 /// with the model's call arguments deserialized into a [`serde_json::Value`]
-/// and returns any [`IntoToolResult`]. A returned `Err` becomes a model-visible
-/// tool error — the turn is never panicked by a handler.
+/// and returns any [`IntoToolResult`]. A returned `Err` becomes a redacted
+/// internal error — the turn is never panicked by a handler. Return
+/// [`ToolResponse::error`] from the `Ok` path for errors that are safe to show
+/// to the model.
+///
+/// The `Err` channel is redacted because a handler's error text is written
+/// against the host — a path, a query, a connection string — and the model is
+/// an untrusted reader of anything it is shown. The full error is still logged
+/// with the tool name and call id, so nothing is lost for the developer.
+/// `#[everruns::tool]` is unaffected: it maps a function's own `Err` to a
+/// model-visible tool error before it reaches this channel, and reserves this
+/// channel for failures the model did not cause.
 ///
 /// A `FunctionTool` is cheap to clone (the handler is reference-counted) and is
 /// `Send + Sync`, so the same tool can execute calls concurrently.
@@ -151,8 +161,8 @@ impl FunctionTool {
     ///   at build time).
     /// - `handler` is an async `Fn(serde_json::Value) -> Result<T, E>` where
     ///   `T: IntoToolResult` (a `Value`, a `String`, or a [`ToolResponse`]) and
-    ///   `E: Display`. On `Err`, the error's `Display` text is returned to the
-    ///   model as a tool error.
+    ///   `E: Display`. On `Err`, the error's `Display` text is retained for
+    ///   internal diagnostics but redacted from the model-facing tool result.
     pub fn new<F, Fut, T, E>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -170,7 +180,7 @@ impl FunctionTool {
             Box::pin(async move {
                 match fut.await {
                     Ok(value) => value.into_tool_result(),
-                    Err(err) => ToolExecutionResult::tool_error(err.to_string()),
+                    Err(err) => ToolExecutionResult::internal_error_msg(err.to_string()),
                 }
             })
         });
@@ -405,7 +415,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handler_error_maps_to_tool_error_without_panicking() {
+    async fn handler_error_maps_to_internal_error_without_panicking() {
         let tool = FunctionTool::new(
             "boom",
             "Always fails.",
@@ -413,10 +423,17 @@ mod tests {
             |_args: Value| async move { Err::<Value, String>("kaboom".to_string()) },
         );
         let result = tool.execute(json!({})).await;
-        match result {
-            ToolExecutionResult::ToolError(message) => assert_eq!(message, "kaboom"),
-            other => panic!("expected tool error, got {other:?}"),
-        }
+        assert!(matches!(result, ToolExecutionResult::InternalError(_)));
+
+        let visible = result
+            .into_tool_result("call_boom", "boom")
+            .error
+            .expect("model-visible error");
+        assert_eq!(
+            visible,
+            "An internal error occurred while executing the tool"
+        );
+        assert!(!visible.contains("kaboom"));
     }
 
     #[tokio::test]

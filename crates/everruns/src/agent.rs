@@ -1583,7 +1583,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn function_tool_handler_error_is_model_visible_not_a_panic() {
+    async fn function_tool_handler_error_is_redacted_not_a_panic() {
         let tool = FunctionTool::new(
             "always_fails",
             "Always returns an error.",
@@ -1609,8 +1609,8 @@ mod tests {
             .expect("valid agent");
 
         let session = InMemoryEngine::new().create(agent.clone());
-        // The handler error becomes a tool result the model consumes; the turn
-        // still completes rather than panicking.
+        // The handler error becomes a redacted tool result the model consumes;
+        // the turn still completes rather than panicking.
         let turn = session.run("go").await.expect("turn runs");
         assert!(turn.success, "turn should recover from a tool error");
         assert_eq!(turn.tool_calls, 1);

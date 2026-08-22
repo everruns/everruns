@@ -165,12 +165,20 @@ async fn unit_return_tool_executes() {
 async fn invalid_arguments_surface_as_a_tool_error() {
     // Missing the required `city` field: deserialization fails and the adapter
     // returns a tool error string instead of panicking.
+    //
+    // This stays model-visible even though handler errors are now redacted. The
+    // model wrote these arguments; naming the bad field is what lets it correct
+    // its own call, and the message describes the call, not the host.
     let tool = weather();
     match CoreTool::execute(&tool, json!({ "unit": "C" })).await {
         everruns_core::tools::ToolExecutionResult::ToolError(message) => {
             assert!(
                 message.contains("invalid arguments for tool `weather`"),
                 "unexpected message: {message}"
+            );
+            assert!(
+                message.contains("city"),
+                "the model needs the offending field named: {message}"
             );
         }
         other => panic!("expected a tool error, got {other:?}"),
