@@ -1,5 +1,16 @@
 # Everruns Knowledge Update Log
 
+## 2026-08-22
+
+* **A scheduled session's GitHub identity is not negotiable, so "try another
+  token" is never the fix.** The agent egress proxy rewrites `Authorization`
+  for `api.github.com`: an invalid token and no token both authenticate as the
+  session's own GitHub App installation. Measured 2026-08-22. That closes
+  EVE-926's first exit criterion — granting the Doppler PAT Dependabot-alert
+  access cannot work, because the PAT is discarded in transit — and leaves
+  widening the App installation as the only path. See
+  `knowledge/security/security-testing.md`.
+
 ## 2026-08-21
 
 * **Dependency removal is measured, not estimated, and two traps produce wrong

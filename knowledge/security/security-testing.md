@@ -84,7 +84,10 @@ setup and `.deepsec/AGENTS.md` for agent usage.
   code-scanning and Dependabot alerts into a job log daily. The alert APIs are
   unreadable from a scheduled agent session, so this is how such a session sees
   them; a workflow token reaches code scanning but not Dependabot alerts, which
-  still need the token scope EVE-923 tracks.
+  still need `security_events` on the GitHub App installation (EVE-926).
+  Substituting a token does not help: the agent egress proxy rewrites
+  `Authorization` for `api.github.com`, so a scheduled session authenticates as
+  its own App installation no matter what it sends.
 - **Secret scanning**: GitHub push-protection and open-alert review.
 - **CI secret scoping**: fork-PR jobs never receive repository secrets
   (TM-CI-001..005); see `knowledge/security/threat-model.md`.
