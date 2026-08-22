@@ -57,10 +57,11 @@ Participant ids use the `part_` prefix (see `knowledge/foundations/id-schema.md`
   environment.
 - **Membership history is append-only in spirit.** Leaving sets `left_at`; rows
   are not deleted, so provenance and the join/leave timeline stay reconstructable.
-- **User membership is idempotent.** A user acting in a session is ensured as an
-  active member participant exactly once
-  (`ensure_active_user_session_participant`), rather than creating a row per
-  turn.
+- **User membership follows activity.** Before an authenticated user's message
+  is emitted, that user is ensured as an active member participant
+  (`ensure_active_user_session_participant`). An existing active row is reused;
+  if the user previously left, the message creates a new row for the new
+  participation interval. The message is attributed to that active row.
 
 ## API
 

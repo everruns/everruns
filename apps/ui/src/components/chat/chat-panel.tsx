@@ -131,7 +131,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
   } = useSessionContext();
 
   const { data: models = [], isLoading: modelsLoading } = useModels();
-  const { data: participants } = useSessionParticipants(sessionId);
+  const { data: participants, refetch: refetchParticipants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
   const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
@@ -505,6 +505,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
         });
       }
 
+      void refetchParticipants();
       persistSelection();
       setInputValue("");
       setAddressedParticipantId(null);
