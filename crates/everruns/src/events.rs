@@ -5,7 +5,7 @@
 //!
 //! - **Observation.** [`Session::events`](crate::Session::events) returns an
 //!   [`EventStream`] — a live feed of [`SessionEvent`]s projected from the
-//!   host's canonical event emitter. Every event retains the canonical event
+//!   host's canonical event emitter. Events retain the canonical event
 //!   protocol as JSON and also exposes a typed convenience projection. The
 //!   stream is bounded, so a slow or dropped consumer can never stall the turn
 //!   that produces the events; lag is reported explicitly to the consumer.
@@ -48,12 +48,16 @@ pub const EVENT_STREAM_CAPACITY: usize = 4096;
 
 /// A single observed event from a running [`Session`](crate::Session).
 ///
-/// This is an explicitly lossless typed/raw bridge to Everruns' canonical event
+/// This is a typed/raw bridge to Everruns' canonical event
 /// protocol. [`kind`](SessionEvent::kind) is the ergonomic typed projection used
-/// by renderers, while [`as_json`](SessionEvent::as_json) returns the complete
-/// canonical event envelope without translation or omitted fields. The JSON
+/// by renderers, while [`as_json`](SessionEvent::as_json) returns the canonical
+/// event envelope with the live-delta exception described below. The JSON
 /// form includes the event timestamp, optional persisted sequence, correlation
-/// context, full event-specific data, metadata, and tags.
+/// context, event-specific data, metadata, and tags. For
+/// `output.message.delta` events, the redundant `data.accumulated` prefix is
+/// omitted to keep buffered stream memory proportional to output size rather
+/// than quadratic in it. Incremental text remains in
+/// [`SessionEventKind::TextDelta`].
 ///
 /// The correlation ids (`event_id`, `session_id`, and the optional `turn_id`)
 /// are also promoted as strings for common logging and matching tasks.
@@ -220,12 +224,13 @@ impl SessionEvent {
         &self.timestamp
     }
 
-    /// The complete canonical event envelope as JSON.
+    /// The canonical event envelope as JSON.
     ///
     /// This is the same serialized representation used by Everruns' public
-    /// event protocol. It is the lossless side of the typed/raw bridge: no
-    /// event fields are omitted even when [`kind`](Self::kind) is a compact
-    /// renderer-oriented projection or [`SessionEventKind::Other`].
+    /// event protocol. No event fields are omitted when [`kind`](Self::kind) is a compact
+    /// renderer-oriented projection or [`SessionEventKind::Other`], except
+    /// `data.accumulated` on `output.message.delta`. That redundant growing
+    /// prefix is omitted so a slow subscriber cannot retain quadratic memory.
     pub fn as_json(&self) -> &Value {
         &self.raw
     }
@@ -255,9 +260,19 @@ impl SessionEvent {
     /// type is carried through the [`Other`](SessionEventKind::Other) fallback,
     /// so no event is ever dropped.
     fn from_core_event(event: &Event) -> Self {
-        let raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
-        let data = serde_json::to_value(&event.data)
+        let mut raw = serde_json::to_value(event).expect("canonical events are JSON serializable");
+        let mut data = serde_json::to_value(&event.data)
             .expect("canonical event payloads are JSON serializable");
+        if event.event_type == events::OUTPUT_MESSAGE_DELTA {
+            // THREAT[TM-DOS-037]: accumulated repeats the entire output prefix
+            // in every delta. Retaining those prefixes in the broadcast ring
+            // would turn an n-byte streamed response into O(n^2) memory.
+            data.as_object_mut()
+                .and_then(|data| data.remove("accumulated"));
+            raw.get_mut("data")
+                .and_then(Value::as_object_mut)
+                .and_then(|data| data.remove("accumulated"));
+        }
         let turn_id = event.context.turn_id.map(|id| id.to_string());
         let kind = match event.event_type.as_str() {
             events::INPUT_MESSAGE => match &event.data {
@@ -778,6 +793,9 @@ mod tests {
 
         assert_eq!(started.event_type(), "turn.started");
         assert_eq!(delta.event_type(), "output.message.delta");
+        assert_eq!(delta.data()["delta"], "hi");
+        assert!(delta.data().get("accumulated").is_none());
+        assert!(delta.as_json()["data"].get("accumulated").is_none());
         assert_eq!(cancelled.event_type(), "turn.cancelled");
         assert_eq!(started.sequence(), Some(1));
         assert_eq!(delta.sequence(), None);

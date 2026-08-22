@@ -1,6 +1,6 @@
 ---
 title: Canonical Framework events
-description: Observe a complete agent turn through a lossless typed/raw bridge while keeping durability, live delivery, and derived history distinct.
+description: Observe a complete agent turn through a bounded typed/raw bridge while keeping durability, live delivery, and derived history distinct.
 sidebar:
   order: 2
 ---
@@ -23,7 +23,7 @@ let mut events = session.events();
 let observer = tokio::spawn(async move {
     let mut canonical_events = Vec::new();
     while let Some(event) = events.recv().await? {
-        // Lossless recording: the complete public event envelope.
+        // Record the public event envelope.
         canonical_events.push(event.as_json().clone());
 
         // Typed rendering for common terminal/service UI concerns.
@@ -58,12 +58,16 @@ promotes assistant output lifecycle and deltas, model reasoning/generation,
 tool lifecycle/progress/output, and turn terminal states. It is non-exhaustive,
 so match it with a fallback arm.
 
-`SessionEvent::as_json()` is the lossless side of the bridge. It returns the
-same canonical envelope used by the public Everruns event protocol, including
+`SessionEvent::as_json()` returns the canonical envelope used by the public
+Everruns event protocol, including
 the event id and type, timestamp, optional persisted sequence, correlation
-context, full typed payload, metadata, and tags. `SessionEvent::data()` accesses
-its complete payload directly. Use it for details intentionally not duplicated
-into the convenience projection, such as:
+context, typed payload, metadata, and tags. Live `output.message.delta`
+envelopes omit the redundant `data.accumulated` prefix; retaining every growing
+prefix in a slow subscriber's buffer would use quadratic memory. Concatenate
+the typed `TextDelta::delta` values to reconstruct streamed text, or use the
+subsequent `output.message.completed` event for the complete message.
+`SessionEvent::data()` accesses the retained payload directly. Use it for
+details intentionally not duplicated into the convenience projection, such as:
 
 - tool arguments, results, status, narration, and duration;
 - complete structured assistant messages, phases, model metadata, and usage;
@@ -97,8 +101,8 @@ Rebuild a transcript in persisted sequence order from `input.message`,
 `output.message.replaced` event alone creates no history message; the subsequent
 completed message contains the safe replacement. If a crash leaves a
 replacement without completion, replay correctly omits that incomplete output.
-The Framework stream exposes the complete payloads and introduces no independent
-writable message history.
+The Framework stream exposes canonical payloads, subject to the live-delta
+exception above, and introduces no independent writable message history.
 
 Canonical recordings can contain user messages, agent instructions, model
 inputs, tool arguments, and tool results. Treat them as application data with

@@ -202,7 +202,7 @@ includes the exact command for each one.
 
 - [`observe_and_cancel`](examples/observe_and_cancel.rs) — event streaming and
   cooperative cancellation.
-- [`canonical_events`](examples/canonical_events.rs) — lossless event recording
+- [`canonical_events`](examples/canonical_events.rs) — bounded canonical event recording
   and typed rendering.
 - [`lifecycle_hooks`](examples/lifecycle_hooks.rs) — awaited agent, turn, tool,
   and completion handlers.
