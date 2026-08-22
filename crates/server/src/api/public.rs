@@ -104,6 +104,7 @@ impl PublicError {
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::MODEL_UNAVAILABLE
+                | user_facing_error_codes::MODEL_NOT_CONFIGURED
                 | user_facing_error_codes::BUDGET_EXHAUSTED
                 | user_facing_error_codes::BUDGET_PAUSED
                 | user_facing_error_codes::SOFT_LIMIT_REACHED,
@@ -171,6 +172,7 @@ mod tests {
             user_facing_error_codes::PROVIDER_MISCONFIGURED,
             user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED,
             user_facing_error_codes::MODEL_UNAVAILABLE,
+            user_facing_error_codes::MODEL_NOT_CONFIGURED,
             user_facing_error_codes::BUDGET_EXHAUSTED,
             user_facing_error_codes::BUDGET_PAUSED,
             user_facing_error_codes::SOFT_LIMIT_REACHED,

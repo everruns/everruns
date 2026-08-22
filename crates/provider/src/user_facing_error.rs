@@ -11,6 +11,7 @@ pub mod codes {
     pub const BUDGET_EXHAUSTED: &str = "budget_exhausted";
     pub const BUDGET_PAUSED: &str = "budget_paused";
     pub const MODEL_UNAVAILABLE: &str = "model_unavailable";
+    pub const MODEL_NOT_CONFIGURED: &str = "model_not_configured";
     pub const REQUEST_TOO_LARGE: &str = "request_too_large";
     pub const PROVIDER_RATE_LIMITED: &str = "provider_rate_limited";
     /// Subscription/plan usage limit was reached (e.g. ChatGPT/Codex
@@ -279,6 +280,10 @@ impl UserFacingError {
                         .to_string()
                 }
             }
+            codes::MODEL_NOT_CONFIGURED => {
+                "No model is configured for this chat. Choose a model or configure a default model, then try again."
+                    .to_string()
+            }
             codes::REQUEST_TOO_LARGE => {
                 "The conversation has become too long for the model to process. Please start a new session or reduce the context size.".to_string()
             }
@@ -353,6 +358,10 @@ pub fn classify_runtime_error_message(
 
     if let Some(model_id) = normalized.strip_prefix("Model not available: ") {
         return UserFacingError::new(codes::MODEL_UNAVAILABLE).with_field("model_id", model_id);
+    }
+
+    if normalized.starts_with("Model not configured") || lower.contains("no model configured") {
+        return UserFacingError::new(codes::MODEL_NOT_CONFIGURED);
     }
 
     if normalized.starts_with("Request too large:")
@@ -898,6 +907,17 @@ mod tests {
 
         assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
         assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
+    }
+
+    #[test]
+    fn classify_missing_model_as_model_not_configured() {
+        let error = classify_runtime_error_message(
+            "ReasonAtom execution failed: Model not configured",
+            &UserFacingErrorContext::default(),
+        );
+
+        assert_eq!(error.code, codes::MODEL_NOT_CONFIGURED);
+        assert!(error.fallback_message().contains("Choose a model"));
     }
 
     #[test]

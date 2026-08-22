@@ -3,7 +3,7 @@
 // task metadata and the full anyhow error chain for durable task surfaces.
 
 use anyhow::Error;
-#[cfg(test)]
+use everruns_provider::error::AgentLoopError;
 use everruns_provider::user_facing_error::{
     UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
 };
@@ -59,10 +59,18 @@ pub(crate) fn summarize_task_failure(
     }
 }
 
-#[cfg(test)]
 pub(crate) fn user_facing_failure(error: &str) -> UserFacingError {
     let error_chain = error.split("error_chain=").nth(1).unwrap_or(error).trim();
     classify_runtime_error_message(error_chain, &UserFacingErrorContext::default())
+}
+
+/// Preserve typed retry semantics through anyhow's activity error boundary.
+pub(crate) fn is_non_retryable_task_error(error: &Error) -> bool {
+    error.chain().any(|cause| {
+        cause
+            .downcast_ref::<AgentLoopError>()
+            .is_some_and(AgentLoopError::is_non_retryable)
+    })
 }
 
 #[cfg(test)]
@@ -263,6 +271,21 @@ mod tests {
                 .persisted_message
                 .contains("session_id=session_top_level")
         );
+    }
+
+    #[test]
+    fn typed_model_configuration_failure_is_non_retryable() {
+        let error = anyhow::Error::new(AgentLoopError::model_not_configured())
+            .context("ReasonAtom execution failed");
+
+        assert!(is_non_retryable_task_error(&error));
+    }
+
+    #[test]
+    fn transient_failure_remains_retryable() {
+        let error = anyhow::anyhow!("provider temporarily unavailable");
+
+        assert!(!is_non_retryable_task_error(&error));
     }
 
     #[test]

@@ -146,6 +146,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
 
   const {
     selectedModelId,
+    selectedModel,
     recentModels,
     supportsReasoning,
     reasoningEffortConfig,
@@ -182,6 +183,9 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
     hasImages,
     isUploading,
   } = useImageAttachments({ sessionId });
+
+  const modelReady = Boolean(selectedModel || (!selectedModelId && llmModel));
+  const modelLoading = selectedModelId ? modelsLoading : llmModelLoading;
 
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
     onImageFiles: addFiles,
@@ -243,6 +247,7 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
   });
 
   const canSubmit =
+    modelReady &&
     (inputValue.trim().length > 0 || hasImages) &&
     allUploaded &&
     !sendMessage.isPending &&
@@ -525,13 +530,15 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
           return;
         }
 
-        await runSystemCommand(cmd, "", controls);
+        if (modelReady) {
+          await runSystemCommand(cmd, "", controls);
+        }
         return;
       }
 
       setInputValue(`/${cmd.name} `);
     },
-    [runSystemCommand],
+    [modelReady, runSystemCommand],
   );
 
   return (
@@ -604,6 +611,8 @@ export function ChatPanel({ replyToLabel, showRunCards = false }: ChatPanelProps
             isActive={isActive}
             cancelCurrentTurn={cancelCurrentTurn}
             canSubmit={canSubmit}
+            modelReady={modelReady}
+            modelLoading={modelLoading}
             isUploading={isUploading}
             sendPending={
               sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending

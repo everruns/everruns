@@ -662,10 +662,26 @@ impl WorkerPool {
                                         store.as_ref(),
                                         dead.workflow_id,
                                         dead.activity_id.clone(),
-                                        error_msg,
+                                        error_msg.clone(),
                                         false, // will_retry = false, all attempts exhausted
                                     )
                                     .await;
+                                    if let Some(workflow_id) = dead.workflow_id
+                                        && store
+                                            .try_fail_workflow(
+                                                workflow_id,
+                                                crate::WorkflowError::new(error_msg.clone()),
+                                            )
+                                            .await
+                                            .unwrap_or(false)
+                                    {
+                                        crate::task_events::record_workflow_failed(
+                                            store.as_ref(),
+                                            workflow_id,
+                                            error_msg,
+                                        )
+                                        .await;
+                                    }
                                 }
 
                                 // Sealed turns (forward-progress guard, EVE-534): the task

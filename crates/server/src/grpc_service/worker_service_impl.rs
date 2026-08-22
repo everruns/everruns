@@ -1662,7 +1662,10 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        let outcome = match store.fail_task(task_id, &req.error).await {
+        let outcome = match store
+            .fail_task_with_retry(task_id, &req.error, req.retryable.unwrap_or(true))
+            .await
+        {
             Ok(outcome) => outcome,
             Err(StoreError::TaskNotOwned(_)) => {
                 // EVE-639: fail_task now no-ops if the task is no longer 'claimed'
@@ -1676,6 +1679,7 @@ impl WorkerService for WorkerServiceImpl {
                 return Ok(Response::new(FailDurableTaskResponse {
                     failed: true,
                     will_retry: true,
+                    terminal_failure_owner: false,
                 }));
             }
             Err(e) => {
@@ -1686,6 +1690,24 @@ impl WorkerService for WorkerServiceImpl {
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
+        let terminal_failure_owner = if will_retry {
+            false
+        } else if let Some(workflow_id) = task_info.as_ref().and_then(|info| info.workflow_id) {
+            let error = WorkflowError::new(req.error.clone());
+            let won = store
+                .try_fail_workflow(workflow_id, error)
+                .await
+                .map_err(|error| {
+                    tracing::error!(%workflow_id, %error, "Failed to terminalize workflow");
+                    Status::internal("Failed to terminalize workflow")
+                })?;
+            if won {
+                record_workflow_failed(store.as_ref(), workflow_id, req.error.clone()).await;
+            }
+            won
+        } else {
+            false
+        };
 
         // Notify NATS when task goes back to pending for retry
         if let (true, Some(broadcaster), Some(info)) =
@@ -1709,6 +1731,7 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(FailDurableTaskResponse {
             failed: true,
             will_retry,
+            terminal_failure_owner,
         }))
     }
 

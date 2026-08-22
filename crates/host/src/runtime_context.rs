@@ -295,11 +295,7 @@ async fn resolve_model(
     let model = provider_store
         .get_default_model_spec()
         .await?
-        .ok_or_else(|| {
-        AgentLoopError::llm(
-            "No model configured: no model_id in controls or execution snapshot, and no system default model is set",
-        )
-    })?;
+        .ok_or_else(AgentLoopError::model_not_configured)?;
     Ok((model, None))
 }
 
@@ -326,4 +322,46 @@ pub(crate) async fn resolve_model_execution(
         provider_type,
         driver,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::InMemoryProviderStore;
+
+    #[tokio::test]
+    async fn missing_model_resolution_returns_typed_terminal_error() {
+        let store = InMemoryProviderStore::new();
+
+        let error = resolve_model(&store, None, None).await.unwrap_err();
+
+        assert!(matches!(error, AgentLoopError::ModelNotConfigured));
+        assert!(error.is_non_retryable());
+    }
+
+    #[tokio::test]
+    async fn explicit_model_resolution_wins_over_the_default() {
+        let store = InMemoryProviderStore::with_default(ModelSpec::on("default", "fallback")).await;
+        let model_id = ModelId::new();
+        store
+            .add_model(model_id, ModelSpec::on("explicit", "selected"))
+            .await;
+
+        let (model, resolved_id) = resolve_model(&store, Some(model_id), None).await.unwrap();
+
+        assert_eq!(model.provider.as_str(), "explicit");
+        assert_eq!(model.model, "selected");
+        assert_eq!(resolved_id, Some(model_id));
+    }
+
+    #[tokio::test]
+    async fn default_model_resolution_has_no_message_override() {
+        let store = InMemoryProviderStore::with_default(ModelSpec::on("default", "fallback")).await;
+
+        let (model, resolved_id) = resolve_model(&store, None, None).await.unwrap();
+
+        assert_eq!(model.provider.as_str(), "default");
+        assert_eq!(model.model, "fallback");
+        assert_eq!(resolved_id, None);
+    }
 }

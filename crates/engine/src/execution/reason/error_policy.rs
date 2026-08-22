@@ -8,6 +8,7 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "Rate limited by the AI provider. Please wait a moment.",
     "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
     "There is a misconfiguration with the AI provider. Please contact support.",
+    "No model is configured for this chat. Choose a model or configure a default model, then try again.",
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
 ];
 
@@ -27,6 +28,7 @@ pub(super) fn is_error_placeholder_message(msg: &Message) -> bool {
             user_facing_error_codes::BUDGET_EXHAUSTED
                 | user_facing_error_codes::BUDGET_PAUSED
                 | user_facing_error_codes::MODEL_UNAVAILABLE
+                | user_facing_error_codes::MODEL_NOT_CONFIGURED
                 | user_facing_error_codes::REQUEST_TOO_LARGE
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
                 | user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED

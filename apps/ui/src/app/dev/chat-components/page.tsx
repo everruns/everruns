@@ -164,6 +164,8 @@ export default function DevChatComponentsPage() {
                     isPending: false,
                   }}
                   canSubmit={inputValue.trim().length > 0 || pendingImages.length > 0}
+                  modelReady={Boolean(selectedModelId)}
+                  modelLoading={false}
                   isUploading={pendingImages.some((image) => image.status === "uploading")}
                   sendPending={false}
                   textareaRef={textareaRef}

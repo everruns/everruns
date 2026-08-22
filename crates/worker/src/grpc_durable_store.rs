@@ -346,14 +346,21 @@ impl GrpcDurableStore {
     }
 
     /// Fail a task
-    pub async fn fail_task(&mut self, task_id: Uuid, error: &str) -> Result<bool> {
+    pub async fn fail_task(
+        &mut self,
+        task_id: Uuid,
+        error: &str,
+        retryable: bool,
+    ) -> Result<(bool, bool)> {
         let request = FailDurableTaskRequest {
             task_id: Some(uuid_to_proto_uuid(task_id)),
             error: error.to_string(),
+            retryable: Some(retryable),
         };
 
         let response = self.client.fail_durable_task(request).await?;
-        Ok(response.into_inner().will_retry)
+        let response = response.into_inner();
+        Ok((response.will_retry, response.terminal_failure_owner))
     }
 
     /// Send heartbeat for a task

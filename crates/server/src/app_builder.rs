@@ -2056,10 +2056,46 @@ impl ServerAppBuilder {
                                             &store,
                                             dead.workflow_id,
                                             dead.activity_id.clone(),
-                                            error_msg,
+                                            error_msg.clone(),
                                             false,
                                         )
                                         .await;
+
+                                        if let Some(workflow_id) = dead.workflow_id {
+                                            match store
+                                                .try_fail_workflow(
+                                                    workflow_id,
+                                                    everruns_durable::WorkflowError::new(
+                                                        error_msg.clone(),
+                                                    ),
+                                                )
+                                                .await
+                                            {
+                                                Ok(true) => {
+                                                    everruns_durable::record_workflow_failed(
+                                                        &store,
+                                                        workflow_id,
+                                                        error_msg.clone(),
+                                                    )
+                                                    .await;
+                                                    crate::durable_failure::handle_failed_task(
+                                                        &reclaim_event_service,
+                                                        &reclaim_session_service,
+                                                        dead,
+                                                        &error_msg,
+                                                    )
+                                                    .await;
+                                                }
+                                                Ok(false) => {}
+                                                Err(error) => {
+                                                    tracing::error!(
+                                                        %workflow_id,
+                                                        %error,
+                                                        "Failed to terminalize exhausted workflow"
+                                                    );
+                                                }
+                                            }
+                                        }
                                     }
 
                                     // Sealed turns (forward-progress guard, EVE-534): the task
