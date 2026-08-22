@@ -152,6 +152,7 @@ impl InMemoryDatabase {
             forked_from_sequence: None,
             blueprint_id: input.blueprint_id,
             blueprint_config: input.blueprint_config,
+            archived_at: None,
         };
         self.sessions.write().insert(id, row.clone());
         self.insert_initial_session_participants(&row).await?;
@@ -229,6 +230,7 @@ impl InMemoryDatabase {
                     .owner_user_id
                     .is_none_or(|uid| s.resolved_owner_user_id == Some(uid))
             })
+            .filter(|s| filters.include_archived || s.archived_at.is_none())
             .filter(|s| filters.created_after.is_none_or(|t| s.created_at >= t))
             .filter(|s| filters.created_before.is_none_or(|t| s.created_at < t))
             .filter(|s| {
@@ -803,6 +805,31 @@ impl InMemoryDatabase {
             return Ok(Some(session.clone()));
         }
         Ok(None)
+    }
+
+    /// Archive or unarchive a session. Mirrors
+    /// `Database::set_session_archived`: idempotent, and archiving keeps the
+    /// original `archived_at`.
+    pub async fn set_session_archived(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        archived: bool,
+    ) -> Result<Option<SessionRow>> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions.get_mut(&id) else {
+            return Ok(None);
+        };
+        if session.org_id != org_id {
+            return Ok(None);
+        }
+        session.archived_at = if archived {
+            session.archived_at.or_else(|| Some(Self::now()))
+        } else {
+            None
+        };
+        session.updated_at = Self::now();
+        Ok(Some(session.clone()))
     }
 
     /// Delete session, validating org ownership directly

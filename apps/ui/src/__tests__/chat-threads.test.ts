@@ -74,6 +74,35 @@ describe("selectChatThreads", () => {
     expect(threads.map((thread) => thread.id)).toEqual(["mine", "unowned"]);
   });
 
+  it("drops archived threads unless asked for them", () => {
+    const sessions = [
+      session({ id: "live" }),
+      session({ id: "archived", archived_at: "2026-08-09T00:00:00Z" }),
+    ];
+
+    expect(selectChatThreads(sessions, "user_1").map((thread) => thread.id)).toEqual(["live"]);
+    expect(
+      selectChatThreads(sessions, "user_1", { includeArchived: true }).map((thread) => thread.id),
+    ).toEqual(["live", "archived"]);
+  });
+
+  it("sorts archived threads behind live ones even when more recent", () => {
+    const threads = selectChatThreads(
+      [
+        session({
+          id: "archived-new",
+          updated_at: "2026-08-09T12:00:00Z",
+          archived_at: "2026-08-09T12:00:00Z",
+        }),
+        session({ id: "live-old", updated_at: "2026-08-01T00:00:00Z" }),
+      ],
+      "user_1",
+      { includeArchived: true },
+    );
+
+    expect(threads.map((thread) => thread.id)).toEqual(["live-old", "archived-new"]);
+  });
+
   it("treats every thread as mine when auth is off", () => {
     const threads = selectChatThreads(
       [session({ id: "a" }), session({ id: "b", resolved_owner_user_id: "user_2" })],

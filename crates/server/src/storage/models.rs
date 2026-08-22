@@ -887,6 +887,9 @@ pub struct SessionRow {
     pub blueprint_id: Option<String>,
     #[sqlx(default)]
     pub blueprint_config: Option<serde_json::Value>,
+    /// When the session was archived; `None` means active. See migration 124.
+    #[sqlx(default)]
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 /// Ordering for the sessions list. The chat thread list wants last activity;
@@ -913,6 +916,9 @@ pub struct SessionListFilters {
     pub owner_user_id: Option<Uuid>,
     pub created_after: Option<DateTime<Utc>>,
     pub created_before: Option<DateTime<Utc>>,
+    /// Widen the result set to archived sessions too. Default `false`: archive
+    /// is a "put it away" bit, so hiding it is the point.
+    pub include_archived: bool,
     pub order: SessionListOrder,
 }
 

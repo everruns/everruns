@@ -81,18 +81,15 @@ export function SidebarChatThreads({ pathname }: { pathname: string }) {
         New chat
       </Link>
 
-      {visible.length > 0 && (
-        <Link
-          href="/chats"
-          prefetch={false}
-          className={cn(
-            rowClass,
-            "border-l-transparent text-muted-foreground hover:text-foreground",
-          )}
-        >
-          All chats
-        </Link>
-      )}
+      {/* Always offered, even with nothing above it: the all-chats page is the
+          only place archived threads can be brought back into view. */}
+      <Link
+        href="/chats"
+        prefetch={false}
+        className={cn(rowClass, "border-l-transparent text-muted-foreground hover:text-foreground")}
+      >
+        All chats
+      </Link>
     </div>
   );
 }

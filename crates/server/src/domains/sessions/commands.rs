@@ -640,6 +640,9 @@ pub struct SessionFilterArgs {
     pub created_after: Option<String>,
     /// Exclusive upper bound on `created_at` (RFC 3339).
     pub created_before: Option<String>,
+    /// Include archived sessions. Default `false`.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    pub include_archived: Option<bool>,
     /// `created_at` (default) or `last_activity`. The chat thread list is this
     /// endpoint with `source=chat`, `mine=true`, `order=last_activity`.
     pub order: Option<String>,
@@ -712,6 +715,7 @@ impl SessionFilterArgs {
         };
 
         Ok(Some(crate::storage::SessionListFilters {
+            include_archived: self.include_archived.unwrap_or(false),
             agent_id,
             search: self.search,
             sources: parse_csv(self.source.as_deref(), SessionSource::parse, "source")?,
@@ -1900,6 +1904,79 @@ impl Command for UnpinSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<UnpinSession>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ArchiveSession {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+impl Command for ArchiveSession {
+    type Output = bool;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "archive_session",
+            category: "sessions",
+            description: "Archive a session so it drops out of default lists.",
+            method: "PUT",
+            path: "/v1/sessions/{session_id}/archive",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        // Resolve first so an unknown session is a 404 rather than a silent
+        // no-op, and so org scoping is checked the same way every other
+        // session command checks it.
+        q::get_session(ctx, session_id, None).await?;
+        q::session_service(ctx)?
+            .archive(&ctx.caller, session_id.uuid())
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ArchiveSession>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UnarchiveSession {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+}
+
+impl Command for UnarchiveSession {
+    type Output = bool;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "unarchive_session",
+            category: "sessions",
+            description: "Restore an archived session to default lists.",
+            method: "DELETE",
+            path: "/v1/sessions/{session_id}/archive",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        q::get_session(ctx, session_id, None).await?;
+        q::session_service(ctx)?
+            .unarchive(&ctx.caller, session_id.uuid())
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<UnarchiveSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CancelSession {

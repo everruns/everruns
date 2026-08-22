@@ -430,6 +430,7 @@ impl DirectWorkerAdapters {
                 finished_at: r.finished_at,
                 usage: None,
                 is_pinned: None,
+                archived_at: None,
                 active_schedule_count: None,
                 features: vec![],
                 parent_session_id: r.parent_session_id,

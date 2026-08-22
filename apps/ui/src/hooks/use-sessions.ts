@@ -17,6 +17,8 @@ import {
   sendUserMessage,
   pinSession,
   unpinSession,
+  archiveSession,
+  unarchiveSession,
 } from "@/lib/api/sessions";
 import { DEFAULT_EXCLUDED_EVENTS, getSseUrl, listEventsPaginated } from "@/lib/api/events";
 import { queryKeys } from "@/lib/query-keys";
@@ -294,6 +296,38 @@ export function useUnpinSession() {
 
   return useMutation({
     mutationFn: ({ sessionId }: { sessionId: string }) => unpinSession(sessionId),
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.sessions.detail(org, sessionId),
+      });
+    },
+  });
+}
+
+export function useArchiveSession() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => archiveSession(sessionId),
+    onSuccess: (_, { sessionId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.sessions.detail(org, sessionId),
+      });
+    },
+  });
+}
+
+export function useUnarchiveSession() {
+  const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+
+  return useMutation({
+    mutationFn: ({ sessionId }: { sessionId: string }) => unarchiveSession(sessionId),
     onSuccess: (_, { sessionId }) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all() });
       queryClient.invalidateQueries({

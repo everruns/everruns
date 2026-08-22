@@ -15,7 +15,7 @@ use uuid::Uuid;
 const SESSION_COLUMNS: &str = "id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at, \
      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, \
      forked_from_session_id, forked_from_sequence, \
-     blueprint_id, blueprint_config";
+     blueprint_id, blueprint_config, archived_at";
 
 /// SQL mirror of `everruns_platform::SessionActivity::derive` — the list filters in
 /// the database while the in-memory backend filters in Rust. Both must change
@@ -34,6 +34,7 @@ const ACTIVITY_SQL: &str = "CASE \
 /// compile-time constant and cannot carry injected SQL.
 struct SessionFilterSql {
     agent_predicate: String,
+    archived_predicate: &'static str,
     source_predicate: String,
     activity_predicate: String,
     search_predicate: String,
@@ -72,8 +73,10 @@ macro_rules! bind_session_filters {
     }};
 }
 
-// THREAT[TM-API-001]: The only values interpolated into SQL text rather than
-// bound as parameters. The `&'static str` bound is the mitigation: callers can
+// THREAT[TM-API-001]: One of the two places values reach SQL text rather than a
+// bound parameter (the other is `archived_predicate` in `SessionFilterSql::build`,
+// which picks between two compile-time literals).
+// The `&'static str` bound is the mitigation: callers can
 // only pass `SessionSource::as_str` / `SessionActivity::as_str`, which return
 // compile-time literals from closed enums, so no runtime string — and therefore
 // no request input — can reach the query text. Every other filter value is a
@@ -88,6 +91,16 @@ fn sql_string_list(values: impl Iterator<Item = &'static str>) -> String {
 impl SessionFilterSql {
     fn build(filters: &SessionListFilters) -> Self {
         let mut param_idx = 2;
+
+        // THREAT[TM-API-001]: interpolated into SQL text, not bound. Safe because
+        // the type is `&'static str` and the only two values are the compile-time
+        // literals below — `include_archived` selects between them and never
+        // reaches the query text itself. Keep it that way.
+        let archived_predicate: &'static str = if filters.include_archived {
+            ""
+        } else {
+            " AND archived_at IS NULL"
+        };
 
         let agent_predicate = match filters.agent_id {
             Some(_) => {
@@ -146,6 +159,7 @@ impl SessionFilterSql {
 
         Self {
             agent_predicate,
+            archived_predicate,
             source_predicate,
             activity_predicate,
             search_predicate,
@@ -163,8 +177,11 @@ impl SessionFilterSql {
     /// Filters that are not a facet dimension, so every facet applies them.
     fn common_predicates(&self) -> String {
         format!(
-            "{}{}{}",
-            self.search_predicate, self.owner_predicate, self.window_predicate
+            "{}{}{}{}",
+            self.search_predicate,
+            self.owner_predicate,
+            self.window_predicate,
+            self.archived_predicate
         )
     }
 
@@ -257,7 +274,7 @@ impl Database {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, 'started')
             RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
-                      blueprint_id, blueprint_config
+                      blueprint_id, blueprint_config, archived_at
             "#,
         )
         .bind(session_id)
@@ -397,7 +414,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE org_id = $1 AND id = $2
             "#,
@@ -417,7 +434,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE id = $1
             "#,
@@ -668,7 +685,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE parent_session_id = $1
             ORDER BY created_at ASC
@@ -864,7 +881,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
             ORDER BY created_at ASC
@@ -891,7 +908,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND tags @> $3
             ORDER BY created_at ASC
@@ -919,7 +936,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
             ORDER BY created_at ASC
@@ -948,7 +965,7 @@ impl Database {
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                    forked_from_session_id, forked_from_sequence,
-                   blueprint_id, blueprint_config
+                   blueprint_id, blueprint_config, archived_at
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4
             ORDER BY created_at ASC
@@ -1071,7 +1088,7 @@ impl Database {
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, goal, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, source, last_turn_status, last_turn_at, run_summary, run_summary_turn_sequence, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
-                      blueprint_id, blueprint_config
+                      blueprint_id, blueprint_config, archived_at
             "#,
         )
         .bind(org_id)
@@ -1092,6 +1109,34 @@ impl Database {
         .bind(input.finished_at)
         .bind(input.agent_version_id.map(|id| id.uuid()))
         .bind(input.agent_config_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Archive or unarchive a session (migration 124).
+    ///
+    /// Idempotent: archiving an already-archived session keeps the original
+    /// `archived_at`, so the timestamp records when it was first put away.
+    /// Returns the updated row, or `None` when no session matched.
+    pub async fn set_session_archived(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        archived: bool,
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            UPDATE sessions
+            SET archived_at = CASE WHEN $3 THEN COALESCE(archived_at, NOW()) ELSE NULL END
+            WHERE org_id = $1 AND id = $2
+            RETURNING {SESSION_COLUMNS}
+            "#
+        )))
+        .bind(org_id)
+        .bind(id)
+        .bind(archived)
         .fetch_optional(&self.pool)
         .await?;
 
