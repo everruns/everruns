@@ -64,7 +64,9 @@ Pick only what matches the changed surface:
   `cargo test --all-features`, `cargo fetch --locked`
 - `cd apps/ui && pnpm run format:check && pnpm run lint && pnpm run build`
 - `cd apps/docs && pnpm run check && pnpm run build`
-- `./scripts/export-openapi.sh`
+- `./scripts/export-openapi.sh`, then `cd apps/ui && pnpm run api-types:generate` —
+  the UI's generated types are derived from the exported spec and CI fails on
+  drift, so exporting without regenerating them is a guaranteed red build
 - `bash scripts/lib/check-migration-ordering.sh`
 
 If `just fmt` can auto-fix a failing format check, use it once and retry.
