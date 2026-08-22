@@ -762,6 +762,18 @@ impl ServerAppBuilder {
         let budget_listener: Arc<dyn EventListener> = budget_service.clone();
         let mut event_listeners: Vec<Arc<dyn EventListener>> =
             vec![otel_listener, usage_listener, budget_listener];
+        // Run summaries (EVE-867). Registered only when a utility LLM is
+        // configured, so the OSS default adds no listener at all rather than one
+        // that wakes on every terminal turn to do nothing.
+        let run_summary_service = services::RunSummaryService::new(
+            db.clone(),
+            Some(host_composition.utility_llm_service()),
+        );
+        if run_summary_service.is_enabled() {
+            event_listeners.push(Arc::new(services::run_summary::RunSummaryListener::new(
+                run_summary_service,
+            )));
+        }
         let session_sandbox_service: Option<
             Arc<crate::domains::session_sandbox::SessionSandboxService>,
         > = if internal_feature_flags.session_sandbox {

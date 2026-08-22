@@ -827,6 +827,15 @@ pub struct SessionRow {
     pub last_turn_status: Option<String>,
     #[sqlx(default)]
     pub last_turn_at: Option<DateTime<Utc>>,
+    /// Generated one-sentence description of what the run did (EVE-867).
+    /// `None` whenever no summary exists, which is the resting state for chat
+    /// threads and for deployments with no utility LLM.
+    #[sqlx(default)]
+    pub run_summary: Option<String>,
+    /// `events.sequence` of the terminal turn `run_summary` describes. Fences a
+    /// late out-of-band write for an older turn.
+    #[sqlx(default)]
+    pub run_summary_turn_sequence: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,

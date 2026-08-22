@@ -71,6 +71,40 @@ The derivation exists twice, in Rust
 because the list filters in the database and the in-memory backend filters in
 Rust. They are pinned to one truth table by test; change them together.
 
+## Run summary: the sentence the header shows
+
+`SessionActivity` says *whether* a run failed. `sessions.run_summary` says
+**what happened** — one generated sentence naming what the run did and, when it
+failed, which step failed and why (EVE-867). The session detail header renders
+it in place of the start timestamp, and it is the string the sessions list
+failure column and failure notifications should read rather than each deriving
+their own wording.
+
+Three properties are load-bearing:
+
+- **It is generated once, not derived per read.** A read-time derivation would
+  put a paid LLM call on every page load, and give three surfaces three
+  wordings for one run.
+- **Absence is normal.** Chat threads get none — a conversation has a title and
+  a transcript, not a verdict — and deployments with no utility LLM
+  (`DisabledUtilityLlmService`, the OSS default) never write it. Every reader
+  needs a fallback.
+- **It never gates a run.** Generation is spawned from the terminal-turn event
+  and awaited by nobody, so a slow or failing summariser costs a nicer header
+  and nothing else. It is also charged to the org-independent utility LLM, so
+  the Cost tab keeps reporting what the *run* spent.
+
+Unlike `last_turn_*`, no trigger maintains it: it cannot be derived from
+`events` in SQL. Because generation is out of band, a slow call for turn N can
+land after turn N+1 was summarised, so writes are fenced on
+`run_summary_turn_sequence` in the `WHERE` clause — the same
+never-move-backwards guard the `last_turn_sequence` trigger applies. See
+[`RunSummaryService`](../../crates/server/src/services/run_summary.rs).
+
+The transcript is untrusted input to the summariser. The model receives a
+bounded, delimited digest of turn structure and failures, labelled as data, so a
+session whose transcript contains instructions cannot steer its own summary.
+
 ## Counts
 
 `GET /v1/sessions/facets` serves the facet rail and the masthead as aggregates

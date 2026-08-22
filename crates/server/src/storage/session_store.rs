@@ -115,6 +115,7 @@ impl DbSessionStore {
 
                 Ok(Some(Session {
                     source: SessionSource::from(row.source.as_str()),
+                    run_summary: row.run_summary.clone(),
                     activity: SessionActivity::derive(
                         &SessionStatus::from(row.status.as_str()),
                         row.last_turn_status.as_deref(),

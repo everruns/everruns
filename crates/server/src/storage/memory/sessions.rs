@@ -131,6 +131,8 @@ impl InMemoryDatabase {
             source: input.source.as_str().to_string(),
             last_turn_status: None,
             last_turn_at: None,
+            run_summary: None,
+            run_summary_turn_sequence: None,
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -709,6 +711,34 @@ impl InMemoryDatabase {
     }
 
     /// Update session, validating org ownership directly
+    /// In-memory twin of the fenced run-summary write (EVE-867). Holds the
+    /// write lock across the comparison so the sequence guard is as atomic here
+    /// as the Postgres `WHERE` clause is there.
+    pub async fn set_session_run_summary(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        summary: &str,
+        turn_sequence: i64,
+    ) -> Result<bool> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions.get_mut(&id) else {
+            return Ok(false);
+        };
+        if session.org_id != org_id {
+            return Ok(false);
+        }
+        if session
+            .run_summary_turn_sequence
+            .is_some_and(|stored| stored >= turn_sequence)
+        {
+            return Ok(false);
+        }
+        session.run_summary = Some(summary.to_string());
+        session.run_summary_turn_sequence = Some(turn_sequence);
+        Ok(true)
+    }
+
     pub async fn update_session(
         &self,
         org_id: i64,

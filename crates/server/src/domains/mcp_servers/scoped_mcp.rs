@@ -463,6 +463,7 @@ mod tests {
         Session {
             source: Default::default(),
             activity: Default::default(),
+            run_summary: None,
             id: session_id,
             // Default 1:1 session<->workspace: workspace.id mirrors the session id.
             workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),

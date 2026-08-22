@@ -2717,6 +2717,7 @@ impl SessionService {
                 &SessionStatus::from(row.status.as_str()),
                 row.last_turn_status.as_deref(),
             ),
+            run_summary: row.run_summary.clone(),
             created_at: row.created_at,
             updated_at: row.updated_at,
             started_at: row.started_at,

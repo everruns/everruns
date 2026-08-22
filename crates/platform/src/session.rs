@@ -528,6 +528,18 @@ pub struct Session {
     /// This is the value the sessions list groups by and the facet rail counts.
     #[serde(default)]
     pub activity: SessionActivity,
+    /// Generated one-sentence description of what the run did, and where it
+    /// failed (EVE-867). Absent until a terminal turn has been summarised, and
+    /// always absent for chat threads and for deployments with no utility LLM,
+    /// so a reader must have a fallback rather than treating this as required.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "Ran the nightly report and failed posting it to Slack: channel_not_found."
+        )
+    )]
+    pub run_summary: Option<String>,
     /// Timestamp when the session was created.
     #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
@@ -643,6 +655,9 @@ impl Session {
             status,
             source: SessionSource::Unknown,
             activity,
+            // Summaries are generated after a terminal turn, so a session
+            // projected from an execution snapshot never carries one.
+            run_summary: None,
             created_at: now,
             updated_at: now,
             started_at: None,

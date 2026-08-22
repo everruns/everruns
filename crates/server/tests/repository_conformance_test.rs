@@ -575,3 +575,86 @@ async fn postgres_sandbox_checkpoint_rollback() {
         Some(third.id)
     );
 }
+
+/// EVE-867: the run-summary write is fenced on the terminal turn it describes.
+///
+/// Summarisation runs out of band, so a slow call for turn N can land after
+/// turn N+1 has already been summarised. The guard lives in the `WHERE` clause
+/// rather than the caller, so it belongs in a backend test.
+async fn run_run_summary_fence_conformance(backend: &StorageBackend, label: &str) {
+    let owner = create_test_principal(backend, &format!("run-summary-{label}")).await;
+    let session = backend
+        .create_session(session_input(owner, &format!("run-summary-{label}")))
+        .await
+        .expect("create session");
+
+    assert!(
+        backend
+            .set_session_run_summary(DEFAULT_ORG_ID, session.id, "Ran the report.", 10)
+            .await
+            .expect("first summary"),
+        "{label}: the first summary is written"
+    );
+
+    // A late write for an older turn loses.
+    assert!(
+        !backend
+            .set_session_run_summary(DEFAULT_ORG_ID, session.id, "Stale summary.", 5)
+            .await
+            .expect("stale summary"),
+        "{label}: an older turn must not overwrite a newer summary"
+    );
+    // Re-summarising the same turn is not progress either, so it also loses.
+    assert!(
+        !backend
+            .set_session_run_summary(DEFAULT_ORG_ID, session.id, "Same turn.", 10)
+            .await
+            .expect("same-turn summary"),
+        "{label}: the same turn must not rewrite its summary"
+    );
+
+    let stored = backend
+        .get_session(DEFAULT_ORG_ID, session.id)
+        .await
+        .expect("read session")
+        .expect("session exists");
+    assert_eq!(stored.run_summary.as_deref(), Some("Ran the report."));
+    assert_eq!(stored.run_summary_turn_sequence, Some(10));
+
+    // A newer turn wins.
+    assert!(
+        backend
+            .set_session_run_summary(DEFAULT_ORG_ID, session.id, "Ran again, failed.", 11)
+            .await
+            .expect("newer summary"),
+        "{label}: a newer turn replaces the summary"
+    );
+    let stored = backend
+        .get_session(DEFAULT_ORG_ID, session.id)
+        .await
+        .expect("read session")
+        .expect("session exists");
+    assert_eq!(stored.run_summary.as_deref(), Some("Ran again, failed."));
+    assert_eq!(stored.run_summary_turn_sequence, Some(11));
+
+    // Another org cannot write into this session's summary.
+    assert!(
+        !backend
+            .set_session_run_summary(DEFAULT_ORG_ID + 1, session.id, "Cross-org.", 99)
+            .await
+            .expect("cross-org summary"),
+        "{label}: the write is org-scoped"
+    );
+}
+
+#[tokio::test]
+async fn in_memory_run_summary_fence() {
+    let backend = StorageBackend::in_memory();
+    run_run_summary_fence_conformance(&backend, "memory").await;
+}
+
+#[tokio::test]
+async fn postgres_run_summary_fence() {
+    let backend = create_postgres_backend().await;
+    run_run_summary_fence_conformance(&backend, "postgres").await;
+}

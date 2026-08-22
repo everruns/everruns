@@ -383,6 +383,7 @@ impl DirectWorkerAdapters {
             // Parse capabilities from JSON
             Session {
                 source: everruns_platform::SessionSource::from(r.source.as_str()),
+                run_summary: r.run_summary.clone(),
                 activity: everruns_platform::SessionActivity::derive(
                     &everruns_platform::SessionStatus::from(r.status.as_str()),
                     r.last_turn_status.as_deref(),

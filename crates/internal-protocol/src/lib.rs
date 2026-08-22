@@ -2173,6 +2173,7 @@ mod tests {
         let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
+            run_summary: None,
             id: session_id,
             // Equality invariant: workspace.id == session.id for default sessions.
             workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
@@ -2382,6 +2383,7 @@ mod tests {
         let session = everruns_platform::Session {
             source: Default::default(),
             activity: Default::default(),
+            run_summary: None,
             id: session_id,
             workspace_id: everruns_provider::typed_id::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),

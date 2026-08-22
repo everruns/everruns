@@ -1251,6 +1251,25 @@ impl StorageBackend {
         dispatch!(self, update_session, org_id, id, input)
     }
 
+    /// Store a generated run summary, fenced on the terminal turn it describes
+    /// so a late out-of-band write cannot overwrite a newer one (EVE-867).
+    pub async fn set_session_run_summary(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        summary: &str,
+        turn_sequence: i64,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            set_session_run_summary,
+            org_id,
+            id,
+            summary,
+            turn_sequence
+        )
+    }
+
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         dispatch!(self, delete_session, org_id, id)
     }

@@ -30436,6 +30436,14 @@
                   "description": "Denormalized effective human owner of the owning principal lineage.",
                   "example": "550e8400-e29b-41d4-a716-446655440000"
                 },
+                "run_summary": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Generated one-sentence description of what the run did, and where it\nfailed (EVE-867). Absent until a terminal turn has been summarised, and\nalways absent for chat threads and for deployments with no utility LLM,\nso a reader must have a fallback rather than treating this as required.",
+                  "example": "Ran the nightly report and failed posting it to Slack: channel_not_found."
+                },
                 "source": {
                   "$ref": "#/components/schemas/SessionSource",
                   "description": "How this session was started. Server-owned for every ingress path."
@@ -31193,6 +31201,14 @@
                       "format": "uuid",
                       "description": "Denormalized effective human owner of the owning principal lineage.",
                       "example": "550e8400-e29b-41d4-a716-446655440000"
+                    },
+                    "run_summary": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Generated one-sentence description of what the run did, and where it\nfailed (EVE-867). Absent until a terminal turn has been summarised, and\nalways absent for chat threads and for deployments with no utility LLM,\nso a reader must have a fallback rather than treating this as required.",
+                      "example": "Ran the nightly report and failed posting it to Slack: channel_not_found."
                     },
                     "source": {
                       "$ref": "#/components/schemas/SessionSource",
@@ -33878,6 +33894,14 @@
             "format": "uuid",
             "description": "Denormalized effective human owner of the owning principal lineage.",
             "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "run_summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Generated one-sentence description of what the run did, and where it\nfailed (EVE-867). Absent until a terminal turn has been summarised, and\nalways absent for chat threads and for deployments with no utility LLM,\nso a reader must have a fallback rather than treating this as required.",
+            "example": "Ran the nightly report and failed posting it to Slack: channel_not_found."
           },
           "source": {
             "$ref": "#/components/schemas/SessionSource",
@@ -40716,6 +40740,14 @@
                 "format": "uuid",
                 "description": "Denormalized effective human owner of the owning principal lineage.",
                 "example": "550e8400-e29b-41d4-a716-446655440000"
+              },
+              "run_summary": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Generated one-sentence description of what the run did, and where it\nfailed (EVE-867). Absent until a terminal turn has been summarised, and\nalways absent for chat threads and for deployments with no utility LLM,\nso a reader must have a fallback rather than treating this as required.",
+                "example": "Ran the nightly report and failed posting it to Slack: channel_not_found."
               },
               "source": {
                 "$ref": "#/components/schemas/SessionSource",
