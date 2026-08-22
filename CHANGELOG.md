@@ -72,7 +72,7 @@ Independently versioned crates published this cycle (smallest compatible bump, b
 - `everruns-gemini` 0.18.0 → 0.18.1 (forwards connection `extra_headers`)
 - `everruns` 0.18.2 → 0.18.3 (function-tool errors redacted as internal; session delta events omit accumulated data; MCP server-name validation)
 
-Cone cascade — patch republish to re-pin `everruns-provider`/`everruns-platform` at `0.19` (own contract unchanged): `everruns-engine` 0.18.1, `everruns-mcp` 0.19.1, `everruns-cli` 0.18.1, `everruns-ard` 0.18.1, `everruns-test-support` 0.18.3, `everruns-turbopuffer` 0.18.1, `everruns-llmsim` 0.18.3, and the remaining wire-protocol drivers (`everruns-bedrock`, `everruns-fireworks`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter`) 0.18.1.
+Cone cascade — patch republish to re-pin `everruns-provider`/`everruns-platform` at `0.19` (own contract unchanged): `everruns-engine` 0.18.1, `everruns-mcp` 0.19.1, `everruns-cli` 0.18.1, `everruns-ard` 0.18.1, `everruns-test-support` 0.18.3, `everruns-turbopuffer` 0.18.1, `everruns-llmsim` 0.18.3, the remaining wire-protocol drivers (`everruns-bedrock`, `everruns-fireworks`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter`) 0.18.1, and every `everruns-integrations-*` crate (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `deno`, `docker`, `duckduckgo`, `e2b`, `filesystem`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`) 0.18.0 → 0.18.1.
 
 No crates were deleted or absorbed this cycle. `everruns-capability` had no public-contract change and is outside the cone, so it is not re-released.
 
