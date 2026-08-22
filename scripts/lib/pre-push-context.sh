@@ -50,8 +50,17 @@ pre_push_core_api_changed() {
     pre_push_changed_files_match '^crates/(core|engine)/|^scripts/lib/check-core-public-api\.sh$|^Cargo\.(toml|lock)$|^rust-toolchain(\.toml)?$'
 }
 
+# One stat field, on either stat. `stat -c` is GNU and `stat -f` is BSD, and
+# `just pre-push` runs on macOS as well as Linux, so asking for only one of them
+# would fail the ownership check on the other and refuse every cache root.
+pre_push_stat_field() {
+  local gnu_format="$1" bsd_format="$2" path="$3"
+  stat -c "$gnu_format" "$path" 2>/dev/null ||
+    stat -f "$bsd_format" "$path" 2>/dev/null
+}
+
 pre_push_shared_target_dir() {
-  local cache_key common_git_dir temp_root
+  local cache_key cache_root common_git_dir mode owner_id temp_root
 
   common_git_dir="$(git rev-parse --git-common-dir)"
   if [[ "$common_git_dir" != /* ]]; then
@@ -60,7 +69,26 @@ pre_push_shared_target_dir() {
   common_git_dir="$(cd "$common_git_dir" && pwd -P)"
   cache_key="$(printf '%s' "$common_git_dir" | cksum | awk '{print $1}')"
   temp_root="${TMPDIR:-/tmp}"
-  printf '%s\n' "${temp_root%/}/everruns-build-$cache_key/pre-push-target"
+  cache_root="${temp_root%/}/everruns-build-$(id -u)"
+
+  # This directory is a security boundary: Cargo can execute artifacts from
+  # its target directory. Refuse attacker-created paths instead of repairing
+  # their ownership or permissions.
+  if [ ! -e "$cache_root" ] && [ ! -L "$cache_root" ]; then
+    # A concurrent pre-push may win creation; validation below decides whether
+    # the resulting path is safe.
+    (umask 077 && mkdir "$cache_root") 2>/dev/null || true
+  fi
+  owner_id="$(pre_push_stat_field '%u' '%u' "$cache_root")" || return 1
+  mode="$(pre_push_stat_field '%a' '%Lp' "$cache_root")" || return 1
+  if [ -L "$cache_root" ] || [ ! -d "$cache_root" ] ||
+    [ "$owner_id" != "$(id -u)" ] || [ "$mode" != "700" ]; then
+    echo "Refusing insecure pre-push cache root: $cache_root" >&2
+    return 1
+  fi
+
+  (umask 077 && mkdir -p "$cache_root/$cache_key/pre-push-target") || return 1
+  printf '%s\n' "$cache_root/$cache_key/pre-push-target"
 }
 
 configure_pre_push_build_cache() {

@@ -49,12 +49,30 @@ assert_true "pre-push workflow changes exercise the core API guard" pre_push_cor
 common_git_dir="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 cache_key="$(printf '%s' "$common_git_dir" | cksum | awk '{print $1}')"
 temp_root="${TMPDIR:-/tmp}"
-expected_target="${temp_root%/}/everruns-build-$cache_key/pre-push-target"
+expected_target="${temp_root%/}/everruns-build-$(id -u)/$cache_key/pre-push-target"
 actual_target="$(pre_push_shared_target_dir)"
 if [ "$actual_target" != "$expected_target" ]; then
   echo "FAIL: shared target mismatch: $actual_target != $expected_target" >&2
   exit 1
 fi
+
+cache_test_root="$(mktemp -d)"
+mkdir "$cache_test_root/everruns-build-$(id -u)"
+chmod 0777 "$cache_test_root/everruns-build-$(id -u)"
+if TMPDIR="$cache_test_root" pre_push_shared_target_dir >/dev/null 2>&1; then
+  echo "FAIL: insecure pre-created cache root was accepted" >&2
+  exit 1
+fi
+rm -rf "$cache_test_root"
+
+cache_test_root="$(mktemp -d)"
+mkdir "$cache_test_root/attacker-target"
+ln -s "$cache_test_root/attacker-target" "$cache_test_root/everruns-build-$(id -u)"
+if TMPDIR="$cache_test_root" pre_push_shared_target_dir >/dev/null 2>&1; then
+  echo "FAIL: symlinked cache root was accepted" >&2
+  exit 1
+fi
+rm -rf "$cache_test_root"
 
 (
   CARGO_TARGET_DIR="/tmp/everruns-custom-target"
