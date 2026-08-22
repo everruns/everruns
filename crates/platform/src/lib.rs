@@ -170,8 +170,9 @@ pub use session_sqldb::{
 
 // Logical sandbox and checkpoint persistence (EVE-870).
 pub use sandbox_checkpoint::{
-    MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint, SandboxCheckpoint, SandboxCheckpointError,
-    SandboxCheckpointKind, SandboxCheckpointStore, SandboxCheckpointStoreExt, SandboxRef,
+    DurableToolResultStoreExt, MAX_CHECKPOINT_COLLECT_LIMIT, NewSandboxCheckpoint,
+    SandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind, SandboxCheckpointStore,
+    SandboxCheckpointStoreExt, SandboxRef,
 };
 
 // Managed per-session sandbox (EVE-880).

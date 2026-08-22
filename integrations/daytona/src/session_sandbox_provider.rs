@@ -996,6 +996,41 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
         Ok(checkpointed)
     }
 
+    async fn rewind_checkpoint(
+        &self,
+        context: &ToolContext,
+        _config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        revision: Option<&str>,
+    ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+        let Some(mut recovery) = recovery_binding(&context.session_id, instance)? else {
+            return Ok(instance.clone());
+        };
+        if recovery.head_revision.as_deref() == revision {
+            return Ok(instance.clone());
+        }
+        // Rewrites the pointer only. The rejected revision's archive stays on
+        // the volume until checkpoint retention or the unattached-checkpoint
+        // collector drops it, so a mistaken rollback is still recoverable and a
+        // failure here cannot destroy bytes.
+        if let Some(revision) = revision
+            && !is_valid_revision(revision)
+        {
+            return Err(ToolExecutionResult::internal_error_msg(format!(
+                "Refusing to rewind Daytona recovery to malformed revision '{revision}'"
+            )));
+        }
+        recovery.head_revision = revision.map(str::to_string);
+
+        let mut rewound = instance.clone();
+        rewound.provider_state["recovery"] = serde_json::to_value(&recovery).map_err(|err| {
+            ToolExecutionResult::internal_error_msg(format!(
+                "Failed to persist Daytona recovery binding: {err}"
+            ))
+        })?;
+        Ok(rewound)
+    }
+
     async fn status(
         &self,
         context: &ToolContext,

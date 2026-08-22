@@ -149,6 +149,29 @@ pub trait SandboxCheckpointStore: Send + Sync {
         sandbox_id: Uuid,
     ) -> Result<Option<SandboxCheckpoint>, SandboxCheckpointError>;
 
+    /// Reject `checkpoint_id` as authoritative and fall back to the previous
+    /// attached checkpoint, returning whatever the sandbox now points at.
+    ///
+    /// This is the reconciliation half of the crash window: a checkpoint is
+    /// attached before the tool result it belongs to is settled, so a crash in
+    /// between leaves the workspace ahead of the conversation. Rolling the
+    /// pointer back detaches the rejected revision, which returns it to the
+    /// collectable pool rather than deleting it inline.
+    ///
+    /// Fenced on `generation`, and a no-op when the sandbox no longer points at
+    /// `checkpoint_id`: in both cases something newer already decided, and this
+    /// call must not undo it. `Ok(None)` means the sandbox has no earlier
+    /// committed revision to fall back to.
+    ///
+    /// THREAT[TM-TENANT-012]: bare `sandbox_id`, same caller obligation as
+    /// [`Self::attach_checkpoint`].
+    async fn rollback_current_checkpoint(
+        &self,
+        sandbox_id: Uuid,
+        checkpoint_id: Uuid,
+        generation: i64,
+    ) -> Result<Option<SandboxCheckpoint>, SandboxCheckpointError>;
+
     /// Delete up to `limit` uploads that were never attached and are older than
     /// `before`. Attached checkpoints are never returned or removed. Returns the
     /// `workspace_revision` of each collected row so the caller can drop the
@@ -174,3 +197,15 @@ pub trait SandboxCheckpointStore: Send + Sync {
 /// the store contract stays beside the sandbox code that uses it (EVE-897).
 #[derive(Clone)]
 pub struct SandboxCheckpointStoreExt(pub std::sync::Arc<dyn SandboxCheckpointStore>);
+
+/// Read access to durable tool-call state, on the same extension seam.
+///
+/// Reconciliation has to ask whether the tool call a checkpoint was taken for
+/// ever committed. Core owns that store but does not put it on `ToolContext`,
+/// and its 0.18 boundary is frozen (EVE-906), so hosted presets hang it here
+/// beside [`SandboxCheckpointStoreExt`] instead. A host that installs one and
+/// not the other cannot reconcile, and says so rather than guessing.
+#[derive(Clone)]
+pub struct DurableToolResultStoreExt(
+    pub std::sync::Arc<dyn everruns_core::durability::DurableToolResultStore>,
+);

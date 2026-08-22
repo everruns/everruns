@@ -226,6 +226,24 @@ pub trait SessionSandboxProvider: Send + Sync {
         Ok(instance.clone())
     }
 
+    /// Point the provider's recovery state at `revision`, or clear it when
+    /// `None`, without touching the running workspace.
+    ///
+    /// Reconciliation decides which revision a session may recover to from the
+    /// checkpoint records; this is how that decision reaches the provider state
+    /// the restore actually reads. Providers with no recovery state keep the
+    /// default: there is nothing to rewind, and reconciliation is a no-op for
+    /// them.
+    async fn rewind_checkpoint(
+        &self,
+        _context: &ToolContext,
+        _config: &SessionSandboxConfig,
+        instance: &SessionSandboxInstance,
+        _revision: Option<&str>,
+    ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+        Ok(instance.clone())
+    }
+
     async fn status(
         &self,
         context: &ToolContext,
@@ -358,6 +376,13 @@ pub async fn ensure_session_sandbox_running(
             }
 
             let mut state = existing;
+
+            // Before anything reads the recovery pointer: a checkpoint attached
+            // by a tool call that never settled must not be what this session
+            // resumes onto (EVE-870).
+            reconcile_session_sandbox_checkpoint(context, provider.as_ref(), config, &mut state)
+                .await?;
+
             let needs_resume = match state.status {
                 SessionSandboxStatus::Paused | SessionSandboxStatus::Lost => true,
                 SessionSandboxStatus::Running => {
@@ -574,6 +599,123 @@ pub async fn checkpoint_session_sandbox(
             }
         }
     }
+    Ok(())
+}
+
+/// Drop the authoritative checkpoint when the tool call it was taken for never
+/// committed, and rewind the provider's recovery state to the one before it.
+///
+/// `checkpoint_session_sandbox` attaches a checkpoint before the runtime settles
+/// the tool result it belongs to. A control-plane crash in that window leaves
+/// the workspace one revision ahead of the conversation: the agent resumes with
+/// no record of the command, re-runs it, and finds a workspace the first attempt
+/// already mutated. This runs on resume and puts the two back in step.
+///
+/// Deliberately conservative. It only ever rejects the *current* checkpoint, and
+/// only when durable storage positively says the source call is not settled.
+/// Anything it cannot establish — no store installed, no source call recorded,
+/// a stale generation — leaves the pointer alone, because the failure mode of
+/// over-eager rollback is discarding real work.
+async fn reconcile_session_sandbox_checkpoint(
+    context: &ToolContext,
+    provider: &dyn SessionSandboxProvider,
+    config: &SessionSandboxConfig,
+    state: &mut SessionSandboxState,
+) -> Result<(), ToolExecutionResult> {
+    use crate::sandbox_checkpoint::{DurableToolResultStoreExt, SandboxCheckpointStoreExt};
+    use everruns_core::durability::DurableToolCallStatus;
+
+    // Both halves are needed to decide anything. Hosts that install neither
+    // (remote workers, embedded Framework hosts) keep the pre-EVE-870 behaviour.
+    let Some(checkpoints) = context.extensions.get::<SandboxCheckpointStoreExt>() else {
+        return Ok(());
+    };
+    let Some(durable) = context.extensions.get::<DurableToolResultStoreExt>() else {
+        return Ok(());
+    };
+    let (checkpoints, durable) = (checkpoints.0.clone(), durable.0.clone());
+
+    let sandbox = match checkpoints
+        .ensure_sandbox(context.session_id, &config.provider)
+        .await
+    {
+        Ok(sandbox) => sandbox,
+        Err(error) => {
+            tracing::warn!(%error, "failed to resolve logical sandbox; skipping reconciliation");
+            return Ok(());
+        }
+    };
+
+    let head = match checkpoints.current_checkpoint(sandbox.id).await {
+        Ok(Some(head)) => head,
+        Ok(None) => return Ok(()),
+        Err(error) => {
+            tracing::warn!(%error, "failed to read current checkpoint; skipping reconciliation");
+            return Ok(());
+        }
+    };
+
+    // A checkpoint with no source call was not taken for a tool result, so there
+    // is nothing to compare it against and no reason to distrust it.
+    let (Some(turn_id), Some(tool_call_id)) = (
+        head.source_turn_id.as_deref(),
+        head.source_tool_call_id.as_deref(),
+    ) else {
+        return Ok(());
+    };
+
+    let status = match durable.get_tool_call_status(turn_id, tool_call_id).await {
+        Ok(status) => status,
+        Err(error) => {
+            tracing::warn!(%error, "failed to read durable tool call status; skipping reconciliation");
+            return Ok(());
+        }
+    };
+
+    // `Settled` is the only state that means "the conversation records a result
+    // for this revision". `Interrupted` records that the call did *not* produce
+    // one, and the transcript's interrupted placeholder invites the agent to
+    // retry — against the workspace as it was before, which is the whole point.
+    if matches!(status, Some(DurableToolCallStatus::Settled { .. })) {
+        return Ok(());
+    }
+
+    let restored = match checkpoints
+        .rollback_current_checkpoint(sandbox.id, head.id, sandbox.generation)
+        .await
+    {
+        Ok(restored) => restored,
+        Err(error) => {
+            tracing::warn!(
+                sandbox_id = %sandbox.id,
+                %error,
+                "failed to roll back uncommitted sandbox checkpoint"
+            );
+            return Ok(());
+        }
+    };
+
+    tracing::info!(
+        sandbox_id = %sandbox.id,
+        rejected_revision = %head.workspace_revision,
+        restored_revision = restored.as_ref().map(|c| c.workspace_revision.as_str()).unwrap_or("<none>"),
+        "rolled sandbox back to its last committed checkpoint"
+    );
+
+    let rewound = provider
+        .rewind_checkpoint(
+            context,
+            config,
+            &state.instance,
+            restored.as_ref().map(|c| c.workspace_revision.as_str()),
+        )
+        .await?;
+    if rewound != state.instance {
+        state.instance = rewound;
+        state.updated_at = now_rfc3339();
+        save_session_sandbox_state(context, state).await?;
+    }
+
     Ok(())
 }
 
@@ -1231,6 +1373,18 @@ mod tests {
             Ok(None)
         }
 
+        async fn rollback_current_checkpoint(
+            &self,
+            _sandbox_id: uuid::Uuid,
+            _checkpoint_id: uuid::Uuid,
+            _generation: i64,
+        ) -> Result<
+            Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            unreachable!("checkpoint tests never reconcile")
+        }
+
         async fn collect_unattached_checkpoints(
             &self,
             _sandbox_id: uuid::Uuid,
@@ -1461,5 +1615,423 @@ mod tests {
                 .unwrap()
                 .contains_key(SESSION_SANDBOX_SECRET_NAME)
         );
+    }
+
+    // ---- Resume-time reconciliation (EVE-870) ----
+
+    /// Store seeded with one authoritative checkpoint, recording what
+    /// reconciliation asks of it.
+    struct ReconcileStore {
+        head: Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+        restored: Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+        rollbacks: Arc<Mutex<Vec<(uuid::Uuid, i64)>>>,
+    }
+
+    fn checkpoint_row(
+        revision: &str,
+        source: Option<(&str, &str)>,
+    ) -> crate::sandbox_checkpoint::SandboxCheckpoint {
+        crate::sandbox_checkpoint::SandboxCheckpoint {
+            id: uuid::Uuid::new_v4(),
+            sandbox_id: uuid::Uuid::nil(),
+            generation: 7,
+            source_turn_id: source.map(|(turn, _)| turn.to_string()),
+            source_tool_call_id: source.map(|(_, call)| call.to_string()),
+            kind: crate::sandbox_checkpoint::SandboxCheckpointKind::PortableWorkspace,
+            provider_ref: None,
+            workspace_revision: revision.to_string(),
+            attached_at: Some(Utc::now()),
+            created_at: Utc::now(),
+        }
+    }
+
+    #[async_trait]
+    impl crate::sandbox_checkpoint::SandboxCheckpointStore for ReconcileStore {
+        async fn ensure_sandbox(
+            &self,
+            _session_id: everruns_provider::typed_id::SessionId,
+            _provider: &str,
+        ) -> Result<
+            crate::sandbox_checkpoint::SandboxRef,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            Ok(crate::sandbox_checkpoint::SandboxRef {
+                id: uuid::Uuid::nil(),
+                generation: 7,
+            })
+        }
+
+        async fn record_checkpoint(
+            &self,
+            _checkpoint: crate::sandbox_checkpoint::NewSandboxCheckpoint,
+        ) -> Result<
+            crate::sandbox_checkpoint::SandboxCheckpoint,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            unreachable!("reconciliation never records")
+        }
+
+        async fn attach_checkpoint(
+            &self,
+            _sandbox_id: uuid::Uuid,
+            _checkpoint_id: uuid::Uuid,
+            _generation: i64,
+        ) -> Result<(), crate::sandbox_checkpoint::SandboxCheckpointError> {
+            unreachable!("reconciliation never attaches")
+        }
+
+        async fn current_checkpoint(
+            &self,
+            _sandbox_id: uuid::Uuid,
+        ) -> Result<
+            Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            Ok(self.head.clone())
+        }
+
+        async fn rollback_current_checkpoint(
+            &self,
+            _sandbox_id: uuid::Uuid,
+            checkpoint_id: uuid::Uuid,
+            generation: i64,
+        ) -> Result<
+            Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+            crate::sandbox_checkpoint::SandboxCheckpointError,
+        > {
+            self.rollbacks
+                .lock()
+                .unwrap()
+                .push((checkpoint_id, generation));
+            Ok(self.restored.clone())
+        }
+
+        async fn collect_unattached_checkpoints(
+            &self,
+            _sandbox_id: uuid::Uuid,
+            _before: chrono::DateTime<Utc>,
+            _limit: i64,
+        ) -> Result<Vec<String>, crate::sandbox_checkpoint::SandboxCheckpointError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct FixedDurableStore(Option<everruns_core::durability::DurableToolCallStatus>);
+
+    #[async_trait]
+    impl everruns_core::durability::DurableToolResultStore for FixedDurableStore {
+        async fn try_claim_tool_call(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+            _tool_name: &str,
+            _args_fingerprint: &str,
+        ) -> everruns_provider::error::Result<everruns_core::durability::ToolCallClaimResult>
+        {
+            unreachable!("reconciliation only reads")
+        }
+
+        async fn settle_tool_call(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+            _result_json: serde_json::Value,
+            _status: &str,
+            _claim_token: uuid::Uuid,
+        ) -> everruns_provider::error::Result<bool> {
+            unreachable!("reconciliation only reads")
+        }
+
+        async fn get_tool_call_status(
+            &self,
+            _turn_id: &str,
+            _tool_call_id: &str,
+        ) -> everruns_provider::error::Result<
+            Option<everruns_core::durability::DurableToolCallStatus>,
+        > {
+            Ok(self.0.clone())
+        }
+    }
+
+    /// Provider that records every rewind and applies it to `provider_state`,
+    /// the way the Daytona provider rewrites its recovery binding.
+    struct RewindProvider {
+        rewinds: Arc<Mutex<Vec<Option<String>>>>,
+    }
+
+    #[async_trait]
+    impl SessionSandboxProvider for RewindProvider {
+        fn id(&self) -> &str {
+            "rewind-test-session-sandbox"
+        }
+
+        async fn create(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn resume(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            Ok(instance.clone())
+        }
+
+        async fn pause(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            Ok(instance.clone())
+        }
+
+        async fn delete(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<(), ToolExecutionResult> {
+            Ok(())
+        }
+
+        async fn exec(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _request: &SessionSandboxExecRequest,
+        ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn read_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _path: &str,
+        ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn write_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            _path: &str,
+            _content: &str,
+        ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
+            unreachable!()
+        }
+
+        async fn rewind_checkpoint(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+            revision: Option<&str>,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            self.rewinds
+                .lock()
+                .unwrap()
+                .push(revision.map(ToString::to_string));
+            let mut rewound = instance.clone();
+            rewound.provider_state["recovery"] = json!({ "head_revision": revision });
+            Ok(rewound)
+        }
+
+        async fn status(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            state: &SessionSandboxState,
+        ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+            Ok(SessionSandboxStatusResponse {
+                provider: state.provider.clone(),
+                session_status: SessionSandboxStatus::Running,
+                external_id: state.instance.external_id.clone(),
+                display_name: None,
+                workspace_path: None,
+                metadata: json!({}),
+            })
+        }
+    }
+
+    struct ReconcileHarness {
+        context: ToolContext,
+        state: SessionSandboxState,
+        rollbacks: Arc<Mutex<Vec<(uuid::Uuid, i64)>>>,
+        rewinds: Arc<Mutex<Vec<Option<String>>>>,
+        provider: RewindProvider,
+    }
+
+    fn reconcile_harness(
+        head: Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+        restored: Option<crate::sandbox_checkpoint::SandboxCheckpoint>,
+        durable: Option<everruns_core::durability::DurableToolCallStatus>,
+        install_durable_ext: bool,
+    ) -> ReconcileHarness {
+        let rollbacks = Arc::new(Mutex::new(Vec::new()));
+        let rewinds = Arc::new(Mutex::new(Vec::new()));
+        let store = Arc::new(ReconcileStore {
+            head,
+            restored,
+            rollbacks: rollbacks.clone(),
+        });
+        let mut context = ToolContext::with_storage_store(
+            everruns_provider::typed_id::SessionId::new(),
+            Arc::new(MemorySecrets::default()),
+        )
+        .with_extension(Arc::new(
+            crate::sandbox_checkpoint::SandboxCheckpointStoreExt(store),
+        ));
+        if install_durable_ext {
+            context = context.with_extension(Arc::new(
+                crate::sandbox_checkpoint::DurableToolResultStoreExt(Arc::new(FixedDurableStore(
+                    durable,
+                ))),
+            ));
+        }
+
+        let state = SessionSandboxState {
+            provider: "rewind-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance("sb_reconcile"),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+
+        ReconcileHarness {
+            context,
+            state,
+            rollbacks,
+            rewinds: rewinds.clone(),
+            provider: RewindProvider { rewinds },
+        }
+    }
+
+    fn reconcile_config() -> SessionSandboxConfig {
+        SessionSandboxConfig {
+            provider: "rewind-test-session-sandbox".to_string(),
+            auto_start: true,
+            idle_pause_after_seconds: 180,
+            provider_config: json!({}),
+            init: SessionSandboxInitConfig { commands: vec![] },
+        }
+    }
+
+    async fn run_reconcile(harness: &mut ReconcileHarness) {
+        reconcile_session_sandbox_checkpoint(
+            &harness.context,
+            &harness.provider,
+            &reconcile_config(),
+            &mut harness.state,
+        )
+        .await
+        .expect("reconciliation never fails the resume");
+    }
+
+    #[tokio::test]
+    async fn reconcile_rolls_back_a_checkpoint_whose_tool_call_never_settled() {
+        // The crash this issue is about: revision 2 is attached, but the tool
+        // call that produced it is still claimed as running.
+        let head = checkpoint_row("rev-2", Some(("turn-1", "call-2")));
+        let head_id = head.id;
+        let mut harness = reconcile_harness(
+            Some(head),
+            Some(checkpoint_row("rev-1", Some(("turn-1", "call-1")))),
+            Some(everruns_core::durability::DurableToolCallStatus::Running),
+            true,
+        );
+
+        run_reconcile(&mut harness).await;
+
+        assert_eq!(*harness.rollbacks.lock().unwrap(), vec![(head_id, 7)]);
+        assert_eq!(
+            *harness.rewinds.lock().unwrap(),
+            vec![Some("rev-1".to_string())]
+        );
+        assert_eq!(
+            harness.state.instance.provider_state["recovery"]["head_revision"],
+            json!("rev-1")
+        );
+    }
+
+    #[tokio::test]
+    async fn reconcile_clears_the_pointer_when_nothing_earlier_was_committed() {
+        let mut harness = reconcile_harness(
+            Some(checkpoint_row("rev-1", Some(("turn-1", "call-1")))),
+            None,
+            None,
+            true,
+        );
+
+        run_reconcile(&mut harness).await;
+
+        assert_eq!(harness.rollbacks.lock().unwrap().len(), 1);
+        assert_eq!(*harness.rewinds.lock().unwrap(), vec![None]);
+    }
+
+    #[tokio::test]
+    async fn reconcile_keeps_a_checkpoint_whose_tool_call_settled() {
+        let mut harness = reconcile_harness(
+            Some(checkpoint_row("rev-2", Some(("turn-1", "call-2")))),
+            None,
+            Some(everruns_core::durability::DurableToolCallStatus::Settled {
+                result_json: json!({"ok": true}),
+            }),
+            true,
+        );
+
+        run_reconcile(&mut harness).await;
+
+        assert!(harness.rollbacks.lock().unwrap().is_empty());
+        assert!(harness.rewinds.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_leaves_a_checkpoint_with_no_source_tool_call_alone() {
+        // Nothing to compare it against, so distrusting it would be a guess.
+        let mut harness = reconcile_harness(Some(checkpoint_row("rev-1", None)), None, None, true);
+
+        run_reconcile(&mut harness).await;
+
+        assert!(harness.rollbacks.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_is_inert_without_the_durable_store() {
+        // A host that cannot read durable state cannot decide, and must not
+        // fall back to rolling back on suspicion.
+        let mut harness = reconcile_harness(
+            Some(checkpoint_row("rev-2", Some(("turn-1", "call-2")))),
+            None,
+            None,
+            false,
+        );
+
+        run_reconcile(&mut harness).await;
+
+        assert!(harness.rollbacks.lock().unwrap().is_empty());
+        assert!(harness.rewinds.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn reconcile_is_inert_with_no_checkpoint_recorded() {
+        let mut harness = reconcile_harness(None, None, None, true);
+
+        run_reconcile(&mut harness).await;
+
+        assert!(harness.rollbacks.lock().unwrap().is_empty());
+        assert!(harness.rewinds.lock().unwrap().is_empty());
     }
 }

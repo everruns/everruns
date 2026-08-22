@@ -305,6 +305,21 @@ working state is recoverable outside the physical incarnation. Upload the
 checkpoint first, then commit the tool result and checkpoint reference in one
 database transaction; unattached uploads are safe garbage-collection orphans.
 
+Everruns reaches that invariant by reconciliation rather than a shared
+transaction (EVE-870). A shared transaction would need a co-commit seam through
+`everruns-core`, whose 0.18 public boundary is frozen (EVE-906), and the
+saga-shaped alternative satisfies the same invariants without reopening it. So
+the checkpoint is attached first and the tool result settles after, and the
+window between them is closed on the way back in: resume compares the
+authoritative checkpoint's `source_tool_call_id` against `durable_tool_results`
+and, unless that call settled, rolls the pointer back to the previous attached
+checkpoint. The rejected revision is detached rather than deleted, which returns
+it to the collectable pool. Reconciliation only ever rejects the current
+checkpoint, only on a positive "not settled" answer from durable storage, and
+never on missing information — over-eager rollback discards real work, which is
+worse than the drift it would prevent. See
+`reconcile_session_sandbox_checkpoint` in `crates/platform/src/session_sandbox.rs`.
+
 All `bash` executions are treated as mutating because a shell command can alter
 arbitrary files, including when it exits non-zero. Generic write/edit/delete
 operations use the same boundary. Read-only file operations do not require a
