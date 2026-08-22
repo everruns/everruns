@@ -1790,9 +1790,8 @@ async fn test_provider_crud() {
         .assert_status(StatusCode::NO_CONTENT);
 }
 
-/// Connection-level request options must survive the API round trip, and the
-/// API must reject a header the transport owns rather than storing something
-/// the drivers would silently drop later.
+/// Connection-level request options retain their non-secret shape across the
+/// API, but header values must never be returned to provider-view callers.
 #[tokio::test]
 async fn test_provider_request_options_round_trip_and_validation() {
     let server = TestServer::in_memory().await;
@@ -1820,7 +1819,7 @@ async fn test_provider_request_options_round_trip_and_validation() {
     assert!(options.cache_diagnostics);
     assert_eq!(
         options.header_pairs(),
-        vec![("x-gateway-tenant".to_string(), "acme".to_string())]
+        vec![("x-gateway-tenant".to_string(), String::new())]
     );
 
     // Read back through GET: the options are stored, not just echoed.
@@ -1830,6 +1829,23 @@ async fn test_provider_request_options_round_trip_and_validation() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(fetched.request_options, provider.request_options);
+
+    // List responses use the same redaction boundary.
+    let listed: serde_json::Value = server
+        .get("/v1/providers")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let listed_provider = listed["data"]
+        .as_array()
+        .expect("provider list data")
+        .iter()
+        .find(|item| item["id"] == provider.id.to_string())
+        .expect("created provider in list");
+    assert_eq!(
+        listed_provider["request_options"]["headers"][0]["value"],
+        ""
+    );
 
     // A transport-owned header is refused with a message naming it.
     let rejected = server
@@ -1843,6 +1859,32 @@ async fn test_provider_request_options_round_trip_and_validation() {
         )
         .await;
     assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+
+    // Saving the form back after a redacted read keeps the header rather than
+    // erasing it. `merge_request_options` covers the stored value itself; here
+    // the point is that the round trip a UI actually performs is not lossy.
+    let resaved: Provider = server
+        .patch(
+            &format!("/v1/providers/{}", provider.id),
+            json!({
+                "request_options": {
+                    "headers": [{"name": "x-gateway-tenant", "value": ""}],
+                    "cache_diagnostics": false
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let resaved_options = resaved
+        .request_options
+        .as_ref()
+        .expect("header survives a redacted round trip");
+    assert_eq!(
+        resaved_options.header_pairs(),
+        vec![("x-gateway-tenant".to_string(), String::new())]
+    );
+    assert!(!resaved_options.cache_diagnostics);
 
     // Update replaces the options wholesale, including clearing them.
     let cleared: Provider = server
