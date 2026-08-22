@@ -437,3 +437,141 @@ async fn postgres_repository_conformance() {
     run_repository_conformance(&backend, "postgres", harness_id).await;
     run_agent_trigger_conformance(&backend, "postgres", harness_id).await;
 }
+
+/// EVE-870: the reconciliation half of the checkpoint crash window.
+///
+/// `attach_checkpoint` commits a revision as authoritative before the tool
+/// result it belongs to is settled, so a crash in between leaves the workspace
+/// ahead of the conversation. `rollback_current_checkpoint` is what puts them
+/// back in step, and every property that makes it safe lives in its SQL rather
+/// than in the caller — hence a Postgres test rather than a unit test.
+#[tokio::test]
+async fn postgres_sandbox_checkpoint_rollback() {
+    use everruns_platform::sandbox_checkpoint::{
+        NewSandboxCheckpoint, SandboxCheckpointError, SandboxCheckpointKind, SandboxCheckpointStore,
+    };
+    use everruns_server::storage::PgSandboxCheckpointStore;
+
+    let pool = PgPool::connect(&get_database_url())
+        .await
+        .expect("connect to PostgreSQL");
+    let backend = StorageBackend::Postgres(Database::new(pool.clone()));
+    let owner = create_test_principal(&backend, "sandbox-rollback").await;
+    let session = backend
+        .create_session(session_input(owner, "sandbox-rollback"))
+        .await
+        .expect("create session");
+
+    let store = PgSandboxCheckpointStore::new(pool);
+    let sandbox = store
+        .ensure_sandbox(session.id, "daytona")
+        .await
+        .expect("ensure sandbox");
+
+    let new_checkpoint = |revision: &str, call: &str| NewSandboxCheckpoint {
+        sandbox_id: sandbox.id,
+        generation: sandbox.generation,
+        source_turn_id: Some("turn-1".to_string()),
+        source_tool_call_id: Some(call.to_string()),
+        kind: SandboxCheckpointKind::PortableWorkspace,
+        provider_ref: None,
+        workspace_revision: revision.to_string(),
+    };
+
+    let first = store
+        .record_checkpoint(new_checkpoint("rev-1", "call-1"))
+        .await
+        .expect("record first");
+    store
+        .attach_checkpoint(sandbox.id, first.id, sandbox.generation)
+        .await
+        .expect("attach first");
+    let second = store
+        .record_checkpoint(new_checkpoint("rev-2", "call-2"))
+        .await
+        .expect("record second");
+    store
+        .attach_checkpoint(sandbox.id, second.id, sandbox.generation)
+        .await
+        .expect("attach second");
+
+    // Rolling back the head falls to the previous *attached* revision.
+    let restored = store
+        .rollback_current_checkpoint(sandbox.id, second.id, sandbox.generation)
+        .await
+        .expect("rollback")
+        .expect("an earlier committed checkpoint exists");
+    assert_eq!(restored.id, first.id);
+    assert_eq!(restored.workspace_revision, "rev-1");
+    assert_eq!(
+        store
+            .current_checkpoint(sandbox.id)
+            .await
+            .expect("read current")
+            .map(|c| c.id),
+        Some(first.id)
+    );
+
+    // The rejected revision is detached, which is what returns it to the
+    // collectable pool instead of stranding it forever.
+    let collected = store
+        .collect_unattached_checkpoints(sandbox.id, Utc::now(), 10)
+        .await
+        .expect("collect");
+    assert_eq!(collected, vec!["rev-2".to_string()]);
+    // ...and collection still refuses to touch the authoritative one.
+    assert_eq!(
+        store
+            .current_checkpoint(sandbox.id)
+            .await
+            .expect("read current")
+            .map(|c| c.id),
+        Some(first.id)
+    );
+
+    // Rolling back with nothing earlier committed clears the pointer rather
+    // than leaving a revision no committed turn produced.
+    assert!(
+        store
+            .rollback_current_checkpoint(sandbox.id, first.id, sandbox.generation)
+            .await
+            .expect("rollback to empty")
+            .is_none()
+    );
+    assert!(
+        store
+            .current_checkpoint(sandbox.id)
+            .await
+            .expect("read current")
+            .is_none()
+    );
+
+    // Fenced: a rollback carrying a superseded generation is refused outright,
+    // the same guard `attach_checkpoint` applies.
+    let stale = store
+        .rollback_current_checkpoint(sandbox.id, first.id, sandbox.generation + 1)
+        .await;
+    assert!(matches!(
+        stale,
+        Err(SandboxCheckpointError::StaleGeneration { .. })
+    ));
+
+    // A rollback of a checkpoint the sandbox no longer points at is a no-op:
+    // something newer already decided, and this must not undo it.
+    let third = store
+        .record_checkpoint(new_checkpoint("rev-3", "call-3"))
+        .await
+        .expect("record third");
+    store
+        .attach_checkpoint(sandbox.id, third.id, sandbox.generation)
+        .await
+        .expect("attach third");
+    assert_eq!(
+        store
+            .rollback_current_checkpoint(sandbox.id, first.id, sandbox.generation)
+            .await
+            .expect("stale-pointer rollback")
+            .map(|c| c.id),
+        Some(third.id)
+    );
+}

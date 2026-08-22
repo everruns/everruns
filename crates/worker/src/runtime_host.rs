@@ -21,8 +21,9 @@ use everruns_mcp::{
 };
 use everruns_platform::SessionMutator;
 use everruns_platform::{
-    KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt, PlatformStoreSubagentDelegate,
-    PlatformToolAugmentor, SandboxCheckpointStoreExt, SessionSqlDbStoreExt,
+    DurableToolResultStoreExt, KnowledgeIndexSearchExt, KnowledgeStoreExt, PlatformStoreExt,
+    PlatformStoreSubagentDelegate, PlatformToolAugmentor, SandboxCheckpointStoreExt,
+    SessionSqlDbStoreExt,
 };
 use everruns_provider::driver_registry::DriverRegistry;
 use everruns_provider::error::Result;
@@ -311,6 +312,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         extensions.insert(Arc::new(SessionSqlDbStoreExt(self.adapters.sqldb_store())));
         if let Some(store) = self.adapters.sandbox_checkpoint_store() {
             extensions.insert(Arc::new(SandboxCheckpointStoreExt(store)));
+            // Checkpoint reconciliation needs both; installing one without the
+            // other silently disables it (EVE-870).
+            if let Some(durable) = self.adapters.durable_tool_result_store() {
+                extensions.insert(Arc::new(DurableToolResultStoreExt(durable)));
+            }
         }
         extensions
     }

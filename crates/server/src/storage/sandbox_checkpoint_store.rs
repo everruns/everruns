@@ -241,6 +241,102 @@ impl SandboxCheckpointStore for PgSandboxCheckpointStore {
         row.map(SandboxCheckpoint::try_from).transpose()
     }
 
+    async fn rollback_current_checkpoint(
+        &self,
+        sandbox_id: Uuid,
+        checkpoint_id: Uuid,
+        generation: i64,
+    ) -> Result<Option<SandboxCheckpoint>, SandboxCheckpointError> {
+        // Same transaction shape as `attach_checkpoint`, run backwards: detach
+        // the rejected revision and move the pointer, so the sandbox never
+        // points at a row whose `attached_at` is NULL.
+        let mut tx = self.pool.begin().await.map_err(storage_error)?;
+
+        let current: Option<(i64, Option<Uuid>)> = sqlx::query_as(
+            "SELECT generation, current_checkpoint_id FROM sandboxes WHERE id = $1 FOR UPDATE",
+        )
+        .bind(sandbox_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+
+        let Some((current_generation, current_checkpoint_id)) = current else {
+            let _ = tx.rollback().await;
+            return Err(SandboxCheckpointError::Storage(format!(
+                "sandbox {sandbox_id} not found"
+            )));
+        };
+
+        if current_generation != generation {
+            let _ = tx.rollback().await;
+            return Err(SandboxCheckpointError::StaleGeneration {
+                sandbox_id,
+                current: current_generation,
+                carried: generation,
+            });
+        }
+
+        // The pointer moved while this reconciliation was deciding. Whatever
+        // moved it is newer than this decision, so leave it alone and report
+        // where the sandbox actually sits.
+        if current_checkpoint_id != Some(checkpoint_id) {
+            let _ = tx.rollback().await;
+            return self.current_checkpoint(sandbox_id).await;
+        }
+
+        // Ordered by `attached_at` rather than `created_at`: an out-of-order
+        // upload that was attached later is still the more recent commit.
+        let previous: Option<CheckpointRow> = sqlx::query_as(
+            r#"
+            SELECT id, sandbox_id, generation, source_turn_id, source_tool_call_id,
+                   kind, provider_ref, workspace_revision, attached_at, created_at
+            FROM sandbox_checkpoints
+            WHERE sandbox_id = $1
+              AND id <> $2
+              AND attached_at IS NOT NULL
+            ORDER BY attached_at DESC, created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(sandbox_id)
+        .bind(checkpoint_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+
+        sqlx::query(
+            r#"
+            UPDATE sandboxes
+            SET current_checkpoint_id = $1, updated_at = NOW()
+            WHERE id = $2
+            "#,
+        )
+        .bind(previous.as_ref().map(|row| row.id))
+        .bind(sandbox_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+
+        // Detach after the pointer has moved, so `ON DELETE RESTRICT` never sees
+        // an unattached row that is still the current checkpoint.
+        sqlx::query(
+            r#"
+            UPDATE sandbox_checkpoints
+            SET attached_at = NULL
+            WHERE id = $1 AND sandbox_id = $2
+            "#,
+        )
+        .bind(checkpoint_id)
+        .bind(sandbox_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(storage_error)?;
+
+        tx.commit().await.map_err(storage_error)?;
+
+        previous.map(SandboxCheckpoint::try_from).transpose()
+    }
+
     async fn collect_unattached_checkpoints(
         &self,
         sandbox_id: Uuid,
