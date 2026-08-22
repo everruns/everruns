@@ -288,11 +288,13 @@ async fn session_detail_read_never_scans_events() {
         .collect::<Vec<_>>()
         .join("\n");
 
-    // The two properties that matter, and the only two that are stable: the
-    // read never touches `events`, and it never aggregates. How PostgreSQL
-    // reaches the `sessions` row is its call — on a table this small it will
-    // pick a sequential scan over an index every time, which says nothing about
-    // behaviour at production size.
+    // Assert the contract, not the plan shape. Which relations the read touches
+    // and whether it aggregates are properties of the query; join strategy and
+    // scan type are the planner's call and swing with table statistics — a
+    // seeded test database has a handful of sessions and a few dozen
+    // workspaces, so it will pick hash joins and sequential scans that say
+    // nothing about behaviour at production size. Pinning those makes the test
+    // fail on a healthy plan, which is exactly what it did.
     assert!(
         !plan_text.contains("events"),
         "session detail read must not touch the events table:\n{plan_text}"
@@ -300,9 +302,5 @@ async fn session_detail_read_never_scans_events() {
     assert!(
         !plan_text.contains("Aggregate"),
         "session detail read must read counters, not compute them:\n{plan_text}"
-    );
-    assert!(
-        plan_text.contains("workspaces_pkey"),
-        "the workspace file counter must be reached by primary key:\n{plan_text}"
     );
 }
