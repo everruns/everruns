@@ -70,7 +70,7 @@ Independently versioned crates published this cycle (smallest compatible bump, b
 - `everruns-macros` 0.18.0 → 0.18.1 (`#[tool]` generated code returns a tool error instead of `Err` on bad arguments)
 - `everruns-anthropic` 0.18.0 → 0.18.1 (prompt-cache diagnostics; forwards connection `extra_headers`)
 - `everruns-gemini` 0.18.0 → 0.18.1 (forwards connection `extra_headers`)
-- `everruns` 0.18.2 → 0.18.3 (function-tool errors redacted as internal; session delta events omit accumulated data; MCP server-name validation)
+- `everruns` 0.18.2 → 0.18.4 (function-tool errors redacted as internal; session delta events omit accumulated data; MCP server-name validation. Published as 0.18.4: the 0.18.3 crate publish was blocked by the integration-cone strand, and its `crate/everruns/v0.18.3` tag was left pinned to the pre-fix commit, so 0.18.4 is the identical facade republished under a fresh tag once the cone was closed.)
 
 Cone cascade — patch republish to re-pin `everruns-provider`/`everruns-platform` at `0.19` (own contract unchanged): `everruns-engine` 0.18.1, `everruns-mcp` 0.19.1, `everruns-cli` 0.18.1, `everruns-ard` 0.18.1, `everruns-test-support` 0.18.3, `everruns-turbopuffer` 0.18.1, `everruns-llmsim` 0.18.3, the remaining wire-protocol drivers (`everruns-bedrock`, `everruns-fireworks`, `everruns-mai`, `everruns-meta`, `everruns-openai`, `everruns-openrouter`) 0.18.1, and every `everruns-integrations-*` crate (`bashkit`, `brave-search`, `browserless`, `cursor`, `daytona`, `deno`, `docker`, `duckduckgo`, `e2b`, `filesystem`, `github`, `lua`, `openai-image`, `openrouter-workspace`, `parallel`, `sprites`, `web-fetch`) 0.18.0 → 0.18.1.
 
