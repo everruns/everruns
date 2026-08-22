@@ -21,7 +21,7 @@ everruns-capability.workspace = true
 everruns-core.workspace = true
 everruns-provider.workspace = true
 async-trait.workspace = true
-bashkit = { version = "0.16.0", features = ["jq", "http_client", "bot-auth"] }
+bashkit = { version = "0.17.0", features = ["jq", "http_client", "bot-auth"] }
 serde_json.workspace = true
 futures.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "time"] }

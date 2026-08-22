@@ -84,7 +84,7 @@ futures-util.workspace = true
 flate2.workspace = true
 tar.workspace = true
 
-bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
+bashkit = { version = "0.17.0", features = ["scripted_tool", "jq"] }
 
 everruns-capability = { workspace = true }
 everruns-core = { path = "../core", features = ["openapi", "tree-sitter-outlines"] }

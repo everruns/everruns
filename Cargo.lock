@@ -860,9 +860,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace171a860c49083fbb7dd7fe6ebda7c6535aa24cdcf396b9edd9c71c4dd1d37"
+checksum = "9d79c5e19acc7434830f5e1fab3beb2bc40a2ecb7e357ff6a94051da1e09a5a6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -879,7 +879,6 @@ dependencies = [
  "futures-core",
  "futures-util",
  "getrandom 0.4.3",
- "gloo-timers",
  "hmac",
  "jaq-core",
  "jaq-json",
@@ -891,7 +890,6 @@ dependencies = [
  "regex",
  "reqwest 0.13.4",
  "rustls",
- "send_wrapper",
  "serde",
  "serde_json",
  "serde_yaml_ng",
@@ -902,7 +900,6 @@ dependencies = [
  "tower",
  "unit-prefix",
  "url",
- "web-time",
  "zeroize",
 ]
 
@@ -3751,18 +3748,6 @@ dependencies = [
  "log",
  "regex-automata",
  "regex-syntax",
-]
-
-[[package]]
-name = "gloo-timers"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbb143cf96099802033e0d4f4963b19fd2e0b728bcf076cd9cf7f6634f092994"
-dependencies = [
- "futures-channel",
- "futures-core",
- "js-sys",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -7221,15 +7206,6 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
-
-[[package]]
-name = "send_wrapper"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
-dependencies = [
- "futures-core",
-]
 
 [[package]]
 name = "serde"
