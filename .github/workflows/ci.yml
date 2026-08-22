@@ -1080,7 +1080,10 @@ jobs:
         # breaks still fail the step.
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        # Sampling misses pass with a ::warning annotation; expose captured test output.
+        # A sampling miss fails the step once the in-test retries are exhausted:
+        # a turn that never called the advertised tool proves nothing about the
+        # provider's wire serialization, which is what this matrix exists to
+        # check. `--nocapture` exposes the generations behind the failure.
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features -- --nocapture
 
   # S3 blob-backend integration tests.
