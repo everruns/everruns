@@ -12199,6 +12199,14 @@ export interface components {
          * @example 550e8400-e29b-41d4-a716-446655440000
          */
         resolved_owner_user_id?: string | null;
+        /**
+         * @description Generated one-sentence description of what the run did, and where it
+         *     failed (EVE-867). Absent until a terminal turn has been summarised, and
+         *     always absent for chat threads and for deployments with no utility LLM,
+         *     so a reader must have a fallback rather than treating this as required.
+         * @example Ran the nightly report and failed posting it to Slack: channel_not_found.
+         */
+        run_summary?: string | null;
         /** @description How this session was started. Server-owned for every ingress path. */
         source?: components["schemas"]["SessionSource"];
         /**
@@ -12668,6 +12676,14 @@ export interface components {
          * @example 550e8400-e29b-41d4-a716-446655440000
          */
         resolved_owner_user_id?: string | null;
+        /**
+         * @description Generated one-sentence description of what the run did, and where it
+         *     failed (EVE-867). Absent until a terminal turn has been summarised, and
+         *     always absent for chat threads and for deployments with no utility LLM,
+         *     so a reader must have a fallback rather than treating this as required.
+         * @example Ran the nightly report and failed posting it to Slack: channel_not_found.
+         */
+        run_summary?: string | null;
         /** @description How this session was started. Server-owned for every ingress path. */
         source?: components["schemas"]["SessionSource"];
         /**
@@ -14391,6 +14407,14 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       resolved_owner_user_id?: string | null;
+      /**
+       * @description Generated one-sentence description of what the run did, and where it
+       *     failed (EVE-867). Absent until a terminal turn has been summarised, and
+       *     always absent for chat threads and for deployments with no utility LLM,
+       *     so a reader must have a fallback rather than treating this as required.
+       * @example Ran the nightly report and failed posting it to Slack: channel_not_found.
+       */
+      run_summary?: string | null;
       /** @description How this session was started. Server-owned for every ingress path. */
       source?: components["schemas"]["SessionSource"];
       /**
@@ -18124,6 +18148,14 @@ export interface components {
        * @example 550e8400-e29b-41d4-a716-446655440000
        */
       resolved_owner_user_id?: string | null;
+      /**
+       * @description Generated one-sentence description of what the run did, and where it
+       *     failed (EVE-867). Absent until a terminal turn has been summarised, and
+       *     always absent for chat threads and for deployments with no utility LLM,
+       *     so a reader must have a fallback rather than treating this as required.
+       * @example Ran the nightly report and failed posting it to Slack: channel_not_found.
+       */
+      run_summary?: string | null;
       /** @description How this session was started. Server-owned for every ingress path. */
       source?: components["schemas"]["SessionSource"];
       /**

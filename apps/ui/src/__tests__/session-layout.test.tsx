@@ -205,6 +205,32 @@ describe("SessionLayout", () => {
     return result!;
   }
 
+  // EVE-867: the header's second line should explain the run when we have an
+  // explanation, and keep the old timestamp when we do not.
+  it("shows the generated run summary under the title when one exists", async () => {
+    mockSessionContext.session!.run_summary =
+      "Ran the nightly report and failed posting it: channel_not_found.";
+
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Ran the nightly report and failed posting it: channel_not_found."),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/^Started /)).not.toBeInTheDocument();
+  });
+
+  it("falls back to the start timestamp when no summary was generated", async () => {
+    // The base fixture carries no `run_summary`, which is the OSS default: no
+    // utility LLM is configured, so nothing ever writes the field.
+    await renderLayout();
+
+    await waitFor(() => {
+      expect(screen.getByText(/^Started /)).toBeInTheDocument();
+    });
+  });
+
   it("renders children content", async () => {
     await renderLayout();
 

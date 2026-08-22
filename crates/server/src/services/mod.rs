@@ -26,6 +26,7 @@ pub mod org_feature_flags;
 pub mod platform_command_surface;
 pub mod principal;
 pub mod provider_resolver;
+pub mod run_summary;
 pub mod usage_tracking;
 
 pub use capability::CapabilityService;
@@ -34,4 +35,5 @@ pub use generation_reconciler::GenerationReconcilerService;
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use principal::{PrincipalService, row_to_principal};
 pub use provider_resolver::{ProviderResolverService, ResolvedModel};
+pub use run_summary::RunSummaryService;
 pub use usage_tracking::UsageTrackingListener;

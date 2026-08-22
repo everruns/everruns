@@ -3920,6 +3920,12 @@ export interface Session {
    * failure, which is why the list and the facet rail read this instead.
    */
   activity?: SessionActivity;
+  /**
+   * Generated one-sentence description of what the run did, and where it
+   * failed (EVE-867). Absent for chat threads, for runs with no terminal turn
+   * yet, and on deployments with no utility LLM — readers must have a fallback.
+   */
+  run_summary?: string;
   created_at: string;
   updated_at: string;
   started_at: string | null;

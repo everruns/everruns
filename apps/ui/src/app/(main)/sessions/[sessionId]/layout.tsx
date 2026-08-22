@@ -123,7 +123,12 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
         secondaryMetaText={
           activeTab === "files"
             ? "Workspace: /workspace"
-            : `Started ${new Date(session.created_at).toLocaleString()}`
+            : // EVE-867: the generated run summary explains what happened;
+              // the start timestamp is metadata. Prefer the explanation where
+              // one exists, and fall back for chat threads, runs that have not
+              // finished, and deployments with no utility LLM.
+              (session.run_summary?.trim() ??
+              `Started ${new Date(session.created_at).toLocaleString()}`)
         }
         sessionTraceUrl={sessionTraceUrl}
         sessionTraceLabel={t("trace_view_session")}
